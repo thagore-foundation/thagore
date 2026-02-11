@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(LLVM 18 REQUIRED CONFIG)
+find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
@@ -51,6 +51,11 @@ llvm_map_components_to_libnames(THAG_LLVM_LIBS
   InstCombine
   TransformUtils
   Analysis
+  X86
+  X86CodeGen
+  X86Desc
+  X86Info
+  X86AsmParser
 )
 target_link_libraries(thag_backend PUBLIC ${THAG_LLVM_LIBS})
 target_include_directories(thag_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})

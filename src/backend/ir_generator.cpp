@@ -12,14 +12,8 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/TargetParser/Host.h"
-#include "llvm/MC/TargetRegistry.h"
-#include "llvm/CodeGen/CommandFlags.h"
-#include "llvm/CodeGen/FileWriters.h"
-#include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/LegacyPassManager.h"
 
 #include <format>

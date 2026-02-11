@@ -4,6 +4,7 @@
 #include "thagore/frontend/semantic.hpp"
 
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 
 #include <cassert>
 #include <iostream>

@@ -8,10 +8,12 @@
 
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <filesystem>
 #include <fstream>
@@ -194,7 +196,7 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
     return 1;
   }
 
-  module.value()->setTargetTriple(llvm::sys::getDefaultTargetTriple());
+  module.value()->setTargetTriple(llvm::Triple(llvm::sys::getDefaultTargetTriple()));
   module.value()->setDataLayout(targetMachine.value()->createDataLayout());
 
   auto opt = BackendPipeline::optimizeModule(*module.value(), options->optLevel);

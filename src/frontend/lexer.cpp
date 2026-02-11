@@ -23,11 +23,11 @@ auto makeSpan(const Cursor &begin, const Cursor &end, const std::string &file) -
   };
 }
 
-constexpr auto isIdentifierHead(char ch) -> bool {
+auto isIdentifierHead(char ch) -> bool {
   return std::isalpha(static_cast<unsigned char>(ch)) != 0 || ch == '_';
 }
 
-constexpr auto isIdentifierBody(char ch) -> bool {
+auto isIdentifierBody(char ch) -> bool {
   return std::isalnum(static_cast<unsigned char>(ch)) != 0 || ch == '_';
 }
 
