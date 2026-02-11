@@ -28,6 +28,13 @@ ctest --test-dir build -C Release
 .\build\Release\thag.exe .\examples\hello.tg --emit-obj -o hello.obj
 ```
 
+Demo in kết quả từ object:
+
+```powershell
+cl /nologo /Fe:hello.exe examples\hello_runner.c hello.obj
+.\hello.exe
+```
+
 ## Ngôn ngữ bootstrap hỗ trợ
 
 - Khai báo hàm: `func name(...):`
