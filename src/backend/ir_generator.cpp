@@ -40,11 +40,16 @@ public:
   }
 
   auto lower(const FunctionDecl &decl) -> Result<void, Diagnostic> {
+    const BaseType returnType = decl.returnType ? decl.returnType->base : BaseType::Void;
+    return lowerStatements(decl.body->statements, returnType);
+  }
+
+  auto lowerStatements(const std::vector<std::unique_ptr<Stmt>> &statements, BaseType returnType) -> Result<void, Diagnostic> {
     auto *entry = llvm::BasicBlock::Create(context, "entry", &function);
     builder.SetInsertPoint(entry);
     entryBuilder.SetInsertPoint(entry);
 
-    for (const auto &stmt : decl.body->statements) {
+    for (const auto &stmt : statements) {
       auto result = lowerStmt(*stmt);
       if (!result) {
         return std::unexpected(result.error());
@@ -55,10 +60,10 @@ public:
     }
 
     if (!terminated()) {
-      if (function.getReturnType()->isVoidTy()) {
+      if (returnType == BaseType::Void || function.getReturnType()->isVoidTy()) {
         releaseOwnedLocals();
         builder.CreateRetVoid();
-      } else if (function.getReturnType()->isIntegerTy(32)) {
+      } else if (returnType == BaseType::I32 || function.getReturnType()->isIntegerTy(32)) {
         releaseOwnedLocals();
         builder.CreateRet(llvm::ConstantInt::get(function.getReturnType(), 0));
       } else {
@@ -438,8 +443,12 @@ IRGenerator::IRGenerator(llvm::LLVMContext &context_) : context(context_) {}
 auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
   -> Result<std::unique_ptr<llvm::Module>, Diagnostic> {
   auto module = std::make_unique<llvm::Module>(moduleName, context);
+  bool hasExplicitMain = false;
 
   for (const auto &decl : typed.module->functions) {
+    if (decl->name == "main") {
+      hasExplicitMain = true;
+    }
     std::vector<llvm::Type *> params {};
     params.reserve(decl->params.size());
     for (std::size_t i = 0; i < decl->params.size(); ++i) {
@@ -456,10 +465,39 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     }
   }
 
+  if (!typed.module->topLevelStatements.empty() && hasExplicitMain) {
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::CodegenError,
+      .message = "Cannot mix top-level executable statements with explicit 'func main()'.",
+      .span = typed.module->span,
+    });
+  }
+
+  if (!typed.module->topLevelStatements.empty()) {
+    auto *fnType = llvm::FunctionType::get(llvm::Type::getInt32Ty(context), {}, false);
+    llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "main", *module);
+  }
+
   for (const auto &decl : typed.module->functions) {
     auto *fn = module->getFunction(decl->name);
     FunctionLowering lowering {context, *module, *fn};
     auto lowered = lowering.lower(*decl);
+    if (!lowered) {
+      return std::unexpected(lowered.error());
+    }
+  }
+
+  if (!typed.module->topLevelStatements.empty()) {
+    auto *mainFn = module->getFunction("main");
+    if (mainFn == nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Failed to create implicit main function.",
+        .span = typed.module->span,
+      });
+    }
+    FunctionLowering lowering {context, *module, *mainFn};
+    auto lowered = lowering.lowerStatements(typed.module->topLevelStatements, BaseType::I32);
     if (!lowered) {
       return std::unexpected(lowered.error());
     }

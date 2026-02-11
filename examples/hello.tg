@@ -1,4 +1,1 @@
-func main():
-  let x = 41
-  print(x + 1)
-  return 0
+print(42)

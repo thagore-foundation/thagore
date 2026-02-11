@@ -17,6 +17,42 @@ public:
   explicit SemanticPass(TypedModule &typed_) : typed(typed_) {}
 
   auto run() -> Result<void, Diagnostic> {
+    bool hasExplicitMain = false;
+    for (const auto &fn : typed.module->functions) {
+      if (fn->name == "main") {
+        hasExplicitMain = true;
+        break;
+      }
+    }
+
+    if (!typed.module->topLevelStatements.empty() && hasExplicitMain) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Cannot mix top-level executable statements with explicit 'func main()'.",
+        .span = typed.module->span,
+      });
+    }
+
+    scopes.clear();
+    pushScope();
+    inTopLevelContext = true;
+    for (const auto &stmt : typed.module->topLevelStatements) {
+      auto v = stmt->accept(*this);
+      if (!v) {
+        popScope();
+        return std::unexpected(v.error());
+      }
+    }
+    popScope();
+
+    if (typed.module->topLevelStatements.empty() && !hasExplicitMain) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "No entry point found. Define 'func main()' or add top-level statements.",
+        .span = typed.module->span,
+      });
+    }
+
     for (auto &fn : typed.module->functions) {
       auto ret = analyzeFunction(*fn);
       if (!ret) {
@@ -30,10 +66,13 @@ private:
   TypedModule &typed;
   std::vector<Scope> scopes {};
   TypePtr currentFunctionReturnType {makeType(BaseType::Void)};
+  bool inTopLevelContext {false};
 
   auto analyzeFunction(FunctionDecl &fn) -> Result<void, Diagnostic> {
     scopes.clear();
     pushScope();
+    inTopLevelContext = false;
+    currentFunctionReturnType = makeType(BaseType::Unknown);
     for (const auto &param : fn.params) {
       scopes.back().symbols[param] = makeType(BaseType::I32);
     }
@@ -245,6 +284,13 @@ public:
   }
 
   auto visit(const ReturnStmt &stmt) -> Result<void, Diagnostic> override {
+    if (inTopLevelContext) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Return is not allowed at top-level scope.",
+        .span = stmt.span,
+      });
+    }
     TypePtr actual = makeType(BaseType::Void);
     if (stmt.value) {
       auto t = stmt.value->accept(*this);

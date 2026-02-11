@@ -243,8 +243,15 @@ struct FunctionDecl final : Decl {
 
 struct ModuleDecl final : Decl {
   std::vector<std::unique_ptr<FunctionDecl>> functions {};
-  explicit ModuleDecl(std::vector<std::unique_ptr<FunctionDecl>> functions_, SourceSpan span_)
-    : Decl(NodeKind::ModuleDecl, std::move(span_)), functions(std::move(functions_)) {}
+  std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
+  ModuleDecl(
+    std::vector<std::unique_ptr<FunctionDecl>> functions_,
+    std::vector<std::unique_ptr<Stmt>> topLevelStatements_,
+    SourceSpan span_
+  )
+    : Decl(NodeKind::ModuleDecl, std::move(span_)),
+      functions(std::move(functions_)),
+      topLevelStatements(std::move(topLevelStatements_)) {}
   auto accept(DeclVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 

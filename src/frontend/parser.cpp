@@ -13,16 +13,25 @@ public:
 
   auto parseModule() -> Result<std::unique_ptr<ModuleDecl>, Diagnostic> {
     std::vector<std::unique_ptr<FunctionDecl>> functions {};
+    std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
     while (!check(TokenKind::Eof)) {
       skipNewlines();
       if (check(TokenKind::Eof)) {
         break;
       }
-      auto fn = parseFunctionDecl();
-      if (!fn) {
-        return std::unexpected(fn.error());
+      if (check(TokenKind::KwFunc)) {
+        auto fn = parseFunctionDecl();
+        if (!fn) {
+          return std::unexpected(fn.error());
+        }
+        functions.push_back(std::move(fn.value()));
+      } else {
+        auto stmt = parseStatement();
+        if (!stmt) {
+          return std::unexpected(stmt.error());
+        }
+        topLevelStatements.push_back(std::move(stmt.value()));
       }
-      functions.push_back(std::move(fn.value()));
       skipNewlines();
     }
 
@@ -30,7 +39,7 @@ public:
     if (!tokens.empty()) {
       span = mergeSpan(tokens.front().span, tokens.back().span);
     }
-    return std::make_unique<ModuleDecl>(std::move(functions), span);
+    return std::make_unique<ModuleDecl>(std::move(functions), std::move(topLevelStatements), span);
   }
 
 private:
