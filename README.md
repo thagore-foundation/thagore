@@ -1,53 +1,41 @@
 # Thagore Bootstrap Compiler (Core)
 
-Compiler bootstrap cho Thagore, viết bằng C++23, theo kiến trúc tách lớp:
+Compiler bootstrap cho Thagore viet bang C++23, kien truc tach lop:
 
-- `thag_common`: diagnostics, source span, `std::expected` alias.
-- `thag_frontend`: indentation-aware lexer, AST, Pratt parser, semantic analyzer.
-- `thag_backend`: LLVM IR lowering, ARC hooks insertion, optimize + emit IR/object.
-- `thag_driver`: CLI `thag` điều phối toàn pipeline.
+- `thag_common`: diagnostics, source span, `std::expected`.
+- `thag_frontend`: lexer indentation-aware, AST, Pratt parser, semantic.
+- `thag_backend`: LLVM IR lowering, ARC hooks, optimize + emit.
+- `thag_runtime`: `runtime.lib` (print + ARC hooks runtime).
+- `thag_driver`: CLI `thag` dieu phoi pipeline.
 
-## Yêu cầu môi trường
+## Yeu cau moi truong
 
 - CMake `>= 3.28`
-- Compiler hỗ trợ C++23 (`std::expected`, `std::format`)
-- LLVM 18 development package (`LLVMConfig.cmake`)
+- Compiler ho tro C++23
+- LLVM (da test voi 21.1.8) co `LLVMConfig.cmake`
 
 ## Build
 
 ```powershell
-cmake -S . -B build -DLLVM_DIR=<path-to-llvm/lib/cmake/llvm>
+cmake -S . -B build -DLLVM_DIR=<path-to-llvm/lib/cmake/llvm> -DBUILD_TESTING=OFF
 cmake --build build --config Release
-ctest --test-dir build -C Release
 ```
 
-## Chạy
+## Su dung
 
 ```powershell
 .\build\Release\thag.exe .\examples\hello.tg --emit-ir -o hello.ll
 .\build\Release\thag.exe .\examples\hello.tg --emit-obj -o hello.obj
+.\build\Release\thag.exe build .\examples\hello.tg --release -o thagore_hero.exe
+.\thagore_hero.exe
 ```
 
-Demo in kết quả từ object:
+## Builtin runtime (v1)
 
-```powershell
-cl /nologo /Fe:hello.exe examples\hello_runner.c hello.obj
-.\hello.exe
-```
+IR generator su dung cac ham:
 
-## Ngôn ngữ bootstrap hỗ trợ
+- `__thg_print_i32(i32)`
+- `__thg_retain(ptr)`
+- `__thg_release(ptr)`
 
-- Khai báo hàm: `func name(...):`
-- Block theo indentation (`INDENT` / `DEDENT` ảo)
-- `let`, assignment, `return`, `if`, `loop`
-- Biểu thức nhị phân theo Pratt parser (`+ - * / == != < <= > >=`)
-- Type inference tối thiểu (`i32`, `bool`, `string`, `void`)
-
-## ARC runtime contract (v1)
-
-IR generator tự chèn lời gọi:
-
-- `declare void @__thg_retain(ptr)`
-- `declare void @__thg_release(ptr)`
-
-ARC elision cơ bản bỏ `retain/release` cho temporary values an toàn trong scope.
+Runtime tinh (`thag_runtime.lib`) duoc link vao exe khi dung `thag build`.

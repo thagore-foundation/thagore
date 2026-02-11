@@ -6,15 +6,18 @@
 #include "thagore/frontend/parser.hpp"
 #include "thagore/frontend/semantic.hpp"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <format>
@@ -30,7 +33,13 @@ namespace {
 
 auto parseArgs(const std::vector<std::string> &args) -> Result<DriverOptions, Diagnostic> {
   DriverOptions options {};
-  for (std::size_t i = 1; i < args.size(); ++i) {
+  std::size_t i = 1;
+  if (i < args.size() && args[i] == "build") {
+    options.mode = DriverMode::BuildExecutable;
+    ++i;
+  }
+
+  for (; i < args.size(); ++i) {
     const auto &arg = args[i];
     if (arg == "--emit-ir") {
       options.emitIR = true;
@@ -38,6 +47,10 @@ auto parseArgs(const std::vector<std::string> &args) -> Result<DriverOptions, Di
     }
     if (arg == "--emit-obj") {
       options.emitObject = true;
+      continue;
+    }
+    if (arg == "--release") {
+      options.release = true;
       continue;
     }
     if (arg == "-o") {
@@ -76,18 +89,23 @@ auto parseArgs(const std::vector<std::string> &args) -> Result<DriverOptions, Di
   if (options.inputFile.empty()) {
     return std::unexpected(Diagnostic {
       .code = ErrorCode::InvalidCli,
-      .message = "Missing input file. Usage: thag <input.tg> [--emit-ir|--emit-obj] -o <output>",
+      .message =
+        "Missing input file. Usage: thag [build] <input.tg> [--emit-ir] [--emit-obj] [--release] -o <output>",
       .span = {},
     });
   }
 
-  if (!options.emitIR && !options.emitObject) {
+  if (options.mode == DriverMode::CompileOnly && !options.emitIR && !options.emitObject) {
     options.emitIR = true;
   }
 
   if (options.outputFile.empty()) {
     const auto stem = std::filesystem::path(options.inputFile).stem().string();
-    options.outputFile = options.emitObject ? stem + ".o" : stem + ".ll";
+    if (options.mode == DriverMode::BuildExecutable) {
+      options.outputFile = stem + ".exe";
+    } else {
+      options.outputFile = options.emitObject ? stem + ".o" : stem + ".ll";
+    }
   }
   return options;
 }
@@ -140,6 +158,132 @@ auto createTargetMachine(const DriverOptions &options) -> Result<std::unique_ptr
     });
   }
   return machine;
+}
+
+auto findLLVMTool(const std::string &toolName) -> std::optional<std::filesystem::path> {
+  if (const char *binEnv = std::getenv("THAG_LLVM_BIN"); binEnv != nullptr && *binEnv != '\0') {
+    const auto candidate = std::filesystem::path(binEnv) / toolName;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (const char *llvmDir = std::getenv("LLVM_DIR"); llvmDir != nullptr && *llvmDir != '\0') {
+    auto base = std::filesystem::path(llvmDir);
+    if (base.filename() == "llvm") {
+      base = base.parent_path().parent_path().parent_path();
+    }
+    const auto candidate = base / "bin" / toolName;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  const auto localRoot = std::filesystem::current_path() / "llvm";
+  if (std::filesystem::exists(localRoot)) {
+    for (const auto &entry : std::filesystem::directory_iterator(localRoot)) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+      const auto candidate = entry.path() / "bin" / toolName;
+      if (std::filesystem::exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  if (auto resolved = llvm::sys::findProgramByName(toolName)) {
+    return std::filesystem::path(*resolved);
+  }
+  return std::nullopt;
+}
+
+auto runTool(const std::filesystem::path &tool, const std::vector<std::string> &arguments, std::string_view stage)
+  -> Result<void, Diagnostic> {
+  std::vector<std::string> argvStrings {};
+  argvStrings.reserve(arguments.size() + 1);
+  argvStrings.push_back(tool.string());
+  argvStrings.insert(argvStrings.end(), arguments.begin(), arguments.end());
+
+  llvm::SmallVector<llvm::StringRef, 16> argvRefs {};
+  argvRefs.reserve(argvStrings.size());
+  for (const auto &arg : argvStrings) {
+    argvRefs.push_back(arg);
+  }
+
+  std::string errorMessage {};
+  const int exitCode = llvm::sys::ExecuteAndWait(
+    tool.string(),
+    argvRefs,
+    std::nullopt,
+    {},
+    0,
+    0,
+    &errorMessage
+  );
+
+  if (exitCode != 0) {
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::CodegenError,
+      .message = std::format("{} failed with exit code {}: {}", stage, exitCode, errorMessage),
+      .span = {},
+    });
+  }
+  return {};
+}
+
+auto linkExecutable(
+  const DriverOptions &options,
+  const std::filesystem::path &objectPath,
+  const std::filesystem::path &outputPath,
+  const std::filesystem::path &runtimeLibPath
+) -> Result<void, Diagnostic> {
+  auto lld = findLLVMTool("lld-link.exe");
+  if (!lld) {
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::CodegenError,
+      .message = "Cannot find lld-link.exe. Set THAG_LLVM_BIN or LLVM_DIR.",
+      .span = {},
+    });
+  }
+
+  std::vector<std::string> args {
+    "/NOLOGO",
+    std::format("/OUT:{}", outputPath.string()),
+    "/SUBSYSTEM:CONSOLE",
+    objectPath.string(),
+    runtimeLibPath.string(),
+  };
+
+  if (options.release) {
+    args.push_back("/OPT:REF");
+    args.push_back("/OPT:ICF");
+    args.push_back("/DEBUG:NONE");
+    args.push_back("/INCREMENTAL:NO");
+  }
+
+  auto linkResult = runTool(*lld, args, "lld-link");
+  if (!linkResult) {
+    return std::unexpected(linkResult.error());
+  }
+
+  if (options.release) {
+    auto strip = findLLVMTool("llvm-strip.exe");
+    if (!strip) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Cannot find llvm-strip.exe for --release mode.",
+        .span = {},
+      });
+    }
+
+    auto stripResult = runTool(*strip, {"--strip-all", outputPath.string()}, "llvm-strip");
+    if (!stripResult) {
+      return std::unexpected(stripResult.error());
+    }
+  }
+
+  return {};
 }
 
 } // namespace
@@ -213,10 +357,34 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
     }
   }
 
-  if (options->emitObject) {
-    auto result = BackendPipeline::emitObject(*module.value(), *targetMachine.value(), options->outputFile);
+  const auto outputPath = std::filesystem::path(options->outputFile);
+  const auto objectPath = (options->mode == DriverMode::BuildExecutable)
+    ? outputPath.parent_path() / (outputPath.stem().string() + ".obj")
+    : outputPath;
+
+  if (options->emitObject || options->mode == DriverMode::BuildExecutable) {
+    auto result = BackendPipeline::emitObject(*module.value(), *targetMachine.value(), objectPath.string());
     if (!result) {
       printDiagnostic(result.error());
+      return 1;
+    }
+  }
+
+  if (options->mode == DriverMode::BuildExecutable) {
+    const auto thagExe = std::filesystem::absolute(std::filesystem::path(args[0]));
+    const auto runtimeLib = thagExe.parent_path() / "thag_runtime.lib";
+    if (!std::filesystem::exists(runtimeLib)) {
+      printDiagnostic(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Missing runtime library '{}'.", runtimeLib.string()),
+        .span = {},
+      });
+      return 1;
+    }
+
+    auto linkResult = linkExecutable(options.value(), objectPath, outputPath, runtimeLib);
+    if (!linkResult) {
+      printDiagnostic(linkResult.error());
       return 1;
     }
   }

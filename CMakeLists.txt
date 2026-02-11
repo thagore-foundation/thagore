@@ -61,6 +61,12 @@ target_link_libraries(thag_backend PUBLIC ${THAG_LLVM_LIBS})
 target_include_directories(thag_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(thag_backend PUBLIC ${LLVM_DEFINITIONS})
 
+add_library(thag_runtime STATIC
+  src/runtime/runtime.cpp
+)
+target_include_directories(thag_runtime PUBLIC include)
+target_compile_features(thag_runtime PUBLIC cxx_std_23)
+
 add_library(thag_driver STATIC
   src/driver/driver.cpp
 )
@@ -71,6 +77,7 @@ target_link_libraries(thag_driver
     thag_common
     thag_frontend
     thag_backend
+    thag_runtime
 )
 
 add_executable(thag

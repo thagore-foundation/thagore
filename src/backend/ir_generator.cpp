@@ -345,6 +345,33 @@ private:
   }
 
   auto lowerCall(const CallExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    if (expr.callee == "print") {
+      if (expr.args.size() != 1) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Builtin print expects exactly one argument.",
+          .span = expr.span,
+        });
+      }
+      auto arg = lowerExpr(*expr.args[0]);
+      if (!arg) {
+        return std::unexpected(arg.error());
+      }
+      if (!arg.value()->getType()->isIntegerTy(32)) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Builtin print currently supports only i32.",
+          .span = expr.args[0]->span,
+        });
+      }
+
+      auto *voidTy = llvm::Type::getVoidTy(context);
+      auto *i32Ty = llvm::Type::getInt32Ty(context);
+      auto printFn = module.getOrInsertFunction("__thg_print_i32", llvm::FunctionType::get(voidTy, {i32Ty}, false));
+      builder.CreateCall(printFn, {arg.value()});
+      return llvm::ConstantInt::get(i32Ty, 0);
+    }
+
     auto *callee = module.getFunction(expr.callee);
     if (!callee) {
       return std::unexpected(Diagnostic {

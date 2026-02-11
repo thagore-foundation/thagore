@@ -165,6 +165,28 @@ public:
   }
 
   auto visit(const CallExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    if (expr.callee == "print") {
+      if (expr.args.size() != 1) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Builtin print expects exactly one argument.",
+          .span = expr.span,
+        });
+      }
+      auto argType = expr.args[0]->accept(*this);
+      if (!argType) {
+        return std::unexpected(argType.error());
+      }
+      if (argType.value()->base != BaseType::I32) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Builtin print currently supports only i32.",
+          .span = expr.args[0]->span,
+        });
+      }
+      return makeType(BaseType::Void);
+    }
+
     auto found = typed.functionTypes.find(expr.callee);
     if (found == typed.functionTypes.end()) {
       return std::unexpected(Diagnostic {
