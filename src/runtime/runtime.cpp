@@ -13,6 +13,11 @@ struct ManagedString {
   std::uint32_t refCount;
 };
 
+struct TokenBox {
+  char *kind;
+  char *text;
+};
+
 int g_argc = 0;
 char **g_argv = nullptr;
 
@@ -24,6 +29,20 @@ auto managedStrings() -> std::unordered_map<const char *, ManagedString> & {
 auto managedStringsMutex() -> std::mutex & {
   static auto *guard = new std::mutex {};
   return *guard;
+}
+
+auto copyCString(const char *text) -> char * {
+  if (text == nullptr) {
+    text = "";
+  }
+  const auto len = std::strlen(text);
+  auto *out = static_cast<char *>(std::malloc(len + 1));
+  if (out == nullptr) {
+    return nullptr;
+  }
+  std::memcpy(out, text, len);
+  out[len] = '\0';
+  return out;
 }
 
 } // namespace
@@ -51,6 +70,35 @@ int __thg_cstr_len(const char *s) {
     return 0;
   }
   return static_cast<int>(std::strlen(s));
+}
+
+int __thg_str_len(const char *s) {
+  return __thg_cstr_len(s);
+}
+
+char *__thg_str_substr(const char *s, int start, int len) {
+  if (s == nullptr || len <= 0) {
+    return copyCString("");
+  }
+
+  const int total = static_cast<int>(std::strlen(s));
+  if (start < 0 || start >= total) {
+    return copyCString("");
+  }
+
+  if (len < 0) {
+    return copyCString("");
+  }
+
+  const int maxLen = total - start;
+  const int actualLen = len > maxLen ? maxLen : len;
+  auto *out = static_cast<char *>(std::malloc(static_cast<std::size_t>(actualLen) + 1));
+  if (out == nullptr) {
+    return nullptr;
+  }
+  std::memcpy(out, s + start, static_cast<std::size_t>(actualLen));
+  out[actualLen] = '\0';
+  return out;
 }
 
 void __thg_retain(void *ptr) {
@@ -201,6 +249,30 @@ int __thg_str_eq(char *s1, char *s2) {
     return 0;
   }
   return std::strcmp(s1, s2) == 0 ? 1 : 0;
+}
+
+void *__thg_token_new(const char *kind, const char *text) {
+  auto *token = static_cast<TokenBox *>(std::malloc(sizeof(TokenBox)));
+  if (token == nullptr) {
+    return nullptr;
+  }
+  token->kind = copyCString(kind);
+  token->text = copyCString(text);
+  return token;
+}
+
+const char *__thg_token_kind(void *token) {
+  if (token == nullptr) {
+    return "";
+  }
+  return static_cast<TokenBox *>(token)->kind;
+}
+
+const char *__thg_token_text(void *token) {
+  if (token == nullptr) {
+    return "";
+  }
+  return static_cast<TokenBox *>(token)->text;
 }
 
 const char *__thg_str_concat(const char *leftPtr, std::int32_t leftLen, const char *rightPtr, std::int32_t rightLen, std::int32_t *outLen) {

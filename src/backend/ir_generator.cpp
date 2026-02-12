@@ -182,6 +182,8 @@ private:
   llvm::FunctionCallee strDupFn {};
   llvm::FunctionCallee strFreeFn {};
   llvm::FunctionCallee cstrLenFn {};
+  llvm::FunctionCallee strLenFn {};
+  llvm::FunctionCallee strSubstrFn {};
   llvm::FunctionCallee initEnvFn {};
 
   auto terminated() const -> bool {
@@ -200,6 +202,8 @@ private:
     strDupFn = module.getOrInsertFunction("__thg_str_dup", llvm::FunctionType::get(ptrTy, {ptrTy}, false));
     strFreeFn = module.getOrInsertFunction("__thg_str_free", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     cstrLenFn = module.getOrInsertFunction("__thg_cstr_len", llvm::FunctionType::get(i32Ty, {ptrTy}, false));
+    strLenFn = module.getOrInsertFunction("__thg_str_len", llvm::FunctionType::get(i32Ty, {ptrTy}, false));
+    strSubstrFn = module.getOrInsertFunction("__thg_str_substr", llvm::FunctionType::get(ptrTy, {ptrTy, i32Ty, i32Ty}, false));
     initEnvFn = module.getOrInsertFunction("__thg_init_env", llvm::FunctionType::get(voidTy, {i32Ty, ptrTy}, false));
   }
 
@@ -1027,6 +1031,57 @@ private:
   }
 
   auto lowerMethodCall(const MethodCallExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    auto objectValue = lowerExpr(*expr.object);
+    if (!objectValue) {
+      return std::unexpected(objectValue.error());
+    }
+    const bool isStringMethod =
+      objectValue.value()->getType() == llvmType(BaseType::String) ||
+      (expr.object->inferredType && expr.object->inferredType->base == BaseType::String);
+    if (isStringMethod) {
+      auto ptrValue = extractStringPointer(objectValue.value(), expr.span, "str.method");
+      if (!ptrValue) {
+        return std::unexpected(ptrValue.error());
+      }
+
+      if (expr.method == "length") {
+        if (!expr.args.empty()) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "String.length() does not take arguments.",
+            .span = expr.span,
+          });
+        }
+        return builder.CreateCall(strLenFn, {ptrValue.value()}, "str.length");
+      }
+
+      if (expr.method == "substr") {
+        if (expr.args.size() != 2) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "String.substr(start, len) expects two arguments.",
+            .span = expr.span,
+          });
+        }
+        auto startValue = lowerExpr(*expr.args[0]);
+        if (!startValue) {
+          return std::unexpected(startValue.error());
+        }
+        auto lenValue = lowerExpr(*expr.args[1]);
+        if (!lenValue) {
+          return std::unexpected(lenValue.error());
+        }
+        auto *newPtr = builder.CreateCall(strSubstrFn, {ptrValue.value(), startValue.value(), lenValue.value()}, "str.substr.ptr");
+        return packCStringValue(newPtr);
+      }
+
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown string method '{}'.", expr.method),
+        .span = expr.span,
+      });
+    }
+
     std::string structName {};
     llvm::Value *selfPtr = nullptr;
 
@@ -1044,11 +1099,7 @@ private:
     }
 
     if (selfPtr == nullptr || structName.empty()) {
-      auto object = lowerExpr(*expr.object);
-      if (!object) {
-        return std::unexpected(object.error());
-      }
-      const auto *layout = findStructLayoutByType(object.value()->getType());
+      const auto *layout = findStructLayoutByType(objectValue.value()->getType());
       if (layout == nullptr) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::CodegenError,
@@ -1063,7 +1114,7 @@ private:
         }
       }
       auto *tmp = builder.CreateAlloca(layout->llvmType, nullptr, "method.self.tmp");
-      builder.CreateStore(object.value(), tmp);
+      builder.CreateStore(objectValue.value(), tmp);
       selfPtr = tmp;
     }
 
@@ -1522,6 +1573,14 @@ private:
     }
     if (expr.kind == NodeKind::MethodCallExpr) {
       const auto &call = static_cast<const MethodCallExpr &>(expr);
+      if (call.object->inferredType && call.object->inferredType->base == BaseType::String) {
+        if (call.method == "length") {
+          return BaseType::I32;
+        }
+        if (call.method == "substr") {
+          return BaseType::String;
+        }
+      }
       BaseType ownerBase = BaseType::Unknown;
       std::string ownerName {};
       if (call.object->inferredType) {

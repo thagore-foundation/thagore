@@ -1,0 +1,36 @@
+import "token.tg" as token
+
+func char_at(source: String, pos: i32) -> String:
+    return source.substr(pos, 1)
+
+func tokenize(source: String) -> i32:
+    let pos = 0
+    let len = source.length()
+    let count = 0
+
+    while (pos < len):
+        let c = char_at(source, pos)
+        if (c == " "):
+            pos = pos + 1
+        else:
+            if (c == "\n"):
+                pos = pos + 1
+            else:
+                if (c == "\t"):
+                    pos = pos + 1
+                else:
+                    if (c == "+"):
+                        token.new_handle("PLUS", "+")
+                        count = count + 1
+                        pos = pos + 1
+                    else:
+                        if (c == "="):
+                            token.new_handle("ASSIGN", "=")
+                            count = count + 1
+                            pos = pos + 1
+                        else:
+                            token.new_handle("IDENT", c)
+                            count = count + 1
+                            pos = pos + 1
+
+    return count

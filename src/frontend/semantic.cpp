@@ -604,6 +604,50 @@ public:
     if (!objectType) {
       return std::unexpected(objectType.error());
     }
+
+    if (objectType.value()->base == BaseType::String) {
+      if (expr.method == "length") {
+        if (!expr.args.empty()) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "String.length() does not take arguments.",
+            .span = expr.span,
+          });
+        }
+        return makeType(BaseType::I32);
+      }
+      if (expr.method == "substr") {
+        if (expr.args.size() != 2) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "String.substr(start, len) expects exactly two i32 arguments.",
+            .span = expr.span,
+          });
+        }
+        auto startType = expr.args[0]->accept(*this);
+        if (!startType) {
+          return std::unexpected(startType.error());
+        }
+        auto lenType = expr.args[1]->accept(*this);
+        if (!lenType) {
+          return std::unexpected(lenType.error());
+        }
+        if (startType.value()->base != BaseType::I32 || lenType.value()->base != BaseType::I32) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "String.substr(start, len) requires i32 arguments.",
+            .span = expr.span,
+          });
+        }
+        return makeType(BaseType::String);
+      }
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Unknown string method '{}'.", expr.method),
+        .span = expr.span,
+      });
+    }
+
     if (objectType.value()->base != BaseType::Struct) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
