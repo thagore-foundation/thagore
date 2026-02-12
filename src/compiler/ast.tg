@@ -7,6 +7,11 @@ extern func __thg_ast_new_block() -> ptr
 extern func __thg_ast_block_push(block: ptr, stmt: ptr) -> i32
 extern func __thg_ast_new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr
 extern func __thg_ast_new_while(condition: ptr, body: ptr) -> ptr
+extern func __thg_ast_new_func(name: String, body: ptr) -> ptr
+extern func __thg_ast_func_add_param(func: ptr, param_name: String) -> i32
+extern func __thg_ast_new_call(name: String) -> ptr
+extern func __thg_ast_call_add_arg(call: ptr, arg: ptr) -> i32
+extern func __thg_ast_new_return(expr: ptr) -> ptr
 extern func __thg_ast_kind(node: ptr) -> String
 extern func __thg_ast_kind_tag(node: ptr) -> i32
 extern func __thg_ast_op(node: ptr) -> String
@@ -21,6 +26,11 @@ extern func __thg_ast_else(node: ptr) -> ptr
 extern func __thg_ast_body(node: ptr) -> ptr
 extern func __thg_ast_block_count(node: ptr) -> i32
 extern func __thg_ast_block_get_stmt(node: ptr, index: i32) -> ptr
+extern func __thg_ast_func_body(node: ptr) -> ptr
+extern func __thg_ast_func_param_count(node: ptr) -> i32
+extern func __thg_ast_func_param_at(node: ptr, index: i32) -> String
+extern func __thg_ast_call_arg_count(node: ptr) -> i32
+extern func __thg_ast_call_arg_at(node: ptr, index: i32) -> ptr
 extern func __thg_ast_debug(node: ptr) -> String
 
 struct Expr:
@@ -57,6 +67,21 @@ func new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr:
 
 func new_while(condition: ptr, body: ptr) -> ptr:
     return __thg_ast_new_while(condition, body)
+
+func new_func(name: String, body: ptr) -> ptr:
+    return __thg_ast_new_func(name, body)
+
+func func_add_param(func_node: ptr, param_name: String) -> i32:
+    return __thg_ast_func_add_param(func_node, param_name)
+
+func new_call(name: String) -> ptr:
+    return __thg_ast_new_call(name)
+
+func call_add_arg(call_node: ptr, arg: ptr) -> i32:
+    return __thg_ast_call_add_arg(call_node, arg)
+
+func new_return(expr: ptr) -> ptr:
+    return __thg_ast_new_return(expr)
 
 func kind_of(node: ptr) -> String:
     return __thg_ast_kind(node)
@@ -100,6 +125,21 @@ func block_count(node: ptr) -> i32:
 func block_stmt(node: ptr, index: i32) -> ptr:
     return __thg_ast_block_get_stmt(node, index)
 
+func func_body(node: ptr) -> ptr:
+    return __thg_ast_func_body(node)
+
+func func_param_count(node: ptr) -> i32:
+    return __thg_ast_func_param_count(node)
+
+func func_param_at(node: ptr, index: i32) -> String:
+    return __thg_ast_func_param_at(node, index)
+
+func call_arg_count(node: ptr) -> i32:
+    return __thg_ast_call_arg_count(node)
+
+func call_arg_at(node: ptr, index: i32) -> ptr:
+    return __thg_ast_call_arg_at(node, index)
+
 func debug(node: ptr) -> String:
     return __thg_ast_debug(node)
 
@@ -126,6 +166,15 @@ func stmt_if() -> i32:
 
 func stmt_while() -> i32:
     return 8
+
+func stmt_func() -> i32:
+    return 9
+
+func expr_call() -> i32:
+    return 10
+
+func stmt_return() -> i32:
+    return 11
 
 func op_add() -> i32:
     return 1

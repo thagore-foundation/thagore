@@ -38,10 +38,14 @@ struct AstNode {
   AstNode *right {nullptr};
   AstNode *extra {nullptr};
   std::vector<AstNode *> statements {};
+  std::vector<std::string> params {};
+  std::vector<AstNode *> args {};
 };
 
 struct RuntimeInterpreter {
-  std::unordered_map<std::string, int> env {};
+  std::unordered_map<std::string, AstNode *> functions {};
+  std::unordered_map<std::string, int> globals {};
+  std::vector<std::unordered_map<std::string, int>> frames {};
 };
 
 int g_argc = 0;
@@ -107,6 +111,10 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
         out.push_back(ExprToken {.kind = "ELSE", .text = text});
       } else if (text == "while") {
         out.push_back(ExprToken {.kind = "WHILE", .text = text});
+      } else if (text == "func") {
+        out.push_back(ExprToken {.kind = "FUNC", .text = text});
+      } else if (text == "return") {
+        out.push_back(ExprToken {.kind = "RETURN", .text = text});
       } else {
         out.push_back(ExprToken {.kind = "IDENT", .text = text});
       }
@@ -183,6 +191,10 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
         out.push_back(ExprToken {.kind = "SEMI", .text = ";"});
         ++p;
         break;
+      case ',':
+        out.push_back(ExprToken {.kind = "COMMA", .text = ","});
+        ++p;
+        break;
       default:
         out.push_back(ExprToken {.kind = "INVALID", .text = std::string(1, *p)});
         ++p;
@@ -216,6 +228,28 @@ public:
       }
       auto *expr = parseExpr();
       return makeLetNode(name, expr);
+    }
+    if (match("FUNC")) {
+      if (current().kind != "IDENT") {
+        return makeLiteralNode("0");
+      }
+      const auto fnName = current().text;
+      ++pos;
+      if (!match("LPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto params = parseParamList();
+      if (!match("RPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto *body = parseBlock();
+      auto *fn = makeFuncNode(fnName, body);
+      fn->params = std::move(params);
+      return fn;
+    }
+    if (match("RETURN")) {
+      auto *expr = parseExpr();
+      return makeReturnNode(expr);
     }
     if (match("IF")) {
       if (!match("LPAREN")) {
@@ -361,6 +395,63 @@ private:
     return node;
   }
 
+  auto makeFuncNode(const std::string &name, AstNode *body) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "FuncDecl";
+    node->value = name;
+    node->left = body;
+    return node;
+  }
+
+  auto makeCallNode(const std::string &name, std::vector<AstNode *> args) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "CallExpr";
+    node->value = name;
+    node->args = std::move(args);
+    return node;
+  }
+
+  auto makeReturnNode(AstNode *expr) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "ReturnStmt";
+    node->left = expr;
+    return node;
+  }
+
+  auto parseParamList() -> std::vector<std::string> {
+    std::vector<std::string> params {};
+    if (current().kind == "RPAREN") {
+      return params;
+    }
+    while (true) {
+      if (current().kind != "IDENT") {
+        return {};
+      }
+      params.push_back(current().text);
+      ++pos;
+      if (match("COMMA")) {
+        continue;
+      }
+      break;
+    }
+    return params;
+  }
+
+  auto parseArgList() -> std::vector<AstNode *> {
+    std::vector<AstNode *> args {};
+    if (current().kind == "RPAREN") {
+      return args;
+    }
+    while (true) {
+      args.push_back(parseExpr());
+      if (match("COMMA")) {
+        continue;
+      }
+      break;
+    }
+    return args;
+  }
+
   auto parseBlock() -> AstNode * {
     if (!match("LBRACE")) {
       return makeLiteralNode("0");
@@ -399,6 +490,11 @@ private:
     if (current().kind == "IDENT") {
       auto name = current().text;
       ++pos;
+      if (match("LPAREN")) {
+        auto args = parseArgList();
+        (void)match("RPAREN");
+        return makeCallNode(name, std::move(args));
+      }
       return makeVariableNode(name);
     }
     return makeLiteralNode("0");
@@ -531,6 +627,26 @@ void appendAstNode(std::string &out, AstNode *node, int indent, std::string_view
     appendAstNode(out, node->right, indent + 2, "Body");
     return;
   }
+  if (node->kind == "FuncDecl") {
+    appendAstLine(out, indent, std::string(label) + ": FuncDecl(" + node->value + ")");
+    for (std::size_t i = 0; i < node->params.size(); ++i) {
+      appendAstLine(out, indent + 2, "Param" + std::to_string(i) + ": " + node->params[i]);
+    }
+    appendAstNode(out, node->left, indent + 2, "Body");
+    return;
+  }
+  if (node->kind == "CallExpr") {
+    appendAstLine(out, indent, std::string(label) + ": CallExpr(" + node->value + ")");
+    for (std::size_t i = 0; i < node->args.size(); ++i) {
+      appendAstNode(out, node->args[i], indent + 2, "Arg" + std::to_string(i));
+    }
+    return;
+  }
+  if (node->kind == "ReturnStmt") {
+    appendAstLine(out, indent, std::string(label) + ": Return");
+    appendAstNode(out, node->left, indent + 2, "Value");
+    return;
+  }
 
   appendAstLine(out, indent, std::string(label) + ": Binary(" + node->op + ")");
   appendAstNode(out, node->left, indent + 2, "Left");
@@ -584,11 +700,117 @@ auto buildAstDebugString(AstNode *root) -> std::string {
     appendAstNode(out, root->right, 2, "Body");
     return out;
   }
+  if (root->kind == "FuncDecl") {
+    std::string out {};
+    appendAstLine(out, 0, "FuncDecl(" + root->value + ")");
+    for (std::size_t i = 0; i < root->params.size(); ++i) {
+      appendAstLine(out, 2, "Param" + std::to_string(i) + ": " + root->params[i]);
+    }
+    appendAstNode(out, root->left, 2, "Body");
+    return out;
+  }
+  if (root->kind == "CallExpr") {
+    std::string out {};
+    appendAstLine(out, 0, "CallExpr(" + root->value + ")");
+    for (std::size_t i = 0; i < root->args.size(); ++i) {
+      appendAstNode(out, root->args[i], 2, "Arg" + std::to_string(i));
+    }
+    return out;
+  }
+  if (root->kind == "ReturnStmt") {
+    std::string out {};
+    appendAstLine(out, 0, "Return");
+    appendAstNode(out, root->left, 2, "Value");
+    return out;
+  }
   std::string out {};
   appendAstLine(out, 0, "Binary(" + root->op + ")");
   appendAstNode(out, root->left, 2, "Left");
   appendAstNode(out, root->right, 2, "Right");
   return out;
+}
+
+struct ExecResult {
+  int value {0};
+  bool hasReturn {false};
+};
+
+auto resolveVariable(RuntimeInterpreter *interp, const std::string &name) -> int {
+  if (interp == nullptr) {
+    return 0;
+  }
+  for (auto it = interp->frames.rbegin(); it != interp->frames.rend(); ++it) {
+    auto found = it->find(name);
+    if (found != it->end()) {
+      return found->second;
+    }
+  }
+  if (auto global = interp->globals.find(name); global != interp->globals.end()) {
+    return global->second;
+  }
+  return 0;
+}
+
+void assignVariable(RuntimeInterpreter *interp, const std::string &name, int value, bool declareLocal) {
+  if (interp == nullptr) {
+    return;
+  }
+  if (declareLocal) {
+    if (!interp->frames.empty()) {
+      interp->frames.back()[name] = value;
+    } else {
+      interp->globals[name] = value;
+    }
+    return;
+  }
+
+  for (auto it = interp->frames.rbegin(); it != interp->frames.rend(); ++it) {
+    auto found = it->find(name);
+    if (found != it->end()) {
+      found->second = value;
+      return;
+    }
+  }
+  if (auto global = interp->globals.find(name); global != interp->globals.end()) {
+    global->second = value;
+    return;
+  }
+  if (!interp->frames.empty()) {
+    interp->frames.back()[name] = value;
+  } else {
+    interp->globals[name] = value;
+  }
+}
+
+auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> ExecResult;
+auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int;
+
+auto evalCallExpr(AstNode *callNode, RuntimeInterpreter *interp) -> int {
+  if (callNode == nullptr || interp == nullptr) {
+    return 0;
+  }
+  auto fnIt = interp->functions.find(callNode->value);
+  if (fnIt == interp->functions.end() || fnIt->second == nullptr) {
+    return 0;
+  }
+  auto *fn = fnIt->second;
+
+  std::vector<int> argValues {};
+  argValues.reserve(callNode->args.size());
+  for (auto *arg : callNode->args) {
+    argValues.push_back(evalExprWithEnv(arg, interp));
+  }
+
+  std::unordered_map<std::string, int> frame {};
+  for (std::size_t i = 0; i < fn->params.size(); ++i) {
+    const int value = i < argValues.size() ? argValues[i] : 0;
+    frame[fn->params[i]] = value;
+  }
+
+  interp->frames.push_back(std::move(frame));
+  ExecResult result = execStmtWithEnv(fn->left, interp);
+  interp->frames.pop_back();
+  return result.value;
 }
 
 auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
@@ -599,13 +821,10 @@ auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
     return std::atoi(node->value.c_str());
   }
   if (node->kind == "Variable") {
-    if (interp == nullptr) {
-      return 0;
-    }
-    if (auto it = interp->env.find(node->value); it != interp->env.end()) {
-      return it->second;
-    }
-    return 0;
+    return resolveVariable(interp, node->value);
+  }
+  if (node->kind == "CallExpr") {
+    return evalCallExpr(node, interp);
   }
   if (node->kind == "Binary") {
     const int left = evalExprWithEnv(node->left, interp);
@@ -627,28 +846,37 @@ auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
   return 0;
 }
 
-auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
+auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> ExecResult {
   if (node == nullptr) {
-    return 0;
+    return {};
   }
   if (node->kind == "Let") {
     const int value = evalExprWithEnv(node->left, interp);
-    if (interp != nullptr) {
-      interp->env[node->value] = value;
-    }
-    return value;
+    assignVariable(interp, node->value, value, true);
+    return ExecResult {.value = value, .hasReturn = false};
   }
   if (node->kind == "Assign") {
     const int value = evalExprWithEnv(node->left, interp);
+    assignVariable(interp, node->value, value, false);
+    return ExecResult {.value = value, .hasReturn = false};
+  }
+  if (node->kind == "FuncDecl") {
     if (interp != nullptr) {
-      interp->env[node->value] = value;
+      interp->functions[node->value] = node;
     }
-    return value;
+    return ExecResult {.value = 0, .hasReturn = false};
+  }
+  if (node->kind == "ReturnStmt") {
+    const int value = evalExprWithEnv(node->left, interp);
+    return ExecResult {.value = value, .hasReturn = true};
   }
   if (node->kind == "Block") {
-    int last = 0;
+    ExecResult last {};
     for (auto *stmt : node->statements) {
       last = execStmtWithEnv(stmt, interp);
+      if (last.hasReturn) {
+        return last;
+      }
     }
     return last;
   }
@@ -660,16 +888,19 @@ auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
     if (node->extra != nullptr) {
       return execStmtWithEnv(node->extra, interp);
     }
-    return 0;
+    return {};
   }
   if (node->kind == "While") {
-    int last = 0;
+    ExecResult last {};
     while (evalExprWithEnv(node->left, interp) != 0) {
       last = execStmtWithEnv(node->right, interp);
+      if (last.hasReturn) {
+        return last;
+      }
     }
     return last;
   }
-  return evalExprWithEnv(node, interp);
+  return ExecResult {.value = evalExprWithEnv(node, interp), .hasReturn = false};
 }
 
 } // namespace
@@ -1022,6 +1253,9 @@ int __thg_tok_tag(void *streamPtr, int index) {
   if (kind == "LT") return 21;
   if (kind == "GTE") return 22;
   if (kind == "LTE") return 23;
+  if (kind == "COMMA") return 24;
+  if (kind == "FUNC") return 25;
+  if (kind == "RETURN") return 26;
   return 8;
 }
 
@@ -1096,6 +1330,46 @@ void *__thg_ast_new_while(void *condition, void *body) {
   return node;
 }
 
+void *__thg_ast_new_func(const char *name, void *body) {
+  auto *node = new AstNode {};
+  node->kind = "FuncDecl";
+  node->value = name == nullptr ? "" : name;
+  node->left = static_cast<AstNode *>(body);
+  return node;
+}
+
+int __thg_ast_func_add_param(void *funcPtr, const char *paramName) {
+  auto *node = static_cast<AstNode *>(funcPtr);
+  if (node == nullptr || node->kind != "FuncDecl") {
+    return 0;
+  }
+  node->params.push_back(paramName == nullptr ? "" : paramName);
+  return 0;
+}
+
+void *__thg_ast_new_call(const char *name) {
+  auto *node = new AstNode {};
+  node->kind = "CallExpr";
+  node->value = name == nullptr ? "" : name;
+  return node;
+}
+
+int __thg_ast_call_add_arg(void *callPtr, void *argPtr) {
+  auto *node = static_cast<AstNode *>(callPtr);
+  if (node == nullptr || node->kind != "CallExpr") {
+    return 0;
+  }
+  node->args.push_back(static_cast<AstNode *>(argPtr));
+  return 0;
+}
+
+void *__thg_ast_new_return(void *expr) {
+  auto *node = new AstNode {};
+  node->kind = "ReturnStmt";
+  node->left = static_cast<AstNode *>(expr);
+  return node;
+}
+
 const char *__thg_ast_kind(void *nodePtr) {
   if (nodePtr == nullptr) {
     return "";
@@ -1131,6 +1405,15 @@ int __thg_ast_kind_tag(void *nodePtr) {
   }
   if (kind == "While") {
     return 8;
+  }
+  if (kind == "FuncDecl") {
+    return 9;
+  }
+  if (kind == "CallExpr") {
+    return 10;
+  }
+  if (kind == "ReturnStmt") {
+    return 11;
   }
   return 0;
 }
@@ -1236,6 +1519,69 @@ void *__thg_ast_body(void *nodePtr) {
   return static_cast<AstNode *>(nodePtr)->right;
 }
 
+void *__thg_ast_func_body(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "FuncDecl") {
+    return nullptr;
+  }
+  return node->left;
+}
+
+int __thg_ast_func_param_count(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "FuncDecl") {
+    return 0;
+  }
+  return static_cast<int>(node->params.size());
+}
+
+const char *__thg_ast_func_param_at(void *nodePtr, int index) {
+  if (nodePtr == nullptr || index < 0) {
+    return "";
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "FuncDecl") {
+    return "";
+  }
+  const auto idx = static_cast<std::size_t>(index);
+  if (idx >= node->params.size()) {
+    return "";
+  }
+  return node->params[idx].c_str();
+}
+
+int __thg_ast_call_arg_count(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "CallExpr") {
+    return 0;
+  }
+  return static_cast<int>(node->args.size());
+}
+
+void *__thg_ast_call_arg_at(void *nodePtr, int index) {
+  if (nodePtr == nullptr || index < 0) {
+    return nullptr;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "CallExpr") {
+    return nullptr;
+  }
+  const auto idx = static_cast<std::size_t>(index);
+  if (idx >= node->args.size()) {
+    return nullptr;
+  }
+  return node->args[idx];
+}
+
 int __thg_ast_block_count(void *nodePtr) {
   if (nodePtr == nullptr) {
     return 0;
@@ -1303,7 +1649,7 @@ int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {
 
 int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
-  return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp);
+  return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp).value;
 }
 
 }
