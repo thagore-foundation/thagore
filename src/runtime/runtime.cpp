@@ -254,6 +254,27 @@ auto buildAstDebugString(AstNode *root) -> std::string {
   return out;
 }
 
+auto evalAst(AstNode *node) -> int {
+  if (node == nullptr) {
+    return 0;
+  }
+  if (node->kind == "Literal") {
+    return std::atoi(node->value.c_str());
+  }
+  if (node->kind == "Binary") {
+    const int left = evalAst(node->left);
+    const int right = evalAst(node->right);
+    if (node->op == "+") return left + right;
+    if (node->op == "-") return left - right;
+    if (node->op == "*") return left * right;
+    if (node->op == "/") {
+      if (right == 0) return 0;
+      return left / right;
+    }
+  }
+  return 0;
+}
+
 } // namespace
 
 extern "C" {
@@ -689,6 +710,10 @@ void *__thg_parse_expr_from_tokens(void *streamPtr) {
   const auto *stream = static_cast<TokenStream *>(streamPtr);
   ExprParser parser {stream->tokens};
   return parser.parseExpr();
+}
+
+int __thg_eval_expr(void *nodePtr) {
+  return evalAst(static_cast<AstNode *>(nodePtr));
 }
 
 }
