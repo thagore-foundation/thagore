@@ -41,6 +41,7 @@ auto keywordKind(std::string_view text) -> TokenKind {
     {"else", TokenKind::KwElse},
     {"while", TokenKind::KwWhile},
     {"loop", TokenKind::KwLoop},
+    {"struct", TokenKind::KwStruct},
   };
   const auto it = kKeywords.find(text);
   if (it == kKeywords.end()) {
@@ -244,6 +245,9 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
         break;
       case ',':
         pushToken(TokenKind::Comma, begin, cursor);
+        break;
+      case '.':
+        pushToken(TokenKind::Dot, begin, cursor);
         break;
       case '+':
         pushToken(TokenKind::Plus, begin, cursor);

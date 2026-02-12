@@ -26,11 +26,13 @@ enum class TokenKind : std::uint16_t {
   KwElse,
   KwWhile,
   KwLoop,
+  KwStruct,
 
   LParen,
   RParen,
   Colon,
   Comma,
+  Dot,
   Arrow,
   Equal,
   Plus,
@@ -68,10 +70,12 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwElse: return "else";
     case TokenKind::KwWhile: return "while";
     case TokenKind::KwLoop: return "loop";
+    case TokenKind::KwStruct: return "struct";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";
     case TokenKind::Colon: return ":";
     case TokenKind::Comma: return ",";
+    case TokenKind::Dot: return ".";
     case TokenKind::Arrow: return "->";
     case TokenKind::Equal: return "=";
     case TokenKind::Plus: return "+";

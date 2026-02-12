@@ -12,6 +12,7 @@ public:
   explicit ParserImpl(std::span<const Token> tokens_) : tokens(tokens_) {}
 
   auto parseModule() -> Result<std::unique_ptr<ModuleDecl>, Diagnostic> {
+    std::vector<std::unique_ptr<StructDecl>> structs {};
     std::vector<std::unique_ptr<FunctionDecl>> functions {};
     std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
     while (!check(TokenKind::Eof)) {
@@ -25,6 +26,12 @@ public:
           return std::unexpected(fn.error());
         }
         functions.push_back(std::move(fn.value()));
+      } else if (check(TokenKind::KwStruct)) {
+        auto st = parseStructDecl();
+        if (!st) {
+          return std::unexpected(st.error());
+        }
+        structs.push_back(std::move(st.value()));
       } else {
         auto stmt = parseStatement();
         if (!stmt) {
@@ -39,7 +46,7 @@ public:
     if (!tokens.empty()) {
       span = mergeSpan(tokens.front().span, tokens.back().span);
     }
-    return std::make_unique<ModuleDecl>(std::move(functions), std::move(topLevelStatements), span);
+    return std::make_unique<ModuleDecl>(std::move(structs), std::move(functions), std::move(topLevelStatements), span);
   }
 
 private:
@@ -62,7 +69,67 @@ private:
     if (typeTok->lexeme == "void") {
       return makeType(BaseType::Void);
     }
-    return std::unexpected(makeError(typeTok->span, std::format("Unknown type '{}'.", typeTok->lexeme)));
+    return makeStructType(typeTok->lexeme);
+  }
+
+  auto parseStructDecl() -> Result<std::unique_ptr<StructDecl>, Diagnostic> {
+    const Token *structTok = consume(TokenKind::KwStruct, "Expected 'struct'.");
+    if (!structTok) {
+      return std::unexpected(lastError("Expected 'struct'."));
+    }
+    const Token *name = consume(TokenKind::Identifier, "Expected struct name.");
+    if (!name) {
+      return std::unexpected(lastError("Expected struct name."));
+    }
+    if (!consume(TokenKind::Colon, "Expected ':' after struct name.")) {
+      return std::unexpected(lastError("Expected ':' after struct name."));
+    }
+    if (!consume(TokenKind::Newline, "Expected newline after struct header.")) {
+      return std::unexpected(lastError("Expected newline after struct header."));
+    }
+    if (!consume(TokenKind::Indent, "Expected INDENT in struct body.")) {
+      return std::unexpected(lastError("Expected INDENT in struct body."));
+    }
+
+    std::vector<StructDecl::Field> fields {};
+    skipNewlines();
+    while (!check(TokenKind::Dedent) && !check(TokenKind::Eof)) {
+      const Token *fieldName = consume(TokenKind::Identifier, "Expected field name.");
+      if (!fieldName) {
+        return std::unexpected(lastError("Expected field name."));
+      }
+      if (!consume(TokenKind::Colon, "Expected ':' after field name.")) {
+        return std::unexpected(lastError("Expected ':' after field name."));
+      }
+      const Token *fieldTypeTok = consume(TokenKind::Identifier, "Expected field type.");
+      if (!fieldTypeTok) {
+        return std::unexpected(lastError("Expected field type."));
+      }
+      auto fieldType = parseTypeName(fieldTypeTok);
+      if (!fieldType) {
+        return std::unexpected(fieldType.error());
+      }
+      if (fieldType.value()->base == BaseType::Void) {
+        return std::unexpected(makeError(fieldTypeTok->span, "Field type cannot be void."));
+      }
+      const Token *lineEnd = consume(TokenKind::Newline, "Expected newline after struct field.");
+      if (!lineEnd) {
+        return std::unexpected(lastError("Expected newline after struct field."));
+      }
+      fields.push_back(StructDecl::Field {
+        .name = fieldName->lexeme,
+        .type = fieldType.value(),
+        .span = mergeSpan(fieldName->span, fieldTypeTok->span),
+      });
+      skipNewlines();
+    }
+
+    const Token *dedent = consume(TokenKind::Dedent, "Expected DEDENT after struct body.");
+    if (!dedent) {
+      return std::unexpected(lastError("Expected DEDENT after struct body."));
+    }
+    auto structSpan = mergeSpan(structTok->span, dedent->span);
+    return std::make_unique<StructDecl>(name->lexeme, std::move(fields), structSpan);
   }
 
   auto parseFunctionDecl() -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
@@ -351,6 +418,17 @@ private:
     }
 
     while (true) {
+      if (match(TokenKind::Dot)) {
+        const Token *member = consume(TokenKind::Identifier, "Expected field name after '.'.");
+        if (!member) {
+          return std::unexpected(lastError("Expected field name after '.'."));
+        }
+        auto object = std::move(lhs.value());
+        auto exprSpan = mergeSpan(object->span, member->span);
+        lhs = std::make_unique<MemberExpr>(std::move(object), member->lexeme, exprSpan);
+        continue;
+      }
+
       const auto opInfo = infixBindingPower(peek().kind);
       if (!opInfo.has_value() || opInfo->first < minBp) {
         break;

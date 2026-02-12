@@ -1,0 +1,10 @@
+struct Vector2:
+    x: i32
+    y: i32
+
+func dot_product(v: Vector2) -> i32:
+    return v.x * v.y
+
+let v = Vector2(10, 5)
+let res = dot_product(v)
+print(res)

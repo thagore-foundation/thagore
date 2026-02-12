@@ -41,13 +41,50 @@ auto getStringStructType(llvm::LLVMContext &context) -> llvm::StructType * {
 struct LocalValue {
   llvm::AllocaInst *slot {nullptr};
   BaseType type {BaseType::Unknown};
+  std::string structName {};
   bool ownedRef {false};
 };
 
+struct StructLayout {
+  llvm::StructType *llvmType {nullptr};
+  std::vector<StructDecl::Field> fields {};
+  std::unordered_map<std::string, std::size_t> fieldIndices {};
+};
+
+auto mapDeclaredType(
+  llvm::LLVMContext &context,
+  const TypePtr &type,
+  const std::unordered_map<std::string, StructLayout> &structLayouts
+) -> llvm::Type * {
+  if (!type) {
+    return llvm::Type::getInt32Ty(context);
+  }
+  switch (type->base) {
+    case BaseType::Void: return llvm::Type::getVoidTy(context);
+    case BaseType::I32: return llvm::Type::getInt32Ty(context);
+    case BaseType::Bool: return llvm::Type::getInt1Ty(context);
+    case BaseType::String: return getStringStructType(context);
+    case BaseType::Struct: {
+      auto it = structLayouts.find(type->name);
+      if (it != structLayouts.end()) {
+        return it->second.llvmType;
+      }
+      return llvm::Type::getInt32Ty(context);
+    }
+    case BaseType::Unknown: break;
+  }
+  return llvm::Type::getInt32Ty(context);
+}
+
 class FunctionLowering {
 public:
-  FunctionLowering(llvm::LLVMContext &ctx, llvm::Module &mod, llvm::Function &fn)
-    : context(ctx), module(mod), function(fn), builder(ctx) {
+  FunctionLowering(
+    llvm::LLVMContext &ctx,
+    llvm::Module &mod,
+    llvm::Function &fn,
+    const std::unordered_map<std::string, StructLayout> &structLayouts_
+  )
+    : context(ctx), module(mod), function(fn), builder(ctx), structLayouts(structLayouts_) {
     declareRuntimeHooks();
   }
 
@@ -106,6 +143,7 @@ private:
   llvm::IRBuilder<> entryBuilder {context};
   std::unordered_map<std::string, LocalValue> locals {};
   std::vector<std::vector<std::string>> scopeLocals {};
+  const std::unordered_map<std::string, StructLayout> &structLayouts;
   llvm::FunctionCallee retainFn {};
   llvm::FunctionCallee releaseFn {};
   llvm::FunctionCallee concatFn {};
@@ -132,9 +170,19 @@ private:
       case BaseType::I32: return llvm::Type::getInt32Ty(context);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
       case BaseType::String: return getStringStructType(context);
+      case BaseType::Struct: break;
       case BaseType::Unknown: break;
     }
     return llvm::Type::getInt32Ty(context);
+  }
+
+  auto findStructLayoutByType(llvm::Type *type) const -> const StructLayout * {
+    for (const auto &[_, layout] : structLayouts) {
+      if (layout.llvmType == type) {
+        return &layout;
+      }
+    }
+    return nullptr;
   }
 
   auto ensureBool(llvm::Value *value, const SourceSpan &span) -> Result<llvm::Value *, Diagnostic> {
@@ -169,7 +217,15 @@ private:
       if (isString) {
         retainStringValue(&arg);
       }
-      locals.emplace(param.name, LocalValue {.slot = slot, .type = isString ? BaseType::String : param.type->base, .ownedRef = isString});
+      locals.emplace(
+        param.name,
+        LocalValue {
+          .slot = slot,
+          .type = isString ? BaseType::String : (param.type ? param.type->base : BaseType::Unknown),
+          .structName = (param.type && param.type->base == BaseType::Struct) ? param.type->name : "",
+          .ownedRef = isString
+        }
+      );
       if (!scopeLocals.empty()) {
         scopeLocals.back().push_back(param.name);
       }
@@ -281,6 +337,18 @@ private:
     if (exprType == BaseType::Unknown && init.value()->getType() == stringTy) {
       exprType = BaseType::String;
     }
+    std::string structName {};
+    if (exprType == BaseType::Unknown) {
+      if (const auto *layout = findStructLayoutByType(init.value()->getType()); layout != nullptr) {
+        exprType = BaseType::Struct;
+        for (const auto &[name, candidate] : structLayouts) {
+          if (candidate.llvmType == init.value()->getType()) {
+            structName = name;
+            break;
+          }
+        }
+      }
+    }
     auto *alloca = createAlloca(stmt.name, init.value()->getType());
     builder.CreateStore(init.value(), alloca);
 
@@ -293,9 +361,9 @@ private:
       builder.CreateCall(retainFn, {init.value()});
     }
     if (shouldRetain) {
-      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .ownedRef = true});
+      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .structName = structName, .ownedRef = true});
     } else {
-      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .ownedRef = false});
+      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .structName = structName, .ownedRef = false});
     }
     if (!scopeLocals.empty()) {
       scopeLocals.back().push_back(stmt.name);
@@ -330,8 +398,20 @@ private:
     const bool isStringSlot = found->second.type == BaseType::String || found->second.slot->getAllocatedType() == stringTy;
     if (isStringSlot) {
       found->second.type = BaseType::String;
+      found->second.structName.clear();
       found->second.ownedRef = true;
       retainStringValue(rhs.value());
+      return {};
+    }
+    if (const auto *layout = findStructLayoutByType(found->second.slot->getAllocatedType()); layout != nullptr) {
+      found->second.type = BaseType::Struct;
+      for (const auto &[name, candidate] : structLayouts) {
+        if (candidate.llvmType == layout->llvmType) {
+          found->second.structName = name;
+          break;
+        }
+      }
+      found->second.ownedRef = false;
       return {};
     }
     if (rhs.value()->getType()->isPointerTy() && !isTemporaryExpr(*stmt.value)) {
@@ -451,6 +531,7 @@ private:
       case NodeKind::IdentifierExpr: return lowerIdentifier(static_cast<const IdentifierExpr &>(expr));
       case NodeKind::BinaryExpr: return lowerBinary(static_cast<const BinaryExpr &>(expr));
       case NodeKind::CallExpr: return lowerCall(static_cast<const CallExpr &>(expr));
+      case NodeKind::MemberExpr: return lowerMember(static_cast<const MemberExpr &>(expr));
       default:
         return std::unexpected(Diagnostic {
           .code = ErrorCode::CodegenError,
@@ -520,6 +601,36 @@ private:
       });
     }
     return builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot, expr.name);
+  }
+
+  auto lowerMember(const MemberExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    auto object = lowerExpr(*expr.object);
+    if (!object) {
+      return std::unexpected(object.error());
+    }
+    const auto *layout = findStructLayoutByType(object.value()->getType());
+    if (layout == nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Member access requires a struct value.",
+        .span = expr.span,
+      });
+    }
+    auto fieldIt = layout->fieldIndices.find(expr.member);
+    if (fieldIt == layout->fieldIndices.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown field '{}'.", expr.member),
+        .span = expr.span,
+      });
+    }
+    auto *tmp = builder.CreateAlloca(layout->llvmType, nullptr, "member.base");
+    builder.CreateStore(object.value(), tmp);
+    auto *idx0 = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    auto *idxN = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), static_cast<std::uint32_t>(fieldIt->second));
+    auto *fieldPtr = builder.CreateInBoundsGEP(layout->llvmType, tmp, {idx0, idxN}, "member.ptr");
+    auto *fieldTy = layout->llvmType->getElementType(static_cast<unsigned int>(fieldIt->second));
+    return builder.CreateLoad(fieldTy, fieldPtr, "member.load");
   }
 
   auto lowerBinary(const BinaryExpr &expr) -> Result<llvm::Value *, Diagnostic> {
@@ -609,6 +720,25 @@ private:
       });
     }
 
+    if (auto st = structLayouts.find(expr.callee); st != structLayouts.end()) {
+      if (expr.args.size() != st->second.fields.size()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = std::format("Struct '{}' constructor expects {} argument(s), got {}.", expr.callee, st->second.fields.size(), expr.args.size()),
+          .span = expr.span,
+        });
+      }
+      llvm::Value *value = llvm::UndefValue::get(st->second.llvmType);
+      for (std::size_t i = 0; i < expr.args.size(); ++i) {
+        auto lowered = lowerExpr(*expr.args[i]);
+        if (!lowered) {
+          return std::unexpected(lowered.error());
+        }
+        value = builder.CreateInsertValue(value, lowered.value(), {static_cast<unsigned int>(i)}, "struct.init");
+      }
+      return value;
+    }
+
     auto *callee = module.getFunction(expr.callee);
     if (!callee) {
       return std::unexpected(Diagnostic {
@@ -672,6 +802,16 @@ private:
       if (call.callee == "print") {
         return BaseType::Void;
       }
+      if (structLayouts.contains(call.callee)) {
+        return BaseType::Struct;
+      }
+    }
+    if (expr.kind == NodeKind::MemberExpr) {
+      const auto &member = static_cast<const MemberExpr &>(expr);
+      const auto ownerType = inferExprType(*member.object);
+      if (ownerType == BaseType::Struct) {
+        return BaseType::I32;
+      }
     }
     return BaseType::Unknown;
   }
@@ -687,6 +827,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
+    case BaseType::Struct: break;
     case BaseType::Unknown: break;
   }
   return llvm::Type::getInt32Ty(context);
@@ -700,6 +841,32 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
   -> Result<std::unique_ptr<llvm::Module>, Diagnostic> {
   auto module = std::make_unique<llvm::Module>(moduleName, context);
   bool hasExplicitMain = false;
+  std::unordered_map<std::string, StructLayout> structLayouts {};
+
+  for (const auto &st : typed.module->structs) {
+    auto llvmName = std::format("thg.struct.{}", st->name);
+    auto *ty = llvm::StructType::create(context, llvmName);
+    StructLayout layout {};
+    layout.llvmType = ty;
+    layout.fields = st->fields;
+    for (std::size_t i = 0; i < st->fields.size(); ++i) {
+      layout.fieldIndices.emplace(st->fields[i].name, i);
+    }
+    structLayouts.emplace(st->name, std::move(layout));
+  }
+
+  for (const auto &st : typed.module->structs) {
+    auto layoutIt = structLayouts.find(st->name);
+    if (layoutIt == structLayouts.end()) {
+      continue;
+    }
+    std::vector<llvm::Type *> body {};
+    body.reserve(st->fields.size());
+    for (const auto &field : st->fields) {
+      body.push_back(mapDeclaredType(context, field.type, structLayouts));
+    }
+    layoutIt->second.llvmType->setBody(body, false);
+  }
 
   for (const auto &decl : typed.module->functions) {
     if (decl->name == "main") {
@@ -708,10 +875,10 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     std::vector<llvm::Type *> params {};
     params.reserve(decl->params.size());
     for (const auto &param : decl->params) {
-      params.push_back(mapType(context, param.type ? param.type->base : BaseType::Unknown));
+      params.push_back(mapDeclaredType(context, param.type, structLayouts));
     }
 
-    auto *retTy = mapType(context, decl->returnType ? decl->returnType->base : BaseType::Void);
+    auto *retTy = mapDeclaredType(context, decl->returnType, structLayouts);
     auto *fnType = llvm::FunctionType::get(retTy, params, false);
     auto *fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, decl->name, *module);
 
@@ -736,7 +903,7 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
 
   for (const auto &decl : typed.module->functions) {
     auto *fn = module->getFunction(decl->name);
-    FunctionLowering lowering {context, *module, *fn};
+    FunctionLowering lowering {context, *module, *fn, structLayouts};
     auto lowered = lowering.lower(*decl);
     if (!lowered) {
       return std::unexpected(lowered.error());
@@ -752,7 +919,7 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
         .span = typed.module->span,
       });
     }
-    FunctionLowering lowering {context, *module, *mainFn};
+    FunctionLowering lowering {context, *module, *mainFn, structLayouts};
     auto lowered = lowering.lowerStatements(typed.module->topLevelStatements, BaseType::I32);
     if (!lowered) {
       return std::unexpected(lowered.error());

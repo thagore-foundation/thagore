@@ -15,8 +15,22 @@ auto baseTypeName(BaseType type) -> const char * {
     case BaseType::I32: return "i32";
     case BaseType::Bool: return "bool";
     case BaseType::String: return "String";
+    case BaseType::Struct: return "struct";
   }
   return "unknown";
+}
+
+auto sameType(const TypePtr &lhs, const TypePtr &rhs) -> bool {
+  if (!lhs || !rhs) {
+    return false;
+  }
+  if (lhs->base != rhs->base) {
+    return false;
+  }
+  if (lhs->base == BaseType::Struct) {
+    return lhs->name == rhs->name;
+  }
+  return true;
 }
 
 struct Scope {
@@ -28,6 +42,28 @@ public:
   explicit SemanticPass(TypedModule &typed_) : typed(typed_) {}
 
   auto run() -> Result<void, Diagnostic> {
+    for (const auto &st : typed.module->structs) {
+      if (typed.structTypes.contains(st->name)) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Struct '{}' already declared.", st->name),
+          .span = st->span,
+        });
+      }
+      typed.structTypes[st->name] = TypedModule::StructType {.fields = st->fields};
+    }
+    for (const auto &st : typed.module->structs) {
+      for (const auto &field : st->fields) {
+        if (field.type->base == BaseType::Struct && !typed.structTypes.contains(field.type->name)) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = std::format("Unknown struct type '{}' in field '{}.{}'.", field.type->name, st->name, field.name),
+            .span = field.span,
+          });
+        }
+      }
+    }
+
     bool hasExplicitMain = false;
     for (const auto &fn : typed.module->functions) {
       if (fn->name == "main") {
@@ -85,6 +121,23 @@ private:
     inTopLevelContext = false;
     currentFunctionReturnType = fn.returnType ? fn.returnType : makeType(BaseType::Void);
     for (const auto &param : fn.params) {
+      if (param.type->base == BaseType::Struct && !typed.structTypes.contains(param.type->name)) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Unknown struct type '{}'.", param.type->name),
+          .span = param.span,
+        });
+      }
+    }
+    if (fn.returnType && fn.returnType->base == BaseType::Struct && !typed.structTypes.contains(fn.returnType->name)) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Unknown struct type '{}'.", fn.returnType->name),
+        .span = fn.span,
+      });
+    }
+
+    for (const auto &param : fn.params) {
       scopes.back().symbols[param.name] = param.type;
     }
 
@@ -113,14 +166,17 @@ private:
     }
 
     const BaseType declared = fn.returnType ? fn.returnType->base : BaseType::Void;
-    if (declared != inferredReturn->base) {
+    if (!sameType(fn.returnType ? fn.returnType : makeType(BaseType::Void), inferredReturn)) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format(
-          "Function '{}' returns incompatible type (declared {}, actual {}).",
+          "Function '{}' returns incompatible type (declared {}{}, actual {}{}).",
           fn.name,
           baseTypeName(declared),
+          declared == BaseType::Struct ? std::format(" {}", fn.returnType->name) : "",
           baseTypeName(inferredReturn->base)
+          ,
+          inferredReturn->base == BaseType::Struct ? std::format(" {}", inferredReturn->name) : ""
         ),
         .span = fn.span,
       });
@@ -214,6 +270,13 @@ public:
             .span = expr.span,
           });
         }
+        if (leftBase == BaseType::Struct) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "Struct comparison is not supported yet.",
+            .span = expr.span,
+          });
+        }
         return makeType(BaseType::Bool);
     }
     return makeType(BaseType::Unknown);
@@ -253,6 +316,30 @@ public:
       return makeType(BaseType::Void);
     }
 
+    if (auto st = typed.structTypes.find(expr.callee); st != typed.structTypes.end()) {
+      if (expr.args.size() != st->second.fields.size()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Struct '{}' constructor expects {} argument(s), got {}.", expr.callee, st->second.fields.size(), expr.args.size()),
+          .span = expr.span,
+        });
+      }
+      for (std::size_t i = 0; i < expr.args.size(); ++i) {
+        auto t = expr.args[i]->accept(*this);
+        if (!t) {
+          return std::unexpected(t.error());
+        }
+        if (!sameType(t.value(), st->second.fields[i].type)) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = std::format("Constructor argument type mismatch at field '{}'.", st->second.fields[i].name),
+            .span = expr.args[i]->span,
+          });
+        }
+      }
+      return makeStructType(expr.callee);
+    }
+
     auto found = typed.functionTypes.find(expr.callee);
     if (found == typed.functionTypes.end()) {
       return std::unexpected(Diagnostic {
@@ -273,7 +360,7 @@ public:
       if (!t) {
         return std::unexpected(t.error());
       }
-      if (t.value()->base != found->second.params[i]->base) {
+      if (!sameType(t.value(), found->second.params[i])) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
           .message = std::format("Argument type mismatch at position {} in call to '{}'.", i + 1, expr.callee),
@@ -282,6 +369,38 @@ public:
       }
     }
     return found->second.returnType;
+  }
+
+  auto visit(const MemberExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    auto objectType = expr.object->accept(*this);
+    if (!objectType) {
+      return std::unexpected(objectType.error());
+    }
+    if (objectType.value()->base != BaseType::Struct) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Member access is only valid on struct values.",
+        .span = expr.span,
+      });
+    }
+    auto st = typed.structTypes.find(objectType.value()->name);
+    if (st == typed.structTypes.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Unknown struct type '{}'.", objectType.value()->name),
+        .span = expr.span,
+      });
+    }
+    for (const auto &field : st->second.fields) {
+      if (field.name == expr.member) {
+        return field.type;
+      }
+    }
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::SemanticError,
+      .message = std::format("Struct '{}' has no field '{}'.", objectType.value()->name, expr.member),
+      .span = expr.span,
+    });
   }
 
   auto visit(const BlockStmt &stmt) -> Result<void, Diagnostic> override {
@@ -314,7 +433,7 @@ public:
     if (!rhs) {
       return std::unexpected(rhs.error());
     }
-    if (lhs.value()->base != rhs.value()->base) {
+    if (!sameType(lhs.value(), rhs.value())) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format("Type mismatch in assignment to '{}'.", stmt.name),
@@ -340,7 +459,7 @@ public:
       }
       actual = t.value();
     }
-    if (currentFunctionReturnType->base == actual->base) {
+    if (sameType(currentFunctionReturnType, actual)) {
       return {};
     }
     return std::unexpected(Diagnostic {

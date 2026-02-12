@@ -19,6 +19,7 @@ enum class BaseType {
   I32,
   Bool,
   String,
+  Struct,
 };
 
 enum class OwnershipKind {
@@ -29,6 +30,7 @@ enum class OwnershipKind {
 
 struct Type {
   BaseType base {BaseType::Unknown};
+  std::string name {};
 };
 
 using TypePtr = std::shared_ptr<Type>;
@@ -36,6 +38,7 @@ using TypePtr = std::shared_ptr<Type>;
 enum class NodeKind : std::uint16_t {
   ModuleDecl,
   FunctionDecl,
+  StructDecl,
   BlockStmt,
   LetStmt,
   AssignStmt,
@@ -47,6 +50,7 @@ enum class NodeKind : std::uint16_t {
   LiteralExpr,
   IdentifierExpr,
   CallExpr,
+  MemberExpr,
 };
 
 struct Node {
@@ -64,6 +68,7 @@ struct BinaryExpr;
 struct LiteralExpr;
 struct IdentifierExpr;
 struct CallExpr;
+struct MemberExpr;
 struct LetStmt;
 struct AssignStmt;
 struct ReturnStmt;
@@ -71,6 +76,7 @@ struct IfStmt;
 struct LoopStmt;
 struct ExprStmt;
 struct FunctionDecl;
+struct StructDecl;
 struct ModuleDecl;
 
 template <typename R>
@@ -80,6 +86,7 @@ struct ExprVisitor {
   virtual auto visit(const LiteralExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const IdentifierExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const CallExpr &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const MemberExpr &) -> Result<R, Diagnostic> = 0;
 };
 
 template <typename R>
@@ -165,6 +172,14 @@ struct CallExpr final : Expr {
   std::vector<std::unique_ptr<Expr>> args {};
   CallExpr(std::string callee_, std::vector<std::unique_ptr<Expr>> args_, SourceSpan span_)
     : Expr(NodeKind::CallExpr, std::move(span_)), callee(std::move(callee_)), args(std::move(args_)) {}
+  auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
+};
+
+struct MemberExpr final : Expr {
+  std::unique_ptr<Expr> object {};
+  std::string member {};
+  MemberExpr(std::unique_ptr<Expr> object_, std::string member_, SourceSpan span_)
+    : Expr(NodeKind::MemberExpr, std::move(span_)), object(std::move(object_)), member(std::move(member_)) {}
   auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
 };
 
@@ -259,32 +274,60 @@ struct FunctionDecl final : Decl {
   auto accept(DeclVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 
+struct StructDecl final : Decl {
+  struct Field {
+    std::string name {};
+    TypePtr type {};
+    SourceSpan span {};
+  };
+
+  std::string name {};
+  std::vector<Field> fields {};
+
+  StructDecl(std::string name_, std::vector<Field> fields_, SourceSpan span_)
+    : Decl(NodeKind::StructDecl, std::move(span_)), name(std::move(name_)), fields(std::move(fields_)) {}
+
+  auto accept(DeclVisitor<void> &) const -> Result<void, Diagnostic> override { return {}; }
+};
+
 struct ModuleDecl final : Decl {
+  std::vector<std::unique_ptr<StructDecl>> structs {};
   std::vector<std::unique_ptr<FunctionDecl>> functions {};
   std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
   ModuleDecl(
+    std::vector<std::unique_ptr<StructDecl>> structs_,
     std::vector<std::unique_ptr<FunctionDecl>> functions_,
     std::vector<std::unique_ptr<Stmt>> topLevelStatements_,
     SourceSpan span_
   )
     : Decl(NodeKind::ModuleDecl, std::move(span_)),
+      structs(std::move(structs_)),
       functions(std::move(functions_)),
       topLevelStatements(std::move(topLevelStatements_)) {}
   auto accept(DeclVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 
 struct TypedModule {
+  struct StructType {
+    std::vector<StructDecl::Field> fields {};
+  };
+
   struct FunctionSignature {
     TypePtr returnType {};
     std::vector<TypePtr> params {};
   };
 
   std::unique_ptr<ModuleDecl> module {};
+  std::unordered_map<std::string, StructType> structTypes {};
   std::unordered_map<std::string, FunctionSignature> functionTypes {};
 };
 
 inline auto makeType(BaseType base) -> TypePtr {
   return std::make_shared<Type>(Type {.base = base});
+}
+
+inline auto makeStructType(std::string name) -> TypePtr {
+  return std::make_shared<Type>(Type {.base = BaseType::Struct, .name = std::move(name)});
 }
 
 } // namespace thagore
