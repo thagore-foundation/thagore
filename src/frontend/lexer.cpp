@@ -43,6 +43,7 @@ auto keywordKind(std::string_view text) -> TokenKind {
     {"loop", TokenKind::KwLoop},
     {"struct", TokenKind::KwStruct},
     {"impl", TokenKind::KwImpl},
+    {"extern", TokenKind::KwExtern},
   };
   const auto it = kKeywords.find(text);
   if (it == kKeywords.end()) {

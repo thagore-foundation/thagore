@@ -27,6 +27,12 @@ public:
           return std::unexpected(fn.error());
         }
         functions.push_back(std::move(fn.value()));
+      } else if (check(TokenKind::KwExtern)) {
+        auto externFn = parseExternFunctionDecl();
+        if (!externFn) {
+          return std::unexpected(externFn.error());
+        }
+        functions.push_back(std::move(externFn.value()));
       } else if (check(TokenKind::KwStruct)) {
         auto st = parseStructDecl();
         if (!st) {
@@ -260,6 +266,80 @@ private:
       fn->methodOwner = *implType;
       fn->name = std::format("{}_{}", *implType, name->lexeme);
     }
+    return fn;
+  }
+
+  auto parseExternFunctionDecl() -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
+    const Token *externTok = consume(TokenKind::KwExtern, "Expected 'extern'.");
+    if (!externTok) {
+      return std::unexpected(lastError("Expected 'extern'."));
+    }
+    const Token *funcTok = consume(TokenKind::KwFunc, "Expected 'func' after 'extern'.");
+    if (!funcTok) {
+      return std::unexpected(lastError("Expected 'func' after 'extern'."));
+    }
+
+    const Token *name = consume(TokenKind::Identifier, "Expected function name.");
+    if (!name) {
+      return std::unexpected(lastError("Expected function name."));
+    }
+    if (!consume(TokenKind::LParen, "Expected '(' after function name.")) {
+      return std::unexpected(lastError("Expected '(' after function name."));
+    }
+
+    std::vector<FunctionDecl::Param> params {};
+    if (!check(TokenKind::RParen)) {
+      while (true) {
+        const Token *param = consume(TokenKind::Identifier, "Expected parameter name.");
+        if (!param) {
+          return std::unexpected(lastError("Expected parameter name."));
+        }
+        if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
+          return std::unexpected(lastError("Expected ':' after parameter name."));
+        }
+        auto parsedParamType = parseType();
+        if (!parsedParamType) {
+          return std::unexpected(parsedParamType.error());
+        }
+        if (parsedParamType.value()->base == BaseType::Void) {
+          return std::unexpected(makeError(param->span, "Parameter type cannot be void."));
+        }
+        params.push_back(FunctionDecl::Param {
+          .name = param->lexeme,
+          .type = parsedParamType.value(),
+          .span = mergeSpan(param->span, previous()->span),
+        });
+        if (!match(TokenKind::Comma)) {
+          break;
+        }
+      }
+    }
+
+    if (!consume(TokenKind::RParen, "Expected ')' after parameter list.")) {
+      return std::unexpected(lastError("Expected ')' after parameter list."));
+    }
+    if (!consume(TokenKind::Arrow, "Expected '->' before return type.")) {
+      return std::unexpected(lastError("Expected '->' before return type."));
+    }
+    auto returnType = parseType();
+    if (!returnType) {
+      return std::unexpected(returnType.error());
+    }
+    const Token *lineEnd = consume(TokenKind::Newline, "Expected newline after extern function declaration.");
+    if (!lineEnd) {
+      return std::unexpected(lastError("Expected newline after extern function declaration."));
+    }
+
+    auto fn = std::make_unique<FunctionDecl>(
+      name->lexeme,
+      std::move(params),
+      nullptr,
+      returnType.value(),
+      mergeSpan(externTok->span, lineEnd->span)
+    );
+    fn->sourceName = name->lexeme;
+    fn->isExtern = true;
+    (void)funcTok;
     return fn;
   }
 

@@ -1,0 +1,8 @@
+# Khai bao ham can bac 2 cua C (float version)
+extern func sqrtf(x: f32) -> f32
+
+func calc_hypotenuse(a: f32, b: f32) -> f32:
+    return sqrtf(a * a + b * b)
+
+let h = calc_hypotenuse(3.0, 4.0)
+print(h)

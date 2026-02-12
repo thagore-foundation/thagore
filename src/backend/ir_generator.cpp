@@ -1391,6 +1391,9 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
   }
 
   for (const auto &decl : typed.module->functions) {
+    if (decl->isExtern) {
+      continue;
+    }
     auto *fn = module->getFunction(decl->name);
     FunctionLowering lowering {context, *module, *fn, structLayouts};
     auto lowered = lowering.lower(*decl);

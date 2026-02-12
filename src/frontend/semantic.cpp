@@ -202,6 +202,30 @@ private:
   }
 
   auto analyzeFunction(FunctionDecl &fn) -> Result<void, Diagnostic> {
+    if (fn.isExtern) {
+      if (!fn.methodOwner.empty()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Extern function cannot be declared inside impl block.",
+          .span = fn.span,
+        });
+      }
+      for (const auto &param : fn.params) {
+        auto known = ensureKnownType(param.type, param.span);
+        if (!known) {
+          return std::unexpected(known.error());
+        }
+      }
+      if (fn.returnType) {
+        auto known = ensureKnownType(fn.returnType, fn.span);
+        if (!known) {
+          return std::unexpected(known.error());
+        }
+      }
+      typed.functionTypes[fn.name].returnType = fn.returnType;
+      return {};
+    }
+
     scopes.clear();
     pushScope();
     inTopLevelContext = false;

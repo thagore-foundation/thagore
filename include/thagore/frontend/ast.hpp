@@ -313,6 +313,7 @@ struct FunctionDecl final : Decl {
   std::string methodOwner {};
   std::vector<Param> params {};
   std::unique_ptr<BlockStmt> body {};
+  bool isExtern {false};
   TypePtr returnType {};
   OwnershipKind returnOwnership {OwnershipKind::Temporary};
 
