@@ -67,6 +67,10 @@ void __thg_print_i32(std::int32_t value) {
   std::printf("%d\n", value);
 }
 
+void __thg_print_f32(float value) {
+  std::printf("%f\n", static_cast<double>(value));
+}
+
 void __thg_print_str(const char *ptr, std::int32_t len) {
   if (ptr == nullptr || len <= 0) {
     std::printf("\n");

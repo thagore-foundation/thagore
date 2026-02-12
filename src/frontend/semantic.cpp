@@ -13,6 +13,7 @@ auto baseTypeName(BaseType type) -> const char * {
     case BaseType::Unknown: return "unknown";
     case BaseType::Void: return "void";
     case BaseType::I32: return "i32";
+    case BaseType::F32: return "f32";
     case BaseType::Bool: return "bool";
     case BaseType::String: return "String";
     case BaseType::Struct: return "struct";
@@ -262,14 +263,24 @@ public:
       case BinaryOp::Sub:
       case BinaryOp::Mul:
       case BinaryOp::Div:
-        if (leftBase != BaseType::I32 || rightBase != BaseType::I32) {
+        if (leftBase == BaseType::I32 && rightBase == BaseType::I32) {
+          return makeType(BaseType::I32);
+        }
+        if (leftBase == BaseType::F32 && rightBase == BaseType::F32) {
+          return makeType(BaseType::F32);
+        }
+        if ((leftBase == BaseType::I32 && rightBase == BaseType::F32) || (leftBase == BaseType::F32 && rightBase == BaseType::I32)) {
           return std::unexpected(Diagnostic {
             .code = ErrorCode::SemanticError,
-            .message = "Arithmetic operators require i32 operands.",
+            .message = "Cannot mix i32 and f32 without explicit cast.",
             .span = expr.span,
           });
         }
-        return makeType(BaseType::I32);
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Arithmetic operators require matching numeric operands.",
+          .span = expr.span,
+        });
       case BinaryOp::Eq:
       case BinaryOp::Ne:
       case BinaryOp::Lt:
@@ -299,6 +310,9 @@ public:
     if (expr.literalKind == LiteralExpr::Kind::Int) {
       return makeType(BaseType::I32);
     }
+    if (expr.literalKind == LiteralExpr::Kind::Float) {
+      return makeType(BaseType::F32);
+    }
     return makeType(BaseType::String);
   }
 
@@ -319,10 +333,14 @@ public:
       if (!argType) {
         return std::unexpected(argType.error());
       }
-      if (argType.value()->base != BaseType::I32 && argType.value()->base != BaseType::String) {
+      if (
+        argType.value()->base != BaseType::I32 &&
+        argType.value()->base != BaseType::F32 &&
+        argType.value()->base != BaseType::String
+      ) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
-          .message = "Builtin print supports only i32 or string.",
+          .message = "Builtin print supports only i32, f32 or string.",
           .span = expr.args[0]->span,
         });
       }

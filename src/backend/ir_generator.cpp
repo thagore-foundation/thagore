@@ -18,6 +18,7 @@
 
 #include <format>
 #include <charconv>
+#include <cstdlib>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -62,6 +63,7 @@ auto mapDeclaredType(
   switch (type->base) {
     case BaseType::Void: return llvm::Type::getVoidTy(context);
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
+    case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Struct: {
@@ -168,6 +170,7 @@ private:
     switch (type) {
       case BaseType::Void: return llvm::Type::getVoidTy(context);
       case BaseType::I32: return llvm::Type::getInt32Ty(context);
+      case BaseType::F32: return llvm::Type::getFloatTy(context);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
       case BaseType::String: return getStringStructType(context);
       case BaseType::Struct: break;
@@ -557,6 +560,18 @@ private:
       }
       return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), parsed);
     }
+    if (expr.literalKind == LiteralExpr::Kind::Float) {
+      char *endPtr = nullptr;
+      const float parsed = std::strtof(expr.value.c_str(), &endPtr);
+      if (endPtr == nullptr || *endPtr != '\0') {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = std::format("Invalid float literal '{}'.", expr.value),
+          .span = expr.span,
+        });
+      }
+      return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), parsed);
+    }
 
     if (expr.value.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
       return std::unexpected(Diagnostic {
@@ -745,16 +760,56 @@ private:
     }
 
     switch (expr.op) {
-      case BinaryOp::Add: return builder.CreateAdd(lhs.value(), rhs.value(), "addtmp");
-      case BinaryOp::Sub: return builder.CreateSub(lhs.value(), rhs.value(), "subtmp");
-      case BinaryOp::Mul: return builder.CreateMul(lhs.value(), rhs.value(), "multmp");
-      case BinaryOp::Div: return builder.CreateSDiv(lhs.value(), rhs.value(), "divtmp");
-      case BinaryOp::Eq: return builder.CreateICmpEQ(lhs.value(), rhs.value(), "eqtmp");
-      case BinaryOp::Ne: return builder.CreateICmpNE(lhs.value(), rhs.value(), "netmp");
-      case BinaryOp::Lt: return builder.CreateICmpSLT(lhs.value(), rhs.value(), "lttmp");
-      case BinaryOp::Le: return builder.CreateICmpSLE(lhs.value(), rhs.value(), "letmp");
-      case BinaryOp::Gt: return builder.CreateICmpSGT(lhs.value(), rhs.value(), "gttmp");
-      case BinaryOp::Ge: return builder.CreateICmpSGE(lhs.value(), rhs.value(), "getmp");
+      case BinaryOp::Add:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFAdd(lhs.value(), rhs.value(), "faddtmp");
+        }
+        return builder.CreateAdd(lhs.value(), rhs.value(), "addtmp");
+      case BinaryOp::Sub:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFSub(lhs.value(), rhs.value(), "fsubtmp");
+        }
+        return builder.CreateSub(lhs.value(), rhs.value(), "subtmp");
+      case BinaryOp::Mul:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFMul(lhs.value(), rhs.value(), "fmultmp");
+        }
+        return builder.CreateMul(lhs.value(), rhs.value(), "multmp");
+      case BinaryOp::Div:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFDiv(lhs.value(), rhs.value(), "fdivtmp");
+        }
+        return builder.CreateSDiv(lhs.value(), rhs.value(), "divtmp");
+      case BinaryOp::Eq:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpOEQ(lhs.value(), rhs.value(), "feqtmp");
+        }
+        return builder.CreateICmpEQ(lhs.value(), rhs.value(), "eqtmp");
+      case BinaryOp::Ne:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpONE(lhs.value(), rhs.value(), "fnetmp");
+        }
+        return builder.CreateICmpNE(lhs.value(), rhs.value(), "netmp");
+      case BinaryOp::Lt:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpOLT(lhs.value(), rhs.value(), "flttmp");
+        }
+        return builder.CreateICmpSLT(lhs.value(), rhs.value(), "lttmp");
+      case BinaryOp::Le:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpOLE(lhs.value(), rhs.value(), "fletmp");
+        }
+        return builder.CreateICmpSLE(lhs.value(), rhs.value(), "letmp");
+      case BinaryOp::Gt:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpOGT(lhs.value(), rhs.value(), "fgttmp");
+        }
+        return builder.CreateICmpSGT(lhs.value(), rhs.value(), "gttmp");
+      case BinaryOp::Ge:
+        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+          return builder.CreateFCmpOGE(lhs.value(), rhs.value(), "fgetmp");
+        }
+        return builder.CreateICmpSGE(lhs.value(), rhs.value(), "getmp");
     }
     return std::unexpected(Diagnostic {
       .code = ErrorCode::CodegenError,
@@ -784,6 +839,12 @@ private:
         builder.CreateCall(printFn, {arg.value()});
         return llvm::ConstantInt::get(i32Ty, 0);
       }
+      if (arg.value()->getType()->isFloatTy()) {
+        auto *f32Ty = llvm::Type::getFloatTy(context);
+        auto printFn = module.getOrInsertFunction("__thg_print_f32", llvm::FunctionType::get(voidTy, {f32Ty}, false));
+        builder.CreateCall(printFn, {arg.value()});
+        return llvm::ConstantInt::get(i32Ty, 0);
+      }
 
       auto *stringTy = llvmType(BaseType::String);
       if (arg.value()->getType() == stringTy) {
@@ -799,7 +860,7 @@ private:
 
       return std::unexpected(Diagnostic {
         .code = ErrorCode::CodegenError,
-        .message = "Builtin print supports only i32 or string.",
+        .message = "Builtin print supports only i32, f32 or string.",
         .span = expr.args[0]->span,
       });
     }
@@ -848,7 +909,13 @@ private:
     }
     if (expr.kind == NodeKind::LiteralExpr) {
       const auto &lit = static_cast<const LiteralExpr &>(expr);
-      return lit.literalKind == LiteralExpr::Kind::String ? BaseType::String : BaseType::I32;
+      if (lit.literalKind == LiteralExpr::Kind::String) {
+        return BaseType::String;
+      }
+      if (lit.literalKind == LiteralExpr::Kind::Float) {
+        return BaseType::F32;
+      }
+      return BaseType::I32;
     }
     if (expr.kind == NodeKind::IdentifierExpr) {
       const auto &id = static_cast<const IdentifierExpr &>(expr);
@@ -867,10 +934,16 @@ private:
           if (lhs == BaseType::String && rhs == BaseType::String) {
             return BaseType::String;
           }
+          if (lhs == BaseType::F32 && rhs == BaseType::F32) {
+            return BaseType::F32;
+          }
           return BaseType::I32;
         case BinaryOp::Sub:
         case BinaryOp::Mul:
         case BinaryOp::Div:
+          if (lhs == BaseType::F32 && rhs == BaseType::F32) {
+            return BaseType::F32;
+          }
           return BaseType::I32;
         case BinaryOp::Eq:
         case BinaryOp::Ne:
@@ -905,6 +978,9 @@ private:
           if (fn->getReturnType()->isIntegerTy(32)) {
             return BaseType::I32;
           }
+          if (fn->getReturnType()->isFloatTy()) {
+            return BaseType::F32;
+          }
           if (fn->getReturnType() == llvmType(BaseType::String)) {
             return BaseType::String;
           }
@@ -931,6 +1007,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
   switch (type) {
     case BaseType::Void: return llvm::Type::getVoidTy(context);
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
+    case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Struct: break;

@@ -17,6 +17,7 @@ enum class BaseType {
   Unknown,
   Void,
   I32,
+  F32,
   Bool,
   String,
   Struct,
@@ -144,6 +145,7 @@ enum class BinaryOp {
 struct LiteralExpr final : Expr {
   enum class Kind {
     Int,
+    Float,
     String,
   };
 

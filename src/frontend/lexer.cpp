@@ -200,7 +200,15 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
       while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek())) != 0) {
         text.push_back(advance());
       }
-      pushToken(TokenKind::Integer, begin, cursor, text);
+      if (!atEnd() && peek() == '.' && std::isdigit(static_cast<unsigned char>(peek(1))) != 0) {
+        text.push_back(advance());
+        while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek())) != 0) {
+          text.push_back(advance());
+        }
+        pushToken(TokenKind::Float, begin, cursor, text);
+      } else {
+        pushToken(TokenKind::Integer, begin, cursor, text);
+      }
       continue;
     }
 

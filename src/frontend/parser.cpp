@@ -69,6 +69,9 @@ private:
     if (typeTok->lexeme == "i32") {
       return makeType(BaseType::I32);
     }
+    if (typeTok->lexeme == "f32") {
+      return makeType(BaseType::F32);
+    }
     if (typeTok->lexeme == "bool") {
       return makeType(BaseType::Bool);
     }
@@ -545,8 +548,29 @@ private:
     switch (tok->kind) {
       case TokenKind::Integer:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Int, tok->lexeme, tok->span);
+      case TokenKind::Float:
+        return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Float, tok->lexeme, tok->span);
       case TokenKind::String:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::String, tok->lexeme, tok->span);
+      case TokenKind::Minus: {
+        auto rhs = parseExpression(31);
+        if (!rhs) {
+          return std::unexpected(rhs.error());
+        }
+        std::unique_ptr<Expr> zero {};
+        if (rhs.value()->kind == NodeKind::LiteralExpr) {
+          const auto &lit = static_cast<const LiteralExpr &>(*rhs.value());
+          if (lit.literalKind == LiteralExpr::Kind::Float) {
+            zero = std::make_unique<LiteralExpr>(LiteralExpr::Kind::Float, "0.0", tok->span);
+          }
+        }
+        if (!zero) {
+          zero = std::make_unique<LiteralExpr>(LiteralExpr::Kind::Int, "0", tok->span);
+        }
+        auto right = std::move(rhs.value());
+        auto exprSpan = mergeSpan(tok->span, right->span);
+        return std::make_unique<BinaryExpr>(BinaryOp::Sub, std::move(zero), std::move(right), exprSpan);
+      }
       case TokenKind::Identifier: {
         if (match(TokenKind::LParen)) {
           std::vector<std::unique_ptr<Expr>> args {};

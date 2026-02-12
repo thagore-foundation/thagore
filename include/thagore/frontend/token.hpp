@@ -16,6 +16,7 @@ enum class TokenKind : std::uint16_t {
 
   Identifier,
   Integer,
+  Float,
   String,
 
   KwFunc,
@@ -62,6 +63,7 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::Dedent: return "dedent";
     case TokenKind::Identifier: return "identifier";
     case TokenKind::Integer: return "integer";
+    case TokenKind::Float: return "float";
     case TokenKind::String: return "string";
     case TokenKind::KwFunc: return "func";
     case TokenKind::KwReturn: return "return";

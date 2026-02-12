@@ -1,0 +1,11 @@
+func calc_circle(radius: f32) -> f32:
+    let pi = 3.14159
+    return 2.0 * pi * radius
+
+let r = 5.0
+let result = calc_circle(r)
+
+print(result)
+
+if (result > 30.0):
+    print("Large Circle")
