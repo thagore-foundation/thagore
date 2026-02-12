@@ -1,0 +1,39 @@
+extern func __thg_ast_new_literal(value: String) -> ptr
+extern func __thg_ast_new_binary(op: String, left: ptr, right: ptr) -> ptr
+extern func __thg_ast_kind(node: ptr) -> String
+extern func __thg_ast_op(node: ptr) -> String
+extern func __thg_ast_value(node: ptr) -> String
+extern func __thg_ast_left(node: ptr) -> ptr
+extern func __thg_ast_right(node: ptr) -> ptr
+extern func __thg_ast_debug(node: ptr) -> String
+
+struct Expr:
+    kind: String
+    op: String
+    value: String
+    left: ptr
+    right: ptr
+
+func new_literal(val: String) -> ptr:
+    return __thg_ast_new_literal(val)
+
+func new_binary(op: String, left: ptr, right: ptr) -> ptr:
+    return __thg_ast_new_binary(op, left, right)
+
+func kind_of(node: ptr) -> String:
+    return __thg_ast_kind(node)
+
+func op_of(node: ptr) -> String:
+    return __thg_ast_op(node)
+
+func value_of(node: ptr) -> String:
+    return __thg_ast_value(node)
+
+func left_of(node: ptr) -> ptr:
+    return __thg_ast_left(node)
+
+func right_of(node: ptr) -> ptr:
+    return __thg_ast_right(node)
+
+func debug(node: ptr) -> String:
+    return __thg_ast_debug(node)
