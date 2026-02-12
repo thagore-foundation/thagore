@@ -1350,6 +1350,50 @@ int __thg_fs_write_text(const char *path, const char *content) {
   return written == out ? 1 : 0;
 }
 
+int __thg_fs_remove(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return 0;
+  }
+  return std::remove(path) == 0 ? 1 : 0;
+}
+
+char *__thg_path_to_exe(const char *inputPath) {
+  if (inputPath == nullptr || *inputPath == '\0') {
+    return copyCString("output.exe");
+  }
+
+  std::string path {inputPath};
+  const std::size_t slash = path.find_last_of("/\\");
+  const std::size_t dot = path.find_last_of('.');
+  const bool hasExt = dot != std::string::npos && (slash == std::string::npos || dot > slash);
+
+  if (hasExt) {
+    path = path.substr(0, dot);
+  }
+  path += ".exe";
+  return copyCString(path.c_str());
+}
+
+char *__thg_make_build_cmd(const char *outputPath) {
+  if (outputPath == nullptr || *outputPath == '\0') {
+    outputPath = "output.exe";
+  }
+  std::string cmd = "clang temp.ll -o ";
+  cmd += outputPath;
+  cmd += " -Wno-override-module";
+  return copyCString(cmd.c_str());
+}
+
+int __thg_build_temp_ll(const char *outputPath) {
+  if (outputPath == nullptr || *outputPath == '\0') {
+    outputPath = "output.exe";
+  }
+  std::string cmd = "clang temp.ll -o ";
+  cmd += outputPath;
+  cmd += " -Wno-override-module";
+  return std::system(cmd.c_str());
+}
+
 char *__thg_str_substr(const char *s, int start, int len) {
   if (s == nullptr || len <= 0) {
     return copyCString("");

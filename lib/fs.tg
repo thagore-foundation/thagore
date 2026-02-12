@@ -3,6 +3,7 @@ extern func fputs(str: String, stream: ptr) -> i32
 extern func fclose(stream: ptr) -> i32
 extern func fgetc(stream: ptr) -> i32
 extern func feof(stream: ptr) -> i32
+extern func remove(path: String) -> i32
 extern func __thg_fs_read_text(path: String) -> String
 extern func __thg_fs_write_text(path: String, content: String) -> i32
 
