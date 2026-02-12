@@ -2,9 +2,12 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <mutex>
 #include <cstdio>
 #include <limits>
+#include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace {
@@ -16,6 +19,23 @@ struct ManagedString {
 struct TokenBox {
   char *kind;
   char *text;
+};
+
+struct ExprToken {
+  std::string kind {};
+  std::string text {};
+};
+
+struct TokenStream {
+  std::vector<ExprToken> tokens {};
+};
+
+struct AstNode {
+  std::string kind {};
+  std::string op {};
+  std::string value {};
+  AstNode *left {nullptr};
+  AstNode *right {nullptr};
 };
 
 int g_argc = 0;
@@ -42,6 +62,195 @@ auto copyCString(const char *text) -> char * {
   }
   std::memcpy(out, text, len);
   out[len] = '\0';
+  return out;
+}
+
+auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
+  std::vector<ExprToken> out {};
+  if (source == nullptr) {
+    out.push_back(ExprToken {.kind = "EOF", .text = ""});
+    return out;
+  }
+
+  const auto *p = source;
+  while (*p != '\0') {
+    if (std::isspace(static_cast<unsigned char>(*p)) != 0) {
+      ++p;
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(*p)) != 0) {
+      std::string text {};
+      while (*p != '\0' && std::isdigit(static_cast<unsigned char>(*p)) != 0) {
+        text.push_back(*p);
+        ++p;
+      }
+      out.push_back(ExprToken {.kind = "INT", .text = std::move(text)});
+      continue;
+    }
+
+    switch (*p) {
+      case '+':
+        out.push_back(ExprToken {.kind = "PLUS", .text = "+"});
+        ++p;
+        break;
+      case '-':
+        out.push_back(ExprToken {.kind = "MINUS", .text = "-"});
+        ++p;
+        break;
+      case '*':
+        out.push_back(ExprToken {.kind = "STAR", .text = "*"});
+        ++p;
+        break;
+      case '/':
+        out.push_back(ExprToken {.kind = "SLASH", .text = "/"});
+        ++p;
+        break;
+      case '(':
+        out.push_back(ExprToken {.kind = "LPAREN", .text = "("});
+        ++p;
+        break;
+      case ')':
+        out.push_back(ExprToken {.kind = "RPAREN", .text = ")"});
+        ++p;
+        break;
+      default:
+        out.push_back(ExprToken {.kind = "INVALID", .text = std::string(1, *p)});
+        ++p;
+        break;
+    }
+  }
+  out.push_back(ExprToken {.kind = "EOF", .text = ""});
+  return out;
+}
+
+class ExprParser {
+public:
+  explicit ExprParser(const std::vector<ExprToken> &tokens_) : tokens(tokens_) {}
+
+  auto parseExpr() -> AstNode * {
+    return parseAddSub();
+  }
+
+private:
+  const std::vector<ExprToken> &tokens;
+  std::size_t pos {0};
+
+  auto current() const -> const ExprToken & {
+    if (pos >= tokens.size()) {
+      static const auto *eof = new ExprToken {.kind = "EOF", .text = ""};
+      return *eof;
+    }
+    return tokens[pos];
+  }
+
+  auto match(const char *kind) -> bool {
+    if (current().kind == kind) {
+      ++pos;
+      return true;
+    }
+    return false;
+  }
+
+  auto makeLiteralNode(const std::string &value) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Literal";
+    node->value = value;
+    return node;
+  }
+
+  auto makeBinaryNode(const std::string &op, AstNode *left, AstNode *right) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Binary";
+    node->op = op;
+    node->left = left;
+    node->right = right;
+    return node;
+  }
+
+  auto parseFactor() -> AstNode * {
+    if (match("LPAREN")) {
+      auto *inner = parseAddSub();
+      (void)match("RPAREN");
+      return inner;
+    }
+    if (current().kind == "INT") {
+      auto value = current().text;
+      ++pos;
+      return makeLiteralNode(value);
+    }
+    return makeLiteralNode("0");
+  }
+
+  auto parseMulDiv() -> AstNode * {
+    auto *left = parseFactor();
+    while (true) {
+      if (match("STAR")) {
+        auto *right = parseFactor();
+        left = makeBinaryNode("*", left, right);
+        continue;
+      }
+      if (match("SLASH")) {
+        auto *right = parseFactor();
+        left = makeBinaryNode("/", left, right);
+        continue;
+      }
+      break;
+    }
+    return left;
+  }
+
+  auto parseAddSub() -> AstNode * {
+    auto *left = parseMulDiv();
+    while (true) {
+      if (match("PLUS")) {
+        auto *right = parseMulDiv();
+        left = makeBinaryNode("+", left, right);
+        continue;
+      }
+      if (match("MINUS")) {
+        auto *right = parseMulDiv();
+        left = makeBinaryNode("-", left, right);
+        continue;
+      }
+      break;
+    }
+    return left;
+  }
+};
+
+void appendAstLine(std::string &out, int indent, const std::string &text) {
+  out.append(static_cast<std::size_t>(indent), ' ');
+  out.append(text);
+  out.push_back('\n');
+}
+
+void appendAstNode(std::string &out, AstNode *node, int indent, std::string_view label) {
+  if (node == nullptr) {
+    appendAstLine(out, indent, std::string(label) + ": <null>");
+    return;
+  }
+
+  if (node->kind == "Literal") {
+    appendAstLine(out, indent, std::string(label) + ": Literal(" + node->value + ")");
+    return;
+  }
+
+  appendAstLine(out, indent, std::string(label) + ": Binary(" + node->op + ")");
+  appendAstNode(out, node->left, indent + 2, "Left");
+  appendAstNode(out, node->right, indent + 2, "Right");
+}
+
+auto buildAstDebugString(AstNode *root) -> std::string {
+  if (root == nullptr) {
+    return "<null>\n";
+  }
+  if (root->kind == "Literal") {
+    return "Literal(" + root->value + ")\n";
+  }
+  std::string out {};
+  appendAstLine(out, 0, "Binary(" + root->op + ")");
+  appendAstNode(out, root->left, 2, "Left");
+  appendAstNode(out, root->right, 2, "Right");
   return out;
 }
 
@@ -317,6 +526,107 @@ const char *__thg_str_concat(const char *leftPtr, std::int32_t leftLen, const ch
 
   *outLen = totalLen;
   return buffer;
+}
+
+void *__thg_lex_tokenize(const char *source) {
+  auto *stream = new TokenStream {};
+  stream->tokens = tokenizeExprSource(source);
+  return stream;
+}
+
+int __thg_tok_count(void *streamPtr) {
+  if (streamPtr == nullptr) {
+    return 0;
+  }
+  const auto *stream = static_cast<TokenStream *>(streamPtr);
+  return static_cast<int>(stream->tokens.size());
+}
+
+const char *__thg_tok_kind(void *streamPtr, int index) {
+  if (streamPtr == nullptr || index < 0) {
+    return "";
+  }
+  const auto *stream = static_cast<TokenStream *>(streamPtr);
+  if (static_cast<std::size_t>(index) >= stream->tokens.size()) {
+    return "EOF";
+  }
+  return stream->tokens[static_cast<std::size_t>(index)].kind.c_str();
+}
+
+const char *__thg_tok_text(void *streamPtr, int index) {
+  if (streamPtr == nullptr || index < 0) {
+    return "";
+  }
+  const auto *stream = static_cast<TokenStream *>(streamPtr);
+  if (static_cast<std::size_t>(index) >= stream->tokens.size()) {
+    return "";
+  }
+  return stream->tokens[static_cast<std::size_t>(index)].text.c_str();
+}
+
+void *__thg_ast_new_literal(const char *value) {
+  auto *node = new AstNode {};
+  node->kind = "Literal";
+  node->value = value == nullptr ? "" : value;
+  return node;
+}
+
+void *__thg_ast_new_binary(const char *op, void *left, void *right) {
+  auto *node = new AstNode {};
+  node->kind = "Binary";
+  node->op = op == nullptr ? "" : op;
+  node->left = static_cast<AstNode *>(left);
+  node->right = static_cast<AstNode *>(right);
+  return node;
+}
+
+const char *__thg_ast_kind(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return "";
+  }
+  return static_cast<AstNode *>(nodePtr)->kind.c_str();
+}
+
+const char *__thg_ast_op(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return "";
+  }
+  return static_cast<AstNode *>(nodePtr)->op.c_str();
+}
+
+const char *__thg_ast_value(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return "";
+  }
+  return static_cast<AstNode *>(nodePtr)->value.c_str();
+}
+
+void *__thg_ast_left(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->left;
+}
+
+void *__thg_ast_right(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->right;
+}
+
+char *__thg_ast_debug(void *nodePtr) {
+  auto text = buildAstDebugString(static_cast<AstNode *>(nodePtr));
+  return copyCString(text.c_str());
+}
+
+void *__thg_parse_expr_from_tokens(void *streamPtr) {
+  if (streamPtr == nullptr) {
+    return nullptr;
+  }
+  const auto *stream = static_cast<TokenStream *>(streamPtr);
+  ExprParser parser {stream->tokens};
+  return parser.parseExpr();
 }
 
 }
