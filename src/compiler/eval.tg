@@ -1,11 +1,16 @@
-extern func __thg_eval_expr(node: ptr) -> i32
+extern func __thg_interp_new() -> ptr
+extern func __thg_interp_eval_expr(interp: ptr, node: ptr) -> i32
+extern func __thg_interp_exec_stmt(interp: ptr, node: ptr) -> i32
 
-struct Evaluator:
-    dummy: i32
+struct Interpreter:
+    handle: ptr
 
-impl Evaluator:
-    func eval(self, node: ptr) -> i32:
-        return __thg_eval_expr(node)
+impl Interpreter:
+    func eval_expr(self, node: ptr) -> i32:
+        return __thg_interp_eval_expr(self.handle, node)
 
-func new() -> Evaluator:
-    return Evaluator(0)
+    func exec_stmt(self, node: ptr) -> i32:
+        return __thg_interp_exec_stmt(self.handle, node)
+
+func new() -> Interpreter:
+    return Interpreter(__thg_interp_new())

@@ -1,10 +1,13 @@
 extern func __thg_ast_new_literal(value: String) -> ptr
 extern func __thg_ast_new_binary(op: String, left: ptr, right: ptr) -> ptr
+extern func __thg_ast_new_var(name: String) -> ptr
+extern func __thg_ast_new_let(name: String, expr: ptr) -> ptr
 extern func __thg_ast_kind(node: ptr) -> String
 extern func __thg_ast_kind_tag(node: ptr) -> i32
 extern func __thg_ast_op(node: ptr) -> String
 extern func __thg_ast_op_tag(node: ptr) -> i32
 extern func __thg_ast_value(node: ptr) -> String
+extern func __thg_ast_name(node: ptr) -> String
 extern func __thg_ast_left(node: ptr) -> ptr
 extern func __thg_ast_right(node: ptr) -> ptr
 extern func __thg_ast_debug(node: ptr) -> String
@@ -22,6 +25,12 @@ func new_literal(val: String) -> ptr:
 func new_binary(op: String, left: ptr, right: ptr) -> ptr:
     return __thg_ast_new_binary(op, left, right)
 
+func new_var(name: String) -> ptr:
+    return __thg_ast_new_var(name)
+
+func new_let(name: String, expr: ptr) -> ptr:
+    return __thg_ast_new_let(name, expr)
+
 func kind_of(node: ptr) -> String:
     return __thg_ast_kind(node)
 
@@ -37,6 +46,9 @@ func op_tag(node: ptr) -> i32:
 func value_of(node: ptr) -> String:
     return __thg_ast_value(node)
 
+func name_of(node: ptr) -> String:
+    return __thg_ast_name(node)
+
 func left_of(node: ptr) -> ptr:
     return __thg_ast_left(node)
 
@@ -51,6 +63,12 @@ func expr_literal() -> i32:
 
 func expr_binary() -> i32:
     return 2
+
+func expr_variable() -> i32:
+    return 3
+
+func stmt_let() -> i32:
+    return 4
 
 func op_add() -> i32:
     return 1
