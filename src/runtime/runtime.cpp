@@ -6,6 +6,7 @@
 #include <mutex>
 #include <cstdio>
 #include <limits>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -885,6 +886,176 @@ auto emitProgramC(AstNode *root) -> std::string {
   mainFn += "    return 0;\n";
   mainFn += "}\n";
   return headers + funcs + mainFn;
+}
+
+struct LlvmGenState {
+  int nextReg {1};
+  bool usesPrintf {false};
+  bool hasExplicitReturn {false};
+  std::string allocas {};
+  std::string body {};
+  std::unordered_map<std::string, std::string> varSlots {};
+};
+
+auto sanitizeLlvmName(const std::string &name) -> std::string {
+  std::string out {};
+  out.reserve(name.size());
+  for (char ch : name) {
+    const bool valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
+    out.push_back(valid ? ch : '_');
+  }
+  if (out.empty()) {
+    out = "tmp";
+  }
+  if (out.front() >= '0' && out.front() <= '9') {
+    out.insert(out.begin(), '_');
+  }
+  return out;
+}
+
+auto nextLlvmReg(LlvmGenState &state) -> std::string {
+  return "%" + std::to_string(state.nextReg++);
+}
+
+auto ensureVarSlot(LlvmGenState &state, const std::string &name) -> std::string {
+  if (auto found = state.varSlots.find(name); found != state.varSlots.end()) {
+    return found->second;
+  }
+  std::string slot = "%thg_" + sanitizeLlvmName(name);
+  if (std::find_if(state.varSlots.begin(), state.varSlots.end(), [&](const auto &kv) { return kv.second == slot; }) != state.varSlots.end()) {
+    slot += "_" + std::to_string(state.varSlots.size());
+  }
+  state.varSlots[name] = slot;
+  state.allocas += "  " + slot + " = alloca i32\n";
+  return slot;
+}
+
+auto emitExprLLVM(AstNode *node, LlvmGenState &state) -> std::string;
+void emitStmtLLVM(AstNode *node, LlvmGenState &state);
+
+auto emitExprLLVM(AstNode *node, LlvmGenState &state) -> std::string {
+  if (node == nullptr) {
+    return "0";
+  }
+  if (node->kind == "Literal") {
+    return node->value.empty() ? "0" : node->value;
+  }
+  if (node->kind == "Variable") {
+    const auto slot = ensureVarSlot(state, node->value);
+    const auto reg = nextLlvmReg(state);
+    state.body += "  " + reg + " = load i32, ptr " + slot + "\n";
+    return reg;
+  }
+  if (node->kind == "Binary") {
+    const auto lhs = emitExprLLVM(node->left, state);
+    const auto rhs = emitExprLLVM(node->right, state);
+    if (node->op == "==" || node->op == "!=" || node->op == "<" || node->op == ">" || node->op == "<=" || node->op == ">=") {
+      std::string pred = "eq";
+      if (node->op == "!=") {
+        pred = "ne";
+      } else if (node->op == "<") {
+        pred = "slt";
+      } else if (node->op == ">") {
+        pred = "sgt";
+      } else if (node->op == "<=") {
+        pred = "sle";
+      } else if (node->op == ">=") {
+        pred = "sge";
+      }
+      const auto cmpReg = nextLlvmReg(state);
+      state.body += "  " + cmpReg + " = icmp " + pred + " i32 " + lhs + ", " + rhs + "\n";
+      const auto zextReg = nextLlvmReg(state);
+      state.body += "  " + zextReg + " = zext i1 " + cmpReg + " to i32\n";
+      return zextReg;
+    }
+
+    std::string op = "add nsw";
+    if (node->op == "-") {
+      op = "sub nsw";
+    } else if (node->op == "*") {
+      op = "mul nsw";
+    } else if (node->op == "/") {
+      op = "sdiv";
+    }
+
+    const auto result = nextLlvmReg(state);
+    state.body += "  " + result + " = " + op + " i32 " + lhs + ", " + rhs + "\n";
+    return result;
+  }
+  if (node->kind == "CallExpr") {
+    if (node->value == "print") {
+      state.usesPrintf = true;
+      if (!node->args.empty()) {
+        const auto arg = emitExprLLVM(node->args[0], state);
+        state.body += "  call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 " + arg + ")\n";
+      } else {
+        state.body += "  call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 0)\n";
+      }
+      return "0";
+    }
+    return "0";
+  }
+  return "0";
+}
+
+void emitStmtLLVM(AstNode *node, LlvmGenState &state) {
+  if (node == nullptr) {
+    return;
+  }
+  if (node->kind == "Block") {
+    for (auto *stmt : node->statements) {
+      emitStmtLLVM(stmt, state);
+    }
+    return;
+  }
+  if (node->kind == "FuncDecl") {
+    return;
+  }
+  if (node->kind == "Let") {
+    const auto slot = ensureVarSlot(state, node->value);
+    const auto value = emitExprLLVM(node->left, state);
+    state.body += "  store i32 " + value + ", ptr " + slot + "\n";
+    return;
+  }
+  if (node->kind == "Assign") {
+    const auto slot = ensureVarSlot(state, node->value);
+    const auto value = emitExprLLVM(node->left, state);
+    state.body += "  store i32 " + value + ", ptr " + slot + "\n";
+    return;
+  }
+  if (node->kind == "ReturnStmt") {
+    const auto value = emitExprLLVM(node->left, state);
+    state.body += "  ret i32 " + value + "\n";
+    state.hasExplicitReturn = true;
+    return;
+  }
+  (void)emitExprLLVM(node, state);
+}
+
+auto emitProgramLLVM(AstNode *root) -> std::string {
+  LlvmGenState state {};
+  if (root != nullptr && root->kind == "Block") {
+    for (auto *stmt : root->statements) {
+      emitStmtLLVM(stmt, state);
+    }
+  } else {
+    emitStmtLLVM(root, state);
+  }
+
+  std::string out = "; Thagore LLVM IR (bootstrap)\n";
+  if (state.usesPrintf) {
+    out += "@.fmt_i32 = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"\n";
+    out += "declare i32 @printf(ptr, ...)\n\n";
+  }
+  out += "define i32 @main() {\n";
+  out += "entry:\n";
+  out += state.allocas;
+  out += state.body;
+  if (!state.hasExplicitReturn) {
+    out += "  ret i32 0\n";
+  }
+  out += "}\n";
+  return out;
 }
 
 struct ExecResult {
@@ -1899,6 +2070,11 @@ int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
 
 char *__thg_codegen_emit_c(void *rootNode) {
   auto code = emitProgramC(static_cast<AstNode *>(rootNode));
+  return copyCString(code.c_str());
+}
+
+char *__thg_codegen_emit_llvm(void *rootNode) {
+  auto code = emitProgramLLVM(static_cast<AstNode *>(rootNode));
   return copyCString(code.c_str());
 }
 

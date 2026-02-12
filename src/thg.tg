@@ -3,15 +3,17 @@ import fs
 import "src/compiler/parser.tg" as parser
 import "src/compiler/eval.tg" as eval
 import "src/compiler/codegen.tg" as codegen
+import "src/compiler/codegen_llvm.tg" as codegen_llvm
 
 func main() -> i32:
     print("--- Thagore Dual-Mode Runtime v1.0 ---")
 
     if (env.count() < 2):
-        print("Usage: thg.exe <script.tg> [-c|--compile]")
+        print("Usage: thg.exe <script.tg> [-c|--compile|--emit-llvm|-ll]")
         return 0
 
     let compile_mode = 0
+    let llvm_mode = 0
     let i = 2
     while (i < env.count()):
         let arg = env.get(i)
@@ -20,6 +22,12 @@ func main() -> i32:
         else:
             if (arg == "--compile"):
                 compile_mode = 1
+            else:
+                if (arg == "--emit-llvm"):
+                    llvm_mode = 1
+                else:
+                    if (arg == "-ll"):
+                        llvm_mode = 1
         i = i + 1
 
     print("Loading script...")
@@ -30,6 +38,17 @@ func main() -> i32:
 
     print("Source loaded. Parsing...")
     let program_ast = parser.parse_program(source)
+
+    if (llvm_mode == 1):
+        print("LLVM mode active. Generating LLVM IR...")
+        let llvm_ir = codegen_llvm.emit_program(program_ast)
+        let ok_ll = fs.write_text("out.ll", llvm_ir)
+        if (ok_ll == 0):
+            print("Error: cannot write out.ll")
+            return 1
+        print("Generated out.ll successfully.")
+        print("Compile with: clang out.ll -o out")
+        return 0
 
     if (compile_mode == 1):
         print("Compile mode active. Generating C source...")
