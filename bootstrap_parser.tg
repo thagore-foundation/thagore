@@ -1,0 +1,11 @@
+import "src/compiler/parser.tg" as parser
+import "src/compiler/ast.tg" as ast
+
+func main() -> i32:
+    print("Parsing Math: 10 + 20 * 3")
+    let code = "10 + 20 * 3"
+    let root = parser.parse_expr(code)
+
+    print("AST Generated (Pseudo-visual):")
+    print(ast.debug(root))
+    return 0
