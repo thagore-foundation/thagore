@@ -251,6 +251,18 @@ int __thg_str_eq(char *s1, char *s2) {
   return std::strcmp(s1, s2) == 0 ? 1 : 0;
 }
 
+int __thg_str_hash(char *s) {
+  if (s == nullptr) {
+    return 0;
+  }
+  unsigned long hash = 5381;
+  int ch = 0;
+  while ((ch = *s++) != 0) {
+    hash = ((hash << 5) + hash) + static_cast<unsigned long>(ch);
+  }
+  return static_cast<int>(hash & 0x7FFFFFFFul);
+}
+
 void *__thg_token_new(const char *kind, const char *text) {
   auto *token = static_cast<TokenBox *>(std::malloc(sizeof(TokenBox)));
   if (token == nullptr) {
