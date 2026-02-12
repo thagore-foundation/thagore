@@ -27,6 +27,7 @@ enum class TokenKind : std::uint16_t {
   KwWhile,
   KwLoop,
   KwStruct,
+  KwImpl,
 
   LParen,
   RParen,
@@ -71,6 +72,7 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwWhile: return "while";
     case TokenKind::KwLoop: return "loop";
     case TokenKind::KwStruct: return "struct";
+    case TokenKind::KwImpl: return "impl";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";
     case TokenKind::Colon: return ":";

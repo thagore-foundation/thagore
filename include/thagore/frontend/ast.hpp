@@ -51,6 +51,7 @@ enum class NodeKind : std::uint16_t {
   IdentifierExpr,
   CallExpr,
   MemberExpr,
+  MethodCallExpr,
 };
 
 struct Node {
@@ -69,6 +70,7 @@ struct LiteralExpr;
 struct IdentifierExpr;
 struct CallExpr;
 struct MemberExpr;
+struct MethodCallExpr;
 struct LetStmt;
 struct AssignStmt;
 struct ReturnStmt;
@@ -87,6 +89,7 @@ struct ExprVisitor {
   virtual auto visit(const IdentifierExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const CallExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const MemberExpr &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const MethodCallExpr &) -> Result<R, Diagnostic> = 0;
 };
 
 template <typename R>
@@ -183,6 +186,18 @@ struct MemberExpr final : Expr {
   auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
 };
 
+struct MethodCallExpr final : Expr {
+  std::unique_ptr<Expr> object {};
+  std::string method {};
+  std::vector<std::unique_ptr<Expr>> args {};
+  MethodCallExpr(std::unique_ptr<Expr> object_, std::string method_, std::vector<std::unique_ptr<Expr>> args_, SourceSpan span_)
+    : Expr(NodeKind::MethodCallExpr, std::move(span_)),
+      object(std::move(object_)),
+      method(std::move(method_)),
+      args(std::move(args_)) {}
+  auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
+};
+
 struct ExprStmt final : Stmt {
   std::unique_ptr<Expr> expr {};
   ExprStmt(std::unique_ptr<Expr> expr_, SourceSpan span_)
@@ -253,6 +268,8 @@ struct FunctionDecl final : Decl {
   };
 
   std::string name {};
+  std::string sourceName {};
+  std::string methodOwner {};
   std::vector<Param> params {};
   std::unique_ptr<BlockStmt> body {};
   TypePtr returnType {};
@@ -267,6 +284,7 @@ struct FunctionDecl final : Decl {
   )
     : Decl(NodeKind::FunctionDecl, std::move(span_)),
       name(std::move(name_)),
+      sourceName(name),
       params(std::move(params_)),
       body(std::move(body_)),
       returnType(std::move(returnType_)) {}

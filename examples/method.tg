@@ -1,0 +1,20 @@
+struct Rect:
+    width: i32
+    height: i32
+
+impl Rect:
+    func area(self) -> i32:
+        return self.width * self.height
+
+    func is_square(self) -> i32:
+        # Logic gia lap bool (1=true, 0=false)
+        if (self.width == self.height):
+            return 1
+        else:
+            return 0
+
+let r = Rect(10, 20)
+print(r.area())
+
+let sq = Rect(5, 5)
+print(sq.is_square())

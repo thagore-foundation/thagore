@@ -2,6 +2,7 @@
 
 #include <format>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace thagore {
@@ -21,7 +22,7 @@ public:
         break;
       }
       if (check(TokenKind::KwFunc)) {
-        auto fn = parseFunctionDecl();
+        auto fn = parseFunctionDecl(std::nullopt);
         if (!fn) {
           return std::unexpected(fn.error());
         }
@@ -32,6 +33,14 @@ public:
           return std::unexpected(st.error());
         }
         structs.push_back(std::move(st.value()));
+      } else if (check(TokenKind::KwImpl)) {
+        auto implFns = parseImplBlock();
+        if (!implFns) {
+          return std::unexpected(implFns.error());
+        }
+        for (auto &fn : implFns.value()) {
+          functions.push_back(std::move(fn));
+        }
       } else {
         auto stmt = parseStatement();
         if (!stmt) {
@@ -132,7 +141,7 @@ private:
     return std::make_unique<StructDecl>(name->lexeme, std::move(fields), structSpan);
   }
 
-  auto parseFunctionDecl() -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
+  auto parseFunctionDecl(std::optional<std::string> implType) -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
     const Token *funcTok = consume(TokenKind::KwFunc, "Expected 'func'.");
     if (!funcTok) {
       return std::unexpected(lastError("Expected 'func'."));
@@ -154,24 +163,33 @@ private:
         if (!param) {
           return std::unexpected(lastError("Expected parameter name."));
         }
-        if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
-          return std::unexpected(lastError("Expected ':' after parameter name."));
-        }
-        const Token *typeTok = consume(TokenKind::Identifier, "Expected parameter type.");
-        if (!typeTok) {
-          return std::unexpected(lastError("Expected parameter type."));
-        }
-        auto paramType = parseTypeName(typeTok);
-        if (!paramType) {
-          return std::unexpected(paramType.error());
-        }
-        if (paramType.value()->base == BaseType::Void) {
-          return std::unexpected(makeError(typeTok->span, "Parameter type cannot be void."));
+        TypePtr paramType {};
+        SourceSpan typeSpan = param->span;
+        const bool isImplicitSelf = implType.has_value() && params.empty() && param->lexeme == "self" && !check(TokenKind::Colon);
+        if (isImplicitSelf) {
+          paramType = makeStructType(*implType);
+        } else {
+          if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
+            return std::unexpected(lastError("Expected ':' after parameter name."));
+          }
+          const Token *typeTok = consume(TokenKind::Identifier, "Expected parameter type.");
+          if (!typeTok) {
+            return std::unexpected(lastError("Expected parameter type."));
+          }
+          auto parsedParamType = parseTypeName(typeTok);
+          if (!parsedParamType) {
+            return std::unexpected(parsedParamType.error());
+          }
+          if (parsedParamType.value()->base == BaseType::Void) {
+            return std::unexpected(makeError(typeTok->span, "Parameter type cannot be void."));
+          }
+          paramType = parsedParamType.value();
+          typeSpan = typeTok->span;
         }
         params.push_back(FunctionDecl::Param {
           .name = param->lexeme,
-          .type = paramType.value(),
-          .span = mergeSpan(param->span, typeTok->span),
+          .type = paramType,
+          .span = mergeSpan(param->span, typeSpan),
         });
         if (!match(TokenKind::Comma)) {
           break;
@@ -207,13 +225,56 @@ private:
     auto bodyPtr = std::move(body.value());
     auto fnSpan = mergeSpan(funcTok->span, bodyPtr->span);
 
-    return std::make_unique<FunctionDecl>(
+    auto fn = std::make_unique<FunctionDecl>(
       name->lexeme,
       std::move(params),
       std::move(bodyPtr),
       returnType.value(),
       fnSpan
     );
+    fn->sourceName = name->lexeme;
+    if (implType.has_value()) {
+      fn->methodOwner = *implType;
+      fn->name = std::format("{}_{}", *implType, name->lexeme);
+    }
+    return fn;
+  }
+
+  auto parseImplBlock() -> Result<std::vector<std::unique_ptr<FunctionDecl>>, Diagnostic> {
+    if (!consume(TokenKind::KwImpl, "Expected 'impl'.")) {
+      return std::unexpected(lastError("Expected 'impl'."));
+    }
+    const Token *typeName = consume(TokenKind::Identifier, "Expected type name after 'impl'.");
+    if (!typeName) {
+      return std::unexpected(lastError("Expected type name after 'impl'."));
+    }
+    if (!consume(TokenKind::Colon, "Expected ':' after impl type.")) {
+      return std::unexpected(lastError("Expected ':' after impl type."));
+    }
+    if (!consume(TokenKind::Newline, "Expected newline after impl header.")) {
+      return std::unexpected(lastError("Expected newline after impl header."));
+    }
+    if (!consume(TokenKind::Indent, "Expected INDENT in impl block.")) {
+      return std::unexpected(lastError("Expected INDENT in impl block."));
+    }
+
+    std::vector<std::unique_ptr<FunctionDecl>> methods {};
+    skipNewlines();
+    while (!check(TokenKind::Dedent) && !check(TokenKind::Eof)) {
+      if (!check(TokenKind::KwFunc)) {
+        return std::unexpected(lastError("Expected 'func' inside impl block."));
+      }
+      auto method = parseFunctionDecl(typeName->lexeme);
+      if (!method) {
+        return std::unexpected(method.error());
+      }
+      methods.push_back(std::move(method.value()));
+      skipNewlines();
+    }
+    if (!consume(TokenKind::Dedent, "Expected DEDENT after impl block.")) {
+      return std::unexpected(lastError("Expected DEDENT after impl block."));
+    }
+    return methods;
   }
 
   auto parseIndentedBlock() -> Result<std::unique_ptr<BlockStmt>, Diagnostic> {
@@ -424,8 +485,30 @@ private:
           return std::unexpected(lastError("Expected field name after '.'."));
         }
         auto object = std::move(lhs.value());
-        auto exprSpan = mergeSpan(object->span, member->span);
-        lhs = std::make_unique<MemberExpr>(std::move(object), member->lexeme, exprSpan);
+        if (match(TokenKind::LParen)) {
+          std::vector<std::unique_ptr<Expr>> args {};
+          if (!check(TokenKind::RParen)) {
+            while (true) {
+              auto arg = parseExpression(0);
+              if (!arg) {
+                return std::unexpected(arg.error());
+              }
+              args.push_back(std::move(arg.value()));
+              if (!match(TokenKind::Comma)) {
+                break;
+              }
+            }
+          }
+          const Token *end = consume(TokenKind::RParen, "Expected ')' after method arguments.");
+          if (!end) {
+            return std::unexpected(lastError("Expected ')' after method arguments."));
+          }
+          auto exprSpan = mergeSpan(object->span, end->span);
+          lhs = std::make_unique<MethodCallExpr>(std::move(object), member->lexeme, std::move(args), exprSpan);
+        } else {
+          auto exprSpan = mergeSpan(object->span, member->span);
+          lhs = std::make_unique<MemberExpr>(std::move(object), member->lexeme, exprSpan);
+        }
         continue;
       }
 

@@ -221,8 +221,8 @@ private:
         param.name,
         LocalValue {
           .slot = slot,
-          .type = isString ? BaseType::String : (param.type ? param.type->base : BaseType::Unknown),
-          .structName = (param.type && param.type->base == BaseType::Struct) ? param.type->name : "",
+          .type = isString ? BaseType::String : ((param.type && param.type->base == BaseType::Struct) ? BaseType::Struct : (param.type ? param.type->base : BaseType::Unknown)),
+          .structName = (!decl.methodOwner.empty() && param.name == "self") ? decl.methodOwner : ((param.type && param.type->base == BaseType::Struct) ? param.type->name : ""),
           .ownedRef = isString
         }
       );
@@ -532,6 +532,7 @@ private:
       case NodeKind::BinaryExpr: return lowerBinary(static_cast<const BinaryExpr &>(expr));
       case NodeKind::CallExpr: return lowerCall(static_cast<const CallExpr &>(expr));
       case NodeKind::MemberExpr: return lowerMember(static_cast<const MemberExpr &>(expr));
+      case NodeKind::MethodCallExpr: return lowerMethodCall(static_cast<const MethodCallExpr &>(expr));
       default:
         return std::unexpected(Diagnostic {
           .code = ErrorCode::CodegenError,
@@ -604,18 +605,41 @@ private:
   }
 
   auto lowerMember(const MemberExpr &expr) -> Result<llvm::Value *, Diagnostic> {
-    auto object = lowerExpr(*expr.object);
-    if (!object) {
-      return std::unexpected(object.error());
+    llvm::Value *basePtr = nullptr;
+    const StructLayout *layout = nullptr;
+    if (expr.object->kind == NodeKind::IdentifierExpr) {
+      const auto &id = static_cast<const IdentifierExpr &>(*expr.object);
+      auto found = locals.find(id.name);
+      if (found != locals.end() && found->second.type == BaseType::Struct) {
+        auto layoutIt = structLayouts.find(found->second.structName);
+        if (layoutIt != structLayouts.end()) {
+          layout = &layoutIt->second;
+          if (found->second.slot->getAllocatedType()->isPointerTy()) {
+            basePtr = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot, "self.ptr");
+          } else {
+            basePtr = found->second.slot;
+          }
+        }
+      }
     }
-    const auto *layout = findStructLayoutByType(object.value()->getType());
-    if (layout == nullptr) {
-      return std::unexpected(Diagnostic {
-        .code = ErrorCode::CodegenError,
-        .message = "Member access requires a struct value.",
-        .span = expr.span,
-      });
+    if (layout == nullptr || basePtr == nullptr) {
+      auto object = lowerExpr(*expr.object);
+      if (!object) {
+        return std::unexpected(object.error());
+      }
+      layout = findStructLayoutByType(object.value()->getType());
+      if (layout == nullptr) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Member access requires a struct value.",
+          .span = expr.span,
+        });
+      }
+      auto *tmp = builder.CreateAlloca(layout->llvmType, nullptr, "member.base");
+      builder.CreateStore(object.value(), tmp);
+      basePtr = tmp;
     }
+
     auto fieldIt = layout->fieldIndices.find(expr.member);
     if (fieldIt == layout->fieldIndices.end()) {
       return std::unexpected(Diagnostic {
@@ -624,13 +648,73 @@ private:
         .span = expr.span,
       });
     }
-    auto *tmp = builder.CreateAlloca(layout->llvmType, nullptr, "member.base");
-    builder.CreateStore(object.value(), tmp);
     auto *idx0 = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
     auto *idxN = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), static_cast<std::uint32_t>(fieldIt->second));
-    auto *fieldPtr = builder.CreateInBoundsGEP(layout->llvmType, tmp, {idx0, idxN}, "member.ptr");
+    auto *fieldPtr = builder.CreateInBoundsGEP(layout->llvmType, basePtr, {idx0, idxN}, "member.ptr");
     auto *fieldTy = layout->llvmType->getElementType(static_cast<unsigned int>(fieldIt->second));
     return builder.CreateLoad(fieldTy, fieldPtr, "member.load");
+  }
+
+  auto lowerMethodCall(const MethodCallExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    std::string structName {};
+    llvm::Value *selfPtr = nullptr;
+
+    if (expr.object->kind == NodeKind::IdentifierExpr) {
+      const auto &id = static_cast<const IdentifierExpr &>(*expr.object);
+      auto found = locals.find(id.name);
+      if (found != locals.end() && found->second.type == BaseType::Struct) {
+        structName = found->second.structName;
+        if (found->second.slot->getAllocatedType()->isPointerTy()) {
+          selfPtr = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot, "self.ptr");
+        } else {
+          selfPtr = found->second.slot;
+        }
+      }
+    }
+
+    if (selfPtr == nullptr || structName.empty()) {
+      auto object = lowerExpr(*expr.object);
+      if (!object) {
+        return std::unexpected(object.error());
+      }
+      const auto *layout = findStructLayoutByType(object.value()->getType());
+      if (layout == nullptr) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Method call requires a struct receiver.",
+          .span = expr.span,
+        });
+      }
+      for (const auto &[name, candidate] : structLayouts) {
+        if (candidate.llvmType == layout->llvmType) {
+          structName = name;
+          break;
+        }
+      }
+      auto *tmp = builder.CreateAlloca(layout->llvmType, nullptr, "method.self.tmp");
+      builder.CreateStore(object.value(), tmp);
+      selfPtr = tmp;
+    }
+
+    const auto mangled = std::format("{}_{}", structName, expr.method);
+    auto *callee = module.getFunction(mangled);
+    if (!callee) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown method '{}.{}'.", structName, expr.method),
+        .span = expr.span,
+      });
+    }
+    llvm::SmallVector<llvm::Value *> args {};
+    args.push_back(selfPtr);
+    for (const auto &argExpr : expr.args) {
+      auto lowered = lowerExpr(*argExpr);
+      if (!lowered) {
+        return std::unexpected(lowered.error());
+      }
+      args.push_back(lowered.value());
+    }
+    return builder.CreateCall(callee, args, "mcalltmp");
   }
 
   auto lowerBinary(const BinaryExpr &expr) -> Result<llvm::Value *, Diagnostic> {
@@ -806,6 +890,28 @@ private:
         return BaseType::Struct;
       }
     }
+    if (expr.kind == NodeKind::MethodCallExpr) {
+      const auto &call = static_cast<const MethodCallExpr &>(expr);
+      BaseType ownerBase = BaseType::Unknown;
+      std::string ownerName {};
+      if (call.object->inferredType) {
+        ownerBase = call.object->inferredType->base;
+        ownerName = call.object->inferredType->name;
+      }
+      if (ownerBase == BaseType::Struct && !ownerName.empty()) {
+        const auto mangled = std::format("{}_{}", ownerName, call.method);
+        auto *fn = module.getFunction(mangled);
+        if (fn != nullptr) {
+          if (fn->getReturnType()->isIntegerTy(32)) {
+            return BaseType::I32;
+          }
+          if (fn->getReturnType() == llvmType(BaseType::String)) {
+            return BaseType::String;
+          }
+        }
+      }
+      return BaseType::Unknown;
+    }
     if (expr.kind == NodeKind::MemberExpr) {
       const auto &member = static_cast<const MemberExpr &>(expr);
       const auto ownerType = inferExprType(*member.object);
@@ -874,8 +980,13 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     }
     std::vector<llvm::Type *> params {};
     params.reserve(decl->params.size());
-    for (const auto &param : decl->params) {
-      params.push_back(mapDeclaredType(context, param.type, structLayouts));
+    for (std::size_t i = 0; i < decl->params.size(); ++i) {
+      const auto &param = decl->params[i];
+      auto *paramTy = mapDeclaredType(context, param.type, structLayouts);
+      if (!decl->methodOwner.empty() && i == 0 && param.name == "self" && param.type && param.type->base == BaseType::Struct) {
+        paramTy = llvm::PointerType::get(context, 0);
+      }
+      params.push_back(paramTy);
     }
 
     auto *retTy = mapDeclaredType(context, decl->returnType, structLayouts);

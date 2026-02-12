@@ -115,6 +115,45 @@ private:
   TypePtr currentFunctionReturnType {makeType(BaseType::Void)};
   bool inTopLevelContext {false};
 
+  auto containsReturn(const Stmt &stmt) const -> bool {
+    if (stmt.kind == NodeKind::ReturnStmt) {
+      return true;
+    }
+    if (stmt.kind == NodeKind::BlockStmt) {
+      const auto &block = static_cast<const BlockStmt &>(stmt);
+      for (const auto &nested : block.statements) {
+        if (containsReturn(*nested)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (stmt.kind == NodeKind::IfStmt) {
+      const auto &ifStmt = static_cast<const IfStmt &>(stmt);
+      if (containsReturn(*ifStmt.thenBlock)) {
+        return true;
+      }
+      if (ifStmt.elseBlock && containsReturn(*ifStmt.elseBlock)) {
+        return true;
+      }
+      return false;
+    }
+    if (stmt.kind == NodeKind::LoopStmt) {
+      const auto &loop = static_cast<const LoopStmt &>(stmt);
+      return containsReturn(*loop.body);
+    }
+    return false;
+  }
+
+  auto blockContainsReturn(const BlockStmt &block) const -> bool {
+    for (const auto &stmt : block.statements) {
+      if (containsReturn(*stmt)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   auto analyzeFunction(FunctionDecl &fn) -> Result<void, Diagnostic> {
     scopes.clear();
     pushScope();
@@ -141,43 +180,17 @@ private:
       scopes.back().symbols[param.name] = param.type;
     }
 
-    bool sawReturn = false;
-    TypePtr inferredReturn = makeType(BaseType::Void);
     for (const auto &stmt : fn.body->statements) {
-      if (stmt->kind == NodeKind::ReturnStmt) {
-        sawReturn = true;
-        const auto *ret = static_cast<const ReturnStmt *>(stmt.get());
-        if (ret->value) {
-          auto retType = ret->value->accept(*this);
-          if (!retType) {
-            return std::unexpected(retType.error());
-          }
-          inferredReturn = retType.value();
-        }
-      }
       auto s = stmt->accept(*this);
       if (!s) {
         return std::unexpected(s.error());
       }
     }
 
-    if (!sawReturn) {
-      inferredReturn = makeType(BaseType::Void);
-    }
-
-    const BaseType declared = fn.returnType ? fn.returnType->base : BaseType::Void;
-    if (!sameType(fn.returnType ? fn.returnType : makeType(BaseType::Void), inferredReturn)) {
+    if (fn.returnType && fn.returnType->base != BaseType::Void && !blockContainsReturn(*fn.body)) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
-        .message = std::format(
-          "Function '{}' returns incompatible type (declared {}{}, actual {}{}).",
-          fn.name,
-          baseTypeName(declared),
-          declared == BaseType::Struct ? std::format(" {}", fn.returnType->name) : "",
-          baseTypeName(inferredReturn->base)
-          ,
-          inferredReturn->base == BaseType::Struct ? std::format(" {}", inferredReturn->name) : ""
-        ),
+        .message = std::format("Function '{}' is missing a return value.", fn.name),
         .span = fn.span,
       });
     }
@@ -403,6 +416,71 @@ public:
     });
   }
 
+  auto visit(const MethodCallExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    auto objectType = expr.object->accept(*this);
+    if (!objectType) {
+      return std::unexpected(objectType.error());
+    }
+    if (objectType.value()->base != BaseType::Struct) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Method call requires a struct instance.",
+        .span = expr.span,
+      });
+    }
+
+    const auto mangled = std::format("{}_{}", objectType.value()->name, expr.method);
+    auto found = typed.functionTypes.find(mangled);
+    if (found == typed.functionTypes.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Unknown method '{}.{}'.", objectType.value()->name, expr.method),
+        .span = expr.span,
+      });
+    }
+    if (found->second.params.empty()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Method '{}.{}' has invalid signature.", objectType.value()->name, expr.method),
+        .span = expr.span,
+      });
+    }
+    if (!sameType(found->second.params[0], objectType.value())) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Method '{}.{}' has incompatible self type.", objectType.value()->name, expr.method),
+        .span = expr.span,
+      });
+    }
+    if (expr.args.size() + 1 != found->second.params.size()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format(
+          "Method '{}.{}' expects {} argument(s), got {}.",
+          objectType.value()->name,
+          expr.method,
+          found->second.params.size() - 1,
+          expr.args.size()
+        ),
+        .span = expr.span,
+      });
+    }
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
+      auto t = expr.args[i]->accept(*this);
+      if (!t) {
+        return std::unexpected(t.error());
+      }
+      if (!sameType(t.value(), found->second.params[i + 1])) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Argument type mismatch at position {} in method call '{}.{}'.", i + 1, objectType.value()->name, expr.method),
+          .span = expr.args[i]->span,
+        });
+      }
+    }
+    return found->second.returnType;
+  }
+
   auto visit(const BlockStmt &stmt) -> Result<void, Diagnostic> override {
     pushScope();
     for (const auto &nested : stmt.statements) {
@@ -459,14 +537,14 @@ public:
       }
       actual = t.value();
     }
-    if (sameType(currentFunctionReturnType, actual)) {
-      return {};
+    if (!sameType(currentFunctionReturnType, actual)) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Inconsistent return type in function.",
+        .span = stmt.span,
+      });
     }
-    return std::unexpected(Diagnostic {
-      .code = ErrorCode::SemanticError,
-      .message = "Inconsistent return type in function.",
-      .span = stmt.span,
-    });
+    return {};
   }
 
   auto visit(const IfStmt &stmt) -> Result<void, Diagnostic> override {
