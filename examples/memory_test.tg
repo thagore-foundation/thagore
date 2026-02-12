@@ -1,0 +1,15 @@
+func create_garbage() -> i32:
+    let s1 = "Part 1 "
+    let s2 = "Part 2"
+    let res = s1 + s2
+    print(res)
+    return 0
+
+func main() -> i32:
+    let i = 0
+    while (i < 1000):
+        create_garbage()
+        i = i + 1
+
+    print("Finished without crashing!")
+    return 0

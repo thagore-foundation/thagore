@@ -179,6 +179,8 @@ private:
   llvm::FunctionCallee releaseFn {};
   llvm::FunctionCallee strAddFn {};
   llvm::FunctionCallee strEqFn {};
+  llvm::FunctionCallee strDupFn {};
+  llvm::FunctionCallee strFreeFn {};
   llvm::FunctionCallee cstrLenFn {};
   llvm::FunctionCallee initEnvFn {};
 
@@ -195,6 +197,8 @@ private:
     releaseFn = module.getOrInsertFunction("__thg_release", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     strAddFn = module.getOrInsertFunction("__thg_str_add", llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy}, false));
     strEqFn = module.getOrInsertFunction("__thg_str_eq", llvm::FunctionType::get(i32Ty, {ptrTy, ptrTy}, false));
+    strDupFn = module.getOrInsertFunction("__thg_str_dup", llvm::FunctionType::get(ptrTy, {ptrTy}, false));
+    strFreeFn = module.getOrInsertFunction("__thg_str_free", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     cstrLenFn = module.getOrInsertFunction("__thg_cstr_len", llvm::FunctionType::get(i32Ty, {ptrTy}, false));
     initEnvFn = module.getOrInsertFunction("__thg_init_env", llvm::FunctionType::get(voidTy, {i32Ty, ptrTy}, false));
   }
@@ -252,11 +256,15 @@ private:
       }
       const auto &param = decl.params[idx++];
       auto *slot = createAlloca(param.name, arg.getType());
-      builder.CreateStore(&arg, slot);
-
       const bool isString = arg.getType() == llvmType(BaseType::String);
       if (isString) {
-        retainStringValue(&arg);
+        auto cloned = cloneStringValue(&arg, param.span);
+        if (!cloned) {
+          return std::unexpected(cloned.error());
+        }
+        builder.CreateStore(cloned.value(), slot);
+      } else {
+        builder.CreateStore(&arg, slot);
       }
       locals.emplace(
         param.name,
@@ -295,6 +303,24 @@ private:
     stringValue = builder.CreateInsertValue(stringValue, ptrValue, {0}, "cstr.v.ptr");
     stringValue = builder.CreateInsertValue(stringValue, strLen, {1}, "cstr.v.len");
     return stringValue;
+  }
+
+  auto cloneStringValue(llvm::Value *value, const SourceSpan &span) -> Result<llvm::Value *, Diagnostic> {
+    auto ptr = extractStringPointer(value, span, "str.clone");
+    if (!ptr) {
+      return std::unexpected(ptr.error());
+    }
+    auto *dup = builder.CreateCall(strDupFn, {ptr.value()}, "str.dup.ptr");
+    return packCStringValue(dup);
+  }
+
+  auto freeStringValue(llvm::Value *stringValue) -> Result<void, Diagnostic> {
+    auto ptr = extractStringPointer(stringValue, {}, "str.free");
+    if (!ptr) {
+      return std::unexpected(ptr.error());
+    }
+    builder.CreateCall(strFreeFn, {ptr.value()});
+    return {};
   }
 
   auto extractStringPointer(llvm::Value *value, const SourceSpan &span, std::string_view nameHint)
@@ -345,7 +371,11 @@ private:
       if (localIt->second.ownedRef && !terminated()) {
         auto *loaded = builder.CreateLoad(localIt->second.slot->getAllocatedType(), localIt->second.slot);
         if (localIt->second.type == BaseType::String) {
-          releaseStringValue(loaded);
+          auto freed = freeStringValue(loaded);
+          if (!freed) {
+            locals.erase(localIt);
+            continue;
+          }
         } else if (loaded->getType()->isPointerTy()) {
           builder.CreateCall(releaseFn, {loaded});
         }
@@ -432,16 +462,19 @@ private:
       }
     }
     auto *alloca = createAlloca(stmt.name, initValue->getType());
-    builder.CreateStore(initValue, alloca);
-
     bool shouldRetain = false;
     if (initValue->getType() == stringTy) {
+      auto cloned = cloneStringValue(initValue, stmt.span);
+      if (!cloned) {
+        return std::unexpected(cloned.error());
+      }
+      initValue = cloned.value();
       shouldRetain = true;
-      retainStringValue(initValue);
     } else if (initValue->getType()->isPointerTy() && !isTemporaryExpr(*stmt.init)) {
       shouldRetain = true;
       builder.CreateCall(retainFn, {initValue});
     }
+    builder.CreateStore(initValue, alloca);
     if (shouldRetain) {
       locals.emplace(
         stmt.name,
@@ -493,13 +526,23 @@ private:
     if (found->second.ownedRef) {
       auto *oldValue = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot);
       if (found->second.type == BaseType::String) {
-        releaseStringValue(oldValue);
+        auto freed = freeStringValue(oldValue);
+        if (!freed) {
+          return std::unexpected(freed.error());
+        }
       } else {
         builder.CreateCall(releaseFn, {oldValue});
       }
     }
-    if (found->second.slot->getAllocatedType() == llvmType(BaseType::String) && rhsValue->getType()->isPointerTy()) {
-      rhsValue = packCStringValue(rhsValue);
+    if (found->second.slot->getAllocatedType() == llvmType(BaseType::String)) {
+      if (rhsValue->getType()->isPointerTy()) {
+        rhsValue = packCStringValue(rhsValue);
+      }
+      auto cloned = cloneStringValue(rhsValue, stmt.span);
+      if (!cloned) {
+        return std::unexpected(cloned.error());
+      }
+      rhsValue = cloned.value();
     }
     builder.CreateStore(rhsValue, found->second.slot);
     auto *stringTy = llvmType(BaseType::String);
@@ -509,7 +552,6 @@ private:
       found->second.declaredType = makeType(BaseType::String);
       found->second.structName.clear();
       found->second.ownedRef = true;
-      retainStringValue(rhsValue);
       return {};
     }
     if (const auto *layout = findStructLayoutByType(found->second.slot->getAllocatedType()); layout != nullptr) {
@@ -565,7 +607,11 @@ private:
       retValue = packCStringValue(retValue);
     }
     if (retValue->getType() == llvmType(BaseType::String)) {
-      retainStringValue(retValue);
+      auto cloned = cloneStringValue(retValue, stmt.span);
+      if (!cloned) {
+        return std::unexpected(cloned.error());
+      }
+      retValue = cloned.value();
     }
     while (!scopeLocals.empty()) {
       popScope();

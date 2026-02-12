@@ -124,12 +124,28 @@ char *__thg_str_add(char *s1, char *s2) {
   std::memcpy(res, s1, len1);
   std::memcpy(res + len1, s2, len2);
   res[len1 + len2] = '\0';
-
-  {
-    std::lock_guard lock {managedStringsMutex()};
-    managedStrings().emplace(res, ManagedString {.buffer = res, .refCount = 0});
-  }
   return res;
+}
+
+char *__thg_str_dup(char *s) {
+  if (s == nullptr) {
+    s = const_cast<char *>("");
+  }
+
+  const auto len = std::strlen(s);
+  auto *copy = static_cast<char *>(std::malloc(len + 1));
+  if (copy == nullptr) {
+    return nullptr;
+  }
+  std::memcpy(copy, s, len);
+  copy[len] = '\0';
+  return copy;
+}
+
+void __thg_str_free(char *s) {
+  if (s != nullptr) {
+    std::free(s);
+  }
 }
 
 int __thg_str_eq(char *s1, char *s2) {
