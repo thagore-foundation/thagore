@@ -1,0 +1,14 @@
+extern func __thg_py_initialize() -> void
+extern func __thg_py_finalize() -> void
+extern func __thg_py_import(name: String) -> ptr
+extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
+extern func __thg_py_call0(callable: ptr) -> ptr
+extern func __thg_py_print_obj(obj: ptr) -> void
+
+print("Importing python math...")
+__thg_py_initialize()
+
+let math_mod = __thg_py_import("math")
+__thg_py_print_obj(math_mod)
+
+__thg_py_finalize()

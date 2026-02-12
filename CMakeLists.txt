@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(LLVM REQUIRED CONFIG)
+find_package(Python3 COMPONENTS Development REQUIRED)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
@@ -63,9 +64,14 @@ target_compile_definitions(thag_backend PUBLIC ${LLVM_DEFINITIONS})
 
 add_library(thag_runtime STATIC
   src/runtime/runtime.cpp
+  src/runtime/py_bridge.cpp
 )
-target_include_directories(thag_runtime PUBLIC include)
+target_include_directories(thag_runtime PUBLIC include ${Python3_INCLUDE_DIRS})
 target_compile_features(thag_runtime PUBLIC cxx_std_23)
+target_compile_definitions(thag_runtime PUBLIC Py_NO_LINK_LIB)
+if(Python3_RUNTIME_LIBRARY_RELEASE)
+  target_compile_definitions(thag_runtime PUBLIC THAG_PYTHON_DLL_PATH="${Python3_RUNTIME_LIBRARY_RELEASE}")
+endif()
 
 add_library(thag_driver STATIC
   src/driver/driver.cpp

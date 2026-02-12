@@ -26,6 +26,7 @@ auto baseTypeName(BaseType type) -> const char * {
     case BaseType::I32: return "i32";
     case BaseType::F32: return "f32";
     case BaseType::F64: return "f64";
+    case BaseType::Pointer: return "ptr";
     case BaseType::Bool: return "bool";
     case BaseType::String: return "String";
     case BaseType::Struct: return "struct";

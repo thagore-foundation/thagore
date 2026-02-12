@@ -77,6 +77,7 @@ auto mapDeclaredType(
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::F64: return llvm::Type::getDoubleTy(context);
+    case BaseType::Pointer: return llvm::PointerType::get(context, 0);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Array: {
@@ -192,6 +193,7 @@ private:
       case BaseType::I32: return llvm::Type::getInt32Ty(context);
       case BaseType::F32: return llvm::Type::getFloatTy(context);
       case BaseType::F64: return llvm::Type::getDoubleTy(context);
+      case BaseType::Pointer: return llvm::PointerType::get(context, 0);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
       case BaseType::String: return getStringStructType(context);
       case BaseType::Array: break;
@@ -921,6 +923,10 @@ private:
       }
       args.push_back(lowered.value());
     }
+    if (callee->getReturnType()->isVoidTy()) {
+      builder.CreateCall(callee, args);
+      return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    }
     return builder.CreateCall(callee, args, "mcalltmp");
   }
 
@@ -1145,12 +1151,25 @@ private:
       });
     }
     llvm::SmallVector<llvm::Value *> args {};
-    for (const auto &arg : expr.args) {
+    auto *fnType = callee->getFunctionType();
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
+      const auto &arg = expr.args[i];
       auto lowered = lowerExpr(*arg);
       if (!lowered) {
         return std::unexpected(lowered.error());
       }
-      args.push_back(lowered.value());
+      auto *argValue = lowered.value();
+      if (i < fnType->getNumParams()) {
+        auto *expectedTy = fnType->getParamType(static_cast<unsigned int>(i));
+        if (expectedTy->isPointerTy() && argValue->getType() == llvmType(BaseType::String)) {
+          argValue = builder.CreateExtractValue(argValue, {0}, "str.arg.ptr");
+        }
+      }
+      args.push_back(argValue);
+    }
+    if (callee->getReturnType()->isVoidTy()) {
+      builder.CreateCall(callee, args);
+      return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
     }
     return builder.CreateCall(callee, args, "calltmp");
   }
@@ -1273,6 +1292,30 @@ private:
       if (structLayouts.contains(call.callee)) {
         return BaseType::Struct;
       }
+      auto *fn = module.getFunction(call.callee);
+      if (fn != nullptr) {
+        if (fn->getReturnType()->isVoidTy()) {
+          return BaseType::Void;
+        }
+        if (fn->getReturnType()->isIntegerTy(32)) {
+          return BaseType::I32;
+        }
+        if (fn->getReturnType()->isFloatTy()) {
+          return BaseType::F32;
+        }
+        if (fn->getReturnType()->isDoubleTy()) {
+          return BaseType::F64;
+        }
+        if (fn->getReturnType()->isIntegerTy(1)) {
+          return BaseType::Bool;
+        }
+        if (fn->getReturnType() == llvmType(BaseType::String)) {
+          return BaseType::String;
+        }
+        if (fn->getReturnType()->isPointerTy()) {
+          return BaseType::Pointer;
+        }
+      }
     }
     if (expr.kind == NodeKind::MethodCallExpr) {
       const auto &call = static_cast<const MethodCallExpr &>(expr);
@@ -1294,6 +1337,9 @@ private:
           }
           if (fn->getReturnType()->isDoubleTy()) {
             return BaseType::F64;
+          }
+          if (fn->getReturnType()->isPointerTy()) {
+            return BaseType::Pointer;
           }
           if (fn->getReturnType() == llvmType(BaseType::String)) {
             return BaseType::String;
@@ -1323,6 +1369,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::F64: return llvm::Type::getDoubleTy(context);
+    case BaseType::Pointer: return llvm::PointerType::get(context, 0);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Array: break;
@@ -1376,6 +1423,9 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     for (std::size_t i = 0; i < decl->params.size(); ++i) {
       const auto &param = decl->params[i];
       auto *paramTy = mapDeclaredType(context, param.type, structLayouts);
+      if (decl->isExtern && param.type && param.type->base == BaseType::String) {
+        paramTy = llvm::PointerType::get(context, 0);
+      }
       if (!decl->methodOwner.empty() && i == 0 && param.name == "self" && param.type && param.type->base == BaseType::Struct) {
         paramTy = llvm::PointerType::get(context, 0);
       }

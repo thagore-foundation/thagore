@@ -81,6 +81,9 @@ private:
     if (typeTok->lexeme == "f64") {
       return makeType(BaseType::F64);
     }
+    if (typeTok->lexeme == "ptr") {
+      return makeType(BaseType::Pointer);
+    }
     if (typeTok->lexeme == "bool") {
       return makeType(BaseType::Bool);
     }
