@@ -17,6 +17,12 @@ impl File:
     func read_all(self) -> String:
         return "File Content Placeholder"
 
+func read_text(path: String) -> String:
+    let f = open_read(path)
+    let content = f.read_all()
+    f.close()
+    return content
+
 func open_write(path: String) -> File:
     let mode = "w"
     let p = fopen(path, mode)

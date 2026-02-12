@@ -934,6 +934,45 @@ int __thg_str_len(const char *s) {
   return __thg_cstr_len(s);
 }
 
+char *__thg_fs_read_text(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return copyCString("");
+  }
+
+  std::FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    return copyCString("");
+  }
+
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    std::fclose(file);
+    return copyCString("");
+  }
+
+  const long fileSize = std::ftell(file);
+  if (fileSize < 0) {
+    std::fclose(file);
+    return copyCString("");
+  }
+
+  if (std::fseek(file, 0, SEEK_SET) != 0) {
+    std::fclose(file);
+    return copyCString("");
+  }
+
+  auto *buffer = static_cast<char *>(std::malloc(static_cast<std::size_t>(fileSize) + 1));
+  if (buffer == nullptr) {
+    std::fclose(file);
+    return copyCString("");
+  }
+
+  const std::size_t bytesRead = std::fread(buffer, 1, static_cast<std::size_t>(fileSize), file);
+  std::fclose(file);
+
+  buffer[bytesRead] = '\0';
+  return buffer;
+}
+
 char *__thg_str_substr(const char *s, int start, int len) {
   if (s == nullptr || len <= 0) {
     return copyCString("");
