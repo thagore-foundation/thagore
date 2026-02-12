@@ -564,6 +564,27 @@ const char *__thg_tok_text(void *streamPtr, int index) {
   return stream->tokens[static_cast<std::size_t>(index)].text.c_str();
 }
 
+int __thg_tok_tag(void *streamPtr, int index) {
+  if (streamPtr == nullptr || index < 0) {
+    return 0;
+  }
+  const auto *stream = static_cast<TokenStream *>(streamPtr);
+  if (static_cast<std::size_t>(index) >= stream->tokens.size()) {
+    return 0;
+  }
+  const auto &kind = stream->tokens[static_cast<std::size_t>(index)].kind;
+  if (kind == "EOF") return 0;
+  if (kind == "INT") return 1;
+  if (kind == "PLUS") return 2;
+  if (kind == "MINUS") return 3;
+  if (kind == "STAR") return 4;
+  if (kind == "SLASH") return 5;
+  if (kind == "LPAREN") return 6;
+  if (kind == "RPAREN") return 7;
+  if (kind == "INVALID") return 8;
+  return 8;
+}
+
 void *__thg_ast_new_literal(const char *value) {
   auto *node = new AstNode {};
   node->kind = "Literal";
