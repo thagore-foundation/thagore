@@ -1,7 +1,9 @@
 extern func __thg_ast_new_literal(value: String) -> ptr
 extern func __thg_ast_new_binary(op: String, left: ptr, right: ptr) -> ptr
 extern func __thg_ast_kind(node: ptr) -> String
+extern func __thg_ast_kind_tag(node: ptr) -> i32
 extern func __thg_ast_op(node: ptr) -> String
+extern func __thg_ast_op_tag(node: ptr) -> i32
 extern func __thg_ast_value(node: ptr) -> String
 extern func __thg_ast_left(node: ptr) -> ptr
 extern func __thg_ast_right(node: ptr) -> ptr
@@ -23,8 +25,14 @@ func new_binary(op: String, left: ptr, right: ptr) -> ptr:
 func kind_of(node: ptr) -> String:
     return __thg_ast_kind(node)
 
+func kind_tag(node: ptr) -> i32:
+    return __thg_ast_kind_tag(node)
+
 func op_of(node: ptr) -> String:
     return __thg_ast_op(node)
+
+func op_tag(node: ptr) -> i32:
+    return __thg_ast_op_tag(node)
 
 func value_of(node: ptr) -> String:
     return __thg_ast_value(node)
@@ -37,3 +45,21 @@ func right_of(node: ptr) -> ptr:
 
 func debug(node: ptr) -> String:
     return __thg_ast_debug(node)
+
+func expr_literal() -> i32:
+    return 1
+
+func expr_binary() -> i32:
+    return 2
+
+func op_add() -> i32:
+    return 1
+
+func op_sub() -> i32:
+    return 2
+
+func op_mul() -> i32:
+    return 3
+
+func op_div() -> i32:
+    return 4
