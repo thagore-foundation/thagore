@@ -105,9 +105,11 @@ public:
     llvm::LLVMContext &ctx,
     llvm::Module &mod,
     llvm::Function &fn,
-    const std::unordered_map<std::string, StructLayout> &structLayouts_
+    const std::unordered_map<std::string, StructLayout> &structLayouts_,
+    const std::unordered_map<std::string, BaseType> &functionReturnKinds_
   )
-    : context(ctx), module(mod), function(fn), builder(ctx), structLayouts(structLayouts_) {
+    : context(ctx), module(mod), function(fn), builder(ctx), structLayouts(structLayouts_),
+      functionReturnKinds(functionReturnKinds_) {
     declareRuntimeHooks();
   }
 
@@ -123,13 +125,19 @@ public:
   ) -> Result<void, Diagnostic> {
     auto *entry = llvm::BasicBlock::Create(context, "entry", &function);
     builder.SetInsertPoint(entry);
-    entryBuilder.SetInsertPoint(entry);
     pushScope();
     if (decl != nullptr) {
       auto paramResult = bindFunctionParams(*decl);
       if (!paramResult) {
         return std::unexpected(paramResult.error());
       }
+    }
+    if (function.getName() == "main" && function.arg_size() >= 2) {
+      auto it = function.arg_begin();
+      llvm::Value *argc = &*it;
+      ++it;
+      llvm::Value *argv = &*it;
+      builder.CreateCall(initEnvFn, {argc, argv});
     }
 
     for (const auto &stmt : statements) {
@@ -163,13 +171,15 @@ private:
   llvm::Module &module;
   llvm::Function &function;
   llvm::IRBuilder<> builder;
-  llvm::IRBuilder<> entryBuilder {context};
   std::unordered_map<std::string, LocalValue> locals {};
   std::vector<std::vector<std::string>> scopeLocals {};
   const std::unordered_map<std::string, StructLayout> &structLayouts;
+  const std::unordered_map<std::string, BaseType> &functionReturnKinds;
   llvm::FunctionCallee retainFn {};
   llvm::FunctionCallee releaseFn {};
   llvm::FunctionCallee concatFn {};
+  llvm::FunctionCallee cstrLenFn {};
+  llvm::FunctionCallee initEnvFn {};
 
   auto terminated() const -> bool {
     auto *block = builder.GetInsertBlock();
@@ -180,11 +190,12 @@ private:
     auto *voidTy = llvm::Type::getVoidTy(context);
     auto *ptrTy = llvm::PointerType::get(context, 0);
     auto *i32Ty = llvm::Type::getInt32Ty(context);
-    auto *stringTy = getStringStructType(context);
     retainFn = module.getOrInsertFunction("__thg_retain", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     releaseFn = module.getOrInsertFunction("__thg_release", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     concatFn =
       module.getOrInsertFunction("__thg_str_concat", llvm::FunctionType::get(ptrTy, {ptrTy, i32Ty, ptrTy, i32Ty, ptrTy}, false));
+    cstrLenFn = module.getOrInsertFunction("__thg_cstr_len", llvm::FunctionType::get(i32Ty, {ptrTy}, false));
+    initEnvFn = module.getOrInsertFunction("__thg_init_env", llvm::FunctionType::get(voidTy, {i32Ty, ptrTy}, false));
   }
 
   auto llvmType(BaseType type) -> llvm::Type * {
@@ -227,6 +238,8 @@ private:
   }
 
   auto createAlloca(const std::string &name, llvm::Type *type) -> llvm::AllocaInst * {
+    auto &entryBlock = function.getEntryBlock();
+    llvm::IRBuilder<> entryBuilder {&entryBlock, entryBlock.begin()};
     return entryBuilder.CreateAlloca(type, nullptr, name);
   }
 
@@ -273,6 +286,14 @@ private:
   void releaseStringValue(llvm::Value *stringValue) {
     auto *ptr = builder.CreateExtractValue(stringValue, {0}, "str.release.ptr");
     builder.CreateCall(releaseFn, {ptr});
+  }
+
+  auto packCStringValue(llvm::Value *ptrValue) -> llvm::Value * {
+    auto *strLen = builder.CreateCall(cstrLenFn, {ptrValue}, "cstr.len");
+    llvm::Value *stringValue = llvm::UndefValue::get(llvmType(BaseType::String));
+    stringValue = builder.CreateInsertValue(stringValue, ptrValue, {0}, "cstr.v.ptr");
+    stringValue = builder.CreateInsertValue(stringValue, strLen, {1}, "cstr.v.len");
+    return stringValue;
   }
 
   auto shouldRetainStringExpr(const Expr &expr) -> bool {
@@ -361,9 +382,13 @@ private:
     if (!init) {
       return std::unexpected(init.error());
     }
+    llvm::Value *initValue = init.value();
     auto *stringTy = llvmType(BaseType::String);
     BaseType exprType = inferExprType(*stmt.init);
-    if (exprType == BaseType::Unknown && init.value()->getType() == stringTy) {
+    if (exprType == BaseType::String && initValue->getType()->isPointerTy()) {
+      initValue = packCStringValue(initValue);
+    }
+    if (exprType == BaseType::Unknown && initValue->getType() == stringTy) {
       exprType = BaseType::String;
     }
     std::string structName {};
@@ -379,26 +404,26 @@ private:
       }
     }
     if (exprType == BaseType::Unknown) {
-      if (const auto *layout = findStructLayoutByType(init.value()->getType()); layout != nullptr) {
+      if (const auto *layout = findStructLayoutByType(initValue->getType()); layout != nullptr) {
         exprType = BaseType::Struct;
         for (const auto &[name, candidate] : structLayouts) {
-          if (candidate.llvmType == init.value()->getType()) {
+          if (candidate.llvmType == initValue->getType()) {
             structName = name;
             break;
           }
         }
       }
     }
-    auto *alloca = createAlloca(stmt.name, init.value()->getType());
-    builder.CreateStore(init.value(), alloca);
+    auto *alloca = createAlloca(stmt.name, initValue->getType());
+    builder.CreateStore(initValue, alloca);
 
     bool shouldRetain = false;
-    if (init.value()->getType() == stringTy) {
+    if (initValue->getType() == stringTy) {
       shouldRetain = true;
-      retainStringValue(init.value());
-    } else if (init.value()->getType()->isPointerTy() && !isTemporaryExpr(*stmt.init)) {
+      retainStringValue(initValue);
+    } else if (initValue->getType()->isPointerTy() && !isTemporaryExpr(*stmt.init)) {
       shouldRetain = true;
-      builder.CreateCall(retainFn, {init.value()});
+      builder.CreateCall(retainFn, {initValue});
     }
     if (shouldRetain) {
       locals.emplace(
@@ -447,6 +472,7 @@ private:
     if (!rhs) {
       return std::unexpected(rhs.error());
     }
+    llvm::Value *rhsValue = rhs.value();
     if (found->second.ownedRef) {
       auto *oldValue = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot);
       if (found->second.type == BaseType::String) {
@@ -455,7 +481,10 @@ private:
         builder.CreateCall(releaseFn, {oldValue});
       }
     }
-    builder.CreateStore(rhs.value(), found->second.slot);
+    if (found->second.slot->getAllocatedType() == llvmType(BaseType::String) && rhsValue->getType()->isPointerTy()) {
+      rhsValue = packCStringValue(rhsValue);
+    }
+    builder.CreateStore(rhsValue, found->second.slot);
     auto *stringTy = llvmType(BaseType::String);
     const bool isStringSlot = found->second.type == BaseType::String || found->second.slot->getAllocatedType() == stringTy;
     if (isStringSlot) {
@@ -463,7 +492,7 @@ private:
       found->second.declaredType = makeType(BaseType::String);
       found->second.structName.clear();
       found->second.ownedRef = true;
-      retainStringValue(rhs.value());
+      retainStringValue(rhsValue);
       return {};
     }
     if (const auto *layout = findStructLayoutByType(found->second.slot->getAllocatedType()); layout != nullptr) {
@@ -479,8 +508,8 @@ private:
       found->second.ownedRef = false;
       return {};
     }
-    if (rhs.value()->getType()->isPointerTy() && !isTemporaryExpr(*stmt.value)) {
-      builder.CreateCall(retainFn, {rhs.value()});
+    if (rhsValue->getType()->isPointerTy() && !isTemporaryExpr(*stmt.value)) {
+      builder.CreateCall(retainFn, {rhsValue});
       found->second.ownedRef = true;
       return {};
     }
@@ -514,13 +543,17 @@ private:
     if (!ret) {
       return std::unexpected(ret.error());
     }
-    if (ret.value()->getType() == llvmType(BaseType::String)) {
-      retainStringValue(ret.value());
+    llvm::Value *retValue = ret.value();
+    if (function.getReturnType() == llvmType(BaseType::String) && retValue->getType()->isPointerTy()) {
+      retValue = packCStringValue(retValue);
+    }
+    if (retValue->getType() == llvmType(BaseType::String)) {
+      retainStringValue(retValue);
     }
     while (!scopeLocals.empty()) {
       popScope();
     }
-    builder.CreateRet(ret.value());
+    builder.CreateRet(retValue);
     return {};
   }
 
@@ -1171,7 +1204,17 @@ private:
       builder.CreateCall(callee, args);
       return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
     }
-    return builder.CreateCall(callee, args, "calltmp");
+    auto *callValue = builder.CreateCall(callee, args, "calltmp");
+    BaseType declaredReturn = BaseType::Unknown;
+    if (auto it = functionReturnKinds.find(expr.callee); it != functionReturnKinds.end()) {
+      declaredReturn = it->second;
+    } else if (expr.inferredType) {
+      declaredReturn = expr.inferredType->base;
+    }
+    if (callee->getReturnType()->isPointerTy() && declaredReturn == BaseType::String) {
+      return packCStringValue(callValue);
+    }
+    return callValue;
   }
 
   auto inferExprType(const Expr &expr) -> BaseType {
@@ -1312,6 +1355,9 @@ private:
         if (fn->getReturnType() == llvmType(BaseType::String)) {
           return BaseType::String;
         }
+        if (auto it = functionReturnKinds.find(call.callee); it != functionReturnKinds.end() && it->second == BaseType::String) {
+          return BaseType::String;
+        }
         if (fn->getReturnType()->isPointerTy()) {
           return BaseType::Pointer;
         }
@@ -1387,7 +1433,9 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
   -> Result<std::unique_ptr<llvm::Module>, Diagnostic> {
   auto module = std::make_unique<llvm::Module>(moduleName, context);
   bool hasExplicitMain = false;
+  bool hasTopLevelStatements = !typed.module->topLevelStatements.empty();
   std::unordered_map<std::string, StructLayout> structLayouts {};
+  std::unordered_map<std::string, BaseType> functionReturnKinds {};
 
   for (const auto &st : typed.module->structs) {
     auto llvmName = std::format("thg.struct.{}", st->name);
@@ -1415,34 +1463,71 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
   }
 
   for (const auto &decl : typed.module->functions) {
-    if (decl->name == "main") {
+    const bool isUserMain = !decl->isExtern && decl->name == "main";
+    if (isUserMain) {
       hasExplicitMain = true;
+      if (!decl->params.empty()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "func main() cannot declare parameters; use env module to read CLI args.",
+          .span = decl->span,
+        });
+      }
+      if (!decl->returnType || decl->returnType->base != BaseType::I32) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "func main() must return i32.",
+          .span = decl->span,
+        });
+      }
     }
     std::vector<llvm::Type *> params {};
-    params.reserve(decl->params.size());
-    for (std::size_t i = 0; i < decl->params.size(); ++i) {
-      const auto &param = decl->params[i];
-      auto *paramTy = mapDeclaredType(context, param.type, structLayouts);
-      if (decl->isExtern && param.type && param.type->base == BaseType::String) {
-        paramTy = llvm::PointerType::get(context, 0);
+    if (isUserMain) {
+      params.push_back(llvm::Type::getInt32Ty(context));
+      params.push_back(llvm::PointerType::get(context, 0));
+    } else {
+      params.reserve(decl->params.size());
+      for (std::size_t i = 0; i < decl->params.size(); ++i) {
+        const auto &param = decl->params[i];
+        auto *paramTy = mapDeclaredType(context, param.type, structLayouts);
+        if (decl->isExtern && param.type && param.type->base == BaseType::String) {
+          paramTy = llvm::PointerType::get(context, 0);
+        }
+        if (!decl->methodOwner.empty() && i == 0 && param.name == "self" && param.type && param.type->base == BaseType::Struct) {
+          paramTy = llvm::PointerType::get(context, 0);
+        }
+        params.push_back(paramTy);
       }
-      if (!decl->methodOwner.empty() && i == 0 && param.name == "self" && param.type && param.type->base == BaseType::Struct) {
-        paramTy = llvm::PointerType::get(context, 0);
-      }
-      params.push_back(paramTy);
     }
 
     auto *retTy = mapDeclaredType(context, decl->returnType, structLayouts);
+    if (isUserMain) {
+      retTy = llvm::Type::getInt32Ty(context);
+    }
+    if (decl->isExtern && decl->returnType && decl->returnType->base == BaseType::String) {
+      retTy = llvm::PointerType::get(context, 0);
+    }
     auto *fnType = llvm::FunctionType::get(retTy, params, false);
     auto *fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, decl->name, *module);
-
-    std::size_t idx = 0;
-    for (auto &arg : fn->args()) {
-      arg.setName(decl->params[idx++].name);
+    functionReturnKinds.emplace(decl->name, decl->returnType ? decl->returnType->base : BaseType::Void);
+    if (isUserMain) {
+      auto it = fn->arg_begin();
+      if (it != fn->arg_end()) {
+        it->setName("argc");
+        ++it;
+      }
+      if (it != fn->arg_end()) {
+        it->setName("argv");
+      }
+    } else {
+      std::size_t idx = 0;
+      for (auto &arg : fn->args()) {
+        arg.setName(decl->params[idx++].name);
+      }
     }
   }
 
-  if (!typed.module->topLevelStatements.empty() && hasExplicitMain) {
+  if (hasTopLevelStatements && hasExplicitMain) {
     return std::unexpected(Diagnostic {
       .code = ErrorCode::CodegenError,
       .message = "Cannot mix top-level executable statements with explicit 'func main()'.",
@@ -1450,8 +1535,25 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     });
   }
 
-  if (!typed.module->topLevelStatements.empty()) {
+  if (hasTopLevelStatements) {
     auto *fnType = llvm::FunctionType::get(llvm::Type::getInt32Ty(context), {}, false);
+    llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "__thg_script_main", *module);
+  }
+
+  const bool needsEntryMain = hasTopLevelStatements;
+  if (needsEntryMain) {
+    if (module->getFunction("main") != nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Conflicting symbol 'main' already exists.",
+        .span = typed.module->span,
+      });
+    }
+    auto *fnType = llvm::FunctionType::get(
+      llvm::Type::getInt32Ty(context),
+      {llvm::Type::getInt32Ty(context), llvm::PointerType::get(context, 0)},
+      false
+    );
     llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, "main", *module);
   }
 
@@ -1460,27 +1562,64 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
       continue;
     }
     auto *fn = module->getFunction(decl->name);
-    FunctionLowering lowering {context, *module, *fn, structLayouts};
+    FunctionLowering lowering {context, *module, *fn, structLayouts, functionReturnKinds};
     auto lowered = lowering.lower(*decl);
     if (!lowered) {
       return std::unexpected(lowered.error());
     }
   }
 
-  if (!typed.module->topLevelStatements.empty()) {
-    auto *mainFn = module->getFunction("main");
-    if (mainFn == nullptr) {
+  if (hasTopLevelStatements) {
+    auto *scriptMain = module->getFunction("__thg_script_main");
+    if (scriptMain == nullptr) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::CodegenError,
         .message = "Failed to create implicit main function.",
         .span = typed.module->span,
       });
     }
-    FunctionLowering lowering {context, *module, *mainFn, structLayouts};
+    FunctionLowering lowering {context, *module, *scriptMain, structLayouts, functionReturnKinds};
     auto lowered = lowering.lowerStatements(typed.module->topLevelStatements, BaseType::I32);
     if (!lowered) {
       return std::unexpected(lowered.error());
     }
+  }
+
+  if (needsEntryMain) {
+    auto *entryMain = module->getFunction("main");
+    if (entryMain == nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Failed to create entry main function.",
+        .span = typed.module->span,
+      });
+    }
+
+    auto *entryBlock = llvm::BasicBlock::Create(context, "entry", entryMain);
+    llvm::IRBuilder<> builder {entryBlock};
+    auto argcIt = entryMain->arg_begin();
+    llvm::Value *argc = &*argcIt;
+    argc->setName("argc");
+    ++argcIt;
+    llvm::Value *argv = &*argcIt;
+    argv->setName("argv");
+
+    auto initEnv = module->getOrInsertFunction(
+      "__thg_init_env",
+      llvm::FunctionType::get(llvm::Type::getVoidTy(context), {llvm::Type::getInt32Ty(context), llvm::PointerType::get(context, 0)}, false)
+    );
+    builder.CreateCall(initEnv, {argc, argv});
+
+    auto *scriptMain = module->getFunction("__thg_script_main");
+    if (scriptMain == nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Missing internal script entry function.",
+        .span = typed.module->span,
+      });
+    }
+    auto *result = builder.CreateCall(scriptMain, {}, "script.ret");
+    builder.CreateRet(result);
   }
 
   if (llvm::verifyModule(*module, &llvm::errs())) {

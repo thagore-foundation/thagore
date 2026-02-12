@@ -1,0 +1,15 @@
+import env
+
+func main() -> i32:
+    let n = env.count()
+    print("Arguments received:")
+
+    let i = 0
+    while (i < n):
+        let arg = env.get(i)
+        print(arg)
+        i = i + 1
+
+    if (n > 1):
+        print("Processing file: " + env.get(1))
+    return 0

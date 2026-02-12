@@ -13,6 +13,9 @@ struct ManagedString {
   std::uint32_t refCount;
 };
 
+int g_argc = 0;
+char **g_argv = nullptr;
+
 auto managedStrings() -> std::unordered_map<const char *, ManagedString> & {
   static auto *table = new std::unordered_map<const char *, ManagedString> {};
   return *table;
@@ -26,6 +29,29 @@ auto managedStringsMutex() -> std::mutex & {
 } // namespace
 
 extern "C" {
+
+void __thg_init_env(int c, char **v) {
+  g_argc = c;
+  g_argv = v;
+}
+
+int __thg_arg_count() {
+  return g_argc;
+}
+
+const char *__thg_arg_get(int index) {
+  if (g_argv == nullptr || index < 0 || index >= g_argc) {
+    return nullptr;
+  }
+  return g_argv[index];
+}
+
+int __thg_cstr_len(const char *s) {
+  if (s == nullptr) {
+    return 0;
+  }
+  return static_cast<int>(std::strlen(s));
+}
 
 void __thg_retain(void *ptr) {
   if (ptr == nullptr) {
