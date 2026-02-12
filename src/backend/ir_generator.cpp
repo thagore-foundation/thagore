@@ -30,6 +30,17 @@
 namespace thagore {
 namespace {
 
+auto overloadedMethodFor(BinaryOp op) -> std::string_view {
+  switch (op) {
+    case BinaryOp::Add: return "__add__";
+    case BinaryOp::Sub: return "__sub__";
+    case BinaryOp::Mul: return "__mul__";
+    case BinaryOp::Div: return "__div__";
+    case BinaryOp::Eq: return "__eq__";
+    default: return "";
+  }
+}
+
 auto getStringStructType(llvm::LLVMContext &context) -> llvm::StructType * {
   if (auto *existing = llvm::StructType::getTypeByName(context, "thg.string")) {
     return existing;
@@ -352,6 +363,17 @@ private:
       exprType = BaseType::String;
     }
     std::string structName {};
+    if (exprType == BaseType::Struct) {
+      if (stmt.init->inferredType && stmt.init->inferredType->base == BaseType::Struct) {
+        structName = stmt.init->inferredType->name;
+      }
+      if (structName.empty() && stmt.init->kind == NodeKind::CallExpr) {
+        const auto &call = static_cast<const CallExpr &>(*stmt.init);
+        if (structLayouts.contains(call.callee)) {
+          structName = call.callee;
+        }
+      }
+    }
     if (exprType == BaseType::Unknown) {
       if (const auto *layout = findStructLayoutByType(init.value()->getType()); layout != nullptr) {
         exprType = BaseType::Struct;
@@ -377,12 +399,28 @@ private:
     if (shouldRetain) {
       locals.emplace(
         stmt.name,
-        LocalValue {.slot = alloca, .type = exprType, .declaredType = stmt.init->inferredType, .structName = structName, .ownedRef = true}
+        LocalValue {
+          .slot = alloca,
+          .type = exprType,
+          .declaredType = (exprType == BaseType::Struct && !structName.empty())
+            ? makeStructType(structName)
+            : stmt.init->inferredType,
+          .structName = structName,
+          .ownedRef = true
+        }
       );
     } else {
       locals.emplace(
         stmt.name,
-        LocalValue {.slot = alloca, .type = exprType, .declaredType = stmt.init->inferredType, .structName = structName, .ownedRef = false}
+        LocalValue {
+          .slot = alloca,
+          .type = exprType,
+          .declaredType = (exprType == BaseType::Struct && !structName.empty())
+            ? makeStructType(structName)
+            : stmt.init->inferredType,
+          .structName = structName,
+          .ownedRef = false
+        }
       );
     }
     if (!scopeLocals.empty()) {
@@ -885,6 +923,66 @@ private:
   }
 
   auto lowerBinary(const BinaryExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    const auto overloadMethod = overloadedMethodFor(expr.op);
+    if (!overloadMethod.empty()) {
+      std::string structName {};
+      llvm::Value *selfPtr = nullptr;
+
+      if (expr.left->kind == NodeKind::IdentifierExpr) {
+        const auto &id = static_cast<const IdentifierExpr &>(*expr.left);
+        auto found = locals.find(id.name);
+      if (found != locals.end() && found->second.type == BaseType::Struct) {
+          structName = found->second.structName;
+          if (structName.empty() && found->second.declaredType && found->second.declaredType->base == BaseType::Struct) {
+            structName = found->second.declaredType->name;
+          }
+          if (found->second.slot->getAllocatedType()->isPointerTy()) {
+            selfPtr = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot, "op.self.ptr");
+          } else {
+            selfPtr = found->second.slot;
+          }
+        }
+      } else if (expr.left->kind == NodeKind::CallExpr) {
+        const auto &call = static_cast<const CallExpr &>(*expr.left);
+        if (structLayouts.contains(call.callee)) {
+          structName = call.callee;
+        }
+      }
+
+      if (!structName.empty()) {
+        const auto mangled = std::format("{}_{}", structName, overloadMethod);
+        auto *callee = module.getFunction(mangled);
+        if (callee != nullptr) {
+          if (selfPtr == nullptr) {
+            auto leftValue = lowerExpr(*expr.left);
+            if (!leftValue) {
+              return std::unexpected(leftValue.error());
+            }
+            auto *leftLayout = findStructLayoutByType(leftValue.value()->getType());
+            if (leftLayout == nullptr) {
+              return std::unexpected(Diagnostic {
+                .code = ErrorCode::CodegenError,
+                .message = "Invalid struct receiver in overloaded operator.",
+                .span = expr.left->span,
+              });
+            }
+            auto *tmp = builder.CreateAlloca(leftLayout->llvmType, nullptr, "op.self.tmp");
+            builder.CreateStore(leftValue.value(), tmp);
+            selfPtr = tmp;
+          }
+
+          auto rightValue = lowerExpr(*expr.right);
+          if (!rightValue) {
+            return std::unexpected(rightValue.error());
+          }
+          llvm::SmallVector<llvm::Value *> args {};
+          args.push_back(selfPtr);
+          args.push_back(rightValue.value());
+          return builder.CreateCall(callee, args, "op.calltmp");
+        }
+      }
+    }
+
     auto lhs = lowerExpr(*expr.left);
     if (!lhs) {
       return std::unexpected(lhs.error());
@@ -1089,6 +1187,46 @@ private:
     }
     if (expr.kind == NodeKind::BinaryExpr) {
       const auto &bin = static_cast<const BinaryExpr &>(expr);
+      const auto overloadMethod = overloadedMethodFor(bin.op);
+      if (!overloadMethod.empty()) {
+        std::string ownerName {};
+        if (bin.left->kind == NodeKind::IdentifierExpr) {
+          const auto &id = static_cast<const IdentifierExpr &>(*bin.left);
+          auto it = locals.find(id.name);
+          if (it != locals.end() && it->second.type == BaseType::Struct) {
+            ownerName = it->second.structName;
+            if (ownerName.empty() && it->second.declaredType && it->second.declaredType->base == BaseType::Struct) {
+              ownerName = it->second.declaredType->name;
+            }
+          }
+        } else if (bin.left->kind == NodeKind::CallExpr) {
+          const auto &call = static_cast<const CallExpr &>(*bin.left);
+          if (structLayouts.contains(call.callee)) {
+            ownerName = call.callee;
+          }
+        }
+        if (!ownerName.empty()) {
+          const auto mangled = std::format("{}_{}", ownerName, overloadMethod);
+          auto *fn = module.getFunction(mangled);
+          if (fn != nullptr) {
+            if (fn->getReturnType()->isIntegerTy(32)) {
+              return BaseType::I32;
+            }
+            if (fn->getReturnType()->isFloatTy()) {
+              return BaseType::F32;
+            }
+            if (fn->getReturnType()->isIntegerTy(1)) {
+              return BaseType::Bool;
+            }
+            if (fn->getReturnType() == llvmType(BaseType::String)) {
+              return BaseType::String;
+            }
+            if (findStructLayoutByType(fn->getReturnType()) != nullptr) {
+              return BaseType::Struct;
+            }
+          }
+        }
+      }
       const auto lhs = inferExprType(*bin.left);
       const auto rhs = inferExprType(*bin.right);
       switch (bin.op) {

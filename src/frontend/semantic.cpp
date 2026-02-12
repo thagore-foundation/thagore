@@ -8,6 +8,17 @@
 namespace thagore {
 namespace {
 
+auto overloadedMethodFor(BinaryOp op) -> std::string_view {
+  switch (op) {
+    case BinaryOp::Add: return "__add__";
+    case BinaryOp::Sub: return "__sub__";
+    case BinaryOp::Mul: return "__mul__";
+    case BinaryOp::Div: return "__div__";
+    case BinaryOp::Eq: return "__eq__";
+    default: return "";
+  }
+}
+
 auto baseTypeName(BaseType type) -> const char * {
   switch (type) {
     case BaseType::Unknown: return "unknown";
@@ -284,6 +295,55 @@ public:
 
     auto leftBase = left.value()->base;
     auto rightBase = right.value()->base;
+
+    const auto overloadMethod = overloadedMethodFor(expr.op);
+    if (leftBase == BaseType::Struct) {
+      if (rightBase != BaseType::Struct || left.value()->name != right.value()->name) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Operator overloading requires both operands to be the same struct type.",
+          .span = expr.span,
+        });
+      }
+      if (overloadMethod.empty()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Operator not supported for struct.",
+          .span = expr.span,
+        });
+      }
+      const auto mangled = std::format("{}_{}", left.value()->name, overloadMethod);
+      auto found = typed.functionTypes.find(mangled);
+      if (found == typed.functionTypes.end()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Operator not supported: '{}'. Missing method '{}.{}'.", overloadMethod, left.value()->name, overloadMethod),
+          .span = expr.span,
+        });
+      }
+      if (found->second.params.size() != 2) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Method '{}.{}' must have signature (self, other).", left.value()->name, overloadMethod),
+          .span = expr.span,
+        });
+      }
+      if (!sameType(found->second.params[0], left.value()) || !sameType(found->second.params[1], right.value())) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Method '{}.{}' has incompatible operand types.", left.value()->name, overloadMethod),
+          .span = expr.span,
+        });
+      }
+      if (expr.op == BinaryOp::Eq && found->second.returnType->base != BaseType::Bool) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Overloaded '__eq__' must return bool.",
+          .span = expr.span,
+        });
+      }
+      return found->second.returnType;
+    }
 
     switch (expr.op) {
       case BinaryOp::Add:

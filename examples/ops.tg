@@ -1,0 +1,20 @@
+struct Vec2:
+    x: i32
+    y: i32
+
+impl Vec2:
+    func __add__(self, other: Vec2) -> Vec2:
+        return Vec2(self.x + other.x, self.y + other.y)
+
+    func __mul__(self, other: Vec2) -> i32:
+        return self.x * other.x + self.y * other.y
+
+let v1 = Vec2(1, 2)
+let v2 = Vec2(3, 4)
+
+let v3 = v1 + v2
+let dot = v1 * v2
+
+print(v3.x)
+print(v3.y)
+print(dot)
