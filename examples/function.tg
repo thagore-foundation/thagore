@@ -1,0 +1,11 @@
+func add(a: i32, b: i32) -> i32:
+    return a + b
+
+func greet(name: String) -> String:
+    return "Hello " + name
+
+let res = add(10, 32)
+print(res)
+
+let msg = greet("Thagore")
+print(msg)

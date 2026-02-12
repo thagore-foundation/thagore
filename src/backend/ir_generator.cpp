@@ -53,14 +53,24 @@ public:
 
   auto lower(const FunctionDecl &decl) -> Result<void, Diagnostic> {
     const BaseType returnType = decl.returnType ? decl.returnType->base : BaseType::Void;
-    return lowerStatements(decl.body->statements, returnType);
+    return lowerStatements(decl.body->statements, returnType, &decl);
   }
 
-  auto lowerStatements(const std::vector<std::unique_ptr<Stmt>> &statements, BaseType returnType) -> Result<void, Diagnostic> {
+  auto lowerStatements(
+    const std::vector<std::unique_ptr<Stmt>> &statements,
+    BaseType returnType,
+    const FunctionDecl *decl = nullptr
+  ) -> Result<void, Diagnostic> {
     auto *entry = llvm::BasicBlock::Create(context, "entry", &function);
     builder.SetInsertPoint(entry);
     entryBuilder.SetInsertPoint(entry);
     pushScope();
+    if (decl != nullptr) {
+      auto paramResult = bindFunctionParams(*decl);
+      if (!paramResult) {
+        return std::unexpected(paramResult.error());
+      }
+    }
 
     for (const auto &stmt : statements) {
       auto result = lowerStmt(*stmt);
@@ -143,6 +153,28 @@ private:
 
   auto createAlloca(const std::string &name, llvm::Type *type) -> llvm::AllocaInst * {
     return entryBuilder.CreateAlloca(type, nullptr, name);
+  }
+
+  auto bindFunctionParams(const FunctionDecl &decl) -> Result<void, Diagnostic> {
+    std::size_t idx = 0;
+    for (auto &arg : function.args()) {
+      if (idx >= decl.params.size()) {
+        break;
+      }
+      const auto &param = decl.params[idx++];
+      auto *slot = createAlloca(param.name, arg.getType());
+      builder.CreateStore(&arg, slot);
+
+      const bool isString = arg.getType() == llvmType(BaseType::String);
+      if (isString) {
+        retainStringValue(&arg);
+      }
+      locals.emplace(param.name, LocalValue {.slot = slot, .type = isString ? BaseType::String : param.type->base, .ownedRef = isString});
+      if (!scopeLocals.empty()) {
+        scopeLocals.back().push_back(param.name);
+      }
+    }
+    return {};
   }
 
   void pushScope() {
@@ -312,10 +344,10 @@ private:
   }
 
   auto lowerReturn(const ReturnStmt &stmt) -> Result<void, Diagnostic> {
-    while (!scopeLocals.empty()) {
-      popScope();
-    }
     if (!stmt.value) {
+      while (!scopeLocals.empty()) {
+        popScope();
+      }
       builder.CreateRetVoid();
       return {};
     }
@@ -323,6 +355,12 @@ private:
     auto ret = lowerExpr(*stmt.value);
     if (!ret) {
       return std::unexpected(ret.error());
+    }
+    if (ret.value()->getType() == llvmType(BaseType::String)) {
+      retainStringValue(ret.value());
+    }
+    while (!scopeLocals.empty()) {
+      popScope();
     }
     builder.CreateRet(ret.value());
     return {};
@@ -669,8 +707,8 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
     }
     std::vector<llvm::Type *> params {};
     params.reserve(decl->params.size());
-    for (std::size_t i = 0; i < decl->params.size(); ++i) {
-      params.push_back(llvm::Type::getInt32Ty(context));
+    for (const auto &param : decl->params) {
+      params.push_back(mapType(context, param.type ? param.type->base : BaseType::Unknown));
     }
 
     auto *retTy = mapType(context, decl->returnType ? decl->returnType->base : BaseType::Void);
@@ -679,7 +717,7 @@ auto IRGenerator::lower(const TypedModule &typed, const std::string &moduleName)
 
     std::size_t idx = 0;
     for (auto &arg : fn->args()) {
-      arg.setName(decl->params[idx++]);
+      arg.setName(decl->params[idx++].name);
     }
   }
 

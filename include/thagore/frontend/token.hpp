@@ -31,6 +31,7 @@ enum class TokenKind : std::uint16_t {
   RParen,
   Colon,
   Comma,
+  Arrow,
   Equal,
   Plus,
   Minus,
@@ -71,6 +72,7 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::RParen: return ")";
     case TokenKind::Colon: return ":";
     case TokenKind::Comma: return ",";
+    case TokenKind::Arrow: return "->";
     case TokenKind::Equal: return "=";
     case TokenKind::Plus: return "+";
     case TokenKind::Minus: return "-";

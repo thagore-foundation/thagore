@@ -249,7 +249,12 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
         pushToken(TokenKind::Plus, begin, cursor);
         break;
       case '-':
-        pushToken(TokenKind::Minus, begin, cursor);
+        if (peek() == '>') {
+          advance();
+          pushToken(TokenKind::Arrow, begin, cursor);
+        } else {
+          pushToken(TokenKind::Minus, begin, cursor);
+        }
         break;
       case '*':
         pushToken(TokenKind::Star, begin, cursor);

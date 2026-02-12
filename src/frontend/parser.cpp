@@ -46,6 +46,25 @@ private:
   std::span<const Token> tokens;
   std::size_t current {0};
 
+  auto parseTypeName(const Token *typeTok) -> Result<TypePtr, Diagnostic> {
+    if (typeTok == nullptr || typeTok->kind != TokenKind::Identifier) {
+      return std::unexpected(lastError("Expected type name."));
+    }
+    if (typeTok->lexeme == "i32") {
+      return makeType(BaseType::I32);
+    }
+    if (typeTok->lexeme == "bool") {
+      return makeType(BaseType::Bool);
+    }
+    if (typeTok->lexeme == "String") {
+      return makeType(BaseType::String);
+    }
+    if (typeTok->lexeme == "void") {
+      return makeType(BaseType::Void);
+    }
+    return std::unexpected(makeError(typeTok->span, std::format("Unknown type '{}'.", typeTok->lexeme)));
+  }
+
   auto parseFunctionDecl() -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
     const Token *funcTok = consume(TokenKind::KwFunc, "Expected 'func'.");
     if (!funcTok) {
@@ -61,14 +80,32 @@ private:
       return std::unexpected(lastError("Expected '(' after function name."));
     }
 
-    std::vector<std::string> params {};
+    std::vector<FunctionDecl::Param> params {};
     if (!check(TokenKind::RParen)) {
       while (true) {
         const Token *param = consume(TokenKind::Identifier, "Expected parameter name.");
         if (!param) {
           return std::unexpected(lastError("Expected parameter name."));
         }
-        params.push_back(param->lexeme);
+        if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
+          return std::unexpected(lastError("Expected ':' after parameter name."));
+        }
+        const Token *typeTok = consume(TokenKind::Identifier, "Expected parameter type.");
+        if (!typeTok) {
+          return std::unexpected(lastError("Expected parameter type."));
+        }
+        auto paramType = parseTypeName(typeTok);
+        if (!paramType) {
+          return std::unexpected(paramType.error());
+        }
+        if (paramType.value()->base == BaseType::Void) {
+          return std::unexpected(makeError(typeTok->span, "Parameter type cannot be void."));
+        }
+        params.push_back(FunctionDecl::Param {
+          .name = param->lexeme,
+          .type = paramType.value(),
+          .span = mergeSpan(param->span, typeTok->span),
+        });
         if (!match(TokenKind::Comma)) {
           break;
         }
@@ -77,6 +114,17 @@ private:
 
     if (!consume(TokenKind::RParen, "Expected ')' after parameter list.")) {
       return std::unexpected(lastError("Expected ')' after parameter list."));
+    }
+    if (!consume(TokenKind::Arrow, "Expected '->' before return type.")) {
+      return std::unexpected(lastError("Expected '->' before return type."));
+    }
+    const Token *returnTypeTok = consume(TokenKind::Identifier, "Expected return type.");
+    if (!returnTypeTok) {
+      return std::unexpected(lastError("Expected return type."));
+    }
+    auto returnType = parseTypeName(returnTypeTok);
+    if (!returnType) {
+      return std::unexpected(returnType.error());
     }
     if (!consume(TokenKind::Colon, "Expected ':' after function signature.")) {
       return std::unexpected(lastError("Expected ':' after function signature."));
@@ -96,6 +144,7 @@ private:
       name->lexeme,
       std::move(params),
       std::move(bodyPtr),
+      returnType.value(),
       fnSpan
     );
   }

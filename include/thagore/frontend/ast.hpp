@@ -231,22 +231,30 @@ struct LoopStmt final : Stmt {
 };
 
 struct FunctionDecl final : Decl {
+  struct Param {
+    std::string name {};
+    TypePtr type {};
+    SourceSpan span {};
+  };
+
   std::string name {};
-  std::vector<std::string> params {};
+  std::vector<Param> params {};
   std::unique_ptr<BlockStmt> body {};
   TypePtr returnType {};
   OwnershipKind returnOwnership {OwnershipKind::Temporary};
 
   FunctionDecl(
     std::string name_,
-    std::vector<std::string> params_,
+    std::vector<Param> params_,
     std::unique_ptr<BlockStmt> body_,
+    TypePtr returnType_,
     SourceSpan span_
   )
     : Decl(NodeKind::FunctionDecl, std::move(span_)),
       name(std::move(name_)),
       params(std::move(params_)),
-      body(std::move(body_)) {}
+      body(std::move(body_)),
+      returnType(std::move(returnType_)) {}
 
   auto accept(DeclVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
@@ -266,8 +274,13 @@ struct ModuleDecl final : Decl {
 };
 
 struct TypedModule {
+  struct FunctionSignature {
+    TypePtr returnType {};
+    std::vector<TypePtr> params {};
+  };
+
   std::unique_ptr<ModuleDecl> module {};
-  std::unordered_map<std::string, TypePtr> functionTypes {};
+  std::unordered_map<std::string, FunctionSignature> functionTypes {};
 };
 
 inline auto makeType(BaseType base) -> TypePtr {

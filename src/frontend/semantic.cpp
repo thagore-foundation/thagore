@@ -8,6 +8,17 @@
 namespace thagore {
 namespace {
 
+auto baseTypeName(BaseType type) -> const char * {
+  switch (type) {
+    case BaseType::Unknown: return "unknown";
+    case BaseType::Void: return "void";
+    case BaseType::I32: return "i32";
+    case BaseType::Bool: return "bool";
+    case BaseType::String: return "String";
+  }
+  return "unknown";
+}
+
 struct Scope {
   std::unordered_map<std::string, TypePtr> symbols {};
 };
@@ -72,9 +83,9 @@ private:
     scopes.clear();
     pushScope();
     inTopLevelContext = false;
-    currentFunctionReturnType = makeType(BaseType::Unknown);
+    currentFunctionReturnType = fn.returnType ? fn.returnType : makeType(BaseType::Void);
     for (const auto &param : fn.params) {
-      scopes.back().symbols[param] = makeType(BaseType::I32);
+      scopes.back().symbols[param.name] = param.type;
     }
 
     bool sawReturn = false;
@@ -89,7 +100,6 @@ private:
             return std::unexpected(retType.error());
           }
           inferredReturn = retType.value();
-          currentFunctionReturnType = inferredReturn;
         }
       }
       auto s = stmt->accept(*this);
@@ -102,8 +112,21 @@ private:
       inferredReturn = makeType(BaseType::Void);
     }
 
-    fn.returnType = inferredReturn;
-    typed.functionTypes[fn.name] = inferredReturn;
+    const BaseType declared = fn.returnType ? fn.returnType->base : BaseType::Void;
+    if (declared != inferredReturn->base) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format(
+          "Function '{}' returns incompatible type (declared {}, actual {}).",
+          fn.name,
+          baseTypeName(declared),
+          baseTypeName(inferredReturn->base)
+        ),
+        .span = fn.span,
+      });
+    }
+
+    typed.functionTypes[fn.name].returnType = fn.returnType;
     popScope();
     return {};
   }
@@ -238,13 +261,27 @@ public:
         .span = expr.span,
       });
     }
-    for (const auto &arg : expr.args) {
-      auto t = arg->accept(*this);
+    if (expr.args.size() != found->second.params.size()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Function '{}' expects {} argument(s), got {}.", expr.callee, found->second.params.size(), expr.args.size()),
+        .span = expr.span,
+      });
+    }
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
+      auto t = expr.args[i]->accept(*this);
       if (!t) {
         return std::unexpected(t.error());
       }
+      if (t.value()->base != found->second.params[i]->base) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Argument type mismatch at position {} in call to '{}'.", i + 1, expr.callee),
+          .span = expr.args[i]->span,
+        });
+      }
     }
-    return found->second;
+    return found->second.returnType;
   }
 
   auto visit(const BlockStmt &stmt) -> Result<void, Diagnostic> override {
@@ -303,12 +340,7 @@ public:
       }
       actual = t.value();
     }
-    if (currentFunctionReturnType->base == BaseType::Unknown) {
-      currentFunctionReturnType = actual;
-      return {};
-    }
-    if (currentFunctionReturnType->base == BaseType::Void || currentFunctionReturnType->base == actual->base) {
-      currentFunctionReturnType = actual;
+    if (currentFunctionReturnType->base == actual->base) {
       return {};
     }
     return std::unexpected(Diagnostic {
@@ -378,7 +410,13 @@ auto SemanticAnalyzer::analyze(std::unique_ptr<ModuleDecl> module) -> Result<Typ
   };
 
   for (const auto &fn : typed.module->functions) {
-    typed.functionTypes[fn->name] = makeType(BaseType::Unknown);
+    TypedModule::FunctionSignature sig {};
+    sig.returnType = fn->returnType ? fn->returnType : makeType(BaseType::Void);
+    sig.params.reserve(fn->params.size());
+    for (const auto &param : fn->params) {
+      sig.params.push_back(param.type);
+    }
+    typed.functionTypes[fn->name] = std::move(sig);
   }
 
   SemanticPass pass {typed};
