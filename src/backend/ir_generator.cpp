@@ -76,6 +76,7 @@ auto mapDeclaredType(
     case BaseType::Void: return llvm::Type::getVoidTy(context);
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::F32: return llvm::Type::getFloatTy(context);
+    case BaseType::F64: return llvm::Type::getDoubleTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Array: {
@@ -190,6 +191,7 @@ private:
       case BaseType::Void: return llvm::Type::getVoidTy(context);
       case BaseType::I32: return llvm::Type::getInt32Ty(context);
       case BaseType::F32: return llvm::Type::getFloatTy(context);
+      case BaseType::F64: return llvm::Type::getDoubleTy(context);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
       case BaseType::String: return getStringStructType(context);
       case BaseType::Array: break;
@@ -1011,52 +1013,52 @@ private:
 
     switch (expr.op) {
       case BinaryOp::Add:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFAdd(lhs.value(), rhs.value(), "faddtmp");
         }
         return builder.CreateAdd(lhs.value(), rhs.value(), "addtmp");
       case BinaryOp::Sub:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFSub(lhs.value(), rhs.value(), "fsubtmp");
         }
         return builder.CreateSub(lhs.value(), rhs.value(), "subtmp");
       case BinaryOp::Mul:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFMul(lhs.value(), rhs.value(), "fmultmp");
         }
         return builder.CreateMul(lhs.value(), rhs.value(), "multmp");
       case BinaryOp::Div:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFDiv(lhs.value(), rhs.value(), "fdivtmp");
         }
         return builder.CreateSDiv(lhs.value(), rhs.value(), "divtmp");
       case BinaryOp::Eq:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpOEQ(lhs.value(), rhs.value(), "feqtmp");
         }
         return builder.CreateICmpEQ(lhs.value(), rhs.value(), "eqtmp");
       case BinaryOp::Ne:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpONE(lhs.value(), rhs.value(), "fnetmp");
         }
         return builder.CreateICmpNE(lhs.value(), rhs.value(), "netmp");
       case BinaryOp::Lt:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpOLT(lhs.value(), rhs.value(), "flttmp");
         }
         return builder.CreateICmpSLT(lhs.value(), rhs.value(), "lttmp");
       case BinaryOp::Le:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpOLE(lhs.value(), rhs.value(), "fletmp");
         }
         return builder.CreateICmpSLE(lhs.value(), rhs.value(), "letmp");
       case BinaryOp::Gt:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpOGT(lhs.value(), rhs.value(), "fgttmp");
         }
         return builder.CreateICmpSGT(lhs.value(), rhs.value(), "gttmp");
       case BinaryOp::Ge:
-        if (lhs.value()->getType()->isFloatTy() && rhs.value()->getType()->isFloatTy()) {
+        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
           return builder.CreateFCmpOGE(lhs.value(), rhs.value(), "fgetmp");
         }
         return builder.CreateICmpSGE(lhs.value(), rhs.value(), "getmp");
@@ -1215,6 +1217,9 @@ private:
             if (fn->getReturnType()->isFloatTy()) {
               return BaseType::F32;
             }
+            if (fn->getReturnType()->isDoubleTy()) {
+              return BaseType::F64;
+            }
             if (fn->getReturnType()->isIntegerTy(1)) {
               return BaseType::Bool;
             }
@@ -1237,12 +1242,18 @@ private:
           if (lhs == BaseType::F32 && rhs == BaseType::F32) {
             return BaseType::F32;
           }
+          if (lhs == BaseType::F64 && rhs == BaseType::F64) {
+            return BaseType::F64;
+          }
           return BaseType::I32;
         case BinaryOp::Sub:
         case BinaryOp::Mul:
         case BinaryOp::Div:
           if (lhs == BaseType::F32 && rhs == BaseType::F32) {
             return BaseType::F32;
+          }
+          if (lhs == BaseType::F64 && rhs == BaseType::F64) {
+            return BaseType::F64;
           }
           return BaseType::I32;
         case BinaryOp::Eq:
@@ -1281,6 +1292,9 @@ private:
           if (fn->getReturnType()->isFloatTy()) {
             return BaseType::F32;
           }
+          if (fn->getReturnType()->isDoubleTy()) {
+            return BaseType::F64;
+          }
           if (fn->getReturnType() == llvmType(BaseType::String)) {
             return BaseType::String;
           }
@@ -1308,6 +1322,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::Void: return llvm::Type::getVoidTy(context);
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::F32: return llvm::Type::getFloatTy(context);
+    case BaseType::F64: return llvm::Type::getDoubleTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
     case BaseType::Array: break;

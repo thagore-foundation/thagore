@@ -78,6 +78,9 @@ private:
     if (typeTok->lexeme == "f32") {
       return makeType(BaseType::F32);
     }
+    if (typeTok->lexeme == "f64") {
+      return makeType(BaseType::F64);
+    }
     if (typeTok->lexeme == "bool") {
       return makeType(BaseType::Bool);
     }

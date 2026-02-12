@@ -25,6 +25,7 @@ auto baseTypeName(BaseType type) -> const char * {
     case BaseType::Void: return "void";
     case BaseType::I32: return "i32";
     case BaseType::F32: return "f32";
+    case BaseType::F64: return "f64";
     case BaseType::Bool: return "bool";
     case BaseType::String: return "String";
     case BaseType::Struct: return "struct";
@@ -384,10 +385,27 @@ public:
         if (leftBase == BaseType::F32 && rightBase == BaseType::F32) {
           return makeType(BaseType::F32);
         }
+        if (leftBase == BaseType::F64 && rightBase == BaseType::F64) {
+          return makeType(BaseType::F64);
+        }
         if ((leftBase == BaseType::I32 && rightBase == BaseType::F32) || (leftBase == BaseType::F32 && rightBase == BaseType::I32)) {
           return std::unexpected(Diagnostic {
             .code = ErrorCode::SemanticError,
             .message = "Cannot mix i32 and f32 without explicit cast.",
+            .span = expr.span,
+          });
+        }
+        if ((leftBase == BaseType::I32 && rightBase == BaseType::F64) || (leftBase == BaseType::F64 && rightBase == BaseType::I32)) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "Cannot mix i32 and f64 without explicit cast.",
+            .span = expr.span,
+          });
+        }
+        if ((leftBase == BaseType::F32 && rightBase == BaseType::F64) || (leftBase == BaseType::F64 && rightBase == BaseType::F32)) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::SemanticError,
+            .message = "Cannot mix f32 and f64 without explicit cast.",
             .span = expr.span,
           });
         }

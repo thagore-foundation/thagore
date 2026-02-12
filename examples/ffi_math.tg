@@ -1,0 +1,14 @@
+# Khai bao ham C chuan (ten phai chinh xac)
+extern func sqrt(x: f64) -> f64
+extern func pow(base: f64, exp: f64) -> f64
+
+# Hien tai map test thuc te qua f32/f32
+extern func sqrtf(x: f32) -> f32
+extern func powf(base: f32, exp: f32) -> f32
+
+func hypotenuse(a: f32, b: f32) -> f32:
+    # c = can bac 2 cua (a^2 + b^2)
+    return sqrtf(powf(a, 2.0) + powf(b, 2.0))
+
+let c = hypotenuse(3.0, 4.0)
+print(c)

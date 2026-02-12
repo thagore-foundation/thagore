@@ -18,6 +18,7 @@ enum class BaseType {
   Void,
   I32,
   F32,
+  F64,
   Bool,
   String,
   Struct,
