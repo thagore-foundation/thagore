@@ -84,6 +84,38 @@ private:
     return makeStructType(typeTok->lexeme);
   }
 
+  auto parseType() -> Result<TypePtr, Diagnostic> {
+    if (match(TokenKind::LBracket)) {
+      auto elementType = parseType();
+      if (!elementType) {
+        return std::unexpected(elementType.error());
+      }
+      if (!consume(TokenKind::Semicolon, "Expected ';' in array type.")) {
+        return std::unexpected(lastError("Expected ';' in array type."));
+      }
+      const Token *sizeTok = consume(TokenKind::Integer, "Expected array size.");
+      if (!sizeTok) {
+        return std::unexpected(lastError("Expected array size."));
+      }
+      if (!consume(TokenKind::RBracket, "Expected ']' after array type.")) {
+        return std::unexpected(lastError("Expected ']' after array type."));
+      }
+      std::size_t arraySize = 0;
+      for (char ch : sizeTok->lexeme) {
+        arraySize = (arraySize * 10) + static_cast<std::size_t>(ch - '0');
+      }
+      if (arraySize == 0) {
+        return std::unexpected(makeError(sizeTok->span, "Array size must be greater than zero."));
+      }
+      return makeArrayType(elementType.value(), arraySize);
+    }
+    const Token *typeTok = consume(TokenKind::Identifier, "Expected type name.");
+    if (!typeTok) {
+      return std::unexpected(lastError("Expected type name."));
+    }
+    return parseTypeName(typeTok);
+  }
+
   auto parseStructDecl() -> Result<std::unique_ptr<StructDecl>, Diagnostic> {
     const Token *structTok = consume(TokenKind::KwStruct, "Expected 'struct'.");
     if (!structTok) {
@@ -113,16 +145,12 @@ private:
       if (!consume(TokenKind::Colon, "Expected ':' after field name.")) {
         return std::unexpected(lastError("Expected ':' after field name."));
       }
-      const Token *fieldTypeTok = consume(TokenKind::Identifier, "Expected field type.");
-      if (!fieldTypeTok) {
-        return std::unexpected(lastError("Expected field type."));
-      }
-      auto fieldType = parseTypeName(fieldTypeTok);
+      auto fieldType = parseType();
       if (!fieldType) {
         return std::unexpected(fieldType.error());
       }
       if (fieldType.value()->base == BaseType::Void) {
-        return std::unexpected(makeError(fieldTypeTok->span, "Field type cannot be void."));
+        return std::unexpected(makeError(fieldName->span, "Field type cannot be void."));
       }
       const Token *lineEnd = consume(TokenKind::Newline, "Expected newline after struct field.");
       if (!lineEnd) {
@@ -131,7 +159,7 @@ private:
       fields.push_back(StructDecl::Field {
         .name = fieldName->lexeme,
         .type = fieldType.value(),
-        .span = mergeSpan(fieldName->span, fieldTypeTok->span),
+        .span = mergeSpan(fieldName->span, previous()->span),
       });
       skipNewlines();
     }
@@ -175,19 +203,15 @@ private:
           if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
             return std::unexpected(lastError("Expected ':' after parameter name."));
           }
-          const Token *typeTok = consume(TokenKind::Identifier, "Expected parameter type.");
-          if (!typeTok) {
-            return std::unexpected(lastError("Expected parameter type."));
-          }
-          auto parsedParamType = parseTypeName(typeTok);
+          auto parsedParamType = parseType();
           if (!parsedParamType) {
             return std::unexpected(parsedParamType.error());
           }
           if (parsedParamType.value()->base == BaseType::Void) {
-            return std::unexpected(makeError(typeTok->span, "Parameter type cannot be void."));
+            return std::unexpected(makeError(param->span, "Parameter type cannot be void."));
           }
           paramType = parsedParamType.value();
-          typeSpan = typeTok->span;
+          typeSpan = previous()->span;
         }
         params.push_back(FunctionDecl::Param {
           .name = param->lexeme,
@@ -206,11 +230,7 @@ private:
     if (!consume(TokenKind::Arrow, "Expected '->' before return type.")) {
       return std::unexpected(lastError("Expected '->' before return type."));
     }
-    const Token *returnTypeTok = consume(TokenKind::Identifier, "Expected return type.");
-    if (!returnTypeTok) {
-      return std::unexpected(lastError("Expected return type."));
-    }
-    auto returnType = parseTypeName(returnTypeTok);
+    auto returnType = parseType();
     if (!returnType) {
       return std::unexpected(returnType.error());
     }
@@ -335,6 +355,37 @@ private:
       }
       return std::make_unique<AssignStmt>(
         id->lexeme,
+        std::move(value.value()),
+        mergeSpan(id->span, end->span)
+      );
+    }
+
+    if (check(TokenKind::Identifier) && checkNext(TokenKind::LBracket)) {
+      const Token *id = advance();
+      if (!consume(TokenKind::LBracket, "Expected '[' in indexed assignment.")) {
+        return std::unexpected(lastError("Expected '[' in indexed assignment."));
+      }
+      auto index = parseExpression(0);
+      if (!index) {
+        return std::unexpected(index.error());
+      }
+      if (!consume(TokenKind::RBracket, "Expected ']' after index expression.")) {
+        return std::unexpected(lastError("Expected ']' after index expression."));
+      }
+      if (!consume(TokenKind::Equal, "Expected '=' in indexed assignment.")) {
+        return std::unexpected(lastError("Expected '=' in indexed assignment."));
+      }
+      auto value = parseExpression(0);
+      if (!value) {
+        return std::unexpected(value.error());
+      }
+      const Token *end = consume(TokenKind::Newline, "Expected newline after indexed assignment.");
+      if (!end) {
+        return std::unexpected(lastError("Expected newline after indexed assignment."));
+      }
+      return std::make_unique<ArrayAssignStmt>(
+        id->lexeme,
+        std::move(index.value()),
         std::move(value.value()),
         mergeSpan(id->span, end->span)
       );
@@ -482,6 +533,21 @@ private:
     }
 
     while (true) {
+      if (match(TokenKind::LBracket)) {
+        auto index = parseExpression(0);
+        if (!index) {
+          return std::unexpected(index.error());
+        }
+        const Token *end = consume(TokenKind::RBracket, "Expected ']' after index expression.");
+        if (!end) {
+          return std::unexpected(lastError("Expected ']' after index expression."));
+        }
+        auto arrayExpr = std::move(lhs.value());
+        auto exprSpan = mergeSpan(arrayExpr->span, end->span);
+        lhs = std::make_unique<IndexExpr>(std::move(arrayExpr), std::move(index.value()), exprSpan);
+        continue;
+      }
+
       if (match(TokenKind::Dot)) {
         const Token *member = consume(TokenKind::Identifier, "Expected field name after '.'.");
         if (!member) {
@@ -552,6 +618,26 @@ private:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Float, tok->lexeme, tok->span);
       case TokenKind::String:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::String, tok->lexeme, tok->span);
+      case TokenKind::LBracket: {
+        std::vector<std::unique_ptr<Expr>> elements {};
+        if (!check(TokenKind::RBracket)) {
+          while (true) {
+            auto element = parseExpression(0);
+            if (!element) {
+              return std::unexpected(element.error());
+            }
+            elements.push_back(std::move(element.value()));
+            if (!match(TokenKind::Comma)) {
+              break;
+            }
+          }
+        }
+        const Token *end = consume(TokenKind::RBracket, "Expected ']' after array literal.");
+        if (!end) {
+          return std::unexpected(lastError("Expected ']' after array literal."));
+        }
+        return std::make_unique<ArrayLiteralExpr>(std::move(elements), mergeSpan(tok->span, end->span));
+      }
       case TokenKind::Minus: {
         auto rhs = parseExpression(31);
         if (!rhs) {

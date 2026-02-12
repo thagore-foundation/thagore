@@ -21,6 +21,7 @@ enum class BaseType {
   Bool,
   String,
   Struct,
+  Array,
 };
 
 enum class OwnershipKind {
@@ -32,6 +33,8 @@ enum class OwnershipKind {
 struct Type {
   BaseType base {BaseType::Unknown};
   std::string name {};
+  std::shared_ptr<Type> elementType {};
+  std::size_t arraySize {0};
 };
 
 using TypePtr = std::shared_ptr<Type>;
@@ -49,10 +52,13 @@ enum class NodeKind : std::uint16_t {
   ExprStmt,
   BinaryExpr,
   LiteralExpr,
+  ArrayLiteralExpr,
   IdentifierExpr,
   CallExpr,
   MemberExpr,
   MethodCallExpr,
+  IndexExpr,
+  ArrayAssignStmt,
 };
 
 struct Node {
@@ -72,8 +78,11 @@ struct IdentifierExpr;
 struct CallExpr;
 struct MemberExpr;
 struct MethodCallExpr;
+struct ArrayLiteralExpr;
+struct IndexExpr;
 struct LetStmt;
 struct AssignStmt;
+struct ArrayAssignStmt;
 struct ReturnStmt;
 struct IfStmt;
 struct LoopStmt;
@@ -87,10 +96,12 @@ struct ExprVisitor {
   virtual ~ExprVisitor() = default;
   virtual auto visit(const BinaryExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const LiteralExpr &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const ArrayLiteralExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const IdentifierExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const CallExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const MemberExpr &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const MethodCallExpr &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const IndexExpr &) -> Result<R, Diagnostic> = 0;
 };
 
 template <typename R>
@@ -99,6 +110,7 @@ struct StmtVisitor {
   virtual auto visit(const BlockStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const LetStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const AssignStmt &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const ArrayAssignStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const ReturnStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const IfStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const LoopStmt &) -> Result<R, Diagnostic> = 0;
@@ -163,6 +175,13 @@ struct IdentifierExpr final : Expr {
   auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
 };
 
+struct ArrayLiteralExpr final : Expr {
+  std::vector<std::unique_ptr<Expr>> elements {};
+  explicit ArrayLiteralExpr(std::vector<std::unique_ptr<Expr>> elements_, SourceSpan span_)
+    : Expr(NodeKind::ArrayLiteralExpr, std::move(span_)), elements(std::move(elements_)) {}
+  auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
+};
+
 struct BinaryExpr final : Expr {
   BinaryOp op {};
   std::unique_ptr<Expr> left {};
@@ -200,6 +219,14 @@ struct MethodCallExpr final : Expr {
   auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
 };
 
+struct IndexExpr final : Expr {
+  std::unique_ptr<Expr> array {};
+  std::unique_ptr<Expr> index {};
+  IndexExpr(std::unique_ptr<Expr> array_, std::unique_ptr<Expr> index_, SourceSpan span_)
+    : Expr(NodeKind::IndexExpr, std::move(span_)), array(std::move(array_)), index(std::move(index_)) {}
+  auto accept(ExprVisitor<TypePtr> &visitor) const -> Result<TypePtr, Diagnostic> override { return visitor.visit(*this); }
+};
+
 struct ExprStmt final : Stmt {
   std::unique_ptr<Expr> expr {};
   ExprStmt(std::unique_ptr<Expr> expr_, SourceSpan span_)
@@ -220,6 +247,18 @@ struct AssignStmt final : Stmt {
   std::unique_ptr<Expr> value {};
   AssignStmt(std::string name_, std::unique_ptr<Expr> value_, SourceSpan span_)
     : Stmt(NodeKind::AssignStmt, std::move(span_)), name(std::move(name_)), value(std::move(value_)) {}
+  auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
+};
+
+struct ArrayAssignStmt final : Stmt {
+  std::string arrayName {};
+  std::unique_ptr<Expr> index {};
+  std::unique_ptr<Expr> value {};
+  ArrayAssignStmt(std::string arrayName_, std::unique_ptr<Expr> index_, std::unique_ptr<Expr> value_, SourceSpan span_)
+    : Stmt(NodeKind::ArrayAssignStmt, std::move(span_)),
+      arrayName(std::move(arrayName_)),
+      index(std::move(index_)),
+      value(std::move(value_)) {}
   auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 
@@ -348,6 +387,10 @@ inline auto makeType(BaseType base) -> TypePtr {
 
 inline auto makeStructType(std::string name) -> TypePtr {
   return std::make_shared<Type>(Type {.base = BaseType::Struct, .name = std::move(name)});
+}
+
+inline auto makeArrayType(TypePtr elementType, std::size_t arraySize) -> TypePtr {
+  return std::make_shared<Type>(Type {.base = BaseType::Array, .elementType = std::move(elementType), .arraySize = arraySize});
 }
 
 } // namespace thagore

@@ -32,7 +32,10 @@ enum class TokenKind : std::uint16_t {
 
   LParen,
   RParen,
+  LBracket,
+  RBracket,
   Colon,
+  Semicolon,
   Comma,
   Dot,
   Arrow,
@@ -77,7 +80,10 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwImpl: return "impl";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";
+    case TokenKind::LBracket: return "[";
+    case TokenKind::RBracket: return "]";
     case TokenKind::Colon: return ":";
+    case TokenKind::Semicolon: return ";";
     case TokenKind::Comma: return ",";
     case TokenKind::Dot: return ".";
     case TokenKind::Arrow: return "->";

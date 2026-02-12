@@ -42,6 +42,7 @@ auto getStringStructType(llvm::LLVMContext &context) -> llvm::StructType * {
 struct LocalValue {
   llvm::AllocaInst *slot {nullptr};
   BaseType type {BaseType::Unknown};
+  TypePtr declaredType {};
   std::string structName {};
   bool ownedRef {false};
 };
@@ -66,6 +67,13 @@ auto mapDeclaredType(
     case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
+    case BaseType::Array: {
+      if (!type->elementType || type->arraySize == 0) {
+        return llvm::Type::getInt32Ty(context);
+      }
+      auto *elemTy = mapDeclaredType(context, type->elementType, structLayouts);
+      return llvm::ArrayType::get(elemTy, static_cast<std::uint64_t>(type->arraySize));
+    }
     case BaseType::Struct: {
       auto it = structLayouts.find(type->name);
       if (it != structLayouts.end()) {
@@ -173,6 +181,7 @@ private:
       case BaseType::F32: return llvm::Type::getFloatTy(context);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
       case BaseType::String: return getStringStructType(context);
+      case BaseType::Array: break;
       case BaseType::Struct: break;
       case BaseType::Unknown: break;
     }
@@ -225,6 +234,7 @@ private:
         LocalValue {
           .slot = slot,
           .type = isString ? BaseType::String : ((param.type && param.type->base == BaseType::Struct) ? BaseType::Struct : (param.type ? param.type->base : BaseType::Unknown)),
+          .declaredType = param.type,
           .structName = (!decl.methodOwner.empty() && param.name == "self") ? decl.methodOwner : ((param.type && param.type->base == BaseType::Struct) ? param.type->name : ""),
           .ownedRef = isString
         }
@@ -295,6 +305,7 @@ private:
     switch (stmt.kind) {
       case NodeKind::LetStmt: return lowerLet(static_cast<const LetStmt &>(stmt));
       case NodeKind::AssignStmt: return lowerAssign(static_cast<const AssignStmt &>(stmt));
+      case NodeKind::ArrayAssignStmt: return lowerArrayAssign(static_cast<const ArrayAssignStmt &>(stmt));
       case NodeKind::ReturnStmt: return lowerReturn(static_cast<const ReturnStmt &>(stmt));
       case NodeKind::IfStmt: return lowerIf(static_cast<const IfStmt &>(stmt));
       case NodeKind::LoopStmt: return lowerLoop(static_cast<const LoopStmt &>(stmt));
@@ -364,9 +375,15 @@ private:
       builder.CreateCall(retainFn, {init.value()});
     }
     if (shouldRetain) {
-      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .structName = structName, .ownedRef = true});
+      locals.emplace(
+        stmt.name,
+        LocalValue {.slot = alloca, .type = exprType, .declaredType = stmt.init->inferredType, .structName = structName, .ownedRef = true}
+      );
     } else {
-      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .structName = structName, .ownedRef = false});
+      locals.emplace(
+        stmt.name,
+        LocalValue {.slot = alloca, .type = exprType, .declaredType = stmt.init->inferredType, .structName = structName, .ownedRef = false}
+      );
     }
     if (!scopeLocals.empty()) {
       scopeLocals.back().push_back(stmt.name);
@@ -401,6 +418,7 @@ private:
     const bool isStringSlot = found->second.type == BaseType::String || found->second.slot->getAllocatedType() == stringTy;
     if (isStringSlot) {
       found->second.type = BaseType::String;
+      found->second.declaredType = makeType(BaseType::String);
       found->second.structName.clear();
       found->second.ownedRef = true;
       retainStringValue(rhs.value());
@@ -408,9 +426,11 @@ private:
     }
     if (const auto *layout = findStructLayoutByType(found->second.slot->getAllocatedType()); layout != nullptr) {
       found->second.type = BaseType::Struct;
+      found->second.declaredType = nullptr;
       for (const auto &[name, candidate] : structLayouts) {
         if (candidate.llvmType == layout->llvmType) {
           found->second.structName = name;
+          found->second.declaredType = makeStructType(name);
           break;
         }
       }
@@ -423,6 +443,19 @@ private:
       return {};
     }
     found->second.ownedRef = false;
+    return {};
+  }
+
+  auto lowerArrayAssign(const ArrayAssignStmt &stmt) -> Result<void, Diagnostic> {
+    auto elemPtr = lowerArrayElementPtr(stmt.arrayName, *stmt.index, stmt.span);
+    if (!elemPtr) {
+      return std::unexpected(elemPtr.error());
+    }
+    auto rhs = lowerExpr(*stmt.value);
+    if (!rhs) {
+      return std::unexpected(rhs.error());
+    }
+    builder.CreateStore(rhs.value(), elemPtr.value());
     return {};
   }
 
@@ -531,11 +564,13 @@ private:
   auto lowerExpr(const Expr &expr) -> Result<llvm::Value *, Diagnostic> {
     switch (expr.kind) {
       case NodeKind::LiteralExpr: return lowerLiteral(static_cast<const LiteralExpr &>(expr));
+      case NodeKind::ArrayLiteralExpr: return lowerArrayLiteral(static_cast<const ArrayLiteralExpr &>(expr));
       case NodeKind::IdentifierExpr: return lowerIdentifier(static_cast<const IdentifierExpr &>(expr));
       case NodeKind::BinaryExpr: return lowerBinary(static_cast<const BinaryExpr &>(expr));
       case NodeKind::CallExpr: return lowerCall(static_cast<const CallExpr &>(expr));
       case NodeKind::MemberExpr: return lowerMember(static_cast<const MemberExpr &>(expr));
       case NodeKind::MethodCallExpr: return lowerMethodCall(static_cast<const MethodCallExpr &>(expr));
+      case NodeKind::IndexExpr: return lowerIndex(static_cast<const IndexExpr &>(expr));
       default:
         return std::unexpected(Diagnostic {
           .code = ErrorCode::CodegenError,
@@ -607,6 +642,31 @@ private:
     return stringValue;
   }
 
+  auto lowerArrayLiteral(const ArrayLiteralExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    if (expr.elements.empty()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Array literal cannot be empty.",
+        .span = expr.span,
+      });
+    }
+    auto first = lowerExpr(*expr.elements.front());
+    if (!first) {
+      return std::unexpected(first.error());
+    }
+    auto *arrayTy = llvm::ArrayType::get(first.value()->getType(), static_cast<std::uint64_t>(expr.elements.size()));
+    llvm::Value *arrayValue = llvm::UndefValue::get(arrayTy);
+    arrayValue = builder.CreateInsertValue(arrayValue, first.value(), {0}, "arr.init");
+    for (std::size_t i = 1; i < expr.elements.size(); ++i) {
+      auto elem = lowerExpr(*expr.elements[i]);
+      if (!elem) {
+        return std::unexpected(elem.error());
+      }
+      arrayValue = builder.CreateInsertValue(arrayValue, elem.value(), {static_cast<unsigned int>(i)}, "arr.init");
+    }
+    return arrayValue;
+  }
+
   auto lowerIdentifier(const IdentifierExpr &expr) -> Result<llvm::Value *, Diagnostic> {
     auto found = locals.find(expr.name);
     if (found == locals.end()) {
@@ -617,6 +677,98 @@ private:
       });
     }
     return builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot, expr.name);
+  }
+
+  auto lowerArrayElementPtr(const std::string &arrayName, const Expr &indexExpr, const SourceSpan &span)
+    -> Result<llvm::Value *, Diagnostic> {
+    auto found = locals.find(arrayName);
+    if (found == locals.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown array variable '{}'.", arrayName),
+        .span = span,
+      });
+    }
+    auto *slotTy = found->second.slot->getAllocatedType();
+    auto *arrayTy = llvm::dyn_cast<llvm::ArrayType>(slotTy);
+    if (!arrayTy) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("'{}' is not an array.", arrayName),
+        .span = span,
+      });
+    }
+    auto indexValue = lowerExpr(indexExpr);
+    if (!indexValue) {
+      return std::unexpected(indexValue.error());
+    }
+    auto *i32Ty = llvm::Type::getInt32Ty(context);
+    llvm::Value *normalizedIndex = indexValue.value();
+    if (!normalizedIndex->getType()->isIntegerTy(32)) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Array index must lower to i32.",
+        .span = indexExpr.span,
+      });
+    }
+    auto *zero = llvm::ConstantInt::get(i32Ty, 0);
+    return builder.CreateInBoundsGEP(arrayTy, found->second.slot, {zero, normalizedIndex}, "arr.elem.ptr");
+  }
+
+  auto lowerIndex(const IndexExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    if (expr.array->kind == NodeKind::IdentifierExpr) {
+      const auto &id = static_cast<const IdentifierExpr &>(*expr.array);
+      auto found = locals.find(id.name);
+      if (found == locals.end()) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = std::format("Unknown array variable '{}'.", id.name),
+          .span = expr.span,
+        });
+      }
+      auto *arrayTy = llvm::dyn_cast<llvm::ArrayType>(found->second.slot->getAllocatedType());
+      if (!arrayTy) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = std::format("'{}' is not an array.", id.name),
+          .span = expr.span,
+        });
+      }
+      auto elemPtr = lowerArrayElementPtr(id.name, *expr.index, expr.span);
+      if (!elemPtr) {
+        return std::unexpected(elemPtr.error());
+      }
+      return builder.CreateLoad(arrayTy->getElementType(), elemPtr.value(), "arr.idx.load");
+    }
+
+    auto arrayValue = lowerExpr(*expr.array);
+    if (!arrayValue) {
+      return std::unexpected(arrayValue.error());
+    }
+    auto *arrayTy = llvm::dyn_cast<llvm::ArrayType>(arrayValue.value()->getType());
+    if (!arrayTy) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Index access requires an array value.",
+        .span = expr.span,
+      });
+    }
+    auto *tmp = builder.CreateAlloca(arrayTy, nullptr, "arr.idx.tmp");
+    builder.CreateStore(arrayValue.value(), tmp);
+    auto indexValue = lowerExpr(*expr.index);
+    if (!indexValue) {
+      return std::unexpected(indexValue.error());
+    }
+    if (!indexValue.value()->getType()->isIntegerTy(32)) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Array index must lower to i32.",
+        .span = expr.index->span,
+      });
+    }
+    auto *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    auto *elemPtr = builder.CreateInBoundsGEP(arrayTy, tmp, {zero, indexValue.value()}, "arr.elem.ptr");
+    return builder.CreateLoad(arrayTy->getElementType(), elemPtr, "arr.idx.load");
   }
 
   auto lowerMember(const MemberExpr &expr) -> Result<llvm::Value *, Diagnostic> {
@@ -917,11 +1069,21 @@ private:
       }
       return BaseType::I32;
     }
+    if (expr.kind == NodeKind::ArrayLiteralExpr) {
+      return BaseType::Array;
+    }
     if (expr.kind == NodeKind::IdentifierExpr) {
       const auto &id = static_cast<const IdentifierExpr &>(expr);
       auto it = locals.find(id.name);
       if (it != locals.end()) {
         return it->second.type;
+      }
+      return BaseType::Unknown;
+    }
+    if (expr.kind == NodeKind::IndexExpr) {
+      const auto &idx = static_cast<const IndexExpr &>(expr);
+      if (idx.array->inferredType && idx.array->inferredType->base == BaseType::Array && idx.array->inferredType->elementType) {
+        return idx.array->inferredType->elementType->base;
       }
       return BaseType::Unknown;
     }
@@ -1010,6 +1172,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::F32: return llvm::Type::getFloatTy(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
     case BaseType::String: return getStringStructType(context);
+    case BaseType::Array: break;
     case BaseType::Struct: break;
     case BaseType::Unknown: break;
   }

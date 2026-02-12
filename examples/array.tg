@@ -1,0 +1,19 @@
+func sum_array(arr: [i32; 4]) -> i32:
+    let i = 0
+    let total = 0
+    while (i < 4):
+        total = total + arr[i]
+        i = i + 1
+    return total
+
+let my_nums = [10, 20, 30, 40]
+
+# Test read
+print(my_nums[2])
+
+# Test write
+my_nums[0] = 999
+
+# Test function passing
+let s = sum_array(my_nums)
+print(s)

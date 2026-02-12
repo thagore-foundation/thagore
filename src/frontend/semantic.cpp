@@ -17,6 +17,7 @@ auto baseTypeName(BaseType type) -> const char * {
     case BaseType::Bool: return "bool";
     case BaseType::String: return "String";
     case BaseType::Struct: return "struct";
+    case BaseType::Array: return "array";
   }
   return "unknown";
 }
@@ -30,6 +31,12 @@ auto sameType(const TypePtr &lhs, const TypePtr &rhs) -> bool {
   }
   if (lhs->base == BaseType::Struct) {
     return lhs->name == rhs->name;
+  }
+  if (lhs->base == BaseType::Array) {
+    if (lhs->arraySize != rhs->arraySize) {
+      return false;
+    }
+    return sameType(lhs->elementType, rhs->elementType);
   }
   return true;
 }
@@ -55,12 +62,9 @@ public:
     }
     for (const auto &st : typed.module->structs) {
       for (const auto &field : st->fields) {
-        if (field.type->base == BaseType::Struct && !typed.structTypes.contains(field.type->name)) {
-          return std::unexpected(Diagnostic {
-            .code = ErrorCode::SemanticError,
-            .message = std::format("Unknown struct type '{}' in field '{}.{}'.", field.type->name, st->name, field.name),
-            .span = field.span,
-          });
+        auto known = ensureKnownType(field.type, field.span);
+        if (!known) {
+          return std::unexpected(known.error());
         }
       }
     }
@@ -116,6 +120,37 @@ private:
   TypePtr currentFunctionReturnType {makeType(BaseType::Void)};
   bool inTopLevelContext {false};
 
+  auto ensureKnownType(const TypePtr &type, const SourceSpan &span) -> Result<void, Diagnostic> {
+    if (!type) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Unknown type.",
+        .span = span,
+      });
+    }
+    if (type->base == BaseType::Struct) {
+      if (!typed.structTypes.contains(type->name)) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = std::format("Unknown struct type '{}'.", type->name),
+          .span = span,
+        });
+      }
+      return {};
+    }
+    if (type->base == BaseType::Array) {
+      if (type->arraySize == 0) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Array size must be greater than zero.",
+          .span = span,
+        });
+      }
+      return ensureKnownType(type->elementType, span);
+    }
+    return {};
+  }
+
   auto containsReturn(const Stmt &stmt) const -> bool {
     if (stmt.kind == NodeKind::ReturnStmt) {
       return true;
@@ -161,20 +196,16 @@ private:
     inTopLevelContext = false;
     currentFunctionReturnType = fn.returnType ? fn.returnType : makeType(BaseType::Void);
     for (const auto &param : fn.params) {
-      if (param.type->base == BaseType::Struct && !typed.structTypes.contains(param.type->name)) {
-        return std::unexpected(Diagnostic {
-          .code = ErrorCode::SemanticError,
-          .message = std::format("Unknown struct type '{}'.", param.type->name),
-          .span = param.span,
-        });
+      auto known = ensureKnownType(param.type, param.span);
+      if (!known) {
+        return std::unexpected(known.error());
       }
     }
-    if (fn.returnType && fn.returnType->base == BaseType::Struct && !typed.structTypes.contains(fn.returnType->name)) {
-      return std::unexpected(Diagnostic {
-        .code = ErrorCode::SemanticError,
-        .message = std::format("Unknown struct type '{}'.", fn.returnType->name),
-        .span = fn.span,
-      });
+    if (fn.returnType) {
+      auto known = ensureKnownType(fn.returnType, fn.span);
+      if (!known) {
+        return std::unexpected(known.error());
+      }
     }
 
     for (const auto &param : fn.params) {
@@ -314,6 +345,34 @@ public:
       return makeType(BaseType::F32);
     }
     return makeType(BaseType::String);
+  }
+
+  auto visit(const ArrayLiteralExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    if (expr.elements.empty()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Array literal cannot be empty.",
+        .span = expr.span,
+      });
+    }
+    auto firstType = expr.elements.front()->accept(*this);
+    if (!firstType) {
+      return std::unexpected(firstType.error());
+    }
+    for (std::size_t i = 1; i < expr.elements.size(); ++i) {
+      auto t = expr.elements[i]->accept(*this);
+      if (!t) {
+        return std::unexpected(t.error());
+      }
+      if (!sameType(firstType.value(), t.value())) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "All elements in array literal must have the same type.",
+          .span = expr.elements[i]->span,
+        });
+      }
+    }
+    return makeArrayType(firstType.value(), expr.elements.size());
   }
 
   auto visit(const IdentifierExpr &expr) -> Result<TypePtr, Diagnostic> override {
@@ -499,6 +558,32 @@ public:
     return found->second.returnType;
   }
 
+  auto visit(const IndexExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    auto arrayType = expr.array->accept(*this);
+    if (!arrayType) {
+      return std::unexpected(arrayType.error());
+    }
+    if (arrayType.value()->base != BaseType::Array || !arrayType.value()->elementType) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Index access requires an array value.",
+        .span = expr.array->span,
+      });
+    }
+    auto idxType = expr.index->accept(*this);
+    if (!idxType) {
+      return std::unexpected(idxType.error());
+    }
+    if (idxType.value()->base != BaseType::I32) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Array index must be i32.",
+        .span = expr.index->span,
+      });
+    }
+    return arrayType.value()->elementType;
+  }
+
   auto visit(const BlockStmt &stmt) -> Result<void, Diagnostic> override {
     pushScope();
     for (const auto &nested : stmt.statements) {
@@ -533,6 +618,43 @@ public:
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format("Type mismatch in assignment to '{}'.", stmt.name),
+        .span = stmt.span,
+      });
+    }
+    return {};
+  }
+
+  auto visit(const ArrayAssignStmt &stmt) -> Result<void, Diagnostic> override {
+    auto lhs = lookupSymbol(stmt.arrayName, stmt.span);
+    if (!lhs) {
+      return std::unexpected(lhs.error());
+    }
+    if (lhs.value()->base != BaseType::Array || !lhs.value()->elementType) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("'{}' is not an array.", stmt.arrayName),
+        .span = stmt.span,
+      });
+    }
+    auto idxType = stmt.index->accept(*this);
+    if (!idxType) {
+      return std::unexpected(idxType.error());
+    }
+    if (idxType.value()->base != BaseType::I32) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = "Array index must be i32.",
+        .span = stmt.index->span,
+      });
+    }
+    auto rhs = stmt.value->accept(*this);
+    if (!rhs) {
+      return std::unexpected(rhs.error());
+    }
+    if (!sameType(lhs.value()->elementType, rhs.value())) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Type mismatch in indexed assignment to '{}'.", stmt.arrayName),
         .span = stmt.span,
       });
     }

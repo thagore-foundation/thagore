@@ -249,8 +249,17 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
       case ')':
         pushToken(TokenKind::RParen, begin, cursor);
         break;
+      case '[':
+        pushToken(TokenKind::LBracket, begin, cursor);
+        break;
+      case ']':
+        pushToken(TokenKind::RBracket, begin, cursor);
+        break;
       case ':':
         pushToken(TokenKind::Colon, begin, cursor);
+        break;
+      case ';':
+        pushToken(TokenKind::Semicolon, begin, cursor);
         break;
       case ',':
         pushToken(TokenKind::Comma, begin, cursor);
