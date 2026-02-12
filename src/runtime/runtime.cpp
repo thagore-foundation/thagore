@@ -472,6 +472,13 @@ int __thg_str_hash(char *s) {
   return static_cast<int>(hash & 0x7FFFFFFFul);
 }
 
+int __thg_str_to_i32(char *s) {
+  if (s == nullptr) {
+    return 0;
+  }
+  return std::atoi(s);
+}
+
 void *__thg_token_new(const char *kind, const char *text) {
   auto *token = static_cast<TokenBox *>(std::malloc(sizeof(TokenBox)));
   if (token == nullptr) {
@@ -608,11 +615,45 @@ const char *__thg_ast_kind(void *nodePtr) {
   return static_cast<AstNode *>(nodePtr)->kind.c_str();
 }
 
+int __thg_ast_kind_tag(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  const auto &kind = static_cast<AstNode *>(nodePtr)->kind;
+  if (kind == "Literal") {
+    return 1;
+  }
+  if (kind == "Binary") {
+    return 2;
+  }
+  return 0;
+}
+
 const char *__thg_ast_op(void *nodePtr) {
   if (nodePtr == nullptr) {
     return "";
   }
   return static_cast<AstNode *>(nodePtr)->op.c_str();
+}
+
+int __thg_ast_op_tag(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  const auto &op = static_cast<AstNode *>(nodePtr)->op;
+  if (op == "+") {
+    return 1;
+  }
+  if (op == "-") {
+    return 2;
+  }
+  if (op == "*") {
+    return 3;
+  }
+  if (op == "/") {
+    return 4;
+  }
+  return 0;
 }
 
 const char *__thg_ast_value(void *nodePtr) {
