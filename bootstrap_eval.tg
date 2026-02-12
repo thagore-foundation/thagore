@@ -9,7 +9,7 @@ func main() -> i32:
     let interpreter = eval.new()
 
     print("Calculating...")
-    let result = interpreter.eval(root)
+    let result = interpreter.eval_expr(root)
 
     print("Result:")
     print(result)

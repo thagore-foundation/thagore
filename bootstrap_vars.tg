@@ -1,0 +1,25 @@
+import "src/compiler/parser.tg" as parser
+import "src/compiler/eval.tg" as eval
+
+func main() -> i32:
+    print("--- Variable Test ---")
+
+    let interp = eval.new()
+
+    print("Executing: let x = 10")
+    let stmt = parser.parse_stmt("let x = 10")
+    interp.exec_stmt(stmt)
+
+    print("Evaluating: x * 5")
+    let expr = parser.parse_expr("x * 5")
+    let result = interp.eval_expr(expr)
+
+    print("Result:")
+    print(result)
+
+    if (result == 50):
+        print("SUCCESS: Variables and environment work.")
+    else:
+        print("FAILURE: Wrong variable evaluation.")
+
+    return 0
