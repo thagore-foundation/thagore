@@ -1,0 +1,30 @@
+// scale.math compat
+
+func abs(x: i32) -> i32
+  if x < 0
+    return 0 - x
+  return x
+
+func clamp(x: i32, lo: i32, hi: i32) -> i32
+  if x < lo
+    return lo
+  if x > hi
+    return hi
+  return x
+
+func sum(iterable: String) -> i32
+  return 0
+
+func mean(iterable: String) -> i32
+  return 0
+
+func pow_int(base: i32, exp: i32) -> i32
+  if exp < 0
+    throw "pow_int: exp must be >= 0"
+  let acc = 1
+  let i = 0
+  while i < exp
+    acc = acc * base
+    i = i + 1
+  return acc
+

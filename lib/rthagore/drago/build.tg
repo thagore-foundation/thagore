@@ -1,0 +1,55 @@
+// drago build (compat implementation)
+
+use resolve as resolve
+use cache as cache
+use package as package
+use "../std/fs.tg" as fs
+use "../std/path.tg" as path
+
+func discover_project(root: String) -> String
+  let direct = path.join(root, "project.tgc")
+  if fs.exists(direct) == 1
+    return root
+  let cfg = path.join(root, ".thagore")
+  if fs.exists(cfg) == 0
+    return ""
+  return cfg
+
+func build_dep_graph(deps: String) -> String
+  return resolve.resolve(deps)
+
+func read_project_manifest(root: String) -> String
+  let cfg = discover_project(root)
+  if cfg == ""
+    return ""
+  if cfg == root
+    return package.parse_file(path.join(root, "project.tgc"))
+  return package.parse_file(path.join(cfg, "project.tgc"))
+
+func plan_build(project_info: String) -> String
+  if project_info == ""
+    return "resolve\ncompile\nlink"
+  let steps = "resolve\ncompile\nlink"
+  let mode = package.version(project_info)
+  if mode != ""
+    return steps + "\npackage"
+  return steps
+
+func resolve_deps(deps: String, locked: String = "") -> String
+  return resolve.resolve(deps, locked)
+
+func should_rebuild(state: String, inputs: String) -> bool
+  if state == ""
+    return true
+  if state != inputs
+    return true
+  return false
+
+func parallel_compile(units: String) -> String
+  return units
+
+func cache_manage(cache_root: String) -> i32
+  return cache.ensure_cache_dir(cache_root)
+
+func cache_artifact(cache_root: String, name: String, text: String) -> String
+  return cache.cache_put_text(cache_root, name, "latest", "artifact.txt", text)

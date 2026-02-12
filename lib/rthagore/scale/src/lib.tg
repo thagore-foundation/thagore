@@ -1,0 +1,7 @@
+// scale stdlib entrypoint compat
+
+use math as math
+use prelude as prelude
+
+func version() -> String = "0.0.0"
+

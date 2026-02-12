@@ -1,0 +1,36 @@
+// linter
+
+use formatter as formatter
+use "../std/string.tg" as string
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func _append_issue(out: String, issue: String) -> String
+  if issue == ""
+    return out
+  if out == ""
+    return issue
+  return out + "\n" + issue
+
+func static_rules(text: String) -> String
+  let formatted = formatter.format(text)
+  if formatted == text
+    return ""
+  return "trailing whitespace"
+
+func style_checks(text: String) -> String
+  if string.contains(text, "\t")
+    return "tab character"
+  return ""
+
+func performance_suggestions(text: String) -> String
+  if __thg_cstr_len(text) > 100000
+    return "large file"
+  return ""
+
+func run(text: String) -> String
+  let out = ""
+  out = _append_issue(out, static_rules(text))
+  out = _append_issue(out, style_checks(text))
+  out = _append_issue(out, performance_suggestions(text))
+  return out

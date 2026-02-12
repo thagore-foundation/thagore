@@ -1,0 +1,22 @@
+// drago lock (compat implementation)
+
+use tgc as tgc
+use "../std/fs.tg" as fs
+
+func read_lock(path: String) -> String
+  if fs.exists(path) == 0
+    return ""
+  let text = fs.read_text(path)
+  if text == null
+    return ""
+  return tgc.parse(text)
+
+func write_lock(path: String, data: String) -> i32
+  let payload = tgc.stringify(data)
+  return fs.write_text(path, payload)
+
+func get_dep(doc: String, name: String) -> String
+  return tgc.get(doc, "deps." + name)
+
+func set_dep(doc: String, name: String, version: String) -> String
+  return tgc.set(doc, "deps." + name, version)

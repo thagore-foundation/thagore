@@ -1,0 +1,7 @@
+[package]
+name = "scale"
+version = "{VERSION}"
+entry = "src/lib.tg"
+
+[metadata]
+description = "Tiny standard library package for Thagore (offline, bundled with drago)."

@@ -1,0 +1,14 @@
+// sysroot platforms compat shim
+
+func make_def(key: String, os: String, arch: String, target_triple: String, object_format: String, abi: String, lib_prefix: String, lib_ext: String, exe_ext: String, line_ending: String, path_sep: String, pointer_width: i32, endian: String) -> String
+  return key
+
+func definitions() -> String
+  return ""
+
+func get(key: String) -> String
+  return key
+
+func get_platform_arch(platform: String, arch: String) -> String
+  return platform
+

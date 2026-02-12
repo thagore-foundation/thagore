@@ -1,0 +1,12 @@
+// debugger
+//
+// Debugger scaffolding stubs.
+
+func generate_dwarf(program: String) -> String
+    return ""
+
+func emit_debug_symbols(program: String) -> String
+    return ""
+
+func set_breakpoint(location: String) -> bool
+    return false
