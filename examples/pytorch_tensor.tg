@@ -1,0 +1,24 @@
+extern func __thg_py_initialize() -> void
+extern func __thg_py_import(name: String) -> ptr
+extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
+extern func __thg_py_print_obj(obj: ptr) -> void
+
+extern func __thg_py_from_i32(val: i32) -> ptr
+extern func __thg_py_call_2(func_obj: ptr, a1: ptr, a2: ptr) -> ptr
+
+func main() -> i32:
+    __thg_py_initialize()
+
+    print("Loading PyTorch...")
+    let torch = __thg_py_import("torch")
+
+    let rand_func = __thg_py_getattr(torch, "rand")
+
+    let dim1 = __thg_py_from_i32(3)
+    let dim2 = __thg_py_from_i32(3)
+
+    print("Generating Tensor(3, 3)...")
+    let tensor = __thg_py_call_2(rand_func, dim1, dim2)
+
+    __thg_py_print_obj(tensor)
+    return 0

@@ -14,9 +14,13 @@ namespace {
 using FnPyInitialize = void (*)();
 using FnPyFinalize = void (*)();
 using FnPyUnicodeFromString = PyObject *(*)(const char *);
+using FnPyUnicodeFromStringAndSize = PyObject *(*)(const char *, Py_ssize_t);
+using FnPyLongFromLong = PyObject *(*)(long);
+using FnPyFloatFromDouble = PyObject *(*)(double);
 using FnPyImportImport = PyObject *(*)(PyObject *);
 using FnPyObjectGetAttrString = PyObject *(*)(PyObject *, const char *);
 using FnPyObjectCallObject = PyObject *(*)(PyObject *, PyObject *);
+using FnPyTuplePack = PyObject *(*)(Py_ssize_t, ...);
 using FnPyObjectPrint = int (*)(PyObject *, FILE *, int);
 using FnPyErrClear = void (*)();
 
@@ -25,9 +29,13 @@ struct PythonApi {
   FnPyInitialize initialize {nullptr};
   FnPyFinalize finalize {nullptr};
   FnPyUnicodeFromString unicodeFromString {nullptr};
+  FnPyUnicodeFromStringAndSize unicodeFromStringAndSize {nullptr};
+  FnPyLongFromLong longFromLong {nullptr};
+  FnPyFloatFromDouble floatFromDouble {nullptr};
   FnPyImportImport importModule {nullptr};
   FnPyObjectGetAttrString getAttrString {nullptr};
   FnPyObjectCallObject callObject {nullptr};
+  FnPyTuplePack tuplePack {nullptr};
   FnPyObjectPrint objectPrint {nullptr};
   FnPyErrClear errClear {nullptr};
   bool ready {false};
@@ -63,13 +71,19 @@ auto ensurePythonApi() -> bool {
     api.initialize = reinterpret_cast<FnPyInitialize>(loadSymbol(api.dll, "Py_Initialize"));
     api.finalize = reinterpret_cast<FnPyFinalize>(loadSymbol(api.dll, "Py_Finalize"));
     api.unicodeFromString = reinterpret_cast<FnPyUnicodeFromString>(loadSymbol(api.dll, "PyUnicode_FromString"));
+    api.unicodeFromStringAndSize =
+      reinterpret_cast<FnPyUnicodeFromStringAndSize>(loadSymbol(api.dll, "PyUnicode_FromStringAndSize"));
+    api.longFromLong = reinterpret_cast<FnPyLongFromLong>(loadSymbol(api.dll, "PyLong_FromLong"));
+    api.floatFromDouble = reinterpret_cast<FnPyFloatFromDouble>(loadSymbol(api.dll, "PyFloat_FromDouble"));
     api.importModule = reinterpret_cast<FnPyImportImport>(loadSymbol(api.dll, "PyImport_Import"));
     api.getAttrString = reinterpret_cast<FnPyObjectGetAttrString>(loadSymbol(api.dll, "PyObject_GetAttrString"));
     api.callObject = reinterpret_cast<FnPyObjectCallObject>(loadSymbol(api.dll, "PyObject_CallObject"));
+    api.tuplePack = reinterpret_cast<FnPyTuplePack>(loadSymbol(api.dll, "PyTuple_Pack"));
     api.objectPrint = reinterpret_cast<FnPyObjectPrint>(loadSymbol(api.dll, "PyObject_Print"));
     api.errClear = reinterpret_cast<FnPyErrClear>(loadSymbol(api.dll, "PyErr_Clear"));
-    api.ready = api.initialize && api.finalize && api.unicodeFromString && api.importModule && api.getAttrString &&
-      api.callObject && api.objectPrint && api.errClear;
+    api.ready = api.initialize && api.finalize && api.unicodeFromString && api.unicodeFromStringAndSize &&
+      api.longFromLong && api.floatFromDouble && api.importModule && api.getAttrString &&
+      api.callObject && api.tuplePack && api.objectPrint && api.errClear;
   });
   return pythonApi().ready;
 }
@@ -140,6 +154,85 @@ void *__thg_py_call0(void *func) {
     api.errClear();
   }
   return result;
+}
+
+void *__thg_py_from_i32(std::int32_t value) {
+  if (!ensurePythonApi()) {
+    return nullptr;
+  }
+  auto &api = pythonApi();
+  PyObject *obj = api.longFromLong(static_cast<long>(value));
+  if (obj == nullptr) {
+    api.errClear();
+  }
+  return obj;
+}
+
+void *__thg_py_from_f32(float value) {
+  if (!ensurePythonApi()) {
+    return nullptr;
+  }
+  auto &api = pythonApi();
+  PyObject *obj = api.floatFromDouble(static_cast<double>(value));
+  if (obj == nullptr) {
+    api.errClear();
+  }
+  return obj;
+}
+
+void *__thg_py_from_str(const char *ptr, std::int32_t len) {
+  if (!ensurePythonApi()) {
+    return nullptr;
+  }
+  auto &api = pythonApi();
+  if (ptr == nullptr || len < 0) {
+    return nullptr;
+  }
+  PyObject *obj = api.unicodeFromStringAndSize(ptr, static_cast<Py_ssize_t>(len));
+  if (obj == nullptr) {
+    api.errClear();
+  }
+  return obj;
+}
+
+void *__thg_py_call_1(void *func, void *arg1) {
+  if (!ensurePythonApi()) {
+    return nullptr;
+  }
+  auto &api = pythonApi();
+  if (func == nullptr || arg1 == nullptr) {
+    return nullptr;
+  }
+  PyObject *args = api.tuplePack(1, static_cast<PyObject *>(arg1));
+  if (args == nullptr) {
+    api.errClear();
+    return nullptr;
+  }
+  PyObject *res = api.callObject(static_cast<PyObject *>(func), args);
+  if (res == nullptr) {
+    api.errClear();
+  }
+  return res;
+}
+
+void *__thg_py_call_2(void *func, void *arg1, void *arg2) {
+  if (!ensurePythonApi()) {
+    return nullptr;
+  }
+  auto &api = pythonApi();
+  if (func == nullptr || arg1 == nullptr || arg2 == nullptr) {
+    return nullptr;
+  }
+  PyObject *args = api.tuplePack(2, static_cast<PyObject *>(arg1), static_cast<PyObject *>(arg2));
+  if (args == nullptr) {
+    api.errClear();
+    return nullptr;
+  }
+  PyObject *res = api.callObject(static_cast<PyObject *>(func), args);
+  if (res == nullptr) {
+    api.errClear();
+  }
+  return res;
 }
 
 void __thg_py_print_obj(void *obj) {
