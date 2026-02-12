@@ -1,0 +1,11 @@
+extern func __thg_eval_expr(node: ptr) -> i32
+
+struct Evaluator:
+    dummy: i32
+
+impl Evaluator:
+    func eval(self, node: ptr) -> i32:
+        return __thg_eval_expr(node)
+
+func new() -> Evaluator:
+    return Evaluator(0)
