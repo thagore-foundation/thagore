@@ -1,0 +1,22 @@
+import map
+
+func main() -> i32:
+    print("Initializing Map...")
+    let m = map.new()
+
+    print("Putting keys...")
+    m.put("x", "Value X")
+    m.put("y", "Value Y")
+
+    print("Getting keys...")
+    let val_x = m.get("x")
+    print(val_x)
+
+    let val_y = m.get("y")
+    print(val_y)
+
+    let missing = m.get("z")
+    if (map.is_null_ptr(missing) == 1):
+        print("Key z not found (Correct)")
+
+    return 0
