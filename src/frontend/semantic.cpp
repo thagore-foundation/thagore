@@ -216,10 +216,10 @@ public:
       if (!argType) {
         return std::unexpected(argType.error());
       }
-      if (argType.value()->base != BaseType::I32) {
+      if (argType.value()->base != BaseType::I32 && argType.value()->base != BaseType::String) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
-          .message = "Builtin print currently supports only i32.",
+          .message = "Builtin print supports only i32 or string.",
           .span = expr.args[0]->span,
         });
       }

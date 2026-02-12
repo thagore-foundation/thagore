@@ -1,0 +1,3 @@
+let s = "Hello Thagore"
+print(s)
+print("Direct String")

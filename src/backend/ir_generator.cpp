@@ -18,6 +18,8 @@
 
 #include <format>
 #include <charconv>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -25,6 +27,15 @@
 
 namespace thagore {
 namespace {
+
+auto getStringStructType(llvm::LLVMContext &context) -> llvm::StructType * {
+  if (auto *existing = llvm::StructType::getTypeByName(context, "thg.string")) {
+    return existing;
+  }
+  auto *ptrTy = llvm::PointerType::get(context, 0);
+  auto *i32Ty = llvm::Type::getInt32Ty(context);
+  return llvm::StructType::create(context, {ptrTy, i32Ty}, "thg.string");
+}
 
 struct LocalValue {
   llvm::AllocaInst *slot {nullptr};
@@ -101,7 +112,7 @@ private:
       case BaseType::Void: return llvm::Type::getVoidTy(context);
       case BaseType::I32: return llvm::Type::getInt32Ty(context);
       case BaseType::Bool: return llvm::Type::getInt1Ty(context);
-      case BaseType::String: return llvm::PointerType::get(context, 0);
+      case BaseType::String: return getStringStructType(context);
       case BaseType::Unknown: break;
     }
     return llvm::Type::getInt32Ty(context);
@@ -333,8 +344,38 @@ private:
       return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), parsed);
     }
 
-    auto *value = builder.CreateGlobalStringPtr(expr.value, "str");
-    return value;
+    if (expr.value.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "String literal is too large for i32 length.",
+        .span = expr.span,
+      });
+    }
+
+    auto *i8Ty = llvm::Type::getInt8Ty(context);
+    auto *i32Ty = llvm::Type::getInt32Ty(context);
+    auto *arrayTy = llvm::ArrayType::get(i8Ty, static_cast<std::uint64_t>(expr.value.size()) + 1);
+    auto *arrayConst = llvm::ConstantDataArray::getString(context, expr.value, true);
+    auto *global = new llvm::GlobalVariable(
+      module,
+      arrayTy,
+      true,
+      llvm::GlobalValue::PrivateLinkage,
+      arrayConst,
+      "str.data"
+    );
+    global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    global->setAlignment(llvm::Align(1));
+
+    auto *zero = llvm::ConstantInt::get(i32Ty, 0);
+    auto *ptr = builder.CreateInBoundsGEP(arrayTy, global, {zero, zero}, "str.ptr");
+    auto *len = llvm::ConstantInt::get(i32Ty, static_cast<std::int32_t>(expr.value.size()));
+
+    auto *stringTy = llvmType(BaseType::String);
+    llvm::Value *stringValue = llvm::UndefValue::get(stringTy);
+    stringValue = builder.CreateInsertValue(stringValue, ptr, {0}, "str.v.ptr");
+    stringValue = builder.CreateInsertValue(stringValue, len, {1}, "str.v.len");
+    return stringValue;
   }
 
   auto lowerIdentifier(const IdentifierExpr &expr) -> Result<llvm::Value *, Diagnostic> {
@@ -391,19 +432,32 @@ private:
       if (!arg) {
         return std::unexpected(arg.error());
       }
-      if (!arg.value()->getType()->isIntegerTy(32)) {
-        return std::unexpected(Diagnostic {
-          .code = ErrorCode::CodegenError,
-          .message = "Builtin print currently supports only i32.",
-          .span = expr.args[0]->span,
-        });
-      }
-
       auto *voidTy = llvm::Type::getVoidTy(context);
       auto *i32Ty = llvm::Type::getInt32Ty(context);
-      auto printFn = module.getOrInsertFunction("__thg_print_i32", llvm::FunctionType::get(voidTy, {i32Ty}, false));
-      builder.CreateCall(printFn, {arg.value()});
-      return llvm::ConstantInt::get(i32Ty, 0);
+
+      if (arg.value()->getType()->isIntegerTy(32)) {
+        auto printFn = module.getOrInsertFunction("__thg_print_i32", llvm::FunctionType::get(voidTy, {i32Ty}, false));
+        builder.CreateCall(printFn, {arg.value()});
+        return llvm::ConstantInt::get(i32Ty, 0);
+      }
+
+      auto *stringTy = llvmType(BaseType::String);
+      if (arg.value()->getType() == stringTy) {
+        auto *ptr = builder.CreateExtractValue(arg.value(), {0}, "str.ptr");
+        auto *len = builder.CreateExtractValue(arg.value(), {1}, "str.len");
+        auto printFn = module.getOrInsertFunction(
+          "__thg_print_str",
+          llvm::FunctionType::get(voidTy, {llvm::PointerType::get(context, 0), i32Ty}, false)
+        );
+        builder.CreateCall(printFn, {ptr, len});
+        return llvm::ConstantInt::get(i32Ty, 0);
+      }
+
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Builtin print supports only i32 or string.",
+        .span = expr.args[0]->span,
+      });
     }
 
     auto *callee = module.getFunction(expr.callee);
@@ -459,7 +513,7 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::Void: return llvm::Type::getVoidTy(context);
     case BaseType::I32: return llvm::Type::getInt32Ty(context);
     case BaseType::Bool: return llvm::Type::getInt1Ty(context);
-    case BaseType::String: return llvm::PointerType::get(context, 0);
+    case BaseType::String: return getStringStructType(context);
     case BaseType::Unknown: break;
   }
   return llvm::Type::getInt32Ty(context);
