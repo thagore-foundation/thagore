@@ -208,8 +208,17 @@ struct BlockStmt final : Stmt {
 struct IfStmt final : Stmt {
   std::unique_ptr<Expr> condition {};
   std::unique_ptr<BlockStmt> thenBlock {};
-  IfStmt(std::unique_ptr<Expr> condition_, std::unique_ptr<BlockStmt> thenBlock_, SourceSpan span_)
-    : Stmt(NodeKind::IfStmt, std::move(span_)), condition(std::move(condition_)), thenBlock(std::move(thenBlock_)) {}
+  std::unique_ptr<BlockStmt> elseBlock {};
+  IfStmt(
+    std::unique_ptr<Expr> condition_,
+    std::unique_ptr<BlockStmt> thenBlock_,
+    std::unique_ptr<BlockStmt> elseBlock_,
+    SourceSpan span_
+  )
+    : Stmt(NodeKind::IfStmt, std::move(span_)),
+      condition(std::move(condition_)),
+      thenBlock(std::move(thenBlock_)),
+      elseBlock(std::move(elseBlock_)) {}
   auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 

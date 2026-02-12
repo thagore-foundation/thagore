@@ -206,9 +206,15 @@ private:
   }
 
   auto parseIfStatement(const Token *ifTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {
+    if (!consume(TokenKind::LParen, "Expected '(' after 'if'.")) {
+      return std::unexpected(lastError("Expected '(' after 'if'."));
+    }
     auto cond = parseExpression(0);
     if (!cond) {
       return std::unexpected(cond.error());
+    }
+    if (!consume(TokenKind::RParen, "Expected ')' after if condition.")) {
+      return std::unexpected(lastError("Expected ')' after if condition."));
     }
     if (!consume(TokenKind::Colon, "Expected ':' after if condition.")) {
       return std::unexpected(lastError("Expected ':' after if condition."));
@@ -220,10 +226,27 @@ private:
     if (!block) {
       return std::unexpected(block.error());
     }
+
+    std::unique_ptr<BlockStmt> elseBlock {};
+    skipNewlines();
+    if (match(TokenKind::KwElse)) {
+      if (!consume(TokenKind::Colon, "Expected ':' after else.")) {
+        return std::unexpected(lastError("Expected ':' after else."));
+      }
+      if (!consume(TokenKind::Newline, "Expected newline after else header.")) {
+        return std::unexpected(lastError("Expected newline after else header."));
+      }
+      auto parsedElse = parseIndentedBlock();
+      if (!parsedElse) {
+        return std::unexpected(parsedElse.error());
+      }
+      elseBlock = std::move(parsedElse.value());
+    }
+
     auto condExpr = std::move(cond.value());
     auto thenBlock = std::move(block.value());
-    auto stmtSpan = mergeSpan(ifTok->span, thenBlock->span);
-    return std::make_unique<IfStmt>(std::move(condExpr), std::move(thenBlock), stmtSpan);
+    auto stmtSpan = mergeSpan(ifTok->span, elseBlock ? elseBlock->span : thenBlock->span);
+    return std::make_unique<IfStmt>(std::move(condExpr), std::move(thenBlock), std::move(elseBlock), stmtSpan);
   }
 
   auto parseLoopStatement(const Token *loopTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {

@@ -234,8 +234,14 @@ private:
     }
 
     auto *thenBB = llvm::BasicBlock::Create(context, "if.then", &function);
+    llvm::BasicBlock *elseBB = nullptr;
     auto *mergeBB = llvm::BasicBlock::Create(context, "if.end", &function);
-    builder.CreateCondBr(boolCond.value(), thenBB, mergeBB);
+    if (stmt.elseBlock) {
+      elseBB = llvm::BasicBlock::Create(context, "if.else", &function);
+      builder.CreateCondBr(boolCond.value(), thenBB, elseBB);
+    } else {
+      builder.CreateCondBr(boolCond.value(), thenBB, mergeBB);
+    }
 
     builder.SetInsertPoint(thenBB);
     auto thenResult = lowerBlock(*stmt.thenBlock);
@@ -244,6 +250,17 @@ private:
     }
     if (!terminated()) {
       builder.CreateBr(mergeBB);
+    }
+
+    if (stmt.elseBlock) {
+      builder.SetInsertPoint(elseBB);
+      auto elseResult = lowerBlock(*stmt.elseBlock);
+      if (!elseResult) {
+        return std::unexpected(elseResult.error());
+      }
+      if (!terminated()) {
+        builder.CreateBr(mergeBB);
+      }
     }
 
     builder.SetInsertPoint(mergeBB);

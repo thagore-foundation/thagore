@@ -1,0 +1,6 @@
+let a = 40
+let b = 2
+if (a + b == 42):
+  print(100)
+else:
+  print(0)

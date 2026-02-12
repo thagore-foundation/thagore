@@ -326,7 +326,17 @@ public:
         .span = stmt.condition->span,
       });
     }
-    return stmt.thenBlock->accept(*this);
+    auto thenResult = stmt.thenBlock->accept(*this);
+    if (!thenResult) {
+      return std::unexpected(thenResult.error());
+    }
+    if (stmt.elseBlock) {
+      auto elseResult = stmt.elseBlock->accept(*this);
+      if (!elseResult) {
+        return std::unexpected(elseResult.error());
+      }
+    }
+    return {};
   }
 
   auto visit(const LoopStmt &stmt) -> Result<void, Diagnostic> override {
