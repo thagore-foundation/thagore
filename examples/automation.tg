@@ -1,0 +1,17 @@
+import fs
+import process
+
+func main() -> i32:
+    print("Creating log file...")
+    let f = fs.open_write("log.txt")
+    f.write("System check initiated.")
+    f.close()
+
+    print("Checking OS info...")
+    let code = process.run("echo Hello from Shell")
+
+    if (code == 0):
+        print("Shell command executed.")
+    else:
+        print("Shell command failed.")
+    return 0

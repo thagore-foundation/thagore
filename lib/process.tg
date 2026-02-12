@@ -1,0 +1,11 @@
+extern func system(cmd: String) -> i32
+
+func run(cmd: String) -> i32:
+    return system(cmd)
+
+struct Command:
+    cmd: String
+
+impl Command:
+    func exec(self) -> i32:
+        return system(self.cmd)

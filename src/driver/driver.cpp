@@ -164,11 +164,13 @@ auto resolveImportPath(const std::filesystem::path &baseDir, const std::string &
   const std::filesystem::path raw {rawPath};
   std::vector<std::filesystem::path> candidates {};
 
-  auto pushCandidates = [&](const std::filesystem::path &root) {
+  auto pushCandidates = [&](const std::filesystem::path &root, bool includeFolderAsFile) {
     if (raw.has_extension()) {
       candidates.push_back(root / raw);
     } else {
-      candidates.push_back(root / raw);
+      if (includeFolderAsFile) {
+        candidates.push_back(root / raw);
+      }
       candidates.push_back(root / (raw.string() + ".tg"));
       candidates.push_back(root / raw / "mod.tg");
       candidates.push_back(root / (raw.string() + "/mod.tg"));
@@ -176,10 +178,18 @@ auto resolveImportPath(const std::filesystem::path &baseDir, const std::string &
   };
 
   if (raw.is_absolute()) {
-    pushCandidates(std::filesystem::path {});
+    pushCandidates(std::filesystem::path {}, true);
   } else {
-    pushCandidates(baseDir);
-    pushCandidates(std::filesystem::current_path());
+    const bool isBareModuleName = !raw.has_parent_path() && !raw.has_extension();
+    if (isBareModuleName) {
+      // Flat module resolution: local module first, then standard library folder.
+      pushCandidates(baseDir, true);
+      pushCandidates(std::filesystem::current_path() / "lib", false);
+      pushCandidates(std::filesystem::current_path(), true);
+    } else {
+      pushCandidates(baseDir, true);
+      pushCandidates(std::filesystem::current_path(), true);
+    }
   }
 
   for (const auto &candidate : candidates) {

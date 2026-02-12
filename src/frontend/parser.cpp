@@ -203,9 +203,11 @@ private:
     if (!importTok) {
       return std::unexpected(lastError("Expected 'import'."));
     }
-    const Token *pathTok = consume(TokenKind::String, "Expected string path after 'import'.");
-    if (!pathTok) {
-      return std::unexpected(lastError("Expected string path after 'import'."));
+    const Token *pathTok = nullptr;
+    if (check(TokenKind::String) || check(TokenKind::Identifier)) {
+      pathTok = advance();
+    } else {
+      return std::unexpected(lastError("Expected import path after 'import'."));
     }
 
     std::string alias {};
