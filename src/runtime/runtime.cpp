@@ -38,6 +38,10 @@ struct AstNode {
   AstNode *right {nullptr};
 };
 
+struct RuntimeInterpreter {
+  std::unordered_map<std::string, int> env {};
+};
+
 int g_argc = 0;
 char **g_argv = nullptr;
 
@@ -87,6 +91,19 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
       out.push_back(ExprToken {.kind = "INT", .text = std::move(text)});
       continue;
     }
+    if (std::isalpha(static_cast<unsigned char>(*p)) != 0 || *p == '_') {
+      std::string text {};
+      while (*p != '\0' && (std::isalnum(static_cast<unsigned char>(*p)) != 0 || *p == '_')) {
+        text.push_back(*p);
+        ++p;
+      }
+      if (text == "let") {
+        out.push_back(ExprToken {.kind = "LET", .text = text});
+      } else {
+        out.push_back(ExprToken {.kind = "IDENT", .text = text});
+      }
+      continue;
+    }
 
     switch (*p) {
       case '+':
@@ -113,6 +130,10 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
         out.push_back(ExprToken {.kind = "RPAREN", .text = ")"});
         ++p;
         break;
+      case '=':
+        out.push_back(ExprToken {.kind = "EQUAL", .text = "="});
+        ++p;
+        break;
       default:
         out.push_back(ExprToken {.kind = "INVALID", .text = std::string(1, *p)});
         ++p;
@@ -128,6 +149,22 @@ public:
   explicit ExprParser(const std::vector<ExprToken> &tokens_) : tokens(tokens_) {}
 
   auto parseExpr() -> AstNode * {
+    return parseAddSub();
+  }
+
+  auto parseStatement() -> AstNode * {
+    if (match("LET")) {
+      if (current().kind != "IDENT") {
+        return makeLiteralNode("0");
+      }
+      const auto name = current().text;
+      ++pos;
+      if (!match("EQUAL")) {
+        return makeLiteralNode("0");
+      }
+      auto *expr = parseAddSub();
+      return makeLetNode(name, expr);
+    }
     return parseAddSub();
   }
 
@@ -167,6 +204,21 @@ private:
     return node;
   }
 
+  auto makeVariableNode(const std::string &name) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Variable";
+    node->value = name;
+    return node;
+  }
+
+  auto makeLetNode(const std::string &name, AstNode *expr) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Let";
+    node->value = name;
+    node->left = expr;
+    return node;
+  }
+
   auto parseFactor() -> AstNode * {
     if (match("LPAREN")) {
       auto *inner = parseAddSub();
@@ -177,6 +229,11 @@ private:
       auto value = current().text;
       ++pos;
       return makeLiteralNode(value);
+    }
+    if (current().kind == "IDENT") {
+      auto name = current().text;
+      ++pos;
+      return makeVariableNode(name);
     }
     return makeLiteralNode("0");
   }
@@ -234,6 +291,15 @@ void appendAstNode(std::string &out, AstNode *node, int indent, std::string_view
     appendAstLine(out, indent, std::string(label) + ": Literal(" + node->value + ")");
     return;
   }
+  if (node->kind == "Variable") {
+    appendAstLine(out, indent, std::string(label) + ": Variable(" + node->value + ")");
+    return;
+  }
+  if (node->kind == "Let") {
+    appendAstLine(out, indent, std::string(label) + ": Let(" + node->value + ")");
+    appendAstNode(out, node->left, indent + 2, "Value");
+    return;
+  }
 
   appendAstLine(out, indent, std::string(label) + ": Binary(" + node->op + ")");
   appendAstNode(out, node->left, indent + 2, "Left");
@@ -247,6 +313,15 @@ auto buildAstDebugString(AstNode *root) -> std::string {
   if (root->kind == "Literal") {
     return "Literal(" + root->value + ")\n";
   }
+  if (root->kind == "Variable") {
+    return "Variable(" + root->value + ")\n";
+  }
+  if (root->kind == "Let") {
+    std::string out {};
+    appendAstLine(out, 0, "Let(" + root->value + ")");
+    appendAstNode(out, root->left, 2, "Value");
+    return out;
+  }
   std::string out {};
   appendAstLine(out, 0, "Binary(" + root->op + ")");
   appendAstNode(out, root->left, 2, "Left");
@@ -254,16 +329,25 @@ auto buildAstDebugString(AstNode *root) -> std::string {
   return out;
 }
 
-auto evalAst(AstNode *node) -> int {
+auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
   if (node == nullptr) {
     return 0;
   }
   if (node->kind == "Literal") {
     return std::atoi(node->value.c_str());
   }
+  if (node->kind == "Variable") {
+    if (interp == nullptr) {
+      return 0;
+    }
+    if (auto it = interp->env.find(node->value); it != interp->env.end()) {
+      return it->second;
+    }
+    return 0;
+  }
   if (node->kind == "Binary") {
-    const int left = evalAst(node->left);
-    const int right = evalAst(node->right);
+    const int left = evalExprWithEnv(node->left, interp);
+    const int right = evalExprWithEnv(node->right, interp);
     if (node->op == "+") return left + right;
     if (node->op == "-") return left - right;
     if (node->op == "*") return left * right;
@@ -273,6 +357,20 @@ auto evalAst(AstNode *node) -> int {
     }
   }
   return 0;
+}
+
+auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
+  if (node == nullptr) {
+    return 0;
+  }
+  if (node->kind == "Let") {
+    const int value = evalExprWithEnv(node->left, interp);
+    if (interp != nullptr) {
+      interp->env[node->value] = value;
+    }
+    return value;
+  }
+  return evalExprWithEnv(node, interp);
 }
 
 } // namespace
@@ -610,6 +708,9 @@ int __thg_tok_tag(void *streamPtr, int index) {
   if (kind == "LPAREN") return 6;
   if (kind == "RPAREN") return 7;
   if (kind == "INVALID") return 8;
+  if (kind == "IDENT") return 9;
+  if (kind == "LET") return 10;
+  if (kind == "EQUAL") return 11;
   return 8;
 }
 
@@ -626,6 +727,21 @@ void *__thg_ast_new_binary(const char *op, void *left, void *right) {
   node->op = op == nullptr ? "" : op;
   node->left = static_cast<AstNode *>(left);
   node->right = static_cast<AstNode *>(right);
+  return node;
+}
+
+void *__thg_ast_new_var(const char *name) {
+  auto *node = new AstNode {};
+  node->kind = "Variable";
+  node->value = name == nullptr ? "" : name;
+  return node;
+}
+
+void *__thg_ast_new_let(const char *name, void *expr) {
+  auto *node = new AstNode {};
+  node->kind = "Let";
+  node->value = name == nullptr ? "" : name;
+  node->left = static_cast<AstNode *>(expr);
   return node;
 }
 
@@ -646,6 +762,12 @@ int __thg_ast_kind_tag(void *nodePtr) {
   }
   if (kind == "Binary") {
     return 2;
+  }
+  if (kind == "Variable") {
+    return 3;
+  }
+  if (kind == "Let") {
+    return 4;
   }
   return 0;
 }
@@ -684,6 +806,13 @@ const char *__thg_ast_value(void *nodePtr) {
   return static_cast<AstNode *>(nodePtr)->value.c_str();
 }
 
+const char *__thg_ast_name(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return "";
+  }
+  return static_cast<AstNode *>(nodePtr)->value.c_str();
+}
+
 void *__thg_ast_left(void *nodePtr) {
   if (nodePtr == nullptr) {
     return nullptr;
@@ -712,8 +841,28 @@ void *__thg_parse_expr_from_tokens(void *streamPtr) {
   return parser.parseExpr();
 }
 
+void *__thg_parse_stmt_from_source(const char *source) {
+  auto tokens = tokenizeExprSource(source);
+  ExprParser parser {tokens};
+  return parser.parseStatement();
+}
+
 int __thg_eval_expr(void *nodePtr) {
-  return evalAst(static_cast<AstNode *>(nodePtr));
+  return evalExprWithEnv(static_cast<AstNode *>(nodePtr), nullptr);
+}
+
+void *__thg_interp_new() {
+  return new RuntimeInterpreter {};
+}
+
+int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {
+  auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  return evalExprWithEnv(static_cast<AstNode *>(nodePtr), interp);
+}
+
+int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
+  auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp);
 }
 
 }
