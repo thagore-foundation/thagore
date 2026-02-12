@@ -152,6 +152,8 @@ enum class BinaryOp {
   Sub,
   Mul,
   Div,
+  And,
+  Or,
   Eq,
   Ne,
   Lt,
@@ -164,6 +166,8 @@ struct LiteralExpr final : Expr {
   enum class Kind {
     Int,
     Float,
+    Bool,
+    Null,
     String,
   };
 

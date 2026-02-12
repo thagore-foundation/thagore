@@ -99,11 +99,14 @@ if(BUILD_TESTING)
   )
   target_compile_features(thag_tests PRIVATE cxx_std_23)
   target_include_directories(thag_tests PRIVATE include)
+  target_compile_definitions(thag_tests PRIVATE THAG_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
   target_link_libraries(thag_tests
     PRIVATE
       thag_common
       thag_frontend
       thag_backend
+      thag_runtime
+      thag_driver
   )
   add_test(NAME thag_tests COMMAND thag_tests)
 endif()

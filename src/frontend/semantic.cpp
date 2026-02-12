@@ -39,6 +39,9 @@ auto sameType(const TypePtr &lhs, const TypePtr &rhs) -> bool {
   if (!lhs || !rhs) {
     return false;
   }
+  if (lhs->base == BaseType::Unknown || rhs->base == BaseType::Unknown) {
+    return true;
+  }
   if (lhs->base != rhs->base) {
     return false;
   }
@@ -161,6 +164,9 @@ private:
       }
       return ensureKnownType(type->elementType, span);
     }
+    if (type->base == BaseType::Unknown) {
+      return {};
+    }
     return {};
   }
 
@@ -256,7 +262,20 @@ private:
       }
     }
 
-    if (fn.returnType && fn.returnType->base != BaseType::Void && !blockContainsReturn(*fn.body)) {
+    if (fn.returnType && fn.returnType->base == BaseType::Unknown) {
+      if (!currentFunctionReturnType || currentFunctionReturnType->base == BaseType::Unknown) {
+        fn.returnType = makeType(BaseType::Void);
+      } else {
+        fn.returnType = currentFunctionReturnType;
+      }
+    }
+
+    if (
+      fn.returnType &&
+      fn.returnType->base != BaseType::Void &&
+      fn.returnType->base != BaseType::Unknown &&
+      !blockContainsReturn(*fn.body)
+    ) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format("Function '{}' is missing a return value.", fn.name),
@@ -415,13 +434,26 @@ public:
           .message = "Arithmetic operators require matching numeric operands.",
           .span = expr.span,
         });
+      case BinaryOp::And:
+      case BinaryOp::Or:
+        if (
+          (leftBase == BaseType::Bool || leftBase == BaseType::Unknown) &&
+          (rightBase == BaseType::Bool || rightBase == BaseType::Unknown)
+        ) {
+          return makeType(BaseType::Bool);
+        }
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Logical operators require bool operands.",
+          .span = expr.span,
+        });
       case BinaryOp::Eq:
       case BinaryOp::Ne:
       case BinaryOp::Lt:
       case BinaryOp::Le:
       case BinaryOp::Gt:
       case BinaryOp::Ge:
-        if (leftBase != rightBase) {
+        if (leftBase != rightBase && leftBase != BaseType::Unknown && rightBase != BaseType::Unknown) {
           return std::unexpected(Diagnostic {
             .code = ErrorCode::SemanticError,
             .message = "Comparison operands must share the same type.",
@@ -446,6 +478,12 @@ public:
     }
     if (expr.literalKind == LiteralExpr::Kind::Float) {
       return makeType(BaseType::F32);
+    }
+    if (expr.literalKind == LiteralExpr::Kind::Bool) {
+      return makeType(BaseType::Bool);
+    }
+    if (expr.literalKind == LiteralExpr::Kind::Null) {
+      return makeType(BaseType::Unknown);
     }
     return makeType(BaseType::String);
   }
@@ -483,6 +521,20 @@ public:
   }
 
   auto visit(const CallExpr &expr) -> Result<TypePtr, Diagnostic> override {
+    if (expr.callee == "__thg_throw") {
+      if (expr.args.size() != 1) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "Builtin throw expects exactly one argument.",
+          .span = expr.span,
+        });
+      }
+      auto argType = expr.args[0]->accept(*this);
+      if (!argType) {
+        return std::unexpected(argType.error());
+      }
+      return makeType(BaseType::Void);
+    }
     if (expr.callee == "print") {
       if (expr.args.size() != 1) {
         return std::unexpected(Diagnostic {
@@ -542,10 +594,10 @@ public:
         .span = expr.span,
       });
     }
-    if (expr.args.size() != found->second.params.size()) {
+    if (expr.args.size() > found->second.params.size()) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
-        .message = std::format("Function '{}' expects {} argument(s), got {}.", expr.callee, found->second.params.size(), expr.args.size()),
+        .message = std::format("Function '{}' expects at most {} argument(s), got {}.", expr.callee, found->second.params.size(), expr.args.size()),
         .span = expr.span,
       });
     }
@@ -679,11 +731,11 @@ public:
         .span = expr.span,
       });
     }
-    if (expr.args.size() + 1 != found->second.params.size()) {
+    if (expr.args.size() + 1 > found->second.params.size()) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format(
-          "Method '{}.{}' expects {} argument(s), got {}.",
+          "Method '{}.{}' expects at most {} argument(s), got {}.",
           objectType.value()->name,
           expr.method,
           found->second.params.size() - 1,
@@ -882,6 +934,9 @@ public:
       }
       actual = t.value();
     }
+    if (currentFunctionReturnType && currentFunctionReturnType->base == BaseType::Unknown && actual->base != BaseType::Void) {
+      currentFunctionReturnType = actual;
+    }
     if (!sameType(currentFunctionReturnType, actual)) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
@@ -897,7 +952,7 @@ public:
     if (!cond) {
       return std::unexpected(cond.error());
     }
-    if (cond.value()->base != BaseType::Bool) {
+    if (cond.value()->base != BaseType::Bool && cond.value()->base != BaseType::Unknown) {
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = "If condition must be bool.",
@@ -923,7 +978,7 @@ public:
       if (!cond) {
         return std::unexpected(cond.error());
       }
-      if (cond.value()->base != BaseType::Bool) {
+      if (cond.value()->base != BaseType::Bool && cond.value()->base != BaseType::Unknown) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
           .message = "While condition must be bool.",

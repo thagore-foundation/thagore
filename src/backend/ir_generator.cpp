@@ -70,7 +70,7 @@ auto mapDeclaredType(
   const std::unordered_map<std::string, StructLayout> &structLayouts
 ) -> llvm::Type * {
   if (!type) {
-    return llvm::Type::getInt32Ty(context);
+    return llvm::PointerType::get(context, 0);
   }
   switch (type->base) {
     case BaseType::Void: return llvm::Type::getVoidTy(context);
@@ -96,7 +96,7 @@ auto mapDeclaredType(
     }
     case BaseType::Unknown: break;
   }
-  return llvm::Type::getInt32Ty(context);
+  return llvm::PointerType::get(context, 0);
 }
 
 class FunctionLowering {
@@ -235,6 +235,13 @@ private:
   auto ensureBool(llvm::Value *value, const SourceSpan &span) -> Result<llvm::Value *, Diagnostic> {
     if (value->getType()->isIntegerTy(1)) {
       return value;
+    }
+    if (value->getType()->isPointerTy()) {
+      return builder.CreateICmpNE(
+        value,
+        llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)),
+        "cond.ptr"
+      );
     }
     if (value->getType()->isIntegerTy()) {
       return builder.CreateICmpNE(value, llvm::ConstantInt::get(value->getType(), 0), "cond");
@@ -385,6 +392,26 @@ private:
         }
       }
       locals.erase(localIt);
+    }
+  }
+
+  void emitReturnCleanups() {
+    for (auto scopeIt = scopeLocals.rbegin(); scopeIt != scopeLocals.rend(); ++scopeIt) {
+      for (auto nameIt = scopeIt->rbegin(); nameIt != scopeIt->rend(); ++nameIt) {
+        auto localIt = locals.find(*nameIt);
+        if (localIt == locals.end() || !localIt->second.ownedRef) {
+          continue;
+        }
+        auto *loaded = builder.CreateLoad(localIt->second.slot->getAllocatedType(), localIt->second.slot);
+        if (localIt->second.type == BaseType::String) {
+          auto freed = freeStringValue(loaded);
+          if (!freed) {
+            continue;
+          }
+        } else if (loaded->getType()->isPointerTy()) {
+          builder.CreateCall(releaseFn, {loaded});
+        }
+      }
     }
   }
 
@@ -661,9 +688,7 @@ private:
 
   auto lowerReturn(const ReturnStmt &stmt) -> Result<void, Diagnostic> {
     if (!stmt.value) {
-      while (!scopeLocals.empty()) {
-        popScope();
-      }
+      emitReturnCleanups();
       builder.CreateRetVoid();
       return {};
     }
@@ -671,6 +696,11 @@ private:
     auto ret = lowerExpr(*stmt.value);
     if (!ret) {
       return std::unexpected(ret.error());
+    }
+    if (function.getReturnType()->isVoidTy()) {
+      emitReturnCleanups();
+      builder.CreateRetVoid();
+      return {};
     }
     llvm::Value *retValue = ret.value();
     if (function.getReturnType() == llvmType(BaseType::String) && retValue->getType()->isPointerTy()) {
@@ -683,9 +713,7 @@ private:
       }
       retValue = cloned.value();
     }
-    while (!scopeLocals.empty()) {
-      popScope();
-    }
+    emitReturnCleanups();
     builder.CreateRet(retValue);
     return {};
   }
@@ -814,6 +842,13 @@ private:
         });
       }
       return llvm::ConstantFP::get(llvm::Type::getFloatTy(context), parsed);
+    }
+    if (expr.literalKind == LiteralExpr::Kind::Bool) {
+      const bool value = expr.value == "true";
+      return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), value ? 1 : 0);
+    }
+    if (expr.literalKind == LiteralExpr::Kind::Null) {
+      return llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
     }
 
     if (expr.value.size() > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
@@ -1146,6 +1181,18 @@ private:
       }
       args.push_back(argValue);
     }
+    while (args.size() < fnType->getNumParams()) {
+      auto *expectedTy = fnType->getParamType(static_cast<unsigned int>(args.size()));
+      if (expectedTy->isPointerTy()) {
+        args.push_back(llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)));
+      } else if (expectedTy->isIntegerTy()) {
+        args.push_back(llvm::ConstantInt::get(expectedTy, 0));
+      } else if (expectedTy->isFloatTy() || expectedTy->isDoubleTy()) {
+        args.push_back(llvm::ConstantFP::get(expectedTy, 0.0));
+      } else {
+        args.push_back(llvm::UndefValue::get(expectedTy));
+      }
+    }
     if (callee->getReturnType()->isVoidTy()) {
       builder.CreateCall(callee, args);
       return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
@@ -1223,14 +1270,17 @@ private:
       return std::unexpected(rhs.error());
     }
 
+    llvm::Value *lhsValue = lhs.value();
+    llvm::Value *rhsValue = rhs.value();
+
     const bool lhsIsString = inferExprType(*expr.left) == BaseType::String;
     const bool rhsIsString = inferExprType(*expr.right) == BaseType::String;
     if (expr.op == BinaryOp::Add && lhsIsString && rhsIsString) {
-      auto leftPtr = extractStringPointer(lhs.value(), expr.left->span, "str.left");
+      auto leftPtr = extractStringPointer(lhsValue, expr.left->span, "str.left");
       if (!leftPtr) {
         return std::unexpected(leftPtr.error());
       }
-      auto rightPtr = extractStringPointer(rhs.value(), expr.right->span, "str.right");
+      auto rightPtr = extractStringPointer(rhsValue, expr.right->span, "str.right");
       if (!rightPtr) {
         return std::unexpected(rightPtr.error());
       }
@@ -1238,69 +1288,134 @@ private:
       return packCStringValue(added);
     }
     if (expr.op == BinaryOp::Eq && lhsIsString && rhsIsString) {
-      auto leftPtr = extractStringPointer(lhs.value(), expr.left->span, "str.left");
+      auto leftPtr = extractStringPointer(lhsValue, expr.left->span, "str.left");
       if (!leftPtr) {
         return std::unexpected(leftPtr.error());
       }
-      auto rightPtr = extractStringPointer(rhs.value(), expr.right->span, "str.right");
+      auto rightPtr = extractStringPointer(rhsValue, expr.right->span, "str.right");
       if (!rightPtr) {
         return std::unexpected(rightPtr.error());
       }
       auto *eqValue = builder.CreateCall(strEqFn, {leftPtr.value(), rightPtr.value()}, "str.eq");
       return builder.CreateICmpNE(eqValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), "str.eq.bool");
     }
+    if (expr.op == BinaryOp::Ne && lhsIsString && rhsIsString) {
+      auto leftPtr = extractStringPointer(lhsValue, expr.left->span, "str.left");
+      if (!leftPtr) {
+        return std::unexpected(leftPtr.error());
+      }
+      auto rightPtr = extractStringPointer(rhsValue, expr.right->span, "str.right");
+      if (!rightPtr) {
+        return std::unexpected(rightPtr.error());
+      }
+      auto *eqValue = builder.CreateCall(strEqFn, {leftPtr.value(), rightPtr.value()}, "str.eq");
+      return builder.CreateICmpEQ(eqValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), "str.ne.bool");
+    }
+
+    const bool isComparison =
+      expr.op == BinaryOp::Eq ||
+      expr.op == BinaryOp::Ne ||
+      expr.op == BinaryOp::Lt ||
+      expr.op == BinaryOp::Le ||
+      expr.op == BinaryOp::Gt ||
+      expr.op == BinaryOp::Ge;
+    if (isComparison && lhsValue->getType() != rhsValue->getType()) {
+      auto *stringTy = llvmType(BaseType::String);
+      if (lhsValue->getType() == stringTy && rhsValue->getType()->isPointerTy()) {
+        auto ptr = extractStringPointer(lhsValue, expr.left->span, "cmp.lhs");
+        if (!ptr) {
+          return std::unexpected(ptr.error());
+        }
+        lhsValue = ptr.value();
+      } else if (rhsValue->getType() == stringTy && lhsValue->getType()->isPointerTy()) {
+        auto ptr = extractStringPointer(rhsValue, expr.right->span, "cmp.rhs");
+        if (!ptr) {
+          return std::unexpected(ptr.error());
+        }
+        rhsValue = ptr.value();
+      }
+    }
+    if (isComparison && lhsValue->getType() != rhsValue->getType()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Comparison operands lowered to incompatible types.",
+        .span = expr.span,
+      });
+    }
 
     switch (expr.op) {
       case BinaryOp::Add:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFAdd(lhs.value(), rhs.value(), "faddtmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFAdd(lhsValue, rhsValue, "faddtmp");
         }
-        return builder.CreateAdd(lhs.value(), rhs.value(), "addtmp");
+        return builder.CreateAdd(lhsValue, rhsValue, "addtmp");
       case BinaryOp::Sub:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFSub(lhs.value(), rhs.value(), "fsubtmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFSub(lhsValue, rhsValue, "fsubtmp");
         }
-        return builder.CreateSub(lhs.value(), rhs.value(), "subtmp");
+        return builder.CreateSub(lhsValue, rhsValue, "subtmp");
       case BinaryOp::Mul:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFMul(lhs.value(), rhs.value(), "fmultmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFMul(lhsValue, rhsValue, "fmultmp");
         }
-        return builder.CreateMul(lhs.value(), rhs.value(), "multmp");
+        return builder.CreateMul(lhsValue, rhsValue, "multmp");
       case BinaryOp::Div:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFDiv(lhs.value(), rhs.value(), "fdivtmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFDiv(lhsValue, rhsValue, "fdivtmp");
         }
-        return builder.CreateSDiv(lhs.value(), rhs.value(), "divtmp");
+        return builder.CreateSDiv(lhsValue, rhsValue, "divtmp");
+      case BinaryOp::And: {
+        auto lhsBool = ensureBool(lhsValue, expr.left->span);
+        if (!lhsBool) {
+          return std::unexpected(lhsBool.error());
+        }
+        auto rhsBool = ensureBool(rhsValue, expr.right->span);
+        if (!rhsBool) {
+          return std::unexpected(rhsBool.error());
+        }
+        return builder.CreateAnd(lhsBool.value(), rhsBool.value(), "andtmp");
+      }
+      case BinaryOp::Or: {
+        auto lhsBool = ensureBool(lhsValue, expr.left->span);
+        if (!lhsBool) {
+          return std::unexpected(lhsBool.error());
+        }
+        auto rhsBool = ensureBool(rhsValue, expr.right->span);
+        if (!rhsBool) {
+          return std::unexpected(rhsBool.error());
+        }
+        return builder.CreateOr(lhsBool.value(), rhsBool.value(), "ortmp");
+      }
       case BinaryOp::Eq:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpOEQ(lhs.value(), rhs.value(), "feqtmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpOEQ(lhsValue, rhsValue, "feqtmp");
         }
-        return builder.CreateICmpEQ(lhs.value(), rhs.value(), "eqtmp");
+        return builder.CreateICmpEQ(lhsValue, rhsValue, "eqtmp");
       case BinaryOp::Ne:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpONE(lhs.value(), rhs.value(), "fnetmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpONE(lhsValue, rhsValue, "fnetmp");
         }
-        return builder.CreateICmpNE(lhs.value(), rhs.value(), "netmp");
+        return builder.CreateICmpNE(lhsValue, rhsValue, "netmp");
       case BinaryOp::Lt:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpOLT(lhs.value(), rhs.value(), "flttmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpOLT(lhsValue, rhsValue, "flttmp");
         }
-        return builder.CreateICmpSLT(lhs.value(), rhs.value(), "lttmp");
+        return builder.CreateICmpSLT(lhsValue, rhsValue, "lttmp");
       case BinaryOp::Le:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpOLE(lhs.value(), rhs.value(), "fletmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpOLE(lhsValue, rhsValue, "fletmp");
         }
-        return builder.CreateICmpSLE(lhs.value(), rhs.value(), "letmp");
+        return builder.CreateICmpSLE(lhsValue, rhsValue, "letmp");
       case BinaryOp::Gt:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpOGT(lhs.value(), rhs.value(), "fgttmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpOGT(lhsValue, rhsValue, "fgttmp");
         }
-        return builder.CreateICmpSGT(lhs.value(), rhs.value(), "gttmp");
+        return builder.CreateICmpSGT(lhsValue, rhsValue, "gttmp");
       case BinaryOp::Ge:
-        if (lhs.value()->getType()->isFloatingPointTy() && rhs.value()->getType()->isFloatingPointTy()) {
-          return builder.CreateFCmpOGE(lhs.value(), rhs.value(), "fgetmp");
+        if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
+          return builder.CreateFCmpOGE(lhsValue, rhsValue, "fgetmp");
         }
-        return builder.CreateICmpSGE(lhs.value(), rhs.value(), "getmp");
+        return builder.CreateICmpSGE(lhsValue, rhsValue, "getmp");
     }
     return std::unexpected(Diagnostic {
       .code = ErrorCode::CodegenError,
@@ -1310,6 +1425,30 @@ private:
   }
 
   auto lowerCall(const CallExpr &expr) -> Result<llvm::Value *, Diagnostic> {
+    if (expr.callee == "__thg_throw") {
+      if (expr.args.size() != 1) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Builtin throw expects exactly one argument.",
+          .span = expr.span,
+        });
+      }
+      auto arg = lowerExpr(*expr.args[0]);
+      if (!arg) {
+        return std::unexpected(arg.error());
+      }
+      auto *voidTy = llvm::Type::getVoidTy(context);
+      auto *i32Ty = llvm::Type::getInt32Ty(context);
+      auto throwFn = module.getOrInsertFunction("__thg_throw", llvm::FunctionType::get(voidTy, {llvm::PointerType::get(context, 0)}, false));
+      llvm::Value *msgPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0));
+      if (arg.value()->getType() == llvmType(BaseType::String)) {
+        msgPtr = builder.CreateExtractValue(arg.value(), {0}, "throw.msg.ptr");
+      } else if (arg.value()->getType()->isPointerTy()) {
+        msgPtr = arg.value();
+      }
+      builder.CreateCall(throwFn, {msgPtr});
+      return llvm::ConstantInt::get(i32Ty, 0);
+    }
     if (expr.callee == "print") {
       if (expr.args.size() != 1) {
         return std::unexpected(Diagnostic {
@@ -1408,6 +1547,18 @@ private:
       }
       args.push_back(argValue);
     }
+    while (args.size() < fnType->getNumParams()) {
+      auto *expectedTy = fnType->getParamType(static_cast<unsigned int>(args.size()));
+      if (expectedTy->isPointerTy()) {
+        args.push_back(llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)));
+      } else if (expectedTy->isIntegerTy()) {
+        args.push_back(llvm::ConstantInt::get(expectedTy, 0));
+      } else if (expectedTy->isFloatTy() || expectedTy->isDoubleTy()) {
+        args.push_back(llvm::ConstantFP::get(expectedTy, 0.0));
+      } else {
+        args.push_back(llvm::UndefValue::get(expectedTy));
+      }
+    }
     if (callee->getReturnType()->isVoidTy()) {
       builder.CreateCall(callee, args);
       return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
@@ -1433,6 +1584,12 @@ private:
       const auto &lit = static_cast<const LiteralExpr &>(expr);
       if (lit.literalKind == LiteralExpr::Kind::String) {
         return BaseType::String;
+      }
+      if (lit.literalKind == LiteralExpr::Kind::Bool) {
+        return BaseType::Bool;
+      }
+      if (lit.literalKind == LiteralExpr::Kind::Null) {
+        return BaseType::Pointer;
       }
       if (lit.literalKind == LiteralExpr::Kind::Float) {
         return BaseType::F32;
@@ -1532,6 +1689,8 @@ private:
         case BinaryOp::Le:
         case BinaryOp::Gt:
         case BinaryOp::Ge:
+        case BinaryOp::And:
+        case BinaryOp::Or:
           return BaseType::Bool;
       }
     }
@@ -1636,9 +1795,9 @@ auto mapType(llvm::LLVMContext &context, BaseType type) -> llvm::Type * {
     case BaseType::String: return getStringStructType(context);
     case BaseType::Array: break;
     case BaseType::Struct: break;
-    case BaseType::Unknown: break;
+    case BaseType::Unknown: return llvm::PointerType::get(context, 0);
   }
-  return llvm::Type::getInt32Ty(context);
+  return llvm::PointerType::get(context, 0);
 }
 
 } // namespace

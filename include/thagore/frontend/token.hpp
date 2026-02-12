@@ -31,6 +31,11 @@ enum class TokenKind : std::uint16_t {
   KwImpl,
   KwExtern,
   KwImport,
+  KwUse,
+  KwThrow,
+  KwAnd,
+  KwOr,
+  KwNot,
   KwAs,
 
   LParen,
@@ -83,6 +88,11 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwImpl: return "impl";
     case TokenKind::KwExtern: return "extern";
     case TokenKind::KwImport: return "import";
+    case TokenKind::KwUse: return "use";
+    case TokenKind::KwThrow: return "throw";
+    case TokenKind::KwAnd: return "and";
+    case TokenKind::KwOr: return "or";
+    case TokenKind::KwNot: return "not";
     case TokenKind::KwAs: return "as";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";

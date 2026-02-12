@@ -45,6 +45,11 @@ auto keywordKind(std::string_view text) -> TokenKind {
     {"impl", TokenKind::KwImpl},
     {"extern", TokenKind::KwExtern},
     {"import", TokenKind::KwImport},
+    {"use", TokenKind::KwUse},
+    {"throw", TokenKind::KwThrow},
+    {"and", TokenKind::KwAnd},
+    {"or", TokenKind::KwOr},
+    {"not", TokenKind::KwNot},
     {"as", TokenKind::KwAs},
   };
   const auto it = kKeywords.find(text);
@@ -184,6 +189,13 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
       continue;
     }
 
+    if (ch == '/' && peek(1) == '/') {
+      while (!atEnd() && peek() != '\n') {
+        advance();
+      }
+      continue;
+    }
+
     if (ch == ' ' || ch == '\r' || ch == '\t') {
       advance();
       continue;
@@ -212,6 +224,25 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
       } else {
         pushToken(TokenKind::Integer, begin, cursor, text);
       }
+      continue;
+    }
+
+    if (ch == 'v' && peek(1) == '"') {
+      Cursor begin = cursor;
+      advance();
+      advance();
+      std::string text {};
+      while (!atEnd() && peek() != '"') {
+        if (peek() == '\n') {
+          return error("Unterminated string literal.", begin, cursor);
+        }
+        text.push_back(advance());
+      }
+      if (atEnd()) {
+        return error("Unterminated string literal.", begin, cursor);
+      }
+      advance();
+      pushToken(TokenKind::String, begin, cursor, text);
       continue;
     }
 

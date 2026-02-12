@@ -1,28 +1,34 @@
-extern func fopen(filename: String, mode: String) -> ptr
-extern func fputs(str: String, stream: ptr) -> i32
-extern func fclose(stream: ptr) -> i32
-extern func fgetc(stream: ptr) -> i32
-extern func feof(stream: ptr) -> i32
+extern func __fs_read_text(path: String) -> String
+extern func __fs_write_text(path: String, text: String) -> i32
+extern func __fs_exists(path: String) -> i32
+extern func __fs_mkdir(path: String) -> i32
+extern func __fs_list_dir(path: String) -> String
+extern func __fs_open_binary(path: String, mode: String) -> ptr
+extern func __fs_write_bytes(handle: ptr, buffer: String) -> i32
+extern func __fs_read_bytes(handle: ptr, size: i32) -> String
+extern func __fs_seek(handle: ptr, offset: i32, whence: i32) -> i32
+extern func __fs_close(handle: ptr) -> i32
 
-struct File:
-    handle: ptr
+func read_text(path: String) -> String = __fs_read_text(path)
 
-impl File:
-    func write(self, content: String) -> i32:
-        return fputs(content, self.handle)
+func write_text(path: String, text: String) -> i32 = __fs_write_text(path, text)
 
-    func close(self) -> i32:
-        return fclose(self.handle)
+func exists(path: String) -> i32 = __fs_exists(path)
 
-    func read_all(self) -> String:
-        return "File Content Placeholder"
+func mkdir(path: String) -> i32 = __fs_mkdir(path)
 
-func open_write(path: String) -> File:
-    let mode = "w"
-    let p = fopen(path, mode)
-    return File(p)
+func list_dir(path: String) -> String = __fs_list_dir(path)
 
-func open_read(path: String) -> File:
-    let mode = "r"
-    let p = fopen(path, mode)
-    return File(p)
+func open_binary(path: String, mode: String) -> ptr = __fs_open_binary(path, mode)
+
+func write_bytes(handle: ptr, buffer: String) -> i32 = __fs_write_bytes(handle, buffer)
+
+func read_bytes(handle: ptr, size: i32) -> String = __fs_read_bytes(handle, size)
+
+func seek(handle: ptr, offset: i32, whence: i32) -> i32 = __fs_seek(handle, offset, whence)
+
+func close(handle: ptr) -> i32 = __fs_close(handle)
+
+func open_write(path: String) -> ptr = __fs_open_binary(path, "w")
+
+func open_read(path: String) -> ptr = __fs_open_binary(path, "r")

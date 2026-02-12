@@ -3,10 +3,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <cctype>
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <cstdio>
 #include <limits>
+#include <thread>
 #include <string>
+#include <array>
+#include <optional>
 #include <vector>
 #include <unordered_map>
 
@@ -66,6 +73,86 @@ auto copyCString(const char *text) -> char * {
   }
   std::memcpy(out, text, len);
   out[len] = '\0';
+  return out;
+}
+
+auto cstrOrEmpty(const char *text) -> const char * {
+  return text == nullptr ? "" : text;
+}
+
+auto isPathSeparator(char ch) -> bool {
+  return ch == '/' || ch == '\\';
+}
+
+auto quoteShellArg(const std::string &arg) -> std::string {
+  std::string out {"\""};
+  for (char ch : arg) {
+    if (ch == '"' || ch == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(ch);
+  }
+  out.push_back('"');
+  return out;
+}
+
+auto runCommandCapture(const std::string &command) -> std::optional<std::string> {
+#if defined(_WIN32)
+  FILE *pipe = _popen(command.c_str(), "rb");
+#else
+  FILE *pipe = popen(command.c_str(), "r");
+#endif
+  if (pipe == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string output {};
+  std::array<char, 4096> buffer {};
+  while (true) {
+    const std::size_t read = std::fread(buffer.data(), 1, buffer.size(), pipe);
+    if (read > 0) {
+      output.append(buffer.data(), read);
+    }
+    if (read < buffer.size()) {
+      if (std::feof(pipe) != 0 || std::ferror(pipe) != 0) {
+        break;
+      }
+    }
+  }
+
+#if defined(_WIN32)
+  const int exitCode = _pclose(pipe);
+#else
+  const int exitCode = pclose(pipe);
+#endif
+  if (exitCode != 0) {
+    return std::nullopt;
+  }
+  return output;
+}
+
+void registerManagedBuffer(char *buffer) {
+  if (buffer == nullptr) {
+    return;
+  }
+  std::lock_guard lock {managedStringsMutex()};
+  managedStrings().insert_or_assign(buffer, ManagedString {.buffer = buffer, .refCount = 1});
+}
+
+auto makeManagedCString(const char *text) -> char * {
+  auto *out = copyCString(text);
+  registerManagedBuffer(out);
+  return out;
+}
+
+auto makeManagedString(const std::string &text) -> char * {
+  auto *out = static_cast<char *>(std::malloc(text.size() + 1));
+  if (out == nullptr) {
+    return nullptr;
+  }
+  std::memcpy(out, text.data(), text.size());
+  out[text.size()] = '\0';
+  registerManagedBuffer(out);
   return out;
 }
 
@@ -406,16 +493,16 @@ int __thg_str_len(const char *s) {
 
 char *__thg_str_substr(const char *s, int start, int len) {
   if (s == nullptr || len <= 0) {
-    return copyCString("");
+    return makeManagedCString("");
   }
 
   const int total = static_cast<int>(std::strlen(s));
   if (start < 0 || start >= total) {
-    return copyCString("");
+    return makeManagedCString("");
   }
 
   if (len < 0) {
-    return copyCString("");
+    return makeManagedCString("");
   }
 
   const int maxLen = total - start;
@@ -426,6 +513,7 @@ char *__thg_str_substr(const char *s, int start, int len) {
   }
   std::memcpy(out, s + start, static_cast<std::size_t>(actualLen));
   out[actualLen] = '\0';
+  registerManagedBuffer(out);
   return out;
 }
 
@@ -453,13 +541,11 @@ void __thg_release(void *ptr) {
   if (it == table.end()) {
     return;
   }
-  if (it->second.refCount == 0) {
-    std::free(it->second.buffer);
-    table.erase(it);
+  if (it->second.refCount > 1) {
+    --it->second.refCount;
     return;
   }
-  --it->second.refCount;
-  if (it->second.refCount == 0) {
+  if (it->second.refCount <= 1) {
     std::free(it->second.buffer);
     table.erase(it);
   }
@@ -488,6 +574,15 @@ void __thg_print_ptr(const char *ptr) {
     return;
   }
   std::printf("%s\n", ptr);
+}
+
+void __thg_throw(const char *message) {
+  if (message == nullptr) {
+    std::fprintf(stderr, "thagore throw: <null>\n");
+  } else {
+    std::fprintf(stderr, "thagore throw: %s\n", message);
+  }
+  std::abort();
 }
 
 void *__thg_mem_alloc(int size) {
@@ -545,6 +640,7 @@ char *__thg_str_add(char *s1, char *s2) {
   std::memcpy(res, s1, len1);
   std::memcpy(res + len1, s2, len2);
   res[len1 + len2] = '\0';
+  registerManagedBuffer(res);
   return res;
 }
 
@@ -560,13 +656,12 @@ char *__thg_str_dup(char *s) {
   }
   std::memcpy(copy, s, len);
   copy[len] = '\0';
+  registerManagedBuffer(copy);
   return copy;
 }
 
 void __thg_str_free(char *s) {
-  if (s != nullptr) {
-    std::free(s);
-  }
+  __thg_release(s);
 }
 
 int __thg_str_eq(char *s1, char *s2) {
@@ -596,6 +691,227 @@ int __thg_str_to_i32(char *s) {
     return 0;
   }
   return std::atoi(s);
+}
+
+int __thg_str_contains(const char *text, const char *needle) {
+  const std::string hay = cstrOrEmpty(text);
+  const std::string ned = cstrOrEmpty(needle);
+  if (ned.empty()) {
+    return 1;
+  }
+  return hay.find(ned) != std::string::npos ? 1 : 0;
+}
+
+int __thg_str_starts_with(const char *text, const char *prefix) {
+  const std::string hay = cstrOrEmpty(text);
+  const std::string pre = cstrOrEmpty(prefix);
+  if (pre.size() > hay.size()) {
+    return 0;
+  }
+  return std::equal(pre.begin(), pre.end(), hay.begin()) ? 1 : 0;
+}
+
+int __thg_str_ends_with(const char *text, const char *suffix) {
+  const std::string hay = cstrOrEmpty(text);
+  const std::string suf = cstrOrEmpty(suffix);
+  if (suf.size() > hay.size()) {
+    return 0;
+  }
+  return std::equal(suf.rbegin(), suf.rend(), hay.rbegin()) ? 1 : 0;
+}
+
+const char *__thg_str_trim(const char *text) {
+  const std::string src = cstrOrEmpty(text);
+  std::size_t start = 0;
+  while (start < src.size() && std::isspace(static_cast<unsigned char>(src[start])) != 0) {
+    ++start;
+  }
+  std::size_t end = src.size();
+  while (end > start && std::isspace(static_cast<unsigned char>(src[end - 1])) != 0) {
+    --end;
+  }
+  return makeManagedString(src.substr(start, end - start));
+}
+
+const char *__thg_str_replace(const char *text, const char *oldValue, const char *newValue) {
+  const std::string src = cstrOrEmpty(text);
+  const std::string from = cstrOrEmpty(oldValue);
+  const std::string to = cstrOrEmpty(newValue);
+  if (from.empty()) {
+    return makeManagedString(src);
+  }
+
+  std::string out {};
+  std::size_t cursor = 0;
+  while (cursor < src.size()) {
+    const std::size_t pos = src.find(from, cursor);
+    if (pos == std::string::npos) {
+      out.append(src.substr(cursor));
+      break;
+    }
+    out.append(src.substr(cursor, pos - cursor));
+    out.append(to);
+    cursor = pos + from.size();
+  }
+  return makeManagedString(out);
+}
+
+const char *__thg_str_lower(const char *text) {
+  std::string out = cstrOrEmpty(text);
+  for (auto &ch : out) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return makeManagedString(out);
+}
+
+const char *__thg_str_upper(const char *text) {
+  std::string out = cstrOrEmpty(text);
+  for (auto &ch : out) {
+    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  }
+  return makeManagedString(out);
+}
+
+int __thg_str_compare(const char *left, const char *right) {
+  const int cmp = std::strcmp(cstrOrEmpty(left), cstrOrEmpty(right));
+  if (cmp < 0) {
+    return -1;
+  }
+  if (cmp > 0) {
+    return 1;
+  }
+  return 0;
+}
+
+int __string_codepoint(const char *ch) {
+  if (ch == nullptr || *ch == '\0') {
+    return 0;
+  }
+  return static_cast<int>(static_cast<unsigned char>(*ch));
+}
+
+const char *__string_from_codepoint(int cp) {
+  if (cp < 0 || cp > 255) {
+    cp = '?';
+  }
+  char buf[2] {};
+  buf[0] = static_cast<char>(cp);
+  buf[1] = '\0';
+  return makeManagedCString(buf);
+}
+
+const char *__thg_path_strip_trailing(const char *path) {
+  std::string out = cstrOrEmpty(path);
+  while (!out.empty() && isPathSeparator(out.back())) {
+    out.pop_back();
+  }
+  return makeManagedString(out);
+}
+
+const char *__thg_path_strip_leading(const char *path) {
+  std::string out = cstrOrEmpty(path);
+  std::size_t pos = 0;
+  while (pos < out.size() && isPathSeparator(out[pos])) {
+    ++pos;
+  }
+  return makeManagedString(out.substr(pos));
+}
+
+const char *__thg_path_basename(const char *path) {
+  std::string value = cstrOrEmpty(path);
+  while (!value.empty() && isPathSeparator(value.back())) {
+    value.pop_back();
+  }
+  if (value.empty()) {
+    return makeManagedCString("");
+  }
+  const std::size_t sep = value.find_last_of("/\\");
+  if (sep == std::string::npos) {
+    return makeManagedString(value);
+  }
+  return makeManagedString(value.substr(sep + 1));
+}
+
+const char *__thg_path_dirname(const char *path) {
+  std::string value = cstrOrEmpty(path);
+  while (!value.empty() && isPathSeparator(value.back())) {
+    value.pop_back();
+  }
+  if (value.empty()) {
+    return makeManagedCString("");
+  }
+  const std::size_t sep = value.find_last_of("/\\");
+  if (sep == std::string::npos) {
+    return makeManagedCString("");
+  }
+  if (sep == 0) {
+    return makeManagedCString("/");
+  }
+  return makeManagedString(value.substr(0, sep));
+}
+
+const char *__thg_path_ext(const char *path) {
+  std::string value = cstrOrEmpty(path);
+  while (!value.empty() && isPathSeparator(value.back())) {
+    value.pop_back();
+  }
+  if (value.empty()) {
+    return makeManagedCString("");
+  }
+  const std::size_t sep = value.find_last_of("/\\");
+  std::string base = sep == std::string::npos ? value : value.substr(sep + 1);
+  if (base.size() <= 1) {
+    return makeManagedCString("");
+  }
+  const std::size_t dot = base.find_last_of('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= base.size()) {
+    return makeManagedCString("");
+  }
+  return makeManagedString(base.substr(dot + 1));
+}
+
+const char *__thg_path_join2(const char *left, const char *right) {
+  std::string lhs = cstrOrEmpty(left);
+  std::string rhs = cstrOrEmpty(right);
+  if (lhs.empty()) {
+    return makeManagedString(rhs);
+  }
+  if (rhs.empty()) {
+    return makeManagedString(lhs);
+  }
+
+  const bool lhsSep = isPathSeparator(lhs.back());
+  const bool rhsSep = isPathSeparator(rhs.front());
+  if (lhsSep && rhsSep) {
+    lhs.pop_back();
+  } else if (!lhsSep && !rhsSep) {
+    lhs.push_back('/');
+  }
+  lhs.append(rhs);
+  return makeManagedString(lhs);
+}
+
+const char *__thg_fmt_trim_trailing(const char *text) {
+  const std::string src = cstrOrEmpty(text);
+  std::string out {};
+  std::string line {};
+  for (char ch : src) {
+    if (ch == '\n') {
+      while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) {
+        line.pop_back();
+      }
+      out.append(line);
+      out.push_back('\n');
+      line.clear();
+    } else {
+      line.push_back(ch);
+    }
+  }
+  while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) {
+    line.pop_back();
+  }
+  out.append(line);
+  return makeManagedString(out);
 }
 
 void *__thg_token_new(const char *kind, const char *text) {
@@ -644,11 +960,7 @@ const char *__thg_str_concat(const char *leftPtr, std::int32_t leftLen, const ch
     std::memcpy(buffer + leftLen, rightPtr, static_cast<std::size_t>(rightLen));
   }
   buffer[totalLen] = '\0';
-
-  {
-    std::lock_guard lock {managedStringsMutex()};
-    managedStrings().emplace(buffer, ManagedString {.buffer = buffer, .refCount = 0});
-  }
+  registerManagedBuffer(buffer);
 
   *outLen = totalLen;
   return buffer;
@@ -829,7 +1141,220 @@ void *__thg_ast_right(void *nodePtr) {
 
 char *__thg_ast_debug(void *nodePtr) {
   auto text = buildAstDebugString(static_cast<AstNode *>(nodePtr));
-  return copyCString(text.c_str());
+  return makeManagedString(text);
+}
+
+const char *__env_get(const char *key) {
+  if (key == nullptr) {
+    return nullptr;
+  }
+  const char *value = std::getenv(key);
+  if (value == nullptr) {
+    return nullptr;
+  }
+  return makeManagedCString(value);
+}
+
+int __env_set(const char *key, const char *value) {
+  if (key == nullptr || *key == '\0') {
+    return 0;
+  }
+#if defined(_WIN32)
+  return _putenv_s(key, value == nullptr ? "" : value) == 0 ? 1 : 0;
+#else
+  if (value == nullptr) {
+    return unsetenv(key) == 0 ? 1 : 0;
+  }
+  return setenv(key, value, 1) == 0 ? 1 : 0;
+#endif
+}
+
+const char *__env_cwd() {
+  std::error_code ec {};
+  const auto cwd = std::filesystem::current_path(ec);
+  if (ec) {
+    return nullptr;
+  }
+  return makeManagedString(cwd.string());
+}
+
+const char *__env_args() {
+  std::string out {};
+  for (int i = 0; i < g_argc; ++i) {
+    if (i > 0) {
+      out.push_back('\n');
+    }
+    const char *arg = g_argv != nullptr ? g_argv[i] : "";
+    out.append(arg == nullptr ? "" : arg);
+  }
+  return makeManagedString(out);
+}
+
+const char *__fs_read_text(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return nullptr;
+  }
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return nullptr;
+  }
+  std::string content {};
+  input.seekg(0, std::ios::end);
+  const auto size = input.tellg();
+  if (size > 0) {
+    content.resize(static_cast<std::size_t>(size));
+    input.seekg(0, std::ios::beg);
+    input.read(content.data(), static_cast<std::streamsize>(content.size()));
+  }
+  return makeManagedString(content);
+}
+
+int __fs_write_text(const char *path, const char *text) {
+  if (path == nullptr || *path == '\0') {
+    return 0;
+  }
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output) {
+    return 0;
+  }
+  if (text != nullptr) {
+    output.write(text, static_cast<std::streamsize>(std::strlen(text)));
+  }
+  return output.good() ? 1 : 0;
+}
+
+int __fs_exists(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return 0;
+  }
+  std::error_code ec {};
+  const bool exists = std::filesystem::exists(path, ec);
+  return (!ec && exists) ? 1 : 0;
+}
+
+int __fs_mkdir(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return 0;
+  }
+  std::error_code ec {};
+  const bool created = std::filesystem::create_directories(path, ec);
+  if (ec) {
+    return 0;
+  }
+  if (created || std::filesystem::is_directory(path, ec)) {
+    return 1;
+  }
+  return 0;
+}
+
+const char *__fs_list_dir(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return nullptr;
+  }
+  std::error_code ec {};
+  std::filesystem::directory_iterator it(path, ec);
+  if (ec) {
+    return nullptr;
+  }
+  std::string out {};
+  bool first = true;
+  for (const auto &entry : it) {
+    if (!first) {
+      out.push_back('\n');
+    }
+    first = false;
+    out.append(entry.path().filename().string());
+  }
+  return makeManagedString(out);
+}
+
+void *__fs_open_binary(const char *path, const char *mode) {
+  if (path == nullptr || mode == nullptr) {
+    return nullptr;
+  }
+  return std::fopen(path, mode);
+}
+
+int __fs_write_bytes(void *handle, const char *buffer) {
+  if (handle == nullptr || buffer == nullptr) {
+    return 0;
+  }
+  const auto len = std::strlen(buffer);
+  const auto written = std::fwrite(buffer, 1, len, static_cast<FILE *>(handle));
+  return static_cast<int>(written);
+}
+
+const char *__fs_read_bytes(void *handle, int size) {
+  if (handle == nullptr || size <= 0) {
+    return makeManagedCString("");
+  }
+  auto data = std::string(static_cast<std::size_t>(size), '\0');
+  const auto read = std::fread(data.data(), 1, static_cast<std::size_t>(size), static_cast<FILE *>(handle));
+  data.resize(read);
+  return makeManagedString(data);
+}
+
+int __fs_seek(void *handle, int offset, int whence) {
+  if (handle == nullptr) {
+    return -1;
+  }
+  return std::fseek(static_cast<FILE *>(handle), offset, whence);
+}
+
+int __fs_close(void *handle) {
+  if (handle == nullptr) {
+    return 0;
+  }
+  return std::fclose(static_cast<FILE *>(handle));
+}
+
+const char *__http_get(const char *url) {
+  if (url == nullptr || *url == '\0') {
+    return nullptr;
+  }
+  const std::string cmd = "curl -fsSL --max-time 20 " + quoteShellArg(url);
+  auto out = runCommandCapture(cmd);
+  if (!out) {
+    return nullptr;
+  }
+  return makeManagedString(*out);
+}
+
+const char *__http_post(const char *url, const char *body) {
+  if (url == nullptr || *url == '\0') {
+    return nullptr;
+  }
+  const std::string payload = cstrOrEmpty(body);
+  const std::string cmd = std::string("curl -fsSL --max-time 20 -X POST --data ")
+    + quoteShellArg(payload)
+    + " "
+    + quoteShellArg(url);
+  auto out = runCommandCapture(cmd);
+  if (!out) {
+    return nullptr;
+  }
+  return makeManagedString(*out);
+}
+
+int __time_now_ms() {
+  static const auto start = std::chrono::steady_clock::now();
+  const auto now = std::chrono::steady_clock::now();
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+  if (ms > static_cast<long long>(std::numeric_limits<int>::max())) {
+    return std::numeric_limits<int>::max();
+  }
+  if (ms < static_cast<long long>(std::numeric_limits<int>::min())) {
+    return std::numeric_limits<int>::min();
+  }
+  return static_cast<int>(ms);
+}
+
+int __time_sleep(int ms) {
+  if (ms <= 0) {
+    return 0;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  return 0;
 }
 
 void *__thg_parse_expr_from_tokens(void *streamPtr) {
