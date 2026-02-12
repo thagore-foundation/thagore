@@ -22,6 +22,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -59,6 +60,7 @@ public:
     auto *entry = llvm::BasicBlock::Create(context, "entry", &function);
     builder.SetInsertPoint(entry);
     entryBuilder.SetInsertPoint(entry);
+    pushScope();
 
     for (const auto &stmt : statements) {
       auto result = lowerStmt(*stmt);
@@ -71,16 +73,17 @@ public:
     }
 
     if (!terminated()) {
+      popScope();
       if (returnType == BaseType::Void || function.getReturnType()->isVoidTy()) {
-        releaseOwnedLocals();
         builder.CreateRetVoid();
       } else if (returnType == BaseType::I32 || function.getReturnType()->isIntegerTy(32)) {
-        releaseOwnedLocals();
         builder.CreateRet(llvm::ConstantInt::get(function.getReturnType(), 0));
       } else {
-        releaseOwnedLocals();
         builder.CreateRet(llvm::UndefValue::get(function.getReturnType()));
       }
+    } else {
+      scopeLocals.clear();
+      locals.clear();
     }
     return {};
   }
@@ -92,8 +95,10 @@ private:
   llvm::IRBuilder<> builder;
   llvm::IRBuilder<> entryBuilder {context};
   std::unordered_map<std::string, LocalValue> locals {};
+  std::vector<std::vector<std::string>> scopeLocals {};
   llvm::FunctionCallee retainFn {};
   llvm::FunctionCallee releaseFn {};
+  llvm::FunctionCallee concatFn {};
 
   auto terminated() const -> bool {
     auto *block = builder.GetInsertBlock();
@@ -103,8 +108,12 @@ private:
   void declareRuntimeHooks() {
     auto *voidTy = llvm::Type::getVoidTy(context);
     auto *ptrTy = llvm::PointerType::get(context, 0);
+    auto *i32Ty = llvm::Type::getInt32Ty(context);
+    auto *stringTy = getStringStructType(context);
     retainFn = module.getOrInsertFunction("__thg_retain", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     releaseFn = module.getOrInsertFunction("__thg_release", llvm::FunctionType::get(voidTy, {ptrTy}, false));
+    concatFn =
+      module.getOrInsertFunction("__thg_str_concat", llvm::FunctionType::get(ptrTy, {ptrTy, i32Ty, ptrTy, i32Ty, ptrTy}, false));
   }
 
   auto llvmType(BaseType type) -> llvm::Type * {
@@ -136,6 +145,61 @@ private:
     return entryBuilder.CreateAlloca(type, nullptr, name);
   }
 
+  void pushScope() {
+    scopeLocals.emplace_back();
+  }
+
+  void retainStringValue(llvm::Value *stringValue) {
+    auto *ptr = builder.CreateExtractValue(stringValue, {0}, "str.retain.ptr");
+    builder.CreateCall(retainFn, {ptr});
+  }
+
+  void releaseStringValue(llvm::Value *stringValue) {
+    auto *ptr = builder.CreateExtractValue(stringValue, {0}, "str.release.ptr");
+    builder.CreateCall(releaseFn, {ptr});
+  }
+
+  auto shouldRetainStringExpr(const Expr &expr) -> bool {
+    if (expr.kind == NodeKind::LiteralExpr) {
+      const auto &lit = static_cast<const LiteralExpr &>(expr);
+      return lit.literalKind != LiteralExpr::Kind::String;
+    }
+    if (expr.kind == NodeKind::BinaryExpr) {
+      const auto &bin = static_cast<const BinaryExpr &>(expr);
+      return bin.op == BinaryOp::Add;
+    }
+    if (expr.kind == NodeKind::IdentifierExpr) {
+      return true;
+    }
+    if (expr.kind == NodeKind::CallExpr) {
+      return true;
+    }
+    return false;
+  }
+
+  void popScope() {
+    if (scopeLocals.empty()) {
+      return;
+    }
+    auto names = std::move(scopeLocals.back());
+    scopeLocals.pop_back();
+    for (auto it = names.rbegin(); it != names.rend(); ++it) {
+      auto localIt = locals.find(*it);
+      if (localIt == locals.end()) {
+        continue;
+      }
+      if (localIt->second.ownedRef && !terminated()) {
+        auto *loaded = builder.CreateLoad(localIt->second.slot->getAllocatedType(), localIt->second.slot);
+        if (localIt->second.type == BaseType::String) {
+          releaseStringValue(loaded);
+        } else if (loaded->getType()->isPointerTy()) {
+          builder.CreateCall(releaseFn, {loaded});
+        }
+      }
+      locals.erase(localIt);
+    }
+  }
+
   auto lowerStmt(const Stmt &stmt) -> Result<void, Diagnostic> {
     switch (stmt.kind) {
       case NodeKind::LetStmt: return lowerLet(static_cast<const LetStmt &>(stmt));
@@ -161,6 +225,7 @@ private:
   }
 
   auto lowerBlock(const BlockStmt &block) -> Result<void, Diagnostic> {
+    pushScope();
     for (const auto &stmt : block.statements) {
       auto lowered = lowerStmt(*stmt);
       if (!lowered) {
@@ -170,6 +235,7 @@ private:
         break;
       }
     }
+    popScope();
     return {};
   }
 
@@ -178,15 +244,30 @@ private:
     if (!init) {
       return std::unexpected(init.error());
     }
+    auto *stringTy = llvmType(BaseType::String);
+    BaseType exprType = inferExprType(*stmt.init);
+    if (exprType == BaseType::Unknown && init.value()->getType() == stringTy) {
+      exprType = BaseType::String;
+    }
     auto *alloca = createAlloca(stmt.name, init.value()->getType());
     builder.CreateStore(init.value(), alloca);
 
-    const bool isRef = init.value()->getType()->isPointerTy();
-    const bool shouldRetain = isRef && !isTemporaryExpr(*stmt.init);
-    if (shouldRetain) {
+    bool shouldRetain = false;
+    if (init.value()->getType() == stringTy) {
+      shouldRetain = true;
+      retainStringValue(init.value());
+    } else if (init.value()->getType()->isPointerTy() && !isTemporaryExpr(*stmt.init)) {
+      shouldRetain = true;
       builder.CreateCall(retainFn, {init.value()});
     }
-    locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = inferExprType(*stmt.init), .ownedRef = shouldRetain});
+    if (shouldRetain) {
+      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .ownedRef = true});
+    } else {
+      locals.emplace(stmt.name, LocalValue {.slot = alloca, .type = exprType, .ownedRef = false});
+    }
+    if (!scopeLocals.empty()) {
+      scopeLocals.back().push_back(stmt.name);
+    }
     return {};
   }
 
@@ -206,21 +287,35 @@ private:
     }
     if (found->second.ownedRef) {
       auto *oldValue = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot);
-      builder.CreateCall(releaseFn, {oldValue});
+      if (found->second.type == BaseType::String) {
+        releaseStringValue(oldValue);
+      } else {
+        builder.CreateCall(releaseFn, {oldValue});
+      }
     }
     builder.CreateStore(rhs.value(), found->second.slot);
+    auto *stringTy = llvmType(BaseType::String);
+    const bool isStringSlot = found->second.type == BaseType::String || found->second.slot->getAllocatedType() == stringTy;
+    if (isStringSlot) {
+      found->second.type = BaseType::String;
+      found->second.ownedRef = true;
+      retainStringValue(rhs.value());
+      return {};
+    }
     if (rhs.value()->getType()->isPointerTy() && !isTemporaryExpr(*stmt.value)) {
       builder.CreateCall(retainFn, {rhs.value()});
       found->second.ownedRef = true;
-    } else {
-      found->second.ownedRef = false;
+      return {};
     }
+    found->second.ownedRef = false;
     return {};
   }
 
   auto lowerReturn(const ReturnStmt &stmt) -> Result<void, Diagnostic> {
+    while (!scopeLocals.empty()) {
+      popScope();
+    }
     if (!stmt.value) {
-      releaseOwnedLocals();
       builder.CreateRetVoid();
       return {};
     }
@@ -229,7 +324,6 @@ private:
     if (!ret) {
       return std::unexpected(ret.error());
     }
-    releaseOwnedLocals();
     builder.CreateRet(ret.value());
     return {};
   }
@@ -400,6 +494,23 @@ private:
       return std::unexpected(rhs.error());
     }
 
+    auto *stringTy = llvmType(BaseType::String);
+    if (expr.op == BinaryOp::Add && lhs.value()->getType() == stringTy && rhs.value()->getType() == stringTy) {
+      auto *i32Ty = llvm::Type::getInt32Ty(context);
+      auto *leftPtr = builder.CreateExtractValue(lhs.value(), {0}, "str.left.ptr");
+      auto *leftLen = builder.CreateExtractValue(lhs.value(), {1}, "str.left.len");
+      auto *rightPtr = builder.CreateExtractValue(rhs.value(), {0}, "str.right.ptr");
+      auto *rightLen = builder.CreateExtractValue(rhs.value(), {1}, "str.right.len");
+      auto *lenOut = builder.CreateAlloca(i32Ty, nullptr, "str.concat.len");
+      auto *concatPtr = builder.CreateCall(concatFn, {leftPtr, leftLen, rightPtr, rightLen, lenOut}, "str.concat.ptr");
+      auto *concatLen = builder.CreateLoad(i32Ty, lenOut, "str.concat.len.val");
+
+      llvm::Value *stringValue = llvm::UndefValue::get(stringTy);
+      stringValue = builder.CreateInsertValue(stringValue, concatPtr, {0}, "str.concat.v.ptr");
+      stringValue = builder.CreateInsertValue(stringValue, concatLen, {1}, "str.concat.v.len");
+      return stringValue;
+    }
+
     switch (expr.op) {
       case BinaryOp::Add: return builder.CreateAdd(lhs.value(), rhs.value(), "addtmp");
       case BinaryOp::Sub: return builder.CreateSub(lhs.value(), rhs.value(), "subtmp");
@@ -479,26 +590,50 @@ private:
     return builder.CreateCall(callee, args, "calltmp");
   }
 
-  void releaseOwnedLocals() {
-    for (auto &[_, local] : locals) {
-      if (!local.ownedRef) {
-        continue;
-      }
-      auto *value = builder.CreateLoad(local.slot->getAllocatedType(), local.slot);
-      builder.CreateCall(releaseFn, {value});
-    }
-  }
-
   auto inferExprType(const Expr &expr) -> BaseType {
     if (expr.inferredType) {
       return expr.inferredType->base;
     }
     if (expr.kind == NodeKind::LiteralExpr) {
       const auto &lit = static_cast<const LiteralExpr &>(expr);
-      if (lit.literalKind == LiteralExpr::Kind::String) {
-        return BaseType::String;
+      return lit.literalKind == LiteralExpr::Kind::String ? BaseType::String : BaseType::I32;
+    }
+    if (expr.kind == NodeKind::IdentifierExpr) {
+      const auto &id = static_cast<const IdentifierExpr &>(expr);
+      auto it = locals.find(id.name);
+      if (it != locals.end()) {
+        return it->second.type;
       }
-      return BaseType::I32;
+      return BaseType::Unknown;
+    }
+    if (expr.kind == NodeKind::BinaryExpr) {
+      const auto &bin = static_cast<const BinaryExpr &>(expr);
+      const auto lhs = inferExprType(*bin.left);
+      const auto rhs = inferExprType(*bin.right);
+      switch (bin.op) {
+        case BinaryOp::Add:
+          if (lhs == BaseType::String && rhs == BaseType::String) {
+            return BaseType::String;
+          }
+          return BaseType::I32;
+        case BinaryOp::Sub:
+        case BinaryOp::Mul:
+        case BinaryOp::Div:
+          return BaseType::I32;
+        case BinaryOp::Eq:
+        case BinaryOp::Ne:
+        case BinaryOp::Lt:
+        case BinaryOp::Le:
+        case BinaryOp::Gt:
+        case BinaryOp::Ge:
+          return BaseType::Bool;
+      }
+    }
+    if (expr.kind == NodeKind::CallExpr) {
+      const auto &call = static_cast<const CallExpr &>(expr);
+      if (call.callee == "print") {
+        return BaseType::Void;
+      }
     }
     return BaseType::Unknown;
   }

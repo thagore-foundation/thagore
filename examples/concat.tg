@@ -1,0 +1,4 @@
+let part1 = "Hello "
+let part2 = "Vietrix"
+let full = part1 + part2
+print(full)

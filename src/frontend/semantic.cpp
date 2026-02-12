@@ -163,6 +163,10 @@ public:
 
     switch (expr.op) {
       case BinaryOp::Add:
+        if (leftBase == BaseType::String && rightBase == BaseType::String) {
+          return makeType(BaseType::String);
+        }
+        [[fallthrough]];
       case BinaryOp::Sub:
       case BinaryOp::Mul:
       case BinaryOp::Div:
