@@ -1,6 +1,0 @@
-func add(a: i32, b: i32) -> i32:
-    return a + b
-
-struct Point:
-    x: i32
-    y: i32
