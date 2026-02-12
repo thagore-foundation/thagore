@@ -388,6 +388,7 @@ private:
     switch (stmt.kind) {
       case NodeKind::LetStmt: return lowerLet(static_cast<const LetStmt &>(stmt));
       case NodeKind::AssignStmt: return lowerAssign(static_cast<const AssignStmt &>(stmt));
+      case NodeKind::MemberAssignStmt: return lowerMemberAssign(static_cast<const MemberAssignStmt &>(stmt));
       case NodeKind::ArrayAssignStmt: return lowerArrayAssign(static_cast<const ArrayAssignStmt &>(stmt));
       case NodeKind::ReturnStmt: return lowerReturn(static_cast<const ReturnStmt &>(stmt));
       case NodeKind::IfStmt: return lowerIf(static_cast<const IfStmt &>(stmt));
@@ -573,6 +574,71 @@ private:
       return {};
     }
     found->second.ownedRef = false;
+    return {};
+  }
+
+  auto lowerMemberAssign(const MemberAssignStmt &stmt) -> Result<void, Diagnostic> {
+    auto objectIt = locals.find(stmt.objectName);
+    if (objectIt == locals.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown variable '{}' in member assignment.", stmt.objectName),
+        .span = stmt.span,
+      });
+    }
+    if (objectIt->second.type != BaseType::Struct) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("'{}' is not a struct value.", stmt.objectName),
+        .span = stmt.span,
+      });
+    }
+
+    auto layoutIt = structLayouts.find(objectIt->second.structName);
+    if (layoutIt == structLayouts.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown struct layout for '{}'.", stmt.objectName),
+        .span = stmt.span,
+      });
+    }
+    const auto &layout = layoutIt->second;
+    auto fieldIt = layout.fieldIndices.find(stmt.memberName);
+    if (fieldIt == layout.fieldIndices.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = std::format("Unknown field '{}.{}'.", objectIt->second.structName, stmt.memberName),
+        .span = stmt.span,
+      });
+    }
+
+    auto rhs = lowerExpr(*stmt.value);
+    if (!rhs) {
+      return std::unexpected(rhs.error());
+    }
+    llvm::Value *rhsValue = rhs.value();
+
+    llvm::Value *basePtr = nullptr;
+    if (objectIt->second.slot->getAllocatedType()->isPointerTy()) {
+      basePtr = builder.CreateLoad(objectIt->second.slot->getAllocatedType(), objectIt->second.slot, "member.base.ptr");
+    } else {
+      basePtr = objectIt->second.slot;
+    }
+
+    auto *idx0 = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+    auto *idxN = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), static_cast<std::uint32_t>(fieldIt->second));
+    auto *fieldPtr = builder.CreateInBoundsGEP(layout.llvmType, basePtr, {idx0, idxN}, "member.assign.ptr");
+    auto *fieldTy = layout.llvmType->getElementType(static_cast<unsigned int>(fieldIt->second));
+
+    if (fieldTy->isPointerTy() && rhsValue->getType() == llvmType(BaseType::String)) {
+      auto ptr = extractStringPointer(rhsValue, stmt.span, "member.assign.str");
+      if (!ptr) {
+        return std::unexpected(ptr.error());
+      }
+      rhsValue = ptr.value();
+    }
+
+    builder.CreateStore(rhsValue, fieldPtr);
     return {};
   }
 
@@ -1012,12 +1078,22 @@ private:
     }
     llvm::SmallVector<llvm::Value *> args {};
     args.push_back(selfPtr);
-    for (const auto &argExpr : expr.args) {
+    auto *fnType = callee->getFunctionType();
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
+      const auto &argExpr = expr.args[i];
       auto lowered = lowerExpr(*argExpr);
       if (!lowered) {
         return std::unexpected(lowered.error());
       }
-      args.push_back(lowered.value());
+      auto *argValue = lowered.value();
+      const auto paramIndex = static_cast<unsigned int>(i + 1);
+      if (paramIndex < fnType->getNumParams()) {
+        auto *expectedTy = fnType->getParamType(paramIndex);
+        if (expectedTy->isPointerTy() && argValue->getType() == llvmType(BaseType::String)) {
+          argValue = builder.CreateExtractValue(argValue, {0}, "mcall.str.arg.ptr");
+        }
+      }
+      args.push_back(argValue);
     }
     if (callee->getReturnType()->isVoidTy()) {
       builder.CreateCall(callee, args);
@@ -1221,10 +1297,18 @@ private:
         builder.CreateCall(printFn, {ptr, len});
         return llvm::ConstantInt::get(i32Ty, 0);
       }
+      if (arg.value()->getType()->isPointerTy()) {
+        auto printFn = module.getOrInsertFunction(
+          "__thg_print_ptr",
+          llvm::FunctionType::get(voidTy, {llvm::PointerType::get(context, 0)}, false)
+        );
+        builder.CreateCall(printFn, {arg.value()});
+        return llvm::ConstantInt::get(i32Ty, 0);
+      }
 
       return std::unexpected(Diagnostic {
         .code = ErrorCode::CodegenError,
-        .message = "Builtin print supports only i32, f32 or string.",
+        .message = "Builtin print supports only i32, f32, string or ptr.",
         .span = expr.args[0]->span,
       });
     }

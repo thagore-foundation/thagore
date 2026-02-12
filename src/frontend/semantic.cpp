@@ -498,11 +498,12 @@ public:
       if (
         argType.value()->base != BaseType::I32 &&
         argType.value()->base != BaseType::F32 &&
-        argType.value()->base != BaseType::String
+        argType.value()->base != BaseType::String &&
+        argType.value()->base != BaseType::Pointer
       ) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
-          .message = "Builtin print supports only i32, f32 or string.",
+          .message = "Builtin print supports only i32, f32, string or ptr.",
           .span = expr.args[0]->span,
         });
       }
@@ -553,7 +554,9 @@ public:
       if (!t) {
         return std::unexpected(t.error());
       }
-      if (!sameType(t.value(), found->second.params[i])) {
+      const bool pointerStringCoercion =
+        found->second.params[i]->base == BaseType::Pointer && t.value()->base == BaseType::String;
+      if (!sameType(t.value(), found->second.params[i]) && !pointerStringCoercion) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
           .message = std::format("Argument type mismatch at position {} in call to '{}'.", i + 1, expr.callee),
@@ -650,7 +653,9 @@ public:
       if (!t) {
         return std::unexpected(t.error());
       }
-      if (!sameType(t.value(), found->second.params[i + 1])) {
+      const bool pointerStringCoercion =
+        found->second.params[i + 1]->base == BaseType::Pointer && t.value()->base == BaseType::String;
+      if (!sameType(t.value(), found->second.params[i + 1]) && !pointerStringCoercion) {
         return std::unexpected(Diagnostic {
           .code = ErrorCode::SemanticError,
           .message = std::format("Argument type mismatch at position {} in method call '{}.{}'.", i + 1, objectType.value()->name, expr.method),
@@ -721,6 +726,59 @@ public:
       return std::unexpected(Diagnostic {
         .code = ErrorCode::SemanticError,
         .message = std::format("Type mismatch in assignment to '{}'.", stmt.name),
+        .span = stmt.span,
+      });
+    }
+    return {};
+  }
+
+  auto visit(const MemberAssignStmt &stmt) -> Result<void, Diagnostic> override {
+    auto objectType = lookupSymbol(stmt.objectName, stmt.span);
+    if (!objectType) {
+      return std::unexpected(objectType.error());
+    }
+    if (objectType.value()->base != BaseType::Struct) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("'{}' is not a struct value.", stmt.objectName),
+        .span = stmt.span,
+      });
+    }
+
+    auto structIt = typed.structTypes.find(objectType.value()->name);
+    if (structIt == typed.structTypes.end()) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Unknown struct type '{}'.", objectType.value()->name),
+        .span = stmt.span,
+      });
+    }
+
+    const StructDecl::Field *field = nullptr;
+    for (const auto &candidate : structIt->second.fields) {
+      if (candidate.name == stmt.memberName) {
+        field = &candidate;
+        break;
+      }
+    }
+    if (field == nullptr) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Struct '{}' has no field '{}'.", objectType.value()->name, stmt.memberName),
+        .span = stmt.span,
+      });
+    }
+
+    auto rhs = stmt.value->accept(*this);
+    if (!rhs) {
+      return std::unexpected(rhs.error());
+    }
+
+    const bool pointerStringCoercion = field->type->base == BaseType::Pointer && rhs.value()->base == BaseType::String;
+    if (!sameType(field->type, rhs.value()) && !pointerStringCoercion) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::SemanticError,
+        .message = std::format("Type mismatch in member assignment '{}.{}'.", stmt.objectName, stmt.memberName),
         .span = stmt.span,
       });
     }

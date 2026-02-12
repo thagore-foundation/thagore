@@ -1,0 +1,48 @@
+extern func __thg_mem_alloc(size: i32) -> ptr
+extern func __thg_mem_realloc(p: ptr, size: i32) -> ptr
+extern func __thg_mem_free(p: ptr) -> void
+extern func __thg_ptr_set(base: ptr, idx: i32, val: ptr) -> void
+extern func __thg_ptr_get(base: ptr, idx: i32) -> ptr
+extern func __thg_ptr_null() -> ptr
+
+struct List:
+    items: ptr
+    capacity: i32
+    length: i32
+
+impl List:
+    func push(self, item: ptr) -> i32:
+        if (self.length == self.capacity):
+            let new_cap = 0
+            if (self.capacity == 0):
+                new_cap = 4
+            else:
+                new_cap = self.capacity * 2
+
+            let size_bytes = new_cap * 8
+            if (self.capacity == 0):
+                self.items = __thg_mem_alloc(size_bytes)
+            else:
+                self.items = __thg_mem_realloc(self.items, size_bytes)
+            self.capacity = new_cap
+
+        __thg_ptr_set(self.items, self.length, item)
+        self.length = self.length + 1
+        return self.length
+
+    func get(self, index: i32) -> ptr:
+        return __thg_ptr_get(self.items, index)
+
+    func count(self) -> i32:
+        return self.length
+
+    func dispose(self) -> i32:
+        if (self.capacity > 0):
+            __thg_mem_free(self.items)
+        self.items = __thg_ptr_null()
+        self.length = 0
+        self.capacity = 0
+        return 0
+
+func new() -> List:
+    return List(__thg_ptr_null(), 0, 0)

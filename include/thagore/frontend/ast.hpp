@@ -48,6 +48,7 @@ enum class NodeKind : std::uint16_t {
   BlockStmt,
   LetStmt,
   AssignStmt,
+  MemberAssignStmt,
   ReturnStmt,
   IfStmt,
   LoopStmt,
@@ -84,6 +85,7 @@ struct ArrayLiteralExpr;
 struct IndexExpr;
 struct LetStmt;
 struct AssignStmt;
+struct MemberAssignStmt;
 struct ArrayAssignStmt;
 struct ReturnStmt;
 struct IfStmt;
@@ -113,6 +115,7 @@ struct StmtVisitor {
   virtual auto visit(const BlockStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const LetStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const AssignStmt &) -> Result<R, Diagnostic> = 0;
+  virtual auto visit(const MemberAssignStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const ArrayAssignStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const ReturnStmt &) -> Result<R, Diagnostic> = 0;
   virtual auto visit(const IfStmt &) -> Result<R, Diagnostic> = 0;
@@ -250,6 +253,18 @@ struct AssignStmt final : Stmt {
   std::unique_ptr<Expr> value {};
   AssignStmt(std::string name_, std::unique_ptr<Expr> value_, SourceSpan span_)
     : Stmt(NodeKind::AssignStmt, std::move(span_)), name(std::move(name_)), value(std::move(value_)) {}
+  auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
+};
+
+struct MemberAssignStmt final : Stmt {
+  std::string objectName {};
+  std::string memberName {};
+  std::unique_ptr<Expr> value {};
+  MemberAssignStmt(std::string objectName_, std::string memberName_, std::unique_ptr<Expr> value_, SourceSpan span_)
+    : Stmt(NodeKind::MemberAssignStmt, std::move(span_)),
+      objectName(std::move(objectName_)),
+      memberName(std::move(memberName_)),
+      value(std::move(value_)) {}
   auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 

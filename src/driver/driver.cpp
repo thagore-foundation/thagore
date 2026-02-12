@@ -243,6 +243,11 @@ void renameStmtNames(
       renameExprNames(s.value, funcRenames, structRenames);
       return;
     }
+    case NodeKind::MemberAssignStmt: {
+      auto &s = static_cast<MemberAssignStmt &>(*stmt);
+      renameExprNames(s.value, funcRenames, structRenames);
+      return;
+    }
     case NodeKind::ArrayAssignStmt: {
       auto &s = static_cast<ArrayAssignStmt &>(*stmt);
       renameExprNames(s.index, funcRenames, structRenames);
@@ -368,6 +373,11 @@ void rewriteQualifiedCallsInStmt(std::unique_ptr<Stmt> &stmt, const std::unorder
     }
     case NodeKind::AssignStmt: {
       auto &s = static_cast<AssignStmt &>(*stmt);
+      rewriteQualifiedCallsInExpr(s.value, imports);
+      return;
+    }
+    case NodeKind::MemberAssignStmt: {
+      auto &s = static_cast<MemberAssignStmt &>(*stmt);
       rewriteQualifiedCallsInExpr(s.value, imports);
       return;
     }

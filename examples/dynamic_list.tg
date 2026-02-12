@@ -1,0 +1,25 @@
+import list
+
+func main() -> i32:
+    let my_list = list.new()
+
+    print("Pushing items...")
+    my_list.push("Item 1")
+    my_list.push("Item 2")
+    my_list.push("Item 3")
+    my_list.push("Item 4")
+    my_list.push("Item 5")
+
+    print("Total items:")
+    print(my_list.count())
+
+    print("Content:")
+    let i = 0
+    while (i < my_list.count()):
+        let s = my_list.get(i)
+        print(s)
+        i = i + 1
+
+    my_list.dispose()
+    print("Done.")
+    return 0

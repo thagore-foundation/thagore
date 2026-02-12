@@ -480,6 +480,39 @@ private:
       return parseLoopStatement(previous());
     }
 
+    if (
+      check(TokenKind::Identifier) &&
+      checkOffset(1, TokenKind::Dot) &&
+      checkOffset(2, TokenKind::Identifier) &&
+      checkOffset(3, TokenKind::Equal)
+    ) {
+      const Token *objectName = advance();
+      if (!consume(TokenKind::Dot, "Expected '.' in member assignment.")) {
+        return std::unexpected(lastError("Expected '.' in member assignment."));
+      }
+      const Token *memberName = consume(TokenKind::Identifier, "Expected member name in member assignment.");
+      if (!memberName) {
+        return std::unexpected(lastError("Expected member name in member assignment."));
+      }
+      if (!consume(TokenKind::Equal, "Expected '=' in member assignment.")) {
+        return std::unexpected(lastError("Expected '=' in member assignment."));
+      }
+      auto value = parseExpression(0);
+      if (!value) {
+        return std::unexpected(value.error());
+      }
+      const Token *end = consume(TokenKind::Newline, "Expected newline after member assignment.");
+      if (!end) {
+        return std::unexpected(lastError("Expected newline after member assignment."));
+      }
+      return std::make_unique<MemberAssignStmt>(
+        objectName->lexeme,
+        memberName->lexeme,
+        std::move(value.value()),
+        mergeSpan(objectName->span, end->span)
+      );
+    }
+
     if (check(TokenKind::Identifier) && checkNext(TokenKind::Equal)) {
       const Token *id = advance();
       const Token *eq = consume(TokenKind::Equal, "Expected '='.");
@@ -889,6 +922,14 @@ private:
       return false;
     }
     return tokens[current + 1].kind == kind;
+  }
+
+  auto checkOffset(std::size_t offset, TokenKind kind) const -> bool {
+    const auto index = current + offset;
+    if (index >= tokens.size()) {
+      return false;
+    }
+    return tokens[index].kind == kind;
   }
 
   auto isAtEnd() const -> bool {

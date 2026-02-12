@@ -106,6 +106,51 @@ void __thg_print_str(const char *ptr, std::int32_t len) {
   std::fwrite("\n", sizeof(char), 1, stdout);
 }
 
+void __thg_print_ptr(const char *ptr) {
+  if (ptr == nullptr) {
+    std::printf("(null)\n");
+    return;
+  }
+  std::printf("%s\n", ptr);
+}
+
+void *__thg_mem_alloc(int size) {
+  if (size <= 0) {
+    return nullptr;
+  }
+  return std::malloc(static_cast<std::size_t>(size));
+}
+
+void *__thg_mem_realloc(void *ptr, int new_size) {
+  if (new_size <= 0) {
+    std::free(ptr);
+    return nullptr;
+  }
+  return std::realloc(ptr, static_cast<std::size_t>(new_size));
+}
+
+void __thg_mem_free(void *ptr) {
+  std::free(ptr);
+}
+
+void __thg_ptr_set(void *base, int index, void *value) {
+  if (base == nullptr || index < 0) {
+    return;
+  }
+  static_cast<void **>(base)[index] = value;
+}
+
+void *__thg_ptr_get(void *base, int index) {
+  if (base == nullptr || index < 0) {
+    return nullptr;
+  }
+  return static_cast<void **>(base)[index];
+}
+
+void *__thg_ptr_null() {
+  return nullptr;
+}
+
 char *__thg_str_add(char *s1, char *s2) {
   if (s1 == nullptr) {
     s1 = const_cast<char *>("");
