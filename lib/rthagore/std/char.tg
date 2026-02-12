@@ -1,0 +1,32 @@
+// char
+
+extern func __string_codepoint(ch: String) -> i32
+extern func __string_from_codepoint(cp: i32) -> String
+
+func codepoint(ch: String) -> i32 = __string_codepoint(ch)
+
+func from_codepoint(cp: i32) -> String = __string_from_codepoint(cp)
+
+func is_alpha(ch: String) -> bool
+  let cp = __string_codepoint(ch)
+  return (cp >= 65 and cp <= 90) or (cp >= 97 and cp <= 122)
+
+func is_digit(ch: String) -> bool
+  let cp = __string_codepoint(ch)
+  return cp >= 48 and cp <= 57
+
+func is_alnum(ch: String) -> bool
+  return is_alpha(ch) or is_digit(ch)
+
+func is_upper(ch: String) -> bool
+  let cp = __string_codepoint(ch)
+  return cp >= 65 and cp <= 90
+
+func is_lower(ch: String) -> bool
+  let cp = __string_codepoint(ch)
+  return cp >= 97 and cp <= 122
+
+func is_whitespace(ch: String) -> bool
+  let cp = __string_codepoint(ch)
+  return cp == 9 or cp == 10 or cp == 11 or cp == 12 or cp == 13 or cp == 32
+

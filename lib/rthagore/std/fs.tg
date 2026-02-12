@@ -1,0 +1,47 @@
+// fs
+//
+// Thin wrappers over runtime-provided filesystem builtins.
+
+extern func __fs_read_text(path: String) -> String
+extern func __fs_write_text(path: String, text: String) -> i32
+extern func __fs_exists(path: String) -> i32
+extern func __fs_mkdir(path: String) -> i32
+extern func __fs_list_dir(path: String) -> String
+extern func __fs_open_binary(path: String, mode: String) -> ptr
+extern func __fs_write_bytes(handle: ptr, buffer: String) -> i32
+extern func __fs_read_bytes(handle: ptr, size: i32) -> String
+extern func __fs_seek(handle: ptr, offset: i32, whence: i32) -> i32
+extern func __fs_close(handle: ptr) -> i32
+
+func read_text(path: String) -> String
+    let text = __fs_read_text(path)
+    if text == null
+        return ""
+    return text
+
+func write_text(path: String, text: String) -> i32
+    return __fs_write_text(path, text)
+
+func exists(path: String) -> i32 = __fs_exists(path)
+
+func mkdir(path: String) -> i32 = __fs_mkdir(path)
+
+func list_dir(path: String) -> String
+    let listing = __fs_list_dir(path)
+    if listing == null
+        return ""
+    return listing
+
+func open_binary(path: String, mode: String = "r") -> ptr = __fs_open_binary(path, mode)
+
+func write_bytes(handle: ptr, buffer: String) -> i32 = __fs_write_bytes(handle, buffer)
+
+func read_bytes(handle: ptr, size: i32) -> String
+    let data = __fs_read_bytes(handle, size)
+    if data == null
+        return ""
+    return data
+
+func seek(handle: ptr, offset: i32, whence: i32 = 0) -> i32 = __fs_seek(handle, offset, whence)
+
+func close(handle: ptr) -> i32 = __fs_close(handle)

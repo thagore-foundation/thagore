@@ -1,0 +1,19 @@
+// stdlib entrypoint
+//
+// Import submodules so `use std as std` provides common helpers.
+use prelude as prelude
+use option as option
+use result as result
+use platform as platform
+use gc as gc
+use sys_platform as sys_platform
+use env as env
+use fs as fs
+use time as time
+use sys as sys
+use io as io
+use process as process
+use sys_linux as sys_linux
+use sys_windows as sys_windows
+use sys_bsd as sys_bsd
+use sys_mach as sys_mach

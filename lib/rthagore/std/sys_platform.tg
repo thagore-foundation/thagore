@@ -1,0 +1,161 @@
+// sys_platform (thagore-compatible shim)
+
+use env as env
+use time as time
+use sys_linux as linux
+use sys_windows as win
+use sys_bsd as bsd
+
+func platform_id() -> String
+    let override = env.get("THAGORE_PLATFORM")
+    if override == "windows"
+        return "windows"
+    if override == "linux"
+        return "linux"
+    if override == "macos"
+        return "macos"
+    if override == "bsd"
+        return "bsd"
+    let os = env.get("OS")
+    if os == "Windows_NT"
+        return "windows"
+    let ostype = env.get("OSTYPE")
+    if ostype == "darwin" or ostype == "macos"
+        return "macos"
+    if ostype == "freebsd" or ostype == "openbsd" or ostype == "netbsd"
+        return "bsd"
+    return "linux"
+
+func is_windows() -> bool = platform_id() == "windows"
+
+func is_linux() -> bool = platform_id() == "linux"
+
+func is_macos() -> bool = platform_id() == "macos"
+
+func is_bsd() -> bool = platform_id() == "bsd"
+
+func file_open(path: String, mode: String = "r") -> ptr
+    let id = platform_id()
+    if id == "windows"
+        return win.create_file(path, mode)
+    if id == "macos" or id == "bsd"
+        return bsd.open(path, mode)
+    return linux.open(path, mode)
+
+func file_read(handle: ptr, size: i32) -> String
+    let id = platform_id()
+    if id == "windows"
+        return win.read_file(handle, size)
+    if id == "macos" or id == "bsd"
+        return bsd.read(handle, size)
+    return linux.read(handle, size)
+
+func file_write(handle: ptr, buffer: String) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.write_file(handle, buffer)
+    if id == "macos" or id == "bsd"
+        return bsd.write(handle, buffer)
+    return linux.write(handle, buffer)
+
+func file_seek(handle: ptr, offset: i32, whence: i32 = 0) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.seek(handle, offset, whence)
+    if id == "macos" or id == "bsd"
+        return bsd.seek(handle, offset, whence)
+    return linux.seek(handle, offset, whence)
+
+func file_exists(path: String) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.exists(path)
+    if id == "macos" or id == "bsd"
+        return bsd.exists(path)
+    return linux.exists(path)
+
+func file_mkdir(path: String) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.mkdir(path)
+    if id == "macos" or id == "bsd"
+        return bsd.mkdir(path)
+    return linux.mkdir(path)
+
+func file_list_dir(path: String) -> String
+    let id = platform_id()
+    if id == "windows"
+        return win.list_dir(path)
+    if id == "macos" or id == "bsd"
+        return bsd.list_dir(path)
+    return linux.list_dir(path)
+
+func file_close(handle: ptr) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.close_handle(handle)
+    if id == "macos" or id == "bsd"
+        return bsd.close(handle)
+    return linux.close(handle)
+
+func file_stat(path: String) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.stat(path)
+    if id == "macos" or id == "bsd"
+        return bsd.stat(path)
+    return linux.stat(path)
+
+func file_fstat(handle: ptr) -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.fstat(handle)
+    if id == "macos" or id == "bsd"
+        return bsd.fstat(handle)
+    return linux.fstat(handle)
+
+func mem_map(length: i32, prot: i32 = 0, flags: i32 = 0, fd: ptr = null, offset: i32 = 0) -> ptr
+    let id = platform_id()
+    if id == "windows"
+        return win.virtual_alloc(length)
+    if id == "macos" or id == "bsd"
+        return bsd.mmap(length, prot, flags, fd, offset)
+    return linux.mmap(length, prot, flags, fd, offset)
+
+func mem_unmap(region: ptr) -> bool
+    let id = platform_id()
+    if id == "windows"
+        return win.virtual_free(region)
+    if id == "macos" or id == "bsd"
+        return bsd.munmap(region) == 0
+    return linux.munmap(region) == 0
+
+func mem_protect(region: ptr, prot: i32) -> bool
+    let id = platform_id()
+    if id == "windows"
+        return true
+    if id == "macos" or id == "bsd"
+        return bsd.mprotect(region, prot) == 0
+    return linux.mprotect(region, prot) == 0
+
+func process_exec(cmd: String, args: String = "") -> i32
+    let id = platform_id()
+    if id == "windows"
+        return win.process_spawn(cmd, args)
+    if id == "macos" or id == "bsd"
+        return bsd.exec(cmd, args)
+    return linux.exec(cmd, args)
+
+func process_exit(code: i32 = 0) -> void
+    let id = platform_id()
+    if id == "windows"
+        win.process_exit(code)
+        return
+    linux.exit(code)
+    return
+
+func time_now_ms() -> i32
+    return time.now()
+
+func time_sleep(ms: i32) -> i32
+    return time.sleep(ms)

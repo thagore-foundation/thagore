@@ -1,0 +1,60 @@
+// sys_windows (thagore-compatible shim)
+
+use fs as fs
+use sys as sys
+
+func create_file(path: String, mode: String = "r") -> ptr
+    return fs.open_binary(path, mode)
+
+func read_file(handle: ptr, size: i32) -> String = fs.read_bytes(handle, size)
+
+func write_file(handle: ptr, buffer: String) -> i32 = fs.write_bytes(handle, buffer)
+
+func close_handle(handle: ptr) -> i32 = fs.close(handle)
+
+func seek(handle: ptr, offset: i32, whence: i32 = 0) -> i32 = fs.seek(handle, offset, whence)
+
+func exists(path: String) -> i32 = fs.exists(path)
+
+func mkdir(path: String) -> i32 = fs.mkdir(path)
+
+func list_dir(path: String) -> String = fs.list_dir(path)
+
+func virtual_alloc(size: i32) -> ptr
+    return null
+
+func virtual_free(mem: ptr) -> bool
+    if mem == null
+        return false
+    return true
+
+func process_spawn(cmd: String, args: String = "") -> i32
+    return sys.run(cmd, args)
+
+func process_exit(code: i32 = 0) -> void
+    throw "process exit"
+
+func console_write(text: String) -> i32
+    print(text)
+    return 0
+
+func console_read(prompt: String = "") -> String
+    return ""
+
+func stat(path: String) -> i32
+    if fs.exists(path) == 0
+        return -1
+    let handle = fs.open_binary(path, "r")
+    if handle == null
+        return -1
+    let size = fs.seek(handle, 0, 2)
+    fs.seek(handle, 0, 0)
+    fs.close(handle)
+    return size
+
+func fstat(handle: ptr) -> i32
+    if handle == null
+        return -1
+    let size = fs.seek(handle, 0, 2)
+    fs.seek(handle, 0, 0)
+    return size

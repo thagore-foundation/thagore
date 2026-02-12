@@ -1,0 +1,6 @@
+// process (thagore-compatible shim)
+
+extern func system(cmd: String) -> i32
+
+func run(cmd: String, args: String = "") -> i32
+    return system(cmd)

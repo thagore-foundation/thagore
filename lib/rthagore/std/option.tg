@@ -1,0 +1,39 @@
+// option (thagore-compatible shim)
+
+struct Option:
+    has_value: bool
+    value: any
+
+func some(value: any) -> Option
+    return Option(true, value)
+
+func none() -> Option
+    return Option(false, null)
+
+func is_some(opt: Option) -> bool
+    return opt.has_value
+
+func is_none(opt: Option) -> bool
+    return not opt.has_value
+
+func unwrap(opt: Option, message: String = "") -> any
+    if opt.has_value
+        return opt.value
+    if message == ""
+        throw "called unwrap on None"
+    throw message
+
+func unwrap_or(opt: Option, default: any) -> any
+    if opt.has_value
+        return opt.value
+    return default
+
+func map(opt: Option, fn) -> Option
+    if opt.has_value
+        return Option(true, opt.value)
+    return Option(false, null)
+
+func and_then(opt: Option, fn) -> Option
+    if opt.has_value
+        return opt
+    return Option(false, null)

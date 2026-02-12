@@ -1,0 +1,10 @@
+// dylib compat shim
+
+func open(path: String) -> ptr
+  return null
+
+func symbol(handle: ptr, name: String) -> ptr
+  return null
+
+func close(handle: ptr) -> i32
+  return 0

@@ -1,0 +1,43 @@
+// io (thagore-compatible shim)
+
+use fs as fs
+use sys_platform as sys_platform
+
+func read_text(path: String) -> String
+    let text = fs.read_text(path)
+    if text == null
+        return ""
+    return text
+
+func write_text(path: String, text: String) -> i32 = fs.write_text(path, text)
+
+func read_bytes(path: String) -> String
+    if sys_platform.file_exists(path) == 0
+        return ""
+    let handle = sys_platform.file_open(path, "r")
+    if handle == null
+        return ""
+    let size = sys_platform.file_fstat(handle)
+    if size < 0
+        sys_platform.file_close(handle)
+        return ""
+    let data = sys_platform.file_read(handle, size)
+    sys_platform.file_close(handle)
+    if data == null
+        return ""
+    return data
+
+func write_bytes(path: String, buffer: String) -> i32
+    let handle = sys_platform.file_open(path, "w")
+    if handle == null
+        return 0
+    let written = sys_platform.file_write(handle, buffer)
+    sys_platform.file_close(handle)
+    return written
+
+func stdin_read_line(prompt: String = "") -> String
+    return ""
+
+func stdout_write(text: String) -> i32
+    print(text)
+    return 0

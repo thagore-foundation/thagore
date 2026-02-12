@@ -1,0 +1,73 @@
+// sys_linux (thagore-compatible shim)
+
+use fs as fs
+use sys as sys
+
+func open(path: String, flags: String = "r") -> ptr
+    return fs.open_binary(path, flags)
+
+func close(fd: ptr) -> i32 = fs.close(fd)
+
+func read(fd: ptr, size: i32) -> String = fs.read_bytes(fd, size)
+
+func write(fd: ptr, buffer: String) -> i32 = fs.write_bytes(fd, buffer)
+
+func seek(fd: ptr, offset: i32, whence: i32 = 0) -> i32 = fs.seek(fd, offset, whence)
+
+func exists(path: String) -> i32 = fs.exists(path)
+
+func mkdir(path: String) -> i32 = fs.mkdir(path)
+
+func list_dir(path: String) -> String = fs.list_dir(path)
+
+func mmap(length: i32, prot: i32 = 0, flags: i32 = 0, fd: ptr = null, offset: i32 = 0) -> ptr
+    return null
+
+func munmap(region: ptr) -> i32
+    if region == null
+        return -1
+    return 0
+
+func mprotect(region: ptr, prot: i32) -> i32
+    if region == null
+        return -1
+    return 0
+
+func fork() -> i32
+    return -1
+
+func exec(cmd: String, args: String = "") -> i32
+    return sys.run(cmd, args)
+
+func exit(code: i32 = 0) -> void
+    throw "process exit"
+
+func stat(path: String) -> i32
+    if fs.exists(path) == 0
+        return -1
+    let handle = fs.open_binary(path, "r")
+    if handle == null
+        return -1
+    let size = fs.seek(handle, 0, 2)
+    fs.seek(handle, 0, 0)
+    fs.close(handle)
+    return size
+
+func fstat(handle: ptr) -> i32
+    if handle == null
+        return -1
+    let size = fs.seek(handle, 0, 2)
+    fs.seek(handle, 0, 0)
+    return size
+
+func socket_create() -> ptr
+    return null
+
+func socket_send(sock: ptr, data: String) -> i32
+    return -1
+
+func socket_recv(sock: ptr) -> String
+    return ""
+
+func socket_close(sock: ptr) -> i32
+    return 0

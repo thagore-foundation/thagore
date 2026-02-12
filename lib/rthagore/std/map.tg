@@ -1,0 +1,13 @@
+// map compat shim
+
+func keys(m: String) -> String
+  return ""
+
+func values(m: String) -> String
+  return ""
+
+func items(m: String) -> String
+  return ""
+
+func get_or(m: String, key: String, fallback: String) -> String
+  return fallback

@@ -1,0 +1,21 @@
+// prelude
+//
+// Minimal helpers intended for auto-import once supported.
+// For now, import explicitly:
+//   use prelude
+
+func assert(cond: bool, message: String = "") -> i32
+    if cond
+        return 0
+    if message == ""
+        throw "assertion failed"
+    throw v"assertion failed: {message}"
+
+func assert_eq(a, b, message: String = "") -> i32
+    if a == b
+        return 0
+    if message == ""
+        throw v"assert_eq failed: left={a}, right={b}"
+    throw v"assert_eq failed: {message} (left={a}, right={b})"
+
+func str(x) -> String = v"{x}"

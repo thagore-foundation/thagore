@@ -1,0 +1,40 @@
+// result (thagore-compatible shim)
+
+struct Result:
+    ok: bool
+    value: any
+    error: any
+
+func ok(value: any) -> Result
+    return Result(true, value, null)
+
+func err(error: any) -> Result
+    return Result(false, null, error)
+
+func is_ok(res: Result) -> bool
+    return res.ok
+
+func is_err(res: Result) -> bool
+    return not res.ok
+
+func unwrap(res: Result, message: String = "") -> any
+    if res.ok
+        return res.value
+    if message == ""
+        throw res.error
+    throw message
+
+func unwrap_err(res: Result) -> any
+    if res.ok
+        throw "called unwrap_err on Ok"
+    return res.error
+
+func map(res: Result, fn) -> Result
+    if res.ok
+        return Result(true, res.value, null)
+    return Result(false, null, res.error)
+
+func map_err(res: Result, fn) -> Result
+    if res.ok
+        return Result(true, res.value, null)
+    return Result(false, null, res.error)

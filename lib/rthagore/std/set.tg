@@ -1,0 +1,22 @@
+// set compat shim
+
+func add(s: String, value: String) -> String
+  return s
+
+func remove(s: String, value: String) -> String
+  return s
+
+func has(s: String, value: String) -> bool
+  return false
+
+func union(a: String, b: String) -> String
+  return a
+
+func intersection(a: String, b: String) -> String
+  return a
+
+func difference(a: String, b: String) -> String
+  return a
+
+func symmetric_diff(a: String, b: String) -> String
+  return a

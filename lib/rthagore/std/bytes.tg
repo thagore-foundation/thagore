@@ -1,0 +1,122 @@
+// bytes compat shim
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func set_backend(name: String) -> String
+  return name
+
+func _use_pure() -> bool
+  return false
+
+func _new_storage(size: i32) -> String
+  if size <= 0
+    return ""
+  return ""
+
+func new(size: i32 = 0) -> String
+  return _new_storage(size)
+
+func from_raw(raw: String) -> String
+  if raw == null
+    return ""
+  return raw
+
+func len(self: String) -> i32
+  if self == null
+    return 0
+  return __thg_cstr_len(self)
+
+func is_empty(self: String) -> bool
+  return len(self) == 0
+
+func get(self: String, index: i32) -> i32
+  return 0
+
+func set(self: String, index: i32, byte: i32) -> String
+  return self
+
+func push(self: String, byte: i32) -> String
+  return self
+
+func extend_raw(self: String, raw: String) -> String
+  return self
+
+func extend(self: String, other: String) -> String
+  return self
+
+func push_u16_le(self: String, val: i32) -> String
+  return self
+
+func push_u32_le(self: String, val: i32) -> String
+  return self
+
+func push_u64_le(self: String, val: i32) -> String
+  return self
+
+func clear(self: String) -> String
+  return ""
+
+func clone(self: String) -> String
+  return self
+
+func concat(self: String, other: String) -> String
+  return self
+
+func starts_with(self: String, prefix: String) -> bool
+  if self == prefix
+    return true
+  return false
+
+func ends_with(self: String, suffix: String) -> bool
+  if self == suffix
+    return true
+  return false
+
+func index_of(self: String, byte: i32, start: i32 = 0) -> i32
+  return -1
+
+func to_list(self: String) -> String
+  return ""
+
+func read_u16_le(self: String, offset: i32 = 0) -> i32
+  return 0
+
+func read_u32_le(self: String, offset: i32 = 0) -> i32
+  return 0
+
+func read_u64_le(self: String, offset: i32 = 0) -> i32
+  return 0
+
+func write_u16_le(self: String, offset: i32, value: i32) -> String
+  return self
+
+func write_u32_le(self: String, offset: i32, value: i32) -> String
+  return self
+
+func write_u64_le(self: String, offset: i32, value: i32) -> String
+  return self
+
+func to_hex(self: String) -> String
+  return ""
+
+func from_hex(text: String) -> String
+  return ""
+
+func slice(self: String, start: i32, end: i32) -> String
+  return self
+
+func slice_from(self: String, start: i32) -> String
+  return self
+
+func slice_to(self: String, end: i32) -> String
+  return self
+
+func slice_all(self: String) -> String
+  return self
+
+func raw(self: String) -> String
+  return self
+
+func _hex_value(ch: String) -> i32
+  return 0
+

@@ -1,0 +1,15 @@
+// sys (thagore-compatible shim)
+
+use env as env
+use process as process
+
+func run(cmd: String, args: String = "") -> i32
+    return process.run(cmd)
+
+func args() -> String = env.args()
+
+func cwd() -> String = env.cwd()
+
+func getenv(key: String) -> String = env.get(key)
+
+func setenv(key: String, value: String) -> i32 = env.set(key, value)

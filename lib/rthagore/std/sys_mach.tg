@@ -1,0 +1,19 @@
+// sys_mach (thagore-compatible shim)
+
+func mach_port_create() -> ptr
+    return null
+
+func mach_port_send(port: ptr, message: String) -> i32
+    if port == null
+        return -1
+    return 0
+
+func mach_port_recv(port: ptr) -> String
+    if port == null
+        return ""
+    return ""
+
+func mach_port_destroy(port: ptr) -> i32
+    if port == null
+        return -1
+    return 0
