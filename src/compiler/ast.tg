@@ -8,9 +8,9 @@ extern func __thg_ast_block_push(block: ptr, stmt: ptr) -> i32
 extern func __thg_ast_new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr
 extern func __thg_ast_new_while(condition: ptr, body: ptr) -> ptr
 extern func __thg_ast_new_func(name: String, body: ptr) -> ptr
-extern func __thg_ast_func_add_param(func: ptr, param_name: String) -> i32
+extern func __thg_ast_func_add_param(func_node: ptr, param_name: String) -> i32
 extern func __thg_ast_new_call(name: String) -> ptr
-extern func __thg_ast_call_add_arg(call: ptr, arg: ptr) -> i32
+extern func __thg_ast_call_add_arg(call_node: ptr, arg: ptr) -> i32
 extern func __thg_ast_new_return(expr: ptr) -> ptr
 extern func __thg_ast_kind(node: ptr) -> String
 extern func __thg_ast_kind_tag(node: ptr) -> i32

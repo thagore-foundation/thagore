@@ -2,20 +2,28 @@ import env
 import fs
 import "src/compiler/parser.tg" as parser
 import "src/compiler/eval.tg" as eval
+import "src/compiler/codegen.tg" as codegen
 
 func main() -> i32:
-    print("--- Thagore Self-Hosted Interpreter v1.0 ---")
+    print("--- Thagore Dual-Mode Runtime v1.0 ---")
 
-    let args_len = env.count()
-    if (args_len < 2):
-        print("Usage: thg.exe <script.tg>")
+    if (env.count() < 2):
+        print("Usage: thg.exe <script.tg> [-c|--compile]")
         return 0
 
-    let filename = env.get(1)
-    print("Loading script:")
-    print(filename)
+    let compile_mode = 0
+    let i = 2
+    while (i < env.count()):
+        let arg = env.get(i)
+        if (arg == "-c"):
+            compile_mode = 1
+        else:
+            if (arg == "--compile"):
+                compile_mode = 1
+        i = i + 1
 
-    let source = fs.read_text(filename)
+    print("Loading script...")
+    let source = fs.read_text(env.get(1))
     if (source.length() == 0):
         print("Error: Empty file or file not found.")
         return 0
@@ -23,9 +31,19 @@ func main() -> i32:
     print("Source loaded. Parsing...")
     let program_ast = parser.parse_program(source)
 
+    if (compile_mode == 1):
+        print("Compile mode active. Generating C source...")
+        let c_code = codegen.emit_program(program_ast)
+        let ok = fs.write_text("out.c", c_code)
+        if (ok == 0):
+            print("Error: cannot write out.c")
+            return 1
+        print("Generated out.c successfully.")
+        print("Compile with: gcc out.c -o out")
+        return 0
+
     print("Parsing complete. Executing...")
     print("----------------------------------------")
-
     let interpreter = eval.new()
     let exit_code = interpreter.exec_stmt(program_ast)
 
