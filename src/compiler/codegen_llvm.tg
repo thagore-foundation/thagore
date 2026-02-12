@@ -2,3 +2,6 @@ extern func __thg_codegen_emit_llvm(root: ptr) -> String
 
 func emit_program(root: ptr) -> String:
     return __thg_codegen_emit_llvm(root)
+
+func system_decls() -> String:
+    return "declare ptr @malloc(i32)\ndeclare void @free(ptr)\ndeclare ptr @memcpy(ptr, ptr, i32)\ndeclare i32 @strlen(ptr)\ndeclare i32 @printf(ptr, ...)\ndeclare void @exit(i32)\n"

@@ -215,6 +215,25 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
       continue;
     }
 
+    if (ch == 'v' && peek(1) == '"') {
+      Cursor begin = cursor;
+      advance();
+      advance();
+      std::string text {};
+      while (!atEnd() && peek() != '"') {
+        if (peek() == '\n') {
+          return error("Unterminated interpolated string literal.", begin, cursor);
+        }
+        text.push_back(advance());
+      }
+      if (atEnd()) {
+        return error("Unterminated interpolated string literal.", begin, cursor);
+      }
+      advance();
+      pushToken(TokenKind::InterpolatedString, begin, cursor, text);
+      continue;
+    }
+
     if (isIdentifierHead(ch)) {
       Cursor begin = cursor;
       std::string text {};

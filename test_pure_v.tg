@@ -1,0 +1,2 @@
+let name = "Thagore"
+print(v"Xin chao {name}!")

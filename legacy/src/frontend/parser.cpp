@@ -1,4 +1,5 @@
 #include "thagore/frontend/parser.hpp"
+#include "thagore/frontend/lexer.hpp"
 
 #include <format>
 #include <filesystem>
@@ -792,6 +793,8 @@ private:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Float, tok->lexeme, tok->span);
       case TokenKind::String:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::String, tok->lexeme, tok->span);
+      case TokenKind::InterpolatedString:
+        return parseInterpolatedString(*tok);
       case TokenKind::LBracket: {
         std::vector<std::unique_ptr<Expr>> elements {};
         if (!check(TokenKind::RBracket)) {
@@ -867,6 +870,91 @@ private:
       default:
         return std::unexpected(makeError(tok->span, std::format("Unexpected token '{}'.", tokenKindName(tok->kind))));
     }
+  }
+
+  auto parseInterpolatedString(const Token &tok) -> Result<std::unique_ptr<Expr>, Diagnostic> {
+    std::vector<std::unique_ptr<Expr>> chunks {};
+    std::size_t cursorPos = 0;
+
+    auto appendLiteralChunk = [&](std::size_t begin, std::size_t end) {
+      if (end <= begin) {
+        return;
+      }
+      chunks.push_back(std::make_unique<LiteralExpr>(
+        LiteralExpr::Kind::String,
+        tok.lexeme.substr(begin, end - begin),
+        tok.span
+      ));
+    };
+
+    while (cursorPos < tok.lexeme.size()) {
+      const auto openPos = tok.lexeme.find('{', cursorPos);
+      if (openPos == std::string::npos) {
+        appendLiteralChunk(cursorPos, tok.lexeme.size());
+        cursorPos = tok.lexeme.size();
+        break;
+      }
+
+      appendLiteralChunk(cursorPos, openPos);
+      const auto closePos = tok.lexeme.find('}', openPos + 1);
+      if (closePos == std::string::npos) {
+        return std::unexpected(makeError(tok.span, "Unterminated interpolation expression in string."));
+      }
+      if (closePos == openPos + 1) {
+        return std::unexpected(makeError(tok.span, "Empty interpolation expression is not allowed."));
+      }
+
+      auto inner = tok.lexeme.substr(openPos + 1, closePos - openPos - 1);
+      auto expr = parseInterpolationExpr(inner, tok.span);
+      if (!expr) {
+        return std::unexpected(expr.error());
+      }
+      chunks.push_back(std::move(expr.value()));
+      cursorPos = closePos + 1;
+    }
+
+    if (chunks.empty()) {
+      return std::make_unique<LiteralExpr>(LiteralExpr::Kind::String, "", tok.span);
+    }
+
+    auto result = std::move(chunks.front());
+    for (std::size_t i = 1; i < chunks.size(); ++i) {
+      auto rhs = std::move(chunks[i]);
+      result = std::make_unique<BinaryExpr>(BinaryOp::Add, std::move(result), std::move(rhs), tok.span);
+    }
+    return result;
+  }
+
+  auto parseInterpolationExpr(std::string text, const SourceSpan &ownerSpan) -> Result<std::unique_ptr<Expr>, Diagnostic> {
+    std::string source = std::move(text);
+    source.push_back('\n');
+    Lexer lexer {};
+    auto tokensResult = lexer.tokenize(source, "<interpolation>");
+    if (!tokensResult) {
+      return std::unexpected(makeError(ownerSpan, "Invalid interpolation expression."));
+    }
+
+    Parser parser {};
+    auto moduleResult = parser.parseModule(tokensResult.value());
+    if (!moduleResult) {
+      return std::unexpected(makeError(ownerSpan, "Invalid interpolation expression."));
+    }
+
+    auto module = std::move(moduleResult.value());
+    if (module->topLevelStatements.size() != 1) {
+      return std::unexpected(makeError(ownerSpan, "Interpolation must contain exactly one expression."));
+    }
+
+    auto stmt = std::move(module->topLevelStatements.front());
+    if (stmt->kind != NodeKind::ExprStmt) {
+      return std::unexpected(makeError(ownerSpan, "Interpolation must contain an expression."));
+    }
+
+    auto *exprStmt = static_cast<ExprStmt *>(stmt.get());
+    if (!exprStmt->expr) {
+      return std::unexpected(makeError(ownerSpan, "Interpolation expression is empty."));
+    }
+    return std::move(exprStmt->expr);
   }
 
   auto infixBindingPower(TokenKind kind) -> std::optional<std::pair<int, int>> {

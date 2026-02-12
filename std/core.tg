@@ -1,0 +1,31 @@
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
+extern func strlen(s: String) -> i32
+extern func printf(fmt: String, value: i32) -> i32
+extern func puts(text: String) -> i32
+extern func exit(code: i32) -> void
+
+func print_i32(value: i32) -> i32:
+    return printf("%d\n", value)
+
+func print_str(text: String) -> i32:
+    return puts(text)
+
+func thg_str_add(a: String, b: String) -> String:
+    let len_a = strlen(a)
+    let len_b = strlen(b)
+    let total = len_a + len_b + 1
+    let buffer = malloc(total)
+    if (buffer == 0):
+        return ""
+
+    # TODO(pure-runtime): cần hỗ trợ ptr arithmetic để copy trực tiếp vào buffer.
+    memcpy(buffer, a, len_a)
+
+    # Tạm thời dùng phép cộng ngôn ngữ làm fallback cho bootstrap.
+    return a + b
+
+func abort(code: i32) -> i32:
+    exit(code)
+    return code
