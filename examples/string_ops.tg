@@ -1,0 +1,13 @@
+func main() -> i32:
+    let first = "Hello"
+    let space = " "
+    let world = "Thagore"
+
+    let greeting = first + space + world
+    print(greeting)
+
+    if (greeting == "Hello Thagore"):
+        print("String equality works!")
+    else:
+        print("String equality failed.")
+    return 0

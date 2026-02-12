@@ -106,6 +106,42 @@ void __thg_print_str(const char *ptr, std::int32_t len) {
   std::fwrite("\n", sizeof(char), 1, stdout);
 }
 
+char *__thg_str_add(char *s1, char *s2) {
+  if (s1 == nullptr) {
+    s1 = const_cast<char *>("");
+  }
+  if (s2 == nullptr) {
+    s2 = const_cast<char *>("");
+  }
+
+  const auto len1 = std::strlen(s1);
+  const auto len2 = std::strlen(s2);
+  auto *res = static_cast<char *>(std::malloc(len1 + len2 + 1));
+  if (res == nullptr) {
+    return nullptr;
+  }
+
+  std::memcpy(res, s1, len1);
+  std::memcpy(res + len1, s2, len2);
+  res[len1 + len2] = '\0';
+
+  {
+    std::lock_guard lock {managedStringsMutex()};
+    managedStrings().emplace(res, ManagedString {.buffer = res, .refCount = 0});
+  }
+  return res;
+}
+
+int __thg_str_eq(char *s1, char *s2) {
+  if (s1 == s2) {
+    return 1;
+  }
+  if (s1 == nullptr || s2 == nullptr) {
+    return 0;
+  }
+  return std::strcmp(s1, s2) == 0 ? 1 : 0;
+}
+
 const char *__thg_str_concat(const char *leftPtr, std::int32_t leftLen, const char *rightPtr, std::int32_t rightLen, std::int32_t *outLen) {
   if (outLen == nullptr || leftLen < 0 || rightLen < 0) {
     return nullptr;

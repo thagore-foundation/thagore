@@ -177,7 +177,8 @@ private:
   const std::unordered_map<std::string, BaseType> &functionReturnKinds;
   llvm::FunctionCallee retainFn {};
   llvm::FunctionCallee releaseFn {};
-  llvm::FunctionCallee concatFn {};
+  llvm::FunctionCallee strAddFn {};
+  llvm::FunctionCallee strEqFn {};
   llvm::FunctionCallee cstrLenFn {};
   llvm::FunctionCallee initEnvFn {};
 
@@ -192,8 +193,8 @@ private:
     auto *i32Ty = llvm::Type::getInt32Ty(context);
     retainFn = module.getOrInsertFunction("__thg_retain", llvm::FunctionType::get(voidTy, {ptrTy}, false));
     releaseFn = module.getOrInsertFunction("__thg_release", llvm::FunctionType::get(voidTy, {ptrTy}, false));
-    concatFn =
-      module.getOrInsertFunction("__thg_str_concat", llvm::FunctionType::get(ptrTy, {ptrTy, i32Ty, ptrTy, i32Ty, ptrTy}, false));
+    strAddFn = module.getOrInsertFunction("__thg_str_add", llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy}, false));
+    strEqFn = module.getOrInsertFunction("__thg_str_eq", llvm::FunctionType::get(i32Ty, {ptrTy, ptrTy}, false));
     cstrLenFn = module.getOrInsertFunction("__thg_cstr_len", llvm::FunctionType::get(i32Ty, {ptrTy}, false));
     initEnvFn = module.getOrInsertFunction("__thg_init_env", llvm::FunctionType::get(voidTy, {i32Ty, ptrTy}, false));
   }
@@ -294,6 +295,22 @@ private:
     stringValue = builder.CreateInsertValue(stringValue, ptrValue, {0}, "cstr.v.ptr");
     stringValue = builder.CreateInsertValue(stringValue, strLen, {1}, "cstr.v.len");
     return stringValue;
+  }
+
+  auto extractStringPointer(llvm::Value *value, const SourceSpan &span, std::string_view nameHint)
+    -> Result<llvm::Value *, Diagnostic> {
+    auto *stringTy = llvmType(BaseType::String);
+    if (value->getType() == stringTy) {
+      return builder.CreateExtractValue(value, {0}, std::format("{}.ptr", nameHint));
+    }
+    if (value->getType()->isPointerTy()) {
+      return value;
+    }
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::CodegenError,
+      .message = "String expression did not lower to string-compatible value.",
+      .span = span,
+    });
   }
 
   auto shouldRetainStringExpr(const Expr &expr) -> bool {
@@ -1033,21 +1050,31 @@ private:
       return std::unexpected(rhs.error());
     }
 
-    auto *stringTy = llvmType(BaseType::String);
-    if (expr.op == BinaryOp::Add && lhs.value()->getType() == stringTy && rhs.value()->getType() == stringTy) {
-      auto *i32Ty = llvm::Type::getInt32Ty(context);
-      auto *leftPtr = builder.CreateExtractValue(lhs.value(), {0}, "str.left.ptr");
-      auto *leftLen = builder.CreateExtractValue(lhs.value(), {1}, "str.left.len");
-      auto *rightPtr = builder.CreateExtractValue(rhs.value(), {0}, "str.right.ptr");
-      auto *rightLen = builder.CreateExtractValue(rhs.value(), {1}, "str.right.len");
-      auto *lenOut = builder.CreateAlloca(i32Ty, nullptr, "str.concat.len");
-      auto *concatPtr = builder.CreateCall(concatFn, {leftPtr, leftLen, rightPtr, rightLen, lenOut}, "str.concat.ptr");
-      auto *concatLen = builder.CreateLoad(i32Ty, lenOut, "str.concat.len.val");
-
-      llvm::Value *stringValue = llvm::UndefValue::get(stringTy);
-      stringValue = builder.CreateInsertValue(stringValue, concatPtr, {0}, "str.concat.v.ptr");
-      stringValue = builder.CreateInsertValue(stringValue, concatLen, {1}, "str.concat.v.len");
-      return stringValue;
+    const bool lhsIsString = inferExprType(*expr.left) == BaseType::String;
+    const bool rhsIsString = inferExprType(*expr.right) == BaseType::String;
+    if (expr.op == BinaryOp::Add && lhsIsString && rhsIsString) {
+      auto leftPtr = extractStringPointer(lhs.value(), expr.left->span, "str.left");
+      if (!leftPtr) {
+        return std::unexpected(leftPtr.error());
+      }
+      auto rightPtr = extractStringPointer(rhs.value(), expr.right->span, "str.right");
+      if (!rightPtr) {
+        return std::unexpected(rightPtr.error());
+      }
+      auto *added = builder.CreateCall(strAddFn, {leftPtr.value(), rightPtr.value()}, "str.add.ptr");
+      return packCStringValue(added);
+    }
+    if (expr.op == BinaryOp::Eq && lhsIsString && rhsIsString) {
+      auto leftPtr = extractStringPointer(lhs.value(), expr.left->span, "str.left");
+      if (!leftPtr) {
+        return std::unexpected(leftPtr.error());
+      }
+      auto rightPtr = extractStringPointer(rhs.value(), expr.right->span, "str.right");
+      if (!rightPtr) {
+        return std::unexpected(rightPtr.error());
+      }
+      auto *eqValue = builder.CreateCall(strEqFn, {leftPtr.value(), rightPtr.value()}, "str.eq");
+      return builder.CreateICmpNE(eqValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0), "str.eq.bool");
     }
 
     switch (expr.op) {
