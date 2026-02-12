@@ -30,6 +30,8 @@ enum class TokenKind : std::uint16_t {
   KwStruct,
   KwImpl,
   KwExtern,
+  KwImport,
+  KwAs,
 
   LParen,
   RParen,
@@ -80,6 +82,8 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwStruct: return "struct";
     case TokenKind::KwImpl: return "impl";
     case TokenKind::KwExtern: return "extern";
+    case TokenKind::KwImport: return "import";
+    case TokenKind::KwAs: return "as";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";
     case TokenKind::LBracket: return "[";

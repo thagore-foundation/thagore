@@ -92,6 +92,7 @@ struct ExprStmt;
 struct FunctionDecl;
 struct StructDecl;
 struct ModuleDecl;
+struct ImportDecl;
 
 template <typename R>
 struct ExprVisitor {
@@ -352,17 +353,26 @@ struct StructDecl final : Decl {
   auto accept(DeclVisitor<void> &) const -> Result<void, Diagnostic> override { return {}; }
 };
 
+struct ImportDecl {
+  std::string path {};
+  std::string alias {};
+  SourceSpan span {};
+};
+
 struct ModuleDecl final : Decl {
+  std::vector<ImportDecl> imports {};
   std::vector<std::unique_ptr<StructDecl>> structs {};
   std::vector<std::unique_ptr<FunctionDecl>> functions {};
   std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
   ModuleDecl(
+    std::vector<ImportDecl> imports_,
     std::vector<std::unique_ptr<StructDecl>> structs_,
     std::vector<std::unique_ptr<FunctionDecl>> functions_,
     std::vector<std::unique_ptr<Stmt>> topLevelStatements_,
     SourceSpan span_
   )
     : Decl(NodeKind::ModuleDecl, std::move(span_)),
+      imports(std::move(imports_)),
       structs(std::move(structs_)),
       functions(std::move(functions_)),
       topLevelStatements(std::move(topLevelStatements_)) {}

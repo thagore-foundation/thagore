@@ -1,0 +1,9 @@
+import "utils/math.tg" as m
+
+func main() -> i32:
+    let res = m.add(10, 20)
+    print(res)
+
+    let p = m.Point(5, 5)
+    print(p.x)
+    return 0

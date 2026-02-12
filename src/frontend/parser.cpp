@@ -1,6 +1,7 @@
 #include "thagore/frontend/parser.hpp"
 
 #include <format>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@ public:
   explicit ParserImpl(std::span<const Token> tokens_) : tokens(tokens_) {}
 
   auto parseModule() -> Result<std::unique_ptr<ModuleDecl>, Diagnostic> {
+    std::vector<ImportDecl> imports {};
     std::vector<std::unique_ptr<StructDecl>> structs {};
     std::vector<std::unique_ptr<FunctionDecl>> functions {};
     std::vector<std::unique_ptr<Stmt>> topLevelStatements {};
@@ -27,6 +29,12 @@ public:
           return std::unexpected(fn.error());
         }
         functions.push_back(std::move(fn.value()));
+      } else if (check(TokenKind::KwImport)) {
+        auto imp = parseImportDecl();
+        if (!imp) {
+          return std::unexpected(imp.error());
+        }
+        imports.push_back(std::move(imp.value()));
       } else if (check(TokenKind::KwExtern)) {
         auto externFn = parseExternFunctionDecl();
         if (!externFn) {
@@ -61,7 +69,13 @@ public:
     if (!tokens.empty()) {
       span = mergeSpan(tokens.front().span, tokens.back().span);
     }
-    return std::make_unique<ModuleDecl>(std::move(structs), std::move(functions), std::move(topLevelStatements), span);
+    return std::make_unique<ModuleDecl>(
+      std::move(imports),
+      std::move(structs),
+      std::move(functions),
+      std::move(topLevelStatements),
+      span
+    );
   }
 
 private:
@@ -182,6 +196,45 @@ private:
     }
     auto structSpan = mergeSpan(structTok->span, dedent->span);
     return std::make_unique<StructDecl>(name->lexeme, std::move(fields), structSpan);
+  }
+
+  auto parseImportDecl() -> Result<ImportDecl, Diagnostic> {
+    const Token *importTok = consume(TokenKind::KwImport, "Expected 'import'.");
+    if (!importTok) {
+      return std::unexpected(lastError("Expected 'import'."));
+    }
+    const Token *pathTok = consume(TokenKind::String, "Expected string path after 'import'.");
+    if (!pathTok) {
+      return std::unexpected(lastError("Expected string path after 'import'."));
+    }
+
+    std::string alias {};
+    if (match(TokenKind::KwAs)) {
+      const Token *aliasTok = consume(TokenKind::Identifier, "Expected alias after 'as'.");
+      if (!aliasTok) {
+        return std::unexpected(lastError("Expected alias after 'as'."));
+      }
+      alias = aliasTok->lexeme;
+    } else {
+      const auto path = std::filesystem::path(pathTok->lexeme);
+      alias = path.stem().string();
+      if (alias.empty()) {
+        alias = path.filename().string();
+      }
+      if (alias.empty()) {
+        return std::unexpected(makeError(pathTok->span, "Cannot infer module alias from import path."));
+      }
+    }
+
+    const Token *end = consume(TokenKind::Newline, "Expected newline after import declaration.");
+    if (!end) {
+      return std::unexpected(lastError("Expected newline after import declaration."));
+    }
+    return ImportDecl {
+      .path = pathTok->lexeme,
+      .alias = alias,
+      .span = mergeSpan(importTok->span, end->span),
+    };
   }
 
   auto parseFunctionDecl(std::optional<std::string> implType) -> Result<std::unique_ptr<FunctionDecl>, Diagnostic> {
