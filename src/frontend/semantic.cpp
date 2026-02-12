@@ -340,6 +340,19 @@ public:
   }
 
   auto visit(const LoopStmt &stmt) -> Result<void, Diagnostic> override {
+    if (stmt.condition) {
+      auto cond = stmt.condition->accept(*this);
+      if (!cond) {
+        return std::unexpected(cond.error());
+      }
+      if (cond.value()->base != BaseType::Bool) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::SemanticError,
+          .message = "While condition must be bool.",
+          .span = stmt.condition->span,
+        });
+      }
+    }
     return stmt.body->accept(*this);
   }
 

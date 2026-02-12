@@ -39,6 +39,7 @@ auto keywordKind(std::string_view text) -> TokenKind {
     {"attempt", TokenKind::KwAttempt},
     {"if", TokenKind::KwIf},
     {"else", TokenKind::KwElse},
+    {"while", TokenKind::KwWhile},
     {"loop", TokenKind::KwLoop},
   };
   const auto it = kKeywords.find(text);

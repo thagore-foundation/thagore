@@ -223,9 +223,10 @@ struct IfStmt final : Stmt {
 };
 
 struct LoopStmt final : Stmt {
+  std::unique_ptr<Expr> condition {};
   std::unique_ptr<BlockStmt> body {};
-  LoopStmt(std::unique_ptr<BlockStmt> body_, SourceSpan span_)
-    : Stmt(NodeKind::LoopStmt, std::move(span_)), body(std::move(body_)) {}
+  LoopStmt(std::unique_ptr<Expr> condition_, std::unique_ptr<BlockStmt> body_, SourceSpan span_)
+    : Stmt(NodeKind::LoopStmt, std::move(span_)), condition(std::move(condition_)), body(std::move(body_)) {}
   auto accept(StmtVisitor<void> &visitor) const -> Result<void, Diagnostic> override { return visitor.visit(*this); }
 };
 

@@ -24,6 +24,7 @@ enum class TokenKind : std::uint16_t {
   KwAttempt,
   KwIf,
   KwElse,
+  KwWhile,
   KwLoop,
 
   LParen,
@@ -64,6 +65,7 @@ constexpr auto tokenKindName(TokenKind kind) -> std::string_view {
     case TokenKind::KwAttempt: return "attempt";
     case TokenKind::KwIf: return "if";
     case TokenKind::KwElse: return "else";
+    case TokenKind::KwWhile: return "while";
     case TokenKind::KwLoop: return "loop";
     case TokenKind::LParen: return "(";
     case TokenKind::RParen: return ")";

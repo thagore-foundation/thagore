@@ -132,6 +132,9 @@ private:
     if (match(TokenKind::KwIf)) {
       return parseIfStatement(previous());
     }
+    if (match(TokenKind::KwWhile)) {
+      return parseWhileStatement(previous());
+    }
     if (match(TokenKind::KwLoop)) {
       return parseLoopStatement(previous());
     }
@@ -262,7 +265,34 @@ private:
     }
     auto loopBody = std::move(block.value());
     auto stmtSpan = mergeSpan(loopTok->span, loopBody->span);
-    return std::make_unique<LoopStmt>(std::move(loopBody), stmtSpan);
+    return std::make_unique<LoopStmt>(nullptr, std::move(loopBody), stmtSpan);
+  }
+
+  auto parseWhileStatement(const Token *whileTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {
+    if (!consume(TokenKind::LParen, "Expected '(' after 'while'.")) {
+      return std::unexpected(lastError("Expected '(' after 'while'."));
+    }
+    auto cond = parseExpression(0);
+    if (!cond) {
+      return std::unexpected(cond.error());
+    }
+    if (!consume(TokenKind::RParen, "Expected ')' after while condition.")) {
+      return std::unexpected(lastError("Expected ')' after while condition."));
+    }
+    if (!consume(TokenKind::Colon, "Expected ':' after while condition.")) {
+      return std::unexpected(lastError("Expected ':' after while condition."));
+    }
+    if (!consume(TokenKind::Newline, "Expected newline after while header.")) {
+      return std::unexpected(lastError("Expected newline after while header."));
+    }
+    auto block = parseIndentedBlock();
+    if (!block) {
+      return std::unexpected(block.error());
+    }
+    auto loopBody = std::move(block.value());
+    auto condExpr = std::move(cond.value());
+    auto stmtSpan = mergeSpan(whileTok->span, loopBody->span);
+    return std::make_unique<LoopStmt>(std::move(condExpr), std::move(loopBody), stmtSpan);
   }
 
   auto parseExpression(int minBp) -> Result<std::unique_ptr<Expr>, Diagnostic> {

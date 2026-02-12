@@ -270,12 +270,24 @@ private:
   auto lowerLoop(const LoopStmt &stmt) -> Result<void, Diagnostic> {
     auto *condBB = llvm::BasicBlock::Create(context, "loop.cond", &function);
     auto *bodyBB = llvm::BasicBlock::Create(context, "loop.body", &function);
-    auto *exitBB = llvm::BasicBlock::Create(context, "loop.end", &function);
+    auto *afterBB = llvm::BasicBlock::Create(context, "loop.after", &function);
 
     builder.CreateBr(condBB);
     builder.SetInsertPoint(condBB);
-    auto *always = llvm::ConstantInt::getTrue(context);
-    builder.CreateCondBr(always, bodyBB, exitBB);
+    if (stmt.condition) {
+      auto condValue = lowerExpr(*stmt.condition);
+      if (!condValue) {
+        return std::unexpected(condValue.error());
+      }
+      auto boolCond = ensureBool(condValue.value(), stmt.condition->span);
+      if (!boolCond) {
+        return std::unexpected(boolCond.error());
+      }
+      builder.CreateCondBr(boolCond.value(), bodyBB, afterBB);
+    } else {
+      auto *always = llvm::ConstantInt::getTrue(context);
+      builder.CreateCondBr(always, bodyBB, afterBB);
+    }
 
     builder.SetInsertPoint(bodyBB);
     auto bodyResult = lowerBlock(*stmt.body);
@@ -286,7 +298,7 @@ private:
       builder.CreateBr(condBB);
     }
 
-    builder.SetInsertPoint(exitBB);
+    builder.SetInsertPoint(afterBB);
     return {};
   }
 
