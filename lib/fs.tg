@@ -3,6 +3,8 @@ extern func fputs(str: String, stream: ptr) -> i32
 extern func fclose(stream: ptr) -> i32
 extern func fgetc(stream: ptr) -> i32
 extern func feof(stream: ptr) -> i32
+extern func __thg_fs_read_text(path: String) -> String
+extern func __thg_fs_write_text(path: String, content: String) -> i32
 
 struct File:
     handle: ptr
@@ -18,10 +20,10 @@ impl File:
         return "File Content Placeholder"
 
 func read_text(path: String) -> String:
-    let f = open_read(path)
-    let content = f.read_all()
-    f.close()
-    return content
+    return __thg_fs_read_text(path)
+
+func write_text(path: String, content: String) -> i32:
+    return __thg_fs_write_text(path, content)
 
 func open_write(path: String) -> File:
     let mode = "w"

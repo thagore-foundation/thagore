@@ -730,6 +730,163 @@ auto buildAstDebugString(AstNode *root) -> std::string {
   return out;
 }
 
+auto sanitizeCVar(const std::string &name) -> std::string {
+  return "thg_" + name;
+}
+
+auto indentC(int level) -> std::string {
+  std::string out {};
+  for (int i = 0; i < level; ++i) {
+    out += "    ";
+  }
+  return out;
+}
+
+auto emitExprC(AstNode *node) -> std::string;
+
+auto emitCallExprC(AstNode *node) -> std::string {
+  if (node == nullptr || node->kind != "CallExpr") {
+    return "0";
+  }
+  if (node->value == "print") {
+    return "0";
+  }
+  std::string out = node->value + "(";
+  for (std::size_t i = 0; i < node->args.size(); ++i) {
+    out += emitExprC(node->args[i]);
+    if (i + 1 < node->args.size()) {
+      out += ", ";
+    }
+  }
+  out += ")";
+  return out;
+}
+
+auto emitExprC(AstNode *node) -> std::string {
+  if (node == nullptr) {
+    return "0";
+  }
+  if (node->kind == "Literal") {
+    return node->value;
+  }
+  if (node->kind == "Variable") {
+    return sanitizeCVar(node->value);
+  }
+  if (node->kind == "Binary") {
+    return "(" + emitExprC(node->left) + " " + node->op + " " + emitExprC(node->right) + ")";
+  }
+  if (node->kind == "CallExpr") {
+    return emitCallExprC(node);
+  }
+  return "0";
+}
+
+auto emitBlockBodyC(AstNode *blockNode, int indentLevel) -> std::string;
+
+auto emitStmtC(AstNode *node, int indentLevel) -> std::string {
+  if (node == nullptr) {
+    return {};
+  }
+  const std::string pad = indentC(indentLevel);
+
+  if (node->kind == "Let") {
+    return pad + "int " + sanitizeCVar(node->value) + " = " + emitExprC(node->left) + ";\n";
+  }
+  if (node->kind == "Assign") {
+    return pad + sanitizeCVar(node->value) + " = " + emitExprC(node->left) + ";\n";
+  }
+  if (node->kind == "If") {
+    std::string out = pad + "if (" + emitExprC(node->left) + ") {\n";
+    out += emitBlockBodyC(node->right, indentLevel + 1);
+    out += pad + "}";
+    if (node->extra != nullptr) {
+      out += " else {\n";
+      out += emitBlockBodyC(node->extra, indentLevel + 1);
+      out += pad + "}";
+    }
+    out += "\n";
+    return out;
+  }
+  if (node->kind == "While") {
+    std::string out = pad + "while (" + emitExprC(node->left) + ") {\n";
+    out += emitBlockBodyC(node->right, indentLevel + 1);
+    out += pad + "}\n";
+    return out;
+  }
+  if (node->kind == "ReturnStmt") {
+    return pad + "return " + emitExprC(node->left) + ";\n";
+  }
+  if (node->kind == "CallExpr") {
+    if (node->value == "print") {
+      if (!node->args.empty()) {
+        return pad + "printf(\"%d\\n\", " + emitExprC(node->args[0]) + ");\n";
+      }
+      return pad + "printf(\"\\n\");\n";
+    }
+    return pad + emitCallExprC(node) + ";\n";
+  }
+  if (node->kind == "Block") {
+    return emitBlockBodyC(node, indentLevel);
+  }
+  if (node->kind == "FuncDecl") {
+    return {};
+  }
+  return pad + emitExprC(node) + ";\n";
+}
+
+auto emitBlockBodyC(AstNode *blockNode, int indentLevel) -> std::string {
+  std::string out {};
+  if (blockNode == nullptr || blockNode->kind != "Block") {
+    return out;
+  }
+  for (auto *stmt : blockNode->statements) {
+    out += emitStmtC(stmt, indentLevel);
+  }
+  return out;
+}
+
+auto emitFunctionDeclC(AstNode *node) -> std::string {
+  if (node == nullptr || node->kind != "FuncDecl") {
+    return {};
+  }
+  std::string out = "int " + node->value + "(";
+  for (std::size_t i = 0; i < node->params.size(); ++i) {
+    out += "int " + sanitizeCVar(node->params[i]);
+    if (i + 1 < node->params.size()) {
+      out += ", ";
+    }
+  }
+  out += ") {\n";
+  out += emitBlockBodyC(node->left, 1);
+  out += "    return 0;\n";
+  out += "}\n\n";
+  return out;
+}
+
+auto emitProgramC(AstNode *root) -> std::string {
+  std::string headers = "#include <stdio.h>\n#include <stdlib.h>\n\n";
+  std::string funcs {};
+  std::string mainBody {};
+
+  if (root != nullptr && root->kind == "Block") {
+    for (auto *stmt : root->statements) {
+      if (stmt != nullptr && stmt->kind == "FuncDecl") {
+        funcs += emitFunctionDeclC(stmt);
+      } else {
+        mainBody += emitStmtC(stmt, 1);
+      }
+    }
+  } else {
+    mainBody += emitStmtC(root, 1);
+  }
+
+  std::string mainFn = "int main(int argc, char** argv) {\n";
+  mainFn += mainBody;
+  mainFn += "    return 0;\n";
+  mainFn += "}\n";
+  return headers + funcs + mainFn;
+}
+
 struct ExecResult {
   int value {0};
   bool hasReturn {false};
@@ -971,6 +1128,55 @@ char *__thg_fs_read_text(const char *path) {
 
   buffer[bytesRead] = '\0';
   return buffer;
+}
+
+int __thg_fs_write_text(const char *path, const char *content) {
+  if (path == nullptr || *path == '\0') {
+    return 0;
+  }
+  if (content == nullptr) {
+    content = "";
+  }
+
+  std::FILE *file = std::fopen(path, "wb");
+  if (file == nullptr) {
+    return 0;
+  }
+
+  const std::size_t len = std::strlen(content);
+  auto *decoded = static_cast<char *>(std::malloc(len + 1));
+  if (decoded == nullptr) {
+    std::fclose(file);
+    return 0;
+  }
+
+  std::size_t out = 0;
+  for (std::size_t i = 0; i < len; ++i) {
+    if (content[i] == '\\' && i + 1 < len) {
+      if (content[i + 1] == 'n') {
+        decoded[out++] = '\n';
+        ++i;
+        continue;
+      }
+      if (content[i + 1] == 't') {
+        decoded[out++] = '\t';
+        ++i;
+        continue;
+      }
+      if (content[i + 1] == '\\') {
+        decoded[out++] = '\\';
+        ++i;
+        continue;
+      }
+    }
+    decoded[out++] = content[i];
+  }
+  decoded[out] = '\0';
+
+  const std::size_t written = std::fwrite(decoded, 1, out, file);
+  std::free(decoded);
+  std::fclose(file);
+  return written == out ? 1 : 0;
 }
 
 char *__thg_str_substr(const char *s, int start, int len) {
@@ -1689,6 +1895,11 @@ int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {
 int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
   return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp).value;
+}
+
+char *__thg_codegen_emit_c(void *rootNode) {
+  auto code = emitProgramC(static_cast<AstNode *>(rootNode));
+  return copyCString(code.c_str());
 }
 
 }
