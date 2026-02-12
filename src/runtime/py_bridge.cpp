@@ -156,6 +156,10 @@ void *__thg_py_call0(void *func) {
   return result;
 }
 
+void *__thg_py_call_0(void *func) {
+  return __thg_py_call0(func);
+}
+
 void *__thg_py_from_i32(std::int32_t value) {
   if (!ensurePythonApi()) {
     return nullptr;

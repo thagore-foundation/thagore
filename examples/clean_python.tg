@@ -1,0 +1,51 @@
+extern func __thg_py_initialize() -> void
+extern func __thg_py_import(name: String) -> ptr
+extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
+extern func __thg_py_call0(func_obj: ptr) -> ptr
+extern func __thg_py_call_1(func_obj: ptr, a1: ptr) -> ptr
+extern func __thg_py_from_i32(v: i32) -> ptr
+extern func __thg_py_print_obj(o: ptr) -> void
+
+struct PyObj:
+    handle: ptr
+
+impl PyObj:
+    func import_module(self, name: String) -> PyObj:
+        let p = __thg_py_import(name)
+        return PyObj(p)
+
+    func attr(self, name: String) -> PyObj:
+        let res = __thg_py_getattr(self.handle, name)
+        return PyObj(res)
+
+    func call(self) -> PyObj:
+        let res = __thg_py_call0(self.handle)
+        return PyObj(res)
+
+    func call_i32(self, val: i32) -> PyObj:
+        let arg = __thg_py_from_i32(val)
+        let res = __thg_py_call_1(self.handle, arg)
+        return PyObj(res)
+
+    func print(self) -> i32:
+        __thg_py_print_obj(self.handle)
+        return 0
+
+func py_init() -> i32:
+    __thg_py_initialize()
+    return 0
+
+func main() -> i32:
+    py_init()
+
+    print("Importing math...")
+    let py = PyObj(__thg_py_import("builtins"))
+    let math = py.import_module("math")
+
+    let sqrt_func = math.attr("sqrt")
+
+    print("Calculating sqrt(16)...")
+    let res = sqrt_func.call_i32(16)
+
+    res.print()
+    return 0
