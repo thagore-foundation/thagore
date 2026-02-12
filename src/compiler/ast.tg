@@ -2,6 +2,11 @@ extern func __thg_ast_new_literal(value: String) -> ptr
 extern func __thg_ast_new_binary(op: String, left: ptr, right: ptr) -> ptr
 extern func __thg_ast_new_var(name: String) -> ptr
 extern func __thg_ast_new_let(name: String, expr: ptr) -> ptr
+extern func __thg_ast_new_assign(name: String, expr: ptr) -> ptr
+extern func __thg_ast_new_block() -> ptr
+extern func __thg_ast_block_push(block: ptr, stmt: ptr) -> i32
+extern func __thg_ast_new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr
+extern func __thg_ast_new_while(condition: ptr, body: ptr) -> ptr
 extern func __thg_ast_kind(node: ptr) -> String
 extern func __thg_ast_kind_tag(node: ptr) -> i32
 extern func __thg_ast_op(node: ptr) -> String
@@ -10,6 +15,12 @@ extern func __thg_ast_value(node: ptr) -> String
 extern func __thg_ast_name(node: ptr) -> String
 extern func __thg_ast_left(node: ptr) -> ptr
 extern func __thg_ast_right(node: ptr) -> ptr
+extern func __thg_ast_condition(node: ptr) -> ptr
+extern func __thg_ast_then(node: ptr) -> ptr
+extern func __thg_ast_else(node: ptr) -> ptr
+extern func __thg_ast_body(node: ptr) -> ptr
+extern func __thg_ast_block_count(node: ptr) -> i32
+extern func __thg_ast_block_get_stmt(node: ptr, index: i32) -> ptr
 extern func __thg_ast_debug(node: ptr) -> String
 
 struct Expr:
@@ -30,6 +41,22 @@ func new_var(name: String) -> ptr:
 
 func new_let(name: String, expr: ptr) -> ptr:
     return __thg_ast_new_let(name, expr)
+
+func new_assign(name: String, expr: ptr) -> ptr:
+    return __thg_ast_new_assign(name, expr)
+
+func new_block() -> ptr:
+    return __thg_ast_new_block()
+
+func block_push(block: ptr, stmt: ptr) -> i32:
+    __thg_ast_block_push(block, stmt)
+    return 0
+
+func new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr:
+    return __thg_ast_new_if(condition, then_block, else_block)
+
+func new_while(condition: ptr, body: ptr) -> ptr:
+    return __thg_ast_new_while(condition, body)
 
 func kind_of(node: ptr) -> String:
     return __thg_ast_kind(node)
@@ -55,6 +82,24 @@ func left_of(node: ptr) -> ptr:
 func right_of(node: ptr) -> ptr:
     return __thg_ast_right(node)
 
+func condition(node: ptr) -> ptr:
+    return __thg_ast_condition(node)
+
+func then_block(node: ptr) -> ptr:
+    return __thg_ast_then(node)
+
+func else_block(node: ptr) -> ptr:
+    return __thg_ast_else(node)
+
+func body(node: ptr) -> ptr:
+    return __thg_ast_body(node)
+
+func block_count(node: ptr) -> i32:
+    return __thg_ast_block_count(node)
+
+func block_stmt(node: ptr, index: i32) -> ptr:
+    return __thg_ast_block_get_stmt(node, index)
+
 func debug(node: ptr) -> String:
     return __thg_ast_debug(node)
 
@@ -70,6 +115,18 @@ func expr_variable() -> i32:
 func stmt_let() -> i32:
     return 4
 
+func stmt_assign() -> i32:
+    return 5
+
+func stmt_block() -> i32:
+    return 6
+
+func stmt_if() -> i32:
+    return 7
+
+func stmt_while() -> i32:
+    return 8
+
 func op_add() -> i32:
     return 1
 
@@ -81,3 +138,21 @@ func op_mul() -> i32:
 
 func op_div() -> i32:
     return 4
+
+func op_eq() -> i32:
+    return 5
+
+func op_ne() -> i32:
+    return 6
+
+func op_gt() -> i32:
+    return 7
+
+func op_lt() -> i32:
+    return 8
+
+func op_gte() -> i32:
+    return 9
+
+func op_lte() -> i32:
+    return 10

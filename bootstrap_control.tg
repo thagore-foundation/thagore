@@ -1,0 +1,22 @@
+import "src/compiler/parser.tg" as parser
+import "src/compiler/eval.tg" as eval
+
+func main() -> i32:
+    print("--- Control Flow Test: Factorial ---")
+
+    let program = "{ let n = 5; let res = 1; while (n > 0) { res = res * n; n = n - 1; }; res }"
+    let root = parser.parse_program(program)
+
+    let interp = eval.new()
+    print("Calculating 5! ...")
+    let result = interp.exec_stmt(root)
+
+    print("Result:")
+    print(result)
+
+    if (result == 120):
+        print("SUCCESS: While/Block/Assign work.")
+    else:
+        print("FAILURE: Wrong control flow result.")
+
+    return 0

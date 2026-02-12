@@ -36,6 +36,8 @@ struct AstNode {
   std::string value {};
   AstNode *left {nullptr};
   AstNode *right {nullptr};
+  AstNode *extra {nullptr};
+  std::vector<AstNode *> statements {};
 };
 
 struct RuntimeInterpreter {
@@ -99,9 +101,36 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
       }
       if (text == "let") {
         out.push_back(ExprToken {.kind = "LET", .text = text});
+      } else if (text == "if") {
+        out.push_back(ExprToken {.kind = "IF", .text = text});
+      } else if (text == "else") {
+        out.push_back(ExprToken {.kind = "ELSE", .text = text});
+      } else if (text == "while") {
+        out.push_back(ExprToken {.kind = "WHILE", .text = text});
       } else {
         out.push_back(ExprToken {.kind = "IDENT", .text = text});
       }
+      continue;
+    }
+
+    if (*p == '=' && *(p + 1) == '=') {
+      out.push_back(ExprToken {.kind = "EQEQ", .text = "=="});
+      p += 2;
+      continue;
+    }
+    if (*p == '!' && *(p + 1) == '=') {
+      out.push_back(ExprToken {.kind = "BANGEQ", .text = "!="});
+      p += 2;
+      continue;
+    }
+    if (*p == '>' && *(p + 1) == '=') {
+      out.push_back(ExprToken {.kind = "GTE", .text = ">="});
+      p += 2;
+      continue;
+    }
+    if (*p == '<' && *(p + 1) == '=') {
+      out.push_back(ExprToken {.kind = "LTE", .text = "<="});
+      p += 2;
       continue;
     }
 
@@ -134,6 +163,26 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
         out.push_back(ExprToken {.kind = "EQUAL", .text = "="});
         ++p;
         break;
+      case '>':
+        out.push_back(ExprToken {.kind = "GT", .text = ">"});
+        ++p;
+        break;
+      case '<':
+        out.push_back(ExprToken {.kind = "LT", .text = "<"});
+        ++p;
+        break;
+      case '{':
+        out.push_back(ExprToken {.kind = "LBRACE", .text = "{"});
+        ++p;
+        break;
+      case '}':
+        out.push_back(ExprToken {.kind = "RBRACE", .text = "}"});
+        ++p;
+        break;
+      case ';':
+        out.push_back(ExprToken {.kind = "SEMI", .text = ";"});
+        ++p;
+        break;
       default:
         out.push_back(ExprToken {.kind = "INVALID", .text = std::string(1, *p)});
         ++p;
@@ -149,10 +198,13 @@ public:
   explicit ExprParser(const std::vector<ExprToken> &tokens_) : tokens(tokens_) {}
 
   auto parseExpr() -> AstNode * {
-    return parseAddSub();
+    return parseComparison();
   }
 
   auto parseStatement() -> AstNode * {
+    if (match("SEMI")) {
+      return makeLiteralNode("0");
+    }
     if (match("LET")) {
       if (current().kind != "IDENT") {
         return makeLiteralNode("0");
@@ -162,10 +214,61 @@ public:
       if (!match("EQUAL")) {
         return makeLiteralNode("0");
       }
-      auto *expr = parseAddSub();
+      auto *expr = parseExpr();
       return makeLetNode(name, expr);
     }
-    return parseAddSub();
+    if (match("IF")) {
+      if (!match("LPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto *condition = parseExpr();
+      if (!match("RPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto *thenBlock = parseBlock();
+      AstNode *elseBlock = nullptr;
+      if (match("ELSE")) {
+        elseBlock = parseBlock();
+      }
+      return makeIfNode(condition, thenBlock, elseBlock);
+    }
+    if (match("WHILE")) {
+      if (!match("LPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto *condition = parseExpr();
+      if (!match("RPAREN")) {
+        return makeLiteralNode("0");
+      }
+      auto *body = parseBlock();
+      return makeWhileNode(condition, body);
+    }
+    if (current().kind == "LBRACE") {
+      return parseBlock();
+    }
+    if (current().kind == "IDENT" && peekKind(1) == "EQUAL") {
+      const auto name = current().text;
+      ++pos;
+      ++pos;
+      auto *expr = parseExpr();
+      return makeAssignNode(name, expr);
+    }
+    return parseExpr();
+  }
+
+  auto parseProgram() -> AstNode * {
+    auto *block = makeBlockNode();
+    while (current().kind != "EOF") {
+      if (match("SEMI")) {
+        continue;
+      }
+      auto *stmt = parseStatement();
+      block->statements.push_back(stmt);
+      if (current().kind == "SEMI") {
+        ++pos;
+      }
+    }
+    return block;
   }
 
 private:
@@ -186,6 +289,14 @@ private:
       return true;
     }
     return false;
+  }
+
+  auto peekKind(std::size_t offset) const -> std::string {
+    const auto idx = pos + offset;
+    if (idx >= tokens.size()) {
+      return "EOF";
+    }
+    return tokens[idx].kind;
   }
 
   auto makeLiteralNode(const std::string &value) -> AstNode * {
@@ -219,9 +330,64 @@ private:
     return node;
   }
 
+  auto makeAssignNode(const std::string &name, AstNode *expr) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Assign";
+    node->value = name;
+    node->left = expr;
+    return node;
+  }
+
+  auto makeBlockNode() -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "Block";
+    return node;
+  }
+
+  auto makeIfNode(AstNode *condition, AstNode *thenBlock, AstNode *elseBlock) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "If";
+    node->left = condition;
+    node->right = thenBlock;
+    node->extra = elseBlock;
+    return node;
+  }
+
+  auto makeWhileNode(AstNode *condition, AstNode *body) -> AstNode * {
+    auto *node = new AstNode {};
+    node->kind = "While";
+    node->left = condition;
+    node->right = body;
+    return node;
+  }
+
+  auto parseBlock() -> AstNode * {
+    if (!match("LBRACE")) {
+      return makeLiteralNode("0");
+    }
+
+    auto *block = makeBlockNode();
+    while (current().kind != "RBRACE" && current().kind != "EOF") {
+      if (match("SEMI")) {
+        continue;
+      }
+      auto *stmt = parseStatement();
+      block->statements.push_back(stmt);
+      if (current().kind == "SEMI") {
+        ++pos;
+      }
+    }
+    (void)match("RBRACE");
+    return block;
+  }
+
   auto parseFactor() -> AstNode * {
+    if (match("MINUS")) {
+      auto *right = parseFactor();
+      return makeBinaryNode("-", makeLiteralNode("0"), right);
+    }
     if (match("LPAREN")) {
-      auto *inner = parseAddSub();
+      auto *inner = parseExpr();
       (void)match("RPAREN");
       return inner;
     }
@@ -273,6 +439,44 @@ private:
     }
     return left;
   }
+
+  auto parseComparison() -> AstNode * {
+    auto *left = parseAddSub();
+    while (true) {
+      if (match("EQEQ")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode("==", left, right);
+        continue;
+      }
+      if (match("BANGEQ")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode("!=", left, right);
+        continue;
+      }
+      if (match("GTE")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode(">=", left, right);
+        continue;
+      }
+      if (match("LTE")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode("<=", left, right);
+        continue;
+      }
+      if (match("GT")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode(">", left, right);
+        continue;
+      }
+      if (match("LT")) {
+        auto *right = parseAddSub();
+        left = makeBinaryNode("<", left, right);
+        continue;
+      }
+      break;
+    }
+    return left;
+  }
 };
 
 void appendAstLine(std::string &out, int indent, const std::string &text) {
@@ -300,6 +504,33 @@ void appendAstNode(std::string &out, AstNode *node, int indent, std::string_view
     appendAstNode(out, node->left, indent + 2, "Value");
     return;
   }
+  if (node->kind == "Assign") {
+    appendAstLine(out, indent, std::string(label) + ": Assign(" + node->value + ")");
+    appendAstNode(out, node->left, indent + 2, "Value");
+    return;
+  }
+  if (node->kind == "Block") {
+    appendAstLine(out, indent, std::string(label) + ": Block");
+    for (std::size_t i = 0; i < node->statements.size(); ++i) {
+      appendAstNode(out, node->statements[i], indent + 2, "Stmt" + std::to_string(i));
+    }
+    return;
+  }
+  if (node->kind == "If") {
+    appendAstLine(out, indent, std::string(label) + ": If");
+    appendAstNode(out, node->left, indent + 2, "Condition");
+    appendAstNode(out, node->right, indent + 2, "Then");
+    if (node->extra != nullptr) {
+      appendAstNode(out, node->extra, indent + 2, "Else");
+    }
+    return;
+  }
+  if (node->kind == "While") {
+    appendAstLine(out, indent, std::string(label) + ": While");
+    appendAstNode(out, node->left, indent + 2, "Condition");
+    appendAstNode(out, node->right, indent + 2, "Body");
+    return;
+  }
 
   appendAstLine(out, indent, std::string(label) + ": Binary(" + node->op + ")");
   appendAstNode(out, node->left, indent + 2, "Left");
@@ -320,6 +551,37 @@ auto buildAstDebugString(AstNode *root) -> std::string {
     std::string out {};
     appendAstLine(out, 0, "Let(" + root->value + ")");
     appendAstNode(out, root->left, 2, "Value");
+    return out;
+  }
+  if (root->kind == "Assign") {
+    std::string out {};
+    appendAstLine(out, 0, "Assign(" + root->value + ")");
+    appendAstNode(out, root->left, 2, "Value");
+    return out;
+  }
+  if (root->kind == "Block") {
+    std::string out {};
+    appendAstLine(out, 0, "Block");
+    for (std::size_t i = 0; i < root->statements.size(); ++i) {
+      appendAstNode(out, root->statements[i], 2, "Stmt" + std::to_string(i));
+    }
+    return out;
+  }
+  if (root->kind == "If") {
+    std::string out {};
+    appendAstLine(out, 0, "If");
+    appendAstNode(out, root->left, 2, "Condition");
+    appendAstNode(out, root->right, 2, "Then");
+    if (root->extra != nullptr) {
+      appendAstNode(out, root->extra, 2, "Else");
+    }
+    return out;
+  }
+  if (root->kind == "While") {
+    std::string out {};
+    appendAstLine(out, 0, "While");
+    appendAstNode(out, root->left, 2, "Condition");
+    appendAstNode(out, root->right, 2, "Body");
     return out;
   }
   std::string out {};
@@ -355,6 +617,12 @@ auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
       if (right == 0) return 0;
       return left / right;
     }
+    if (node->op == "==") return left == right ? 1 : 0;
+    if (node->op == "!=") return left != right ? 1 : 0;
+    if (node->op == ">") return left > right ? 1 : 0;
+    if (node->op == "<") return left < right ? 1 : 0;
+    if (node->op == ">=") return left >= right ? 1 : 0;
+    if (node->op == "<=") return left <= right ? 1 : 0;
   }
   return 0;
 }
@@ -369,6 +637,37 @@ auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
       interp->env[node->value] = value;
     }
     return value;
+  }
+  if (node->kind == "Assign") {
+    const int value = evalExprWithEnv(node->left, interp);
+    if (interp != nullptr) {
+      interp->env[node->value] = value;
+    }
+    return value;
+  }
+  if (node->kind == "Block") {
+    int last = 0;
+    for (auto *stmt : node->statements) {
+      last = execStmtWithEnv(stmt, interp);
+    }
+    return last;
+  }
+  if (node->kind == "If") {
+    const int cond = evalExprWithEnv(node->left, interp);
+    if (cond != 0) {
+      return execStmtWithEnv(node->right, interp);
+    }
+    if (node->extra != nullptr) {
+      return execStmtWithEnv(node->extra, interp);
+    }
+    return 0;
+  }
+  if (node->kind == "While") {
+    int last = 0;
+    while (evalExprWithEnv(node->left, interp) != 0) {
+      last = execStmtWithEnv(node->right, interp);
+    }
+    return last;
   }
   return evalExprWithEnv(node, interp);
 }
@@ -711,6 +1010,18 @@ int __thg_tok_tag(void *streamPtr, int index) {
   if (kind == "IDENT") return 9;
   if (kind == "LET") return 10;
   if (kind == "EQUAL") return 11;
+  if (kind == "IF") return 12;
+  if (kind == "ELSE") return 13;
+  if (kind == "WHILE") return 14;
+  if (kind == "LBRACE") return 15;
+  if (kind == "RBRACE") return 16;
+  if (kind == "SEMI") return 17;
+  if (kind == "EQEQ") return 18;
+  if (kind == "BANGEQ") return 19;
+  if (kind == "GT") return 20;
+  if (kind == "LT") return 21;
+  if (kind == "GTE") return 22;
+  if (kind == "LTE") return 23;
   return 8;
 }
 
@@ -745,6 +1056,46 @@ void *__thg_ast_new_let(const char *name, void *expr) {
   return node;
 }
 
+void *__thg_ast_new_assign(const char *name, void *expr) {
+  auto *node = new AstNode {};
+  node->kind = "Assign";
+  node->value = name == nullptr ? "" : name;
+  node->left = static_cast<AstNode *>(expr);
+  return node;
+}
+
+void *__thg_ast_new_block() {
+  auto *node = new AstNode {};
+  node->kind = "Block";
+  return node;
+}
+
+int __thg_ast_block_push(void *blockPtr, void *stmtPtr) {
+  auto *block = static_cast<AstNode *>(blockPtr);
+  if (block == nullptr || block->kind != "Block") {
+    return 0;
+  }
+  block->statements.push_back(static_cast<AstNode *>(stmtPtr));
+  return 0;
+}
+
+void *__thg_ast_new_if(void *condition, void *thenBlock, void *elseBlock) {
+  auto *node = new AstNode {};
+  node->kind = "If";
+  node->left = static_cast<AstNode *>(condition);
+  node->right = static_cast<AstNode *>(thenBlock);
+  node->extra = static_cast<AstNode *>(elseBlock);
+  return node;
+}
+
+void *__thg_ast_new_while(void *condition, void *body) {
+  auto *node = new AstNode {};
+  node->kind = "While";
+  node->left = static_cast<AstNode *>(condition);
+  node->right = static_cast<AstNode *>(body);
+  return node;
+}
+
 const char *__thg_ast_kind(void *nodePtr) {
   if (nodePtr == nullptr) {
     return "";
@@ -768,6 +1119,18 @@ int __thg_ast_kind_tag(void *nodePtr) {
   }
   if (kind == "Let") {
     return 4;
+  }
+  if (kind == "Assign") {
+    return 5;
+  }
+  if (kind == "Block") {
+    return 6;
+  }
+  if (kind == "If") {
+    return 7;
+  }
+  if (kind == "While") {
+    return 8;
   }
   return 0;
 }
@@ -795,6 +1158,24 @@ int __thg_ast_op_tag(void *nodePtr) {
   }
   if (op == "/") {
     return 4;
+  }
+  if (op == "==") {
+    return 5;
+  }
+  if (op == "!=") {
+    return 6;
+  }
+  if (op == ">") {
+    return 7;
+  }
+  if (op == "<") {
+    return 8;
+  }
+  if (op == ">=") {
+    return 9;
+  }
+  if (op == "<=") {
+    return 10;
   }
   return 0;
 }
@@ -827,6 +1208,60 @@ void *__thg_ast_right(void *nodePtr) {
   return static_cast<AstNode *>(nodePtr)->right;
 }
 
+void *__thg_ast_condition(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->left;
+}
+
+void *__thg_ast_then(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->right;
+}
+
+void *__thg_ast_else(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->extra;
+}
+
+void *__thg_ast_body(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return nullptr;
+  }
+  return static_cast<AstNode *>(nodePtr)->right;
+}
+
+int __thg_ast_block_count(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "Block") {
+    return 0;
+  }
+  return static_cast<int>(node->statements.size());
+}
+
+void *__thg_ast_block_get_stmt(void *nodePtr, int index) {
+  if (nodePtr == nullptr || index < 0) {
+    return nullptr;
+  }
+  auto *node = static_cast<AstNode *>(nodePtr);
+  if (node->kind != "Block") {
+    return nullptr;
+  }
+  const auto idx = static_cast<std::size_t>(index);
+  if (idx >= node->statements.size()) {
+    return nullptr;
+  }
+  return node->statements[idx];
+}
+
 char *__thg_ast_debug(void *nodePtr) {
   auto text = buildAstDebugString(static_cast<AstNode *>(nodePtr));
   return copyCString(text.c_str());
@@ -845,6 +1280,12 @@ void *__thg_parse_stmt_from_source(const char *source) {
   auto tokens = tokenizeExprSource(source);
   ExprParser parser {tokens};
   return parser.parseStatement();
+}
+
+void *__thg_parse_program_from_source(const char *source) {
+  auto tokens = tokenizeExprSource(source);
+  ExprParser parser {tokens};
+  return parser.parseProgram();
 }
 
 int __thg_eval_expr(void *nodePtr) {

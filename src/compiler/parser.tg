@@ -2,6 +2,7 @@ import "lexer.tg" as lexer
 
 extern func __thg_parse_expr_from_tokens(stream: ptr) -> ptr
 extern func __thg_parse_stmt_from_source(source: String) -> ptr
+extern func __thg_parse_program_from_source(source: String) -> ptr
 
 struct Parser:
     stream: ptr
@@ -20,3 +21,6 @@ func parse_expr(source: String) -> ptr:
 
 func parse_stmt(source: String) -> ptr:
     return __thg_parse_stmt_from_source(source)
+
+func parse_program(source: String) -> ptr:
+    return __thg_parse_program_from_source(source)
