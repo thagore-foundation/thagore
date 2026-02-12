@@ -1,0 +1,10 @@
+import "std/fs.tg" as fs
+
+func main() -> i32:
+    print("Writing to test.txt...")
+    let f = fs.open_write("test.txt")
+    f.write("Hello Thagore System!")
+    f.close()
+
+    print("Done.")
+    return 0
