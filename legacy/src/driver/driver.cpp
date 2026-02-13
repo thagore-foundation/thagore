@@ -809,6 +809,7 @@ auto linkExecutable(
   }
 
   std::vector<std::string> args {
+    "-no-pie",
     objectPath.string(),
     runtimeLibPath.string(),
     "-o",
