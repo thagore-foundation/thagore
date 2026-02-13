@@ -64,8 +64,10 @@ target_compile_definitions(thag_backend PUBLIC ${LLVM_DEFINITIONS})
 
 add_library(thag_runtime STATIC
   src/runtime/runtime.cpp
-  src/runtime/py_bridge.cpp
 )
+if(WIN32)
+  target_sources(thag_runtime PRIVATE src/runtime/py_bridge.cpp)
+endif()
 target_include_directories(thag_runtime PUBLIC include ${Python3_INCLUDE_DIRS})
 target_compile_features(thag_runtime PUBLIC cxx_std_23)
 target_compile_definitions(thag_runtime PUBLIC Py_NO_LINK_LIB)

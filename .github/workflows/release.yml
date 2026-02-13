@@ -22,9 +22,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install LLVM
+        id: llvm
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "21"
+          version: "18"
 
       - name: Smart Bootstrap
         shell: bash
@@ -60,7 +61,16 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release
+            CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+            elif [[ "${{ runner.os }}" == "Windows" && -d "C:/Program Files/LLVM/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=C:/Program Files/LLVM/lib/cmake/llvm"
+            elif [[ -d "/usr/lib/llvm-18/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm"
+            fi
+
+            cmake -S legacy -B legacy/build $CMAKE_ARGS
             cmake --build legacy/build --config Release
 
             if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -111,6 +121,7 @@ jobs:
           "./$FIB_BIN"
 
       - name: Package
+        id: package
         shell: bash
         run: |
           set -euo pipefail
@@ -131,17 +142,15 @@ jobs:
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             7z a thag-windows.zip dist/*
+            echo "asset=thag-windows.zip" >> "$GITHUB_OUTPUT"
           else
             tar -czf thag-linux.tar.gz dist
+            echo "asset=thag-linux.tar.gz" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            thag.exe
-            thag
-            thag-windows.zip
-            thag-linux.tar.gz
+          files: ${{ steps.package.outputs.asset }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
