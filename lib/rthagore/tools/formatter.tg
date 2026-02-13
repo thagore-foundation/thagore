@@ -1,0 +1,15 @@
+// formatter
+
+extern func __thg_fmt_trim_trailing(text: String) -> String
+
+func parse(text: String) -> String
+  return text
+
+func format(text: String, config: String = "") -> String
+  return __thg_fmt_trim_trailing(text)
+
+func check(text: String) -> String
+  let formatted = format(text)
+  if formatted == text
+    return ""
+  return "needs format"

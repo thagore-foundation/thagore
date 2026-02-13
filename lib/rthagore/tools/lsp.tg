@@ -1,0 +1,68 @@
+// lsp
+
+use linter as linter
+use "../std/string.tg" as string
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func _len(text: String) -> i32
+  return __thg_cstr_len(text)
+
+func _char_at(text: String, index: i32) -> String
+  return text.substr(index, 1)
+
+func _append_line(out: String, line: String) -> String
+  if line == ""
+    return out
+  if out == ""
+    return line
+  return out + "\n" + line
+
+func _filter_by_prefix(items: String, prefix: String) -> String
+  if prefix == ""
+    return items
+  let out = ""
+  let line = ""
+  let i = 0
+  let n = _len(items)
+  while i < n
+    let ch = _char_at(items, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        if string.starts_with(line, prefix)
+          out = _append_line(out, line)
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+
+  if line != ""
+    if string.starts_with(line, prefix)
+      out = _append_line(out, line)
+  return out
+
+func diagnostics(text: String) -> String
+  return linter.run(text)
+
+func completion(prefix: String, items: String) -> String
+  return _filter_by_prefix(items, prefix)
+
+func goto_definition(symbol: String, index: String = "") -> String
+  if symbol == ""
+    return ""
+  if index == ""
+    return symbol
+  return symbol + "@" + index
+
+func find_references(symbol: String, text: String) -> String
+  if string.contains(text, symbol)
+    return symbol
+  return ""
+
+func hover(symbol: String) -> String
+  if symbol == ""
+    return ""
+  return "symbol: " + symbol

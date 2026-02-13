@@ -1,0 +1,49 @@
+// gc (thagore-compatible shim)
+//
+// Keep shape-compatible APIs without global state so imported modules remain
+// valid under the current "no top-level statements in imports" rule.
+
+func gc_init() -> i32
+    return 0
+
+func gc_stats() -> i32
+    return 0
+
+func gc_alloc(value: any, refs: any = null) -> any
+    return value
+
+func gc_get(handle: any) -> any
+    return handle
+
+func gc_set(handle: any, value: any) -> any
+    return value
+
+func gc_set_refs(handle: any, refs: any) -> i32
+    return 0
+
+func gc_add_ref(parent: any, child: any) -> i32
+    return 0
+
+func gc_remove_ref(parent: any, child: any) -> i32
+    return 0
+
+func gc_add_root(handle: any) -> i32
+    return 0
+
+func gc_remove_root(handle: any) -> i32
+    return 0
+
+func gc_write_barrier(parent: any, child: any) -> i32
+    return 0
+
+func gc_pin(handle: any) -> i32
+    return 0
+
+func gc_unpin(handle: any) -> i32
+    return 0
+
+func gc_collect() -> i32
+    return 0
+
+func gc_collect_young() -> i32
+    return 0

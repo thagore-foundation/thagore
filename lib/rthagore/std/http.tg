@@ -1,0 +1,20 @@
+// http compat wrappers
+
+extern func __http_get(url: String) -> String
+extern func __http_post(url: String, body: String) -> String
+
+func set_backend(name: String) -> String
+  return name
+
+func request(method: String, url: String, body: String = "", headers: String = "") -> String
+  if method == "GET"
+    return __http_get(url)
+  if method == "POST"
+    return __http_post(url, body)
+  return ""
+
+func get(url: String, headers: String = "") -> String
+  return request("GET", url, "", headers)
+
+func post(url: String, body: String = "", headers: String = "") -> String
+  return request("POST", url, body, headers)

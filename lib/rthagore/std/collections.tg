@@ -1,0 +1,73 @@
+// collections compat shim
+
+func hashmap_new() -> String
+  return ""
+
+func hashmap_len(self: String) -> i32
+  return 0
+
+func hashmap_contains(self: String, key: String) -> bool
+  return false
+
+func hashmap_get(self: String, key: String, default: String = "") -> String
+  return default
+
+func hashmap_set(self: String, key: String, value: String) -> String
+  return self
+
+func hashmap_keys(self: String) -> String
+  return ""
+
+func hashmap_values(self: String) -> String
+  return ""
+
+func ordereddict_new() -> String
+  return ""
+
+func ordereddict_len(self: String) -> i32
+  return 0
+
+func ordereddict_contains(self: String, key: String) -> bool
+  return false
+
+func ordereddict_get(self: String, key: String, default: String = "") -> String
+  return default
+
+func ordereddict_set(self: String, key: String, value: String) -> String
+  return self
+
+func ordereddict_keys_list(self: String) -> String
+  return ""
+
+func ordereddict_values_list(self: String) -> String
+  return ""
+
+func ordereddict_items(self: String) -> String
+  return ""
+
+func deque_new() -> String
+  return ""
+
+func deque_len(self: String) -> i32
+  return 0
+
+func deque_is_empty(self: String) -> bool
+  return true
+
+func deque_push_back(self: String, value: String) -> String
+  return self
+
+func deque_push_front(self: String, value: String) -> String
+  return self
+
+func deque_pop_front(self: String) -> String
+  return ""
+
+func deque_pop_back(self: String) -> String
+  return ""
+
+func deque_peek_front(self: String) -> String
+  return ""
+
+func deque_peek_back(self: String) -> String
+  return ""

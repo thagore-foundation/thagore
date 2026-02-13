@@ -1,0 +1,39 @@
+// buffer compat shim
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func new() -> String
+  return ""
+
+func from(text: String) -> String
+  if text == null
+    return ""
+  return text
+
+func len(buf: String) -> i32
+  if buf == null
+    return 0
+  return __thg_cstr_len(buf)
+
+func is_empty(buf: String) -> bool
+  return len(buf) == 0
+
+func clear(buf: String) -> String
+  return ""
+
+func push(buf: String, text: String) -> String
+  if text == null
+    return buf
+  return text
+
+func push_char(buf: String, ch: String) -> String
+  return push(buf, ch)
+
+func push_line(buf: String, text: String) -> String
+  return push(buf, text)
+
+func to_string(buf: String) -> String
+  if buf == null
+    return ""
+  return buf
+

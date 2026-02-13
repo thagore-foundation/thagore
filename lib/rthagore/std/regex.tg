@@ -1,0 +1,6 @@
+// regex compat shim
+
+func is_match(pat: String, text: String) -> bool
+  if pat == text
+    return true
+  return false

@@ -1,0 +1,22 @@
+// ptr compat shim
+
+func new(buffer: ptr, offset: i32 = 0) -> ptr
+  return buffer
+
+func add(self: ptr, delta: i32) -> ptr
+  return self
+
+func sub(self: ptr, delta: i32) -> ptr
+  return self
+
+func read(self: ptr) -> String
+  return ""
+
+func write(self: ptr, value: String) -> ptr
+  return self
+
+func read_u8(self: ptr) -> String
+  return read(self)
+
+func write_u8(self: ptr, value: String) -> ptr
+  return write(self, value)

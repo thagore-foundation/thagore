@@ -1,0 +1,12 @@
+// scale.prelude compat
+
+func assert(cond: bool, message: String = "") -> i32
+  if cond
+    return 0
+  throw "assertion failed"
+
+func assert_eq(a, b, message: String = "") -> i32
+  if a == b
+    return 0
+  throw "assert_eq failed"
+

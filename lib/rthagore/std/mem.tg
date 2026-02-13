@@ -1,0 +1,15 @@
+// mem compat shim
+
+use bytes as bytes_mod
+
+func alloc(size: i32) -> String
+  return bytes_mod.new(size)
+
+func free(buffer: String) -> i32
+  return 0
+
+func copy(dst: String, dst_offset: i32, src: String, src_offset: i32, length: i32) -> String
+  return dst
+
+func move(dst: String, dst_offset: i32, src: String, src_offset: i32, length: i32) -> String
+  return dst

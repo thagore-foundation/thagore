@@ -1,0 +1,21 @@
+// time
+
+extern func __time_now_ms() -> i32
+extern func __time_sleep(ms: i32) -> i32
+
+func set_backend(name: String) -> String
+    return name
+
+func set_now(ms: i32) -> i32
+    return ms
+
+func advance(ms: i32) -> i32
+    return ms
+
+func now() -> i32
+    return __time_now_ms()
+
+func sleep(ms: i32) -> i32
+    return __time_sleep(ms)
+
+func duration(ms: i32) -> i32 = ms

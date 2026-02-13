@@ -1,0 +1,48 @@
+// platform (thagore-compatible shim)
+
+use fs as fs
+use env as env
+use time as time
+use process as process
+
+func file_read_text(path: String) -> String = fs.read_text(path)
+
+func file_write_text(path: String, text: String) -> i32 = fs.write_text(path, text)
+
+func file_exists(path: String) -> i32 = fs.exists(path)
+
+func file_mkdir(path: String) -> i32 = fs.mkdir(path)
+
+func file_list_dir(path: String) -> String = fs.list_dir(path)
+
+func file_open_binary(path: String, mode: String = "r") -> ptr = fs.open_binary(path, mode)
+
+func file_write_bytes(handle: ptr, buffer: String) -> i32 = fs.write_bytes(handle, buffer)
+
+func file_read_bytes(handle: ptr, size: i32) -> String = fs.read_bytes(handle, size)
+
+func file_seek(handle: ptr, offset: i32, whence: i32 = 0) -> i32 = fs.seek(handle, offset, whence)
+
+func file_close(handle: ptr) -> i32 = fs.close(handle)
+
+func console_print(value: String) -> i32
+    print(value)
+    return 0
+
+func console_input(prompt: String = "") -> String
+    return ""
+
+func process_run(cmd: String, args: String = "") -> i32
+    return process.run(cmd)
+
+func process_args() -> String = env.args()
+
+func process_cwd() -> String = env.cwd()
+
+func process_getenv(key: String) -> String = env.get(key)
+
+func process_setenv(key: String, value: String) -> i32 = env.set(key, value)
+
+func time_now_ms() -> i32 = time.now()
+
+func time_sleep(ms: i32) -> i32 = time.sleep(ms)

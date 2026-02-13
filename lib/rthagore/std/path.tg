@@ -1,0 +1,29 @@
+// path compat wrappers backed by runtime builtins
+
+extern func __thg_path_strip_trailing(path: String) -> String
+extern func __thg_path_strip_leading(path: String) -> String
+extern func __thg_path_basename(path: String) -> String
+extern func __thg_path_dirname(path: String) -> String
+extern func __thg_path_ext(path: String) -> String
+extern func __thg_path_join2(left: String, right: String) -> String
+
+func is_sep(ch: String) -> bool
+  return ch == "/" or ch == "\\"
+
+func strip_trailing(path: String) -> String
+  return __thg_path_strip_trailing(path)
+
+func strip_leading(path: String) -> String
+  return __thg_path_strip_leading(path)
+
+func join(left: String, right: String = "") -> String
+  return __thg_path_join2(left, right)
+
+func basename(path: String) -> String
+  return __thg_path_basename(path)
+
+func dirname(path: String) -> String
+  return __thg_path_dirname(path)
+
+func ext(path: String) -> String
+  return __thg_path_ext(path)

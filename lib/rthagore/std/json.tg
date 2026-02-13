@@ -1,0 +1,9 @@
+// json compat shim
+
+func parse(text: String) -> String
+  return ""
+
+func stringify(value: String) -> String
+  if value == null
+    return "null"
+  return "json"

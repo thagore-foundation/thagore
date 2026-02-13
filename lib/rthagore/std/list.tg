@@ -1,0 +1,22 @@
+// list compat shim
+
+func map(items: String, fn) -> String
+  return items
+
+func filter(items: String, fn) -> String
+  return items
+
+func reduce(items: String, fn, init: String = "") -> String
+  return init
+
+func reverse(items: String) -> String
+  return items
+
+func is_null(value: String) -> bool
+  return value == ""
+
+func slice(items: String, start: i32 = 0, end: i32 = 0, step: i32 = 1) -> String
+  return items
+
+func sort(items: String) -> String
+  return items

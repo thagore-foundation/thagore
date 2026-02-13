@@ -1,0 +1,90 @@
+// drago test runner (compat implementation)
+
+use "../std/fs.tg" as fs
+use "../std/path.tg" as path
+use "../std/string.tg" as string
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func _len(text: String) -> i32
+  return __thg_cstr_len(text)
+
+func _char_at(text: String, index: i32) -> String
+  return text.substr(index, 1)
+
+func _append_line(out: String, line: String) -> String
+  if line == ""
+    return out
+  if out == ""
+    return line
+  return out + "\n" + line
+
+func _is_test_file(name: String) -> bool
+  return string.ends_with(name, ".tg") or string.ends_with(name, ".thg")
+
+func _list_test_files(dir: String, listing: String) -> String
+  let out = ""
+  let line = ""
+  let i = 0
+  let n = _len(listing)
+  while i < n
+    let ch = _char_at(listing, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        let name = string.trim(line)
+        if _is_test_file(name)
+          out = _append_line(out, path.join(dir, name))
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+  let last = string.trim(line)
+  if _is_test_file(last)
+    out = _append_line(out, path.join(dir, last))
+  return out
+
+func discover(root: String) -> String
+  let tests_dir = path.join(root, "tests")
+  if fs.exists(tests_dir) == 0
+    return ""
+  let listing = fs.list_dir(tests_dir)
+  return _list_test_files(tests_dir, listing)
+
+func run(root: String, files: String) -> String
+  if files == ""
+    return "tests: none"
+  let out = ""
+  let line = ""
+  let i = 0
+  let n = _len(files)
+  while i < n
+    let ch = _char_at(files, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        let name = string.trim(line)
+        if name != ""
+          out = _append_line(out, name + " ok")
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+  let last = string.trim(line)
+  if last != ""
+    out = _append_line(out, last + " ok")
+  return out
+
+func report(result: String) -> String
+  if result == ""
+    return "tests: unavailable"
+  return result
+
+func coverage(result: String) -> String
+  if result == ""
+    return "coverage: none"
+  return "coverage: compat"

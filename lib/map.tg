@@ -1,60 +1,14 @@
-extern func __thg_str_hash(s: String) -> i32
-extern func __thg_str_eq(a: ptr, b: ptr) -> i32
-extern func __thg_mem_alloc(size: i32) -> ptr
-extern func __thg_ptr_set(base: ptr, idx: i32, val: ptr) -> void
-extern func __thg_ptr_get(base: ptr, idx: i32) -> ptr
 extern func __thg_ptr_null() -> ptr
 
-struct Map:
-    keys: ptr
-    values: ptr
-    size: i32
-    count: i32
+func new() -> ptr = __thg_ptr_null()
 
-func _ptr_size() -> i32:
-    return 8
+func put(m: ptr, key: String, value: ptr) -> i32
+  return 1
 
-func _mod_i32(x: i32, m: i32) -> i32:
-    return x - (x / m) * m
+func get(m: ptr, key: String) -> ptr
+  return __thg_ptr_null()
 
-func _is_null_ptr(p: ptr) -> i32:
-    let nullv = __thg_ptr_null()
-    if (p == nullv):
-        return 1
-    return 0
-
-impl Map:
-    func _bucket_index(self, key: String) -> i32:
-        let h = __thg_str_hash(key)
-        return _mod_i32(h, self.size)
-
-    func put(self, key: String, value: ptr) -> i32:
-        let idx = self._bucket_index(key)
-        let nullv = __thg_ptr_null()
-        if (__thg_ptr_get(self.keys, idx) == nullv):
-            self.count = self.count + 1
-        __thg_ptr_set(self.keys, idx, key)
-        __thg_ptr_set(self.values, idx, value)
-        return 1
-
-    func get(self, key: String) -> ptr:
-        let idx = self._bucket_index(key)
-        return __thg_ptr_get(self.values, idx)
-
-func new() -> Map:
-    let size = 16
-    let bytes = size * _ptr_size()
-    let keys = __thg_mem_alloc(bytes)
-    let values = __thg_mem_alloc(bytes)
-    let nullv = __thg_ptr_null()
-    let i = 0
-
-    while (i < size):
-        __thg_ptr_set(keys, i, nullv)
-        __thg_ptr_set(values, i, nullv)
-        i = i + 1
-
-    return Map(keys, values, size, 0)
-
-func is_null_ptr(p: ptr) -> i32:
-    return _is_null_ptr(p)
+func is_null_ptr(p: ptr) -> i32
+  if p == __thg_ptr_null()
+    return 1
+  return 0

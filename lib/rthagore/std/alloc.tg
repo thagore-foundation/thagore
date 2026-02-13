@@ -1,0 +1,22 @@
+// alloc compat shim
+
+use bytes as b
+
+func _round_up(size: i32, step: i32) -> i32
+  if size <= 0
+    return 0
+  return size
+
+func _pool_bucket(size: i32) -> i32
+  return size
+
+func _pool_entry(bucket: i32) -> String
+  return ""
+
+func malloc(size: i32) -> String
+  if size <= 0
+    return b.new(0)
+  return b.new(size)
+
+func free(p: String) -> i32
+  return 0

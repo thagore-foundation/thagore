@@ -1,0 +1,32 @@
+// drago package (compat implementation)
+
+use tgc as tgc
+use "../std/fs.tg" as fs
+
+func parse_text(text: String) -> String
+  if text == ""
+    return ""
+  return tgc.parse(text)
+
+func parse_file(path: String) -> String
+  if fs.exists(path) == 0
+    return ""
+  let text = fs.read_text(path)
+  if text == null
+    return ""
+  return tgc.parse(text)
+
+func name(doc: String) -> String
+  return tgc.get(doc, "package.name")
+
+func version(doc: String) -> String
+  let v = tgc.get(doc, "package.version")
+  if v != ""
+    return v
+  return tgc.get(doc, "version")
+
+func deps(doc: String) -> String
+  let direct = tgc.get(doc, "deps")
+  if direct != ""
+    return direct
+  return tgc.get(doc, "package.deps")

@@ -1,0 +1,27 @@
+// drago cache (compat implementation)
+
+use "../std/fs.tg" as fs
+use "../std/path.tg" as path
+
+func cache_dir(base: String, name: String, version: String) -> String
+  let p = path.join(base, name)
+  return path.join(p, version)
+
+func ensure_cache_dir(base: String) -> i32
+  return fs.mkdir(base)
+
+func cache_put_text(base: String, name: String, version: String, filename: String, text: String) -> String
+  let dir = cache_dir(base, name, version)
+  fs.mkdir(dir)
+  let file = path.join(dir, filename)
+  fs.write_text(file, text)
+  return file
+
+func cache_get_text(base: String, name: String, version: String, filename: String) -> String
+  let file = path.join(path.join(path.join(base, name), version), filename)
+  if fs.exists(file) == 0
+    return ""
+  let text = fs.read_text(file)
+  if text == null
+    return ""
+  return text

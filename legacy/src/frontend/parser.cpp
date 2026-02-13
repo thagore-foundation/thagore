@@ -30,7 +30,7 @@ public:
           return std::unexpected(fn.error());
         }
         functions.push_back(std::move(fn.value()));
-      } else if (check(TokenKind::KwImport)) {
+      } else if (check(TokenKind::KwImport) || check(TokenKind::KwUse)) {
         auto imp = parseImportDecl();
         if (!imp) {
           return std::unexpected(imp.error());
@@ -87,6 +87,21 @@ private:
     if (typeTok == nullptr || typeTok->kind != TokenKind::Identifier) {
       return std::unexpected(lastError("Expected type name."));
     }
+    if (typeTok->lexeme == "any") {
+      return makeType(BaseType::Unknown);
+    }
+    if (typeTok->lexeme == "Str") {
+      return makeType(BaseType::String);
+    }
+    if (typeTok->lexeme == "int") {
+      return makeType(BaseType::I32);
+    }
+    if (typeTok->lexeme == "bool") {
+      return makeType(BaseType::Bool);
+    }
+    if (typeTok->lexeme == "str") {
+      return makeType(BaseType::String);
+    }
     if (typeTok->lexeme == "i32") {
       return makeType(BaseType::I32);
     }
@@ -98,9 +113,6 @@ private:
     }
     if (typeTok->lexeme == "ptr") {
       return makeType(BaseType::Pointer);
-    }
-    if (typeTok->lexeme == "bool") {
-      return makeType(BaseType::Bool);
     }
     if (typeTok->lexeme == "String") {
       return makeType(BaseType::String);
@@ -200,15 +212,17 @@ private:
   }
 
   auto parseImportDecl() -> Result<ImportDecl, Diagnostic> {
-    const Token *importTok = consume(TokenKind::KwImport, "Expected 'import'.");
-    if (!importTok) {
-      return std::unexpected(lastError("Expected 'import'."));
+    const Token *importTok = nullptr;
+    if (check(TokenKind::KwImport) || check(TokenKind::KwUse)) {
+      importTok = advance();
+    } else {
+      return std::unexpected(lastError("Expected 'import' or 'use'."));
     }
     const Token *pathTok = nullptr;
     if (check(TokenKind::String) || check(TokenKind::Identifier)) {
       pathTok = advance();
     } else {
-      return std::unexpected(lastError("Expected import path after 'import'."));
+      return std::unexpected(lastError("Expected module path after import/use."));
     }
 
     std::string alias {};
@@ -268,18 +282,25 @@ private:
         if (isImplicitSelf) {
           paramType = makeStructType(*implType);
         } else {
-          if (!consume(TokenKind::Colon, "Expected ':' after parameter name.")) {
-            return std::unexpected(lastError("Expected ':' after parameter name."));
+          if (match(TokenKind::Colon)) {
+            auto parsedParamType = parseType();
+            if (!parsedParamType) {
+              return std::unexpected(parsedParamType.error());
+            }
+            if (parsedParamType.value()->base == BaseType::Void) {
+              return std::unexpected(makeError(param->span, "Parameter type cannot be void."));
+            }
+            paramType = parsedParamType.value();
+            typeSpan = previous()->span;
+          } else {
+            paramType = makeType(BaseType::Unknown);
           }
-          auto parsedParamType = parseType();
-          if (!parsedParamType) {
-            return std::unexpected(parsedParamType.error());
+          if (match(TokenKind::Equal)) {
+            auto defaultValue = parseExpression(0);
+            if (!defaultValue) {
+              return std::unexpected(defaultValue.error());
+            }
           }
-          if (parsedParamType.value()->base == BaseType::Void) {
-            return std::unexpected(makeError(param->span, "Parameter type cannot be void."));
-          }
-          paramType = parsedParamType.value();
-          typeSpan = previous()->span;
         }
         params.push_back(FunctionDecl::Param {
           .name = param->lexeme,
@@ -295,32 +316,46 @@ private:
     if (!consume(TokenKind::RParen, "Expected ')' after parameter list.")) {
       return std::unexpected(lastError("Expected ')' after parameter list."));
     }
-    if (!consume(TokenKind::Arrow, "Expected '->' before return type.")) {
-      return std::unexpected(lastError("Expected '->' before return type."));
-    }
-    auto returnType = parseType();
-    if (!returnType) {
-      return std::unexpected(returnType.error());
-    }
-    if (!consume(TokenKind::Colon, "Expected ':' after function signature.")) {
-      return std::unexpected(lastError("Expected ':' after function signature."));
-    }
-    if (!consume(TokenKind::Newline, "Expected newline after function signature.")) {
-      return std::unexpected(lastError("Expected newline after function signature."));
+    TypePtr returnType = makeType(BaseType::Unknown);
+    if (match(TokenKind::Arrow)) {
+      auto parsedReturnType = parseType();
+      if (!parsedReturnType) {
+        return std::unexpected(parsedReturnType.error());
+      }
+      returnType = parsedReturnType.value();
     }
 
-    auto body = parseIndentedBlock();
-    if (!body) {
-      return std::unexpected(body.error());
+    std::unique_ptr<BlockStmt> bodyPtr {};
+    if (match(TokenKind::Equal)) {
+      auto expr = parseExpression(0);
+      if (!expr) {
+        return std::unexpected(expr.error());
+      }
+      const Token *end = consume(TokenKind::Newline, "Expected newline after function expression body.");
+      if (!end) {
+        return std::unexpected(lastError("Expected newline after function expression body."));
+      }
+      std::vector<std::unique_ptr<Stmt>> statements {};
+      statements.push_back(std::make_unique<ReturnStmt>(std::move(expr.value()), mergeSpan(funcTok->span, end->span)));
+      bodyPtr = std::make_unique<BlockStmt>(std::move(statements), mergeSpan(funcTok->span, end->span));
+    } else {
+      (void)match(TokenKind::Colon);
+      if (!consume(TokenKind::Newline, "Expected newline after function signature.")) {
+        return std::unexpected(lastError("Expected newline after function signature."));
+      }
+      auto body = parseIndentedBlock();
+      if (!body) {
+        return std::unexpected(body.error());
+      }
+      bodyPtr = std::move(body.value());
     }
-    auto bodyPtr = std::move(body.value());
     auto fnSpan = mergeSpan(funcTok->span, bodyPtr->span);
 
     auto fn = std::make_unique<FunctionDecl>(
       name->lexeme,
       std::move(params),
       std::move(bodyPtr),
-      returnType.value(),
+      returnType,
       fnSpan
     );
     fn->sourceName = name->lexeme;
@@ -480,6 +515,9 @@ private:
     if (match(TokenKind::KwLoop)) {
       return parseLoopStatement(previous());
     }
+    if (match(TokenKind::KwThrow)) {
+      return parseThrowStatement(previous());
+    }
 
     if (
       check(TokenKind::Identifier) &&
@@ -615,19 +653,11 @@ private:
   }
 
   auto parseIfStatement(const Token *ifTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {
-    if (!consume(TokenKind::LParen, "Expected '(' after 'if'.")) {
-      return std::unexpected(lastError("Expected '(' after 'if'."));
-    }
-    auto cond = parseExpression(0);
+    auto cond = parseConditionExpression("if");
     if (!cond) {
       return std::unexpected(cond.error());
     }
-    if (!consume(TokenKind::RParen, "Expected ')' after if condition.")) {
-      return std::unexpected(lastError("Expected ')' after if condition."));
-    }
-    if (!consume(TokenKind::Colon, "Expected ':' after if condition.")) {
-      return std::unexpected(lastError("Expected ':' after if condition."));
-    }
+    (void)match(TokenKind::Colon);
     if (!consume(TokenKind::Newline, "Expected newline after if header.")) {
       return std::unexpected(lastError("Expected newline after if header."));
     }
@@ -639,9 +669,7 @@ private:
     std::unique_ptr<BlockStmt> elseBlock {};
     skipNewlines();
     if (match(TokenKind::KwElse)) {
-      if (!consume(TokenKind::Colon, "Expected ':' after else.")) {
-        return std::unexpected(lastError("Expected ':' after else."));
-      }
+      (void)match(TokenKind::Colon);
       if (!consume(TokenKind::Newline, "Expected newline after else header.")) {
         return std::unexpected(lastError("Expected newline after else header."));
       }
@@ -675,19 +703,11 @@ private:
   }
 
   auto parseWhileStatement(const Token *whileTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {
-    if (!consume(TokenKind::LParen, "Expected '(' after 'while'.")) {
-      return std::unexpected(lastError("Expected '(' after 'while'."));
-    }
-    auto cond = parseExpression(0);
+    auto cond = parseConditionExpression("while");
     if (!cond) {
       return std::unexpected(cond.error());
     }
-    if (!consume(TokenKind::RParen, "Expected ')' after while condition.")) {
-      return std::unexpected(lastError("Expected ')' after while condition."));
-    }
-    if (!consume(TokenKind::Colon, "Expected ':' after while condition.")) {
-      return std::unexpected(lastError("Expected ':' after while condition."));
-    }
+    (void)match(TokenKind::Colon);
     if (!consume(TokenKind::Newline, "Expected newline after while header.")) {
       return std::unexpected(lastError("Expected newline after while header."));
     }
@@ -699,6 +719,35 @@ private:
     auto condExpr = std::move(cond.value());
     auto stmtSpan = mergeSpan(whileTok->span, loopBody->span);
     return std::make_unique<LoopStmt>(std::move(condExpr), std::move(loopBody), stmtSpan);
+  }
+
+  auto parseThrowStatement(const Token *throwTok) -> Result<std::unique_ptr<Stmt>, Diagnostic> {
+    auto value = parseExpression(0);
+    if (!value) {
+      return std::unexpected(value.error());
+    }
+    const Token *end = consume(TokenKind::Newline, "Expected newline after throw statement.");
+    if (!end) {
+      return std::unexpected(lastError("Expected newline after throw statement."));
+    }
+    std::vector<std::unique_ptr<Expr>> args {};
+    args.push_back(std::move(value.value()));
+    auto call = std::make_unique<CallExpr>("__thg_throw", std::move(args), mergeSpan(throwTok->span, end->span));
+    return std::make_unique<ExprStmt>(std::move(call), mergeSpan(throwTok->span, end->span));
+  }
+
+  auto parseConditionExpression(std::string_view keyword) -> Result<std::unique_ptr<Expr>, Diagnostic> {
+    if (match(TokenKind::LParen)) {
+      auto cond = parseExpression(0);
+      if (!cond) {
+        return std::unexpected(cond.error());
+      }
+      if (!consume(TokenKind::RParen, std::format("Expected ')' after {} condition.", keyword))) {
+        return std::unexpected(lastError(std::format("Expected ')' after {} condition.", keyword)));
+      }
+      return cond;
+    }
+    return parseExpression(0);
   }
 
   auto parseExpression(int minBp) -> Result<std::unique_ptr<Expr>, Diagnostic> {
@@ -795,6 +844,16 @@ private:
         return std::make_unique<LiteralExpr>(LiteralExpr::Kind::String, tok->lexeme, tok->span);
       case TokenKind::InterpolatedString:
         return parseInterpolatedString(*tok);
+      case TokenKind::KwNot: {
+        auto rhs = parseExpression(31);
+        if (!rhs) {
+          return std::unexpected(rhs.error());
+        }
+        auto falseLit = std::make_unique<LiteralExpr>(LiteralExpr::Kind::Bool, "false", tok->span);
+        auto right = std::move(rhs.value());
+        auto exprSpan = mergeSpan(tok->span, right->span);
+        return std::make_unique<BinaryExpr>(BinaryOp::Eq, std::move(right), std::move(falseLit), exprSpan);
+      }
       case TokenKind::LBracket: {
         std::vector<std::unique_ptr<Expr>> elements {};
         if (!check(TokenKind::RBracket)) {
@@ -835,6 +894,12 @@ private:
         return std::make_unique<BinaryExpr>(BinaryOp::Sub, std::move(zero), std::move(right), exprSpan);
       }
       case TokenKind::Identifier: {
+        if (tok->lexeme == "true" || tok->lexeme == "false") {
+          return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Bool, tok->lexeme, tok->span);
+        }
+        if (tok->lexeme == "null") {
+          return std::make_unique<LiteralExpr>(LiteralExpr::Kind::Null, tok->lexeme, tok->span);
+        }
         if (match(TokenKind::LParen)) {
           std::vector<std::unique_ptr<Expr>> args {};
           if (!check(TokenKind::RParen)) {
@@ -972,6 +1037,10 @@ private:
       case TokenKind::Star:
       case TokenKind::Slash:
         return std::pair {30, 31};
+      case TokenKind::KwAnd:
+        return std::pair {6, 7};
+      case TokenKind::KwOr:
+        return std::pair {4, 5};
       default:
         return std::nullopt;
     }
@@ -989,6 +1058,8 @@ private:
       case TokenKind::LessEq: return BinaryOp::Le;
       case TokenKind::Greater: return BinaryOp::Gt;
       case TokenKind::GreaterEq: return BinaryOp::Ge;
+      case TokenKind::KwAnd: return BinaryOp::And;
+      case TokenKind::KwOr: return BinaryOp::Or;
       default: return BinaryOp::Add;
     }
   }

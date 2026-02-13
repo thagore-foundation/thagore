@@ -1,0 +1,62 @@
+// string compat wrappers backed by runtime builtins
+
+extern func __string_codepoint(ch: String) -> i32
+extern func __string_from_codepoint(cp: i32) -> String
+
+extern func __thg_str_contains(text: String, needle: String) -> i32
+extern func __thg_str_starts_with(text: String, prefix: String) -> i32
+extern func __thg_str_ends_with(text: String, suffix: String) -> i32
+extern func __thg_str_trim(text: String) -> String
+extern func __thg_str_replace(text: String, old: String, new: String) -> String
+extern func __thg_str_lower(text: String) -> String
+extern func __thg_str_upper(text: String) -> String
+extern func __thg_str_compare(a: String, b: String) -> i32
+
+func contains(text: String, needle: String) -> bool
+  return __thg_str_contains(text, needle) != 0
+
+func starts_with(text: String, prefix: String) -> bool
+  return __thg_str_starts_with(text, prefix) != 0
+
+func ends_with(text: String, suffix: String) -> bool
+  return __thg_str_ends_with(text, suffix) != 0
+
+func split(text: String, delim: String) -> String
+  // Compat representation: newline-delimited string fragments.
+  return __thg_str_replace(text, delim, "\n")
+
+func join(items: String, sep: String) -> String
+  return __thg_str_replace(items, "\n", sep)
+
+func trim(text: String) -> String
+  return __thg_str_trim(text)
+
+func replace(text: String, old: String, new: String) -> String
+  return __thg_str_replace(text, old, new)
+
+func lower(text: String) -> String
+  return __thg_str_lower(text)
+
+func upper(text: String) -> String
+  return __thg_str_upper(text)
+
+func codepoint(ch: String) -> i32
+  return __string_codepoint(ch)
+
+func from_codepoint(cp: i32) -> String
+  return __string_from_codepoint(cp)
+
+func utf8_encode(text: String) -> String
+  return text
+
+func utf8_decode(data: String) -> String
+  return data
+
+func compare(a: String, b: String) -> i32
+  return __thg_str_compare(a, b)
+
+func concat(a: String, b: String) -> String
+  return a + b
+
+func format(template: String, values) -> String
+  return template

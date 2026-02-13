@@ -1,0 +1,17 @@
+// drago registry (compat implementation)
+
+use "../std/http.tg" as http
+
+func fetch_index(url: String) -> String
+  if url == ""
+    return ""
+  let body = http.get(url)
+  return body
+
+func fetch_package(base_url: String, name: String, version: String = "") -> String
+  if base_url == ""
+    return ""
+  let path = "/packages/" + name
+  if version != ""
+    path = path + "/" + version
+  return http.get(base_url + path)

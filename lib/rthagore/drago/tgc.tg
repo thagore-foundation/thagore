@@ -1,0 +1,170 @@
+// drago tgc (compat parser: section + key=value)
+
+use "../std/string.tg" as string
+
+extern func __thg_cstr_len(s: String) -> i32
+
+func _len(text: String) -> i32
+  return __thg_cstr_len(text)
+
+func _char_at(text: String, index: i32) -> String
+  return text.substr(index, 1)
+
+func _find_char(text: String, ch: String) -> i32
+  let i = 0
+  let n = _len(text)
+  while i < n
+    if _char_at(text, i) == ch
+      return i
+    i = i + 1
+  return -1
+
+func _line_without_comment(line: String) -> String
+  let idx = _find_char(line, "#")
+  if idx < 0
+    return string.trim(line)
+  return string.trim(line.substr(0, idx))
+
+func _is_section(line: String) -> bool
+  let n = _len(line)
+  if n < 2
+    return false
+  if _char_at(line, 0) != "["
+    return false
+  return _char_at(line, n - 1) == "]"
+
+func _section_name(line: String) -> String
+  let n = _len(line)
+  if n < 2
+    return ""
+  return string.trim(line.substr(1, n - 2))
+
+func _normalize_pair(line: String, section: String) -> String
+  let eq = _find_char(line, "=")
+  if eq <= 0
+    return ""
+  let key = string.trim(line.substr(0, eq))
+  let value = string.trim(line.substr(eq + 1, _len(line) - eq - 1))
+  if key == ""
+    return ""
+  let base = key + "="
+  if section == ""
+    return base + value
+  let scoped = section + "."
+  let scoped_key = scoped + key
+  let scoped_pair = scoped_key + "="
+  return scoped_pair + value
+
+func _append_line(out: String, line: String) -> String
+  if line == ""
+    return out
+  if out == ""
+    return line
+  let with_break = out + "\n"
+  return with_break + line
+
+func parse(text: String) -> String
+  let n = _len(text)
+  let i = 0
+  let line = ""
+  let section = ""
+  let out = ""
+  while i < n
+    let ch = _char_at(text, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        let clean = _line_without_comment(line)
+        if clean != ""
+          if _is_section(clean)
+            section = _section_name(clean)
+          else
+            out = _append_line(out, _normalize_pair(clean, section))
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+
+  let clean_last = _line_without_comment(line)
+  if clean_last != ""
+    if _is_section(clean_last)
+      section = _section_name(clean_last)
+    else
+      out = _append_line(out, _normalize_pair(clean_last, section))
+  return out
+
+func stringify(value: String) -> String
+  return value
+
+func get(doc: String, key: String) -> String
+  let n = _len(doc)
+  let i = 0
+  let line = ""
+  while i < n
+    let ch = _char_at(doc, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        let eq = _find_char(line, "=")
+        if eq > 0
+          let k = string.trim(line.substr(0, eq))
+          if k == key
+            return string.trim(line.substr(eq + 1, _len(line) - eq - 1))
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+
+  let eq = _find_char(line, "=")
+  if eq > 0
+    let k = string.trim(line.substr(0, eq))
+    if k == key
+      return string.trim(line.substr(eq + 1, _len(line) - eq - 1))
+  return ""
+
+func set(doc: String, key: String, value: String) -> String
+  let n = _len(doc)
+  let i = 0
+  let line = ""
+  let out = ""
+  let replaced = false
+  while i < n
+    let ch = _char_at(doc, i)
+    if ch == "\r"
+      i = i + 1
+    else
+      if ch == "\n"
+        let write_line = line
+        let eq = _find_char(line, "=")
+        if eq > 0
+          let k = string.trim(line.substr(0, eq))
+          if k == key
+            let pair = key + "="
+            write_line = pair + value
+            replaced = true
+        out = _append_line(out, write_line)
+        line = ""
+        i = i + 1
+      else
+        line = line + ch
+        i = i + 1
+
+  if line != ""
+    let write_last = line
+    let eq = _find_char(line, "=")
+    if eq > 0
+      let k = string.trim(line.substr(0, eq))
+      if k == key
+        let pair = key + "="
+        write_last = pair + value
+        replaced = true
+    out = _append_line(out, write_last)
+
+  if not replaced
+    let pair = key + "="
+    out = _append_line(out, pair + value)
+  return out

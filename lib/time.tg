@@ -1,0 +1,8 @@
+extern func __time_now_ms() -> i32
+extern func __time_sleep(ms: i32) -> i32
+
+func now_ms() -> i32:
+    return __time_now_ms()
+
+func sleep_ms(ms: i32) -> i32:
+    return __time_sleep(ms)
