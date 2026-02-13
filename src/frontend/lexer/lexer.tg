@@ -1,22 +1,40 @@
-import "src/compiler/lexer.tg" as base
+import "src/frontend/lexer/lexer_keywords.tg" as kw
+
+extern func __thg_lex_tokenize(source: String) -> ptr
+extern func __thg_tok_count(stream: ptr) -> i32
+extern func __thg_tok_kind(stream: ptr, index: i32) -> String
+extern func __thg_tok_text(stream: ptr, index: i32) -> String
+extern func __thg_tok_tag(stream: ptr, index: i32) -> i32
+extern func __thg_tok_free_stream(stream: ptr) -> i32
 
 func tokenize_stream(source: String) -> ptr:
-    return base.tokenize_stream(source)
+    return __thg_lex_tokenize(source)
 
 func stream_count(stream: ptr) -> i32:
-    return base.stream_count(stream)
+    return __thg_tok_count(stream)
 
 func stream_kind(stream: ptr, index: i32) -> String:
-    return base.stream_kind(stream, index)
+    return __thg_tok_kind(stream, index)
 
 func stream_text(stream: ptr, index: i32) -> String:
-    return base.stream_text(stream, index)
+    return __thg_tok_text(stream, index)
 
 func stream_tag(stream: ptr, index: i32) -> i32:
-    return base.stream_tag(stream, index)
+    return __thg_tok_tag(stream, index)
 
 func stream_free(stream: ptr) -> i32:
-    return base.stream_free(stream)
+    return __thg_tok_free_stream(stream)
 
 func tokenize(source: String) -> i32:
-    return base.tokenize(source)
+    let stream = tokenize_stream(source)
+    let total = stream_count(stream)
+    stream_free(stream)
+    if (total > 0):
+        return total - 1
+    return 0
+
+func keyword_kind(word: String) -> String:
+    return kw.keyword_kind(word)
+
+func classify_symbol(symbol: String) -> String:
+    return kw.classify_symbol(symbol)

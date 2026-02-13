@@ -1,4 +1,4 @@
-import "src/compiler/lexer_keywords.tg" as lexer
+import "src/frontend/lexer/lexer_keywords.tg" as lexer
 
 func _expect_str(label: String, got: String, want: String) -> i32:
     if (got == want):
@@ -23,7 +23,7 @@ func main() -> i32:
     fails = fails + _expect_str("sym other", lexer.classify_symbol("+"), "")
 
     if (fails == 0):
-        print("PASS: compiler lexer keyword helpers")
+        print("PASS: frontend lexer keyword helpers")
         return 0
 
     print("TOTAL FAILS:")

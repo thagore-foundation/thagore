@@ -1,7 +1,329 @@
-import "src/compiler/language_pipeline.tg" as base
+import "src/frontend/semantic/generics_traits.tg" as gt
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            count = count + 1
+        else:
+            if (ch == "\\"):
+                if ((i + 1) < n):
+                    if (_char_at(source, i + 1) == "n"):
+                        count = count + 1
+                        i = i + 1
+        i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        let escaped_newline = 0
+        if (ch == "\\"):
+            if ((i + 1) < n):
+                if (_char_at(source, i + 1) == "n"):
+                    escaped_newline = 1
+        if (ch == "\n"):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+        else:
+            if (escaped_newline == 1):
+                if (line_idx == index):
+                    return line
+                line_idx = line_idx + 1
+                line = ""
+                i = i + 1
+            else:
+                if (ch != "\r"):
+                    line = line + ch
+        i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    while (i < n):
+        if (_char_at(line, i) != " "):
+            return i
+        i = i + 1
+    return n
+
+func _is_blank(line: String) -> i32:
+    if (strlen(_trim_edges(line)) == 0):
+        return 1
+    return 0
+
+func _is_ws(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    return 0
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            if (_is_ws(_char_at(text, i)) == 1):
+                i = i + 1
+                l = i
+            else:
+                left_done = 1
+                i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            if (_is_ws(_char_at(text, j)) == 1):
+                j = j - 1
+                r = j
+            else:
+                right_done = 1
+                j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _is_ident_char(ch: String) -> i32:
+    if (ch == "_"):
+        return 1
+    if (_find_char("abcdefghijklmnopqrstuvwxyz", ch) >= 0):
+        return 1
+    if (_find_char("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0):
+        return 1
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _replace_ident(text: String, old_name: String, new_name: String) -> String:
+    if (strlen(old_name) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_name)
+    while (i < n):
+        let matched = 0
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_name):
+                let left_ok = 1
+                let right_ok = 1
+                if (i > 0):
+                    if (_is_ident_char(_char_at(text, i - 1)) == 1):
+                        left_ok = 0
+                if ((i + k) < n):
+                    if (_is_ident_char(_char_at(text, i + k)) == 1):
+                        right_ok = 0
+                if (left_ok == 1):
+                    if (right_ok == 1):
+                        matched = 1
+        if (matched == 1):
+            out = out + new_name
+            i = i + k
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _eval_simple_int(expr: String) -> String:
+    return _trim_edges(expr)
+
+func _rewrite_comptime_line(line: String) -> String:
+    let marker = "comptime("
+    let n = strlen(line)
+    let m = strlen(marker)
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(line, i, m) == marker):
+            let j = i + m
+            while (j < n):
+                if (_char_at(line, j) == ")"):
+                    let inner = __thg_str_substr(line, i + m, j - i - m)
+                    let folded = _eval_simple_int(inner)
+                    let left = __thg_str_substr(line, 0, i)
+                    let right = __thg_str_substr(line, j + 1, n - j - 1)
+                    return left + folded + right
+                j = j + 1
+            return line
+        i = i + 1
+    return line
+
+func _rewrite_trait_impl_header(line: String) -> String:
+    let t = _trim_edges(line)
+    if (_starts_with(t, "impl") == 0):
+        return line
+    let p_for = _find_char(t, "f")
+    if (p_for < 0):
+        return line
+    if ((p_for + 3) > strlen(t)):
+        return line
+    if (__thg_str_substr(t, p_for, 3) != "for"):
+        return line
+    let type_full = _trim_edges(__thg_str_substr(t, p_for + 3, strlen(t) - p_for - 3))
+    let colon = _find_char(type_full, ":")
+    let type_name = type_full
+    if (colon >= 0):
+        type_name = __thg_str_substr(type_full, 0, colon)
+    let indent = _leading_spaces(line)
+    let prefix = __thg_str_substr(line, 0, indent)
+    return prefix + "impl " + type_name + ":"
+
+func _strip_generic_clause(line: String) -> String:
+    let left = _find_char(line, "[")
+    let right = _find_char(line, "]")
+    if (left < 0):
+        return line
+    if (right < 0):
+        return line
+    if (right <= left):
+        return line
+    return __thg_str_substr(line, 0, left) + __thg_str_substr(line, right + 1, strlen(line) - right - 1)
+
+func _generic_mangle(func_name: String, type_args: String) -> String:
+    return gt.mangle_symbol(func_name, type_args)
+
+func _rewrite_generic_call_line(line: String, func_name: String, type_args: String) -> String:
+    let call_sig = func_name + "[" + _trim_edges(type_args) + "]("
+    let mangled = _generic_mangle(func_name, type_args) + "("
+    return _replace_all(line, call_sig, mangled)
 
 func preprocess(source: String) -> String:
-    return base.preprocess(source)
+    let total = _line_count(source)
+    let i = 0
+    let out = ""
+    while (i < total):
+        let line = _line_at(source, i)
+        let t = _trim_edges(line)
+        let keep = 1
+        if (_starts_with(t, "trait ") == 1):
+            keep = 0
+        if (keep == 1):
+            line = _rewrite_trait_impl_header(line)
+            line = _rewrite_comptime_line(line)
+            line = _strip_generic_clause(line)
+            out = out + line
+            if (i < (total - 1)):
+                out = out + "\n"
+        i = i + 1
+    return out
+
+func check_result_try_sugar(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let fail = 0
+    let in_result_func = 0
+    while (i < total):
+        let line = _trim_edges(_line_at(source, i))
+        if (_starts_with(line, "func ") == 1):
+            if (_find_char(line, "?") >= 0):
+                in_result_func = 1
+            else:
+                in_result_func = 0
+        if (_find_char(line, "?") >= 0):
+            if (in_result_func == 0):
+                fail = 1
+        i = i + 1
+    if (fail == 1):
+        print("Semantic error: '?' is only allowed inside function returning Result...?.")
+        return 1
+    return 0
+
+func check_defer_scope(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let fail = 0
+    let current_func_indent = -1
+    while (i < total):
+        let raw = _line_at(source, i)
+        let line = _trim_edges(raw)
+        let indent = _leading_spaces(raw)
+        if (_starts_with(line, "func ") == 1):
+            current_func_indent = indent
+        if (_is_blank(raw) == 0):
+            if (indent <= current_func_indent):
+                if (_starts_with(line, "func ") == 0):
+                    current_func_indent = -1
+        if (_starts_with(line, "defer ") == 1):
+            if (current_func_indent < 0):
+                fail = 1
+        i = i + 1
+    if (fail == 1):
+        print("Semantic error: defer is only allowed inside function body.")
+        return 1
+    return 0
 
 func validate(source: String) -> i32:
-    return base.validate(source)
+    if (check_result_try_sugar(source) != 0):
+        return 1
+    if (check_defer_scope(source) != 0):
+        return 1
+    return 0

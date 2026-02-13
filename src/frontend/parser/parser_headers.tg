@@ -1,16 +1,70 @@
-import "src/compiler/parser_headers.tg" as base
+import "src/frontend/semantic/generics_traits.tg" as gt
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _min_positive(a: i32, b: i32) -> i32:
+    if (a < 0):
+        return b
+    if (b < 0):
+        return a
+    if (a < b):
+        return a
+    return b
 
 func parse_func_name(header: String) -> String:
-    return base.parse_func_name(header)
+    let s = gt.trim(header)
+    if (_starts_with(s, "func") == 0):
+        return ""
+    let body = __thg_str_substr(s, 4, strlen(s) - 4)
+    let p_paren = _find_char(body, "(")
+    let p_bracket = _find_char(body, "[")
+    let end = _min_positive(p_paren, p_bracket)
+    if (end < 0):
+        end = _find_char(body, ":")
+    if (end < 0):
+        return body
+    return __thg_str_substr(body, 0, end)
 
 func parse_func_generic_clause(header: String) -> String:
-    return base.parse_func_generic_clause(header)
+    return gt.extract_generic_clause(header)
 
 func parse_trait_name(header: String) -> String:
-    return base.parse_trait_name(header)
+    return gt.extract_trait_name(header)
 
 func parse_impl_pair(header: String) -> String:
-    return base.parse_impl_pair(header)
+    return gt.extract_impl_pair(header)
 
 func has_result_sugar(header: String) -> i32:
-    return base.has_result_sugar(header)
+    let s = gt.trim(header)
+    let n = strlen(s)
+    if (n <= 0):
+        return 0
+    let i = n - 1
+    if (_char_at(s, i) == ":"):
+        i = i - 1
+    if (i < 0):
+        return 0
+    if (_char_at(s, i) == "?"):
+        return 1
+    return 0

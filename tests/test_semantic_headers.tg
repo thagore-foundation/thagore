@@ -1,4 +1,4 @@
-import "src/compiler/semantic_headers.tg" as sh
+import "src/frontend/semantic/semantic_pass.tg" as sh
 
 func _expect_i32(label: String, got: i32, want: i32) -> i32:
     if (got == want):
