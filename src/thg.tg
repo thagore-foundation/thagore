@@ -1,18 +1,20 @@
 import env
 import fs
 import process
-import "src/syntax/parser.tg" as parser
-import "src/compiler/eval.tg" as eval
-import "src/compiler/codegen.tg" as codegen
 import "src/compiler/codegen_llvm.tg" as codegen_llvm
 import "src/compiler/semantic_headers.tg" as semantic_headers
+
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
 
 func _basename_no_ext(path: String) -> String:
     let i = 0
     let last_sep = -1
     let last_dot = -1
     while (i < path.length()):
-        let ch = path.substr(i, 1)
+        let ch = _char_at(path, i)
         if (ch == "/"):
             last_sep = i
             last_dot = -1
@@ -33,7 +35,7 @@ func _emit_ir_from_source(source: String, module_name: String) -> String:
 func _contains_space(text: String) -> i32:
     let i = 0
     while (i < text.length()):
-        if (text.substr(i, 1) == " "):
+        if (_char_at(text, i) == " "):
             return 1
         i = i + 1
     return 0
@@ -42,7 +44,7 @@ func _sanitize_name(text: String) -> String:
     let i = 0
     let out = ""
     while (i < text.length()):
-        let ch = text.substr(i, 1)
+        let ch = _char_at(text, i)
         if (ch == " "):
             out = out + "_"
         else:
@@ -73,7 +75,32 @@ func _detect_clang() -> String:
     if (_probe_clang(clang_usr_local) == 0):
         return clang_usr_local
     return ""
-import "src/thagore.tg" as thagore
+
+func _is_windows() -> i32:
+    if (process.run("cmd /c ver >nul 2>nul") == 0):
+        return 1
+    return 0
+
+func _detect_runtime_lib() -> String:
+    if (_is_windows() == 1):
+        if (process.run("cmd /c if exist thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "thag_runtime.lib"
+        if (process.run("cmd /c if exist legacy\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "legacy\\thag_runtime.lib"
+        if (process.run("cmd /c if exist build\\Debug\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "build\\Debug\\thag_runtime.lib"
+        if (process.run("cmd /c if exist legacy\\build\\Debug\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "legacy\\build\\Debug\\thag_runtime.lib"
+        return ""
+    if (process.run("sh -lc 'test -f thag_runtime.lib'") == 0):
+        return "thag_runtime.lib"
+    if (process.run("sh -lc 'test -f legacy/thag_runtime.lib'") == 0):
+        return "legacy/thag_runtime.lib"
+    if (process.run("sh -lc 'test -f build/Debug/thag_runtime.lib'") == 0):
+        return "build/Debug/thag_runtime.lib"
+    if (process.run("sh -lc 'test -f legacy/build/Debug/thag_runtime.lib'") == 0):
+        return "legacy/build/Debug/thag_runtime.lib"
+    return ""
 
 func _compile_ir_to_exe(ir_path: String, exe_path: String) -> i32:
     let clang_bin = _detect_clang()
@@ -89,17 +116,15 @@ func _compile_ir_to_exe(ir_path: String, exe_path: String) -> i32:
     if (_contains_space(exe_path) == 1):
         print("Error: output path contains spaces, unsupported by current command runner.")
         return 1
-    let cmd = clang_bin + " " + ir_path + " thag_runtime.lib -o " + exe_path + " -Wno-override-module"
+    let runtime_lib = _detect_runtime_lib()
+    if (runtime_lib.length() == 0):
+        print("CRITICAL: thag_runtime.lib not found in standard locations.")
+        return 1
+    if (_contains_space(runtime_lib) == 1):
+        print("Error: runtime lib path contains spaces, unsupported by current command runner.")
+        return 1
+    let cmd = clang_bin + " " + ir_path + " " + runtime_lib + " -o " + exe_path + " -Wno-override-module"
     return process.run(cmd)
-
-func _interpret_source(source: String, strict_interpret: i32) -> i32:
-    let program_ast = parser.parse_program(source)
-    let interpreter = eval.new()
-    interpreter.set_strict(strict_interpret)
-    let exit_code = interpreter.exec_stmt(program_ast)
-    eval.dispose(interpreter)
-    parser.free_tree(program_ast)
-    return exit_code
 
 func main() -> i32:
     print("--- Thagore Compiler Driver (Pure Modules) ---")
@@ -107,19 +132,12 @@ func main() -> i32:
         print("Usage: thg.exe [build|run] <script.tg> [-o output.exe] [-b|--build|-c|--compile|--emit-llvm|-ll|-r|--run|--interpret|--strict-interpret]")
         return 0
     let build_mode = 0
-    let compile_mode = 0
     let llvm_mode = 0
-    let run_mode = 0
-    let strict_interpret = 0
     let script_index = 1
     let output_override = ""
     if (env.get(1) == "build"):
         build_mode = 1
         script_index = 2
-    else:
-        if (env.get(1) == "run"):
-            run_mode = 1
-            script_index = 2
     if (script_index >= env.count()):
         print("Usage: thg.exe [build|run] <script.tg> [-o output.exe] [-b|--build|-c|--compile|--emit-llvm|-ll|-r|--run|--interpret|--strict-interpret]")
         return 1
@@ -139,46 +157,17 @@ func main() -> i32:
                 if (arg == "--build"):
                     build_mode = 1
                 else:
-                    if (arg == "-c"):
-                        compile_mode = 1
+                    if (arg == "--emit-llvm"):
+                        llvm_mode = 1
                     else:
-                        if (arg == "--compile"):
-                            compile_mode = 1
-                        else:
-                            if (arg == "--emit-llvm"):
-                                llvm_mode = 1
-                            else:
-                                if (arg == "-ll"):
-                                    llvm_mode = 1
-                                else:
-                                    if (arg == "-r"):
-                                        run_mode = 1
-                                    else:
-                                        if (arg == "--run"):
-                                            run_mode = 1
-                                        else:
-                                            if (arg == "--interpret"):
-                                                run_mode = 1
-                                            else:
-                                                if (arg == "--strict-interpret"):
-                                                    strict_interpret = 1
+                        if (arg == "-ll"):
+                            llvm_mode = 1
             i = i + 1
     if (build_mode == 1):
         llvm_mode = 0
-        compile_mode = 0
-        run_mode = 0
-    else:
-        if (llvm_mode == 1):
-            compile_mode = 0
-            run_mode = 0
-        else:
-            if (compile_mode == 1):
-                run_mode = 0
     if (build_mode == 0):
-        if (compile_mode == 0):
-            if (llvm_mode == 0):
-                if (run_mode == 0):
-                    run_mode = 1
+        if (llvm_mode == 0):
+            build_mode = 1
     print("Loading script...")
     let input_path = env.get(script_index)
     let source = fs.read_text(input_path)
@@ -239,37 +228,12 @@ func main() -> i32:
         if (clang_bin.length() == 0):
             print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
             return 1
+        let runtime_lib = _detect_runtime_lib()
+        if (runtime_lib.length() == 0):
+            print("CRITICAL: thag_runtime.lib not found in standard locations.")
+            return 1
         print("Generated LLVM IR successfully:")
         print(output_ll)
-        print("Compile with: " + clang_bin + " " + output_ll + " thag_runtime.lib -o " + output_exe + " -Wno-override-module")
+        print("Compile with: " + clang_bin + " " + output_ll + " " + runtime_lib + " -o " + output_exe + " -Wno-override-module")
         return 0
-    if (compile_mode == 1):
-        let program_ast = parser.parse_program(source)
-        print("Compile mode active. Generating C source...")
-        let c_code = codegen.emit_program(program_ast)
-        parser.free_tree(program_ast)
-        let ok = fs.write_text("out.c", c_code)
-        if (ok == 0):
-            print("Error: cannot write out.c")
-            return 1
-        print("Generated out.c successfully.")
-        print("Compile with: gcc out.c -o out")
-        return 0
-    if (run_mode == 1):
-        print("Run mode active. Executing script directly...")
-        print("----------------------------------------")
-        let run_code = _interpret_source(source, strict_interpret)
-        print("----------------------------------------")
-        print("Execution finished with code:")
-        print(run_code)
-        return run_code
-    print("Parsing complete. Executing...")
-    print("----------------------------------------")
-    let exit_code = _interpret_source(source, strict_interpret)
-    print("----------------------------------------")
-    print("Execution finished with code:")
-    print(exit_code)
-    return exit_code
-    print("This CLI is deprecated please use `thagore`")
-    print("[contributor] [deprecated] Use src/thagore.tg (binary: thagore).")
-    return thagore.main()
+    return 0

@@ -7,18 +7,17 @@ extern func __thg_interp_set_strict(interp: ptr, strict_mode: i32) -> i32
 struct Interpreter:
     handle: ptr
 
-impl Interpreter:
-    func eval_expr(self, node: ptr) -> i32:
-        return __thg_interp_eval_expr(self.handle, node)
-
-    func exec_stmt(self, node: ptr) -> i32:
-        return __thg_interp_exec_stmt(self.handle, node)
-
-    func set_strict(self, strict_mode: i32) -> i32:
-        return __thg_interp_set_strict(self.handle, strict_mode)
-
 func new() -> Interpreter:
     return Interpreter(__thg_interp_new())
+
+func eval_expr(interpreter: Interpreter, node: ptr) -> i32:
+    return __thg_interp_eval_expr(interpreter.handle, node)
+
+func exec_stmt(interpreter: Interpreter, node: ptr) -> i32:
+    return __thg_interp_exec_stmt(interpreter.handle, node)
+
+func set_strict(interpreter: Interpreter, strict_mode: i32) -> i32:
+    return __thg_interp_set_strict(interpreter.handle, strict_mode)
 
 func dispose(interpreter: Interpreter) -> i32:
     return __thg_interp_free(interpreter.handle)
