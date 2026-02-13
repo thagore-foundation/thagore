@@ -1,5 +1,6 @@
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_add(a: String, b: String) -> String
 
 struct StringBuilder:
     total_len: i32
@@ -25,7 +26,7 @@ func builder_new() -> StringBuilder:
     return StringBuilder(0, "")
 
 func append(self: StringBuilder, part: String) -> StringBuilder:
-    return StringBuilder(self.total_len + strlen(part), self.cache + part)
+    return StringBuilder(self.total_len + strlen(part), __thg_str_add(self.cache, part))
 
 func len(self: StringBuilder) -> i32:
     return self.total_len

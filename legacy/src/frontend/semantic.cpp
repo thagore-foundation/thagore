@@ -103,15 +103,18 @@ public:
 
     scopes.clear();
     pushScope();
+    scopeFloor = scopes.size();
     inTopLevelContext = true;
     for (const auto &stmt : typed.module->topLevelStatements) {
       auto v = stmt->accept(*this);
       if (!v) {
-        popScope();
+        popScope(true);
+        scopeFloor = 0;
         return std::unexpected(v.error());
       }
     }
-    popScope();
+    popScope(true);
+    scopeFloor = 0;
 
     if (typed.module->topLevelStatements.empty() && !hasExplicitMain) {
       return std::unexpected(Diagnostic {
@@ -135,6 +138,7 @@ private:
   std::vector<Scope> scopes {};
   TypePtr currentFunctionReturnType {makeType(BaseType::Void)};
   bool inTopLevelContext {false};
+  std::size_t scopeFloor {0};
 
   auto ensureKnownType(const TypePtr &type, const SourceSpan &span) -> Result<void, Diagnostic> {
     if (!type) {
@@ -236,6 +240,7 @@ private:
 
     scopes.clear();
     pushScope();
+    scopeFloor = scopes.size();
     inTopLevelContext = false;
     currentFunctionReturnType = fn.returnType ? fn.returnType : makeType(BaseType::Void);
     for (const auto &param : fn.params) {
@@ -284,7 +289,8 @@ private:
     }
 
     typed.functionTypes[fn.name].returnType = fn.returnType;
-    popScope();
+    popScope(true);
+    scopeFloor = 0;
     return {};
   }
 
@@ -292,9 +298,11 @@ private:
     scopes.push_back(Scope {});
   }
 
-  auto popScope() -> void {
+  auto popScope(bool force = false) -> void {
     if (!scopes.empty()) {
-      scopes.pop_back();
+      if (force || scopes.size() > scopeFloor) {
+        scopes.pop_back();
+      }
     }
   }
 
