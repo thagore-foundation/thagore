@@ -1,0 +1,35 @@
+import "src/compiler/parser_headers.tg" as ph
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("  got : " + got)
+    print("  want: " + want)
+    return 1
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    fails = fails + _expect_str("func name simple", ph.parse_func_name("func main() -> i32:"), "main")
+    fails = fails + _expect_str("func name generic", ph.parse_func_name("func sum[T: Add, U](a: T, b: U) -> T:"), "sum")
+    fails = fails + _expect_str("func generic clause", ph.parse_func_generic_clause("func sum[T: Add, U](a: T, b: U) -> T:"), "T:Add,U")
+    fails = fails + _expect_str("trait name", ph.parse_trait_name("trait Add:"), "Add")
+    fails = fails + _expect_str("impl pair", ph.parse_impl_pair("impl Add for Vec[i32]:"), "Add|Vec[i32]")
+    fails = fails + _expect_i32("result sugar yes", ph.has_result_sugar("func read() -> Result[i32, String]?:"), 1)
+    fails = fails + _expect_i32("result sugar no", ph.has_result_sugar("func read() -> Result[i32, String]:"), 0)
+
+    if (fails == 0):
+        print("PASS: parser header helpers")
+        return 0
+
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
