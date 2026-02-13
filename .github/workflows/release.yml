@@ -113,16 +113,21 @@ jobs:
             fi
 
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              LLVM_SEARCH_ROOT="${LLVM_PATH:-C:/Program Files/LLVM}"
-              LLVM_CMAKE_FILE="$(find "$LLVM_SEARCH_ROOT" -type f -path '*/lib/cmake/llvm/LLVMConfig.cmake' 2>/dev/null | head -n1 || true)"
-              if [[ -z "$LLVM_CMAKE_FILE" ]]; then
-                LLVM_CMAKE_FILE="$(find "C:/Program Files/LLVM" -type f -path '*/lib/cmake/llvm/LLVMConfig.cmake' 2>/dev/null | head -n1 || true)"
-              fi
-              if [[ -z "$LLVM_CMAKE_FILE" ]]; then
+              LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
+                $roots = @(); \
+                if ($env:LLVM_PATH) { $roots += $env:LLVM_PATH }; \
+                $roots += 'C:\\Program Files\\LLVM'; \
+                foreach ($r in $roots) { \
+                  if (Test-Path $r) { \
+                    $hit = Get-ChildItem -Path $r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
+                    if ($hit) { Write-Output $hit.DirectoryName; break } \
+                  } \
+                }\
+              " | tr -d '\r')"
+              if [[ -z "$LLVM_CMAKE_DIR" ]]; then
                 echo "ERROR: LLVMConfig.cmake not found on Windows LLVM installation"
                 exit 1
               fi
-              LLVM_CMAKE_DIR="$(dirname "$LLVM_CMAKE_FILE")"
               CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_CMAKE_DIR}")
               CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${LLVM_CMAKE_DIR}")
             elif [[ "${{ runner.os }}" == "macOS" && -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
