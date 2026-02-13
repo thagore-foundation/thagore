@@ -144,8 +144,21 @@ jobs:
             "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
           fi
 
+          if [[ ! -f "$STAGE1_BIN" && -f "stage1.exe" ]]; then
+            STAGE1_BIN="stage1.exe"
+          elif [[ ! -f "$STAGE1_BIN" && -f "stage1" ]]; then
+            STAGE1_BIN="stage1"
+          fi
+
           chmod +x "$STAGE1_BIN" || true
           "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+
+          if [[ ! -f "$FINAL_BIN" && -f "thag.exe" ]]; then
+            FINAL_BIN="thag.exe"
+          elif [[ ! -f "$FINAL_BIN" && -f "thag" ]]; then
+            FINAL_BIN="thag"
+          fi
+          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
@@ -160,6 +173,16 @@ jobs:
             FINAL_BIN="thag"
             HELLO_BIN="hello"
             FIB_BIN="fib"
+          fi
+
+          if [[ -n "${FINAL_BIN:-}" && -f "$FINAL_BIN" ]]; then
+            :
+          elif [[ -f "thag" ]]; then
+            FINAL_BIN="thag"
+          elif [[ -f "thag.exe" ]]; then
+            FINAL_BIN="thag.exe"
+          else
+            echo "ERROR: final compiler binary not found"; exit 1
           fi
 
           chmod +x "$FINAL_BIN" || true
@@ -178,10 +201,22 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
 
+          FINAL_BIN_NAME="${FINAL_BIN:-}"
+          if [[ -z "$FINAL_BIN_NAME" ]]; then
+            if [[ -f "thag" ]]; then
+              FINAL_BIN_NAME="thag"
+            elif [[ -f "thag.exe" ]]; then
+              FINAL_BIN_NAME="thag.exe"
+            fi
+          fi
+          if [[ -z "$FINAL_BIN_NAME" ]]; then
+            echo "ERROR: final compiler binary not found for packaging"; exit 1
+          fi
+
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp thag.exe dist/bin/
           else
-            cp thag dist/bin/
+            cp "$FINAL_BIN_NAME" dist/bin/thag
             chmod +x dist/bin/thag
           fi
 
