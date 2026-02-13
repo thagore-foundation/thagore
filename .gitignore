@@ -3,5 +3,5 @@ build/
 *.exe
 *.obj
 *.tar.xz
-llvm/
+/llvm/
 LLVM-*.exe

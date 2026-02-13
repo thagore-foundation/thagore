@@ -1,0 +1,11 @@
+extern func __thg_codegen_emit_llvm(root: ptr) -> String
+extern func __thg_codegen_emit_llvm_from_source(source: String, module_name: String) -> String
+
+func emit_program(root: ptr) -> String:
+    return __thg_codegen_emit_llvm(root)
+
+func emit_program_from_source(source: String, module_name: String) -> String:
+    return __thg_codegen_emit_llvm_from_source(source, module_name)
+
+func system_decls() -> String:
+    return ""
