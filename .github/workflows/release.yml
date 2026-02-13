@@ -126,6 +126,10 @@ jobs:
               fi
             fi
 
+            if [[ "${{ runner.os }}" != "Windows" && -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
+              cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
+            fi
+
             chmod +x "$STAGE0_BIN" || true
             "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
           fi
