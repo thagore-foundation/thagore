@@ -68,6 +68,41 @@ func _starts_with(text: String, prefix: String) -> i32:
         return 1
     return 0
 
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _split_left(text: String, sep: String) -> String:
+    let i = _find_char(text, sep)
+    if (i < 0):
+        return text
+    return __thg_str_substr(text, 0, i)
+
+func _set_contains(set_text: String, name: String) -> i32:
+    if (name.length() == 0):
+        return 0
+    let needle = ";" + name + ";"
+    let i = 0
+    let n = strlen(set_text)
+    let m = strlen(needle)
+    while ((i + m) <= n):
+        if (__thg_str_substr(set_text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _set_add_unique(set_text: String, name: String) -> String:
+    if (name.length() == 0):
+        return set_text
+    if (_set_contains(set_text, name) == 1):
+        return set_text
+    return set_text + name + ";"
+
 func count_trait_defs(source: String) -> i32:
     let total = _line_count(source)
     let i = 0
@@ -116,11 +151,40 @@ func count_result_sugar(source: String) -> i32:
         i = i + 1
     return count
 
+func build_trait_set(source: String) -> String:
+    let total = _line_count(source)
+    let i = 0
+    let out = ";"
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "trait") == 1):
+            let name = ph.parse_trait_name(line)
+            out = _set_add_unique(out, name)
+        i = i + 1
+    return out
+
+func count_unknown_impl_traits(source: String) -> i32:
+    let trait_set = build_trait_set(source)
+    let total = _line_count(source)
+    let i = 0
+    let misses = 0
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "impl") == 1):
+            let pair = ph.parse_impl_pair(line)
+            let trait_name = _split_left(pair, "|")
+            if (trait_name.length() > 0):
+                if (_set_contains(trait_set, trait_name) == 0):
+                    misses = misses + 1
+        i = i + 1
+    return misses
+
 func analyze_summary(source: String) -> String:
     let a = count_generic_funcs(source)
     let b = count_trait_defs(source)
     let c = count_impl_defs(source)
     let d = count_result_sugar(source)
+    let e = count_unknown_impl_traits(source)
     let ga = "0"
     if (a > 0):
         ga = "1"
@@ -133,9 +197,17 @@ func analyze_summary(source: String) -> String:
     let gd = "0"
     if (d > 0):
         gd = "1"
-    return "generic_funcs=" + ga + ";traits=" + gb + ";impls=" + gc + ";result_sugar=" + gd
+    let ge = "0"
+    if (e > 0):
+        ge = "1"
+    return "generic_funcs=" + ga + ";traits=" + gb + ";impls=" + gc + ";result_sugar=" + gd + ";unknown_impl_traits=" + ge
 
 func preflight(source: String) -> i32:
-    # Reserved hook for semantic checks; currently always non-blocking.
     analyze_summary(source)
+    let unknown_impl_traits = count_unknown_impl_traits(source)
+    if (unknown_impl_traits > 0):
+        print("Semantic error: impl references unknown trait.")
+        print("Unknown trait impl count:")
+        print(unknown_impl_traits)
+        return 1
     return 0

@@ -21,7 +21,11 @@ func main() -> i32:
     fails = fails + _expect_i32("count impl", sh.count_impl_defs("impl Add for Vec[i32]:"), 1)
     fails = fails + _expect_i32("count generic func", sh.count_generic_funcs("func sum[T](a: T, b: T) -> T:"), 1)
     fails = fails + _expect_i32("count result sugar", sh.count_result_sugar("func read() -> Result[i32, String]?:"), 1)
-    fails = fails + _expect_str("summary", sh.analyze_summary("trait Add:"), "generic_funcs=0;traits=1;impls=0;result_sugar=0")
+    fails = fails + _expect_i32("unknown impl trait miss", sh.count_unknown_impl_traits("impl Missing for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("unknown impl trait ok", sh.count_unknown_impl_traits("trait Add:\nimpl Add for Vec[i32]:"), 0)
+    fails = fails + _expect_i32("preflight fail", sh.preflight("impl Missing for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("preflight ok", sh.preflight("trait Add:\nimpl Add for Vec[i32]:"), 0)
+    fails = fails + _expect_str("summary", sh.analyze_summary("trait Add:"), "generic_funcs=0;traits=1;impls=0;result_sugar=0;unknown_impl_traits=0")
 
     if (fails == 0):
         print("PASS: semantic headers preflight")
