@@ -62,10 +62,28 @@ jobs:
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
             CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
-            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              LLVM_CMAKE_DIR=""
+              if [[ -n "${LLVM_PATH:-}" ]]; then
+                if command -v cygpath >/dev/null 2>&1; then
+                  LLVM_MIXED="$(cygpath -m "${LLVM_PATH}")"
+                  LLVM_CMAKE_DIR="${LLVM_MIXED}/lib/cmake/llvm"
+                else
+                  LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
+                fi
+              else
+                LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
+              fi
+
+              if [[ -f "${LLVM_CMAKE_DIR}/LLVMConfig.cmake" ]]; then
+                CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_CMAKE_DIR}")
+                CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${LLVM_CMAKE_DIR}")
+              else
+                echo "ERROR: LLVMConfig.cmake not found at ${LLVM_CMAKE_DIR}"
+                exit 1
+              fi
+            elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
               CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
-            elif [[ "${{ runner.os }}" == "Windows" && -d "C:/Program Files/LLVM/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS+=("-DLLVM_DIR=C:/Program Files/LLVM/lib/cmake/llvm")
             elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
               CMAKE_ARGS+=("-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm")
             fi
