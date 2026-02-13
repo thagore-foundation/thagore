@@ -145,7 +145,7 @@ jobs:
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
 
       - name: Test hello + fib
         shell: bash
