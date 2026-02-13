@@ -16,6 +16,7 @@
 #include <optional>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace {
 struct ManagedString {
@@ -460,9 +461,23 @@ auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
   return evalExprWithEnv(node, interp);
 }
 
+void freeAstNodeRecursive(AstNode *node, std::unordered_set<AstNode *> &seen) {
+  if (node == nullptr) {
+    return;
+  }
+  if (!seen.insert(node).second) {
+    return;
+  }
+  freeAstNodeRecursive(node->left, seen);
+  freeAstNodeRecursive(node->right, seen);
+  delete node;
+}
+
 } // namespace
 
 extern "C" {
+
+void __thg_mem_free(void *ptr);
 
 void __thg_init_env(int c, char **v) {
   g_argc = c;
@@ -594,13 +609,76 @@ void *__thg_mem_alloc(int size) {
 
 void *__thg_mem_realloc(void *ptr, int new_size) {
   if (new_size <= 0) {
-    std::free(ptr);
+    __thg_mem_free(ptr);
     return nullptr;
   }
+  if (ptr == nullptr) {
+    return std::malloc(static_cast<std::size_t>(new_size));
+  }
+
+  auto *key = static_cast<const char *>(ptr);
+  {
+    std::lock_guard lock {managedStringsMutex()};
+    auto &table = managedStrings();
+    auto it = table.find(key);
+    if (it != table.end()) {
+      if (it->second.refCount <= 1) {
+        auto *resized =
+          static_cast<char *>(std::realloc(it->second.buffer, static_cast<std::size_t>(new_size)));
+        if (resized == nullptr) {
+          return nullptr;
+        }
+        resized[new_size - 1] = '\0';
+
+        const auto refs = it->second.refCount;
+        if (resized != it->second.buffer) {
+          table.erase(it);
+          table.insert_or_assign(resized, ManagedString {.buffer = resized, .refCount = refs});
+        } else {
+          it->second.buffer = resized;
+          it->second.refCount = refs;
+        }
+        return resized;
+      }
+
+      auto *resized = static_cast<char *>(std::malloc(static_cast<std::size_t>(new_size)));
+      if (resized == nullptr) {
+        return nullptr;
+      }
+      const auto old_len = std::strlen(it->second.buffer);
+      const auto copy_len = std::min<std::size_t>(static_cast<std::size_t>(new_size - 1), old_len);
+      if (copy_len > 0) {
+        std::memcpy(resized, it->second.buffer, copy_len);
+      }
+      resized[copy_len] = '\0';
+      table.insert_or_assign(resized, ManagedString {.buffer = resized, .refCount = 1});
+      --it->second.refCount;
+      return resized;
+    }
+  }
+
   return std::realloc(ptr, static_cast<std::size_t>(new_size));
 }
 
 void __thg_mem_free(void *ptr) {
+  if (ptr == nullptr) {
+    return;
+  }
+  const auto *key = static_cast<const char *>(ptr);
+  {
+    std::lock_guard lock {managedStringsMutex()};
+    auto &table = managedStrings();
+    auto it = table.find(key);
+    if (it != table.end()) {
+      if (it->second.refCount > 1) {
+        --it->second.refCount;
+      } else {
+        std::free(it->second.buffer);
+        table.erase(it);
+      }
+      return;
+    }
+  }
   std::free(ptr);
 }
 
@@ -924,6 +1002,17 @@ void *__thg_token_new(const char *kind, const char *text) {
   return token;
 }
 
+int __thg_token_free(void *token) {
+  if (token == nullptr) {
+    return 0;
+  }
+  auto *box = static_cast<TokenBox *>(token);
+  std::free(box->kind);
+  std::free(box->text);
+  std::free(box);
+  return 1;
+}
+
 const char *__thg_token_kind(void *token) {
   if (token == nullptr) {
     return "";
@@ -970,6 +1059,14 @@ void *__thg_lex_tokenize(const char *source) {
   auto *stream = new TokenStream {};
   stream->tokens = tokenizeExprSource(source);
   return stream;
+}
+
+int __thg_tok_free_stream(void *streamPtr) {
+  if (streamPtr == nullptr) {
+    return 0;
+  }
+  delete static_cast<TokenStream *>(streamPtr);
+  return 1;
 }
 
 int __thg_tok_count(void *streamPtr) {
@@ -1142,6 +1239,15 @@ void *__thg_ast_right(void *nodePtr) {
 char *__thg_ast_debug(void *nodePtr) {
   auto text = buildAstDebugString(static_cast<AstNode *>(nodePtr));
   return makeManagedString(text);
+}
+
+int __thg_ast_free(void *nodePtr) {
+  if (nodePtr == nullptr) {
+    return 0;
+  }
+  std::unordered_set<AstNode *> seen {};
+  freeAstNodeRecursive(static_cast<AstNode *>(nodePtr), seen);
+  return 1;
 }
 
 const char *__env_get(const char *key) {
@@ -1378,6 +1484,14 @@ int __thg_eval_expr(void *nodePtr) {
 
 void *__thg_interp_new() {
   return new RuntimeInterpreter {};
+}
+
+int __thg_interp_free(void *interpPtr) {
+  if (interpPtr == nullptr) {
+    return 0;
+  }
+  delete static_cast<RuntimeInterpreter *>(interpPtr);
+  return 1;
 }
 
 int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {

@@ -15,7 +15,7 @@ func assert_eq(a, b, message: String = "") -> i32
     if a == b
         return 0
     if message == ""
-        throw v"assert_eq failed: left={a}, right={b}"
-    throw v"assert_eq failed: {message} (left={a}, right={b})"
+        throw "assert_eq failed"
+    throw "assert_eq failed: " + message
 
-func str(x) -> String = v"{x}"
+func str(x: String) -> String = x

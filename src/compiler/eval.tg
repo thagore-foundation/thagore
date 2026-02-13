@@ -1,6 +1,7 @@
 extern func __thg_interp_new() -> ptr
 extern func __thg_interp_eval_expr(interp: ptr, node: ptr) -> i32
 extern func __thg_interp_exec_stmt(interp: ptr, node: ptr) -> i32
+extern func __thg_interp_free(interp: ptr) -> i32
 
 struct Interpreter:
     handle: ptr
@@ -14,3 +15,6 @@ impl Interpreter:
 
 func new() -> Interpreter:
     return Interpreter(__thg_interp_new())
+
+func dispose(interpreter: Interpreter) -> i32:
+    return __thg_interp_free(interpreter.handle)

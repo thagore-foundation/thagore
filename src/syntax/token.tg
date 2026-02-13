@@ -5,6 +5,7 @@ struct Token:
 extern func __thg_token_new(kind: String, text: String) -> ptr
 extern func __thg_token_kind(tok: ptr) -> String
 extern func __thg_token_text(tok: ptr) -> String
+extern func __thg_token_free(tok: ptr) -> i32
 
 func new_token(kind: String, text: String) -> Token:
     return Token(kind, text)
@@ -17,6 +18,9 @@ func kind_of(tok: ptr) -> String:
 
 func text_of(tok: ptr) -> String:
     return __thg_token_text(tok)
+
+func free_handle(tok: ptr) -> i32:
+    return __thg_token_free(tok)
 
 func tok_newline() -> String:
     return "NEWLINE"
