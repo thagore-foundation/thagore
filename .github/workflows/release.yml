@@ -22,7 +22,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y llvm-21-dev clang-21 lld-21
+          echo "LLVM_PATH=/usr/lib/llvm-21" >> "$GITHUB_ENV"
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
         id: llvm
         uses: KyleMayes/install-llvm-action@v2
         with:
