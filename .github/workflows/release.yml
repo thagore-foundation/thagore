@@ -95,8 +95,7 @@ jobs:
             for runtime_candidate in \
               "bootstrap/extracted/dist/lib/thag_runtime.lib" \
               "legacy/build/libthag_runtime.a" \
-              "legacy/build/thag_runtime.lib" \
-              "legacy/thag_runtime.lib"; do
+              "legacy/build/thag_runtime.lib"; do
               if [[ -f "$runtime_candidate" ]]; then
                 cp "$runtime_candidate" thag_runtime.lib
                 break
@@ -229,8 +228,7 @@ jobs:
             for runtime_candidate in \
               "bootstrap/extracted/dist/lib/thag_runtime.lib" \
               "legacy/build/libthag_runtime.a" \
-              "legacy/build/thag_runtime.lib" \
-              "legacy/thag_runtime.lib"; do
+              "legacy/build/thag_runtime.lib"; do
               if [[ -f "$runtime_candidate" ]]; then
                 cp "$runtime_candidate" thag_runtime.lib
                 break
@@ -447,7 +445,7 @@ jobs:
             VERSION="0.0.0"
           fi
 
-          "/c/Program Files (x86)/NSIS/makensis.exe" /DVERSION="$VERSION" installer/windows/thagore.nsi
+          "/c/Program Files (x86)/NSIS/makensis.exe" "//DVERSION=$VERSION" installer/windows/thagore.nsi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
