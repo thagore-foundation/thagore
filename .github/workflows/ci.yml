@@ -20,6 +20,7 @@ jobs:
       FIB_BIN: fib
       RELEASE_ASSET: thagore-linux.tar.gz
       LLVM_PATH: /usr/lib/llvm-21
+      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +72,12 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
+              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
+              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
+              exit 1
+            fi
+            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
             CMAKE_ARGS=(
               "-DCMAKE_BUILD_TYPE=Release"
               "-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
@@ -146,6 +153,7 @@ jobs:
       HELLO_BIN: hello
       FIB_BIN: fib
       BOOTSTRAP_ASSET: thagore-macos.tar.gz
+      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -200,6 +208,12 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
+              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
+              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
+              exit 1
+            fi
+            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
             CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
             if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
               CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
@@ -272,6 +286,7 @@ jobs:
       FINAL_BIN: thagore.exe
       HELLO_BIN: hello.exe
       FIB_BIN: fib.exe
+      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -319,6 +334,12 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
+              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
+              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
+              exit 1
+            fi
+            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
             LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
               \$roots = @(); \
               if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
