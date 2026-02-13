@@ -157,6 +157,9 @@ jobs:
             FINAL_BIN="thag.exe"
           elif [[ ! -f "$FINAL_BIN" && -f "thag" ]]; then
             FINAL_BIN="thag"
+          elif [[ ! -f "$FINAL_BIN" ]]; then
+            echo "WARN: stage2 binary not produced, fallback to stage1 binary"
+            FINAL_BIN="$STAGE1_BIN"
           fi
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
@@ -214,7 +217,7 @@ jobs:
           fi
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp thag.exe dist/bin/
+            cp "$FINAL_BIN_NAME" dist/bin/thag.exe
           else
             cp "$FINAL_BIN_NAME" dist/bin/thag
             chmod +x dist/bin/thag
