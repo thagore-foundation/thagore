@@ -70,7 +70,31 @@ jobs:
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
+          ASSET_NAME=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ASSET_NAME="thag-windows.zip"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            ASSET_NAME="thag-macos.tar.gz"
+          else
+            ASSET_NAME="thag-linux.tar.gz"
+          fi
+
+          if gh release download --repo "${{ github.repository }}" --pattern "$ASSET_NAME" -D bootstrap; then
+            mkdir -p bootstrap/extracted
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              7z x "bootstrap/$ASSET_NAME" -obootstrap/extracted >/dev/null
+            else
+              tar -xzf "bootstrap/$ASSET_NAME" -C bootstrap/extracted
+            fi
+            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/extracted/dist/bin/thag.exe ]]; then
+              cp bootstrap/extracted/dist/bin/thag.exe "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/extracted/dist/bin/thag ]]; then
+              cp bootstrap/extracted/dist/bin/thag "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            fi
+          elif gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
             if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thag.exe ]]; then
               cp bootstrap/thag.exe "$STAGE1_BIN"
               BOOTSTRAP_OK=1
@@ -88,13 +112,7 @@ jobs:
               export CXX="${LLVM_PATH}/bin/clang++"
             fi
 
-            if [[ "${{ runner.os }}" == "Windows" && -f "legacy/stage0.exe" ]]; then
-              STAGE0_BIN="legacy/stage0.exe"
-              if [[ -f "legacy/thag_runtime.lib" && ! -f "thag_runtime.lib" ]]; then
-                cp legacy/thag_runtime.lib thag_runtime.lib
-              fi
-            else
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
               LLVM_CMAKE_DIR=""
               if [[ -n "${LLVM_PATH:-}" ]]; then
                 if command -v cygpath >/dev/null 2>&1; then

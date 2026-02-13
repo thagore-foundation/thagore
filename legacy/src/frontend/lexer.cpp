@@ -123,6 +123,9 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
           .span = makeSpan(begin, cursor, file),
         });
       }
+      if (ch == '\r' || ch == '\n') {
+        break;
+      }
       break;
     }
 
@@ -157,6 +160,10 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
 
   while (!atEnd()) {
     if (atLineStart) {
+      if (peek() == '\r') {
+        advance();
+        continue;
+      }
       if (peek() == '\n') {
         Cursor b = cursor;
         advance();
@@ -170,38 +177,30 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
         while (peek(lookahead) == ' ') {
           lookahead += 1;
         }
+        const bool blankLine = peek(lookahead) == '\r' || peek(lookahead) == '\n' || peek(lookahead) == '\0';
+        if (blankLine) {
+          while (peek() == ' ') {
+            advance();
+          }
+          if (peek() == '\r') {
+            advance();
+          }
+          if (peek() == '\n') {
+            Cursor b = cursor;
+            advance();
+            pushToken(TokenKind::Newline, b, cursor);
+          }
+          continue;
+        }
         if (peek(lookahead) == '\t') {
           Cursor begin = cursor;
           return error("Tabs are not allowed in indentation.", begin, begin);
         }
         const bool lineComment = peek(lookahead) == '#' || (peek(lookahead) == '/' && peek(lookahead + 1) == '/');
         if (lineComment) {
-          std::size_t spaces = 0;
-          Cursor begin = cursor;
           while (peek() == ' ') {
-            spaces += 1;
             advance();
           }
-
-          const auto current = indents.back();
-          if (spaces > current) {
-            indents.push_back(spaces);
-            pushToken(TokenKind::Indent, begin, cursor);
-          } else if (spaces < current) {
-            while (indents.size() > 1 && spaces < indents.back()) {
-              const auto old = cursor;
-              indents.pop_back();
-              pushToken(TokenKind::Dedent, old, old);
-            }
-            if (indents.back() != spaces) {
-              return std::unexpected(Diagnostic {
-                .code = ErrorCode::LexError,
-                .message = std::format("Invalid dedent level {}.", spaces),
-                .span = makeSpan(begin, cursor, file),
-              });
-            }
-          }
-
           while (!atEnd() && peek() != '\n') {
             advance();
           }
