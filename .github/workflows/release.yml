@@ -114,13 +114,13 @@ jobs:
 
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
-                $roots = @(); \
-                if ($env:LLVM_PATH) { $roots += $env:LLVM_PATH }; \
-                $roots += 'C:\\Program Files\\LLVM'; \
-                foreach ($r in $roots) { \
-                  if (Test-Path $r) { \
-                    $hit = Get-ChildItem -Path $r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
-                    if ($hit) { Write-Output $hit.DirectoryName; break } \
+                \$roots = @(); \
+                if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
+                \$roots += 'C:\\Program Files\\LLVM'; \
+                foreach (\$r in \$roots) { \
+                  if (Test-Path \$r) { \
+                    \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
+                    if (\$hit) { Write-Output \$hit.DirectoryName; break } \
                   } \
                 }\
               " | tr -d '\r')"
