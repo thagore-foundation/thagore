@@ -310,6 +310,14 @@ jobs:
             fi
           fi
 
+          # CI-only guard: if no release bootstrap asset, use repo-local stage1.exe before stage0 build.
+          if [[ "$BOOTSTRAP_OK" -ne 1 && -f "stage1.exe" ]]; then
+            if [[ "$STAGE1_BIN" != "stage1.exe" ]]; then
+              cp "stage1.exe" "$STAGE1_BIN"
+            fi
+            BOOTSTRAP_OK=1
+          fi
+
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
             LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
               \$roots = @(); \
