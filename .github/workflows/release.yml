@@ -105,6 +105,14 @@ jobs:
             fi
           fi
 
+          if [[ "$BOOTSTRAP_OK" -ne 1 && "${{ runner.os }}" == "Windows" && -f "stage1.exe" ]]; then
+            cp stage1.exe "$STAGE1_BIN"
+            if [[ -f "legacy/thag_runtime.lib" && ! -f "thag_runtime.lib" ]]; then
+              cp legacy/thag_runtime.lib thag_runtime.lib
+            fi
+            BOOTSTRAP_OK=1
+          fi
+
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
             CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
             if [[ "${{ runner.os }}" == "Linux" && -n "${LLVM_PATH:-}" ]]; then
