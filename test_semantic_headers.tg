@@ -1,0 +1,31 @@
+import "src/compiler/semantic_headers.tg" as sh
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("  got : " + got)
+    print("  want: " + want)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    fails = fails + _expect_i32("count trait", sh.count_trait_defs("trait Add:"), 1)
+    fails = fails + _expect_i32("count impl", sh.count_impl_defs("impl Add for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("count generic func", sh.count_generic_funcs("func sum[T](a: T, b: T) -> T:"), 1)
+    fails = fails + _expect_i32("count result sugar", sh.count_result_sugar("func read() -> Result[i32, String]?:"), 1)
+    fails = fails + _expect_str("summary", sh.analyze_summary("trait Add:"), "generic_funcs=0;traits=1;impls=0;result_sugar=0")
+
+    if (fails == 0):
+        print("PASS: semantic headers preflight")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

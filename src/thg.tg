@@ -5,6 +5,7 @@ import "src/syntax/parser.tg" as parser
 import "src/compiler/eval.tg" as eval
 import "src/compiler/codegen.tg" as codegen
 import "src/compiler/codegen_llvm.tg" as codegen_llvm
+import "src/compiler/semantic_headers.tg" as semantic_headers
 
 func _basename_no_ext(path: String) -> String:
     let i = 0
@@ -184,6 +185,7 @@ func main() -> i32:
     if (source.length() == 0):
         print("Error: Empty file or file not found.")
         return 0
+    semantic_headers.preflight(source)
     let base = _basename_no_ext(input_path)
     base = _sanitize_name(base)
     let output_exe = output_override
