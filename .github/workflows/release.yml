@@ -528,13 +528,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump Homebrew Formula
+      - name: Trigger Homebrew Tap Update
         if: startsWith(github.ref, 'refs/tags/')
-        uses: mislav/bump-homebrew-formula-action@v3
+        uses: peter-evans/repository-dispatch@v3
         with:
-          formula-name: thagore
-          homebrew-tap: thagore-foundation/homebrew-thagore
-          download-url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thag-linux.tar.gz
-          commit-message: "Update thagore to {{version}}"
-        env:
-          COMMITTER_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          repository: thagore-foundation/homebrew-thagore
+          event-type: thagore-release
+          client-payload: >-
+            {"version":"${{ github.ref_name }}","download_url":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thag-linux.tar.gz"}
