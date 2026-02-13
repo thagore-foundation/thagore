@@ -155,7 +155,7 @@ jobs:
       FINAL_BIN: thag
       HELLO_BIN: hello
       FIB_BIN: fib
-      RELEASE_ASSET: thag-macos.pkg
+      RELEASE_ASSET: thag-macos.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -237,7 +237,11 @@ jobs:
           fi
 
           if [[ ! -f "thag_runtime.lib" ]]; then
-            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release
+            CMAKE_RT_ARGS=("-DCMAKE_BUILD_TYPE=Release")
+            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              CMAKE_RT_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
+            fi
+            cmake -S legacy -B legacy/build-runtime "${CMAKE_RT_ARGS[@]}"
             cmake --build legacy/build-runtime --config Release --target thag_runtime
             if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
               cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
@@ -264,6 +268,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
+          chmod +x dist/bin/thag
+          cp -r std dist/lib/std
+          tar -czf thag-macos.tar.gz dist
+
           rm -rf pkgroot
           mkdir -p pkgroot/usr/local/bin
           mkdir -p pkgroot/usr/local/lib/thagore
@@ -288,7 +299,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-macos
-          path: thag-macos.pkg
+          path: |
+            thag-macos.pkg
+            thag-macos.tar.gz
           if-no-files-found: error
 
   build-windows:

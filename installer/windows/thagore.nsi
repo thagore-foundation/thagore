@@ -24,10 +24,10 @@ RequestExecutionLevel admin
 
 Section "Thagore Compiler" SecMain
   SetOutPath "$INSTDIR\bin"
-  File "dist\bin\thag.exe"
+  File "..\..\dist\bin\thag.exe"
 
   SetOutPath "$INSTDIR\lib\std"
-  File /r "dist\lib\std\*.*"
+  File /r "..\..\dist\lib\std\*.*"
 
   WriteRegStr HKLM "Software\Thagore" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
