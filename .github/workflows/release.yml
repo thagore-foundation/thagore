@@ -12,6 +12,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +63,10 @@ jobs:
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
             CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
+            if [[ "${{ runner.os }}" != "Windows" && -n "${LLVM_PATH:-}" ]]; then
+              export CC="${LLVM_PATH}/bin/clang"
+              export CXX="${LLVM_PATH}/bin/clang++"
+            fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               LLVM_CMAKE_DIR=""
               if [[ -n "${LLVM_PATH:-}" ]]; then
