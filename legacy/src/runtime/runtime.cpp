@@ -1753,6 +1753,14 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   if (source == nullptr || source[0] == '\0') {
     return makeManagedCString("");
   }
+  const std::string sourceText {source};
+
+  // Simple scripts (no imports) are handled by lightweight fallback emitter
+  // to avoid invoking helper stage0 and noisy diagnostics.
+  if (sourceText.find("import ") == std::string::npos && sourceText.find("use ") == std::string::npos) {
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
+  }
 
   std::string moduleNameText {cstrOrEmpty(module_name)};
   if (moduleNameText.empty()) {
@@ -1774,7 +1782,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     if (!out) {
       return makeManagedCString("");
     }
-    out << source;
+    out << sourceText;
   }
 
   std::filesystem::path helperPath {"legacy\\stage0.exe"};
