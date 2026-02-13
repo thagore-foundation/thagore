@@ -58,12 +58,12 @@ jobs:
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE1_BIN="stage1.exe"
-            FINAL_BIN="thag.exe"
+            FINAL_BIN="thagore.exe"
             HELLO_BIN="hello.exe"
             FIB_BIN="fib.exe"
           else
             STAGE1_BIN="stage1"
-            FINAL_BIN="thag"
+            FINAL_BIN="thagore"
             HELLO_BIN="hello"
             FIB_BIN="fib"
           fi
@@ -71,12 +71,12 @@ jobs:
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
-            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thag.exe ]]; then
-              cp bootstrap/thag.exe "$STAGE1_BIN"
+          if gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" --pattern "thagore" -D bootstrap; then
+            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thagore.exe ]]; then
+              cp bootstrap/thagore.exe "$STAGE1_BIN"
               BOOTSTRAP_OK=1
-            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thag ]]; then
-              cp bootstrap/thag "$STAGE1_BIN"
+            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thagore ]]; then
+              cp bootstrap/thagore "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
@@ -108,11 +108,11 @@ jobs:
             fi
 
             chmod +x "$STAGE0_BIN" || true
-            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+          "$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           chmod +x "$FINAL_BIN" || true
 
       - name: Self-host tests
@@ -121,11 +121,11 @@ jobs:
           set -euo pipefail
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            FINAL_BIN="thag.exe"
+            FINAL_BIN="thagore.exe"
             HELLO_BIN="hello.exe"
             FIB_BIN="fib.exe"
           else
-            FINAL_BIN="thag"
+            FINAL_BIN="thagore"
             HELLO_BIN="hello"
             FIB_BIN="fib"
           fi
@@ -145,13 +145,13 @@ jobs:
           mkdir -p dist/bin dist/lib
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp thag.exe dist/bin/
-            ARTIFACT_NAME="thag-windows"
+            cp thagore.exe dist/bin/
+            ARTIFACT_NAME="thagore-windows"
             (cd dist && 7z a "../${ARTIFACT_NAME}.zip" ./*)
           else
-            cp thag dist/bin/
-            chmod +x dist/bin/thag
-            ARTIFACT_NAME="thag-linux"
+            cp thagore dist/bin/
+            chmod +x dist/bin/thagore
+            ARTIFACT_NAME="thagore-linux"
             tar -C dist -czf "${ARTIFACT_NAME}.tar.gz" .
           fi
 
@@ -163,10 +163,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            thag.exe
-            thag
-            thag-windows.zip
-            thag-linux.tar.gz
+            thagore.exe
+            thagore
+            thagore-windows.zip
+            thagore-linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 YAML

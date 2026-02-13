@@ -34,6 +34,27 @@ func tok_dedent() -> String:
 func tok_eof() -> String:
     return "EOF"
 
+func tok_generic_open() -> String:
+    return "LBRACKET"
+
+func tok_generic_close() -> String:
+    return "RBRACKET"
+
+func tok_question() -> String:
+    return "QUESTION"
+
+func tok_trait() -> String:
+    return "TRAIT"
+
+func tok_interface() -> String:
+    return "INTERFACE"
+
+func tok_defer() -> String:
+    return "DEFER"
+
+func tok_comptime() -> String:
+    return "COMPTIME"
+
 func tok_lbrace() -> String:
     return ""
 

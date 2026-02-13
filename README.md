@@ -67,7 +67,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
 # Verify the installation
-./build/Release/thag --help
+./build/Release/thagore --help
 ```
 
 ### Run Your First Program
@@ -81,7 +81,7 @@ print(42)
 Compile and run:
 
 ```bash
-thag hello.tg
+thagore hello.tg
 ./hello
 ```
 

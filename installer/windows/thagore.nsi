@@ -1,13 +1,14 @@
 ; Thagore Windows UI Installer (NSIS)
 
 !include "MUI2.nsh"
+!include "WinMessages.nsh"
 
 !ifndef VERSION
 !define VERSION "0.0.0"
 !endif
 
 Name "Thagore Compiler ${VERSION}"
-OutFile "thag-windows-setup.exe"
+OutFile "thagore-windows-setup.exe"
 InstallDir "$PROGRAMFILES64\Thagore"
 InstallDirRegKey HKLM "Software\Thagore" "InstallDir"
 RequestExecutionLevel admin
@@ -24,6 +25,7 @@ RequestExecutionLevel admin
 
 Section "Thagore Compiler" SecMain
   SetOutPath "$INSTDIR\bin"
+  File "..\..\dist\bin\thagore.exe"
   File "..\..\dist\bin\thag.exe"
 
   SetOutPath "$INSTDIR\lib\std"
@@ -42,9 +44,11 @@ Section "Add to PATH" SecPath
   ${EndIf}
   WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0"
   System::Call 'Kernel32::SetEnvironmentVariable(t, t) i("Path", "$0").r1'
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment"
 SectionEnd
 
 Section "Uninstall"
+  Delete "$INSTDIR\bin\thagore.exe"
   Delete "$INSTDIR\bin\thag.exe"
   RMDir /r "$INSTDIR\lib\std"
   RMDir "$INSTDIR\bin"

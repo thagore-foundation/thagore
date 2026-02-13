@@ -12,8 +12,8 @@
 ## Build, Test, and Development Commands
 - `cmd /c scripts\bootstrap.bat`: full bootstrap cycle (Stage0 -> Stage1 -> Stage2 -> hello_v2).
 - `cmake --build legacy/build --config Debug`: build legacy Stage0 binaries/libraries.
-- `legacy\stage0.exe build src/thg.tg -o stage1.exe`: produce Stage1 compiler.
-- `stage1.exe build src/thg.tg -o stage2.exe`: self-host Stage2 compiler.
+- `legacy\stage0.exe build src/thagore.tg -o stage1.exe`: produce Stage1 compiler.
+- `stage1.exe build src/thagore.tg -o stage2.exe`: self-host Stage2 compiler.
 - `python scripts/benchmark_fib.py`: benchmark Python vs Thagore native on `fib(35)`.
 - `cmake -B legacy/build -DBUILD_TESTING=ON && ctest --test-dir legacy/build --output-on-failure`: run C++ tests.
 

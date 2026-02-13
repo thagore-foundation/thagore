@@ -24,12 +24,14 @@ Write-Host "[thagore-installer] Installing Thagore to $Prefix..."
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 Copy-Item -Recurse -Force (Join-Path $RootDir "dist\*") $Prefix
 
-$thagBin = Join-Path $Prefix "bin\thag.exe"
+$thagoreBin = Join-Path $Prefix "bin\thagore.exe"
+$thagCompatBin = Join-Path $Prefix "bin\thag.exe"
 $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
 if ($machinePath -notlike "*$($Prefix)\bin*") {
     [Environment]::SetEnvironmentVariable("Path", "$machinePath;$($Prefix)\bin", "Machine")
 }
 
 Write-Host "Thagore installed successfully."
-Write-Host "Binary: $thagBin"
+Write-Host "Binary: $thagoreBin"
+Write-Host "Alias: $thagCompatBin"
 Write-Host "Stdlib: $Prefix\lib\std"

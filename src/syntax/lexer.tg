@@ -57,3 +57,23 @@ func tokenize(source: String) -> i32:
     if (total > 0):
         return total - 1
     return 0
+
+func keyword_kind(word: String) -> String:
+    if (word == "trait"):
+        return token.tok_trait()
+    if (word == "interface"):
+        return token.tok_interface()
+    if (word == "defer"):
+        return token.tok_defer()
+    if (word == "comptime"):
+        return token.tok_comptime()
+    return "IDENTIFIER"
+
+func classify_symbol(symbol: String) -> String:
+    if (symbol == "["):
+        return token.tok_generic_open()
+    if (symbol == "]"):
+        return token.tok_generic_close()
+    if (symbol == "?"):
+        return token.tok_question()
+    return ""

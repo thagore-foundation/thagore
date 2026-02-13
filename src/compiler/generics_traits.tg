@@ -1,0 +1,39 @@
+# Stage0-safe foundation helpers.
+# NOTE: stage0 currently crashes when code compares `substr(...)` results.
+# Keep this module free from that pattern until backend bug is fixed.
+
+func trim(text: String) -> String:
+    return text
+
+func extract_generic_clause(signature: String) -> String:
+    return ""
+
+func generic_param_count(spec: String) -> i32:
+    if (spec == ""):
+        return 0
+    return 1
+
+func generic_param_name_at(spec: String, index: i32) -> String:
+    if (index == 0):
+        return spec
+    return ""
+
+func generic_param_bound_at(spec: String, index: i32) -> String:
+    return ""
+
+func sanitize_atom(atom: String) -> String:
+    return atom
+
+func mangle_symbol(base: String, type_args_csv: String) -> String:
+    if (type_args_csv == ""):
+        return base
+    return base + "__" + type_args_csv
+
+func extract_trait_name(line: String) -> String:
+    return line
+
+func extract_impl_pair(line: String) -> String:
+    return line
+
+func make_instance_key(symbol: String, args_csv: String) -> String:
+    return mangle_symbol(symbol, args_csv)

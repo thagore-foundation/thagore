@@ -72,6 +72,7 @@ func _detect_clang() -> String:
     if (_probe_clang(clang_usr_local) == 0):
         return clang_usr_local
     return ""
+import "src/thagore.tg" as thagore
 
 func _compile_ir_to_exe(ir_path: String, exe_path: String) -> i32:
     let clang_bin = _detect_clang()
@@ -264,3 +265,6 @@ func main() -> i32:
     print("Execution finished with code:")
     print(exit_code)
     return exit_code
+    print("This CLI is deprecated please use `thagore`")
+    print("[contributor] [deprecated] Use src/thagore.tg (binary: thagore).")
+    return thagore.main()

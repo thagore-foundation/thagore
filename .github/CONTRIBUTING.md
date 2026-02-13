@@ -80,7 +80,7 @@ ctest --test-dir build --output-on-failure
 
 ```bash
 # Compile and run an example program
-./build/Debug/thag examples/hello.tg
+./build/Debug/thagore examples/hello.tg
 ./hello
 ```
 

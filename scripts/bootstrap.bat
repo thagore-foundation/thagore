@@ -25,7 +25,7 @@ if errorlevel 1 (
 )
 
 echo [2/5] Build stage1 from stage0...
-legacy\stage0.exe build src/thg.tg -o stage1.exe
+legacy\stage0.exe build src/thagore.tg -o stage1.exe
 if errorlevel 1 (
   echo [FAIL] Stage1 build failed.
   exit /b 1
@@ -36,7 +36,7 @@ if not exist stage1.exe (
 )
 
 echo [3/5] Build stage2 from stage1...
-stage1.exe build src/thg.tg -o stage2.exe
+stage1.exe build src/thagore.tg -o stage2.exe
 if errorlevel 1 (
   echo [FAIL] Stage2 build failed.
   exit /b 1

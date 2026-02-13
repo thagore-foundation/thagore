@@ -1,0 +1,42 @@
+import "src/compiler/generics_traits.tg" as gt
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("  got : " + got)
+    print("  want: " + want)
+    return 1
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let sig = "func sum[T: Add, U](a: T, b: U) -> T:"
+    let clause = gt.extract_generic_clause(sig)
+    fails = fails + _expect_str("generic clause fallback", clause, "")
+    fails = fails + _expect_i32("empty param count", gt.generic_param_count(clause), 0)
+    fails = fails + _expect_i32("non-empty param count", gt.generic_param_count("T"), 1)
+    fails = fails + _expect_str("param0 name passthrough", gt.generic_param_name_at("T", 0), "T")
+    fails = fails + _expect_str("param1 name empty", gt.generic_param_name_at("T", 1), "")
+    fails = fails + _expect_str("param0 bound fallback", gt.generic_param_bound_at("T: Add", 0), "")
+
+    fails = fails + _expect_str("trait parse fallback", gt.extract_trait_name("trait Add:"), "trait Add:")
+    fails = fails + _expect_str("impl parse fallback", gt.extract_impl_pair("impl Add for Vec[i32]:"), "impl Add for Vec[i32]:")
+
+    fails = fails + _expect_str("mangle symbol passthrough", gt.mangle_symbol("sum", "i32, Vec[i32]"), "sum__i32, Vec[i32]")
+    fails = fails + _expect_str("instance key", gt.make_instance_key("map", "String"), "map__String")
+
+    if (fails == 0):
+        print("PASS: language foundation helpers")
+        return 0
+
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
