@@ -279,6 +279,24 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+## Benchmark Fibonacci (Stage2 vs Python)
+
+```bash
+python scripts/benchmark_fib.py
+```
+
+If `stage2.exe` is blocked in your environment, use:
+
+```bash
+python scripts/benchmark_fib.py --compiler legacy\stage0.exe
+```
+
+This benchmark compares recursive `fib(35)` across:
+- Python (`examples/fib.py`)
+- Thagore native binaries compiled from the same emitted LLVM IR at `-O0`, `-O2`, `-O3`
+
+The script prints median/mean/min timings and speedup ratios versus Python.
+
 ## 🤝 Contributing
 
 Contributions are welcome and appreciated! Please read our [Contributing Guide](/.github/CONTRIBUTING.md) before submitting a pull request.
