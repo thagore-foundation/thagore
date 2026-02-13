@@ -1,0 +1,16 @@
+import "src/compiler/parser_headers.tg" as base
+
+func parse_func_name(header: String) -> String:
+    return base.parse_func_name(header)
+
+func parse_func_generic_clause(header: String) -> String:
+    return base.parse_func_generic_clause(header)
+
+func parse_trait_name(header: String) -> String:
+    return base.parse_trait_name(header)
+
+func parse_impl_pair(header: String) -> String:
+    return base.parse_impl_pair(header)
+
+func has_result_sugar(header: String) -> i32:
+    return base.has_result_sugar(header)

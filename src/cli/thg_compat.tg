@@ -1,0 +1,5 @@
+import "thagore.tg" as thagore
+
+func main() -> i32:
+    print("--- Thagore Compiler Driver (Compatibility Mode) ---")
+    return thagore.main()

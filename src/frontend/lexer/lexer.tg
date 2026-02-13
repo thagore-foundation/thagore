@@ -1,0 +1,22 @@
+import "src/compiler/lexer.tg" as base
+
+func tokenize_stream(source: String) -> ptr:
+    return base.tokenize_stream(source)
+
+func stream_count(stream: ptr) -> i32:
+    return base.stream_count(stream)
+
+func stream_kind(stream: ptr, index: i32) -> String:
+    return base.stream_kind(stream, index)
+
+func stream_text(stream: ptr, index: i32) -> String:
+    return base.stream_text(stream, index)
+
+func stream_tag(stream: ptr, index: i32) -> i32:
+    return base.stream_tag(stream, index)
+
+func stream_free(stream: ptr) -> i32:
+    return base.stream_free(stream)
+
+func tokenize(source: String) -> i32:
+    return base.tokenize(source)

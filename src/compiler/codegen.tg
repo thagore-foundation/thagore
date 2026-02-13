@@ -1,4 +1,0 @@
-extern func __thg_codegen_emit_c(root: ptr) -> String
-
-func emit_program(root: ptr) -> String:
-    return __thg_codegen_emit_c(root)

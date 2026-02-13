@@ -1,0 +1,13 @@
+import "src/compiler/parser.tg" as base
+
+func parse_expr(source: String) -> ptr:
+    return base.parse_expr(source)
+
+func parse_stmt(source: String) -> ptr:
+    return base.parse_stmt(source)
+
+func parse_program(source: String) -> ptr:
+    return base.parse_program(source)
+
+func free_tree(node: ptr) -> i32:
+    return base.free_tree(node)

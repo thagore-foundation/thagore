@@ -1,0 +1,310 @@
+import env
+import fs
+import process
+import "src/backend/llvm/codegen_llvm.tg" as codegen_llvm
+import "src/frontend/semantic/semantic_pass.tg" as semantic_headers
+import "src/frontend/lowering/language_pipeline.tg" as lang_pipe
+
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _version() -> String:
+    return "0.5.0"
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _basename_no_ext(path: String) -> String:
+    let i = 0
+    let last_sep = -1
+    let last_dot = -1
+    while (i < path.length()):
+        let ch = _char_at(path, i)
+        if (ch == "/"):
+            last_sep = i
+            last_dot = -1
+        else:
+            if (ch == "\\"):
+                last_sep = i
+                last_dot = -1
+            else:
+                if (ch == "."):
+                    last_dot = i
+        i = i + 1
+    let start = last_sep + 1
+    if (last_dot < start):
+        last_dot = path.length()
+    return path.substr(start, last_dot - start)
+
+func _probe_clang(path: String) -> i32:
+    return process.run(path + " --version")
+
+func _detect_clang() -> String:
+    if (_probe_clang("clang") == 0):
+        return "clang"
+    let clang_short = "C:\\Progra~1\\LLVM\\bin\\clang.exe"
+    if (_probe_clang(clang_short) == 0):
+        return clang_short
+    let clang_win = "C:\\Program Files\\LLVM\\bin\\clang.exe"
+    if (_probe_clang(clang_win) == 0):
+        return clang_win
+    let clang_local = "llvm/clang+llvm-21.1.8-x86_64-pc-windows-msvc/bin/clang.exe"
+    if (_probe_clang(clang_local) == 0):
+        return clang_local
+    let clang_usr_bin = "/usr/bin/clang"
+    if (_probe_clang(clang_usr_bin) == 0):
+        return clang_usr_bin
+    let clang_usr_local = "/usr/local/bin/clang"
+    if (_probe_clang(clang_usr_local) == 0):
+        return clang_usr_local
+    return ""
+
+func _is_windows() -> i32:
+    if (process.run("cmd /c ver >nul 2>nul") == 0):
+        return 1
+    return 0
+
+func _detect_runtime_lib() -> String:
+    if (_is_windows() == 1):
+        if (process.run("cmd /c if exist thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "thag_runtime.lib"
+        if (process.run("cmd /c if exist legacy\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "legacy\\thag_runtime.lib"
+        if (process.run("cmd /c if exist build\\Debug\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "build\\Debug\\thag_runtime.lib"
+        if (process.run("cmd /c if exist legacy\\build\\Debug\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
+            return "legacy\\build\\Debug\\thag_runtime.lib"
+        return ""
+    if (process.run("sh -lc 'test -f thag_runtime.lib'") == 0):
+        return "thag_runtime.lib"
+    if (process.run("sh -lc 'test -f legacy/thag_runtime.lib'") == 0):
+        return "legacy/thag_runtime.lib"
+    if (process.run("sh -lc 'test -f build/Debug/thag_runtime.lib'") == 0):
+        return "build/Debug/thag_runtime.lib"
+    if (process.run("sh -lc 'test -f legacy/build/Debug/thag_runtime.lib'") == 0):
+        return "legacy/build/Debug/thag_runtime.lib"
+    return ""
+
+func _contains_space(text: String) -> i32:
+    let i = 0
+    while (i < text.length()):
+        if (_char_at(text, i) == " "):
+            return 1
+        i = i + 1
+    return 0
+
+func _sanitize_name(text: String) -> String:
+    let i = 0
+    let out = ""
+    while (i < text.length()):
+        let ch = _char_at(text, i)
+        if (ch == " "):
+            out = out + "_"
+        else:
+            out = out + ch
+        i = i + 1
+    return out
+
+func _has_cmd(cmd: String) -> i32:
+    if (_is_windows() == 1):
+        if (process.run("where " + cmd + " >nul 2>nul") == 0):
+            return 1
+        return 0
+    if (process.run("command -v " + cmd + " >/dev/null 2>&1") == 0):
+        return 1
+    return 0
+
+func _print_help() -> i32:
+    print("Thagore Compiler CLI")
+    print("Usage:")
+    print("  thagore build <file.tg> [-o output.exe]")
+    print("  thagore --emit-llvm <file.tg> [-o output.ll]")
+    print("  thagore doctor")
+    print("  thagore install toolchain")
+    print("  thagore --help")
+    print("  thagore --version")
+    return 0
+
+func _print_version() -> i32:
+    print("thagore " + _version())
+    return 0
+
+func _doctor() -> i32:
+    let code = 0
+    if (_detect_clang().length() > 0):
+        print("  [ok] clang")
+    else:
+        print("  [missing] clang")
+        code = 1
+    if (_detect_runtime_lib().length() > 0):
+        print("  [ok] thag_runtime.lib")
+    else:
+        print("  [missing] thag_runtime.lib")
+        code = 1
+    if (_has_cmd("cmake") == 1):
+        print("  [ok] cmake")
+    else:
+        print("  [missing] cmake")
+        code = 1
+    if (_has_cmd("git") == 1):
+        print("  [ok] git")
+    else:
+        print("  [missing] git")
+        code = 1
+    if (_has_cmd("ninja") == 1):
+        print("  [ok] ninja")
+    else:
+        print("  [missing] ninja")
+        code = 1
+    return code
+
+func _install_toolchain() -> i32:
+    print("Installing toolchain...")
+    if (_is_windows() == 1):
+        if (_has_cmd("winget") == 1):
+            if (process.run("winget install --id LLVM.LLVM --version 21.1.8 --silent --accept-package-agreements --accept-source-agreements") != 0):
+                return 1
+            if (process.run("winget install --id Kitware.CMake --silent --accept-package-agreements --accept-source-agreements") != 0):
+                return 1
+            if (process.run("winget install --id Ninja-build.Ninja --silent --accept-package-agreements --accept-source-agreements") != 0):
+                return 1
+            if (process.run("winget install --id Git.Git --silent --accept-package-agreements --accept-source-agreements") != 0):
+                return 1
+        else:
+            print("Error: winget not found. Install LLVM 21.1.8, cmake, ninja, git manually.")
+            return 1
+    else:
+        if (_has_cmd("brew") == 1):
+            if (process.run("brew update") != 0):
+                return 1
+            if (process.run("brew install llvm cmake ninja git") != 0):
+                return 1
+        else:
+            if (_has_cmd("apt-get") == 1):
+                if (process.run("sudo apt-get update") != 0):
+                    return 1
+                if (process.run("curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh") != 0):
+                    return 1
+                if (process.run("chmod +x /tmp/llvm.sh") != 0):
+                    return 1
+                if (process.run("sudo /tmp/llvm.sh 21 all") != 0):
+                    return 1
+                if (process.run("sudo apt-get install -y cmake ninja-build git") != 0):
+                    return 1
+            else:
+                print("Error: supported package manager not detected (brew/apt-get).")
+                return 1
+    print("Toolchain install done.")
+    return _doctor()
+
+func _build_or_emit(input_path: String, output_override: String, emit_llvm_only: i32) -> i32:
+    let source = fs.read_text(input_path)
+    if (source.length() == 0):
+        print("Error: Empty file or file not found.")
+        return 1
+    let preflight_code = semantic_headers.preflight(source)
+    if (preflight_code != 0):
+        print("Build aborted by semantic preflight.")
+        return preflight_code
+    let lang_check = lang_pipe.validate(source)
+    if (lang_check != 0):
+        print("Build aborted by language pipeline validation.")
+        return lang_check
+    source = lang_pipe.preprocess(source)
+    let base = _sanitize_name(_basename_no_ext(input_path))
+    let output_exe = output_override
+    let output_ll = base + ".ll"
+    if (emit_llvm_only == 1):
+        if (output_exe.length() > 0):
+            output_ll = output_exe
+    else:
+        if (output_exe.length() == 0):
+            output_exe = base + ".exe"
+    let ir = codegen_llvm.system_decls() + codegen_llvm.emit_program_from_source(source, base)
+    if (ir.length() == 0):
+        print("Error: LLVM IR generation failed")
+        return 1
+    if (fs.write_text(output_ll, ir) == 0):
+        print("Error: cannot write LLVM IR file")
+        return 1
+    if (emit_llvm_only == 1):
+        print("Generated LLVM IR:")
+        print(output_ll)
+        return 0
+    let clang_bin = _detect_clang()
+    if (clang_bin.length() == 0):
+        print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
+        return 1
+    let runtime_lib = _detect_runtime_lib()
+    if (runtime_lib.length() == 0):
+        print("CRITICAL: thag_runtime.lib not found in standard locations.")
+        return 1
+    if (_contains_space(clang_bin) == 1):
+        print("Error: detected clang path contains spaces; put clang in PATH or use a path without spaces.")
+        return 1
+    if (_contains_space(output_ll) == 1):
+        print("Error: IR path contains spaces, unsupported by current command runner.")
+        return 1
+    if (_contains_space(output_exe) == 1):
+        print("Error: output path contains spaces, unsupported by current command runner.")
+        return 1
+    if (_contains_space(runtime_lib) == 1):
+        print("Error: runtime lib path contains spaces, unsupported by current command runner.")
+        return 1
+    let cmd = clang_bin + " " + output_ll + " " + runtime_lib + " -o " + output_exe + " -Wno-override-module"
+    let code = process.run(cmd)
+    if (code != 0):
+        print("Build failed. Ensure clang is installed and available in PATH.")
+        print("Command executed:")
+        print(cmd)
+        return code
+    print("Build success.")
+    print(output_exe)
+    return 0
+
+func main() -> i32:
+    if (env.count() < 2):
+        return _print_help()
+    let arg1 = env.get(1)
+    if (arg1 == "--help"):
+        return _print_help()
+    if (arg1 == "-h"):
+        return _print_help()
+    if (arg1 == "--version"):
+        return _print_version()
+    if (arg1 == "-V"):
+        return _print_version()
+    if (arg1 == "doctor"):
+        return _doctor()
+    if (arg1 == "install"):
+        if (env.count() >= 3):
+            if (env.get(2) == "toolchain"):
+                return _install_toolchain()
+        print("Usage: thagore install toolchain")
+        return 2
+    let emit_llvm_only = 0
+    let script_arg = ""
+    let output_arg = ""
+    let i = 1
+    while (i < env.count()):
+        let arg = env.get(i)
+        if (arg == "build"):
+            i = i + 1
+        else:
+            if (arg == "--emit-llvm"):
+                emit_llvm_only = 1
+                i = i + 1
+            else:
+                if (arg == "-o"):
+                    if ((i + 1) >= env.count()):
+                        print("Error: missing output path after -o")
+                        return 2
+                    output_arg = env.get(i + 1)
+                    i = i + 2
+                else:
+                    if (script_arg.length() == 0):
+                        script_arg = arg
+                    i = i + 1
+    if (script_arg.length() == 0):
+        print("Error: missing input file.")
+        return 2
+    return _build_or_emit(script_arg, output_arg, emit_llvm_only)

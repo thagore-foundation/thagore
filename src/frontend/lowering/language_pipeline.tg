@@ -1,0 +1,7 @@
+import "src/compiler/language_pipeline.tg" as base
+
+func preprocess(source: String) -> String:
+    return base.preprocess(source)
+
+func validate(source: String) -> i32:
+    return base.validate(source)

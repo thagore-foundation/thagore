@@ -1,0 +1,16 @@
+import "src/compiler/ast.tg" as base
+
+func new_literal(val: String) -> ptr:
+    return base.new_literal(val)
+
+func new_binary(op: String, left: ptr, right: ptr) -> ptr:
+    return base.new_binary(op, left, right)
+
+func new_var(name: String) -> ptr:
+    return base.new_var(name)
+
+func kind_of(node: ptr) -> String:
+    return base.kind_of(node)
+
+func debug(node: ptr) -> String:
+    return base.debug(node)

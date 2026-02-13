@@ -1,0 +1,14 @@
+import "src/compiler/token.tg" as base
+
+struct Token:
+    kind: String
+    text: String
+
+func new_token(k: String, t: String) -> Token:
+    return base.new_token(k, t)
+
+func kind_of(tok: ptr) -> String:
+    return base.kind_of(tok)
+
+func text_of(tok: ptr) -> String:
+    return base.text_of(tok)

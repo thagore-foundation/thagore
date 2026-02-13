@@ -1,0 +1,22 @@
+import "src/compiler/semantic_headers.tg" as base
+
+func count_trait_defs(source: String) -> i32:
+    return base.count_trait_defs(source)
+
+func count_impl_defs(source: String) -> i32:
+    return base.count_impl_defs(source)
+
+func count_generic_funcs(source: String) -> i32:
+    return base.count_generic_funcs(source)
+
+func count_result_sugar(source: String) -> i32:
+    return base.count_result_sugar(source)
+
+func count_unknown_impl_traits(source: String) -> i32:
+    return base.count_unknown_impl_traits(source)
+
+func analyze_summary(source: String) -> String:
+    return base.analyze_summary(source)
+
+func preflight(source: String) -> i32:
+    return base.preflight(source)
