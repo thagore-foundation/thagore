@@ -751,6 +751,7 @@ auto linkExecutable(
   const std::filesystem::path &outputPath,
   const std::filesystem::path &runtimeLibPath
 ) -> Result<void, Diagnostic> {
+#if defined(_WIN32)
   auto lld = findLLVMTool("lld-link.exe");
   if (!lld) {
     return std::unexpected(Diagnostic {
@@ -797,6 +798,46 @@ auto linkExecutable(
   }
 
   return {};
+#else
+  auto cxx = findLLVMTool("clang++");
+  if (!cxx) {
+    return std::unexpected(Diagnostic {
+      .code = ErrorCode::CodegenError,
+      .message = "Cannot find clang++. Set THAG_LLVM_BIN or LLVM_DIR.",
+      .span = {},
+    });
+  }
+
+  std::vector<std::string> args {
+    objectPath.string(),
+    runtimeLibPath.string(),
+    "-o",
+    outputPath.string(),
+  };
+
+  auto linkResult = runTool(*cxx, args, "clang++");
+  if (!linkResult) {
+    return std::unexpected(linkResult.error());
+  }
+
+  if (options.release) {
+    auto strip = findLLVMTool("llvm-strip");
+    if (!strip) {
+      return std::unexpected(Diagnostic {
+        .code = ErrorCode::CodegenError,
+        .message = "Cannot find llvm-strip for --release mode.",
+        .span = {},
+      });
+    }
+
+    auto stripResult = runTool(*strip, {"--strip-all", outputPath.string()}, "llvm-strip");
+    if (!stripResult) {
+      return std::unexpected(stripResult.error());
+    }
+  }
+
+  return {};
+#endif
 }
 
 } // namespace
@@ -896,7 +937,11 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
 
   const auto outputPath = std::filesystem::path(options->outputFile);
   const auto objectPath = (options->mode == DriverMode::BuildExecutable)
+#if defined(_WIN32)
     ? outputPath.parent_path() / (outputPath.stem().string() + ".obj")
+#else
+    ? outputPath.parent_path() / (outputPath.stem().string() + ".o")
+#endif
     : outputPath;
 
   if (options->emitObject || options->mode == DriverMode::BuildExecutable) {
@@ -909,7 +954,12 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
 
   if (options->mode == DriverMode::BuildExecutable) {
     const auto thagExe = std::filesystem::absolute(std::filesystem::path(args[0]));
-    const auto runtimeLib = thagExe.parent_path() / "thag_runtime.lib";
+    const auto runtimeLib = thagExe.parent_path()
+#if defined(_WIN32)
+      / "thag_runtime.lib";
+#else
+      / "libthag_runtime.a";
+#endif
     if (!std::filesystem::exists(runtimeLib)) {
       printDiagnostic(Diagnostic {
         .code = ErrorCode::CodegenError,
