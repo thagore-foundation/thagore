@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       STAGE1_BIN: stage1
-      FINAL_BIN: thag
+      FINAL_BIN: thagore
       HELLO_BIN: hello
       FIB_BIN: fib
-      RELEASE_ASSET: thag-linux.tar.gz
+      RELEASE_ASSET: thagore-linux.tar.gz
       LLVM_PATH: /usr/lib/llvm-21
     steps:
       - name: Checkout
@@ -45,13 +45,25 @@ jobs:
           if gh release download --repo "${{ github.repository }}" --pattern "$RELEASE_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
             tar -xzf "bootstrap/$RELEASE_ASSET" -C bootstrap/extracted
-            if [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+            if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+              cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+              cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
               cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thag" -D bootstrap; then
-            if [[ -f "bootstrap/thag" ]]; then
+          elif gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap; then
+            if [[ -f "bootstrap/thagore" ]]; then
+              cp "bootstrap/thagore" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/thag" ]]; then
               cp "bootstrap/thag" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
@@ -81,11 +93,11 @@ jobs:
               cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
             fi
             chmod +x "$STAGE0_BIN" || true
-            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           if [[ ! -f "$FINAL_BIN" ]]; then
             echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
@@ -94,6 +106,7 @@ jobs:
           if [[ ! -f "thag_runtime.lib" ]]; then
             for runtime_candidate in \
               "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "bootstrap/extracted/lib/thag_runtime.lib" \
               "legacy/build/libthag_runtime.a" \
               "legacy/build/thag_runtime.lib"; do
               if [[ -f "$runtime_candidate" ]]; then
@@ -133,8 +146,9 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore
           cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
-          chmod +x dist/bin/thag
+          chmod +x dist/bin/thagore dist/bin/thag
           cp -r std dist/lib/std
           cp scripts/install/install-linux.sh dist/install.sh
           chmod +x dist/install.sh
@@ -155,8 +169,9 @@ jobs:
           mkdir -p "${PKG_ROOT}/usr/bin"
           mkdir -p "${PKG_ROOT}/usr/lib/thagore"
 
+          cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thagore"
           cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thag"
-          chmod +x "${PKG_ROOT}/usr/bin/thag"
+          chmod +x "${PKG_ROOT}/usr/bin/thagore" "${PKG_ROOT}/usr/bin/thag"
           cp -r std "${PKG_ROOT}/usr/lib/thagore/std"
 
           cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
@@ -178,7 +193,7 @@ jobs:
         with:
           name: release-linux
           path: |
-            thag-linux.tar.gz
+            thagore-linux.tar.gz
             thagore_*_amd64.deb
           if-no-files-found: error
 
@@ -187,11 +202,11 @@ jobs:
     runs-on: macos-latest
     env:
       STAGE1_BIN: stage1
-      FINAL_BIN: thag
+      FINAL_BIN: thagore
       HELLO_BIN: hello
       FIB_BIN: fib
-      RELEASE_ASSET: thag-macos.pkg
-      BOOTSTRAP_ASSET: thag-macos.tar.gz
+      RELEASE_ASSET: thagore-macos.pkg
+      BOOTSTRAP_ASSET: thagore-macos.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -216,8 +231,16 @@ jobs:
           if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
             tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
-            if [[ -f "bootstrap/extracted/bin/thag" ]]; then
+            if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+              cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/bin/thag" ]]; then
               cp "bootstrap/extracted/bin/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+              cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
@@ -225,8 +248,12 @@ jobs:
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thag" -D bootstrap; then
-            if [[ -f "bootstrap/thag" ]]; then
+          elif gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap; then
+            if [[ -f "bootstrap/thagore" ]]; then
+              cp "bootstrap/thagore" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/thag" ]]; then
               cp "bootstrap/thag" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
@@ -254,11 +281,11 @@ jobs:
               cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
             fi
             chmod +x "$STAGE0_BIN" || true
-            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           if [[ ! -f "$FINAL_BIN" ]]; then
             echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
@@ -267,6 +294,7 @@ jobs:
           if [[ ! -f "thag_runtime.lib" ]]; then
             for runtime_candidate in \
               "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "bootstrap/extracted/lib/thag_runtime.lib" \
               "legacy/build/libthag_runtime.a" \
               "legacy/build/thag_runtime.lib"; do
               if [[ -f "$runtime_candidate" ]]; then
@@ -310,8 +338,9 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore
           cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
-          chmod +x dist/bin/thag
+          chmod +x dist/bin/thagore dist/bin/thag
           cp -r std dist/lib/std
           tar -czf "$BOOTSTRAP_ASSET" -C dist .
 
@@ -319,8 +348,9 @@ jobs:
           mkdir -p pkgroot/usr/local/bin
           mkdir -p pkgroot/usr/local/lib/thagore
 
-          cp "${FINAL_BIN:-$STAGE1_BIN}" pkgroot/usr/local/bin/thag
-          chmod +x pkgroot/usr/local/bin/thag
+          cp "${FINAL_BIN:-$STAGE1_BIN}" pkgroot/usr/local/bin/thagore
+          chmod +x pkgroot/usr/local/bin/thagore
+          ln -sf /usr/local/bin/thagore pkgroot/usr/local/bin/thag
           cp -r std pkgroot/usr/local/lib/thagore/std
 
           VERSION="${GITHUB_REF_NAME#v}"
@@ -342,8 +372,8 @@ jobs:
         with:
           name: release-macos
           path: |
-            thag-macos.pkg
-            thag-macos.tar.gz
+            thagore-macos.pkg
+            thagore-macos.tar.gz
           if-no-files-found: error
 
   build-windows:
@@ -351,10 +381,10 @@ jobs:
     runs-on: windows-latest
     env:
       STAGE1_BIN: stage1.exe
-      FINAL_BIN: thag.exe
+      FINAL_BIN: thagore.exe
       HELLO_BIN: hello.exe
       FIB_BIN: fib.exe
-      RELEASE_ASSET: thag-windows-setup.exe
+      RELEASE_ASSET: thagore-windows-setup.exe
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -379,15 +409,21 @@ jobs:
           BOOTSTRAP_OK=0
           USE_BOOTSTRAP_STAGE1=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
+          if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
             mkdir -p bootstrap/install
-            "bootstrap/thag-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
-            if [[ -f "bootstrap/install/bin/thag.exe" ]]; then
+            "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+            if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
+              cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
               cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thag.exe" -D bootstrap; then
-            if [[ -f "bootstrap/thag.exe" ]]; then
+          elif gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap; then
+            if [[ -f "bootstrap/thagore.exe" ]]; then
+              cp "bootstrap/thagore.exe" "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/thag.exe" ]]; then
               cp "bootstrap/thag.exe" "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
@@ -431,16 +467,17 @@ jobs:
               echo "ERROR: stage0.exe not found"
               exit 1
             fi
-            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
           fi
 
-          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN" || true
+          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN" || true
           if [[ ! -f "$FINAL_BIN" || "$USE_BOOTSTRAP_STAGE1" -eq 1 ]]; then
             FINAL_BIN="$STAGE1_BIN"
           fi
 
           if [[ ! -f "thag_runtime.lib" ]]; then
             for runtime_candidate in \
+              "bootstrap/extracted/lib/thag_runtime.lib" \
               "bootstrap/extracted/dist/lib/thag_runtime.lib" \
               "legacy/build/Release/thag_runtime.lib" \
               "legacy/build/thag_runtime.lib" \
@@ -491,6 +528,7 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore.exe
           cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag.exe
           cp -r std dist/lib/std
 
@@ -510,7 +548,7 @@ jobs:
         with:
           name: release-windows
           path: |
-            thag-windows-setup.exe
+            thagore-windows-setup.exe
           if-no-files-found: error
 
   release:
@@ -545,4 +583,4 @@ jobs:
           repository: thagore-foundation/homebrew-thagore
           event-type: thagore-release
           client-payload: >-
-            {"version":"${{ github.ref_name }}","download_url":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thag-linux.tar.gz"}
+            {"version":"${{ github.ref_name }}","download_url":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thagore-linux.tar.gz"}

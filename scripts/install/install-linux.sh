@@ -15,10 +15,12 @@ fi
 echo "[thagore-installer] Installing Thagore to ${PREFIX}..."
 sudo mkdir -p "${PREFIX}"
 sudo cp -r "${ROOT_DIR}/dist/"* "${PREFIX}/"
-sudo ln -sf "${PREFIX}/bin/thag" /usr/local/bin/thag
+sudo ln -sf "${PREFIX}/bin/thagore" /usr/local/bin/thagore
+sudo ln -sf "${PREFIX}/bin/thagore" /usr/local/bin/thag
 
 cat <<EOF
 Thagore installed successfully.
-Binary: /usr/local/bin/thag
+Binary: /usr/local/bin/thagore
+Alias: /usr/local/bin/thag
 Stdlib: ${PREFIX}/lib/std
 EOF
