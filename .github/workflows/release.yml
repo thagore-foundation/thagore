@@ -190,7 +190,8 @@ jobs:
       FINAL_BIN: thag
       HELLO_BIN: hello
       FIB_BIN: fib
-      RELEASE_ASSET: thag-macos.tar.gz
+      RELEASE_ASSET: thag-macos.pkg
+      BOOTSTRAP_ASSET: thag-macos.tar.gz
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -212,10 +213,14 @@ jobs:
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag-macos.tar.gz" -D bootstrap; then
+          if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
-            tar -xzf "bootstrap/thag-macos.tar.gz" -C bootstrap/extracted
-            if [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+            tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
+            if [[ -f "bootstrap/extracted/bin/thag" ]]; then
+              cp "bootstrap/extracted/bin/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
               cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
@@ -308,7 +313,7 @@ jobs:
           cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
           chmod +x dist/bin/thag
           cp -r std dist/lib/std
-          tar -czf thag-macos.tar.gz dist
+          tar -czf "$BOOTSTRAP_ASSET" -C dist .
 
           rm -rf pkgroot
           mkdir -p pkgroot/usr/local/bin
@@ -329,6 +334,8 @@ jobs:
             --version "$VERSION" \
             --install-location "/" \
             "$RELEASE_ASSET"
+
+          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: macOS installer not generated"; exit 1)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -372,11 +379,11 @@ jobs:
           BOOTSTRAP_OK=0
           USE_BOOTSTRAP_STAGE1=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag-windows.zip" -D bootstrap; then
-            mkdir -p bootstrap/extracted
-            7z x "bootstrap/thag-windows.zip" -obootstrap/extracted >/dev/null
-            if [[ -f "bootstrap/extracted/dist/bin/thag.exe" ]]; then
-              cp "bootstrap/extracted/dist/bin/thag.exe" "$STAGE1_BIN"
+          if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
+            mkdir -p bootstrap/install
+            "bootstrap/thag-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+            if [[ -f "bootstrap/install/bin/thag.exe" ]]; then
+              cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
           elif gh release download --repo "${{ github.repository }}" --pattern "thag.exe" -D bootstrap; then
@@ -486,14 +493,14 @@ jobs:
           mkdir -p dist/bin dist/lib
           cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag.exe
           cp -r std dist/lib/std
-          7z a thag-windows.zip dist/* >/dev/null
 
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="0.0.0"
           fi
 
-          "/c/Program Files (x86)/NSIS/makensis.exe" "//DVERSION=$VERSION" installer/windows/thagore.nsi
+          "/c/Program Files (x86)/NSIS/makensis.exe" "/DVERSION=$VERSION" installer/windows/thagore.nsi
+          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: Windows UI installer not generated"; exit 1)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -501,7 +508,6 @@ jobs:
           name: release-windows
           path: |
             thag-windows-setup.exe
-            thag-windows.zip
           if-no-files-found: error
 
   release:
