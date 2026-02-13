@@ -90,13 +90,37 @@ jobs:
             echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
           fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/libthag_runtime.a" \
+              "legacy/build/thag_runtime.lib" \
+              "legacy/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${LLVM_PATH}/lib/cmake/llvm"
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
+              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
+          fi
+
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
         run: |
           set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$FINAL_BIN}"
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
@@ -110,7 +134,7 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
-          cp "${FINAL_BIN:-$FINAL_BIN}" dist/bin/thag
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
           chmod +x dist/bin/thag
           cp -r std dist/lib/std
           cp scripts/install/install-linux.sh dist/install.sh
@@ -200,13 +224,37 @@ jobs:
             echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
           fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/libthag_runtime.a" \
+              "legacy/build/thag_runtime.lib" \
+              "legacy/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
+              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
+          fi
+
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
         run: |
           set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$FINAL_BIN}"
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
@@ -222,7 +270,7 @@ jobs:
           mkdir -p pkgroot/usr/local/bin
           mkdir -p pkgroot/usr/local/lib/thagore
 
-          cp "${FINAL_BIN:-$FINAL_BIN}" pkgroot/usr/local/bin/thag
+          cp "${FINAL_BIN:-$STAGE1_BIN}" pkgroot/usr/local/bin/thag
           chmod +x pkgroot/usr/local/bin/thag
           cp -r std pkgroot/usr/local/lib/thagore/std
 
@@ -337,13 +385,48 @@ jobs:
           if [[ ! -f "$FINAL_BIN" || "$USE_BOOTSTRAP_STAGE1" -eq 1 ]]; then
             FINAL_BIN="$STAGE1_BIN"
           fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/Release/thag_runtime.lib" \
+              "legacy/build/thag_runtime.lib" \
+              "legacy/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
+              \$roots = @(); \
+              if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
+              \$roots += 'C:\\Program Files\\LLVM'; \
+              foreach (\$r in \$roots) { \
+                if (Test-Path \$r) { \
+                  \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
+                  if (\$hit) { Write-Output \$hit.DirectoryName; break } \
+                } \
+              }\
+            " | tr -d '\r')"
+            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_CMAKE_DIR" -DCMAKE_PREFIX_PATH="$LLVM_CMAKE_DIR"
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/Release/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/Release/thag_runtime.lib thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
+          fi
+
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
         run: |
           set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$FINAL_BIN}"
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
           "./$HELLO_BIN"
@@ -355,7 +438,7 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
-          cp "${FINAL_BIN:-$FINAL_BIN}" dist/bin/thag.exe
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag.exe
           cp -r std dist/lib/std
           7z a thag-windows.zip dist/* >/dev/null
 
