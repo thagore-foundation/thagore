@@ -161,6 +161,19 @@ jobs:
             echo "WARN: stage2 binary not produced, fallback to stage1 binary"
             FINAL_BIN="$STAGE1_BIN"
           fi
+
+          if [[ "${{ runner.os }}" != "Windows" && ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "legacy/build/libthag_runtime.a" \
+              "legacy/build/thag_runtime.lib" \
+              "legacy/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
