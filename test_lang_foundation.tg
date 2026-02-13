@@ -20,17 +20,17 @@ func main() -> i32:
 
     let sig = "func sum[T: Add, U](a: T, b: U) -> T:"
     let clause = gt.extract_generic_clause(sig)
-    fails = fails + _expect_str("generic clause fallback", clause, "")
-    fails = fails + _expect_i32("empty param count", gt.generic_param_count(clause), 0)
-    fails = fails + _expect_i32("non-empty param count", gt.generic_param_count("T"), 1)
-    fails = fails + _expect_str("param0 name passthrough", gt.generic_param_name_at("T", 0), "T")
-    fails = fails + _expect_str("param1 name empty", gt.generic_param_name_at("T", 1), "")
-    fails = fails + _expect_str("param0 bound fallback", gt.generic_param_bound_at("T: Add", 0), "")
+    fails = fails + _expect_str("generic clause", clause, "T:Add,U")
+    fails = fails + _expect_i32("param count", gt.generic_param_count(clause), 2)
+    fails = fails + _expect_str("param0 name", gt.generic_param_name_at(clause, 0), "T")
+    fails = fails + _expect_str("param0 bound", gt.generic_param_bound_at(clause, 0), "Add")
+    fails = fails + _expect_str("param1 name", gt.generic_param_name_at(clause, 1), "U")
+    fails = fails + _expect_str("param1 bound", gt.generic_param_bound_at(clause, 1), "")
 
-    fails = fails + _expect_str("trait parse fallback", gt.extract_trait_name("trait Add:"), "trait Add:")
-    fails = fails + _expect_str("impl parse fallback", gt.extract_impl_pair("impl Add for Vec[i32]:"), "impl Add for Vec[i32]:")
+    fails = fails + _expect_str("trait parse", gt.extract_trait_name("trait Add:"), "Add")
+    fails = fails + _expect_str("impl parse", gt.extract_impl_pair("impl Add for Vec[i32]:"), "Add|Vec[i32]")
 
-    fails = fails + _expect_str("mangle symbol passthrough", gt.mangle_symbol("sum", "i32, Vec[i32]"), "sum__i32, Vec[i32]")
+    fails = fails + _expect_str("mangle symbol", gt.mangle_symbol("sum", "i32, Vec[i32]"), "sum__i32__Vec_i32_")
     fails = fails + _expect_str("instance key", gt.make_instance_key("map", "String"), "map__String")
 
     if (fails == 0):
