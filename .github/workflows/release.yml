@@ -69,6 +69,7 @@ jobs:
 
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
+          USE_BOOTSTRAP_STAGE1=0
 
           ASSET_NAME=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -113,6 +114,7 @@ jobs:
               cp legacy/thag_runtime.lib thag_runtime.lib
             fi
             BOOTSTRAP_OK=1
+            USE_BOOTSTRAP_STAGE1=1
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
@@ -190,6 +192,10 @@ jobs:
             FINAL_BIN="thag"
           elif [[ ! -f "$FINAL_BIN" ]]; then
             echo "WARN: stage2 binary not produced, fallback to stage1 binary"
+            FINAL_BIN="$STAGE1_BIN"
+          fi
+
+          if [[ "${{ runner.os }}" == "Windows" && "$USE_BOOTSTRAP_STAGE1" -eq 1 ]]; then
             FINAL_BIN="$STAGE1_BIN"
           fi
 
