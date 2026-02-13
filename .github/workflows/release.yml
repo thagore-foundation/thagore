@@ -106,7 +106,9 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 && "${{ runner.os }}" == "Windows" && -f "stage1.exe" ]]; then
-            cp stage1.exe "$STAGE1_BIN"
+            if [[ "$STAGE1_BIN" != "stage1.exe" ]]; then
+              cp stage1.exe "$STAGE1_BIN"
+            fi
             if [[ -f "legacy/thag_runtime.lib" && ! -f "thag_runtime.lib" ]]; then
               cp legacy/thag_runtime.lib thag_runtime.lib
             fi
