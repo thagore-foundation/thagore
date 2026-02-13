@@ -256,12 +256,17 @@ jobs:
           fi
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp scripts/install/install-windows.ps1 dist/install.ps1
             7z a thag-windows.zip dist/*
             echo "asset=thag-windows.zip" >> "$GITHUB_OUTPUT"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            cp scripts/install/install-macos.sh dist/install.sh
+            chmod +x dist/install.sh
             tar -czf thag-macos.tar.gz dist
             echo "asset=thag-macos.tar.gz" >> "$GITHUB_OUTPUT"
           else
+            cp scripts/install/install-linux.sh dist/install.sh
+            chmod +x dist/install.sh
             tar -czf thag-linux.tar.gz dist
             echo "asset=thag-linux.tar.gz" >> "$GITHUB_OUTPUT"
           fi
