@@ -132,6 +132,12 @@ jobs:
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          if [[ ! -f "$HELLO_BIN" && -f "${HELLO_BIN}.exe" ]]; then
+            HELLO_BIN="${HELLO_BIN}.exe"
+          fi
+          if [[ ! -f "$FIB_BIN" && -f "${FIB_BIN}.exe" ]]; then
+            FIB_BIN="${FIB_BIN}.exe"
+          fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           "./$HELLO_BIN"
           "./$FIB_BIN"
@@ -266,6 +272,12 @@ jobs:
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          if [[ ! -f "$HELLO_BIN" && -f "${HELLO_BIN}.exe" ]]; then
+            HELLO_BIN="${HELLO_BIN}.exe"
+          fi
+          if [[ ! -f "$FIB_BIN" && -f "${FIB_BIN}.exe" ]]; then
+            FIB_BIN="${FIB_BIN}.exe"
+          fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           "./$HELLO_BIN"
           "./$FIB_BIN"
