@@ -3,6 +3,7 @@ import fs
 import process
 import "src/compiler/codegen_llvm.tg" as codegen_llvm
 import "src/compiler/semantic_headers.tg" as semantic_headers
+import "src/compiler/language_pipeline.tg" as lang_pipe
 
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 
@@ -178,6 +179,11 @@ func main() -> i32:
     if (preflight_code != 0):
         print("Build aborted by semantic preflight.")
         return preflight_code
+    let lang_check = lang_pipe.validate(source)
+    if (lang_check != 0):
+        print("Build aborted by language pipeline validation.")
+        return lang_check
+    source = lang_pipe.preprocess(source)
     let base = _basename_no_ext(input_path)
     base = _sanitize_name(base)
     let output_exe = output_override

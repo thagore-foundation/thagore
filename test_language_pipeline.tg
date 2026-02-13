@@ -1,0 +1,57 @@
+import "src/compiler/language_pipeline.tg" as pipe
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(hay: String, needle: String) -> i32:
+    let n = strlen(hay)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(hay, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str_contains(label: String, hay: String, needle: String) -> i32:
+    if (_contains(hay, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("  missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let src_trait = "impl Add for Vec:"
+    let out_trait = pipe.preprocess(src_trait)
+    fails = fails + _expect_str_contains("rewrite impl for", out_trait, "impl Vec:")
+
+    let src_comp = "func main() -> i32:\n    let x = comptime(1 + 2)\n    return x\n"
+    let out_comp = pipe.preprocess(src_comp)
+    fails = fails + _expect_str_contains("strip comptime wrapper", out_comp, "let x = 1 + 2")
+
+    let src_gen = "func id[T](x: T) -> T:\n    return x\n"
+    let out_gen = pipe.preprocess(src_gen)
+    fails = fails + _expect_str_contains("strip generic clause", out_gen, "func id(x: T) -> T:")
+
+    fails = fails + _expect_i32("reject defer top-level", pipe.validate("defer print(x)\n"), 1)
+    fails = fails + _expect_i32("accept defer in function", pipe.validate("func main() -> i32:\n    defer print(x)\n    return 0\n"), 0)
+    fails = fails + _expect_i32("reject stray ?", pipe.validate("foo?"), 1)
+    fails = fails + _expect_i32("accept ? in result-like header", pipe.validate("func run() -> Result[i32, String]?:\n    return 0\n"), 0)
+
+    if (fails == 0):
+        print("PASS: language pipeline")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
