@@ -35,7 +35,11 @@ def main() -> int:
         return 2
 
     print(f"[stage_guard] Running (timeout={args.timeout}s): {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    except OSError as exc:
+        print(f"[stage_guard] Failed to launch process: {exc}")
+        return 126
 
     try:
         out, _ = proc.communicate(timeout=args.timeout)
