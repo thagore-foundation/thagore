@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21"
+
+      - name: Smart Bootstrap
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE1_BIN="stage1.exe"
+            FINAL_BIN="thag.exe"
+            HELLO_BIN="hello.exe"
+            FIB_BIN="fib.exe"
+          else
+            STAGE1_BIN="stage1"
+            FINAL_BIN="thag"
+            HELLO_BIN="hello"
+            FIB_BIN="fib"
+          fi
+
+          mkdir -p bootstrap
+          BOOTSTRAP_OK=0
+
+          if gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
+            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thag.exe ]]; then
+              cp bootstrap/thag.exe "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thag ]]; then
+              cp bootstrap/thag "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            fi
+          fi
+
+          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release
+            cmake --build legacy/build --config Release
+
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              if [[ -f legacy/build/Release/thag.exe ]]; then
+                STAGE0_BIN="legacy/build/Release/thag.exe"
+              elif [[ -f legacy/build/thag.exe ]]; then
+                STAGE0_BIN="legacy/build/thag.exe"
+              else
+                echo "ERROR: stage0.exe not found"; exit 1
+              fi
+            else
+              if [[ -f legacy/build/thag ]]; then
+                STAGE0_BIN="legacy/build/thag"
+              elif [[ -f legacy/build/Release/thag ]]; then
+                STAGE0_BIN="legacy/build/Release/thag"
+              else
+                echo "ERROR: stage0 not found"; exit 1
+              fi
+            fi
+
+            chmod +x "$STAGE0_BIN" || true
+            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+          fi
+
+          chmod +x "$STAGE1_BIN" || true
+          "$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+
+      - name: Test hello + fib
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            FINAL_BIN="thag.exe"
+            HELLO_BIN="hello.exe"
+            FIB_BIN="fib.exe"
+          else
+            FINAL_BIN="thag"
+            HELLO_BIN="hello"
+            FIB_BIN="fib"
+          fi
+
+          chmod +x "$FINAL_BIN" || true
+          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p dist/bin dist/lib
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp thag.exe dist/bin/
+          else
+            cp thag dist/bin/
+            chmod +x dist/bin/thag
+          fi
+
+          if [[ -d std ]]; then
+            cp -r std dist/lib/std
+          fi
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            7z a thag-windows.zip dist/*
+          else
+            tar -czf thag-linux.tar.gz dist
+          fi
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            thag.exe
+            thag
+            thag-windows.zip
+            thag-linux.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
