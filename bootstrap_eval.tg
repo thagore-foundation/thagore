@@ -1,4 +1,4 @@
-import "src/compiler/parser.tg" as parser
+import "src/syntax/parser.tg" as parser
 import "src/compiler/eval.tg" as eval
 
 func main() -> i32:

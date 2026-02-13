@@ -163,6 +163,29 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
         pushToken(TokenKind::Newline, b, cursor);
         continue;
       }
+
+      // Blank/comment-only lines must not affect indentation stack.
+      {
+        std::size_t lookahead = 0;
+        while (peek(lookahead) == ' ') {
+          lookahead += 1;
+        }
+        if (peek(lookahead) == '\t') {
+          Cursor begin = cursor;
+          return error("Tabs are not allowed in indentation.", begin, begin);
+        }
+        const bool lineComment = peek(lookahead) == '#' || (peek(lookahead) == '/' && peek(lookahead + 1) == '/');
+        if (lineComment) {
+          while (peek() == ' ') {
+            advance();
+          }
+          while (!atEnd() && peek() != '\n') {
+            advance();
+          }
+          continue;
+        }
+      }
+
       auto indentResult = scanIndentation();
       if (!indentResult) {
         return std::unexpected(indentResult.error());
@@ -242,7 +265,7 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
         return error("Unterminated string literal.", begin, cursor);
       }
       advance();
-      pushToken(TokenKind::String, begin, cursor, text);
+      pushToken(TokenKind::InterpolatedString, begin, cursor, text);
       continue;
     }
 
@@ -349,6 +372,9 @@ auto Lexer::tokenize(std::string_view source, std::string file) -> Result<std::v
           pushToken(TokenKind::Greater, begin, cursor);
         }
         break;
+      case '{':
+      case '}':
+        return error("Brace blocks are removed. Use indentation-based blocks.", begin, cursor);
       default:
         return error(std::format("Unexpected character '{}'.", current), begin, cursor);
     }

@@ -1,7 +1,7 @@
 import env
 import fs
 import process
-import "src/compiler/parser.tg" as parser
+import "src/syntax/parser.tg" as parser
 import "src/compiler/eval.tg" as eval
 import "src/compiler/codegen.tg" as codegen
 import "src/compiler/codegen_llvm.tg" as codegen_llvm

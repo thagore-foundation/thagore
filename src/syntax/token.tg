@@ -1,0 +1,37 @@
+struct Token:
+    kind: String
+    text: String
+
+extern func __thg_token_new(kind: String, text: String) -> ptr
+extern func __thg_token_kind(tok: ptr) -> String
+extern func __thg_token_text(tok: ptr) -> String
+
+func new_token(kind: String, text: String) -> Token:
+    return Token(kind, text)
+
+func new_handle(kind: String, text: String) -> ptr:
+    return __thg_token_new(kind, text)
+
+func kind_of(tok: ptr) -> String:
+    return __thg_token_kind(tok)
+
+func text_of(tok: ptr) -> String:
+    return __thg_token_text(tok)
+
+func tok_newline() -> String:
+    return "NEWLINE"
+
+func tok_indent() -> String:
+    return "INDENT"
+
+func tok_dedent() -> String:
+    return "DEDENT"
+
+func tok_eof() -> String:
+    return "EOF"
+
+func tok_lbrace() -> String:
+    return ""
+
+func tok_rbrace() -> String:
+    return ""

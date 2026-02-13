@@ -125,6 +125,99 @@ func f(a, b = 1) = not a and b or true
   CHECK(hasOr);
 }
 
+void testLexerIndentationTokenSequence() {
+  constexpr std::string_view source = R"(func main():
+    let x = 10
+    if x > 0:
+        print(v"Value: {x}")
+    print("Done")
+)";
+  Lexer lexer {};
+  auto tokens = lexer.tokenize(source, "lexer_indent.thg");
+  CHECK(tokens.has_value());
+
+  const std::vector<TokenKind> expected {
+    TokenKind::KwFunc,
+    TokenKind::Identifier,
+    TokenKind::LParen,
+    TokenKind::RParen,
+    TokenKind::Colon,
+    TokenKind::Newline,
+    TokenKind::Indent,
+    TokenKind::KwLet,
+    TokenKind::Identifier,
+    TokenKind::Equal,
+    TokenKind::Integer,
+    TokenKind::Newline,
+    TokenKind::KwIf,
+    TokenKind::Identifier,
+    TokenKind::Greater,
+    TokenKind::Integer,
+    TokenKind::Colon,
+    TokenKind::Newline,
+    TokenKind::Indent,
+    TokenKind::Identifier,
+    TokenKind::LParen,
+    TokenKind::InterpolatedString,
+    TokenKind::RParen,
+    TokenKind::Newline,
+    TokenKind::Dedent,
+    TokenKind::Identifier,
+    TokenKind::LParen,
+    TokenKind::String,
+    TokenKind::RParen,
+    TokenKind::Newline,
+    TokenKind::Dedent,
+    TokenKind::Eof,
+  };
+
+  CHECK(tokens->size() == expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    CHECK((*tokens)[i].kind == expected[i]);
+  }
+}
+
+void testLexerIndentationMismatch() {
+  constexpr std::string_view source = R"(func main():
+    let x = 1
+  let y = 2
+)";
+  Lexer lexer {};
+  auto tokens = lexer.tokenize(source, "lexer_bad_indent.thg");
+  CHECK(!tokens.has_value());
+  CHECK(tokens.error().code == ErrorCode::LexError);
+}
+
+void testLexerRejectsBraceBlocks() {
+  constexpr std::string_view source = R"(func main():
+    let x = 1
+    if x > 0:
+      { print("bad") }
+)";
+  Lexer lexer {};
+  auto tokens = lexer.tokenize(source, "lexer_brace_reject.thg");
+  CHECK(!tokens.has_value());
+  CHECK(tokens.error().code == ErrorCode::LexError);
+}
+
+void testLexerInterpolatedStringKind() {
+  constexpr std::string_view source = R"(func main():
+    print(v"Value: {1}")
+)";
+  Lexer lexer {};
+  auto tokens = lexer.tokenize(source, "lexer_interpolated.thg");
+  CHECK(tokens.has_value());
+
+  bool hasInterpolated = false;
+  for (const auto &tok : *tokens) {
+    if (tok.kind == TokenKind::InterpolatedString) {
+      hasInterpolated = true;
+      break;
+    }
+  }
+  CHECK(hasInterpolated);
+}
+
 void testParserStdCoreSyntax() {
   constexpr std::string_view source = R"(use prelude as prelude
 func f(a, b = 1) = a + b
@@ -647,6 +740,10 @@ void testRuntimeBridgeContracts() {
 
 int main() {
   testLexerKeywordsAndComments();
+  testLexerIndentationTokenSequence();
+  testLexerIndentationMismatch();
+  testLexerRejectsBraceBlocks();
+  testLexerInterpolatedStringKind();
   testParserStdCoreSyntax();
   testSemanticAndCodegenStdCorePaths();
   testIfReturnKeepsOuterScope();

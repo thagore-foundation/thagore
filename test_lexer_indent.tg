@@ -1,0 +1,17 @@
+# Expected tokens:
+# FUNC IDENTIFIER(main) LPAREN RPAREN COLON NEWLINE
+# INDENT
+# LET IDENTIFIER(x) EQ NUMBER(10) NEWLINE
+# IF IDENTIFIER(x) GT NUMBER(0) COLON NEWLINE
+# INDENT
+# IDENTIFIER(print) LPAREN INTERPOLATED_STRING RPAREN NEWLINE
+# DEDENT
+# IDENTIFIER(print) LPAREN STRING RPAREN NEWLINE
+# DEDENT EOF
+
+func main() -> i32:
+    let x = 10
+    if (x > 0):
+        print(v"Value: {x}")
+    print("Done")
+    return 0

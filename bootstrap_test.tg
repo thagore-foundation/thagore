@@ -1,4 +1,4 @@
-import "src/compiler/lexer.tg" as lexer
+import "src/syntax/lexer.tg" as lexer
 
 func main() -> i32:
     print("Bootstrapping Lexer Test...")
