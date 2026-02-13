@@ -168,12 +168,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          FINAL_BIN="${FINAL_BIN:-}"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            FINAL_BIN="thag.exe"
+            if [[ -z "$FINAL_BIN" ]]; then
+              FINAL_BIN="thag.exe"
+            fi
             HELLO_BIN="hello.exe"
             FIB_BIN="fib.exe"
           else
-            FINAL_BIN="thag"
+            if [[ -z "$FINAL_BIN" ]]; then
+              FINAL_BIN="thag"
+            fi
             HELLO_BIN="hello"
             FIB_BIN="fib"
           fi
@@ -184,6 +189,10 @@ jobs:
             FINAL_BIN="thag"
           elif [[ -f "thag.exe" ]]; then
             FINAL_BIN="thag.exe"
+          elif [[ -f "stage1" ]]; then
+            FINAL_BIN="stage1"
+          elif [[ -f "stage1.exe" ]]; then
+            FINAL_BIN="stage1.exe"
           else
             echo "ERROR: final compiler binary not found"; exit 1
           fi
