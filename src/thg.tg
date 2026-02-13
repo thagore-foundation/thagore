@@ -1,5 +1,6 @@
 import "src/thagore.tg" as thagore
 
 func main() -> i32:
-    print("[deprecated] Use src/thagore.tg (binary: thagore).")
+    print("This CLI is deprecated please use `thagore`")
+    print("[contributor] [deprecated] Use src/thagore.tg (binary: thagore).")
     return thagore.main()
