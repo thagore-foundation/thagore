@@ -11,11 +11,55 @@ permissions:
 
 jobs:
   build-and-release:
+    name: build-release (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - name: windows
+            os: windows-latest
+            stage1_bin: stage1.exe
+            final_bin: thag.exe
+            hello_bin: hello.exe
+            fib_bin: fib.exe
+            release_asset: thag-windows.zip
+            install_script: scripts/install/install-windows.ps1
+            install_out: dist/install.ps1
+            archive_kind: zip
+            bin_out: thag.exe
+          - name: linux
+            os: ubuntu-latest
+            stage1_bin: stage1
+            final_bin: thag
+            hello_bin: hello
+            fib_bin: fib
+            release_asset: thag-linux.tar.gz
+            install_script: scripts/install/install-linux.sh
+            install_out: dist/install.sh
+            archive_kind: tar
+            bin_out: thag
+          - name: macos
+            os: macos-latest
+            stage1_bin: stage1
+            final_bin: thag
+            hello_bin: hello
+            fib_bin: fib
+            release_asset: thag-macos.tar.gz
+            install_script: scripts/install/install-macos.sh
+            install_out: dist/install.sh
+            archive_kind: tar
+            bin_out: thag
+    env:
+      STAGE1_BIN_DEFAULT: ${{ matrix.stage1_bin }}
+      FINAL_BIN_DEFAULT: ${{ matrix.final_bin }}
+      HELLO_BIN_DEFAULT: ${{ matrix.hello_bin }}
+      FIB_BIN_DEFAULT: ${{ matrix.fib_bin }}
+      RELEASE_ASSET: ${{ matrix.release_asset }}
+      INSTALL_SCRIPT: ${{ matrix.install_script }}
+      INSTALL_OUT: ${{ matrix.install_out }}
+      ARCHIVE_KIND: ${{ matrix.archive_kind }}
+      BIN_OUT: ${{ matrix.bin_out }}
 
     steps:
       - name: Checkout
@@ -55,44 +99,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            STAGE1_BIN="stage1.exe"
-            FINAL_BIN="thag.exe"
-            HELLO_BIN="hello.exe"
-            FIB_BIN="fib.exe"
-          else
-            STAGE1_BIN="stage1"
-            FINAL_BIN="thag"
-            HELLO_BIN="hello"
-            FIB_BIN="fib"
-          fi
+          STAGE1_BIN="$STAGE1_BIN_DEFAULT"
+          FINAL_BIN="$FINAL_BIN_DEFAULT"
+          HELLO_BIN="$HELLO_BIN_DEFAULT"
+          FIB_BIN="$FIB_BIN_DEFAULT"
 
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
           USE_BOOTSTRAP_STAGE1=0
 
-          ASSET_NAME=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ASSET_NAME="thag-windows.zip"
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            ASSET_NAME="thag-macos.tar.gz"
-          else
-            ASSET_NAME="thag-linux.tar.gz"
-          fi
+          ASSET_NAME="$RELEASE_ASSET"
 
           if gh release download --repo "${{ github.repository }}" --pattern "$ASSET_NAME" -D bootstrap; then
             mkdir -p bootstrap/extracted
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
+            if [[ "$ARCHIVE_KIND" == "zip" ]]; then
               7z x "bootstrap/$ASSET_NAME" -obootstrap/extracted >/dev/null
             else
               tar -xzf "bootstrap/$ASSET_NAME" -C bootstrap/extracted
             fi
-            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/extracted/dist/bin/thag.exe ]]; then
-              cp bootstrap/extracted/dist/bin/thag.exe "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/extracted/dist/bin/thag ]]; then
-              cp bootstrap/extracted/dist/bin/thag "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
+            if [[ -f "bootstrap/extracted/dist/bin/$BIN_OUT" ]]; then
+              cp "bootstrap/extracted/dist/bin/$BIN_OUT" "$STAGE1_BIN"
+              if [[ "$ARCHIVE_KIND" != "zip" ]]; then
+                chmod +x "$STAGE1_BIN"
+              fi
               BOOTSTRAP_OK=1
             fi
           elif gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
@@ -212,26 +241,17 @@ jobs:
           fi
 
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+          echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
         run: |
           set -euo pipefail
 
-          FINAL_BIN="${FINAL_BIN:-}"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            if [[ -z "$FINAL_BIN" ]]; then
-              FINAL_BIN="thag.exe"
-            fi
-            HELLO_BIN="hello.exe"
-            FIB_BIN="fib.exe"
-          else
-            if [[ -z "$FINAL_BIN" ]]; then
-              FINAL_BIN="thag"
-            fi
-            HELLO_BIN="hello"
-            FIB_BIN="fib"
-          fi
+          FINAL_BIN="${FINAL_BIN:-$FINAL_BIN_DEFAULT}"
+          HELLO_BIN="${HELLO_BIN:-$HELLO_BIN_DEFAULT}"
+          FIB_BIN="${FIB_BIN:-$FIB_BIN_DEFAULT}"
 
           if [[ -n "${FINAL_BIN:-}" && -f "$FINAL_BIN" ]]; then
             :
@@ -275,32 +295,26 @@ jobs:
             echo "ERROR: final compiler binary not found for packaging"; exit 1
           fi
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$FINAL_BIN_NAME" dist/bin/thag.exe
-          else
-            cp "$FINAL_BIN_NAME" dist/bin/thag
-            chmod +x dist/bin/thag
+          cp "$FINAL_BIN_NAME" "dist/bin/$BIN_OUT"
+          if [[ "$ARCHIVE_KIND" != "zip" ]]; then
+            chmod +x "dist/bin/$BIN_OUT"
           fi
 
           if [[ -d std ]]; then
             cp -r std dist/lib/std
           fi
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp scripts/install/install-windows.ps1 dist/install.ps1
-            7z a thag-windows.zip dist/*
-            echo "asset=thag-windows.zip" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            cp scripts/install/install-macos.sh dist/install.sh
-            chmod +x dist/install.sh
-            tar -czf thag-macos.tar.gz dist
-            echo "asset=thag-macos.tar.gz" >> "$GITHUB_OUTPUT"
-          else
-            cp scripts/install/install-linux.sh dist/install.sh
-            chmod +x dist/install.sh
-            tar -czf thag-linux.tar.gz dist
-            echo "asset=thag-linux.tar.gz" >> "$GITHUB_OUTPUT"
+          cp "$INSTALL_SCRIPT" "$INSTALL_OUT"
+          if [[ "$ARCHIVE_KIND" != "zip" ]]; then
+            chmod +x "$INSTALL_OUT"
           fi
+
+          if [[ "$ARCHIVE_KIND" == "zip" ]]; then
+            7z a "$RELEASE_ASSET" dist/*
+          else
+            tar -czf "$RELEASE_ASSET" dist
+          fi
+          echo "asset=$RELEASE_ASSET" >> "$GITHUB_OUTPUT"
 
       - name: Release
         uses: softprops/action-gh-release@v2
