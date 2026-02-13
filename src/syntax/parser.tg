@@ -4,6 +4,21 @@ extern func __thg_parse_expr_from_tokens(stream: ptr) -> ptr
 extern func __thg_parse_stmt_from_source(source: String) -> ptr
 extern func __thg_parse_program_from_source(source: String) -> ptr
 
+func _tag_eof() -> i32:
+    return 0
+
+func _tag_newline() -> i32:
+    return 12
+
+func _tag_indent() -> i32:
+    return 13
+
+func _tag_dedent() -> i32:
+    return 14
+
+func _tag_colon() -> i32:
+    return 15
+
 struct Parser:
     stream: ptr
 
@@ -24,3 +39,54 @@ func parse_stmt(source: String) -> ptr:
 
 func parse_program(source: String) -> ptr:
     return __thg_parse_program_from_source(source)
+
+func _skip_newlines(stream: ptr, index: i32, total: i32) -> i32:
+    let i = index
+    while (i < total):
+        if (lexer.stream_tag(stream, i) == _tag_newline()):
+            i = i + 1
+        else:
+            return i
+    return i
+
+func _expect_tag(stream: ptr, index: i32, total: i32, expected: i32) -> i32:
+    if (index >= total):
+        return -1
+    if (lexer.stream_tag(stream, index) == expected):
+        return index + 1
+    return -1
+
+func parse_block_from(stream: ptr, start_index: i32) -> i32:
+    let total = lexer.stream_count(stream)
+    let i = start_index
+
+    i = _skip_newlines(stream, i, total)
+    i = _expect_tag(stream, i, total, _tag_colon())
+    if (i < 0):
+        return -1
+    i = _expect_tag(stream, i, total, _tag_newline())
+    if (i < 0):
+        return -1
+    i = _expect_tag(stream, i, total, _tag_indent())
+    if (i < 0):
+        return -1
+
+    let depth = 1
+    while (i < total):
+        let tag = lexer.stream_tag(stream, i)
+        if (tag == _tag_indent()):
+            depth = depth + 1
+        else:
+            if (tag == _tag_dedent()):
+                depth = depth - 1
+                if (depth == 0):
+                    return i + 1
+        i = i + 1
+    return -1
+
+func parse_block(source: String) -> i32:
+    let stream = lexer.tokenize_stream(source)
+    let end_index = parse_block_from(stream, 0)
+    if (end_index < 0):
+        return 0
+    return 1
