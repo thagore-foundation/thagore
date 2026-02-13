@@ -4,4 +4,6 @@ func emit_program(root: ptr) -> String:
     return __thg_codegen_emit_llvm(root)
 
 func system_decls() -> String:
-    return "declare ptr @malloc(i32)\ndeclare void @free(ptr)\ndeclare ptr @memcpy(ptr, ptr, i32)\ndeclare i32 @strlen(ptr)\ndeclare i32 @printf(ptr, ...)\ndeclare void @exit(i32)\n"
+    # Stage1 runtime codegen already emits required declarations.
+    # Keep this empty to avoid escaped "\n" literals in self-hosted string handling.
+    return ""

@@ -170,6 +170,7 @@ private:
     if (!consume(TokenKind::Newline, "Expected newline after struct header.")) {
       return std::unexpected(lastError("Expected newline after struct header."));
     }
+    skipNewlines();
     if (!consume(TokenKind::Indent, "Expected INDENT in struct body.")) {
       return std::unexpected(lastError("Expected INDENT in struct body."));
     }
@@ -454,6 +455,7 @@ private:
     if (!consume(TokenKind::Newline, "Expected newline after impl header.")) {
       return std::unexpected(lastError("Expected newline after impl header."));
     }
+    skipNewlines();
     if (!consume(TokenKind::Indent, "Expected INDENT in impl block.")) {
       return std::unexpected(lastError("Expected INDENT in impl block."));
     }
@@ -478,6 +480,7 @@ private:
   }
 
   auto parseIndentedBlock() -> Result<std::unique_ptr<BlockStmt>, Diagnostic> {
+    skipNewlines();
     const Token *indent = consume(TokenKind::Indent, "Expected INDENT.");
     if (!indent) {
       return std::unexpected(lastError("Expected INDENT."));

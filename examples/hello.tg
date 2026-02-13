@@ -1,1 +1,2 @@
-print(42)
+func main():
+    print("Hello Self-Hosted World!")
