@@ -107,56 +107,48 @@ jobs:
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
             CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
-            if [[ "${{ runner.os }}" != "Windows" && -n "${LLVM_PATH:-}" ]]; then
+            if [[ "${{ runner.os }}" == "Linux" && -n "${LLVM_PATH:-}" ]]; then
               export CC="${LLVM_PATH}/bin/clang"
               export CXX="${LLVM_PATH}/bin/clang++"
             fi
 
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              LLVM_CMAKE_DIR=""
-              if [[ -n "${LLVM_PATH:-}" ]]; then
-                if command -v cygpath >/dev/null 2>&1; then
-                  LLVM_MIXED="$(cygpath -m "${LLVM_PATH}")"
-                  LLVM_CMAKE_DIR="${LLVM_MIXED}/lib/cmake/llvm"
-                else
-                  LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
-                fi
-              else
-                LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
+              LLVM_SEARCH_ROOT="${LLVM_PATH:-C:/Program Files/LLVM}"
+              LLVM_CMAKE_FILE="$(find "$LLVM_SEARCH_ROOT" -type f -path '*/lib/cmake/llvm/LLVMConfig.cmake' 2>/dev/null | head -n1 || true)"
+              if [[ -z "$LLVM_CMAKE_FILE" ]]; then
+                LLVM_CMAKE_FILE="$(find "C:/Program Files/LLVM" -type f -path '*/lib/cmake/llvm/LLVMConfig.cmake' 2>/dev/null | head -n1 || true)"
               fi
-
-              if [[ -f "${LLVM_CMAKE_DIR}/LLVMConfig.cmake" ]]; then
-                CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_CMAKE_DIR}")
-                CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${LLVM_CMAKE_DIR}")
-              else
-                echo "ERROR: LLVMConfig.cmake not found at ${LLVM_CMAKE_DIR}"
+              if [[ -z "$LLVM_CMAKE_FILE" ]]; then
+                echo "ERROR: LLVMConfig.cmake not found on Windows LLVM installation"
                 exit 1
               fi
-              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-                CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
-              elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
-                CMAKE_ARGS+=("-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm")
-              fi
+              LLVM_CMAKE_DIR="$(dirname "$LLVM_CMAKE_FILE")"
+              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_CMAKE_DIR}")
+              CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${LLVM_CMAKE_DIR}")
+            elif [[ "${{ runner.os }}" == "macOS" && -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
+            elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS+=("-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm")
+            fi
 
-              cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
-              cmake --build legacy/build --config Release
+            cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
+            cmake --build legacy/build --config Release
 
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                if [[ -f legacy/build/Release/thag.exe ]]; then
-                  STAGE0_BIN="legacy/build/Release/thag.exe"
-                elif [[ -f legacy/build/thag.exe ]]; then
-                  STAGE0_BIN="legacy/build/thag.exe"
-                else
-                  echo "ERROR: stage0.exe not found"; exit 1
-                fi
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              if [[ -f legacy/build/Release/thag.exe ]]; then
+                STAGE0_BIN="legacy/build/Release/thag.exe"
+              elif [[ -f legacy/build/thag.exe ]]; then
+                STAGE0_BIN="legacy/build/thag.exe"
               else
-                if [[ -f legacy/build/thag ]]; then
-                  STAGE0_BIN="legacy/build/thag"
-                elif [[ -f legacy/build/Release/thag ]]; then
-                  STAGE0_BIN="legacy/build/Release/thag"
-                else
-                  echo "ERROR: stage0 not found"; exit 1
-                fi
+                echo "ERROR: stage0.exe not found"; exit 1
+              fi
+            else
+              if [[ -f legacy/build/thag ]]; then
+                STAGE0_BIN="legacy/build/thag"
+              elif [[ -f legacy/build/Release/thag ]]; then
+                STAGE0_BIN="legacy/build/Release/thag"
+              else
+                echo "ERROR: stage0 not found"; exit 1
               fi
             fi
 
