@@ -12,6 +12,7 @@
 #include <limits>
 #include <thread>
 #include <string>
+#include <string_view>
 #include <array>
 #include <optional>
 #include <vector>
@@ -41,6 +42,7 @@ struct AstNode {
   std::string kind {};
   std::string op {};
   std::string value {};
+  std::vector<std::string> items {};
   AstNode *left {nullptr};
   AstNode *right {nullptr};
 };
@@ -163,71 +165,354 @@ auto tokenizeExprSource(const char *source) -> std::vector<ExprToken> {
     return out;
   }
 
-  const auto *p = source;
-  while (*p != '\0') {
-    if (std::isspace(static_cast<unsigned char>(*p)) != 0) {
-      ++p;
-      continue;
+  const std::string input = source;
+  std::size_t i = 0;
+  bool atLineStart = true;
+  std::vector<int> indents {0};
+
+  auto pushToken = [&](std::string kind, std::string text = {}) {
+    out.push_back(ExprToken {.kind = std::move(kind), .text = std::move(text)});
+  };
+
+  auto emitDedentsTo = [&](int spaces) {
+    while (indents.size() > 1 && spaces < indents.back()) {
+      indents.pop_back();
+      pushToken("DEDENT");
     }
-    if (std::isdigit(static_cast<unsigned char>(*p)) != 0) {
-      std::string text {};
-      while (*p != '\0' && std::isdigit(static_cast<unsigned char>(*p)) != 0) {
-        text.push_back(*p);
-        ++p;
+    if (spaces != indents.back()) {
+      pushToken("INVALID", "DEDENT_MISMATCH");
+    }
+  };
+
+  while (i < input.size()) {
+    if (atLineStart) {
+      int spaces = 0;
+      while (i < input.size() && input[i] == ' ') {
+        spaces += 1;
+        i += 1;
       }
-      out.push_back(ExprToken {.kind = "INT", .text = std::move(text)});
+      if (i < input.size() && input[i] == '\t') {
+        pushToken("INVALID", "TAB_INDENT");
+        while (i < input.size() && input[i] != '\n') {
+          i += 1;
+        }
+        continue;
+      }
+      if (i >= input.size()) {
+        break;
+      }
+      if (input[i] == '\n') {
+        pushToken("NEWLINE", "\\n");
+        i += 1;
+        atLineStart = true;
+        continue;
+      }
+      if (input[i] == '#' || (input[i] == '/' && i + 1 < input.size() && input[i + 1] == '/')) {
+        while (i < input.size() && input[i] != '\n') {
+          i += 1;
+        }
+        continue;
+      }
+
+      if (spaces > indents.back()) {
+        indents.push_back(spaces);
+        pushToken("INDENT");
+      } else if (spaces < indents.back()) {
+        emitDedentsTo(spaces);
+      }
+      atLineStart = false;
       continue;
     }
-    if (std::isalpha(static_cast<unsigned char>(*p)) != 0 || *p == '_') {
+
+    const char ch = input[i];
+    if (ch == '\r' || ch == ' ' || ch == '\t') {
+      i += 1;
+      continue;
+    }
+    if (ch == '#' || (ch == '/' && i + 1 < input.size() && input[i + 1] == '/')) {
+      while (i < input.size() && input[i] != '\n') {
+        i += 1;
+      }
+      continue;
+    }
+    if (ch == '\n') {
+      pushToken("NEWLINE", "\\n");
+      i += 1;
+      atLineStart = true;
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
       std::string text {};
-      while (*p != '\0' && (std::isalnum(static_cast<unsigned char>(*p)) != 0 || *p == '_')) {
-        text.push_back(*p);
-        ++p;
+      while (i < input.size() && std::isdigit(static_cast<unsigned char>(input[i])) != 0) {
+        text.push_back(input[i]);
+        i += 1;
+      }
+      pushToken("INT", text);
+      continue;
+    }
+    if (ch == 'v' && i + 1 < input.size() && input[i + 1] == '"') {
+      i += 2;
+      std::string text {};
+      while (i < input.size() && input[i] != '"') {
+        if (input[i] == '\n') {
+          pushToken("INVALID", "UNTERMINATED_INTERP_STRING");
+          break;
+        }
+        text.push_back(input[i]);
+        i += 1;
+      }
+      if (i < input.size() && input[i] == '"') {
+        i += 1;
+      }
+      pushToken("INTERP_STRING", text);
+      continue;
+    }
+    if (ch == '"') {
+      i += 1;
+      std::string text {};
+      while (i < input.size() && input[i] != '"') {
+        if (input[i] == '\n') {
+          pushToken("INVALID", "UNTERMINATED_STRING");
+          break;
+        }
+        text.push_back(input[i]);
+        i += 1;
+      }
+      if (i < input.size() && input[i] == '"') {
+        i += 1;
+      }
+      pushToken("STRING", text);
+      continue;
+    }
+    if (std::isalpha(static_cast<unsigned char>(ch)) != 0 || ch == '_') {
+      std::string text {};
+      while (
+        i < input.size() &&
+        (std::isalnum(static_cast<unsigned char>(input[i])) != 0 || input[i] == '_')
+      ) {
+        text.push_back(input[i]);
+        i += 1;
       }
       if (text == "let") {
-        out.push_back(ExprToken {.kind = "LET", .text = text});
+        pushToken("LET", text);
+      } else if (text == "func") {
+        pushToken("FUNC", text);
+      } else if (text == "if") {
+        pushToken("IF", text);
+      } else if (text == "while") {
+        pushToken("WHILE", text);
+      } else if (text == "return") {
+        pushToken("RETURN", text);
+      } else if (text == "print") {
+        pushToken("PRINT", text);
       } else {
-        out.push_back(ExprToken {.kind = "IDENT", .text = text});
+        pushToken("IDENT", text);
       }
       continue;
     }
 
-    switch (*p) {
-      case '+':
-        out.push_back(ExprToken {.kind = "PLUS", .text = "+"});
-        ++p;
-        break;
-      case '-':
-        out.push_back(ExprToken {.kind = "MINUS", .text = "-"});
-        ++p;
-        break;
-      case '*':
-        out.push_back(ExprToken {.kind = "STAR", .text = "*"});
-        ++p;
-        break;
-      case '/':
-        out.push_back(ExprToken {.kind = "SLASH", .text = "/"});
-        ++p;
-        break;
-      case '(':
-        out.push_back(ExprToken {.kind = "LPAREN", .text = "("});
-        ++p;
-        break;
-      case ')':
-        out.push_back(ExprToken {.kind = "RPAREN", .text = ")"});
-        ++p;
-        break;
-      case '=':
-        out.push_back(ExprToken {.kind = "EQUAL", .text = "="});
-        ++p;
-        break;
+    switch (ch) {
+      case '+': pushToken("PLUS", "+"); i += 1; break;
+      case '-': pushToken("MINUS", "-"); i += 1; break;
+      case '*': pushToken("STAR", "*"); i += 1; break;
+      case '/': pushToken("SLASH", "/"); i += 1; break;
+      case '(': pushToken("LPAREN", "("); i += 1; break;
+      case ')': pushToken("RPAREN", ")"); i += 1; break;
+      case '=': pushToken("EQUAL", "="); i += 1; break;
+      case ':': pushToken("COLON", ":"); i += 1; break;
+      case ',': pushToken("COMMA", ","); i += 1; break;
+      case '>': pushToken("GT", ">"); i += 1; break;
+      case '<': pushToken("LT", "<"); i += 1; break;
       default:
-        out.push_back(ExprToken {.kind = "INVALID", .text = std::string(1, *p)});
-        ++p;
+        pushToken("INVALID", std::string(1, ch));
+        i += 1;
         break;
     }
   }
+
+  while (indents.size() > 1) {
+    indents.pop_back();
+    pushToken("DEDENT");
+  }
   out.push_back(ExprToken {.kind = "EOF", .text = ""});
+  return out;
+}
+
+auto trimLeft(std::string_view text) -> std::string_view {
+  std::size_t i = 0;
+  while (i < text.size() && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r')) {
+    i += 1;
+  }
+  return text.substr(i);
+}
+
+auto leadingSpaces(std::string_view text) -> int {
+  int spaces = 0;
+  while (spaces < static_cast<int>(text.size()) && text[static_cast<std::size_t>(spaces)] == ' ') {
+    spaces += 1;
+  }
+  return spaces;
+}
+
+auto startsWith(std::string_view value, std::string_view prefix) -> bool {
+  return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+auto unescapeBasicString(std::string_view text) -> std::string {
+  std::string out {};
+  bool escaped = false;
+  for (char ch : text) {
+    if (escaped) {
+      if (ch == 'n') {
+        out.push_back('\n');
+      } else if (ch == 't') {
+        out.push_back('\t');
+      } else if (ch == '"' || ch == '\\') {
+        out.push_back(ch);
+      } else {
+        out.push_back(ch);
+      }
+      escaped = false;
+      continue;
+    }
+    if (ch == '\\') {
+      escaped = true;
+      continue;
+    }
+    out.push_back(ch);
+  }
+  if (escaped) {
+    out.push_back('\\');
+  }
+  return out;
+}
+
+auto parsePrintStringArg(std::string_view line) -> std::optional<std::string> {
+  if (!startsWith(line, "print(") || line.empty() || line.back() != ')') {
+    return std::nullopt;
+  }
+  std::string_view inner = line.substr(6, line.size() - 7);
+  inner = trimLeft(inner);
+  if (inner.empty()) {
+    return std::nullopt;
+  }
+
+  std::size_t start = 0;
+  if (startsWith(inner, "v\"")) {
+    start = 2;
+  } else if (inner.front() == '"') {
+    start = 1;
+  } else {
+    return std::nullopt;
+  }
+
+  bool escaped = false;
+  for (std::size_t i = start; i < inner.size(); ++i) {
+    const char ch = inner[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch == '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch == '"') {
+      return unescapeBasicString(inner.substr(start, i - start));
+    }
+  }
+  return std::nullopt;
+}
+
+auto parseProgramSource(const char *source) -> AstNode * {
+  auto *node = new AstNode {};
+  node->kind = "Program";
+  if (source == nullptr) {
+    return node;
+  }
+
+  const std::string src = source;
+  std::size_t cursor = 0;
+  bool inMain = false;
+  int mainIndent = 0;
+  int bodyIndent = -1;
+
+  while (cursor <= src.size()) {
+    const std::size_t end = src.find('\n', cursor);
+    const std::size_t lineEnd = end == std::string::npos ? src.size() : end;
+    const std::string_view line {src.data() + cursor, lineEnd - cursor};
+    const std::string_view trimmed = trimLeft(line);
+
+    if (!trimmed.empty() && !startsWith(trimmed, "#") && !startsWith(trimmed, "//")) {
+      const int indent = leadingSpaces(line);
+      if (!inMain) {
+        if (indent == 0 && startsWith(trimmed, "func main()") && trimmed.find(':') != std::string_view::npos) {
+          inMain = true;
+          mainIndent = indent;
+          bodyIndent = -1;
+        }
+      } else {
+        if (indent <= mainIndent) {
+          break;
+        }
+        if (bodyIndent < 0) {
+          bodyIndent = indent;
+        }
+        if (indent < bodyIndent) {
+          break;
+        }
+        if (indent == bodyIndent) {
+          auto printText = parsePrintStringArg(trimmed);
+          if (printText.has_value()) {
+            node->items.push_back(*printText);
+          }
+        }
+      }
+    }
+
+    if (end == std::string::npos) {
+      break;
+    }
+    cursor = end + 1;
+  }
+
+  return node;
+}
+
+auto escapeCStringForC(std::string_view text) -> std::string {
+  std::string out {};
+  for (unsigned char ch : text) {
+    if (ch == '\\') {
+      out.append("\\\\");
+    } else if (ch == '"') {
+      out.append("\\\"");
+    } else if (ch == '\n') {
+      out.append("\\n");
+    } else if (ch == '\t') {
+      out.append("\\t");
+    } else if (ch < 32 || ch > 126) {
+      char buf[5] {};
+      std::snprintf(buf, sizeof(buf), "\\x%02X", ch);
+      out.append(buf);
+    } else {
+      out.push_back(static_cast<char>(ch));
+    }
+  }
+  return out;
+}
+
+auto escapeCStringForLLVM(std::string_view text) -> std::string {
+  std::string out {};
+  for (unsigned char ch : text) {
+    if (ch >= 32 && ch <= 126 && ch != '"' && ch != '\\') {
+      out.push_back(static_cast<char>(ch));
+    } else {
+      char buf[4] {};
+      std::snprintf(buf, sizeof(buf), "%02X", ch);
+      out.push_back('\\');
+      out.append(buf);
+    }
+  }
   return out;
 }
 
@@ -1023,6 +1308,20 @@ int __thg_tok_tag(void *streamPtr, int index) {
   if (kind == "IDENT") return 9;
   if (kind == "LET") return 10;
   if (kind == "EQUAL") return 11;
+  if (kind == "NEWLINE") return 12;
+  if (kind == "INDENT") return 13;
+  if (kind == "DEDENT") return 14;
+  if (kind == "COLON") return 15;
+  if (kind == "FUNC") return 16;
+  if (kind == "IF") return 17;
+  if (kind == "WHILE") return 18;
+  if (kind == "RETURN") return 19;
+  if (kind == "STRING") return 20;
+  if (kind == "INTERP_STRING") return 21;
+  if (kind == "PRINT") return 22;
+  if (kind == "GT") return 23;
+  if (kind == "LT") return 24;
+  if (kind == "COMMA") return 25;
   return 8;
 }
 
@@ -1396,28 +1695,124 @@ void *__thg_parse_stmt_from_source(const char *source) {
 }
 
 void *__thg_parse_program_from_source(const char *source) {
-  // Bootstrap-safe fallback: parse a single top-level statement and return quickly.
-  return __thg_parse_stmt_from_source(source);
+  return parseProgramSource(source);
 }
 
 const char *__thg_codegen_emit_c(void *root) {
-  static_cast<void>(root);
-  static constexpr const char *kProgram =
-    "#include <stdio.h>\n"
-    "int main(void) {\n"
-    "  return 0;\n"
-    "}\n";
-  return makeManagedCString(kProgram);
+  auto *program = static_cast<AstNode *>(root);
+  std::string out {};
+  out += "#include <stdio.h>\n";
+  out += "int main(void) {\n";
+  if (program != nullptr && program->kind == "Program") {
+    for (const auto &text : program->items) {
+      out += "  puts(\"";
+      out += escapeCStringForC(text);
+      out += "\");\n";
+    }
+  }
+  out += "  return 0;\n";
+  out += "}\n";
+  return makeManagedString(out);
 }
 
 const char *__thg_codegen_emit_llvm(void *root) {
-  static_cast<void>(root);
-  static constexpr const char *kProgram =
-    "define i32 @main() {\n"
-    "entry:\n"
-    "  ret i32 0\n"
-    "}\n";
-  return makeManagedCString(kProgram);
+  auto *program = static_cast<AstNode *>(root);
+  std::string out {};
+  out += "declare i32 @puts(ptr)\n";
+
+  std::vector<std::string> printItems {};
+  if (program != nullptr && program->kind == "Program") {
+    printItems = program->items;
+  }
+
+  for (std::size_t i = 0; i < printItems.size(); ++i) {
+    const auto escaped = escapeCStringForLLVM(printItems[i]);
+    const std::size_t len = printItems[i].size() + 1;
+    out += "@.str";
+    out += std::to_string(i);
+    out += " = private unnamed_addr constant [";
+    out += std::to_string(len);
+    out += " x i8] c\"";
+    out += escaped;
+    out += "\\00\"\n";
+  }
+
+  out += "define i32 @main() {\n";
+  out += "entry:\n";
+  for (std::size_t i = 0; i < printItems.size(); ++i) {
+    out += "  call i32 @puts(ptr @.str";
+    out += std::to_string(i);
+    out += ")\n";
+  }
+  out += "  ret i32 0\n";
+  out += "}\n";
+  return makeManagedString(out);
+}
+
+const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *module_name) {
+  if (source == nullptr || source[0] == '\0') {
+    return makeManagedCString("");
+  }
+
+  std::string moduleNameText {cstrOrEmpty(module_name)};
+  if (moduleNameText.empty()) {
+    moduleNameText = "thg_module";
+  }
+  for (char &ch : moduleNameText) {
+    const bool alphaNum = std::isalnum(static_cast<unsigned char>(ch)) != 0;
+    if (!alphaNum && ch != '_') {
+      ch = '_';
+    }
+  }
+
+  const auto nonce = std::to_string(__time_now_ms()) + "_" + std::to_string(std::rand());
+  const auto sourcePath = std::filesystem::path(moduleNameText + "_" + nonce + ".tg");
+  const auto irPath = std::filesystem::path(moduleNameText + "_" + nonce + ".ll");
+
+  {
+    std::ofstream out(sourcePath, std::ios::binary);
+    if (!out) {
+      return makeManagedCString("");
+    }
+    out << source;
+  }
+
+  std::filesystem::path helperPath {"legacy\\stage0.exe"};
+  if (!std::filesystem::exists(helperPath)) {
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
+  }
+
+  const std::string command =
+    helperPath.string() + " " +
+    sourcePath.string() + " --emit-ir -o " +
+    irPath.string();
+
+  const int code = std::system(command.c_str());
+  if (code != 0) {
+    std::fprintf(stderr, "codegen helper command failed: %s\n", command.c_str());
+    std::error_code rmErr {};
+    std::filesystem::remove(sourcePath, rmErr);
+    std::filesystem::remove(irPath, rmErr);
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
+  }
+
+  std::ifstream in(irPath, std::ios::binary);
+  if (!in) {
+    std::error_code rmErr {};
+    std::filesystem::remove(sourcePath, rmErr);
+    std::filesystem::remove(irPath, rmErr);
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
+  }
+  std::string ir((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+  std::error_code rmErr {};
+  std::filesystem::remove(sourcePath, rmErr);
+  std::filesystem::remove(irPath, rmErr);
+
+  return makeManagedString(ir);
 }
 
 int __thg_eval_expr(void *nodePtr) {

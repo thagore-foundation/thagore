@@ -29,9 +29,8 @@ func _basename_no_ext(path: String) -> String:
         last_dot = path.length()
     return path.substr(start, last_dot - start)
 
-func _emit_ir_from_source(source: String) -> String:
-    let ast_root = parser.parse_program(source)
-    return codegen_llvm.emit_program(ast_root)
+func _emit_ir_from_source(source: String, module_name: String) -> String:
+    return codegen_llvm.emit_program_from_source(source, module_name)
 
 func _probe_clang(path: String) -> i32:
     let cmd = path + " --version"
@@ -135,7 +134,10 @@ func main() -> i32:
     if (build_mode == 1):
         print("Source loaded. Generating IR...")
         core_ir = codegen_llvm.system_decls()
-        user_ir = _emit_ir_from_source(source)
+        user_ir = _emit_ir_from_source(source, base)
+        if (user_ir.length() == 0):
+            print("Error: LLVM IR generation failed")
+            return 1
         merged_ir = core_ir + user_ir
         print("Build mode active. Compiling to executable...")
         let ok_temp = fs.write_text(output_ll, merged_ir)
@@ -146,7 +148,7 @@ func main() -> i32:
         if (clang_bin.length() == 0):
             print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
             return 1
-        let cmd = clang_bin + " " + output_ll + " -o " + output_exe + " -Wno-override-module"
+        let cmd = clang_bin + " " + output_ll + " thag_runtime.lib -o " + output_exe + " -Wno-override-module"
         let build_code = process.run(cmd)
         if (build_code == 0):
             print("Build success.")
@@ -160,7 +162,10 @@ func main() -> i32:
     if (llvm_mode == 1):
         print("Source loaded. Generating IR...")
         core_ir = codegen_llvm.system_decls()
-        user_ir = _emit_ir_from_source(source)
+        user_ir = _emit_ir_from_source(source, base)
+        if (user_ir.length() == 0):
+            print("Error: LLVM IR generation failed")
+            return 1
         merged_ir = core_ir + user_ir
         print("LLVM mode active. Generating LLVM IR...")
         let ok_ll = fs.write_text(output_ll, merged_ir)
@@ -173,7 +178,7 @@ func main() -> i32:
             return 1
         print("Generated LLVM IR successfully:")
         print(output_ll)
-        print("Compile with: " + clang_bin + " " + output_ll + " -o " + output_exe + " -Wno-override-module")
+        print("Compile with: " + clang_bin + " " + output_ll + " thag_runtime.lib -o " + output_exe + " -Wno-override-module")
         return 0
 
     if (compile_mode == 1):
