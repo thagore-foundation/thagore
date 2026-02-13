@@ -1,17 +1,17 @@
-name: Release
+name: CI
 
 on:
   push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+    branches:
+      - main
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-linux:
-    name: build-release (linux)
+  ci-linux:
+    name: ci (linux)
     runs-on: ubuntu-latest
     env:
       STAGE1_BIN: stage1
@@ -33,7 +33,7 @@ jobs:
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 21 all
 
-      - name: Smart Bootstrap
+      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,7 +99,6 @@ jobs:
           chmod +x "$STAGE1_BIN" || true
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           if [[ ! -f "$FINAL_BIN" ]]; then
-            echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
           fi
 
@@ -116,16 +115,6 @@ jobs:
             done
           fi
 
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${LLVM_PATH}/lib/cmake/llvm"
-            cmake --build legacy/build-runtime --config Release --target thag_runtime
-            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
-              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
-            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
-              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
-            fi
-          fi
-
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
@@ -140,72 +129,22 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
-      - name: Package (linux)
+      - name: CLI smoke
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf dist
-          mkdir -p dist/bin dist/lib
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
-          chmod +x dist/bin/thagore dist/bin/thag
-          cp -r std dist/lib/std
-          cp scripts/install/install-linux.sh dist/install.sh
-          chmod +x dist/install.sh
-          tar -czf "$RELEASE_ASSET" dist
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
+          "./$FINAL_BIN" --version
+          "./$FINAL_BIN" doctor || true
 
-      - name: Package (.deb)
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
-            VERSION="0.0.0"
-          fi
-
-          PKG_ROOT="deb_dist/thagore_${VERSION}_amd64"
-          rm -rf deb_dist
-          mkdir -p "${PKG_ROOT}/DEBIAN"
-          mkdir -p "${PKG_ROOT}/usr/bin"
-          mkdir -p "${PKG_ROOT}/usr/lib/thagore"
-
-          cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thagore"
-          cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thag"
-          chmod +x "${PKG_ROOT}/usr/bin/thagore" "${PKG_ROOT}/usr/bin/thag"
-          cp -r std "${PKG_ROOT}/usr/lib/thagore/std"
-
-          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
-          Package: thagore
-          Version: ${VERSION}
-          Section: devel
-          Priority: optional
-          Architecture: amd64
-          Maintainer: Thagore Foundation <release@thagore.org>
-          Depends: libc6
-          Description: Thagore self-hosted compiler
-          EOF
-
-          dpkg-deb --build "${PKG_ROOT}"
-          mv "deb_dist/thagore_${VERSION}_amd64.deb" "thagore_${VERSION}_amd64.deb"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-linux
-          path: |
-            thagore-linux.tar.gz
-            thagore_*_amd64.deb
-          if-no-files-found: error
-
-  build-macos:
-    name: build-release (macos)
+  ci-macos:
+    name: ci (macos)
     runs-on: macos-latest
     env:
       STAGE1_BIN: stage1
       FINAL_BIN: thagore
       HELLO_BIN: hello
       FIB_BIN: fib
-      RELEASE_ASSET: thagore-macos.pkg
       BOOTSTRAP_ASSET: thagore-macos.tar.gz
     steps:
       - name: Checkout
@@ -219,7 +158,7 @@ jobs:
           brew install llvm
           echo "LLVM_PATH=$(brew --prefix llvm)" >> "$GITHUB_ENV"
 
-      - name: Smart Bootstrap
+      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -287,7 +226,6 @@ jobs:
           chmod +x "$STAGE1_BIN" || true
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           if [[ ! -f "$FINAL_BIN" ]]; then
-            echo "WARN: stage2 not produced, fallback stage1"
             FINAL_BIN="$STAGE1_BIN"
           fi
 
@@ -304,20 +242,6 @@ jobs:
             done
           fi
 
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            CMAKE_RT_ARGS=("-DCMAKE_BUILD_TYPE=Release")
-            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-              CMAKE_RT_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
-            fi
-            cmake -S legacy -B legacy/build-runtime "${CMAKE_RT_ARGS[@]}"
-            cmake --build legacy/build-runtime --config Release --target thag_runtime
-            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
-              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
-            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
-              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
-            fi
-          fi
-
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
@@ -332,59 +256,22 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
-      - name: Package (macOS UI installer)
+      - name: CLI smoke
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf dist
-          mkdir -p dist/bin dist/lib
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
-          chmod +x dist/bin/thagore dist/bin/thag
-          cp -r std dist/lib/std
-          tar -czf "$BOOTSTRAP_ASSET" -C dist .
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
+          "./$FINAL_BIN" --version
+          "./$FINAL_BIN" doctor || true
 
-          rm -rf pkgroot
-          mkdir -p pkgroot/usr/local/bin
-          mkdir -p pkgroot/usr/local/lib/thagore
-
-          cp "${FINAL_BIN:-$STAGE1_BIN}" pkgroot/usr/local/bin/thagore
-          chmod +x pkgroot/usr/local/bin/thagore
-          ln -sf /usr/local/bin/thagore pkgroot/usr/local/bin/thag
-          cp -r std pkgroot/usr/local/lib/thagore/std
-
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
-            VERSION="0.0.0"
-          fi
-
-          pkgbuild \
-            --root pkgroot \
-            --identifier org.thagore.compiler \
-            --version "$VERSION" \
-            --install-location "/" \
-            "$RELEASE_ASSET"
-
-          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: macOS installer not generated"; exit 1)
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-macos
-          path: |
-            thagore-macos.pkg
-            thagore-macos.tar.gz
-          if-no-files-found: error
-
-  build-windows:
-    name: build-release (windows)
+  ci-windows:
+    name: ci (windows)
     runs-on: windows-latest
     env:
       STAGE1_BIN: stage1.exe
       FINAL_BIN: thagore.exe
       HELLO_BIN: hello.exe
       FIB_BIN: fib.exe
-      RELEASE_ASSET: thagore-windows-setup.exe
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -394,12 +281,7 @@ jobs:
         with:
           version: "21.1.8"
 
-      - name: Install NSIS
-        shell: bash
-        run: |
-          choco install nsis --no-progress -y
-
-      - name: Smart Bootstrap
+      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -465,8 +347,6 @@ jobs:
 
           if [[ ! -f "thag_runtime.lib" ]]; then
             for runtime_candidate in \
-              "bootstrap/extracted/lib/thag_runtime.lib" \
-              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
               "legacy/build/Release/thag_runtime.lib" \
               "legacy/build/thag_runtime.lib" \
               "legacy/thag_runtime.lib"; do
@@ -475,27 +355,6 @@ jobs:
                 break
               fi
             done
-          fi
-
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
-              \$roots = @(); \
-              if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
-              \$roots += 'C:\\Program Files\\LLVM'; \
-              foreach (\$r in \$roots) { \
-                if (Test-Path \$r) { \
-                  \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
-                  if (\$hit) { Write-Output \$hit.DirectoryName; break } \
-                } \
-              }\
-            " | tr -d '\r')"
-            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_CMAKE_DIR" -DCMAKE_PREFIX_PATH="$LLVM_CMAKE_DIR"
-            cmake --build legacy/build-runtime --config Release --target thag_runtime
-            if [[ -f legacy/build-runtime/Release/thag_runtime.lib ]]; then
-              cp legacy/build-runtime/Release/thag_runtime.lib thag_runtime.lib
-            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
-              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
-            fi
           fi
 
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
@@ -510,65 +369,10 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
-      - name: Package (Windows UI installer)
+      - name: CLI smoke
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf dist
-          mkdir -p dist/bin dist/lib
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thagore.exe
-          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag.exe
-          cp -r std dist/lib/std
-
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
-            VERSION="0.0.0"
-          fi
-
-          "/c/Program Files (x86)/NSIS/makensis.exe" "//DVERSION=$VERSION" installer/windows/thagore.nsi
-          if [[ -f "installer/windows/$RELEASE_ASSET" ]]; then
-            mv "installer/windows/$RELEASE_ASSET" "$RELEASE_ASSET"
-          fi
-          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: Windows UI installer not generated"; exit 1)
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-windows
-          path: |
-            thagore-windows-setup.exe
-          if-no-files-found: error
-
-  release:
-    name: publish-release
-    runs-on: ubuntu-latest
-    needs:
-      - build-linux
-      - build-macos
-      - build-windows
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            release-assets/release-linux/*
-            release-assets/release-macos/*
-            release-assets/release-windows/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Trigger Homebrew Tap Update
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          repository: thagore-foundation/homebrew-thagore
-          event-type: thagore-release
-          client-payload: >-
-            {"version":"${{ github.ref_name }}","download_url":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thagore-linux.tar.gz"}
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
+          "./$FINAL_BIN" --version
+          "./$FINAL_BIN" doctor || true
