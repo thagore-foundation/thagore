@@ -25,7 +25,7 @@ jobs:
         id: llvm
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "18"
+          version: "21.1.8"
 
       - name: Smart Bootstrap
         shell: bash
@@ -61,16 +61,16 @@ jobs:
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+            CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
             if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
             elif [[ "${{ runner.os }}" == "Windows" && -d "C:/Program Files/LLVM/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=C:/Program Files/LLVM/lib/cmake/llvm"
-            elif [[ -d "/usr/lib/llvm-18/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS="$CMAKE_ARGS -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm"
+              CMAKE_ARGS+=("-DLLVM_DIR=C:/Program Files/LLVM/lib/cmake/llvm")
+            elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS+=("-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm")
             fi
 
-            cmake -S legacy -B legacy/build $CMAKE_ARGS
+            cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
             cmake --build legacy/build --config Release
 
             if [[ "${{ runner.os }}" == "Windows" ]]; then

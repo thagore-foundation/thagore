@@ -877,7 +877,7 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
     return 1;
   }
 
-  module.value()->setTargetTriple(llvm::Triple(llvm::sys::getDefaultTargetTriple()));
+  module.value()->setTargetTriple(llvm::sys::getDefaultTargetTriple());
   module.value()->setDataLayout(targetMachine.value()->createDataLayout());
 
   auto opt = BackendPipeline::optimizeModule(*module.value(), options->optLevel);
