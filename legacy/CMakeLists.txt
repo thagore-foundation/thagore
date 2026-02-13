@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(thagore_bootstrap
   VERSION 0.1.0
-  LANGUAGES CXX
+  LANGUAGES C CXX
 )
 
 set(CMAKE_CXX_STANDARD 23)
@@ -41,6 +41,23 @@ target_link_libraries(thag_backend
     thag_frontend
 )
 
+set(THAG_TARGET_COMPONENTS
+  X86
+  X86CodeGen
+  X86Desc
+  X86Info
+  X86AsmParser
+)
+if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+  set(THAG_TARGET_COMPONENTS
+    AArch64
+    AArch64CodeGen
+    AArch64Desc
+    AArch64Info
+    AArch64AsmParser
+  )
+endif()
+
 llvm_map_components_to_libnames(THAG_LLVM_LIBS
   Core
   Support
@@ -52,11 +69,7 @@ llvm_map_components_to_libnames(THAG_LLVM_LIBS
   InstCombine
   TransformUtils
   Analysis
-  X86
-  X86CodeGen
-  X86Desc
-  X86Info
-  X86AsmParser
+  ${THAG_TARGET_COMPONENTS}
 )
 target_link_libraries(thag_backend PUBLIC ${THAG_LLVM_LIBS})
 target_include_directories(thag_backend SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})

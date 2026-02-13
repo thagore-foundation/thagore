@@ -10,20 +10,21 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-
+  build-linux:
+    name: build-release (linux)
+    runs-on: ubuntu-latest
+    env:
+      STAGE1_BIN: stage1
+      FINAL_BIN: thag
+      HELLO_BIN: hello
+      FIB_BIN: fib
+      RELEASE_ASSET: thag-linux.tar.gz
+      LLVM_PATH: /usr/lib/llvm-21
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM (Linux)
-        if: runner.os == 'Linux'
+      - name: Install LLVM
         shell: bash
         run: |
           set -euo pipefail
@@ -31,14 +32,6 @@ jobs:
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 21 all
-          echo "LLVM_PATH=/usr/lib/llvm-21" >> "$GITHUB_ENV"
-
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        id: llvm
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "21.1.8"
 
       - name: Smart Bootstrap
         shell: bash
@@ -46,145 +39,87 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            STAGE1_BIN="stage1.exe"
-            FINAL_BIN="thag.exe"
-            HELLO_BIN="hello.exe"
-            FIB_BIN="fib.exe"
-          else
-            STAGE1_BIN="stage1"
-            FINAL_BIN="thag"
-            HELLO_BIN="hello"
-            FIB_BIN="fib"
-          fi
-
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thag.exe" --pattern "thag" -D bootstrap; then
-            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thag.exe ]]; then
-              cp bootstrap/thag.exe "$STAGE1_BIN"
+          if gh release download --repo "${{ github.repository }}" --pattern "$RELEASE_ASSET" -D bootstrap; then
+            mkdir -p bootstrap/extracted
+            tar -xzf "bootstrap/$RELEASE_ASSET" -C bootstrap/extracted
+            if [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+              cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
-            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thag ]]; then
-              cp bootstrap/thag "$STAGE1_BIN"
+            fi
+          elif gh release download --repo "${{ github.repository }}" --pattern "thag" -D bootstrap; then
+            if [[ -f "bootstrap/thag" ]]; then
+              cp "bootstrap/thag" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
-            if [[ "${{ runner.os }}" != "Windows" && -n "${LLVM_PATH:-}" ]]; then
-              export CC="${LLVM_PATH}/bin/clang"
-              export CXX="${LLVM_PATH}/bin/clang++"
-              export THAG_LLVM_BIN="${LLVM_PATH}/bin"
-              if [[ ! -x "${THAG_LLVM_BIN}/lld-link.exe" ]]; then
-                if command -v lld-link >/dev/null 2>&1; then
-                  sudo ln -sf "$(command -v lld-link)" "${THAG_LLVM_BIN}/lld-link.exe"
-                elif command -v lld-link-21 >/dev/null 2>&1; then
-                  sudo ln -sf "$(command -v lld-link-21)" "${THAG_LLVM_BIN}/lld-link.exe"
-                elif command -v ld.lld >/dev/null 2>&1; then
-                  sudo ln -sf "$(command -v ld.lld)" "${THAG_LLVM_BIN}/lld-link.exe"
-                fi
-              fi
-            fi
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              LLVM_CMAKE_DIR=""
-              if [[ -n "${LLVM_PATH:-}" ]]; then
-                if command -v cygpath >/dev/null 2>&1; then
-                  LLVM_MIXED="$(cygpath -m "${LLVM_PATH}")"
-                  LLVM_CMAKE_DIR="${LLVM_MIXED}/lib/cmake/llvm"
-                else
-                  LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
-                fi
-              else
-                LLVM_CMAKE_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
-              fi
-
-              if [[ -f "${LLVM_CMAKE_DIR}/LLVMConfig.cmake" ]]; then
-                CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_CMAKE_DIR}")
-                CMAKE_ARGS+=("-DCMAKE_PREFIX_PATH=${LLVM_CMAKE_DIR}")
-              else
-                echo "ERROR: LLVMConfig.cmake not found at ${LLVM_CMAKE_DIR}"
-                exit 1
-              fi
-            elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
-            elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS+=("-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm")
-            fi
-
+            CMAKE_ARGS=(
+              "-DCMAKE_BUILD_TYPE=Release"
+              "-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+            )
+            export CC="${LLVM_PATH}/bin/clang"
+            export CXX="${LLVM_PATH}/bin/clang++"
             cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
             cmake --build legacy/build --config Release
 
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              if [[ -f legacy/build/Release/thag.exe ]]; then
-                STAGE0_BIN="legacy/build/Release/thag.exe"
-              elif [[ -f legacy/build/thag.exe ]]; then
-                STAGE0_BIN="legacy/build/thag.exe"
-              else
-                echo "ERROR: stage0.exe not found"; exit 1
-              fi
+            if [[ -f legacy/build/thag ]]; then
+              STAGE0_BIN="legacy/build/thag"
+            elif [[ -f legacy/build/Release/thag ]]; then
+              STAGE0_BIN="legacy/build/Release/thag"
             else
-              if [[ -f legacy/build/thag ]]; then
-                STAGE0_BIN="legacy/build/thag"
-              elif [[ -f legacy/build/Release/thag ]]; then
-                STAGE0_BIN="legacy/build/Release/thag"
-              else
-                echo "ERROR: stage0 not found"; exit 1
-              fi
+              echo "ERROR: stage0 not found"
+              exit 1
             fi
 
-            if [[ "${{ runner.os }}" != "Windows" && -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
+            if [[ -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
               cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
             fi
-
             chmod +x "$STAGE0_BIN" || true
             "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
           fi
 
-          if [[ ! -f "$STAGE1_BIN" && -f "stage1.exe" ]]; then
-            STAGE1_BIN="stage1.exe"
-          elif [[ ! -f "$STAGE1_BIN" && -f "stage1" ]]; then
-            STAGE1_BIN="stage1"
-          fi
-
           chmod +x "$STAGE1_BIN" || true
           "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
-
-          if [[ ! -f "$FINAL_BIN" && -f "thag.exe" ]]; then
-            FINAL_BIN="thag.exe"
-          elif [[ ! -f "$FINAL_BIN" && -f "thag" ]]; then
-            FINAL_BIN="thag"
+          if [[ ! -f "$FINAL_BIN" ]]; then
+            echo "WARN: stage2 not produced, fallback stage1"
+            FINAL_BIN="$STAGE1_BIN"
           fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/libthag_runtime.a" \
+              "legacy/build/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="${LLVM_PATH}/lib/cmake/llvm"
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
+              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
+          fi
+
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
         run: |
           set -euo pipefail
-
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            FINAL_BIN="thag.exe"
-            HELLO_BIN="hello.exe"
-            FIB_BIN="fib.exe"
-          else
-            FINAL_BIN="thag"
-            HELLO_BIN="hello"
-            FIB_BIN="fib"
-          fi
-
-          if [[ -n "${FINAL_BIN:-}" && -f "$FINAL_BIN" ]]; then
-            :
-          elif [[ -f "thag" ]]; then
-            FINAL_BIN="thag"
-          elif [[ -f "thag.exe" ]]; then
-            FINAL_BIN="thag.exe"
-          else
-            echo "ERROR: final compiler binary not found"; exit 1
-          fi
-
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
@@ -192,49 +127,422 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
-      - name: Package
-        id: package
+      - name: Package (linux)
         shell: bash
         run: |
           set -euo pipefail
-
           rm -rf dist
           mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
+          chmod +x dist/bin/thag
+          cp -r std dist/lib/std
+          cp scripts/install/install-linux.sh dist/install.sh
+          chmod +x dist/install.sh
+          tar -czf "$RELEASE_ASSET" dist
 
-          FINAL_BIN_NAME="${FINAL_BIN:-}"
-          if [[ -z "$FINAL_BIN_NAME" ]]; then
-            if [[ -f "thag" ]]; then
-              FINAL_BIN_NAME="thag"
-            elif [[ -f "thag.exe" ]]; then
-              FINAL_BIN_NAME="thag.exe"
+      - name: Package (.deb)
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="0.0.0"
+          fi
+
+          PKG_ROOT="deb_dist/thagore_${VERSION}_amd64"
+          rm -rf deb_dist
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/lib/thagore"
+
+          cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thag"
+          chmod +x "${PKG_ROOT}/usr/bin/thag"
+          cp -r std "${PKG_ROOT}/usr/lib/thagore/std"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: thagore
+          Version: ${VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Thagore Foundation <release@thagore.org>
+          Depends: libc6
+          Description: Thagore self-hosted compiler
+          EOF
+
+          dpkg-deb --build "${PKG_ROOT}"
+          mv "deb_dist/thagore_${VERSION}_amd64.deb" "thagore_${VERSION}_amd64.deb"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            thag-linux.tar.gz
+            thagore_*_amd64.deb
+          if-no-files-found: error
+
+  build-macos:
+    name: build-release (macos)
+    runs-on: macos-latest
+    env:
+      STAGE1_BIN: stage1
+      FINAL_BIN: thag
+      HELLO_BIN: hello
+      FIB_BIN: fib
+      RELEASE_ASSET: thag-macos.pkg
+      BOOTSTRAP_ASSET: thag-macos.tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install llvm
+          echo "LLVM_PATH=$(brew --prefix llvm)" >> "$GITHUB_ENV"
+
+      - name: Smart Bootstrap
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap
+          BOOTSTRAP_OK=0
+
+          if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
+            mkdir -p bootstrap/extracted
+            tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
+            if [[ -f "bootstrap/extracted/bin/thag" ]]; then
+              cp "bootstrap/extracted/bin/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+              cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            fi
+          elif gh release download --repo "${{ github.repository }}" --pattern "thag" -D bootstrap; then
+            if [[ -f "bootstrap/thag" ]]; then
+              cp "bootstrap/thag" "$STAGE1_BIN"
+              chmod +x "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
             fi
           fi
-          if [[ -z "$FINAL_BIN_NAME" ]]; then
-            echo "ERROR: final compiler binary not found for packaging"; exit 1
+
+          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
+            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
+            fi
+            cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
+            cmake --build legacy/build --config Release
+
+            if [[ -f legacy/build/thag ]]; then
+              STAGE0_BIN="legacy/build/thag"
+            elif [[ -f legacy/build/Release/thag ]]; then
+              STAGE0_BIN="legacy/build/Release/thag"
+            else
+              echo "ERROR: stage0 not found"
+              exit 1
+            fi
+
+            if [[ -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
+              cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
+            fi
+            chmod +x "$STAGE0_BIN" || true
+            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
           fi
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp thag.exe dist/bin/
-          else
-            cp "$FINAL_BIN_NAME" dist/bin/thag
-            chmod +x dist/bin/thag
+          chmod +x "$STAGE1_BIN" || true
+          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN"
+          if [[ ! -f "$FINAL_BIN" ]]; then
+            echo "WARN: stage2 not produced, fallback stage1"
+            FINAL_BIN="$STAGE1_BIN"
           fi
 
-          if [[ -d std ]]; then
-            cp -r std dist/lib/std
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/libthag_runtime.a" \
+              "legacy/build/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
           fi
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            7z a thag-windows.zip dist/*
-            echo "asset=thag-windows.zip" >> "$GITHUB_OUTPUT"
-          else
-            tar -czf thag-linux.tar.gz dist
-            echo "asset=thag-linux.tar.gz" >> "$GITHUB_OUTPUT"
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            CMAKE_RT_ARGS=("-DCMAKE_BUILD_TYPE=Release")
+            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              CMAKE_RT_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
+            fi
+            cmake -S legacy -B legacy/build-runtime "${CMAKE_RT_ARGS[@]}"
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/libthag_runtime.a ]]; then
+              cp legacy/build-runtime/libthag_runtime.a thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
           fi
 
-      - name: Release
+          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+
+      - name: Test hello + fib
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
+          chmod +x "$FINAL_BIN" || true
+          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
+
+      - name: Package (macOS UI installer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag
+          chmod +x dist/bin/thag
+          cp -r std dist/lib/std
+          tar -czf "$BOOTSTRAP_ASSET" -C dist .
+
+          rm -rf pkgroot
+          mkdir -p pkgroot/usr/local/bin
+          mkdir -p pkgroot/usr/local/lib/thagore
+
+          cp "${FINAL_BIN:-$STAGE1_BIN}" pkgroot/usr/local/bin/thag
+          chmod +x pkgroot/usr/local/bin/thag
+          cp -r std pkgroot/usr/local/lib/thagore/std
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="0.0.0"
+          fi
+
+          pkgbuild \
+            --root pkgroot \
+            --identifier org.thagore.compiler \
+            --version "$VERSION" \
+            --install-location "/" \
+            "$RELEASE_ASSET"
+
+          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: macOS installer not generated"; exit 1)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            thag-macos.pkg
+            thag-macos.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    name: build-release (windows)
+    runs-on: windows-latest
+    env:
+      STAGE1_BIN: stage1.exe
+      FINAL_BIN: thag.exe
+      HELLO_BIN: hello.exe
+      FIB_BIN: fib.exe
+      RELEASE_ASSET: thag-windows-setup.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1.8"
+
+      - name: Install NSIS
+        shell: bash
+        run: |
+          choco install nsis --no-progress -y
+
+      - name: Smart Bootstrap
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap
+          BOOTSTRAP_OK=0
+          USE_BOOTSTRAP_STAGE1=0
+
+          if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
+            mkdir -p bootstrap/install
+            "bootstrap/thag-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+            if [[ -f "bootstrap/install/bin/thag.exe" ]]; then
+              cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            fi
+          elif gh release download --repo "${{ github.repository }}" --pattern "thag.exe" -D bootstrap; then
+            if [[ -f "bootstrap/thag.exe" ]]; then
+              cp "bootstrap/thag.exe" "$STAGE1_BIN"
+              BOOTSTRAP_OK=1
+            fi
+          fi
+
+          if [[ "$BOOTSTRAP_OK" -ne 1 && -f "stage1.exe" ]]; then
+            if [[ "$STAGE1_BIN" != "stage1.exe" ]]; then
+              cp stage1.exe "$STAGE1_BIN"
+            fi
+            if [[ -f "legacy/thag_runtime.lib" && ! -f "thag_runtime.lib" ]]; then
+              cp legacy/thag_runtime.lib thag_runtime.lib
+            fi
+            BOOTSTRAP_OK=1
+            USE_BOOTSTRAP_STAGE1=1
+          fi
+
+          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
+            LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
+              \$roots = @(); \
+              if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
+              \$roots += 'C:\\Program Files\\LLVM'; \
+              foreach (\$r in \$roots) { \
+                if (Test-Path \$r) { \
+                  \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
+                  if (\$hit) { Write-Output \$hit.DirectoryName; break } \
+                } \
+              }\
+            " | tr -d '\r')"
+            if [[ -z "$LLVM_CMAKE_DIR" ]]; then
+              echo "ERROR: LLVMConfig.cmake not found on Windows LLVM installation"
+              exit 1
+            fi
+            cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_CMAKE_DIR" -DCMAKE_PREFIX_PATH="$LLVM_CMAKE_DIR"
+            cmake --build legacy/build --config Release
+
+            if [[ -f legacy/build/Release/thag.exe ]]; then
+              STAGE0_BIN="legacy/build/Release/thag.exe"
+            elif [[ -f legacy/build/thag.exe ]]; then
+              STAGE0_BIN="legacy/build/thag.exe"
+            else
+              echo "ERROR: stage0.exe not found"
+              exit 1
+            fi
+            "$STAGE0_BIN" build src/thg.tg -o "$STAGE1_BIN"
+          fi
+
+          "./$STAGE1_BIN" build src/thg.tg -o "$FINAL_BIN" || true
+          if [[ ! -f "$FINAL_BIN" || "$USE_BOOTSTRAP_STAGE1" -eq 1 ]]; then
+            FINAL_BIN="$STAGE1_BIN"
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            for runtime_candidate in \
+              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
+              "legacy/build/Release/thag_runtime.lib" \
+              "legacy/build/thag_runtime.lib" \
+              "legacy/thag_runtime.lib"; do
+              if [[ -f "$runtime_candidate" ]]; then
+                cp "$runtime_candidate" thag_runtime.lib
+                break
+              fi
+            done
+          fi
+
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
+              \$roots = @(); \
+              if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
+              \$roots += 'C:\\Program Files\\LLVM'; \
+              foreach (\$r in \$roots) { \
+                if (Test-Path \$r) { \
+                  \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
+                  if (\$hit) { Write-Output \$hit.DirectoryName; break } \
+                } \
+              }\
+            " | tr -d '\r')"
+            cmake -S legacy -B legacy/build-runtime -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_CMAKE_DIR" -DCMAKE_PREFIX_PATH="$LLVM_CMAKE_DIR"
+            cmake --build legacy/build-runtime --config Release --target thag_runtime
+            if [[ -f legacy/build-runtime/Release/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/Release/thag_runtime.lib thag_runtime.lib
+            elif [[ -f legacy/build-runtime/thag_runtime.lib ]]; then
+              cp legacy/build-runtime/thag_runtime.lib thag_runtime.lib
+            fi
+          fi
+
+          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+
+      - name: Test hello + fib
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
+          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
+
+      - name: Package (Windows UI installer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/bin dist/lib
+          cp "${FINAL_BIN:-$STAGE1_BIN}" dist/bin/thag.exe
+          cp -r std dist/lib/std
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="0.0.0"
+          fi
+
+          "/c/Program Files (x86)/NSIS/makensis.exe" "//DVERSION=$VERSION" installer/windows/thagore.nsi
+          if [[ -f "installer/windows/$RELEASE_ASSET" ]]; then
+            mv "installer/windows/$RELEASE_ASSET" "$RELEASE_ASSET"
+          fi
+          [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: Windows UI installer not generated"; exit 1)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            thag-windows-setup.exe
+          if-no-files-found: error
+
+  release:
+    name: publish-release
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux
+      - build-macos
+      - build-windows
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package.outputs.asset }}
+          files: |
+            release-assets/release-linux/*
+            release-assets/release-macos/*
+            release-assets/release-windows/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger Homebrew Tap Update
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          repository: thagore-foundation/homebrew-thagore
+          event-type: thagore-release
+          client-payload: >-
+            {"version":"${{ github.ref_name }}","download_url":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thag-linux.tar.gz"}
