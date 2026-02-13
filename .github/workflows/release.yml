@@ -499,7 +499,7 @@ jobs:
             VERSION="0.0.0"
           fi
 
-          "/c/Program Files (x86)/NSIS/makensis.exe" "/DVERSION=$VERSION" installer/windows/thagore.nsi
+          "/c/Program Files (x86)/NSIS/makensis.exe" "//DVERSION=$VERSION" installer/windows/thagore.nsi
           [[ -f "$RELEASE_ASSET" ]] || (echo "ERROR: Windows UI installer not generated"; exit 1)
 
       - name: Upload artifact
