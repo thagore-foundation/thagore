@@ -78,6 +78,16 @@ jobs:
             if [[ "${{ runner.os }}" != "Windows" && -n "${LLVM_PATH:-}" ]]; then
               export CC="${LLVM_PATH}/bin/clang"
               export CXX="${LLVM_PATH}/bin/clang++"
+              export THAG_LLVM_BIN="${LLVM_PATH}/bin"
+              if [[ ! -x "${THAG_LLVM_BIN}/lld-link.exe" ]]; then
+                if command -v lld-link >/dev/null 2>&1; then
+                  sudo ln -sf "$(command -v lld-link)" "${THAG_LLVM_BIN}/lld-link.exe"
+                elif command -v lld-link-21 >/dev/null 2>&1; then
+                  sudo ln -sf "$(command -v lld-link-21)" "${THAG_LLVM_BIN}/lld-link.exe"
+                elif command -v ld.lld >/dev/null 2>&1; then
+                  sudo ln -sf "$(command -v ld.lld)" "${THAG_LLVM_BIN}/lld-link.exe"
+                fi
+              fi
             fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               LLVM_CMAKE_DIR=""
