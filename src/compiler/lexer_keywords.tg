@@ -1,0 +1,19 @@
+func keyword_kind(word: String) -> String:
+    if (word == "trait"):
+        return "TRAIT"
+    if (word == "interface"):
+        return "INTERFACE"
+    if (word == "defer"):
+        return "DEFER"
+    if (word == "comptime"):
+        return "COMPTIME"
+    return "IDENTIFIER"
+
+func classify_symbol(symbol: String) -> String:
+    if (symbol == "["):
+        return "LBRACKET"
+    if (symbol == "]"):
+        return "RBRACKET"
+    if (symbol == "?"):
+        return "QUESTION"
+    return ""

@@ -21,3 +21,42 @@ func text_of(tok: ptr) -> String:
 
 func free_handle(tok: ptr) -> i32:
     return __thg_token_free(tok)
+
+func tok_newline() -> String:
+    return "NEWLINE"
+
+func tok_indent() -> String:
+    return "INDENT"
+
+func tok_dedent() -> String:
+    return "DEDENT"
+
+func tok_eof() -> String:
+    return "EOF"
+
+func tok_generic_open() -> String:
+    return "LBRACKET"
+
+func tok_generic_close() -> String:
+    return "RBRACKET"
+
+func tok_question() -> String:
+    return "QUESTION"
+
+func tok_trait() -> String:
+    return "TRAIT"
+
+func tok_interface() -> String:
+    return "INTERFACE"
+
+func tok_defer() -> String:
+    return "DEFER"
+
+func tok_comptime() -> String:
+    return "COMPTIME"
+
+func tok_lbrace() -> String:
+    return ""
+
+func tok_rbrace() -> String:
+    return ""
