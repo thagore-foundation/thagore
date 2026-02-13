@@ -1,0 +1,214 @@
+func _char_at(text: String, index: i32) -> String:
+    return text.substr(index, 1)
+
+func _is_space(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    return 0
+
+func trim(text: String) -> String:
+    # Stable MVP trim: remove all whitespace chars.
+    let n = text.length()
+    let i = 0
+    let out = ""
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (_is_space(ch) == 0):
+            out = out + ch
+        i = i + 1
+    return out
+
+func _index_of(text: String, token: String) -> i32:
+    let n = text.length()
+    let i = 0
+    while (i < n):
+        if (_char_at(text, i) == token):
+            return i
+        i = i + 1
+    return -1
+
+func extract_generic_clause(signature: String) -> String:
+    let s = trim(signature)
+    let open_idx = _index_of(s, "[")
+    if (open_idx < 0):
+        return ""
+    let i = open_idx + 1
+    let close_idx = -1
+    while (i < s.length()):
+        if (_char_at(s, i) == "]"):
+            close_idx = i
+            i = s.length()
+        else:
+            i = i + 1
+    if (close_idx < 0):
+        return ""
+    if (close_idx < (open_idx + 1)):
+        return ""
+    return s.substr(open_idx + 1, close_idx - open_idx - 1)
+
+func _split_by_comma(spec: String, at: i32) -> String:
+    let clean = trim(spec)
+    let n = clean.length()
+    let idx = 0
+    let token_idx = 0
+    let part = ""
+    while (idx < n):
+        let ch = _char_at(clean, idx)
+        if (ch == ","):
+            if (token_idx == at):
+                return part
+            token_idx = token_idx + 1
+            part = ""
+        else:
+            part = part + ch
+        idx = idx + 1
+    if (token_idx == at):
+        return part
+    return ""
+
+func generic_param_count(spec: String) -> i32:
+    let clean = trim(spec)
+    if (clean.length() == 0):
+        return 0
+    let n = clean.length()
+    let i = 0
+    let count = 1
+    while (i < n):
+        if (_char_at(clean, i) == ","):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _split_bound(token: String) -> String:
+    let i = 0
+    let n = token.length()
+    while (i < n):
+        if (_char_at(token, i) == ":"):
+            return token.substr(i + 1, n - i - 1)
+        i = i + 1
+    return ""
+
+func _split_name(token: String) -> String:
+    let i = 0
+    let n = token.length()
+    while (i < n):
+        if (_char_at(token, i) == ":"):
+            return token.substr(0, i)
+        i = i + 1
+    return token
+
+func generic_param_name_at(spec: String, index: i32) -> String:
+    let token = _split_by_comma(spec, index)
+    return _split_name(token)
+
+func generic_param_bound_at(spec: String, index: i32) -> String:
+    let token = _split_by_comma(spec, index)
+    return _split_bound(token)
+
+func _contains(text: String, ch: String) -> i32:
+    let i = 0
+    let n = text.length()
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return 1
+        i = i + 1
+    return 0
+
+func _is_alpha_num(ch: String) -> i32:
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 1
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 1
+    if (_contains("0123456789", ch) == 1):
+        return 1
+    if (ch == "_"):
+        return 1
+    return 0
+
+func sanitize_atom(atom: String) -> String:
+    let input = trim(atom)
+    let i = 0
+    let n = input.length()
+    let out = ""
+    while (i < n):
+        let ch = _char_at(input, i)
+        if (_is_alpha_num(ch) == 1):
+            out = out + ch
+        else:
+            out = out + "_"
+        i = i + 1
+    return out
+
+func mangle_symbol(base: String, type_args_csv: String) -> String:
+    let spec = trim(type_args_csv)
+    if (spec.length() == 0):
+        return base
+    let count = generic_param_count(spec)
+    let i = 0
+    let out = base
+    while (i < count):
+        out = out + "__" + sanitize_atom(_split_by_comma(spec, i))
+        i = i + 1
+    return out
+
+func extract_trait_name(line: String) -> String:
+    let s = trim(line)
+    if (s.length() < 6):
+        return ""
+    if (s.substr(0, 6) == "trait"):
+        s = s
+    else:
+        return ""
+    let rest = s.substr(5, s.length() - 5)
+    let clean = trim(rest)
+    let n = clean.length()
+    let i = 0
+    while (i < n):
+        if (_char_at(clean, i) == ":"):
+            return clean.substr(0, i)
+        i = i + 1
+    return clean
+
+func extract_impl_pair(line: String) -> String:
+    # Return "Trait|Type" for `impl Trait for Type:`
+    let s = trim(line)
+    if (s.length() < 5):
+        return ""
+    if (s.substr(0, 5) == "impl"):
+        s = s
+    else:
+        return ""
+    let body = trim(s.substr(4, s.length() - 4))
+    let i = 0
+    let split = -1
+    while (i < body.length()):
+        if ((i + 4) < body.length()):
+            if (body.substr(i, 3) == "for"):
+                split = i
+                i = body.length()
+            else:
+                i = i + 1
+        else:
+            i = i + 1
+    if (split < 0):
+        return ""
+    let left = trim(body.substr(0, split))
+    let right = trim(body.substr(split + 3, body.length() - split - 3))
+    let n = right.length()
+    let j = 0
+    while (j < n):
+        if (_char_at(right, j) == ":"):
+            right = right.substr(0, j)
+            j = n
+        else:
+            j = j + 1
+    return left + "|" + right
+
+func make_instance_key(symbol: String, args_csv: String) -> String:
+    return mangle_symbol(symbol, args_csv)
