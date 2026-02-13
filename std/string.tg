@@ -1,0 +1,37 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+struct StringBuilder:
+    total_len: i32
+    cache: String
+
+func substring(text: String, start: i32, count: i32) -> String:
+    if (count <= 0):
+        return ""
+    if (start < 0):
+        return ""
+    let text_len = strlen(text)
+    if (start >= text_len):
+        return ""
+    return __thg_str_substr(text, start, count)
+
+func char_at(text: String, index: i32) -> String:
+    return substring(text, index, 1)
+
+func equals(a: String, b: String) -> bool:
+    return a == b
+
+func builder_new() -> StringBuilder:
+    return StringBuilder(0, "")
+
+func append(self: StringBuilder, part: String) -> StringBuilder:
+    return StringBuilder(self.total_len + strlen(part), self.cache + part)
+
+func len(self: StringBuilder) -> i32:
+    return self.total_len
+
+func to_string(self: StringBuilder) -> String:
+    return self.cache
+
+func dispose(self: StringBuilder) -> i32:
+    return 1

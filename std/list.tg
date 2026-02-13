@@ -1,0 +1,97 @@
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+extern func __thg_ptr_null() -> ptr
+
+struct List:
+    data: ptr
+    size: i32
+    capacity: i32
+
+func _ptr_size() -> i32:
+    return 8
+
+func _initial_capacity() -> i32:
+    return 4
+
+func _alloc_data(capacity: i32) -> ptr:
+    if (capacity <= 0):
+        return __thg_ptr_null()
+    let data = malloc(capacity * _ptr_size())
+    if (data == __thg_ptr_null()):
+        return __thg_ptr_null()
+    let i = 0
+    while (i < capacity):
+        __thg_ptr_set(data, i, __thg_ptr_null())
+        i = i + 1
+    return data
+
+func _copy_data(dst: ptr, src: ptr, count: i32) -> i32:
+    if (dst == __thg_ptr_null()):
+        return 0
+    if (src == __thg_ptr_null()):
+        return 0
+    let i = 0
+    while (i < count):
+        __thg_ptr_set(dst, i, __thg_ptr_get(src, i))
+        i = i + 1
+    return 1
+
+func new() -> List:
+    let data = _alloc_data(_initial_capacity())
+    if (data == __thg_ptr_null()):
+        return List(__thg_ptr_null(), 0, 0)
+    return List(data, 0, _initial_capacity())
+
+func len(self: List) -> i32:
+    return self.size
+
+func push(self: List, item: ptr) -> List:
+    let data = self.data
+    let size = self.size
+    let capacity = self.capacity
+
+    if (capacity <= 0):
+        capacity = _initial_capacity()
+        data = _alloc_data(capacity)
+        if (data == __thg_ptr_null()):
+            return List(__thg_ptr_null(), 0, 0)
+
+    if (size >= capacity):
+        let next_capacity = capacity * 2
+        let next_data = _alloc_data(next_capacity)
+        if (next_data == __thg_ptr_null()):
+            return List(data, size, capacity)
+        _copy_data(next_data, data, size)
+        free(data)
+        data = next_data
+        capacity = next_capacity
+
+    __thg_ptr_set(data, size, item)
+    return List(data, size + 1, capacity)
+
+func get(self: List, index: i32) -> ptr:
+    if (index < 0):
+        return __thg_ptr_null()
+    if (index >= self.size):
+        return __thg_ptr_null()
+    return __thg_ptr_get(self.data, index)
+
+func set(self: List, index: i32, val: ptr) -> List:
+    if (index < 0):
+        return self
+    if (index >= self.size):
+        return self
+    __thg_ptr_set(self.data, index, val)
+    return self
+
+func dispose(self: List) -> i32:
+    if (self.data != __thg_ptr_null()):
+        free(self.data)
+    return 1
+
+func is_null_ptr(p: ptr) -> i32:
+    if (p == __thg_ptr_null()):
+        return 1
+    return 0

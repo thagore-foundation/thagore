@@ -1,0 +1,119 @@
+import "std/list.tg" as list
+import "std/string.tg" as string
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+
+func assert_i32(name: String, got: i32, expected: i32) -> i32:
+    if (got == expected):
+        print("PASS: " + name)
+        return 1
+    print("FAIL: " + name)
+    print("got:")
+    print(got)
+    print("expected:")
+    print(expected)
+    return 0
+
+func assert_ptr(name: String, got: ptr, expected: ptr) -> i32:
+    if (got == expected):
+        print("PASS: " + name)
+        return 1
+    print("FAIL: " + name)
+    return 0
+
+func assert_str(name: String, got: String, expected: String) -> i32:
+    if (got == expected):
+        print("PASS: " + name)
+        return 1
+    print("FAIL: " + name)
+    print(got)
+    print(expected)
+    return 0
+
+func assert_bool(name: String, got: bool, expected: bool) -> i32:
+    if (got == expected):
+        print("PASS: " + name)
+        return 1
+    print("FAIL: " + name)
+    return 0
+
+func main() -> i32:
+    let passed = 0
+    let total = 0
+
+    let p1 = malloc(1)
+    let p2 = malloc(1)
+    let p3 = malloc(1)
+    let p4 = malloc(1)
+    let p5 = malloc(1)
+    let p6 = malloc(1)
+    let pz = malloc(1)
+
+    let xs = list.new()
+    xs = list.push(xs, p1)
+    xs = list.push(xs, p2)
+    xs = list.push(xs, p3)
+    xs = list.push(xs, p4)
+    xs = list.push(xs, p5)
+    xs = list.push(xs, p6)
+
+    total = total + 1
+    passed = passed + assert_i32("list.len after pushes", list.len(xs), 6)
+
+    total = total + 1
+    passed = passed + assert_ptr("list.get(0)", list.get(xs, 0), p1)
+
+    total = total + 1
+    passed = passed + assert_ptr("list.get(5)", list.get(xs, 5), p6)
+
+    xs = list.set(xs, 2, pz)
+    total = total + 1
+    passed = passed + assert_ptr("list.set + get", list.get(xs, 2), pz)
+
+    total = total + 1
+    passed = passed + assert_i32("list.get out of bounds returns null", list.is_null_ptr(list.get(xs, 99)), 1)
+
+    total = total + 1
+    passed = passed + assert_str("string.substring", string.substring("Thagore", 1, 3), "hag")
+
+    total = total + 1
+    passed = passed + assert_str("string.char_at", string.char_at("xyz", 2), "z")
+
+    total = total + 1
+    passed = passed + assert_bool("string.equals true", string.equals("same", "same"), (1 == 1))
+
+    total = total + 1
+    passed = passed + assert_bool("string.equals false", string.equals("a", "b"), (1 == 0))
+
+    let sb = string.builder_new()
+    sb = string.append(sb, "Tha")
+    sb = string.append(sb, "go")
+    sb = string.append(sb, "re")
+
+    total = total + 1
+    passed = passed + assert_i32("builder.len", string.len(sb), 7)
+
+    total = total + 1
+    passed = passed + assert_str("builder.to_string", string.to_string(sb), "Thagore")
+
+    string.dispose(sb)
+    list.dispose(xs)
+    free(p1)
+    free(p2)
+    free(p3)
+    free(p4)
+    free(p5)
+    free(p6)
+    free(pz)
+
+    print("----")
+    print("TOTAL:")
+    print(total)
+    print("PASSED:")
+    print(passed)
+
+    if (passed == total):
+        print("ALL TESTS PASSED")
+        return 0
+    print("TESTS FAILED")
+    return 1
