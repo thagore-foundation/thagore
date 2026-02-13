@@ -140,11 +140,46 @@ jobs:
           chmod +x dist/install.sh
           tar -czf "$RELEASE_ASSET" dist
 
+      - name: Package (.deb)
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="0.0.0"
+          fi
+
+          PKG_ROOT="deb_dist/thagore_${VERSION}_amd64"
+          rm -rf deb_dist
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/lib/thagore"
+
+          cp "${FINAL_BIN:-$STAGE1_BIN}" "${PKG_ROOT}/usr/bin/thag"
+          chmod +x "${PKG_ROOT}/usr/bin/thag"
+          cp -r std "${PKG_ROOT}/usr/lib/thagore/std"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: thagore
+          Version: ${VERSION}
+          Section: devel
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Thagore Foundation <release@thagore.org>
+          Depends: libc6
+          Description: Thagore self-hosted compiler
+          EOF
+
+          dpkg-deb --build "${PKG_ROOT}"
+          mv "deb_dist/thagore_${VERSION}_amd64.deb" "thagore_${VERSION}_amd64.deb"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-linux
-          path: thag-linux.tar.gz
+          path: |
+            thag-linux.tar.gz
+            thagore_*_amd64.deb
           if-no-files-found: error
 
   build-macos:
@@ -492,3 +527,14 @@ jobs:
             release-assets/release-windows/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump Homebrew Formula
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: thagore
+          homebrew-tap: thagore-foundation/homebrew-thagore
+          download-url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/thag-linux.tar.gz
+          commit-message: "Update thagore to {{version}}"
+        env:
+          COMMITTER_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
