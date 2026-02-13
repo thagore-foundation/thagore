@@ -143,11 +143,26 @@ jobs:
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          if [[ ! -f "$HELLO_BIN" && -f "${HELLO_BIN}.exe" ]]; then
-            HELLO_BIN="${HELLO_BIN}.exe"
-          fi
-          if [[ ! -f "$FIB_BIN" && -f "${FIB_BIN}.exe" ]]; then
-            FIB_BIN="${FIB_BIN}.exe"
+          resolve_bin() {
+            local want="$1"
+            if [[ -f "$want" ]]; then
+              echo "$want"
+              return
+            fi
+            if [[ -f "${want}.exe" ]]; then
+              echo "${want}.exe"
+              return
+            fi
+            local alt
+            alt="$(find . -maxdepth 1 -type f \( -name "${want}" -o -name "${want}.exe" -o -name "${want}*" \) | head -n1 | sed 's|^\./||')"
+            echo "${alt}"
+          }
+          HELLO_BIN="$(resolve_bin "$HELLO_BIN")"
+          FIB_BIN="$(resolve_bin "$FIB_BIN")"
+          if [[ -z "$HELLO_BIN" || -z "$FIB_BIN" ]]; then
+            echo "ERROR: cannot locate hello/fib output files after build"
+            ls -la
+            exit 1
           fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           "./$HELLO_BIN"
@@ -348,11 +363,26 @@ jobs:
           chmod +x "$FINAL_BIN" || true
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          if [[ ! -f "$HELLO_BIN" && -f "${HELLO_BIN}.exe" ]]; then
-            HELLO_BIN="${HELLO_BIN}.exe"
-          fi
-          if [[ ! -f "$FIB_BIN" && -f "${FIB_BIN}.exe" ]]; then
-            FIB_BIN="${FIB_BIN}.exe"
+          resolve_bin() {
+            local want="$1"
+            if [[ -f "$want" ]]; then
+              echo "$want"
+              return
+            fi
+            if [[ -f "${want}.exe" ]]; then
+              echo "${want}.exe"
+              return
+            fi
+            local alt
+            alt="$(find . -maxdepth 1 -type f \( -name "${want}" -o -name "${want}.exe" -o -name "${want}*" \) | head -n1 | sed 's|^\./||')"
+            echo "${alt}"
+          }
+          HELLO_BIN="$(resolve_bin "$HELLO_BIN")"
+          FIB_BIN="$(resolve_bin "$FIB_BIN")"
+          if [[ -z "$HELLO_BIN" || -z "$FIB_BIN" ]]; then
+            echo "ERROR: cannot locate hello/fib output files after build"
+            ls -la
+            exit 1
           fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           "./$HELLO_BIN"
