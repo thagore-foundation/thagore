@@ -1273,8 +1273,9 @@ private:
     llvm::Value *lhsValue = lhs.value();
     llvm::Value *rhsValue = rhs.value();
 
-    const bool lhsIsString = inferExprType(*expr.left) == BaseType::String;
-    const bool rhsIsString = inferExprType(*expr.right) == BaseType::String;
+    auto *stringTy = llvmType(BaseType::String);
+    const bool lhsIsString = inferExprType(*expr.left) == BaseType::String || lhsValue->getType() == stringTy;
+    const bool rhsIsString = inferExprType(*expr.right) == BaseType::String || rhsValue->getType() == stringTy;
     if (expr.op == BinaryOp::Add && lhsIsString && rhsIsString) {
       auto leftPtr = extractStringPointer(lhsValue, expr.left->span, "str.left");
       if (!leftPtr) {
@@ -1320,7 +1321,6 @@ private:
       expr.op == BinaryOp::Gt ||
       expr.op == BinaryOp::Ge;
     if (isComparison && lhsValue->getType() != rhsValue->getType()) {
-      auto *stringTy = llvmType(BaseType::String);
       if (lhsValue->getType() == stringTy && rhsValue->getType()->isPointerTy()) {
         auto ptr = extractStringPointer(lhsValue, expr.left->span, "cmp.lhs");
         if (!ptr) {
@@ -1341,6 +1341,19 @@ private:
         .message = "Comparison operands lowered to incompatible types.",
         .span = expr.span,
       });
+    }
+    if (isComparison) {
+      const bool scalarComparable =
+        lhsValue->getType()->isIntegerTy() ||
+        lhsValue->getType()->isFloatingPointTy() ||
+        lhsValue->getType()->isPointerTy();
+      if (!scalarComparable) {
+        return std::unexpected(Diagnostic {
+          .code = ErrorCode::CodegenError,
+          .message = "Comparison operands must be numeric, pointer, or string.",
+          .span = expr.span,
+        });
+      }
     }
 
     switch (expr.op) {

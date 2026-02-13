@@ -48,6 +48,8 @@ struct AstNode {
 
 struct RuntimeInterpreter {
   std::unordered_map<std::string, int> env {};
+  bool strict {false};
+  bool hadError {false};
 };
 
 int g_argc = 0;
@@ -1483,7 +1485,10 @@ int __thg_eval_expr(void *nodePtr) {
 }
 
 void *__thg_interp_new() {
-  return new RuntimeInterpreter {};
+  auto *interp = new RuntimeInterpreter {};
+  interp->strict = false;
+  interp->hadError = false;
+  return interp;
 }
 
 int __thg_interp_free(void *interpPtr) {
@@ -1496,12 +1501,28 @@ int __thg_interp_free(void *interpPtr) {
 
 int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  if (interp != nullptr) {
+    interp->hadError = false;
+  }
   return evalExprWithEnv(static_cast<AstNode *>(nodePtr), interp);
 }
 
 int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  if (interp != nullptr) {
+    interp->hadError = false;
+  }
   return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp);
+}
+
+int __thg_interp_set_strict(void *interpPtr, int strict_mode) {
+  if (interpPtr == nullptr) {
+    return 0;
+  }
+  auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  interp->strict = strict_mode != 0;
+  interp->hadError = false;
+  return 1;
 }
 
 }

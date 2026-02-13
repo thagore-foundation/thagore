@@ -39,17 +39,28 @@ struct TokenStream {
   std::vector<ExprToken> tokens {};
 };
 
+struct ProgramLine {
+  int indent {0};
+  std::string text {};
+};
+
 struct AstNode {
   std::string kind {};
   std::string op {};
   std::string value {};
   std::vector<std::string> items {};
+  std::vector<ProgramLine> lines {};
+  bool hasMain {false};
+  bool hasUnsupportedTopLevel {false};
+  std::string firstUnsupportedTopLevel {};
   AstNode *left {nullptr};
   AstNode *right {nullptr};
 };
 
 struct RuntimeInterpreter {
   std::unordered_map<std::string, int> env {};
+  bool strict {false};
+  bool hadError {false};
 };
 
 int g_argc = 0;
@@ -347,6 +358,23 @@ auto trimLeft(std::string_view text) -> std::string_view {
   return text.substr(i);
 }
 
+auto trimRight(std::string_view text) -> std::string_view {
+  std::size_t end = text.size();
+  while (end > 0) {
+    const char ch = text[end - 1];
+    if (ch == ' ' || ch == '\t' || ch == '\r') {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  return text.substr(0, end);
+}
+
+auto trim(std::string_view text) -> std::string_view {
+  return trimRight(trimLeft(text));
+}
+
 auto leadingSpaces(std::string_view text) -> int {
   int spaces = 0;
   while (spaces < static_cast<int>(text.size()) && text[static_cast<std::size_t>(spaces)] == ' ') {
@@ -357,6 +385,20 @@ auto leadingSpaces(std::string_view text) -> int {
 
 auto startsWith(std::string_view value, std::string_view prefix) -> bool {
   return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+auto isTopLevelDeclarationLike(std::string_view line) -> bool {
+  const auto text = trim(line);
+  if (text.empty()) {
+    return true;
+  }
+  return
+    startsWith(text, "import ") ||
+    startsWith(text, "use ") ||
+    startsWith(text, "extern ") ||
+    startsWith(text, "struct ") ||
+    startsWith(text, "impl ") ||
+    startsWith(text, "func ");
 }
 
 auto unescapeBasicString(std::string_view text) -> std::string {
@@ -442,15 +484,23 @@ auto parseProgramSource(const char *source) -> AstNode * {
     const std::size_t end = src.find('\n', cursor);
     const std::size_t lineEnd = end == std::string::npos ? src.size() : end;
     const std::string_view line {src.data() + cursor, lineEnd - cursor};
-    const std::string_view trimmed = trimLeft(line);
+    const std::string_view trimmed = trim(line);
 
     if (!trimmed.empty() && !startsWith(trimmed, "#") && !startsWith(trimmed, "//")) {
       const int indent = leadingSpaces(line);
       if (!inMain) {
         if (indent == 0 && startsWith(trimmed, "func main()") && trimmed.find(':') != std::string_view::npos) {
           inMain = true;
+          node->hasMain = true;
           mainIndent = indent;
           bodyIndent = -1;
+        } else {
+          if (!isTopLevelDeclarationLike(trimmed)) {
+            node->hasUnsupportedTopLevel = true;
+            if (node->firstUnsupportedTopLevel.empty()) {
+              node->firstUnsupportedTopLevel = std::string(trimmed);
+            }
+          }
         }
       } else {
         if (indent <= mainIndent) {
@@ -462,6 +512,7 @@ auto parseProgramSource(const char *source) -> AstNode * {
         if (indent < bodyIndent) {
           break;
         }
+        node->lines.push_back(ProgramLine {.indent = indent - bodyIndent, .text = std::string(trimmed)});
         if (indent == bodyIndent) {
           auto printText = parsePrintStringArg(trimmed);
           if (printText.has_value()) {
@@ -702,6 +753,610 @@ auto buildAstDebugString(AstNode *root) -> std::string {
   return out;
 }
 
+void freeAstNodeRecursive(AstNode *node, std::unordered_set<AstNode *> &seen);
+auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int;
+auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int;
+
+auto parsePrintArgument(std::string_view line) -> std::optional<std::string_view> {
+  const auto text = trim(line);
+  if (!startsWith(text, "print(") || text.size() < 7 || text.back() != ')') {
+    return std::nullopt;
+  }
+  return trim(text.substr(6, text.size() - 7));
+}
+
+auto parseControlExpr(std::string_view line, std::string_view keyword) -> std::optional<std::string_view> {
+  const auto text = trim(line);
+  if (!startsWith(text, keyword) || text.size() <= keyword.size()) {
+    return std::nullopt;
+  }
+  const char boundary = text[keyword.size()];
+  if (boundary != ' ' && boundary != '(') {
+    return std::nullopt;
+  }
+  auto body = trim(text.substr(keyword.size()));
+  if (body.empty() || body.back() != ':') {
+    return std::nullopt;
+  }
+  body = trim(body.substr(0, body.size() - 1));
+  if (!body.empty() && body.front() == '(' && body.back() == ')') {
+    body = trim(body.substr(1, body.size() - 2));
+  }
+  if (body.empty()) {
+    return std::nullopt;
+  }
+  return body;
+}
+
+auto isElseHeader(std::string_view line) -> bool {
+  const auto text = trim(line);
+  if (!startsWith(text, "else")) {
+    return false;
+  }
+  const auto rest = trim(text.substr(4));
+  return rest == ":";
+}
+
+auto isIdentifierText(std::string_view text) -> bool {
+  const auto id = trim(text);
+  if (id.empty()) {
+    return false;
+  }
+  const unsigned char first = static_cast<unsigned char>(id.front());
+  if (!(std::isalpha(first) != 0 || id.front() == '_')) {
+    return false;
+  }
+  for (std::size_t i = 1; i < id.size(); ++i) {
+    const unsigned char ch = static_cast<unsigned char>(id[i]);
+    if (std::isalnum(ch) == 0 && id[i] != '_') {
+      return false;
+    }
+  }
+  return true;
+}
+
+auto findAssignmentEquals(std::string_view line) -> std::size_t {
+  const auto pos = line.find('=');
+  if (pos == std::string_view::npos) {
+    return pos;
+  }
+  if (pos > 0) {
+    const char prev = line[pos - 1];
+    if (prev == '!' || prev == '<' || prev == '>') {
+      return std::string_view::npos;
+    }
+  }
+  if (pos + 1 < line.size() && line[pos + 1] == '=') {
+    return std::string_view::npos;
+  }
+  return pos;
+}
+
+void reportStrictError(RuntimeInterpreter *interp, std::string_view where, std::string_view text) {
+  if (interp == nullptr || !interp->strict || interp->hadError) {
+    return;
+  }
+  interp->hadError = true;
+  std::fprintf(stderr, "Interpreter strict mode: unsupported %.*s: %.*s\n",
+    static_cast<int>(where.size()), where.data(),
+    static_cast<int>(text.size()), text.data());
+}
+
+auto shouldAbort(RuntimeInterpreter *interp) -> bool {
+  return interp != nullptr && interp->strict && interp->hadError;
+}
+
+auto isLoopHeader(std::string_view line) -> bool {
+  return trim(line) == "loop:";
+}
+
+auto hasBalancedParens(std::string_view text) -> bool {
+  int depth = 0;
+  for (char ch : text) {
+    if (ch == '(') {
+      depth += 1;
+    } else if (ch == ')') {
+      depth -= 1;
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth == 0;
+}
+
+auto trimWrappedParens(std::string_view text) -> std::string_view {
+  auto out = trim(text);
+  while (out.size() >= 2 && out.front() == '(' && out.back() == ')') {
+    int depth = 0;
+    bool wrapsAll = true;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+      const char ch = out[i];
+      if (ch == '(') {
+        depth += 1;
+      } else if (ch == ')') {
+        depth -= 1;
+        if (depth == 0 && i + 1 < out.size()) {
+          wrapsAll = false;
+          break;
+        }
+      }
+      if (depth < 0) {
+        wrapsAll = false;
+        break;
+      }
+    }
+    if (!wrapsAll || depth != 0) {
+      break;
+    }
+    out = trim(out.substr(1, out.size() - 2));
+  }
+  return out;
+}
+
+auto isWordBoundaryOrEdge(std::string_view text, std::size_t index) -> bool {
+  if (index >= text.size()) {
+    return true;
+  }
+  const unsigned char ch = static_cast<unsigned char>(text[index]);
+  return std::isalnum(ch) == 0 && text[index] != '_';
+}
+
+auto findTopLevelKeyword(std::string_view text, std::string_view keyword) -> std::size_t {
+  const auto expr = trimWrappedParens(text);
+  const bool needsBoundary = !keyword.empty() && (std::isalpha(static_cast<unsigned char>(keyword.front())) != 0 || keyword.front() == '_');
+  int depth = 0;
+  for (std::size_t i = 0; i < expr.size(); ++i) {
+    const char ch = expr[i];
+    if (ch == '(') {
+      depth += 1;
+      continue;
+    }
+    if (ch == ')') {
+      depth -= 1;
+      continue;
+    }
+    if (depth != 0) {
+      continue;
+    }
+    if (i + keyword.size() > expr.size()) {
+      continue;
+    }
+    if (expr.substr(i, keyword.size()) != keyword) {
+      continue;
+    }
+    if (needsBoundary) {
+      if (!isWordBoundaryOrEdge(expr, i == 0 ? expr.size() : i - 1)) {
+        continue;
+      }
+      if (!isWordBoundaryOrEdge(expr, i + keyword.size())) {
+        continue;
+      }
+    }
+    return i;
+  }
+  return std::string_view::npos;
+}
+
+auto evalConditionFromText(std::string_view conditionText, RuntimeInterpreter *interp) -> bool;
+
+auto evalExprFromText(std::string_view exprText, RuntimeInterpreter *interp) -> int {
+  const auto expr = trimWrappedParens(exprText);
+  if (expr.empty()) {
+    return 0;
+  }
+  if (expr == "true") {
+    return 1;
+  }
+  if (expr == "false" || expr == "null") {
+    return 0;
+  }
+  if (startsWith(expr, "not ")) {
+    return evalConditionFromText(trim(expr.substr(4)), interp) ? 0 : 1;
+  }
+  if (!hasBalancedParens(expr)) {
+    reportStrictError(interp, "expression", expr);
+    return 0;
+  }
+  if (interp != nullptr && interp->strict) {
+    if (
+      expr.find('"') != std::string_view::npos ||
+      expr.find('[') != std::string_view::npos ||
+      expr.find(']') != std::string_view::npos ||
+      expr.find('{') != std::string_view::npos ||
+      expr.find('}') != std::string_view::npos ||
+      expr.find('.') != std::string_view::npos ||
+      expr.find(',') != std::string_view::npos
+    ) {
+      reportStrictError(interp, "expression", expr);
+      return 0;
+    }
+    for (std::size_t i = 0; i < expr.size(); ++i) {
+      if (expr[i] != '(') {
+        continue;
+      }
+      std::size_t left = i;
+      while (left > 0 && (expr[left - 1] == ' ' || expr[left - 1] == '\t')) {
+        left -= 1;
+      }
+      if (left == 0) {
+        continue;
+      }
+      const char prev = expr[left - 1];
+      const bool likelyCall = (std::isalnum(static_cast<unsigned char>(prev)) != 0) || prev == '_' || prev == ')';
+      if (likelyCall) {
+        reportStrictError(interp, "call-like expression", expr);
+        return 0;
+      }
+    }
+  }
+  std::string owned {expr};
+  auto tokens = tokenizeExprSource(owned.c_str());
+  if (interp != nullptr && interp->strict) {
+    for (const auto &tok : tokens) {
+      if (tok.kind == "INVALID") {
+        reportStrictError(interp, "expression token", tok.text);
+        return 0;
+      }
+    }
+  }
+  ExprParser parser {tokens};
+  auto *node = parser.parseExpr();
+  const int value = evalExprWithEnv(node, interp);
+  std::unordered_set<AstNode *> seen {};
+  freeAstNodeRecursive(node, seen);
+  return value;
+}
+
+auto evalConditionFromText(std::string_view conditionText, RuntimeInterpreter *interp) -> bool {
+  const auto expr = trimWrappedParens(conditionText);
+  if (expr.empty()) {
+    return false;
+  }
+  if (expr == "true") {
+    return true;
+  }
+  if (expr == "false" || expr == "null") {
+    return false;
+  }
+  if (startsWith(expr, "not ")) {
+    return !evalConditionFromText(trim(expr.substr(4)), interp);
+  }
+  const auto orPos = findTopLevelKeyword(expr, "or");
+  if (orPos != std::string_view::npos) {
+    const auto lhs = trim(expr.substr(0, orPos));
+    const auto rhs = trim(expr.substr(orPos + 2));
+    return evalConditionFromText(lhs, interp) || evalConditionFromText(rhs, interp);
+  }
+  const auto andPos = findTopLevelKeyword(expr, "and");
+  if (andPos != std::string_view::npos) {
+    const auto lhs = trim(expr.substr(0, andPos));
+    const auto rhs = trim(expr.substr(andPos + 3));
+    return evalConditionFromText(lhs, interp) && evalConditionFromText(rhs, interp);
+  }
+
+  const std::array<std::string_view, 6> ops {"==", "!=", ">=", "<=", ">", "<"};
+  for (const auto op : ops) {
+    const auto pos = findTopLevelKeyword(expr, op);
+    if (pos == std::string_view::npos) {
+      continue;
+    }
+    const auto lhs = trim(expr.substr(0, pos));
+    const auto rhs = trim(expr.substr(pos + op.size()));
+    const int left = evalExprFromText(lhs, interp);
+    const int right = evalExprFromText(rhs, interp);
+    if (op == "==") return left == right;
+    if (op == "!=") return left != right;
+    if (op == ">=") return left >= right;
+    if (op == "<=") return left <= right;
+    if (op == ">") return left > right;
+    if (op == "<") return left < right;
+  }
+
+  return evalExprFromText(expr, interp) != 0;
+}
+
+auto execStmtFromText(std::string_view stmtText, RuntimeInterpreter *interp) -> int {
+  const auto stmt = trim(stmtText);
+  if (stmt.empty()) {
+    return 0;
+  }
+  std::string owned {stmt};
+  auto tokens = tokenizeExprSource(owned.c_str());
+  ExprParser parser {tokens};
+  auto *node = parser.parseStatement();
+  const int value = execStmtWithEnv(node, interp);
+  std::unordered_set<AstNode *> seen {};
+  freeAstNodeRecursive(node, seen);
+  return value;
+}
+
+auto execLetFromText(std::string_view line, RuntimeInterpreter *interp) -> std::optional<int> {
+  const auto text = trim(line);
+  if (!startsWith(text, "let ")) {
+    return std::nullopt;
+  }
+  const auto body = trim(text.substr(4));
+  const auto eqPos = findAssignmentEquals(body);
+  if (eqPos == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  auto lhs = trim(body.substr(0, eqPos));
+  const auto rhs = trim(body.substr(eqPos + 1));
+  const auto colonPos = lhs.find(':');
+  if (colonPos != std::string_view::npos) {
+    lhs = trim(lhs.substr(0, colonPos));
+  }
+  if (!isIdentifierText(lhs)) {
+    return std::nullopt;
+  }
+
+  const int value = evalExprFromText(rhs, interp);
+  if (interp != nullptr) {
+    interp->env[std::string(lhs)] = value;
+  }
+  return value;
+}
+
+auto execAssignFromText(std::string_view line, RuntimeInterpreter *interp) -> std::optional<int> {
+  const auto text = trim(line);
+  const auto eqPos = findAssignmentEquals(text);
+  if (eqPos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const auto lhs = trim(text.substr(0, eqPos));
+  const auto rhs = trim(text.substr(eqPos + 1));
+  if (!isIdentifierText(lhs)) {
+    return std::nullopt;
+  }
+  const int value = evalExprFromText(rhs, interp);
+  if (interp != nullptr) {
+    interp->env[std::string(lhs)] = value;
+  }
+  return value;
+}
+
+struct BlockExecResult {
+  bool returned {false};
+  int value {0};
+  std::size_t nextIndex {0};
+};
+
+auto skipIndentedBlock(const std::vector<ProgramLine> &lines, std::size_t start, int indent) -> std::size_t {
+  std::size_t i = start;
+  while (i < lines.size() && lines[i].indent >= indent) {
+    i += 1;
+  }
+  return i;
+}
+
+auto execIndentedBlock(const std::vector<ProgramLine> &lines, std::size_t start, int indent, RuntimeInterpreter *interp)
+  -> BlockExecResult {
+  constexpr int kLoopGuardMaxIterations = 1000000;
+  std::size_t i = start;
+  int lastValue = 0;
+  while (i < lines.size()) {
+    if (lines[i].indent < indent) {
+      break;
+    }
+    if (lines[i].indent > indent) {
+      i += 1;
+      continue;
+    }
+    const auto line = trim(lines[i].text);
+    if (line.empty() || startsWith(line, "#") || startsWith(line, "//")) {
+      i += 1;
+      continue;
+    }
+
+    if (startsWith(line, "return")) {
+      const auto expr = trim(line.substr(6));
+      if (expr.empty()) {
+        return BlockExecResult {.returned = true, .value = lastValue, .nextIndex = i + 1};
+      }
+      const int retValue = evalExprFromText(expr, interp);
+      if (shouldAbort(interp)) {
+        return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+      }
+      return BlockExecResult {.returned = true, .value = retValue, .nextIndex = i + 1};
+    }
+
+    if (auto ifExpr = parseControlExpr(line, "if"); ifExpr.has_value()) {
+      const std::size_t thenStart = i + 1;
+      int thenIndent = -1;
+      if (thenStart < lines.size() && lines[thenStart].indent > indent) {
+        thenIndent = lines[thenStart].indent;
+      }
+      std::size_t afterThen = thenStart;
+      if (thenIndent > indent) {
+        afterThen = skipIndentedBlock(lines, thenStart, thenIndent);
+      }
+
+      bool hasElse = false;
+      std::size_t elseStart = afterThen;
+      int elseIndent = -1;
+      std::size_t cursor = afterThen;
+      if (cursor < lines.size() && lines[cursor].indent == indent && isElseHeader(lines[cursor].text)) {
+        hasElse = true;
+        elseStart = cursor + 1;
+        if (elseStart < lines.size() && lines[elseStart].indent > indent) {
+          elseIndent = lines[elseStart].indent;
+          cursor = skipIndentedBlock(lines, elseStart, elseIndent);
+        } else {
+          cursor = elseStart;
+        }
+      }
+
+      if (evalConditionFromText(*ifExpr, interp)) {
+        if (shouldAbort(interp)) {
+          return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+        }
+        if (thenIndent > indent) {
+          auto thenResult = execIndentedBlock(lines, thenStart, thenIndent, interp);
+          if (thenResult.returned) {
+            return thenResult;
+          }
+          lastValue = thenResult.value;
+        }
+      } else if (hasElse && elseIndent > indent) {
+        auto elseResult = execIndentedBlock(lines, elseStart, elseIndent, interp);
+        if (elseResult.returned) {
+          return elseResult;
+        }
+        lastValue = elseResult.value;
+      }
+
+      i = cursor;
+      continue;
+    }
+
+    if (isLoopHeader(line)) {
+      const std::size_t bodyStart = i + 1;
+      int bodyIndent = -1;
+      if (bodyStart < lines.size() && lines[bodyStart].indent > indent) {
+        bodyIndent = lines[bodyStart].indent;
+      }
+      std::size_t afterBody = bodyStart;
+      if (bodyIndent > indent) {
+        afterBody = skipIndentedBlock(lines, bodyStart, bodyIndent);
+      }
+
+      int iterations = 0;
+      if (bodyIndent > indent) {
+        while (true) {
+          iterations += 1;
+          if (iterations > kLoopGuardMaxIterations) {
+            reportStrictError(interp, "loop", line);
+            if (interp != nullptr && !interp->strict) {
+              break;
+            }
+            return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+          }
+          auto bodyResult = execIndentedBlock(lines, bodyStart, bodyIndent, interp);
+          if (bodyResult.returned) {
+            return bodyResult;
+          }
+          lastValue = bodyResult.value;
+          if (shouldAbort(interp)) {
+            return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+          }
+        }
+      }
+      i = afterBody;
+      continue;
+    }
+
+    if (auto whileExpr = parseControlExpr(line, "while"); whileExpr.has_value()) {
+      const std::size_t bodyStart = i + 1;
+      int bodyIndent = -1;
+      if (bodyStart < lines.size() && lines[bodyStart].indent > indent) {
+        bodyIndent = lines[bodyStart].indent;
+      }
+      std::size_t afterBody = bodyStart;
+      if (bodyIndent > indent) {
+        afterBody = skipIndentedBlock(lines, bodyStart, bodyIndent);
+      }
+
+      if (bodyIndent > indent) {
+        int iterations = 0;
+        while (evalConditionFromText(*whileExpr, interp)) {
+          if (shouldAbort(interp)) {
+            return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+          }
+          iterations += 1;
+          if (iterations > kLoopGuardMaxIterations) {
+            reportStrictError(interp, "while", line);
+            if (interp != nullptr && !interp->strict) {
+              break;
+            }
+            return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+          }
+          auto bodyResult = execIndentedBlock(lines, bodyStart, bodyIndent, interp);
+          if (bodyResult.returned) {
+            return bodyResult;
+          }
+          lastValue = bodyResult.value;
+        }
+      }
+
+      i = afterBody;
+      continue;
+    }
+
+    if (auto text = parsePrintStringArg(line); text.has_value()) {
+      std::puts(text->c_str());
+      i += 1;
+      continue;
+    }
+
+    if (auto printArg = parsePrintArgument(line); printArg.has_value()) {
+      const int value = evalExprFromText(*printArg, interp);
+      if (shouldAbort(interp)) {
+        return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+      }
+      std::printf("%d\n", value);
+      lastValue = value;
+      i += 1;
+      continue;
+    }
+
+    if (auto letValue = execLetFromText(line, interp); letValue.has_value()) {
+      if (shouldAbort(interp)) {
+        return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+      }
+      lastValue = *letValue;
+      i += 1;
+      continue;
+    }
+
+    if (auto assignValue = execAssignFromText(line, interp); assignValue.has_value()) {
+      if (shouldAbort(interp)) {
+        return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+      }
+      lastValue = *assignValue;
+      i += 1;
+      continue;
+    }
+
+    if (interp != nullptr && interp->strict) {
+      reportStrictError(interp, "statement", line);
+      return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+    }
+
+    lastValue = evalExprFromText(line, interp);
+    if (shouldAbort(interp)) {
+      return BlockExecResult {.returned = true, .value = -1, .nextIndex = i + 1};
+    }
+    i += 1;
+  }
+  return BlockExecResult {.returned = false, .value = lastValue, .nextIndex = i};
+}
+
+auto execProgramWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
+  if (node == nullptr) {
+    return 0;
+  }
+  if (interp != nullptr && interp->strict) {
+    if (!node->hasMain) {
+      reportStrictError(interp, "program", "missing func main() block");
+      return -1;
+    }
+    if (node->hasUnsupportedTopLevel) {
+      const auto text = node->firstUnsupportedTopLevel.empty()
+        ? std::string_view {"<unknown>"}
+        : std::string_view {node->firstUnsupportedTopLevel};
+      reportStrictError(interp, "top-level statement", text);
+      return -1;
+    }
+  }
+  auto result = execIndentedBlock(node->lines, 0, 0, interp);
+  if (shouldAbort(interp)) {
+    return -1;
+  }
+  return result.value;
+}
+
 auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
   if (node == nullptr) {
     return 0;
@@ -735,6 +1390,9 @@ auto evalExprWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
 auto execStmtWithEnv(AstNode *node, RuntimeInterpreter *interp) -> int {
   if (node == nullptr) {
     return 0;
+  }
+  if (node->kind == "Program") {
+    return execProgramWithEnv(node, interp);
   }
   if (node->kind == "Let") {
     const int value = evalExprWithEnv(node->left, interp);
@@ -1933,7 +2591,10 @@ int __thg_eval_expr(void *nodePtr) {
 }
 
 void *__thg_interp_new() {
-  return new RuntimeInterpreter {};
+  auto *interp = new RuntimeInterpreter {};
+  interp->strict = false;
+  interp->hadError = false;
+  return interp;
 }
 
 int __thg_interp_free(void *interpPtr) {
@@ -1946,12 +2607,32 @@ int __thg_interp_free(void *interpPtr) {
 
 int __thg_interp_eval_expr(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  if (interp != nullptr) {
+    interp->hadError = false;
+  }
   return evalExprWithEnv(static_cast<AstNode *>(nodePtr), interp);
 }
 
 int __thg_interp_exec_stmt(void *interpPtr, void *nodePtr) {
   auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
-  return execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp);
+  if (interp != nullptr) {
+    interp->hadError = false;
+  }
+  const int value = execStmtWithEnv(static_cast<AstNode *>(nodePtr), interp);
+  if (interp != nullptr && interp->strict && interp->hadError) {
+    return -1;
+  }
+  return value;
+}
+
+int __thg_interp_set_strict(void *interpPtr, int strict_mode) {
+  if (interpPtr == nullptr) {
+    return 0;
+  }
+  auto *interp = static_cast<RuntimeInterpreter *>(interpPtr);
+  interp->strict = strict_mode != 0;
+  interp->hadError = false;
+  return 1;
 }
 
 }
