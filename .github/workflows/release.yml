@@ -139,7 +139,6 @@ jobs:
             fi
             "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
             ar rcs libthag_runtime.a thag_runtime.o
-            cp libthag_runtime.a thag_runtime.lib
           fi
           if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
@@ -180,8 +179,8 @@ jobs:
             fi
             return 1
           }
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          "./$STAGE1_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$STAGE1_BIN" build examples/fib.tg -o "$FIB_BIN"
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
@@ -376,7 +375,6 @@ jobs:
             fi
             "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
             ar rcs libthag_runtime.a thag_runtime.o
-            cp libthag_runtime.a thag_runtime.lib
           fi
           if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
@@ -417,8 +415,8 @@ jobs:
             fi
             return 1
           }
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          "./$STAGE1_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$STAGE1_BIN" build examples/fib.tg -o "$FIB_BIN"
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
@@ -618,8 +616,8 @@ jobs:
             fi
             return 1
           }
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          "./$STAGE1_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$STAGE1_BIN" build examples/fib.tg -o "$FIB_BIN"
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
