@@ -132,15 +132,17 @@ jobs:
               fi
             fi
 
-            if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
-              mkdir -p bootstrap/extracted
-              tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
-              if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
-                cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
-                cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
-                cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
+                mkdir -p bootstrap/extracted
+                tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
+                if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+                  cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+                  cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+                  cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+                fi
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then

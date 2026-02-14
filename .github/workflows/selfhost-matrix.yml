@@ -118,15 +118,17 @@ jobs:
                 cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
               fi
             fi
-            if gh release download --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
-              mkdir -p bootstrap/extracted
-              tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
-              if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
-                cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
-                cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
-                cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
+                mkdir -p bootstrap/extracted
+                tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
+                if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+                  cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+                  cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+                  cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+                fi
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
