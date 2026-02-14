@@ -89,23 +89,11 @@ jobs:
             fi
 
             if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
-              mkdir -p bootstrap/install
-              "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
-              if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
-                cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
-                cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
-              fi
+              echo "INFO: skip installer extraction in CI bootstrap (prefer direct stage1 binary)." | tee -a "$STAGE_TRACE_FILE"
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
               if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
-                mkdir -p bootstrap/install
-                "bootstrap/thag-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
-                if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
-                  cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
-                  cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
-                fi
+                echo "INFO: skip legacy installer extraction in CI bootstrap." | tee -a "$STAGE_TRACE_FILE"
               fi
             fi
 
