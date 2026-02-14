@@ -2592,14 +2592,33 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
 
-  const std::string command =
+  const std::vector<std::string> helperCommands {
     quoteShellArg(helperPath.string()) + " " +
-    quoteShellArg(sourcePath.string()) + " --emit-ir -o " +
-    quoteShellArg(irPath.string());
+      quoteShellArg(sourcePath.string()) + " --emit-ir -o " +
+      quoteShellArg(irPath.string()),
+    quoteShellArg(helperPath.string()) + " " +
+      quoteShellArg(sourcePath.string()) + " --emit-llvm -o " +
+      quoteShellArg(irPath.string()),
+    quoteShellArg(helperPath.string()) + " --emit-llvm " +
+      quoteShellArg(sourcePath.string()) + " -o " +
+      quoteShellArg(irPath.string()),
+  };
 
-  const int code = std::system(command.c_str());
-  if (code != 0) {
-    std::fprintf(stderr, "codegen helper command failed: %s\n", command.c_str());
+  bool commandOk = false;
+  std::string lastCommand {};
+  for (const auto &command : helperCommands) {
+    lastCommand = command;
+    const int code = std::system(command.c_str());
+    if (code == 0 && std::filesystem::exists(irPath)) {
+      commandOk = true;
+      break;
+    }
+    std::error_code rmIrErr {};
+    std::filesystem::remove(irPath, rmIrErr);
+  }
+
+  if (!commandOk) {
+    std::fprintf(stderr, "codegen helper command failed: %s\n", lastCommand.c_str());
     std::error_code rmErr {};
     std::filesystem::remove(sourcePath, rmErr);
     std::filesystem::remove(irPath, rmErr);
