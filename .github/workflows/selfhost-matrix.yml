@@ -84,22 +84,40 @@ jobs:
             fi
           }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            STAGE1_ASSET="thagore-stage1.exe"
             STAGE1_BIN="stage1.exe"
-            download_asset "$STAGE1_ASSET"
+            STAGE1_ASSET=""
+            for ASSET in thagore-stage1.exe thagore.exe thag.exe; do
+              if download_asset "$ASSET"; then
+                STAGE1_ASSET="$ASSET"
+                break
+              fi
+            done
+            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
             cp "bootstrap/$STAGE1_ASSET" "$STAGE1_BIN"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            STAGE1_ASSET="thagore-linux.tar.gz"
             STAGE1_BIN="stage1"
-            download_asset "$STAGE1_ASSET"
+            STAGE1_ASSET=""
+            for ASSET in thagore-linux.tar.gz thagore-stage1-linux.tar.gz thag-linux.tar.gz; do
+              if download_asset "$ASSET"; then
+                STAGE1_ASSET="$ASSET"
+                break
+              fi
+            done
+            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Linux stage1 asset found in releases."; exit 1)
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
             CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in linux seed asset"; exit 1)
             cp "$CANDIDATE" "$STAGE1_BIN"
           else
-            STAGE1_ASSET="thagore-macos.tar.gz"
             STAGE1_BIN="stage1"
-            download_asset "$STAGE1_ASSET"
+            STAGE1_ASSET=""
+            for ASSET in thagore-macos.tar.gz thagore-stage1-macos.tar.gz thag-macos.tar.gz; do
+              if download_asset "$ASSET"; then
+                STAGE1_ASSET="$ASSET"
+                break
+              fi
+            done
+            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
             CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in macos seed asset"; exit 1)

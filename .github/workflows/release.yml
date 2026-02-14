@@ -101,15 +101,43 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          if [[ -n "$BOOTSTRAP_STAGE1_TAG" ]]; then
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "${{ matrix.stage1_asset }}" -D bootstrap
-          else
-            gh release download --repo "${{ github.repository }}" --pattern "${{ matrix.stage1_asset }}" -D bootstrap
-          fi
+          download_asset() {
+            local pattern="$1"
+            if [[ -n "$BOOTSTRAP_STAGE1_TAG" ]]; then
+              gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            else
+              gh release download --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            fi
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "bootstrap/${{ matrix.stage1_asset }}" "${{ matrix.stage1_bin }}"
+            STAGE1_ASSET=""
+            for ASSET in thagore-stage1.exe thagore.exe thag.exe; do
+              if download_asset "$ASSET"; then
+                STAGE1_ASSET="$ASSET"
+                break
+              fi
+            done
+            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
+            cp "bootstrap/$STAGE1_ASSET" "${{ matrix.stage1_bin }}"
           else
-            tar -xzf "bootstrap/${{ matrix.stage1_asset }}" -C bootstrap
+            STAGE1_ASSET=""
+            if [[ "${{ runner.os }}" == "Linux" ]]; then
+              for ASSET in thagore-linux.tar.gz thagore-stage1-linux.tar.gz thag-linux.tar.gz; do
+                if download_asset "$ASSET"; then
+                  STAGE1_ASSET="$ASSET"
+                  break
+                fi
+              done
+            else
+              for ASSET in thagore-macos.tar.gz thagore-stage1-macos.tar.gz thag-macos.tar.gz; do
+                if download_asset "$ASSET"; then
+                  STAGE1_ASSET="$ASSET"
+                  break
+                fi
+              done
+            fi
+            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Unix stage1 asset found in releases."; exit 1)
+            tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
             CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in unix seed asset"; exit 1)
             cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
