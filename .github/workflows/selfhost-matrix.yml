@@ -75,12 +75,25 @@ jobs:
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
+                mkdir -p bootstrap/install
+                "bootstrap/thag-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+                if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
+                  cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
+                  cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
+                fi
+              fi
+            fi
+            if [[ ! -f "$STAGE1_BIN" ]]; then
               gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap || true
               [[ -f "bootstrap/thagore.exe" ]] && cp "bootstrap/thagore.exe" "$STAGE1_BIN"
             fi
           else
             ASSET="thagore-linux.tar.gz"
+            ASSET_LEGACY="thag-linux.tar.gz"
             [[ "${{ runner.os }}" == "macOS" ]] && ASSET="thagore-macos.tar.gz"
+            [[ "${{ runner.os }}" == "macOS" ]] && ASSET_LEGACY="thag-macos.tar.gz"
             if gh release download --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
               mkdir -p bootstrap/extracted
               tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
@@ -88,6 +101,23 @@ jobs:
                 cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
               elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
                 cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+                cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+              fi
+            fi
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "$ASSET_LEGACY" -D bootstrap; then
+                mkdir -p bootstrap/extracted_legacy
+                tar -xzf "bootstrap/$ASSET_LEGACY" -C bootstrap/extracted_legacy
+                if [[ -f "bootstrap/extracted_legacy/bin/thagore" ]]; then
+                  cp "bootstrap/extracted_legacy/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted_legacy/bin/thag" ]]; then
+                  cp "bootstrap/extracted_legacy/bin/thag" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted_legacy/dist/bin/thagore" ]]; then
+                  cp "bootstrap/extracted_legacy/dist/bin/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/extracted_legacy/dist/bin/thag" ]]; then
+                  cp "bootstrap/extracted_legacy/dist/bin/thag" "$STAGE1_BIN"
+                fi
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
@@ -97,21 +127,26 @@ jobs:
           fi
 
           if [[ ! -f "$STAGE1_BIN" ]]; then
-            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" && ( "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ) ]]; then
               echo "[CMD] cmake -S legacy -B legacy/build -G Ninja" | tee -a "$STAGE_TRACE_FILE"
               cmake -S legacy -B legacy/build -G Ninja
               echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
               cmake --build legacy/build --config Release
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                cp legacy/build/stage0.exe "$STAGE1_BIN"
-              else
-                cp legacy/build/stage0 "$STAGE1_BIN"
-              fi
+              cp legacy/build/stage0.exe "$STAGE1_BIN"
             else
               echo "CRITICAL: Stage1 release asset missing; stage0 fallback is disabled."
-              echo "Set repo variable ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow fallback."
+              echo "Linux/macOS require stage1 release assets; stage0 fallback is disabled on these OS."
+              echo "Windows can set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow fallback."
               exit 1
             fi
+          fi
+
+          if [[ -f "legacy/thag_runtime.lib" ]]; then
+            cp legacy/thag_runtime.lib thag_runtime.lib
+          fi
+          if [[ ! -f "thag_runtime.lib" ]]; then
+            echo "CRITICAL: runtime library missing (thag_runtime.lib)."
+            exit 1
           fi
 
           chmod +x "$STAGE1_BIN" || true
