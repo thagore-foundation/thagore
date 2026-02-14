@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
+          BOOTSTRAP_SOURCE="release"
 
           if gh release download --repo "${{ github.repository }}" --pattern "$RELEASE_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
@@ -101,12 +102,17 @@ jobs:
             fi
             chmod +x "$STAGE0_BIN" || true
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
+            BOOTSTRAP_SOURCE="stage0"
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-          if [[ ! -f "$FINAL_BIN" ]]; then
+          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
             FINAL_BIN="$STAGE1_BIN"
+          else
+            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+            if [[ ! -f "$FINAL_BIN" ]]; then
+              FINAL_BIN="$STAGE1_BIN"
+            fi
           fi
 
           if [[ ! -f "thag_runtime.lib" ]]; then
@@ -195,6 +201,7 @@ jobs:
           set -euo pipefail
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
+          BOOTSTRAP_SOURCE="release"
 
           if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
@@ -256,12 +263,17 @@ jobs:
             fi
             chmod +x "$STAGE0_BIN" || true
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
+            BOOTSTRAP_SOURCE="stage0"
           fi
 
           chmod +x "$STAGE1_BIN" || true
-          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-          if [[ ! -f "$FINAL_BIN" ]]; then
+          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
             FINAL_BIN="$STAGE1_BIN"
+          else
+            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+            if [[ ! -f "$FINAL_BIN" ]]; then
+              FINAL_BIN="$STAGE1_BIN"
+            fi
           fi
 
           if [[ ! -f "thag_runtime.lib" ]]; then
@@ -346,6 +358,7 @@ jobs:
           set -euo pipefail
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
+          BOOTSTRAP_SOURCE="release"
 
           if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
             mkdir -p bootstrap/install
@@ -409,11 +422,16 @@ jobs:
               exit 1
             fi
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
+            BOOTSTRAP_SOURCE="stage0"
           fi
 
-          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN" || true
-          if [[ ! -f "$FINAL_BIN" ]]; then
+          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
             FINAL_BIN="$STAGE1_BIN"
+          else
+            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN" || true
+            if [[ ! -f "$FINAL_BIN" ]]; then
+              FINAL_BIN="$STAGE1_BIN"
+            fi
           fi
 
           if [[ ! -f "thag_runtime.lib" ]]; then
