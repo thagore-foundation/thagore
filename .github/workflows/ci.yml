@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       STAGE_TRACE_FILE: stage-commands.log
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
+      ALLOW_STAGE0_BOOTSTRAP: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,6 +73,12 @@ jobs:
             FIB_BIN="fib.exe"
             PROBE_BIN="stage1_probe.exe"
 
+            if gh release download --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D bootstrap; then
+              if [[ -f "bootstrap/thagore-stage1.exe" ]]; then
+                cp "bootstrap/thagore-stage1.exe" "$STAGE1_BIN"
+              fi
+            fi
+
             if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
               mkdir -p bootstrap/install
               "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
@@ -105,11 +111,25 @@ jobs:
             fi
           else
             if [[ "${{ runner.os }}" == "Linux" ]]; then
+              BOOTSTRAP_STAGE1_ASSET="thagore-stage1-linux.tar.gz"
               BOOTSTRAP_ASSET="thagore-linux.tar.gz"
               BOOTSTRAP_ASSET_LEGACY="thag-linux.tar.gz"
             else
+              BOOTSTRAP_STAGE1_ASSET="thagore-stage1-macos.tar.gz"
               BOOTSTRAP_ASSET="thagore-macos.tar.gz"
               BOOTSTRAP_ASSET_LEGACY="thag-macos.tar.gz"
+            fi
+
+            if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_STAGE1_ASSET" -D bootstrap; then
+              mkdir -p bootstrap/extracted_stage1
+              tar -xzf "bootstrap/$BOOTSTRAP_STAGE1_ASSET" -C bootstrap/extracted_stage1
+              if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
+                cp "bootstrap/extracted_stage1/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted_stage1/dist/bin/thagore" ]]; then
+                cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
+                cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
+              fi
             fi
 
             if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then

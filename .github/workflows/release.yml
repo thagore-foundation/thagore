@@ -18,6 +18,7 @@ jobs:
       FINAL_BIN: thagore
       HELLO_BIN: hello
       FIB_BIN: fib
+      STAGE1_SEED_ASSET: thagore-stage1-linux.tar.gz
       RELEASE_ASSET: thagore-linux.tar.gz
       RELEASE_ASSET_LEGACY: thag-linux.tar.gz
       STAGE_TRACE_FILE: stage-commands.log
@@ -45,6 +46,18 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+
+          if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
+            mkdir -p bootstrap/extracted_stage1
+            tar -xzf "bootstrap/$STAGE1_SEED_ASSET" -C bootstrap/extracted_stage1
+            if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
+              cp "bootstrap/extracted_stage1/bin/thagore" "$STAGE1_BIN"
+            elif [[ -f "bootstrap/extracted_stage1/dist/bin/thagore" ]]; then
+              cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
+            elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
+              cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
+            fi
+          fi
 
           if gh release download --repo "${{ github.repository }}" --pattern "$RELEASE_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
@@ -174,6 +187,17 @@ jobs:
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
+      - name: Verify stage1 seed (self-host probe)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe
+          [[ -f "stage2_seed_probe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
+          "./stage2_seed_probe" build examples/hello.tg -o stage2_seed_hello
+          [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
+          ./stage2_seed_hello || true
+
       - name: Package tar.gz + .deb
         shell: bash
         run: |
@@ -186,6 +210,7 @@ jobs:
           cp scripts/install/install-linux.sh dist/install.sh
           chmod +x dist/install.sh
           tar -czf "$RELEASE_ASSET" -C dist .
+          cp "$RELEASE_ASSET" "$STAGE1_SEED_ASSET"
           cp "$RELEASE_ASSET" "$RELEASE_ASSET_LEGACY"
 
           VERSION="${GITHUB_REF_NAME#v}"
@@ -214,6 +239,7 @@ jobs:
         with:
           name: release-linux
           path: |
+            thagore-stage1-linux.tar.gz
             thagore-linux.tar.gz
             thag-linux.tar.gz
             thagore_*_amd64.deb
@@ -227,6 +253,7 @@ jobs:
       FINAL_BIN: thagore
       HELLO_BIN: hello
       FIB_BIN: fib
+      STAGE1_SEED_ASSET: thagore-stage1-macos.tar.gz
       BOOTSTRAP_ASSET: thagore-macos.tar.gz
       BOOTSTRAP_ASSET_LEGACY: thag-macos.tar.gz
       RELEASE_ASSET: thagore-macos.pkg
@@ -253,6 +280,18 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+
+          if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
+            mkdir -p bootstrap/extracted_stage1
+            tar -xzf "bootstrap/$STAGE1_SEED_ASSET" -C bootstrap/extracted_stage1
+            if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
+              cp "bootstrap/extracted_stage1/bin/thagore" "$STAGE1_BIN"
+            elif [[ -f "bootstrap/extracted_stage1/dist/bin/thagore" ]]; then
+              cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
+            elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
+              cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
+            fi
+          fi
 
           if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted
@@ -385,6 +424,17 @@ jobs:
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
+      - name: Verify stage1 seed (self-host probe)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe
+          [[ -f "stage2_seed_probe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
+          "./stage2_seed_probe" build examples/hello.tg -o stage2_seed_hello
+          [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
+          ./stage2_seed_hello || true
+
       - name: Package tar.gz + pkg
         shell: bash
         run: |
@@ -395,6 +445,7 @@ jobs:
           chmod +x dist/bin/thagore
           cp -r std dist/lib/std
           tar -czf "$BOOTSTRAP_ASSET" -C dist .
+          cp "$BOOTSTRAP_ASSET" "$STAGE1_SEED_ASSET"
           cp "$BOOTSTRAP_ASSET" "$BOOTSTRAP_ASSET_LEGACY"
 
           rm -rf pkgroot
@@ -412,6 +463,7 @@ jobs:
         with:
           name: release-macos
           path: |
+            thagore-stage1-macos.tar.gz
             thagore-macos.tar.gz
             thag-macos.tar.gz
             thagore-macos.pkg
@@ -425,6 +477,7 @@ jobs:
       FINAL_BIN: thagore.exe
       HELLO_BIN: hello.exe
       FIB_BIN: fib.exe
+      STAGE1_SEED_ASSET: thagore-stage1.exe
       RELEASE_ASSET: thagore-windows-setup.exe
       RELEASE_ASSET_LEGACY: thag-windows-setup.exe
       STAGE_TRACE_FILE: stage-commands.log
@@ -450,6 +503,12 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+
+          if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
+            if [[ -f "bootstrap/$STAGE1_SEED_ASSET" ]]; then
+              cp "bootstrap/$STAGE1_SEED_ASSET" "$STAGE1_BIN"
+            fi
+          fi
 
           if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
             mkdir -p bootstrap/install
@@ -566,6 +625,17 @@ jobs:
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
+      - name: Verify stage1 seed (self-host probe)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe.exe
+          [[ -f "stage2_seed_probe.exe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
+          "./stage2_seed_probe.exe" build examples/hello.tg -o stage2_seed_hello.exe
+          [[ -f "stage2_seed_hello.exe" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
+          ./stage2_seed_hello.exe || true
+
       - name: Package Windows UI installer
         shell: bash
         run: |
@@ -573,6 +643,7 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           cp "$FINAL_BIN" dist/bin/thagore.exe
+          cp "$FINAL_BIN" "$STAGE1_SEED_ASSET"
           cp -r std dist/lib/std
           VERSION="${GITHUB_REF_NAME#v}"
           [[ "$VERSION" == "$GITHUB_REF_NAME" ]] && VERSION="0.0.0"
@@ -588,6 +659,7 @@ jobs:
         with:
           name: release-windows
           path: |
+            thagore-stage1.exe
             thagore-windows-setup.exe
             thag-windows-setup.exe
             stage-commands.log
