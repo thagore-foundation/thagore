@@ -1,0 +1,53 @@
+name: Bootstrap Seed (Stage0 -> Stage1)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-stage1:
+    runs-on: ubuntu-latest
+    if: vars.ALLOW_STAGE0_BOOTSTRAP == '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all
+
+      - name: Build stage0 from legacy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+          cmake --build legacy/build --config Release
+          if [[ -f legacy/build/thag ]]; then
+            cp legacy/build/thag stage0
+          elif [[ -f legacy/build/Release/thag ]]; then
+            cp legacy/build/Release/thag stage0
+          else
+            echo "ERROR: stage0 build failed"
+            exit 1
+          fi
+          chmod +x stage0
+
+      - name: Build stage1
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./stage0 build src/thagore.tg -o stage1
+          ./stage1 --version || true
+
+      - name: Upload seed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-stage1
+          path: stage1

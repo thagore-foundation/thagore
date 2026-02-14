@@ -1,4 +1,5 @@
 import "src/frontend/semantic/generics_traits.tg" as gt
+import "src/frontend/parser/parser_headers.tg" as ph
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -22,6 +23,18 @@ func _find_char(text: String, ch: String) -> i32:
             return i
         i = i + 1
     return -1
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
 
 func _line_count(source: String) -> i32:
     let n = strlen(source)
@@ -237,6 +250,23 @@ func _rewrite_trait_impl_header(line: String) -> String:
     let prefix = __thg_str_substr(line, 0, indent)
     return prefix + "impl " + type_name + ":"
 
+func _rewrite_visibility_header(line: String) -> String:
+    let t = _trim_edges(line)
+    if (_starts_with(t, "pub ") == 0):
+        return line
+    let indent = _leading_spaces(line)
+    let prefix = __thg_str_substr(line, 0, indent)
+    let body = _trim_edges(__thg_str_substr(t, 4, strlen(t) - 4))
+    return prefix + body
+
+func _rewrite_unsafe_header(line: String) -> String:
+    let t = _trim_edges(line)
+    if (t == "unsafe:"):
+        let indent = _leading_spaces(line)
+        let prefix = __thg_str_substr(line, 0, indent)
+        return prefix + "if 1:"
+    return line
+
 func _strip_generic_clause(line: String) -> String:
     let left = _find_char(line, "[")
     let right = _find_char(line, "]")
@@ -268,6 +298,8 @@ func preprocess(source: String) -> String:
             keep = 0
         if (keep == 1):
             line = _rewrite_trait_impl_header(line)
+            line = _rewrite_visibility_header(line)
+            line = _rewrite_unsafe_header(line)
             line = _rewrite_comptime_line(line)
             line = _strip_generic_clause(line)
             out = out + line
@@ -321,9 +353,43 @@ func check_defer_scope(source: String) -> i32:
         return 1
     return 0
 
+func check_new_syntax_headers(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let fail = 0
+    while (i < total):
+        let line = _trim_edges(_line_at(source, i))
+        if (_starts_with(line, "pub ") == 1):
+            if (ph.parse_visibility_decl(line).length() == 0):
+                print("Semantic error: pub can only be used with func/struct/enum/type/impl/trait.")
+                fail = 1
+        if (_starts_with(line, "match ") == 1):
+            if (ph.is_match_header(line) == 0):
+                print("Semantic error: match header must end with ':'.")
+                fail = 1
+        if (_starts_with(line, "for ") == 1):
+            if (_find_char(line, ":") >= 0):
+                if (ph.is_range_loop_header(line) == 0):
+                    if (_contains(line, " in ") == 1):
+                        print("Semantic error: range loop must use 'for i in a..b:'.")
+                        fail = 1
+        if (_starts_with(line, "unsafe") == 1):
+            if (ph.is_unsafe_block_header(line) == 0):
+                print("Semantic error: use unsafe block as 'unsafe:'.")
+                fail = 1
+        if (_starts_with(line, "impl ") == 1):
+            if (_contains(line, " for ") == 1):
+                if (ph.is_extension_impl_header(line) == 0):
+                    print("Semantic error: extension impl must be 'impl Trait for Type:'.")
+                    fail = 1
+        i = i + 1
+    return fail
+
 func validate(source: String) -> i32:
     if (check_result_try_sugar(source) != 0):
         return 1
     if (check_defer_scope(source) != 0):
+        return 1
+    if (check_new_syntax_headers(source) != 0):
         return 1
     return 0

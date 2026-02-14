@@ -44,10 +44,26 @@ func main() -> i32:
     let out_gen = pipe.preprocess(src_gen)
     fails = fails + _expect_str_contains("strip generic clause", out_gen, "func id(x: T) -> T:")
 
+    let src_pub = "pub func main() -> i32:\n    return 0\n"
+    let out_pub = pipe.preprocess(src_pub)
+    fails = fails + _expect_str_contains("strip pub on decl", out_pub, "func main() -> i32:")
+
+    let src_unsafe = "unsafe:"
+    let out_unsafe = pipe.preprocess(src_unsafe)
+    fails = fails + _expect_str_contains("rewrite unsafe block header", out_unsafe, "if 1:")
+
     fails = fails + _expect_i32("reject defer top-level", pipe.validate("defer print(x)\n"), 1)
     fails = fails + _expect_i32("accept defer in function", pipe.validate("func main() -> i32:\n    defer print(x)\n    return 0\n"), 0)
     fails = fails + _expect_i32("reject stray ?", pipe.validate("foo?"), 1)
     fails = fails + _expect_i32("accept ? in result-like header", pipe.validate("func run() -> Result[i32, String]?:\n    return 0\n"), 0)
+    fails = fails + _expect_i32("accept match header", pipe.validate("match value:"), 0)
+    fails = fails + _expect_i32("reject invalid match header", pipe.validate("match value\n"), 1)
+    fails = fails + _expect_i32("accept range loop", pipe.validate("for i in 0..10:"), 0)
+    fails = fails + _expect_i32("reject invalid range loop", pipe.validate("for i in xs:"), 1)
+    fails = fails + _expect_i32("accept pub decl", pipe.validate("pub enum Option:"), 0)
+    fails = fails + _expect_i32("reject invalid pub target", pipe.validate("pub let x = 1\n"), 1)
+    fails = fails + _expect_i32("accept unsafe block header", pipe.validate("unsafe:"), 0)
+    fails = fails + _expect_i32("reject invalid unsafe form", pipe.validate("unsafe value\n"), 1)
 
     if (fails == 0):
         print("PASS: language pipeline")

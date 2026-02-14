@@ -68,3 +68,173 @@ func has_result_sugar(header: String) -> i32:
     if (_char_at(s, i) == "?"):
         return 1
     return 0
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func parse_enum_name(header: String) -> String:
+    let s = gt.trim(header)
+    if (_starts_with(s, "enum") == 0):
+        return ""
+    let body = __thg_str_substr(s, 4, strlen(s) - 4)
+    let p_generic = _find_char(body, "[")
+    let p_colon = _find_char(body, ":")
+    let end = _min_positive(p_generic, p_colon)
+    if (end < 0):
+        return body
+    return __thg_str_substr(body, 0, end)
+
+func parse_type_alias_name(header: String) -> String:
+    let s = gt.trim(header)
+    if (_starts_with(s, "type") == 0):
+        return ""
+    let body = __thg_str_substr(s, 4, strlen(s) - 4)
+    let eq = _find_char(body, "=")
+    if (eq < 0):
+        return gt.trim(body)
+    return gt.trim(__thg_str_substr(body, 0, eq))
+
+func parse_visibility_decl(header: String) -> String:
+    let s = gt.trim(header)
+    if (_starts_with(s, "pub") == 0):
+        return ""
+    if (strlen(s) <= 3):
+        return ""
+    let body = __thg_str_substr(s, 3, strlen(s) - 3)
+    if (_starts_with(body, "func") == 1):
+        return "func"
+    if (_starts_with(body, "struct") == 1):
+        return "struct"
+    if (_starts_with(body, "enum") == 1):
+        return "enum"
+    if (_starts_with(body, "type") == 1):
+        return "type"
+    if (_starts_with(body, "impl") == 1):
+        return "impl"
+    if (_starts_with(body, "trait") == 1):
+        return "trait"
+    return ""
+
+func is_match_header(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "match") == 0):
+        return 0
+    if (_find_char(s, ":") < 0):
+        return 0
+    return 1
+
+func is_range_loop_header(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "for") == 0):
+        return 0
+    if (_contains(s, "in") == 0):
+        return 0
+    if (_contains(s, "..") == 0):
+        return 0
+    if (_find_char(s, ":") < 0):
+        return 0
+    return 1
+
+func has_if_expression(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_contains(s, "if") == 0):
+        return 0
+    if (_contains(s, "else") == 0):
+        return 0
+    return 1
+
+func has_tuple_destructuring(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "let(") == 0):
+        return 0
+    if (_contains(s, ")=") == 0):
+        return 0
+    return 1
+
+func has_struct_init_shorthand(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_contains(s, "{") == 0):
+        return 0
+    if (_contains(s, "}") == 0):
+        return 0
+    if (_contains(s, ":") == 1):
+        return 0
+    return 1
+
+func has_array_literal(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_contains(s, "[") == 0):
+        return 0
+    if (_contains(s, "]") == 0):
+        return 0
+    if (_contains(s, "=") == 0):
+        return 0
+    return 1
+
+func has_slice_expr(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_contains(s, "[") == 0):
+        return 0
+    if (_contains(s, "]") == 0):
+        return 0
+    if (_contains(s, ":") == 0):
+        return 0
+    return 1
+
+func has_raw_string(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_contains(s, "r#") == 1):
+        return 1
+    return 0
+
+func has_closure(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_find_char(s, "|") < 0):
+        return 0
+    let p1 = _find_char(s, "|")
+    if (p1 < 0):
+        return 0
+    let tail = __thg_str_substr(s, p1 + 1, strlen(s) - p1 - 1)
+    if (_find_char(tail, "|") < 0):
+        return 0
+    return 1
+
+func has_loop_label(line: String) -> i32:
+    let s = gt.trim(line)
+    let p = _find_char(s, ":")
+    if (p <= 0):
+        return 0
+    let head = gt.trim(__thg_str_substr(s, 0, p))
+    let tail = gt.trim(__thg_str_substr(s, p + 1, strlen(s) - p - 1))
+    if (strlen(head) == 0):
+        return 0
+    if (_starts_with(tail, "for") == 1):
+        return 1
+    if (_starts_with(tail, "while") == 1):
+        return 1
+    return 0
+
+func is_unsafe_block_header(line: String) -> i32:
+    let s = gt.trim(line)
+    if (s == "unsafe:"):
+        return 1
+    return 0
+
+func is_extension_impl_header(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "impl") == 0):
+        return 0
+    if (_contains(s, "for") == 0):
+        return 0
+    if (_find_char(s, ":") < 0):
+        return 0
+    return 1

@@ -1,4 +1,18 @@
 func keyword_kind(word: String) -> String:
+    if (word == "enum"):
+        return "ENUM"
+    if (word == "match"):
+        return "MATCH"
+    if (word == "type"):
+        return "TYPE"
+    if (word == "pub"):
+        return "PUB"
+    if (word == "unsafe"):
+        return "UNSAFE"
+    if (word == "for"):
+        return "FOR"
+    if (word == "in"):
+        return "IN"
     if (word == "trait"):
         return "TRAIT"
     if (word == "interface"):
@@ -14,6 +28,16 @@ func classify_symbol(symbol: String) -> String:
         return "LBRACKET"
     if (symbol == "]"):
         return "RBRACKET"
+    if (symbol == "|"):
+        return "PIPE"
+    if (symbol == "->"):
+        return "ARROW"
+    if (symbol == "=>"):
+        return "FAT_ARROW"
+    if (symbol == ".."):
+        return "RANGE"
+    if (symbol == "..="):
+        return "RANGE_INCLUSIVE"
     if (symbol == "?"):
         return "QUESTION"
     return ""

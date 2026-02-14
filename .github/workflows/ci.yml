@@ -2,30 +2,28 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  ci-linux:
-    name: ci (linux)
-    runs-on: ubuntu-latest
+  verify:
+    name: ci (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      STAGE1_BIN: stage1
-      FINAL_BIN: thagore
-      HELLO_BIN: hello
-      FIB_BIN: fib
-      RELEASE_ASSET: thagore-linux.tar.gz
-      LLVM_PATH: /usr/lib/llvm-21
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
+      STAGE_TRACE_FILE: stage-commands.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -34,492 +32,113 @@ jobs:
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 21 all
 
-      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          STAGE_TRACE_FILE="stage-commands.log"
-          : > "$STAGE_TRACE_FILE"
-          mkdir -p bootstrap
-          BOOTSTRAP_OK=0
-          BOOTSTRAP_SOURCE="release"
-
-          if gh release download --repo "${{ github.repository }}" --pattern "$RELEASE_ASSET" -D bootstrap; then
-            mkdir -p bootstrap/extracted
-            tar -xzf "bootstrap/$RELEASE_ASSET" -C bootstrap/extracted
-            if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
-              cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
-              cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
-              cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap; then
-            if [[ -f "bootstrap/thagore" ]]; then
-              cp "bootstrap/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/thag" ]]; then
-              cp "bootstrap/thag" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          fi
-
-          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
-              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
-              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
-              exit 1
-            fi
-            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
-            CMAKE_ARGS=(
-              "-DCMAKE_BUILD_TYPE=Release"
-              "-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
-            )
-            export CC="${LLVM_PATH}/bin/clang"
-            export CXX="${LLVM_PATH}/bin/clang++"
-            cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
-            cmake --build legacy/build --config Release
-
-            if [[ -f legacy/build/thag ]]; then
-              STAGE0_BIN="legacy/build/thag"
-            elif [[ -f legacy/build/Release/thag ]]; then
-              STAGE0_BIN="legacy/build/Release/thag"
-            else
-              echo "ERROR: stage0 not found"
-              exit 1
-            fi
-
-            if [[ -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
-              cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
-            fi
-            chmod +x "$STAGE0_BIN" || true
-            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
-            BOOTSTRAP_SOURCE="stage0"
-          fi
-
-          chmod +x "$STAGE1_BIN" || true
-          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
-            STAGE2_EXECUTED=0
-            FINAL_BIN="$STAGE1_BIN"
-          else
-            STAGE2_EXECUTED=1
-            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-            if [[ ! -f "$FINAL_BIN" ]]; then
-              FINAL_BIN="$STAGE1_BIN"
-            fi
-          fi
-
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            for runtime_candidate in \
-              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
-              "bootstrap/extracted/lib/thag_runtime.lib" \
-              "legacy/build/libthag_runtime.a" \
-              "legacy/build/thag_runtime.lib"; do
-              if [[ -f "$runtime_candidate" ]]; then
-                cp "$runtime_candidate" thag_runtime.lib
-                break
-              fi
-            done
-          fi
-
-          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
-          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
-          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
-          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
-
-      - name: Test hello + fib
-        shell: bash
-        run: |
-          set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
-          chmod +x "$FINAL_BIN" || true
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          resolve_bin() {
-            local want="$1"
-            if [[ -f "$want" ]]; then
-              echo "$want"
-              return
-            fi
-            if [[ -f "${want}.exe" ]]; then
-              echo "${want}.exe"
-              return
-            fi
-            local alt
-            alt="$(find . -maxdepth 1 -type f \( -name "${want}" -o -name "${want}.exe" -o -name "${want}*" \) | head -n1 | sed 's|^\./||')"
-            echo "${alt}"
-          }
-          HELLO_BIN="$(resolve_bin "$HELLO_BIN")"
-          FIB_BIN="$(resolve_bin "$FIB_BIN")"
-          if [[ -z "$HELLO_BIN" || -z "$FIB_BIN" ]]; then
-            echo "ERROR: cannot locate hello/fib output files after build"
-            ls -la
-            exit 1
-          fi
-          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          "./$HELLO_BIN"
-          "./$FIB_BIN"
-
-      - name: CLI smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
-          "./$FINAL_BIN" --version
-          "./$FINAL_BIN" doctor || true
-
-      - name: Stage command trace
-        shell: bash
-        run: |
-          set -euo pipefail
-          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
-          {
-            echo "### Stage Trace (linux)"
-            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
-            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
-            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
-            echo ""
-            echo '```text'
-            if [[ -f "$TRACE_FILE" ]]; then
-              cat "$TRACE_FILE"
-            else
-              echo "trace file missing: $TRACE_FILE"
-            fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  ci-macos:
-    name: ci (macos)
-    runs-on: macos-latest
-    env:
-      STAGE1_BIN: stage1
-      FINAL_BIN: thagore
-      HELLO_BIN: hello
-      FIB_BIN: fib
-      BOOTSTRAP_ASSET: thagore-macos.tar.gz
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install LLVM
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           brew update
           brew install llvm
-          echo "LLVM_PATH=$(brew --prefix llvm)" >> "$GITHUB_ENV"
 
-      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          STAGE_TRACE_FILE="stage-commands.log"
-          : > "$STAGE_TRACE_FILE"
-          mkdir -p bootstrap
-          BOOTSTRAP_OK=0
-          BOOTSTRAP_SOURCE="release"
-
-          if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
-            mkdir -p bootstrap/extracted
-            tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
-            if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
-              cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/extracted/bin/thag" ]]; then
-              cp "bootstrap/extracted/bin/thag" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
-              cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
-              cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap; then
-            if [[ -f "bootstrap/thagore" ]]; then
-              cp "bootstrap/thagore" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/thag" ]]; then
-              cp "bootstrap/thag" "$STAGE1_BIN"
-              chmod +x "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          fi
-
-          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
-              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
-              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
-              exit 1
-            fi
-            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
-            CMAKE_ARGS=("-DCMAKE_BUILD_TYPE=Release")
-            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-              CMAKE_ARGS+=("-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm")
-            fi
-            cmake -S legacy -B legacy/build "${CMAKE_ARGS[@]}"
-            cmake --build legacy/build --config Release
-
-            if [[ -f legacy/build/thag ]]; then
-              STAGE0_BIN="legacy/build/thag"
-            elif [[ -f legacy/build/Release/thag ]]; then
-              STAGE0_BIN="legacy/build/Release/thag"
-            else
-              echo "ERROR: stage0 not found"
-              exit 1
-            fi
-
-            if [[ -f legacy/build/libthag_runtime.a && ! -f legacy/build/thag_runtime.lib ]]; then
-              cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
-            fi
-            chmod +x "$STAGE0_BIN" || true
-            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
-            BOOTSTRAP_SOURCE="stage0"
-          fi
-
-          chmod +x "$STAGE1_BIN" || true
-          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
-            STAGE2_EXECUTED=0
-            FINAL_BIN="$STAGE1_BIN"
-          else
-            STAGE2_EXECUTED=1
-            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-            if [[ ! -f "$FINAL_BIN" ]]; then
-              FINAL_BIN="$STAGE1_BIN"
-            fi
-          fi
-
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            for runtime_candidate in \
-              "bootstrap/extracted/dist/lib/thag_runtime.lib" \
-              "bootstrap/extracted/lib/thag_runtime.lib" \
-              "legacy/build/libthag_runtime.a" \
-              "legacy/build/thag_runtime.lib"; do
-              if [[ -f "$runtime_candidate" ]]; then
-                cp "$runtime_candidate" thag_runtime.lib
-                break
-              fi
-            done
-          fi
-
-          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
-          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
-          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
-          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
-
-      - name: Test hello + fib
-        shell: bash
-        run: |
-          set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
-          chmod +x "$FINAL_BIN" || true
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          resolve_bin() {
-            local want="$1"
-            if [[ -f "$want" ]]; then
-              echo "$want"
-              return
-            fi
-            if [[ -f "${want}.exe" ]]; then
-              echo "${want}.exe"
-              return
-            fi
-            local alt
-            alt="$(find . -maxdepth 1 -type f \( -name "${want}" -o -name "${want}.exe" -o -name "${want}*" \) | head -n1 | sed 's|^\./||')"
-            echo "${alt}"
-          }
-          HELLO_BIN="$(resolve_bin "$HELLO_BIN")"
-          FIB_BIN="$(resolve_bin "$FIB_BIN")"
-          if [[ -z "$HELLO_BIN" || -z "$FIB_BIN" ]]; then
-            echo "ERROR: cannot locate hello/fib output files after build"
-            ls -la
-            exit 1
-          fi
-          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          "./$HELLO_BIN"
-          "./$FIB_BIN"
-
-      - name: CLI smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
-          "./$FINAL_BIN" --version
-          "./$FINAL_BIN" doctor || true
-
-      - name: Stage command trace
-        shell: bash
-        run: |
-          set -euo pipefail
-          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
-          {
-            echo "### Stage Trace (macos)"
-            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
-            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
-            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
-            echo ""
-            echo '```text'
-            if [[ -f "$TRACE_FILE" ]]; then
-              cat "$TRACE_FILE"
-            else
-              echo "trace file missing: $TRACE_FILE"
-            fi
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  ci-windows:
-    name: ci (windows)
-    runs-on: windows-latest
-    env:
-      STAGE1_BIN: stage1.exe
-      FINAL_BIN: thagore.exe
-      HELLO_BIN: hello.exe
-      FIB_BIN: fib.exe
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || '0' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install LLVM
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "21.1.8"
 
-      - name: Smart Bootstrap (Release Stage1 -> Stage0 fallback)
+      - name: Bootstrap Stage1 from release asset
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          STAGE_TRACE_FILE="stage-commands.log"
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          BOOTSTRAP_OK=0
-          BOOTSTRAP_SOURCE="release"
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
-            mkdir -p bootstrap/install
-            "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
-            if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
-              cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
-              cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          elif gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap; then
-            if [[ -f "bootstrap/thagore.exe" ]]; then
-              cp "bootstrap/thagore.exe" "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            elif [[ -f "bootstrap/thag.exe" ]]; then
-              cp "bootstrap/thag.exe" "$STAGE1_BIN"
-              BOOTSTRAP_OK=1
-            fi
-          fi
+          STAGE1_BIN="stage1"
+          FINAL_BIN="thagore"
+          HELLO_BIN="hello"
+          FIB_BIN="fib"
 
-          # CI-only guard: if no release bootstrap asset, use repo-local stage1.exe before stage0 build.
-          if [[ "$BOOTSTRAP_OK" -ne 1 && -f "stage1.exe" ]]; then
-            if [[ "$STAGE1_BIN" != "stage1.exe" ]]; then
-              cp "stage1.exe" "$STAGE1_BIN"
-            fi
-            BOOTSTRAP_OK=1
-          fi
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE1_BIN="stage1.exe"
+            FINAL_BIN="thagore.exe"
+            HELLO_BIN="hello.exe"
+            FIB_BIN="fib.exe"
 
-          if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            if [[ "${ALLOW_STAGE0_BOOTSTRAP:-0}" != "1" ]]; then
-              echo "ERROR: Stage1 bootstrap asset not found and stage0 fallback is disabled."
-              echo "Set repository variable ALLOW_STAGE0_BOOTSTRAP=1 to allow stage0 fallback."
-              exit 1
-            fi
-            echo "WARN: Stage1 bootstrap missing, fallback to stage0 is explicitly enabled."
-            LLVM_CMAKE_DIR="$(pwsh -NoProfile -Command "\
-              \$roots = @(); \
-              if (\$env:LLVM_PATH) { \$roots += \$env:LLVM_PATH }; \
-              \$roots += 'C:\\Program Files\\LLVM'; \
-              foreach (\$r in \$roots) { \
-                if (Test-Path \$r) { \
-                  \$hit = Get-ChildItem -Path \$r -Recurse -Filter LLVMConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1; \
-                  if (\$hit) { Write-Output \$hit.DirectoryName; break } \
-                } \
-              }\
-            " | tr -d '\r')"
-            if [[ -z "$LLVM_CMAKE_DIR" ]]; then
-              echo "ERROR: LLVMConfig.cmake not found on Windows LLVM installation"
-              exit 1
-            fi
-            cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_CMAKE_DIR" -DCMAKE_PREFIX_PATH="$LLVM_CMAKE_DIR"
-            cmake --build legacy/build --config Release
-
-            if [[ -f legacy/build/Release/thag.exe ]]; then
-              STAGE0_BIN="legacy/build/Release/thag.exe"
-            elif [[ -f legacy/build/thag.exe ]]; then
-              STAGE0_BIN="legacy/build/thag.exe"
-            else
-              echo "ERROR: stage0.exe not found"
-              exit 1
-            fi
-            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
-            BOOTSTRAP_SOURCE="stage0"
-          fi
-
-          if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
-            STAGE2_EXECUTED=0
-            FINAL_BIN="$STAGE1_BIN"
-          else
-            STAGE2_EXECUTED=1
-            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN" || true
-            if [[ ! -f "$FINAL_BIN" ]]; then
-              FINAL_BIN="$STAGE1_BIN"
-            fi
-          fi
-
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            for runtime_candidate in \
-              "legacy/build/Release/thag_runtime.lib" \
-              "legacy/build/thag_runtime.lib" \
-              "legacy/thag_runtime.lib"; do
-              if [[ -f "$runtime_candidate" ]]; then
-                cp "$runtime_candidate" thag_runtime.lib
-                break
+            if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
+              mkdir -p bootstrap/install
+              "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+              if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
+                cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/install/bin/thag.exe" ]]; then
+                cp "bootstrap/install/bin/thag.exe" "$STAGE1_BIN"
               fi
-            done
+            fi
+
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap; then
+                if [[ -f "bootstrap/thagore.exe" ]]; then
+                  cp "bootstrap/thagore.exe" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/thag.exe" ]]; then
+                  cp "bootstrap/thag.exe" "$STAGE1_BIN"
+                fi
+              fi
+            fi
+          else
+            if [[ "${{ runner.os }}" == "Linux" ]]; then
+              BOOTSTRAP_ASSET="thagore-linux.tar.gz"
+            else
+              BOOTSTRAP_ASSET="thagore-macos.tar.gz"
+            fi
+
+            if gh release download --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
+              mkdir -p bootstrap/extracted
+              tar -xzf "bootstrap/$BOOTSTRAP_ASSET" -C bootstrap/extracted
+              if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+                cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+                cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
+                cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
+              fi
+            fi
+
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              if gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap; then
+                if [[ -f "bootstrap/thagore" ]]; then
+                  cp "bootstrap/thagore" "$STAGE1_BIN"
+                elif [[ -f "bootstrap/thag" ]]; then
+                  cp "bootstrap/thag" "$STAGE1_BIN"
+                fi
+              fi
+            fi
           fi
 
-          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
-          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
-          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
-          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
+          if [[ ! -f "$STAGE1_BIN" ]]; then
+            echo "CRITICAL: Stage1 bootstrap asset is required but not found in GitHub Releases."
+            echo "This workflow does not build stage0. Seed a stage1 release first."
+            exit 1
+          fi
 
-      - name: Test hello + fib
+          chmod +x "$STAGE1_BIN" || true
+          echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+
+          if [[ ! -f "$FINAL_BIN" ]]; then
+            echo "ERROR: stage2 output not generated: $FINAL_BIN"
+            exit 1
+          fi
+
+          echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
+          echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+          echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+
+      - name: Build and run hello/fib
         shell: bash
         run: |
           set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
           "./$HELLO_BIN"
@@ -529,26 +148,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           "./$FINAL_BIN" --version
           "./$FINAL_BIN" doctor || true
 
-      - name: Stage command trace
+      - name: Stage trace summary
         shell: bash
         run: |
           set -euo pipefail
-          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
           {
-            echo "### Stage Trace (windows)"
-            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
-            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
-            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
+            echo "### Stage Trace (${{ matrix.os }})"
+            echo "- bootstrap_source: release_asset_only"
+            echo "- compiler_stage2: $FINAL_BIN"
             echo ""
             echo '```text'
-            if [[ -f "$TRACE_FILE" ]]; then
-              cat "$TRACE_FILE"
-            else
-              echo "trace file missing: $TRACE_FILE"
-            fi
+            cat "$STAGE_TRACE_FILE"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

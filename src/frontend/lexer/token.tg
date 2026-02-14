@@ -55,6 +55,45 @@ func tok_defer() -> String:
 func tok_comptime() -> String:
     return "COMPTIME"
 
+func tok_enum() -> String:
+    return "ENUM"
+
+func tok_match() -> String:
+    return "MATCH"
+
+func tok_type() -> String:
+    return "TYPE"
+
+func tok_pub() -> String:
+    return "PUB"
+
+func tok_unsafe() -> String:
+    return "UNSAFE"
+
+func tok_for() -> String:
+    return "FOR"
+
+func tok_in() -> String:
+    return "IN"
+
+func tok_range() -> String:
+    return "RANGE"
+
+func tok_range_inclusive() -> String:
+    return "RANGE_INCLUSIVE"
+
+func tok_pipe() -> String:
+    return "PIPE"
+
+func tok_arrow() -> String:
+    return "ARROW"
+
+func tok_fat_arrow() -> String:
+    return "FAT_ARROW"
+
+func tok_raw_string() -> String:
+    return "RAW_STRING"
+
 func tok_lbrace() -> String:
     return ""
 
