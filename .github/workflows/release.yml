@@ -192,6 +192,28 @@ jobs:
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
           thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
           PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          if [[ ! -n "$PROBE_RUN" || ! -f "$PROBE_RUN" ]]; then
+            if [[ ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") && "$BOOTSTRAPPED_FROM_STAGE0" != "1" ]]; then
+              LLVM_ARG=""
+              [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]] && LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
+              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
+              cmake --build legacy/build --config Release
+              if [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" stage0_fallback
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" stage0_fallback
+              else
+                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
+                exit 1
+              fi
+              STAGE1_BIN="stage0_fallback"
+              chmod +x "$STAGE1_BIN"
+              thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
+              PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+            fi
+          fi
           [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
@@ -470,6 +492,31 @@ jobs:
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
           thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
           PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          if [[ ! -n "$PROBE_RUN" || ! -f "$PROBE_RUN" ]]; then
+            if [[ ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") && "$BOOTSTRAPPED_FROM_STAGE0" != "1" ]]; then
+              LLVM_ARG=""
+              LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
+              if [[ -n "$LLVM_PREFIX" && -d "$LLVM_PREFIX/lib/cmake/llvm" ]]; then
+                LLVM_ARG="-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm"
+              fi
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
+              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
+              cmake --build legacy/build --config Release
+              if [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" stage0_fallback
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" stage0_fallback
+              else
+                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
+                exit 1
+              fi
+              STAGE1_BIN="stage0_fallback"
+              chmod +x "$STAGE1_BIN"
+              thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
+              PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+            fi
+          fi
           [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
