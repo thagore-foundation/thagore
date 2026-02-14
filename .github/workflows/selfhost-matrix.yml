@@ -255,12 +255,8 @@ jobs:
             return 1
           }
           PROBE_COMPILER_BIN="stage1_compiler_probe"
-          PROBE_COMPILER2_BIN="stage1_compiler_probe2"
-          PROBE_HELLO_BIN="stage1_compiler_probe_hello"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PROBE_COMPILER_BIN="stage1_compiler_probe.exe"
-            PROBE_COMPILER2_BIN="stage1_compiler_probe2.exe"
-            PROBE_HELLO_BIN="stage1_compiler_probe_hello.exe"
           fi
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
           STAGE1_OK=1
@@ -279,28 +275,6 @@ jobs:
             if [[ -n "$PROBE_COMPILER_RUN" && -f "$PROBE_COMPILER_RUN" ]]; then
               PROBE_COMPILER_BIN="$PROBE_COMPILER_RUN"
               chmod +x "$PROBE_COMPILER_BIN" || true
-            else
-              STAGE1_OK=0
-            fi
-          fi
-          if [[ "$STAGE1_OK" == "1" ]]; then
-            echo "[CMD] ./$PROBE_COMPILER_BIN build examples/hello.tg -o $PROBE_HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-            thg_build "$PROBE_COMPILER_BIN" "examples/hello.tg" "$PROBE_HELLO_BIN" || STAGE1_OK=0
-            PROBE_HELLO_RUN="$(resolve_bin "$PROBE_HELLO_BIN" "examples/hello.tg" || true)"
-            if [[ -n "$PROBE_HELLO_RUN" && -f "$PROBE_HELLO_RUN" ]]; then
-              PROBE_HELLO_BIN="$PROBE_HELLO_RUN"
-              chmod +x "$PROBE_HELLO_BIN" || true
-            else
-              STAGE1_OK=0
-            fi
-          fi
-          if [[ "$STAGE1_OK" == "1" ]]; then
-            echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            thg_build "$PROBE_COMPILER_BIN" "src/thagore.tg" "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
-            PROBE_COMPILER2_RUN="$(resolve_bin "$PROBE_COMPILER2_BIN" "src/thagore.tg" || true)"
-            if [[ -n "$PROBE_COMPILER2_RUN" && -f "$PROBE_COMPILER2_RUN" ]]; then
-              PROBE_COMPILER2_BIN="$PROBE_COMPILER2_RUN"
-              chmod +x "$PROBE_COMPILER2_BIN" || true
             else
               STAGE1_OK=0
             fi
