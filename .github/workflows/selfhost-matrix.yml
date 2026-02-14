@@ -165,6 +165,13 @@ jobs:
                 extract_stage1_seed
               fi
             fi
+            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
+              echo "INFO: fallback to full tag asset download (no pattern)." | tee -a "$STAGE_TRACE_FILE"
+              gh release download "$BOOTSTRAP_TAG" --repo "${{ github.repository }}" -D bootstrap || true
+              if [[ -f "bootstrap/$ASSET_STAGE1" ]]; then
+                extract_stage1_seed
+              fi
+            fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
               if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
                 mkdir -p bootstrap/extracted
