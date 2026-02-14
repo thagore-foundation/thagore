@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: selfhost-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,16 +23,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      STAGE_TRACE_FILE: stage-selfhost.log
-      ALLOW_STAGE0_BOOTSTRAP: 'false'
-      BOOTSTRAP_STAGE1_TAG: 'v0.3.21-stage1-seed'
+      BOOTSTRAP_STAGE1_TAG: v0.3.21-stage1-seed
+      STAGE_TRACE_FILE: selfhost-stage-trace.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
-        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -45,7 +43,6 @@ jobs:
 
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
-        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -56,490 +53,118 @@ jobs:
 
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
-        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            echo "Using preinstalled clang:"
-            clang --version
-            exit 0
-          fi
           choco install llvm --version=21.1.8 --no-progress -y
-          if [[ -d "/c/Program Files/LLVM/bin" ]]; then
-            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
-          fi
+          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
           clang --version
 
-      - name: Bootstrap Stage1
-        timeout-minutes: 20
+      - name: Fetch stage1 bootstrap asset
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-
-          STAGE1_BIN="stage1"
-          STAGE2_BIN="stage2"
-          STAGE22_BIN="stage2_2"
-          HELLO_BIN="hello_stage2"
-          PROBE_BIN="stage1_probe"
-
           if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE1_ASSET="thagore-stage1.exe"
             STAGE1_BIN="stage1.exe"
-            STAGE2_BIN="stage2.exe"
-            STAGE22_BIN="stage2_2.exe"
-            HELLO_BIN="hello_stage2.exe"
-            PROBE_BIN="stage1_probe.exe"
-            if gh release download --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D bootstrap; then
-              if [[ -f "bootstrap/thagore-stage1.exe" ]]; then
-                cp "bootstrap/thagore-stage1.exe" "$STAGE1_BIN"
-              fi
-            fi
-            if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
-              echo "INFO: skip installer extraction in selfhost bootstrap (prefer direct stage1 binary)." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            if [[ ! -f "$STAGE1_BIN" ]]; then
-              if gh release download --repo "${{ github.repository }}" --pattern "thag-windows-setup.exe" -D bootstrap; then
-                echo "INFO: skip legacy installer extraction in selfhost bootstrap." | tee -a "$STAGE_TRACE_FILE"
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" ]]; then
-              gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap || true
-              [[ -f "bootstrap/thagore.exe" ]] && cp "bootstrap/thagore.exe" "$STAGE1_BIN"
-            fi
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            cp "bootstrap/$STAGE1_ASSET" "$STAGE1_BIN"
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            STAGE1_ASSET="thagore-stage1-linux.tar.gz"
+            STAGE1_BIN="stage1"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
+            cp bootstrap/bin/thagore "$STAGE1_BIN"
           else
-            ASSET_STAGE1="thagore-stage1-linux.tar.gz"
-            ASSET="thagore-linux.tar.gz"
-            ASSET_LEGACY="thag-linux.tar.gz"
-            [[ "${{ runner.os }}" == "macOS" ]] && ASSET_STAGE1="thagore-stage1-macos.tar.gz"
-            [[ "${{ runner.os }}" == "macOS" ]] && ASSET="thagore-macos.tar.gz"
-            [[ "${{ runner.os }}" == "macOS" ]] && ASSET_LEGACY="thag-macos.tar.gz"
-            BOOTSTRAP_TAG="$BOOTSTRAP_STAGE1_TAG"
-            DL_TAG_ARGS=()
-            if [[ -n "$BOOTSTRAP_TAG" ]]; then
-              echo "Using bootstrap release tag: $BOOTSTRAP_TAG" | tee -a "$STAGE_TRACE_FILE"
-              DL_TAG_ARGS=("$BOOTSTRAP_TAG")
-            else
-              echo "WARN: BOOTSTRAP_STAGE1_TAG is empty; trying latest." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            extract_stage1_seed() {
-              mkdir -p bootstrap/extracted_stage1
-              tar -xzf "bootstrap/$ASSET_STAGE1" -C bootstrap/extracted_stage1
-              if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
-                cp "bootstrap/extracted_stage1/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted_stage1/bin/thag" ]]; then
-                cp "bootstrap/extracted_stage1/bin/thag" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted_stage1/dist/bin/thagore" ]]; then
-                cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
-              elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
-                cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
-              fi
-            }
-            if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET_STAGE1" -D bootstrap; then
-              extract_stage1_seed
-            fi
-            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
-              echo "INFO: retry stage1 seed download with explicit tag argument." | tee -a "$STAGE_TRACE_FILE"
-              if gh release download "$BOOTSTRAP_TAG" --repo "${{ github.repository }}" --pattern "$ASSET_STAGE1" -D bootstrap; then
-                extract_stage1_seed
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
-              echo "INFO: fallback to GitHub API asset download for stage1 seed." | tee -a "$STAGE_TRACE_FILE"
-              ASSET_API_URL="$(
-                gh api "repos/${{ github.repository }}/releases/tags/$BOOTSTRAP_TAG" --jq ".assets[]? | select(.name == \"$ASSET_STAGE1\") | .url" | head -n 1 || true
-              )"
-              if [[ -n "$ASSET_API_URL" ]]; then
-                gh api "$ASSET_API_URL" -H "Accept: application/octet-stream" > "bootstrap/$ASSET_STAGE1" || true
-                if [[ -f "bootstrap/$ASSET_STAGE1" ]]; then
-                  extract_stage1_seed
-                fi
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
-              echo "INFO: fallback to direct release URL download for stage1 seed." | tee -a "$STAGE_TRACE_FILE"
-              ASSET_URL="https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_TAG/$ASSET_STAGE1"
-              curl -fsSL -o "bootstrap/$ASSET_STAGE1" "$ASSET_URL" || true
-              if [[ -f "bootstrap/$ASSET_STAGE1" ]]; then
-                extract_stage1_seed
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
-              echo "INFO: fallback to full tag asset download (no pattern)." | tee -a "$STAGE_TRACE_FILE"
-              gh release download "$BOOTSTRAP_TAG" --repo "${{ github.repository }}" -D bootstrap || true
-              if [[ -f "bootstrap/$ASSET_STAGE1" ]]; then
-                extract_stage1_seed
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" ]]; then
-              if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
-                mkdir -p bootstrap/extracted
-                tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
-                if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
-                  cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
-                  cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/extracted/dist/bin/thag" ]]; then
-                  cp "bootstrap/extracted/dist/bin/thag" "$STAGE1_BIN"
-                fi
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" ]]; then
-              if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET_LEGACY" -D bootstrap; then
-                mkdir -p bootstrap/extracted_legacy
-                tar -xzf "bootstrap/$ASSET_LEGACY" -C bootstrap/extracted_legacy
-                if [[ -f "bootstrap/extracted_legacy/bin/thagore" ]]; then
-                  cp "bootstrap/extracted_legacy/bin/thagore" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/extracted_legacy/bin/thag" ]]; then
-                  cp "bootstrap/extracted_legacy/bin/thag" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/extracted_legacy/dist/bin/thagore" ]]; then
-                  cp "bootstrap/extracted_legacy/dist/bin/thagore" "$STAGE1_BIN"
-                elif [[ -f "bootstrap/extracted_legacy/dist/bin/thag" ]]; then
-                  cp "bootstrap/extracted_legacy/dist/bin/thag" "$STAGE1_BIN"
-                fi
-              fi
-            fi
-            if [[ ! -f "$STAGE1_BIN" ]]; then
-              gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap || true
-              [[ -f "bootstrap/thagore" ]] && cp "bootstrap/thagore" "$STAGE1_BIN"
-            fi
+            STAGE1_ASSET="thagore-stage1-macos.tar.gz"
+            STAGE1_BIN="stage1"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
+            cp bootstrap/bin/thagore "$STAGE1_BIN"
           fi
-
-          if [[ ! -f "$STAGE1_BIN" ]]; then
-            if [[ "${{ runner.os }}" == "Windows" && ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") ]]; then
-              LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" ]]; then
-                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
-                if [[ -n "$LLVM_DOS" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
-                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
-                fi
-              fi
-              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
-              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
-              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
-              cmake --build legacy/build --config Release
-              if [[ -f "legacy/build/thag.exe" ]]; then
-                cp "legacy/build/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/thag" ]]; then
-                cp "legacy/build/thag" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag.exe" ]]; then
-                cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag" ]]; then
-                cp "legacy/build/Release/thag" "$STAGE1_BIN"
-              else
-                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
-                exit 1
-              fi
-            else
-              echo "CRITICAL: Stage1 release asset missing."
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback on Windows."
-              else
-                echo "Unix runners require a valid Stage1 release asset; stage0 fallback is disabled."
-              fi
-              exit 1
-            fi
-          fi
-
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            RUNTIME_CXX="clang++"
-            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
-              RUNTIME_CXX="c++"
-            fi
-            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            if command -v llvm-ar >/dev/null 2>&1; then
-              llvm-ar rcs thag_runtime.lib thag_runtime.o
-            else
-              ar rcs thag_runtime.lib thag_runtime.o
-            fi
-          else
-            RUNTIME_CXX="clang++"
-            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
-              RUNTIME_CXX="c++"
-            fi
-            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs libthag_runtime.a thag_runtime.o
-            cp libthag_runtime.a thag_runtime.lib
-          fi
-          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
-            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
-            exit 1
-          fi
-
           chmod +x "$STAGE1_BIN" || true
-          resolve_bin() {
-            local preferred="$1"
-            local src="$2"
-            local base
-            base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
-              if [[ -f "$c" ]]; then
-                echo "$c"
-                return 0
-              fi
-            done
-            local found
-            found="$(find . -maxdepth 3 -type f -not -path "./bootstrap/*" \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
-            if [[ -n "$found" ]]; then
-              echo "${found#./}"
-              return 0
-            fi
-            return 1
-          }
-          thg_build_strict() {
-            local bin="$1"
-            local src="$2"
-            local out="$3"
-            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
-            if "./$bin" build "$src" -o "$out"; then
-              :
-            elif "./$bin" --build "$src" -o "$out"; then
-              :
-            else
-              return 1
-            fi
-            local resolved
-            resolved="$(resolve_bin "$out" "$src" || true)"
-            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
-              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out" | tee -a "$STAGE_TRACE_FILE"
-              find . -maxdepth 3 -type f | sed -n '1,200p' || true
-              return 1
-            fi
-            THG_BUILD_RESOLVED="$resolved"
-            return 0
-          }
-          PROBE_COMPILER_BIN="stage1_compiler_probe"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            PROBE_COMPILER_BIN="stage1_compiler_probe.exe"
-          fi
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            export THAG_STAGE0_HELPER="$STAGE1_BIN"
-          else
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          fi
-          echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
-          STAGE1_OK=1
-          if thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "$PROBE_BIN"; then
-            PROBE_RUN="$THG_BUILD_RESOLVED"
-          else
-            PROBE_RUN=""
-          fi
-          if [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]]; then
-            PROBE_BIN="$PROBE_RUN"
-            chmod +x "$PROBE_BIN" || true
-          else
-            STAGE1_OK=0
-          fi
-          if [[ "$STAGE1_OK" == "1" ]]; then
-            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $PROBE_COMPILER_BIN" | tee -a "$STAGE_TRACE_FILE"
-            if thg_build_strict "$STAGE1_BIN" "src/thagore.tg" "$PROBE_COMPILER_BIN"; then
-              PROBE_COMPILER_RUN="$THG_BUILD_RESOLVED"
-            else
-              PROBE_COMPILER_RUN=""
-            fi
-            if [[ -n "$PROBE_COMPILER_RUN" && -f "$PROBE_COMPILER_RUN" ]]; then
-              PROBE_COMPILER_BIN="$PROBE_COMPILER_RUN"
-              chmod +x "$PROBE_COMPILER_BIN" || true
-            else
-              STAGE1_OK=0
-            fi
-          fi
-          if [[ "$STAGE1_OK" != "1" ]]; then
-            echo "WARN: downloaded stage1 asset failed self-host probe."
-            rm -f "$STAGE1_BIN"
-            if [[ "${{ runner.os }}" == "Windows" && ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") ]]; then
-              LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" ]]; then
-                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
-                if [[ -n "$LLVM_DOS" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
-                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
-                fi
-              fi
-              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
-              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
-              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
-              cmake --build legacy/build --config Release
-              if [[ -f "legacy/build/thag.exe" ]]; then
-                cp "legacy/build/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/thag" ]]; then
-                cp "legacy/build/thag" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag.exe" ]]; then
-                cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag" ]]; then
-                cp "legacy/build/Release/thag" "$STAGE1_BIN"
-              else
-                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
-                exit 1
-              fi
-            else
-              echo "CRITICAL: stage1 asset invalid."
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                echo "Enable ALLOW_STAGE0_BOOTSTRAP only on Windows to allow fallback."
-              else
-                echo "Unix runners require a valid Stage1 release asset; stage0 fallback is disabled."
-              fi
-              exit 1
-            fi
-          fi
-          "./$PROBE_BIN" || true
-
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
-          echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-          echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
-          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
 
-      - name: Stage1 -> Stage2 -> Stage2
-        timeout-minutes: 35
+      - name: Build runtime artifact
         shell: bash
         run: |
-          set -euo pipefail
-          resolve_bin() {
-            local preferred="$1"
-            local src="$2"
-            local base
-            base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
-              if [[ -f "$c" ]]; then
-                echo "$c"
-                return 0
-              fi
-            done
-            local found
-            found="$(find . -maxdepth 3 -type f -not -path "./bootstrap/*" \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
-            if [[ -n "$found" ]]; then
-              echo "${found#./}"
-              return 0
-            fi
-            return 1
-          }
-          thg_build_strict() {
-            local bin="$1"
-            local src="$2"
-            local out="$3"
-            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
-            if "./$bin" build "$src" -o "$out"; then
-              :
-            elif "./$bin" --build "$src" -o "$out"; then
-              :
-            else
-              return 1
-            fi
-            local resolved
-            resolved="$(resolve_bin "$out" "$src" || true)"
-            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
-              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out" | tee -a "$STAGE_TRACE_FILE"
-              find . -maxdepth 3 -type f | sed -n '1,200p' || true
-              return 1
-            fi
-            THG_BUILD_RESOLVED="$resolved"
-            return 0
-          }
-          echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          set -euxo pipefail
+          mkdir -p runtime/build
+          clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            export THAG_STAGE0_HELPER="$STAGE1_BIN"
+            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
+            cp runtime/build/thag_runtime.lib thag_runtime.lib
           else
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
+            cp runtime/build/libthag_runtime.a libthag_runtime.a
+            cp runtime/build/libthag_runtime.a thag_runtime.lib
           fi
-          if thg_build_strict "$STAGE1_BIN" "src/thagore.tg" "$STAGE2_BIN"; then
-            STAGE2_RUN="$THG_BUILD_RESOLVED"
+
+      - name: Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE2_BIN="stage2.exe"
+            STAGE2_REBUILD_BIN="stage2_rebuild.exe"
+            HELLO_BIN="hello_selfhost.exe"
+            FIB_BIN="fib_selfhost.exe"
           else
-            STAGE2_RUN=""
+            STAGE2_BIN="stage2"
+            STAGE2_REBUILD_BIN="stage2_rebuild"
+            HELLO_BIN="hello_selfhost"
+            FIB_BIN="fib_selfhost"
           fi
-          [[ -n "$STAGE2_RUN" && -f "$STAGE2_RUN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
-          STAGE2_BIN="$STAGE2_RUN"
+
+          echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build src/thagore.tg -o "$STAGE2_BIN"
+          test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
 
-          echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            export THAG_STAGE0_HELPER="$STAGE1_BIN"
-          else
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          fi
-          if thg_build_strict "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN"; then
-            STAGE22_RUN="$THG_BUILD_RESOLVED"
-          else
-            STAGE22_RUN="$STAGE2_BIN"
-            echo "WARN: stage2->stage2_2 did not emit new binary; reusing stage2 for e2e." | tee -a "$STAGE_TRACE_FILE"
-          fi
-          [[ -n "$STAGE22_RUN" && -f "$STAGE22_RUN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
-          STAGE22_BIN="$STAGE22_RUN"
-          chmod +x "$STAGE22_BIN" || true
-          echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-          echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
+          echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE2_REBUILD_BIN"
+          test -f "$STAGE2_REBUILD_BIN"
+          chmod +x "$STAGE2_REBUILD_BIN" || true
 
-      - name: Stage2' e2e test
-        timeout-minutes: 10
+          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          test -f "$HELLO_BIN"
+
+          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "$FIB_BIN"
+          test -f "$FIB_BIN"
+
+      - name: Execute sample binaries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./hello_selfhost.exe
+            ./fib_selfhost.exe
+          else
+            chmod +x hello_selfhost fib_selfhost || true
+            ./hello_selfhost
+            ./fib_selfhost
+          fi
+
+      - name: Assert no stage0 fallback markers
         shell: bash
         run: |
           set -euo pipefail
-          thg_build_strict() {
-            local bin="$1"
-            local src="$2"
-            local out="$3"
-            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
-            if "./$bin" build "$src" -o "$out"; then
-              :
-            elif "./$bin" --build "$src" -o "$out"; then
-              :
-            else
-              return 1
-            fi
-            local resolved
-            resolved="$(resolve_bin "$out" "$src" || true)"
-            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
-              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out" | tee -a "$STAGE_TRACE_FILE"
-              find . -maxdepth 3 -type f | sed -n '1,200p' || true
-              return 1
-            fi
-            THG_BUILD_RESOLVED="$resolved"
-            return 0
-          }
-          resolve_bin() {
-            local preferred="$1"
-            local src="$2"
-            local base
-            base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe"; do
-              if [[ -f "$c" ]]; then
-                echo "$c"
-                return 0
-              fi
-            done
-            local found
-            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
-            if [[ -n "$found" ]]; then
-              echo "${found#./}"
-              return 0
-            fi
-            return 1
-          }
-          echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            export THAG_STAGE0_HELPER="$STAGE1_BIN"
-          else
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP" "$STAGE_TRACE_FILE"; then
+            echo "CRITICAL: forbidden fallback markers detected:"
+            cat "$STAGE_TRACE_FILE"
+            exit 1
           fi
-          if thg_build_strict "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN"; then
-            HELLO_RUN="$THG_BUILD_RESOLVED"
-          else
-            echo "WARN: stage2_2 failed hello build; fallback to stage1 for final e2e smoke." | tee -a "$STAGE_TRACE_FILE"
-            thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "$HELLO_BIN"
-            HELLO_RUN="$THG_BUILD_RESOLVED"
-          fi
-          [[ -n "$HELLO_RUN" && -f "$HELLO_RUN" ]] || (echo "ERROR: missing $HELLO_BIN"; exit 1)
-          chmod +x "$HELLO_RUN" || true
-          "./$HELLO_RUN"
+          cat "$STAGE_TRACE_FILE"
 
-      - name: Upload trace
+      - name: Upload selfhost trace
         uses: actions/upload-artifact@v4
         with:
-          name: selfhost-${{ matrix.os }}
-          path: |
-            stage-selfhost.log
+          name: selfhost-trace-${{ runner.os }}
+          path: ${{ env.STAGE_TRACE_FILE }}
+

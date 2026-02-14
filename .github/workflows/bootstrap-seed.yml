@@ -1,4 +1,4 @@
-name: Bootstrap Seed (Stage0 -> Stage1)
+name: Bootstrap Seed Verify
 
 on:
   workflow_dispatch:
@@ -7,9 +7,10 @@ permissions:
   contents: read
 
 jobs:
-  seed-stage1:
+  verify-stage1-seed:
     runs-on: ubuntu-latest
-    if: vars.ALLOW_STAGE0_BOOTSTRAP == '1'
+    env:
+      BOOTSTRAP_STAGE1_TAG: v0.3.21-stage1-seed
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,32 +23,34 @@ jobs:
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 21 all
+          echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
 
-      - name: Build stage0 from legacy
+      - name: Download stage1 seed asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p bootstrap
+          gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
+          tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap
+          cp bootstrap/bin/thagore stage1
+          chmod +x stage1
+
+      - name: Build runtime artifact
         shell: bash
         run: |
-          set -euo pipefail
-          cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
-          cmake --build legacy/build --config Release
-          if [[ -f legacy/build/thag ]]; then
-            cp legacy/build/thag stage0
-          elif [[ -f legacy/build/Release/thag ]]; then
-            cp legacy/build/Release/thag stage0
-          else
-            echo "ERROR: stage0 build failed"
-            exit 1
-          fi
-          chmod +x stage0
+          set -euxo pipefail
+          clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o thag_runtime.o
+          ar rcs libthag_runtime.a thag_runtime.o
+          cp libthag_runtime.a thag_runtime.lib
 
-      - name: Build stage1
+      - name: Verify Stage1 -> Stage2 -> Stage2
         shell: bash
         run: |
-          set -euo pipefail
-          ./stage0 build src/thagore.tg -o stage1
-          ./stage1 --version || true
+          set -euxo pipefail
+          ./stage1 build src/thagore.tg -o stage2
+          ./stage2 build src/thagore.tg -o stage2_rebuild
+          ./stage2_rebuild build examples/hello.tg -o hello_seed
+          ./hello_seed
 
-      - name: Upload seed artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: seed-stage1
-          path: stage1
