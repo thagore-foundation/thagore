@@ -149,18 +149,31 @@ jobs:
           if [[ "$BOOTSTRAPPED_FROM_STAGE0" == "1" ]]; then
             echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o stage1_from_stage0" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o stage1_from_stage0
-            [[ -f "stage1_from_stage0" ]] || (echo "CRITICAL: failed to produce stage1 from stage0 fallback."; exit 1)
-            STAGE1_BIN="stage1_from_stage0"
+            if [[ -f "stage1_from_stage0" ]]; then
+              STAGE1_BIN="stage1_from_stage0"
+            elif [[ -f "stage1_from_stage0.exe" ]]; then
+              STAGE1_BIN="stage1_from_stage0.exe"
+            else
+              echo "CRITICAL: failed to produce stage1 from stage0 fallback."
+              exit 1
+            fi
           fi
 
           chmod +x "$STAGE1_BIN"
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
-          [[ -f "stage1_probe" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
-          ./stage1_probe || true
+          PROBE_RUN="stage1_probe"
+          if [[ ! -f "$PROBE_RUN" && -f "${PROBE_RUN}.exe" ]]; then
+            PROBE_RUN="${PROBE_RUN}.exe"
+          fi
+          [[ -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+          if [[ ! -f "$FINAL_BIN" && -f "${FINAL_BIN}.exe" ]]; then
+            FINAL_BIN="${FINAL_BIN}.exe"
+          fi
           [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
 
       - name: Test hello + fib
@@ -389,18 +402,31 @@ jobs:
           if [[ "$BOOTSTRAPPED_FROM_STAGE0" == "1" ]]; then
             echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o stage1_from_stage0" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o stage1_from_stage0
-            [[ -f "stage1_from_stage0" ]] || (echo "CRITICAL: failed to produce stage1 from stage0 fallback."; exit 1)
-            STAGE1_BIN="stage1_from_stage0"
+            if [[ -f "stage1_from_stage0" ]]; then
+              STAGE1_BIN="stage1_from_stage0"
+            elif [[ -f "stage1_from_stage0.exe" ]]; then
+              STAGE1_BIN="stage1_from_stage0.exe"
+            else
+              echo "CRITICAL: failed to produce stage1 from stage0 fallback."
+              exit 1
+            fi
           fi
 
           chmod +x "$STAGE1_BIN"
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
-          [[ -f "stage1_probe" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
-          ./stage1_probe || true
+          PROBE_RUN="stage1_probe"
+          if [[ ! -f "$PROBE_RUN" && -f "${PROBE_RUN}.exe" ]]; then
+            PROBE_RUN="${PROBE_RUN}.exe"
+          fi
+          [[ -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+          if [[ ! -f "$FINAL_BIN" && -f "${FINAL_BIN}.exe" ]]; then
+            FINAL_BIN="${FINAL_BIN}.exe"
+          fi
           [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
 
       - name: Test hello + fib

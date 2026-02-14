@@ -245,21 +245,33 @@ jobs:
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
           STAGE1_OK=1
           "./$STAGE1_BIN" build examples/hello.tg -o "$PROBE_BIN" || STAGE1_OK=0
+          if [[ ! -f "$PROBE_BIN" && -f "${PROBE_BIN}.exe" ]]; then
+            PROBE_BIN="${PROBE_BIN}.exe"
+          fi
           [[ -f "$PROBE_BIN" ]] || STAGE1_OK=0
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $PROBE_COMPILER_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o "$PROBE_COMPILER_BIN" || STAGE1_OK=0
+            if [[ ! -f "$PROBE_COMPILER_BIN" && -f "${PROBE_COMPILER_BIN}.exe" ]]; then
+              PROBE_COMPILER_BIN="${PROBE_COMPILER_BIN}.exe"
+            fi
             [[ -f "$PROBE_COMPILER_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build examples/hello.tg -o $PROBE_HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$PROBE_COMPILER_BIN" build examples/hello.tg -o "$PROBE_HELLO_BIN" || STAGE1_OK=0
+            if [[ ! -f "$PROBE_HELLO_BIN" && -f "${PROBE_HELLO_BIN}.exe" ]]; then
+              PROBE_HELLO_BIN="${PROBE_HELLO_BIN}.exe"
+            fi
             [[ -f "$PROBE_HELLO_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
             export THAG_STAGE0_HELPER="./$STAGE1_BIN"
             "./$PROBE_COMPILER_BIN" build src/thagore.tg -o "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
+            if [[ ! -f "$PROBE_COMPILER2_BIN" && -f "${PROBE_COMPILER2_BIN}.exe" ]]; then
+              PROBE_COMPILER2_BIN="${PROBE_COMPILER2_BIN}.exe"
+            fi
             [[ -f "$PROBE_COMPILER2_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" != "1" ]]; then
@@ -309,6 +321,9 @@ jobs:
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
+          if [[ ! -f "$FINAL_BIN" && -f "${FINAL_BIN}.exe" ]]; then
+            FINAL_BIN="${FINAL_BIN}.exe"
+          fi
 
           if [[ ! -f "$FINAL_BIN" ]]; then
             echo "ERROR: stage2 output not generated: $FINAL_BIN"
