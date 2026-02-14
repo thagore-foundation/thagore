@@ -1,0 +1,148 @@
+name: Selfhost Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selfhost:
+    name: selfhost (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      STAGE_TRACE_FILE: stage-selfhost.log
+      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install llvm
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1.8"
+
+      - name: Bootstrap Stage1
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          : > "$STAGE_TRACE_FILE"
+          mkdir -p bootstrap
+
+          STAGE1_BIN="stage1"
+          STAGE2_BIN="stage2"
+          STAGE22_BIN="stage2_2"
+          HELLO_BIN="hello_stage2"
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE1_BIN="stage1.exe"
+            STAGE2_BIN="stage2.exe"
+            STAGE22_BIN="stage2_2.exe"
+            HELLO_BIN="hello_stage2.exe"
+            if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
+              mkdir -p bootstrap/install
+              "bootstrap/thagore-windows-setup.exe" /S "/D=$PWD/bootstrap/install" || true
+              if [[ -f "bootstrap/install/bin/thagore.exe" ]]; then
+                cp "bootstrap/install/bin/thagore.exe" "$STAGE1_BIN"
+              fi
+            fi
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" -D bootstrap || true
+              [[ -f "bootstrap/thagore.exe" ]] && cp "bootstrap/thagore.exe" "$STAGE1_BIN"
+            fi
+          else
+            ASSET="thagore-linux.tar.gz"
+            [[ "${{ runner.os }}" == "macOS" ]] && ASSET="thagore-macos.tar.gz"
+            if gh release download --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
+              mkdir -p bootstrap/extracted
+              tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
+              if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
+                cp "bootstrap/extracted/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted/dist/bin/thagore" ]]; then
+                cp "bootstrap/extracted/dist/bin/thagore" "$STAGE1_BIN"
+              fi
+            fi
+            if [[ ! -f "$STAGE1_BIN" ]]; then
+              gh release download --repo "${{ github.repository }}" --pattern "thagore" -D bootstrap || true
+              [[ -f "bootstrap/thagore" ]] && cp "bootstrap/thagore" "$STAGE1_BIN"
+            fi
+          fi
+
+          if [[ ! -f "$STAGE1_BIN" ]]; then
+            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" ]]; then
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja
+              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
+              cmake --build legacy/build --config Release
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                cp legacy/build/stage0.exe "$STAGE1_BIN"
+              else
+                cp legacy/build/stage0 "$STAGE1_BIN"
+              fi
+            else
+              echo "CRITICAL: Stage1 release asset missing; stage0 fallback is disabled."
+              echo "Set repo variable ALLOW_STAGE0_BOOTSTRAP=true to allow fallback."
+              exit 1
+            fi
+          fi
+
+          chmod +x "$STAGE1_BIN" || true
+          echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
+          echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+          echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
+          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+
+      - name: Stage1 -> Stage2 -> Stage2
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build src/thagore.tg -o "$STAGE2_BIN"
+          [[ -f "$STAGE2_BIN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
+
+          echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE22_BIN"
+          [[ -f "$STAGE22_BIN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
+
+      - name: Stage2' e2e test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE22_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          "./$HELLO_BIN"
+
+      - name: Upload trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-${{ matrix.os }}
+          path: |
+            stage-selfhost.log
