@@ -130,18 +130,15 @@ jobs:
             fi
           fi
 
-          if [[ -f "legacy/thag_runtime.lib" ]]; then
-            cp legacy/thag_runtime.lib thag_runtime.lib
-          else
-            RUNTIME_CXX="clang++"
-            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
-              RUNTIME_CXX="c++"
-            fi
-            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs libthag_runtime.a thag_runtime.o
+          RUNTIME_CXX="clang++"
+          if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
+            RUNTIME_CXX="c++"
           fi
-          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
-            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
+          "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
+          ar rcs libthag_runtime.a thag_runtime.o
+          rm -f thag_runtime.lib
+          if [[ ! -f "libthag_runtime.a" ]]; then
+            echo "CRITICAL: runtime library missing (libthag_runtime.a)."
             exit 1
           fi
 
@@ -191,9 +188,7 @@ jobs:
         run: |
           set -euo pipefail
           export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe
-          [[ -f "stage2_seed_probe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
-          "./stage2_seed_probe" build examples/hello.tg -o stage2_seed_hello
+          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello
           [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
           ./stage2_seed_hello || true
 
@@ -427,9 +422,7 @@ jobs:
         run: |
           set -euo pipefail
           export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe
-          [[ -f "stage2_seed_probe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
-          "./stage2_seed_probe" build examples/hello.tg -o stage2_seed_hello
+          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello
           [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
           ./stage2_seed_hello || true
 
@@ -628,9 +621,7 @@ jobs:
         run: |
           set -euo pipefail
           export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build src/thagore.tg -o stage2_seed_probe.exe
-          [[ -f "stage2_seed_probe.exe" ]] || (echo "ERROR: stage2 seed probe binary missing"; exit 1)
-          "./stage2_seed_probe.exe" build examples/hello.tg -o stage2_seed_hello.exe
+          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello.exe
           [[ -f "stage2_seed_hello.exe" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
           ./stage2_seed_hello.exe || true
 
@@ -641,6 +632,7 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           cp "$FINAL_BIN" dist/bin/thagore.exe
+          cp "$FINAL_BIN" dist/bin/thag.exe
           cp "$FINAL_BIN" "$STAGE1_SEED_ASSET"
           cp -r std dist/lib/std
           VERSION="${GITHUB_REF_NAME#v}"
