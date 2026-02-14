@@ -7,6 +7,7 @@
 #include "thagore/frontend/semantic.hpp"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -910,7 +911,11 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
     return 1;
   }
 
+#if LLVM_VERSION_MAJOR >= 21
+  module.value()->setTargetTriple(llvm::Triple(llvm::sys::getDefaultTargetTriple()));
+#else
   module.value()->setTargetTriple(llvm::sys::getDefaultTargetTriple());
+#endif
   module.value()->setDataLayout(targetMachine.value()->createDataLayout());
 
   auto opt = BackendPipeline::optimizeModule(*module.value(), options->optLevel);

@@ -1,6 +1,7 @@
 #include "thagore/backend/ir_generator.hpp"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -2075,7 +2076,11 @@ auto BackendPipeline::emitObject(llvm::Module &module, llvm::TargetMachine &targ
   }
 
   llvm::legacy::PassManager passManager;
+#if LLVM_VERSION_MAJOR >= 21
+  auto fileType = llvm::CodeGenFileType::ObjectFile;
+#else
   auto fileType = llvm::CGFT_ObjectFile;
+#endif
   if (targetMachine.addPassesToEmitFile(passManager, out, nullptr, fileType)) {
     return std::unexpected(Diagnostic {
       .code = ErrorCode::CodegenError,
