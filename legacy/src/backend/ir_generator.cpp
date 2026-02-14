@@ -2075,7 +2075,7 @@ auto BackendPipeline::emitObject(llvm::Module &module, llvm::TargetMachine &targ
   }
 
   llvm::legacy::PassManager passManager;
-  auto fileType = llvm::CodeGenFileType::ObjectFile;
+  auto fileType = llvm::CGFT_ObjectFile;
   if (targetMachine.addPassesToEmitFile(passManager, out, nullptr, fileType)) {
     return std::unexpected(Diagnostic {
       .code = ErrorCode::CodegenError,

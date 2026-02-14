@@ -651,17 +651,8 @@ auto createTargetMachine(const DriverOptions &options) -> Result<std::unique_ptr
 
   llvm::TargetOptions targetOptions;
   auto relocationModel = std::optional<llvm::Reloc::Model>();
-  auto level = llvm::CodeGenOptLevel::Default;
-  if (options.optLevel <= 0) {
-    level = llvm::CodeGenOptLevel::None;
-  } else if (options.optLevel == 1) {
-    level = llvm::CodeGenOptLevel::Less;
-  } else if (options.optLevel >= 3) {
-    level = llvm::CodeGenOptLevel::Aggressive;
-  }
-
   auto machine = std::unique_ptr<llvm::TargetMachine>(
-    target->createTargetMachine(triple, "generic", "", targetOptions, relocationModel, std::nullopt, level)
+    target->createTargetMachine(triple, "generic", "", targetOptions, relocationModel)
   );
   if (!machine) {
     return std::unexpected(Diagnostic {
@@ -919,7 +910,7 @@ auto Driver::run(const std::vector<std::string> &args) -> int {
     return 1;
   }
 
-  module.value()->setTargetTriple(llvm::Triple(llvm::sys::getDefaultTargetTriple()));
+  module.value()->setTargetTriple(llvm::sys::getDefaultTargetTriple());
   module.value()->setDataLayout(targetMachine.value()->createDataLayout());
 
   auto opt = BackendPipeline::optimizeModule(*module.value(), options->optLevel);

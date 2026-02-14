@@ -73,14 +73,18 @@ func _detect_runtime_lib() -> String:
         if (process.run("cmd /c if exist legacy\\build\\Debug\\thag_runtime.lib (exit 0) else (exit 1)") == 0):
             return "legacy\\build\\Debug\\thag_runtime.lib"
         return ""
+    if (process.run("sh -lc 'test -f libthag_runtime.a'") == 0):
+        return "libthag_runtime.a"
+    if (process.run("sh -lc 'test -f legacy/libthag_runtime.a'") == 0):
+        return "legacy/libthag_runtime.a"
+    if (process.run("sh -lc 'test -f build/libthag_runtime.a'") == 0):
+        return "build/libthag_runtime.a"
+    if (process.run("sh -lc 'test -f legacy/build/libthag_runtime.a'") == 0):
+        return "legacy/build/libthag_runtime.a"
     if (process.run("sh -lc 'test -f thag_runtime.lib'") == 0):
         return "thag_runtime.lib"
     if (process.run("sh -lc 'test -f legacy/thag_runtime.lib'") == 0):
         return "legacy/thag_runtime.lib"
-    if (process.run("sh -lc 'test -f build/Debug/thag_runtime.lib'") == 0):
-        return "build/Debug/thag_runtime.lib"
-    if (process.run("sh -lc 'test -f legacy/build/Debug/thag_runtime.lib'") == 0):
-        return "legacy/build/Debug/thag_runtime.lib"
     return ""
 
 func _contains_space(text: String) -> i32:
@@ -135,9 +139,9 @@ func _doctor() -> i32:
         print("  [missing] clang")
         code = 1
     if (_detect_runtime_lib().length() > 0):
-        print("  [ok] thag_runtime.lib")
+        print("  [ok] runtime library")
     else:
-        print("  [missing] thag_runtime.lib")
+        print("  [missing] runtime library (thag_runtime.lib/libthag_runtime.a)")
         code = 1
     if (_has_cmd("cmake") == 1):
         print("  [ok] cmake")
@@ -231,7 +235,7 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
         return 1
     let runtime_lib = _detect_runtime_lib()
     if (runtime_lib.length() == 0):
-        print("CRITICAL: thag_runtime.lib not found in standard locations.")
+        print("CRITICAL: runtime library not found in standard locations (thag_runtime.lib/libthag_runtime.a).")
         return 1
     if (_contains_space(clang_bin) == 1):
         print("Error: detected clang path contains spaces; put clang in PATH or use a path without spaces.")
@@ -252,6 +256,13 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
         print("Command executed:")
         print(cmd)
         return code
+    if (fs.exists(output_exe) == 0):
+        print("CRITICAL: linker returned success but output binary was not generated.")
+        print("Expected output:")
+        print(output_exe)
+        print("Command executed:")
+        print(cmd)
+        return 1
     print("Build success.")
     print(output_exe)
     return 0

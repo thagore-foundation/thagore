@@ -2548,16 +2548,50 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     out << sourceText;
   }
 
-  std::filesystem::path helperPath {"legacy\\stage0.exe"};
-  if (!std::filesystem::exists(helperPath)) {
-    auto *fallback = parseProgramSource(source);
-    return __thg_codegen_emit_llvm(fallback);
+  std::filesystem::path helperPath {};
+  if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
+    helperPath = std::filesystem::path(configured);
+  } else {
+#if defined(_WIN32)
+    const std::array<std::filesystem::path, 5> candidates {
+      std::filesystem::path {"stage0.exe"},
+      std::filesystem::path {"legacy/stage0.exe"},
+      std::filesystem::path {"legacy/build/stage0.exe"},
+      std::filesystem::path {"legacy/build/Release/stage0.exe"},
+      std::filesystem::path {"build/stage0.exe"},
+    };
+#else
+    const std::array<std::filesystem::path, 5> candidates {
+      std::filesystem::path {"stage0"},
+      std::filesystem::path {"legacy/stage0"},
+      std::filesystem::path {"legacy/build/stage0"},
+      std::filesystem::path {"legacy/build/Release/stage0"},
+      std::filesystem::path {"build/stage0"},
+    };
+#endif
+    for (const auto &candidate : candidates) {
+      if (std::filesystem::exists(candidate)) {
+        helperPath = candidate;
+        break;
+      }
+    }
+  }
+
+  if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
+    std::error_code rmErr {};
+    std::filesystem::remove(sourcePath, rmErr);
+    std::filesystem::remove(irPath, rmErr);
+    std::fprintf(
+      stderr,
+      "codegen helper missing for import/use source. Set THAG_STAGE0_HELPER or provide stage0 binary.\n"
+    );
+    return makeManagedCString("");
   }
 
   const std::string command =
-    helperPath.string() + " " +
-    sourcePath.string() + " --emit-ir -o " +
-    irPath.string();
+    quoteShellArg(helperPath.string()) + " " +
+    quoteShellArg(sourcePath.string()) + " --emit-ir -o " +
+    quoteShellArg(irPath.string());
 
   const int code = std::system(command.c_str());
   if (code != 0) {
@@ -2565,8 +2599,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     std::error_code rmErr {};
     std::filesystem::remove(sourcePath, rmErr);
     std::filesystem::remove(irPath, rmErr);
-    auto *fallback = parseProgramSource(source);
-    return __thg_codegen_emit_llvm(fallback);
+    return makeManagedCString("");
   }
 
   std::ifstream in(irPath, std::ios::binary);
@@ -2574,8 +2607,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     std::error_code rmErr {};
     std::filesystem::remove(sourcePath, rmErr);
     std::filesystem::remove(irPath, rmErr);
-    auto *fallback = parseProgramSource(source);
-    return __thg_codegen_emit_llvm(fallback);
+    return makeManagedCString("");
   }
   std::string ir((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 

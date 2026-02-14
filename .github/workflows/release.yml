@@ -95,14 +95,20 @@ jobs:
               RUNTIME_CXX="c++"
             fi
             "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs thag_runtime.lib thag_runtime.o
+            ar rcs libthag_runtime.a thag_runtime.o
+            cp libthag_runtime.a thag_runtime.lib
           fi
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            echo "CRITICAL: runtime library missing (thag_runtime.lib)."
+          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
+            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
           fi
 
           chmod +x "$STAGE1_BIN"
+          echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
+          [[ -f "stage1_probe" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          ./stage1_probe || true
+
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
@@ -266,14 +272,20 @@ jobs:
               RUNTIME_CXX="c++"
             fi
             "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs thag_runtime.lib thag_runtime.o
+            ar rcs libthag_runtime.a thag_runtime.o
+            cp libthag_runtime.a thag_runtime.lib
           fi
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            echo "CRITICAL: runtime library missing (thag_runtime.lib)."
+          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
+            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
           fi
 
           chmod +x "$STAGE1_BIN"
+          echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
+          [[ -f "stage1_probe" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          ./stage1_probe || true
+
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
           [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
@@ -426,6 +438,11 @@ jobs:
             echo "CRITICAL: runtime library missing (thag_runtime.lib)."
             exit 1
           fi
+
+          echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe.exe" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe.exe
+          [[ -f "stage1_probe.exe" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          ./stage1_probe.exe || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"

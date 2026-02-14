@@ -60,12 +60,14 @@ jobs:
           FINAL_BIN="thagore"
           HELLO_BIN="hello"
           FIB_BIN="fib"
+          PROBE_BIN="stage1_probe"
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE1_BIN="stage1.exe"
             FINAL_BIN="thagore.exe"
             HELLO_BIN="hello.exe"
             FIB_BIN="fib.exe"
+            PROBE_BIN="stage1_probe.exe"
 
             if gh release download --repo "${{ github.repository }}" --pattern "thagore-windows-setup.exe" -D bootstrap; then
               mkdir -p bootstrap/install
@@ -169,14 +171,23 @@ jobs:
               RUNTIME_CXX="c++"
             fi
             "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs thag_runtime.lib thag_runtime.o
+            ar rcs libthag_runtime.a thag_runtime.o
+            cp libthag_runtime.a thag_runtime.lib
           fi
-          if [[ ! -f "thag_runtime.lib" ]]; then
-            echo "CRITICAL: runtime library missing (thag_runtime.lib)."
+          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
+            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
           fi
 
           chmod +x "$STAGE1_BIN" || true
+          echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE1_BIN" build examples/hello.tg -o "$PROBE_BIN"
+          if [[ ! -f "$PROBE_BIN" ]]; then
+            echo "CRITICAL: downloaded stage1 asset is invalid (cannot produce output binary)."
+            exit 1
+          fi
+          "./$PROBE_BIN" || true
+
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
 
