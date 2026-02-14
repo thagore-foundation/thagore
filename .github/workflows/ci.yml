@@ -201,11 +201,61 @@ jobs:
           fi
 
           chmod +x "$STAGE1_BIN" || true
+          PROBE_COMPILER_BIN="stage1_compiler_probe"
+          PROBE_HELLO_BIN="stage1_compiler_probe_hello"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PROBE_COMPILER_BIN="stage1_compiler_probe.exe"
+            PROBE_HELLO_BIN="stage1_compiler_probe_hello.exe"
+          fi
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build examples/hello.tg -o "$PROBE_BIN"
-          if [[ ! -f "$PROBE_BIN" ]]; then
-            echo "CRITICAL: downloaded stage1 asset is invalid (cannot produce output binary)."
-            exit 1
+          STAGE1_OK=1
+          "./$STAGE1_BIN" build examples/hello.tg -o "$PROBE_BIN" || STAGE1_OK=0
+          [[ -f "$PROBE_BIN" ]] || STAGE1_OK=0
+          if [[ "$STAGE1_OK" == "1" ]]; then
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $PROBE_COMPILER_BIN" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE1_BIN" build src/thagore.tg -o "$PROBE_COMPILER_BIN" || STAGE1_OK=0
+            [[ -f "$PROBE_COMPILER_BIN" ]] || STAGE1_OK=0
+          fi
+          if [[ "$STAGE1_OK" == "1" ]]; then
+            echo "[CMD] ./$PROBE_COMPILER_BIN build examples/hello.tg -o $PROBE_HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+            "./$PROBE_COMPILER_BIN" build examples/hello.tg -o "$PROBE_HELLO_BIN" || STAGE1_OK=0
+            [[ -f "$PROBE_HELLO_BIN" ]] || STAGE1_OK=0
+          fi
+          if [[ "$STAGE1_OK" != "1" ]]; then
+            echo "WARN: downloaded stage1 asset failed self-host probe."
+            rm -f "$STAGE1_BIN"
+            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+              LLVM_ARG=""
+              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+              elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
+                LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
+              elif [[ "${{ runner.os }}" == "macOS" ]]; then
+                LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
+                if [[ -n "$LLVM_PREFIX" && -d "$LLVM_PREFIX/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm"
+                fi
+              fi
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
+              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
+              cmake --build legacy/build --config Release
+              if [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/thag.exe" ]]; then
+                cp "legacy/build/thag.exe" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag.exe" ]]; then
+                cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
+              else
+                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
+                exit 1
+              fi
+            else
+              echo "CRITICAL: stage1 asset invalid and ALLOW_STAGE0_BOOTSTRAP is not enabled."
+              exit 1
+            fi
           fi
           "./$PROBE_BIN" || true
 
