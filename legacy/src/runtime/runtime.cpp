@@ -113,7 +113,11 @@ auto quoteShellArg(const std::string &arg) -> std::string {
 auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
   std::string raw = path.string();
 #if defined(_WIN32)
-  return quoteShellArg(raw);
+  std::replace(raw.begin(), raw.end(), '\\', '/');
+  if (raw.find(' ') != std::string::npos) {
+    return "\"" + raw + "\"";
+  }
+  return raw;
 #else
   const bool hasSeparator = raw.find('/') != std::string::npos || raw.find('\\') != std::string::npos;
   if (!path.is_absolute() && !hasSeparator) {
