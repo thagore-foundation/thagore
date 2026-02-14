@@ -2549,10 +2549,10 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   }
 
   std::filesystem::path helperPath {};
-#if defined(_WIN32)
   if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
     helperPath = std::filesystem::path(configured);
   } else {
+#if defined(_WIN32)
     const std::array<std::filesystem::path, 5> candidates {
       std::filesystem::path {"stage0.exe"},
       std::filesystem::path {"legacy/stage0.exe"},
@@ -2560,6 +2560,19 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
       std::filesystem::path {"legacy/build/Release/stage0.exe"},
       std::filesystem::path {"build/stage0.exe"},
     };
+#else
+    const std::array<std::filesystem::path, 9> candidates {
+      std::filesystem::path {"stage1"},
+      std::filesystem::path {"thagore"},
+      std::filesystem::path {"stage0"},
+      std::filesystem::path {"legacy/stage0"},
+      std::filesystem::path {"legacy/build/thag"},
+      std::filesystem::path {"legacy/build/Release/thag"},
+      std::filesystem::path {"build/stage0"},
+      std::filesystem::path {"build/thagore"},
+      std::filesystem::path {"bin/thagore"},
+    };
+#endif
     for (const auto &candidate : candidates) {
       if (std::filesystem::exists(candidate)) {
         helperPath = candidate;
@@ -2574,20 +2587,10 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     std::filesystem::remove(irPath, rmErr);
     std::fprintf(
       stderr,
-      "codegen helper missing for import/use source on Windows. Set THAG_STAGE0_HELPER or provide stage0.exe.\n"
+      "codegen helper missing for import/use source. Set THAG_STAGE0_HELPER or provide stage1/stage0 helper binary.\n"
     );
     return makeManagedCString("");
   }
-#else
-  std::error_code cleanupErr {};
-  std::filesystem::remove(sourcePath, cleanupErr);
-  std::filesystem::remove(irPath, cleanupErr);
-  std::fprintf(
-    stderr,
-    "codegen helper is disabled on Unix in stage1-only bootstrap mode. Provide a valid stage1 release asset.\n"
-  );
-  return makeManagedCString("");
-#endif
 
   const std::string command =
     quoteShellArg(helperPath.string()) + " " +
