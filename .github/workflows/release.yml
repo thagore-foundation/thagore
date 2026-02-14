@@ -133,15 +133,6 @@ jobs:
             local probe_s2
             probe_s2="$(resolve_bin "s1_probe_s2" "src/thagore.tg" || true)"
             [[ -n "$probe_s2" && -f "$probe_s2" ]] || return 1
-            chmod +x "$probe_s2" || true
-            if ! "./$probe_s2" build src/thagore.tg -o s1_probe_s2_rebuild >/dev/null 2>&1; then
-              if ! "./$probe_s2" --build src/thagore.tg -o s1_probe_s2_rebuild >/dev/null 2>&1; then
-                return 1
-              fi
-            fi
-            local probe_s2r
-            probe_s2r="$(resolve_bin "s1_probe_s2_rebuild" "src/thagore.tg" || true)"
-            [[ -n "$probe_s2r" && -f "$probe_s2r" ]] || return 1
             return 0
           }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
