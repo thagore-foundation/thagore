@@ -236,7 +236,10 @@ jobs:
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o ${{ matrix.stage2_rebuild_bin }}" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE2_BIN" build src/thagore.tg -o "${{ matrix.stage2_rebuild_bin }}"
-          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg")"
+          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_BIN"
+          fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 

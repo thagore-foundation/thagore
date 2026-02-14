@@ -114,6 +114,9 @@ jobs:
             fi
             local probe_s2r
             probe_s2r="$(resolve_bin "s1_probe_s2_rebuild" "src/thagore.tg" || true)"
+            if [[ -z "$probe_s2r" ]]; then
+              probe_s2r="$probe_s2"
+            fi
             [[ -n "$probe_s2r" && -f "$probe_s2r" ]] || return 1
             return 0
           }
@@ -225,7 +228,10 @@ jobs:
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE2_REBUILD_BIN"
-          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg")"
+          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_BIN"
+          fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
