@@ -168,6 +168,14 @@ jobs:
                 fi
               fi
             fi
+            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
+              echo "INFO: fallback to direct release URL download for stage1 seed." | tee -a "$STAGE_TRACE_FILE"
+              ASSET_URL="https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_TAG/$BOOTSTRAP_STAGE1_ASSET"
+              curl -fsSL -o "bootstrap/$BOOTSTRAP_STAGE1_ASSET" "$ASSET_URL" || true
+              if [[ -f "bootstrap/$BOOTSTRAP_STAGE1_ASSET" ]]; then
+                extract_stage1_seed
+              fi
+            fi
 
             if [[ ! -f "$STAGE1_BIN" ]]; then
               if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_ASSET" -D bootstrap; then
