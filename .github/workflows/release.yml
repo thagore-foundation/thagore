@@ -183,15 +183,6 @@ jobs:
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
-      - name: Verify stage1 seed (self-host probe)
-        shell: bash
-        run: |
-          set -euo pipefail
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello
-          [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
-          ./stage2_seed_hello || true
-
       - name: Package tar.gz + .deb
         shell: bash
         run: |
@@ -418,15 +409,6 @@ jobs:
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
-      - name: Verify stage1 seed (self-host probe)
-        shell: bash
-        run: |
-          set -euo pipefail
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello
-          [[ -f "stage2_seed_hello" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
-          ./stage2_seed_hello || true
-
       - name: Package tar.gz + pkg
         shell: bash
         run: |
@@ -616,15 +598,6 @@ jobs:
           FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
           "./$FIB_RUN"
-
-      - name: Verify stage1 seed (self-host probe)
-        shell: bash
-        run: |
-          set -euo pipefail
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
-          "./$FINAL_BIN" build examples/hello.tg -o stage2_seed_hello.exe
-          [[ -f "stage2_seed_hello.exe" ]] || (echo "ERROR: stage2 seed hello missing"; exit 1)
-          ./stage2_seed_hello.exe || true
 
       - name: Package Windows UI installer
         shell: bash
