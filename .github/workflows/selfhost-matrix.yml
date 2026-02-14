@@ -107,7 +107,21 @@ jobs:
             [[ "${{ runner.os }}" == "macOS" ]] && ASSET_STAGE1="thagore-stage1-macos.tar.gz"
             [[ "${{ runner.os }}" == "macOS" ]] && ASSET="thagore-macos.tar.gz"
             [[ "${{ runner.os }}" == "macOS" ]] && ASSET_LEGACY="thag-macos.tar.gz"
-            if gh release download --repo "${{ github.repository }}" --pattern "$ASSET_STAGE1" -D bootstrap; then
+            MIN_BOOTSTRAP_SIZE=20000
+            if [[ "${{ runner.os }}" == "macOS" ]]; then
+              MIN_BOOTSTRAP_SIZE=15000
+            fi
+            BOOTSTRAP_TAG="$(
+              gh api --silent "repos/${{ github.repository }}/releases?per_page=30" --jq ".[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; ((.name == \"$ASSET_STAGE1\" or .name == \"$ASSET\" or .name == \"$ASSET_LEGACY\") and (.size >= $MIN_BOOTSTRAP_SIZE)))) | .tag_name" | head -n 1 || true
+            )"
+            DL_TAG_ARGS=()
+            if [[ -n "$BOOTSTRAP_TAG" ]]; then
+              echo "Using bootstrap release tag: $BOOTSTRAP_TAG" | tee -a "$STAGE_TRACE_FILE"
+              DL_TAG_ARGS=("$BOOTSTRAP_TAG")
+            else
+              echo "WARN: could not find a healthy historical Unix bootstrap release; trying latest." | tee -a "$STAGE_TRACE_FILE"
+            fi
+            if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET_STAGE1" -D bootstrap; then
               mkdir -p bootstrap/extracted_stage1
               tar -xzf "bootstrap/$ASSET_STAGE1" -C bootstrap/extracted_stage1
               if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
@@ -119,7 +133,7 @@ jobs:
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
-              if gh release download --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
+              if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
                 mkdir -p bootstrap/extracted
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extracted
                 if [[ -f "bootstrap/extracted/bin/thagore" ]]; then
@@ -132,7 +146,7 @@ jobs:
               fi
             fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
-              if gh release download --repo "${{ github.repository }}" --pattern "$ASSET_LEGACY" -D bootstrap; then
+              if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET_LEGACY" -D bootstrap; then
                 mkdir -p bootstrap/extracted_legacy
                 tar -xzf "bootstrap/$ASSET_LEGACY" -C bootstrap/extracted_legacy
                 if [[ -f "bootstrap/extracted_legacy/bin/thagore" ]]; then
@@ -221,7 +235,7 @@ jobs:
               fi
             done
             local found
-            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            found="$(find . -maxdepth 3 -type f -not -path "./bootstrap/*" \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
             if [[ -n "$found" ]]; then
               echo "${found#./}"
               return 0
@@ -347,7 +361,7 @@ jobs:
               fi
             done
             local found
-            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            found="$(find . -maxdepth 3 -type f -not -path "./bootstrap/*" \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
             if [[ -n "$found" ]]; then
               echo "${found#./}"
               return 0
@@ -365,13 +379,13 @@ jobs:
             return 1
           }
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE1_BIN" "src/thagore.tg" "$STAGE2_BIN" || true
+          thg_build "$STAGE1_BIN" "src/thagore.tg" "$STAGE2_BIN" || (echo "CRITICAL: stage1->stage2 build command failed."; exit 1)
           STAGE2_RUN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
           [[ -n "$STAGE2_RUN" && -f "$STAGE2_RUN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
           STAGE2_BIN="$STAGE2_RUN"
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN" || true
+          thg_build "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN" || (echo "CRITICAL: stage2->stage2_2 build command failed."; exit 1)
           STAGE22_RUN="$(resolve_bin "$STAGE22_BIN" "src/thagore.tg" || true)"
           [[ -n "$STAGE22_RUN" && -f "$STAGE22_RUN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
           STAGE22_BIN="$STAGE22_RUN"
@@ -412,7 +426,7 @@ jobs:
             return 1
           }
           echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN" || true
+          thg_build "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN" || (echo "CRITICAL: stage2_2 hello build command failed."; exit 1)
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
           [[ -n "$HELLO_RUN" && -f "$HELLO_RUN" ]] || (echo "ERROR: missing $HELLO_BIN"; exit 1)
           "./$HELLO_RUN"
