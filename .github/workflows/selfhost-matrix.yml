@@ -141,8 +141,17 @@ jobs:
             fi
           fi
 
-          if [[ -f "legacy/thag_runtime.lib" ]]; then
-            cp legacy/thag_runtime.lib thag_runtime.lib
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            if [[ -f "legacy/thag_runtime.lib" ]]; then
+              cp legacy/thag_runtime.lib thag_runtime.lib
+            fi
+          else
+            RUNTIME_CXX="clang++"
+            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
+              RUNTIME_CXX="c++"
+            fi
+            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
+            ar rcs thag_runtime.lib thag_runtime.o
           fi
           if [[ ! -f "thag_runtime.lib" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib)."
@@ -173,7 +182,10 @@ jobs:
           set -euo pipefail
           echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE22_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$HELLO_BIN"
+          HELLO_RUN="$HELLO_BIN"
+          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
+          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
+          "./$HELLO_RUN"
 
       - name: Upload trace
         uses: actions/upload-artifact@v4

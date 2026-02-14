@@ -164,9 +164,12 @@ jobs:
               cp legacy/thag_runtime.lib thag_runtime.lib
             fi
           else
-            if [[ -f "legacy/thag_runtime.lib" ]]; then
-              cp legacy/thag_runtime.lib thag_runtime.lib
+            RUNTIME_CXX="clang++"
+            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
+              RUNTIME_CXX="c++"
             fi
+            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
+            ar rcs thag_runtime.lib thag_runtime.o
           fi
           if [[ ! -f "thag_runtime.lib" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib)."
@@ -193,8 +196,14 @@ jobs:
           set -euo pipefail
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          "./$HELLO_BIN"
-          "./$FIB_BIN"
+          HELLO_RUN="$HELLO_BIN"
+          FIB_RUN="$FIB_BIN"
+          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
+          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
+          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN}.exe" ]]; then FIB_RUN="${FIB_BIN}.exe"; fi
+          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN%.exe}" ]]; then FIB_RUN="${FIB_BIN%.exe}"; fi
+          "./$HELLO_RUN"
+          "./$FIB_RUN"
 
       - name: CLI smoke
         shell: bash
