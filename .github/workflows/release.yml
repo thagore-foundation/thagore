@@ -136,9 +136,9 @@ jobs:
           fi
           "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
           ar rcs libthag_runtime.a thag_runtime.o
-          rm -f thag_runtime.lib
-          if [[ ! -f "libthag_runtime.a" ]]; then
-            echo "CRITICAL: runtime library missing (libthag_runtime.a)."
+          cp libthag_runtime.a thag_runtime.lib
+          if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
+            echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
           fi
 
@@ -361,15 +361,16 @@ jobs:
             fi
           fi
 
-          if [[ -f "legacy/thag_runtime.lib" ]]; then
-            cp legacy/thag_runtime.lib thag_runtime.lib
+          RUNTIME_CXX="clang++"
+          if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
+            RUNTIME_CXX="c++"
+          fi
+          "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
+          ar rcs libthag_runtime.a thag_runtime.o
+          if command -v libtool >/dev/null 2>&1; then
+            libtool -static -o thag_runtime.lib thag_runtime.o || cp libthag_runtime.a thag_runtime.lib
           else
-            RUNTIME_CXX="clang++"
-            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
-              RUNTIME_CXX="c++"
-            fi
-            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
-            ar rcs libthag_runtime.a thag_runtime.o
+            cp libthag_runtime.a thag_runtime.lib
           fi
           if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
