@@ -56,6 +56,19 @@ func _detect_clang() -> String:
         return clang_usr_local
     return ""
 
+func _detect_linker() -> String:
+    if (_is_windows() == 1):
+        return _detect_clang()
+    if (_probe_clang("clang++") == 0):
+        return "clang++"
+    let clangxx_usr_bin = "/usr/bin/clang++"
+    if (_probe_clang(clangxx_usr_bin) == 0):
+        return clangxx_usr_bin
+    let clangxx_usr_local = "/usr/local/bin/clang++"
+    if (_probe_clang(clangxx_usr_local) == 0):
+        return clangxx_usr_local
+    return _detect_clang()
+
 func _is_windows() -> i32:
     if (process.run("cmd /c ver >nul 2>nul") == 0):
         return 1
@@ -133,9 +146,14 @@ func _print_version() -> i32:
 func _doctor() -> i32:
     let code = 0
     if (_detect_clang().length() > 0):
-        print("  [ok] clang")
+        print("  [ok] clang frontend")
     else:
-        print("  [missing] clang")
+        print("  [missing] clang frontend")
+        code = 1
+    if (_detect_linker().length() > 0):
+        print("  [ok] clang linker")
+    else:
+        print("  [missing] clang linker")
         code = 1
     if (_detect_runtime_lib().length() > 0):
         print("  [ok] runtime library")
@@ -227,12 +245,16 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     if (clang_bin.length() == 0):
         print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
         return 1
+    let linker_bin = _detect_linker()
+    if (linker_bin.length() == 0):
+        print("CRITICAL: Clang linker not found via PATH or standard locations. Please install LLVM.")
+        return 1
     let runtime_lib = _detect_runtime_lib()
     if (runtime_lib.length() == 0):
         print("CRITICAL: runtime library not found in standard locations (thag_runtime.lib/libthag_runtime.a).")
         return 1
-    if (_contains_space(clang_bin) == 1):
-        print("Error: detected clang path contains spaces; put clang in PATH or use a path without spaces.")
+    if (_contains_space(linker_bin) == 1):
+        print("Error: detected linker path contains spaces; put clang++ in PATH or use a path without spaces.")
         return 1
     if (_contains_space(output_ll) == 1):
         print("Error: IR path contains spaces, unsupported by current command runner.")
@@ -243,7 +265,7 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     if (_contains_space(runtime_lib) == 1):
         print("Error: runtime lib path contains spaces, unsupported by current command runner.")
         return 1
-    let cmd = clang_bin + " " + output_ll + " " + runtime_lib + " -o " + output_exe + " -Wno-override-module"
+    let cmd = linker_bin + " " + output_ll + " " + runtime_lib + " -o " + output_exe + " -Wno-override-module"
     let code = process.run(cmd)
     if (code != 0):
         print("Build failed. Ensure clang is installed and available in PATH.")
