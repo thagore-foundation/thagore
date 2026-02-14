@@ -228,7 +228,6 @@ jobs:
             thagore-linux.tar.gz
             thag-linux.tar.gz
             thagore_*_amd64.deb
-            stage-commands.log
 
   build-macos:
     name: build-release (macos)
@@ -441,7 +440,6 @@ jobs:
             thagore-macos.tar.gz
             thag-macos.tar.gz
             thagore-macos.pkg
-            stage-commands.log
 
   build-windows:
     name: build-release (windows)
@@ -626,7 +624,6 @@ jobs:
             thagore-stage1.exe
             thagore-windows-setup.exe
             thag-windows-setup.exe
-            stage-commands.log
 
   publish:
     name: publish-release
