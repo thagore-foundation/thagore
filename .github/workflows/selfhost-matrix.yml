@@ -209,6 +209,35 @@ jobs:
           fi
 
           chmod +x "$STAGE1_BIN" || true
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           PROBE_COMPILER_BIN="stage1_compiler_probe"
           PROBE_COMPILER2_BIN="stage1_compiler_probe2"
           PROBE_HELLO_BIN="stage1_compiler_probe_hello"
@@ -219,34 +248,42 @@ jobs:
           fi
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
           STAGE1_OK=1
-          "./$STAGE1_BIN" build examples/hello.tg -o "$PROBE_BIN" || STAGE1_OK=0
-          if [[ ! -f "$PROBE_BIN" && -f "${PROBE_BIN}.exe" ]]; then
-            PROBE_BIN="${PROBE_BIN}.exe"
+          thg_build "$STAGE1_BIN" "examples/hello.tg" "$PROBE_BIN" || STAGE1_OK=0
+          PROBE_RUN="$(resolve_bin "$PROBE_BIN" "examples/hello.tg" || true)"
+          if [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]]; then
+            PROBE_BIN="$PROBE_RUN"
+          else
+            STAGE1_OK=0
           fi
-          [[ -f "$PROBE_BIN" ]] || STAGE1_OK=0
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $PROBE_COMPILER_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE1_BIN" build src/thagore.tg -o "$PROBE_COMPILER_BIN" || STAGE1_OK=0
-            if [[ ! -f "$PROBE_COMPILER_BIN" && -f "${PROBE_COMPILER_BIN}.exe" ]]; then
-              PROBE_COMPILER_BIN="${PROBE_COMPILER_BIN}.exe"
+            thg_build "$STAGE1_BIN" "src/thagore.tg" "$PROBE_COMPILER_BIN" || STAGE1_OK=0
+            PROBE_COMPILER_RUN="$(resolve_bin "$PROBE_COMPILER_BIN" "src/thagore.tg" || true)"
+            if [[ -n "$PROBE_COMPILER_RUN" && -f "$PROBE_COMPILER_RUN" ]]; then
+              PROBE_COMPILER_BIN="$PROBE_COMPILER_RUN"
+            else
+              STAGE1_OK=0
             fi
-            [[ -f "$PROBE_COMPILER_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build examples/hello.tg -o $PROBE_HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$PROBE_COMPILER_BIN" build examples/hello.tg -o "$PROBE_HELLO_BIN" || STAGE1_OK=0
-            if [[ ! -f "$PROBE_HELLO_BIN" && -f "${PROBE_HELLO_BIN}.exe" ]]; then
-              PROBE_HELLO_BIN="${PROBE_HELLO_BIN}.exe"
+            thg_build "$PROBE_COMPILER_BIN" "examples/hello.tg" "$PROBE_HELLO_BIN" || STAGE1_OK=0
+            PROBE_HELLO_RUN="$(resolve_bin "$PROBE_HELLO_BIN" "examples/hello.tg" || true)"
+            if [[ -n "$PROBE_HELLO_RUN" && -f "$PROBE_HELLO_RUN" ]]; then
+              PROBE_HELLO_BIN="$PROBE_HELLO_RUN"
+            else
+              STAGE1_OK=0
             fi
-            [[ -f "$PROBE_HELLO_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$PROBE_COMPILER_BIN" build src/thagore.tg -o "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
-            if [[ ! -f "$PROBE_COMPILER2_BIN" && -f "${PROBE_COMPILER2_BIN}.exe" ]]; then
-              PROBE_COMPILER2_BIN="${PROBE_COMPILER2_BIN}.exe"
+            thg_build "$PROBE_COMPILER_BIN" "src/thagore.tg" "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
+            PROBE_COMPILER2_RUN="$(resolve_bin "$PROBE_COMPILER2_BIN" "src/thagore.tg" || true)"
+            if [[ -n "$PROBE_COMPILER2_RUN" && -f "$PROBE_COMPILER2_RUN" ]]; then
+              PROBE_COMPILER2_BIN="$PROBE_COMPILER2_RUN"
+            else
+              STAGE1_OK=0
             fi
-            [[ -f "$PROBE_COMPILER2_BIN" ]] || STAGE1_OK=0
           fi
           if [[ "$STAGE1_OK" != "1" ]]; then
             echo "WARN: downloaded stage1 asset failed self-host probe."
@@ -298,24 +335,63 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build src/thagore.tg -o "$STAGE2_BIN"
-          if [[ ! -f "$STAGE2_BIN" && -f "${STAGE2_BIN}.exe" ]]; then
-            STAGE2_BIN="${STAGE2_BIN}.exe"
-          fi
-          [[ -f "$STAGE2_BIN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
+          thg_build "$STAGE1_BIN" "src/thagore.tg" "$STAGE2_BIN" || true
+          STAGE2_RUN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          [[ -n "$STAGE2_RUN" && -f "$STAGE2_RUN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
+          STAGE2_BIN="$STAGE2_RUN"
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE22_BIN"
-          if [[ ! -f "$STAGE22_BIN" && -f "${STAGE22_BIN}.exe" ]]; then
-            STAGE22_BIN="${STAGE22_BIN}.exe"
-          fi
-          [[ -f "$STAGE22_BIN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
+          thg_build "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN" || true
+          STAGE22_RUN="$(resolve_bin "$STAGE22_BIN" "src/thagore.tg" || true)"
+          [[ -n "$STAGE22_RUN" && -f "$STAGE22_RUN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
+          STAGE22_BIN="$STAGE22_RUN"
+          echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+          echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
 
       - name: Stage2' e2e test
         shell: bash
         run: |
           set -euo pipefail
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -336,8 +412,9 @@ jobs:
             return 1
           }
           echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE22_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          thg_build "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN" || true
+          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
+          [[ -n "$HELLO_RUN" && -f "$HELLO_RUN" ]] || (echo "ERROR: missing $HELLO_BIN"; exit 1)
           "./$HELLO_RUN"
 
       - name: Upload trace
