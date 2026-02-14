@@ -113,10 +113,16 @@ jobs:
               local cc="$1"
               local src="$2"
               local out="$3"
+              local got
               if "./$cc" build "$src" -o "$out" >/dev/null 2>&1; then
-                return 0
+                got="$(resolve_bin "$out" "$src" || true)"
+                if [[ -n "$got" ]]; then
+                  return 0
+                fi
               fi
-              "./$cc" --build "$src" -o "$out" >/dev/null 2>&1
+              "./$cc" --build "$src" -o "$out" >/dev/null 2>&1 || return 1
+              got="$(resolve_bin "$out" "$src" || true)"
+              [[ -n "$got" ]]
             }
             rm -f s1_probe_s2 s1_probe_s2.exe s1_probe_s2_rebuild s1_probe_s2_rebuild.exe || true
             rm -f s1_probe_hello s1_probe_hello.exe || true
@@ -216,12 +222,31 @@ jobs:
             local cc="$1"
             local src="$2"
             local out="$3"
+            local got=""
+            local base
+            base="$(basename "$src" .tg)"
+            resolve_local() {
+              local preferred="$1"
+              local src_base="$2"
+              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$src_base" "$src_base.exe" "examples/$src_base" "examples/$src_base.exe" "src/$src_base" "src/$src_base.exe"; do
+                if [[ -f "$c" ]]; then
+                  echo "$c"
+                  return 0
+                fi
+              done
+              return 1
+            }
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if "./$cc" build "$src" -o "$out"; then
-              return 0
+              got="$(resolve_local "$out" "$base" || true)"
+              if [[ -n "$got" ]]; then
+                return 0
+              fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out"
+            "./$cc" --build "$src" -o "$out" || return 1
+            got="$(resolve_local "$out" "$base" || true)"
+            [[ -n "$got" ]]
           }
           resolve_bin() {
             local preferred="$1"
