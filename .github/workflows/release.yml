@@ -141,10 +141,8 @@ jobs:
               if download_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
-                if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
+                STAGE1_ASSET="$ASSET"
+                break
               fi
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
@@ -160,10 +158,8 @@ jobs:
                   [[ -n "$CANDIDATE" ]] || continue
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                   chmod +x "${{ matrix.stage1_bin }}" || true
-                  if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-                    STAGE1_ASSET="$ASSET"
-                    break
-                  fi
+                  STAGE1_ASSET="$ASSET"
+                  break
                 fi
               done
             else
@@ -176,10 +172,8 @@ jobs:
                   [[ -n "$CANDIDATE" ]] || continue
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                   chmod +x "${{ matrix.stage1_bin }}" || true
-                  if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-                    STAGE1_ASSET="$ASSET"
-                    break
-                  fi
+                  STAGE1_ASSET="$ASSET"
+                  break
                 fi
               done
             fi

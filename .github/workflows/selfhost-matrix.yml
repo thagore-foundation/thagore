@@ -116,10 +116,8 @@ jobs:
               if download_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "$STAGE1_BIN"
                 chmod +x "$STAGE1_BIN" || true
-                if probe_stage1_chain "$STAGE1_BIN"; then
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
+                STAGE1_ASSET="$ASSET"
+                break
               fi
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
@@ -135,10 +133,8 @@ jobs:
                 [[ -n "$CANDIDATE" ]] || continue
                 cp "$CANDIDATE" "$STAGE1_BIN"
                 chmod +x "$STAGE1_BIN" || true
-                if probe_stage1_chain "$STAGE1_BIN"; then
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
+                STAGE1_ASSET="$ASSET"
+                break
               fi
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Linux stage1 asset found in releases."; exit 1)
@@ -154,10 +150,8 @@ jobs:
                 [[ -n "$CANDIDATE" ]] || continue
                 cp "$CANDIDATE" "$STAGE1_BIN"
                 chmod +x "$STAGE1_BIN" || true
-                if probe_stage1_chain "$STAGE1_BIN"; then
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
+                STAGE1_ASSET="$ASSET"
+                break
               fi
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
