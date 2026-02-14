@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,29 +52,15 @@ jobs:
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           clang --version
 
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          choco install llvm --version=21.1.8 --no-progress -y
-          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
-          clang --version
-
       - name: Build runtime artifact
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p runtime/build
           clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-            cp runtime/build/thag_runtime.lib thag_runtime.lib
-          else
-            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-            cp runtime/build/libthag_runtime.a libthag_runtime.a
-            cp runtime/build/libthag_runtime.a thag_runtime.lib
-          fi
+          ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
+          cp runtime/build/libthag_runtime.a libthag_runtime.a
+          cp runtime/build/libthag_runtime.a thag_runtime.lib
 
       - name: Build Stage0 (one-time exception)
         shell: bash
@@ -115,34 +101,19 @@ jobs:
             got="$(resolve_bin "$out" "$src" || true)"
             [[ -n "$got" ]]
           }
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            STAGE0_BIN=""
-            for c in "legacy/build/Release/thag.exe" "legacy/build/thag.exe" "legacy/build/Release/thagore.exe" "legacy/build/thagore.exe"; do
-              if [[ -f "$c" ]]; then
-                STAGE0_BIN="$c"
-                break
-              fi
-            done
-            [[ -n "$STAGE0_BIN" ]] || (echo "CRITICAL: stage0 binary not found on Windows"; exit 1)
-            STAGE1_OUT="stage1_seed.exe"
-            STAGE2_OUT="stage2_seed.exe"
-            HELLO_OUT="hello_seed.exe"
-            FIB_OUT="fib_seed.exe"
-          else
-            STAGE0_BIN=""
-            for c in "legacy/build/thag" "legacy/build/Release/thag" "legacy/build/thagore" "legacy/build/Release/thagore"; do
-              if [[ -f "$c" ]]; then
-                STAGE0_BIN="$c"
-                break
-              fi
-            done
-            [[ -n "$STAGE0_BIN" ]] || (echo "CRITICAL: stage0 binary not found on Unix"; exit 1)
-            chmod +x "$STAGE0_BIN" || true
-            STAGE1_OUT="stage1_seed"
-            STAGE2_OUT="stage2_seed"
-            HELLO_OUT="hello_seed"
-            FIB_OUT="fib_seed"
-          fi
+          STAGE0_BIN=""
+          for c in "legacy/build/thag" "legacy/build/Release/thag" "legacy/build/thagore" "legacy/build/Release/thagore"; do
+            if [[ -f "$c" ]]; then
+              STAGE0_BIN="$c"
+              break
+            fi
+          done
+          [[ -n "$STAGE0_BIN" ]] || (echo "CRITICAL: stage0 binary not found on Unix"; exit 1)
+          chmod +x "$STAGE0_BIN" || true
+          STAGE1_OUT="stage1_seed"
+          STAGE2_OUT="stage2_seed"
+          HELLO_OUT="hello_seed"
+          FIB_OUT="fib_seed"
 
           thg_build "$STAGE0_BIN" src/thagore.tg "$STAGE1_OUT"
           STAGE1_OUT="$(resolve_bin "$STAGE1_OUT" "src/thagore.tg")"
@@ -163,10 +134,7 @@ jobs:
           "./$FIB_OUT"
 
           mkdir -p seed/dist/bin
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$STAGE1_OUT" "seed/dist/bin/thagore.exe"
-            cp "$STAGE1_OUT" "thagore-stage1.exe"
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$STAGE1_OUT" "seed/dist/bin/thagore"
             tar -czf "thagore-stage1-linux.tar.gz" -C seed dist
           else
@@ -179,7 +147,6 @@ jobs:
         with:
           name: seed-${{ runner.os }}
           path: |
-            thagore-stage1.exe
             thagore-stage1-linux.tar.gz
             thagore-stage1-macos.tar.gz
 
@@ -192,6 +159,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: seed-artifacts
+
+      - name: Reuse stable Windows stage1 asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p seed-artifacts/windows
+          gh release download "v0.3.20-foundation" --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D seed-artifacts/windows
 
       - name: Publish seed release
         uses: softprops/action-gh-release@v2
