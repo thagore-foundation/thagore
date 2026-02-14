@@ -1,7 +1,7 @@
 import env
 import fs
 import process
-import "src/backend_native/codegen_bridge.tg" as codegen_native
+import "src/backend_native/codegen_native.tg" as codegen_native
 import "src/frontend_native/typechecker_native.tg" as native_typecheck
 
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

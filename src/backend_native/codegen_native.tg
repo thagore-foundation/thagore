@@ -1,0 +1,580 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+struct EmitExprResult:
+    value: String
+    ir: String
+    next_temp: i32
+    next_str: i32
+    globals: String
+
+struct EmitStmtResult:
+    ir: String
+    slots: String
+    next_temp: i32
+    next_label: i32
+    next_str: i32
+    globals: String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let n = strlen(prefix)
+    if (strlen(text) < n):
+        return 0
+    if (__thg_str_substr(text, 0, n) == prefix):
+        return 1
+    return 0
+
+func _is_space(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    return 0
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            if (_is_space(_char_at(text, i)) == 1):
+                i = i + 1
+                l = i
+            else:
+                left_done = 1
+                i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            if (_is_space(_char_at(text, j)) == 1):
+                j = j - 1
+                r = j
+            else:
+                right_done = 1
+                j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let c = 1
+    while (i < n):
+        if (_char_at(source, i) == "\n"):
+            c = c + 1
+        i = i + 1
+    return c
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let out = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            if (line_idx == index):
+                return out
+            line_idx = line_idx + 1
+            out = ""
+        else:
+            if (ch != "\r"):
+                out = out + ch
+        i = i + 1
+    if (line_idx == index):
+        return out
+    return ""
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    while (i < n):
+        if (_char_at(line, i) != " "):
+            return i
+        i = i + 1
+    return n
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    let i = 0
+    if (m == 0):
+        return 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _is_number(text: String) -> i32:
+    let n = strlen(text)
+    if (n == 0):
+        return 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (_contains("0123456789", ch) == 0):
+            return 0
+        i = i + 1
+    return 1
+
+func _map_get(map_text: String, key: String) -> String:
+    let needle = ";" + key + "="
+    let p = _find(map_text, needle)
+    if (p < 0):
+        return ""
+    let start = p + strlen(needle)
+    let i = start
+    let n = strlen(map_text)
+    while (i < n):
+        if (_char_at(map_text, i) == ";"):
+            return __thg_str_substr(map_text, start, i - start)
+        i = i + 1
+    return ""
+
+func _map_set(map_text: String, key: String, value: String) -> String:
+    let old = _map_get(map_text, key)
+    if (old.length() == 0):
+        return map_text + key + "=" + value + ";"
+    let needle = ";" + key + "=" + old + ";"
+    let p = _find(map_text, needle)
+    if (p < 0):
+        return map_text + key + "=" + value + ";"
+    let left = __thg_str_substr(map_text, 0, p + 1)
+    let right = __thg_str_substr(map_text, p + strlen(needle), strlen(map_text) - p - strlen(needle))
+    return left + key + "=" + value + ";" + right
+
+func _escape_string_literal(text: String) -> String:
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "\\"):
+            out = out + "\\5C"
+        else:
+            if (ch == "\n"):
+                out = out + "\\0A"
+            else:
+                out = out + ch
+        i = i + 1
+    return out
+
+func _tag(idx: i32) -> String:
+    if (idx == 0):
+        return "0"
+    if (idx == 1):
+        return "1"
+    if (idx == 2):
+        return "2"
+    if (idx == 3):
+        return "3"
+    if (idx == 4):
+        return "4"
+    if (idx == 5):
+        return "5"
+    if (idx == 6):
+        return "6"
+    if (idx == 7):
+        return "7"
+    if (idx == 8):
+        return "8"
+    if (idx == 9):
+        return "9"
+    if (idx == 10):
+        return "10"
+    if (idx == 11):
+        return "11"
+    if (idx == 12):
+        return "12"
+    if (idx == 13):
+        return "13"
+    if (idx == 14):
+        return "14"
+    if (idx == 15):
+        return "15"
+    if (idx == 16):
+        return "16"
+    if (idx == 17):
+        return "17"
+    if (idx == 18):
+        return "18"
+    if (idx == 19):
+        return "19"
+    if (idx == 20):
+        return "20"
+    if (idx == 21):
+        return "21"
+    if (idx == 22):
+        return "22"
+    if (idx == 23):
+        return "23"
+    if (idx == 24):
+        return "24"
+    if (idx == 25):
+        return "25"
+    if (idx == 26):
+        return "26"
+    if (idx == 27):
+        return "27"
+    if (idx == 28):
+        return "28"
+    if (idx == 29):
+        return "29"
+    if (idx == 30):
+        return "30"
+    if (idx == 31):
+        return "31"
+    if (idx == 32):
+        return "32"
+    if (idx == 33):
+        return "33"
+    if (idx == 34):
+        return "34"
+    if (idx == 35):
+        return "35"
+    if (idx == 36):
+        return "36"
+    if (idx == 37):
+        return "37"
+    if (idx == 38):
+        return "38"
+    if (idx == 39):
+        return "39"
+    if (idx == 40):
+        return "40"
+    if (idx == 41):
+        return "41"
+    if (idx == 42):
+        return "42"
+    if (idx == 43):
+        return "43"
+    if (idx == 44):
+        return "44"
+    if (idx == 45):
+        return "45"
+    if (idx == 46):
+        return "46"
+    if (idx == 47):
+        return "47"
+    if (idx == 48):
+        return "48"
+    if (idx == 49):
+        return "49"
+    if (idx == 50):
+        return "50"
+    return "51"
+
+func _new_temp(prefix: String, idx: i32) -> String:
+    return "%" + prefix + _tag(idx)
+
+func _emit_call_expr(expr: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let lp = _find(expr, "(")
+    let rp = _find(expr, ")")
+    if (lp < 0):
+        return EmitExprResult("0", "", t, sidx, globals)
+    if (rp < lp):
+        return EmitExprResult("0", "", t, sidx, globals)
+    let name = _trim_edges(__thg_str_substr(expr, 0, lp))
+    let args = _trim_edges(__thg_str_substr(expr, lp + 1, rp - lp - 1))
+    if (name == "print"):
+        let arg_res = _emit_expr(args, slots, t, sidx, globals)
+        let call_ir = arg_res.ir + "  call void @__thg_print_i32(i32 " + arg_res.value + ")\n"
+        return EmitExprResult("0", call_ir, arg_res.next_temp, arg_res.next_str, arg_res.globals)
+    let arg_emit = _emit_expr(args, slots, t, sidx, globals)
+    let v = _new_temp("call", arg_emit.next_temp)
+    let ir = arg_emit.ir + "  " + v + " = call i32 @" + name + "(i32 " + arg_emit.value + ")\n"
+    return EmitExprResult(v, ir, arg_emit.next_temp + 1, arg_emit.next_str, arg_emit.globals)
+
+func _emit_binary(expr: String, op: String, ir_op: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let p = _find(expr, op)
+    if (p < 0):
+        return EmitExprResult("", "", t, sidx, globals)
+    let left = _trim_edges(__thg_str_substr(expr, 0, p))
+    let right = _trim_edges(__thg_str_substr(expr, p + strlen(op), strlen(expr) - p - strlen(op)))
+    let l = _emit_expr(left, slots, t, sidx, globals)
+    let r = _emit_expr(right, slots, l.next_temp, l.next_str, l.globals)
+    let v = _new_temp("tmp", r.next_temp)
+    let ir = l.ir + r.ir + "  " + v + " = " + ir_op + " i32 " + l.value + ", " + r.value + "\n"
+    return EmitExprResult(v, ir, r.next_temp + 1, r.next_str, r.globals)
+
+func _emit_expr(expr_raw: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let expr = _trim_edges(expr_raw)
+    if (_is_number(expr) == 1):
+        return EmitExprResult(expr, "", t, sidx, globals)
+    if (_contains(expr, "(") == 1):
+        let call_try = _emit_call_expr(expr, slots, t, sidx, globals)
+        if (call_try.ir.length() > 0):
+            return call_try
+    let cmp1 = _emit_binary(expr, "<=", "icmp sle", slots, t, sidx, globals)
+    if (cmp1.value.length() > 0):
+        return cmp1
+    let cmp2 = _emit_binary(expr, ">=", "icmp sge", slots, cmp1.next_temp, cmp1.next_str, cmp1.globals)
+    if (cmp2.value.length() > 0):
+        return cmp2
+    let cmp3 = _emit_binary(expr, "==", "icmp eq", slots, cmp2.next_temp, cmp2.next_str, cmp2.globals)
+    if (cmp3.value.length() > 0):
+        return cmp3
+    let cmp4 = _emit_binary(expr, "!=", "icmp ne", slots, cmp3.next_temp, cmp3.next_str, cmp3.globals)
+    if (cmp4.value.length() > 0):
+        return cmp4
+    let cmp5 = _emit_binary(expr, "<", "icmp slt", slots, cmp4.next_temp, cmp4.next_str, cmp4.globals)
+    if (cmp5.value.length() > 0):
+        return cmp5
+    let cmp6 = _emit_binary(expr, ">", "icmp sgt", slots, cmp5.next_temp, cmp5.next_str, cmp5.globals)
+    if (cmp6.value.length() > 0):
+        return cmp6
+    let add = _emit_binary(expr, "+", "add", slots, cmp6.next_temp, cmp6.next_str, cmp6.globals)
+    if (add.value.length() > 0):
+        return add
+    let sub = _emit_binary(expr, "-", "sub", slots, add.next_temp, add.next_str, add.globals)
+    if (sub.value.length() > 0):
+        return sub
+    let mul = _emit_binary(expr, "*", "mul", slots, sub.next_temp, sub.next_str, sub.globals)
+    if (mul.value.length() > 0):
+        return mul
+    let div = _emit_binary(expr, "/", "sdiv", slots, mul.next_temp, mul.next_str, mul.globals)
+    if (div.value.length() > 0):
+        return div
+    let slot = _map_get(slots, expr)
+    if (slot.length() > 0):
+        let v = _new_temp("ld", div.next_temp)
+        let ir = "  " + v + " = load i32, ptr " + slot + "\n"
+        return EmitExprResult(v, ir, div.next_temp + 1, div.next_str, div.globals)
+    return EmitExprResult("0", "", div.next_temp, div.next_str, div.globals)
+
+func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32, globals: String) -> EmitStmtResult:
+    let line = _trim_edges(line_raw)
+    if (line.length() == 0):
+        return EmitStmtResult("", slots, t, l, sidx, globals)
+    if (_starts_with(line, "let ") == 1):
+        let p = _find(line, "=")
+        if (p < 0):
+            return EmitStmtResult("", slots, t, l, sidx, globals)
+        let name = _trim_edges(__thg_str_substr(line, 4, p - 4))
+        let expr = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
+        let e = _emit_expr(expr, slots, t, sidx, globals)
+        let slot = "%" + name + ".addr"
+        let ir = e.ir + "  " + slot + " = alloca i32\n  store i32 " + e.value + ", ptr " + slot + "\n"
+        let next_slots = _map_set(slots, name, slot)
+        return EmitStmtResult(ir, next_slots, e.next_temp, l, e.next_str, e.globals)
+    if (_starts_with(line, "return ") == 1):
+        let expr = _trim_edges(__thg_str_substr(line, 7, strlen(line) - 7))
+        let e = _emit_expr(expr, slots, t, sidx, globals)
+        let ret_v = e.value
+        if (_contains(e.value, "%tmp") == 1):
+            ret_v = e.value
+        return EmitStmtResult(e.ir + "  ret i32 " + ret_v + "\n", slots, e.next_temp, l, e.next_str, e.globals)
+    if (_starts_with(line, "print(") == 1):
+        let e = _emit_expr(line, slots, t, sidx, globals)
+        return EmitStmtResult(e.ir, slots, e.next_temp, l, e.next_str, e.globals)
+    let p_assign = _find(line, "=")
+    if (p_assign > 0):
+        let name = _trim_edges(__thg_str_substr(line, 0, p_assign))
+        let slot = _map_get(slots, name)
+        if (slot.length() > 0):
+            let expr = _trim_edges(__thg_str_substr(line, p_assign + 1, strlen(line) - p_assign - 1))
+            let e = _emit_expr(expr, slots, t, sidx, globals)
+            let ir = e.ir + "  store i32 " + e.value + ", ptr " + slot + "\n"
+            return EmitStmtResult(ir, slots, e.next_temp, l, e.next_str, e.globals)
+    let call_only = _emit_expr(line, slots, t, sidx, globals)
+    return EmitStmtResult(call_only.ir, slots, call_only.next_temp, l, call_only.next_str, call_only.globals)
+
+func _emit_if_block(lines: String, base_indent: i32, start_idx: i32, cond_text: String, slots: String, t: i32, l: i32, sidx: i32, globals: String) -> EmitStmtResult:
+    let cond = _emit_expr(cond_text, slots, t, sidx, globals)
+    let then_label = "if.then." + _tag(l)
+    let else_label = "if.else." + _tag(l)
+    let end_label = "if.end." + _tag(l)
+    let ir = cond.ir + "  br i1 " + cond.value + ", label %" + then_label + ", label %" + else_label + "\n"
+    ir = ir + then_label + ":\n"
+    let i = start_idx
+    let total = _line_count(lines)
+    let st = slots
+    let tt = cond.next_temp
+    let ss = cond.next_str
+    let gg = cond.globals
+    while (i < total):
+        let raw = _line_at(lines, i)
+        let indent = _leading_spaces(raw)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            i = i + 1
+        else:
+            if (indent <= base_indent):
+                i = total
+            else:
+                if (_starts_with(line, "else:") == 1):
+                    i = total
+                else:
+                    let one = _emit_stmt_line(line, st, tt, l + 3, ss, gg)
+                    ir = ir + one.ir
+                    st = one.slots
+                    tt = one.next_temp
+                    ss = one.next_str
+                    gg = one.globals
+                    i = i + 1
+    ir = ir + "  br label %" + end_label + "\n"
+    ir = ir + else_label + ":\n"
+    ir = ir + "  br label %" + end_label + "\n"
+    ir = ir + end_label + ":\n"
+    return EmitStmtResult(ir, st, tt, l + 10, ss, gg)
+
+func _emit_function(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32, sidx_start: i32, globals: String) -> EmitStmtResult:
+    let sig = ""
+    if (is_main == 1):
+        sig = "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n  call void @__thg_init_env(i32 %argc, ptr %argv)\n"
+    else:
+        sig = "define i32 @" + func_name + "(i32 %" + params_text + ") {\nentry:\n"
+    let slots = ";"
+    let ir = sig
+    if (is_main == 0):
+        if (params_text.length() > 0):
+            let slot = "%" + params_text + ".addr"
+            ir = ir + "  " + slot + " = alloca i32\n  store i32 %" + params_text + ", ptr " + slot + "\n"
+            slots = _map_set(slots, params_text, slot)
+    let total = _line_count(body_lines)
+    let i = 0
+    let st = slots
+    let t = 0
+    let l = 0
+    let sidx = sidx_start
+    let glb = globals
+    while (i < total):
+        let raw = _line_at(body_lines, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            i = i + 1
+        else:
+            if (_starts_with(line, "if (") == 1):
+                let p1 = _find(line, "(")
+                let p2 = _find(line, ")")
+                let cond = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
+                let blk = _emit_if_block(body_lines, _leading_spaces(raw), i + 1, cond, st, t, l, sidx, glb)
+                ir = ir + blk.ir
+                i = total
+                sidx = blk.next_str
+                glb = blk.globals
+            else:
+                let one = _emit_stmt_line(line, st, t, l, sidx, glb)
+                ir = ir + one.ir
+                i = i + 1
+                sidx = one.next_str
+                glb = one.globals
+    if (_contains(ir, "ret i32") == 0):
+        if (ret_i32 == 1):
+            ir = ir + "  ret i32 0\n"
+        else:
+            ir = ir + "  ret i32 0\n"
+    ir = ir + "}\n"
+    return EmitStmtResult(ir, st, 0, 0, sidx, glb)
+
+func _extract_body(source: String, header_idx: i32) -> String:
+    let total = _line_count(source)
+    let header = _line_at(source, header_idx)
+    let base_indent = _leading_spaces(header)
+    let i = header_idx + 1
+    let out = ""
+    while (i < total):
+        let raw = _line_at(source, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            if (i < (total - 1)):
+                out = out + "\n"
+            i = i + 1
+        else:
+            let indent = _leading_spaces(raw)
+            if (indent <= base_indent):
+                i = total
+            else:
+                out = out + raw
+                if (i < (total - 1)):
+                    out = out + "\n"
+                i = i + 1
+    return out
+
+func _extract_param_name(header_line: String) -> String:
+    let lp = _find(header_line, "(")
+    let rp = _find(header_line, ")")
+    if (lp < 0):
+        return ""
+    if (rp <= lp):
+        return ""
+    let inside = _trim_edges(__thg_str_substr(header_line, lp + 1, rp - lp - 1))
+    if (inside.length() == 0):
+        return ""
+    let p = _find(inside, ":")
+    if (p < 0):
+        return inside
+    return _trim_edges(__thg_str_substr(inside, 0, p))
+
+func _extract_func_name(header_line: String) -> String:
+    let s = _trim_edges(header_line)
+    let body = __thg_str_substr(s, 5, strlen(s) - 5)
+    let lp = _find(body, "(")
+    if (lp < 0):
+        return _trim_edges(body)
+    return _trim_edges(__thg_str_substr(body, 0, lp))
+
+func _extract_ret_i32(header_line: String) -> i32:
+    if (_contains(header_line, "-> i32") == 1):
+        return 1
+    return 0
+
+func emit_program_from_native(source: String, module_name: String) -> String:
+    let out = "; ModuleID = '" + module_name + "'\n"
+    let decls = "declare void @__thg_init_env(i32, ptr)\ndeclare void @__thg_print_i32(i32)\ndeclare void @__thg_print_str(ptr, i32)\n\n"
+    let total = _line_count(source)
+    let i = 0
+    let code = ""
+    let globals = ""
+    let str_idx = 0
+    while (i < total):
+        let line = _trim_edges(_line_at(source, i))
+        if (_starts_with(line, "func ") == 1):
+            let name = _extract_func_name(line)
+            let param = _extract_param_name(line)
+            let body = _extract_body(source, i)
+            let ret_i32 = _extract_ret_i32(line)
+            let is_main = 0
+            if (name == "main"):
+                is_main = 1
+                ret_i32 = 1
+            let fn = _emit_function(name, param, body, ret_i32, is_main, str_idx, globals)
+            code = code + fn.ir + "\n"
+            str_idx = fn.next_str
+            globals = fn.globals
+            i = i + _line_count(body) + 1
+        else:
+            i = i + 1
+    return out + globals + "\n" + decls + code
