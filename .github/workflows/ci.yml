@@ -135,8 +135,7 @@ jobs:
             else
               echo "WARN: BOOTSTRAP_STAGE1_TAG is empty; trying latest." | tee -a "$STAGE_TRACE_FILE"
             fi
-
-            if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_STAGE1_ASSET" -D bootstrap; then
+            extract_stage1_seed() {
               mkdir -p bootstrap/extracted_stage1
               tar -xzf "bootstrap/$BOOTSTRAP_STAGE1_ASSET" -C bootstrap/extracted_stage1
               if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
@@ -145,6 +144,16 @@ jobs:
                 cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
               elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
                 cp "bootstrap/extracted_stage1/dist/bin/thag" "$STAGE1_BIN"
+              fi
+            }
+
+            if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_STAGE1_ASSET" -D bootstrap; then
+              extract_stage1_seed
+            fi
+            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
+              echo "INFO: retry stage1 seed download with explicit tag argument." | tee -a "$STAGE_TRACE_FILE"
+              if gh release download "$BOOTSTRAP_TAG" --repo "${{ github.repository }}" --pattern "$BOOTSTRAP_STAGE1_ASSET" -D bootstrap; then
+                extract_stage1_seed
               fi
             fi
 
