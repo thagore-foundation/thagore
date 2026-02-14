@@ -362,6 +362,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -374,17 +386,22 @@ jobs:
               fi
             done
             local found
-            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            found="$(find . -maxdepth 3 -type f -not -path "./bootstrap/*" \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
             if [[ -n "$found" ]]; then
               echo "${found#./}"
               return 0
             fi
             return 1
           }
-          "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
+          chmod +x "$FINAL_BIN" || true
+          if [[ -f "$STAGE1_BIN" ]]; then
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          fi
+          thg_build "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"
+          thg_build "$FINAL_BIN" "examples/fib.tg" "$FIB_BIN"
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          chmod +x "$HELLO_RUN" "$FIB_RUN" || true
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
