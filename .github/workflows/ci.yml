@@ -147,16 +147,37 @@ jobs:
           fi
 
           if [[ ! -f "$STAGE1_BIN" ]]; then
-            if [[ "${{ runner.os }}" == "Windows" && ( "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ) ]]; then
-              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja" | tee -a "$STAGE_TRACE_FILE"
-              cmake -S legacy -B legacy/build -G Ninja
+            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+              LLVM_ARG=""
+              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+              elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
+                LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
+              elif [[ "${{ runner.os }}" == "macOS" ]]; then
+                LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
+                if [[ -n "$LLVM_PREFIX" && -d "$LLVM_PREFIX/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm"
+                fi
+              fi
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
               echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
               cmake --build legacy/build --config Release
-              cp legacy/build/stage0.exe "$STAGE1_BIN"
+              if [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/thag.exe" ]]; then
+                cp "legacy/build/thag.exe" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag.exe" ]]; then
+                cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
+              else
+                echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
+                exit 1
+              fi
             else
               echo "CRITICAL: Stage1 bootstrap asset is required but not found in GitHub Releases."
-              echo "Linux/macOS require stage1 release assets; stage0 fallback is disabled on these OS."
-              echo "Windows can set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
+              echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
               exit 1
             fi
           fi
