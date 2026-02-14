@@ -1,0 +1,8 @@
+import "src/backend/llvm/codegen_llvm.tg" as legacy_codegen
+import "src/frontend_native/parser_native.tg" as parser_native
+import "src/frontend/lowering/language_pipeline.tg" as lang_pipe
+
+func emit_program_from_native(source: String, module_name: String) -> String:
+    let pg = parser_native.parse_program(source)
+    let lowered = lang_pipe.preprocess(pg.normalized)
+    return legacy_codegen.system_decls() + legacy_codegen.emit_program_from_source(lowered, module_name)

@@ -1,0 +1,166 @@
+import "src/frontend/parser/parser_headers.tg" as headers
+import "src/frontend_native/lexer_native.tg" as lx
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+struct NativeProgram:
+    source: String
+    feature_map: String
+    normalized: String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        if (_char_at(source, i) == "\n"):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let out = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            if (line_idx == index):
+                return out
+            line_idx = line_idx + 1
+            out = ""
+        else:
+            if (ch != "\r"):
+                out = out + ch
+        i = i + 1
+    if (line_idx == index):
+        return out
+    return ""
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            let ch = _char_at(text, i)
+            if (ch == " "):
+                i = i + 1
+                l = i
+            else:
+                if (ch == "\t"):
+                    i = i + 1
+                    l = i
+                else:
+                    left_done = 1
+                    i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            let ch = _char_at(text, j)
+            if (ch == " "):
+                j = j - 1
+                r = j
+            else:
+                if (ch == "\t"):
+                    j = j - 1
+                    r = j
+                else:
+                    right_done = 1
+                    j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _set_add(set_text: String, name: String) -> String:
+    let key = ";" + name + ";"
+    if (_contains(set_text, key) == 1):
+        return set_text
+    return set_text + name + ";"
+
+func collect_feature_map(source: String) -> String:
+    let clean = lx.strip_comments(source)
+    let total = _line_count(clean)
+    let i = 0
+    let out = ";"
+    while (i < total):
+        let line = _trim_edges(_line_at(clean, i))
+        if (headers.parse_enum_name(line).length() > 0):
+            out = _set_add(out, "enum")
+        else:
+            if (_contains(line, "enum") == 1):
+                out = _set_add(out, "enum")
+        if (_contains(line, "unsafe:") == 1):
+            out = _set_add(out, "unsafe_block")
+        if (headers.is_unsafe_block_header(line) == 1):
+            out = _set_add(out, "unsafe_block")
+        if (headers.parse_visibility_decl(line).length() > 0):
+            out = _set_add(out, "visibility")
+        if (_contains(line, "pub") == 1):
+            out = _set_add(out, "visibility")
+        if (headers.parse_type_alias_name(line).length() > 0):
+            out = _set_add(out, "type_alias")
+        if (_contains(line, "type") == 1):
+            out = _set_add(out, "type_alias")
+        if (headers.is_match_header(line) == 1):
+            out = _set_add(out, "match")
+        if (_contains(line, "match") == 1):
+            out = _set_add(out, "match")
+        if (headers.is_range_loop_header(line) == 1):
+            out = _set_add(out, "range_loop")
+        if (_contains(line, "..") == 1):
+            if (_contains(line, "for") == 1):
+                out = _set_add(out, "range_loop")
+        if (headers.has_if_expression(line) == 1):
+            out = _set_add(out, "if_expr")
+        if (headers.has_tuple_destructuring(line) == 1):
+            out = _set_add(out, "tuple_destruct")
+        if (headers.has_array_literal(line) == 1):
+            out = _set_add(out, "array_literal")
+        if (headers.has_slice_expr(line) == 1):
+            out = _set_add(out, "slice_expr")
+        if (headers.has_raw_string(line) == 1):
+            out = _set_add(out, "raw_string")
+        if (headers.has_struct_init_shorthand(line) == 1):
+            out = _set_add(out, "struct_shorthand")
+        if (headers.has_loop_label(line) == 1):
+            out = _set_add(out, "loop_label")
+        if (headers.has_closure(line) == 1):
+            out = _set_add(out, "closure")
+        if (headers.is_extension_impl_header(line) == 1):
+            out = _set_add(out, "extension_impl")
+        i = i + 1
+    return out
+
+func parse_program(source: String) -> NativeProgram:
+    let clean = lx.strip_comments(source)
+    let fmap = collect_feature_map(clean)
+    return NativeProgram(source, fmap, clean)

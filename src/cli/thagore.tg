@@ -1,9 +1,8 @@
 import env
 import fs
 import process
-import "src/backend/llvm/codegen_llvm.tg" as codegen_llvm
-import "src/frontend/semantic/semantic_pass.tg" as semantic_headers
-import "src/frontend/lowering/language_pipeline.tg" as lang_pipe
+import "src/backend_native/codegen_bridge.tg" as codegen_native
+import "src/frontend_native/typechecker_native.tg" as native_typecheck
 
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 
@@ -201,15 +200,10 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     if (source.length() == 0):
         print("Error: Empty file or file not found.")
         return 1
-    let preflight_code = semantic_headers.preflight(source)
-    if (preflight_code != 0):
-        print("Build aborted by semantic preflight.")
-        return preflight_code
-    let lang_check = lang_pipe.validate(source)
-    if (lang_check != 0):
-        print("Build aborted by language pipeline validation.")
-        return lang_check
-    source = lang_pipe.preprocess(source)
+    let native_check = native_typecheck.validate_source(source)
+    if (native_check != 0):
+        print("Build aborted by native parser/typechecker.")
+        return native_check
     let base = _sanitize_name(_basename_no_ext(input_path))
     let output_exe = output_override
     let output_ll = base + ".ll"
@@ -219,7 +213,7 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     else:
         if (output_exe.length() == 0):
             output_exe = base + ".exe"
-    let ir = codegen_llvm.system_decls() + codegen_llvm.emit_program_from_source(source, base)
+    let ir = codegen_native.emit_program_from_native(source, base)
     if (ir.length() == 0):
         print("Error: LLVM IR generation failed")
         return 1

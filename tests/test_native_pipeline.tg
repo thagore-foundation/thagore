@@ -1,0 +1,69 @@
+import "src/frontend_native/lexer_native.tg" as lx
+import "src/frontend_native/parser_native.tg" as parser_native
+import "src/frontend_native/typechecker_native.tg" as tc
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let pg_enum = parser_native.parse_program("pub enum Option[T]:")
+    fails = fails + _expect_contains("feature enum", pg_enum.feature_map, ";enum;")
+    fails = fails + _expect_contains("feature visibility", pg_enum.feature_map, ";visibility;")
+
+    let pg_type = parser_native.parse_program("type Bytes = [i32]")
+    fails = fails + _expect_contains("feature type_alias", pg_type.feature_map, ";type_alias;")
+    fails = fails + _expect_contains("feature array literal", pg_type.feature_map, ";array_literal;")
+
+    let pg_match = parser_native.parse_program("match x:")
+    fails = fails + _expect_contains("feature match", pg_match.feature_map, ";match;")
+
+    let pg_range = parser_native.parse_program("for i in 0..10:")
+    let range_ok = 0
+    if (pg_range.feature_map == ";range_loop;"):
+        range_ok = 1
+    fails = fails + _expect_i32("feature range_loop", range_ok, 1)
+
+    let pg_unsafe = parser_native.parse_program("unsafe:")
+    let unsafe_ok = 0
+    if (pg_unsafe.feature_map == ";unsafe_block;"):
+        unsafe_ok = 1
+    fails = fails + _expect_i32("feature unsafe", unsafe_ok, 1)
+
+    let pg_slice = parser_native.parse_program("let s = xs[0:2]")
+    fails = fails + _expect_contains("feature slice", pg_slice.feature_map, ";slice_expr;")
+
+    fails = fails + _expect_i32("typecheck native simple", tc.validate_source("pub func main() -> i32:"), 0)
+
+    if (fails == 0):
+        print("PASS: native pipeline")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

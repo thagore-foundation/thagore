@@ -1,0 +1,161 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _is_space(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    return 0
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            if (_is_space(_char_at(text, i)) == 1):
+                i = i + 1
+                l = i
+            else:
+                left_done = 1
+                i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            if (_is_space(_char_at(text, j)) == 1):
+                j = j - 1
+                r = j
+            else:
+                right_done = 1
+                j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        if (_char_at(source, i) == "\n"):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let out = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            if (line_idx == index):
+                return out
+            line_idx = line_idx + 1
+            out = ""
+        else:
+            if (ch != "\r"):
+                out = out + ch
+        i = i + 1
+    if (line_idx == index):
+        return out
+    return ""
+
+func strip_comments(source: String) -> String:
+    let total = _line_count(source)
+    let i = 0
+    let out = ""
+    while (i < total):
+        let line = _line_at(source, i)
+        let cut = strlen(line)
+        let j = 0
+        while (j < strlen(line)):
+            if (_char_at(line, j) == "#"):
+                cut = j
+                j = strlen(line)
+            else:
+                if ((j + 1) < strlen(line)):
+                    if (_char_at(line, j) == "/"):
+                        if (_char_at(line, j + 1) == "/"):
+                            cut = j
+                            j = strlen(line)
+                        else:
+                            j = j + 1
+                    else:
+                        j = j + 1
+                else:
+                    j = j + 1
+        let clean = _trim_edges(__thg_str_substr(line, 0, cut))
+        out = out + clean
+        if (i < (total - 1)):
+            out = out + "\n"
+        i = i + 1
+    return out
+
+func has_sig_indentation(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        if (strlen(_trim_edges(line)) > 0):
+            if (_contains(line, "    ") == 1):
+                return 1
+        i = i + 1
+    return 0
+
+func token_summary(source: String) -> String:
+    let clean = strip_comments(source)
+    let out = ""
+    if (_contains(clean, "enum") == 1):
+        out = out + "enum;"
+    if (_contains(clean, "match") == 1):
+        out = out + "match;"
+    if (_contains(clean, "type") == 1):
+        out = out + "type;"
+    if (_contains(clean, "pub") == 1):
+        out = out + "pub;"
+    if (_contains(clean, "unsafe:") == 1):
+        out = out + "unsafe;"
+    if (_contains(clean, "|") == 1):
+        out = out + "closure;"
+    if (_contains(clean, "..") == 1):
+        out = out + "range;"
+    if (_contains(clean, "[") == 1):
+        out = out + "array;"
+    if (_contains(clean, "if") == 1):
+        out = out + "if;"
+    if (has_sig_indentation(clean) == 1):
+        out = out + "indent;"
+    return out
