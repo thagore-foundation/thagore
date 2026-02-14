@@ -807,6 +807,30 @@ auto linkExecutable(
     "-o",
     outputPath.string(),
   };
+#if defined(__APPLE__)
+  std::string llvmRoot {};
+  if (const char *llvmDir = std::getenv("LLVM_DIR"); llvmDir != nullptr && *llvmDir != '\0') {
+    auto path = std::filesystem::path(llvmDir);
+    if (path.filename() == "llvm") {
+      path = path.parent_path().parent_path().parent_path();
+    }
+    llvmRoot = path.string();
+  } else if (std::filesystem::exists("/opt/homebrew/opt/llvm/lib/c++")) {
+    llvmRoot = "/opt/homebrew/opt/llvm";
+  } else if (std::filesystem::exists("/usr/local/opt/llvm/lib/c++")) {
+    llvmRoot = "/usr/local/opt/llvm";
+  }
+
+  args.push_back("-stdlib=libc++");
+  if (!llvmRoot.empty()) {
+    args.push_back("-L" + llvmRoot + "/lib/c++");
+    args.push_back("-Wl,-rpath," + llvmRoot + "/lib/c++");
+  }
+  args.push_back("-lc++");
+  args.push_back("-lc++abi");
+#else
+  args.push_back("-lstdc++");
+#endif
 
   auto linkResult = runTool(*cxx, args, "clang++");
   if (!linkResult) {
