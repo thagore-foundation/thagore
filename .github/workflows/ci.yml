@@ -133,7 +133,7 @@ jobs:
               MIN_BOOTSTRAP_SIZE=15000
             fi
             BOOTSTRAP_TAG="$(
-              gh api "repos/${{ github.repository }}/releases?per_page=30" --jq ".[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; ((.name == \"$BOOTSTRAP_STAGE1_ASSET\" or .name == \"$BOOTSTRAP_ASSET\" or .name == \"$BOOTSTRAP_ASSET_LEGACY\") and (.size >= $MIN_BOOTSTRAP_SIZE)))) | .tag_name" | head -n 1 || true
+              gh api "repos/${{ github.repository }}/releases?per_page=30" --jq ".[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; ((.name == \"$BOOTSTRAP_ASSET\" or .name == \"$BOOTSTRAP_ASSET_LEGACY\") and (.size >= $MIN_BOOTSTRAP_SIZE)))) | .tag_name" | head -n 1 || true
             )"
             DL_TAG_ARGS=()
             if [[ -n "$BOOTSTRAP_TAG" ]]; then
