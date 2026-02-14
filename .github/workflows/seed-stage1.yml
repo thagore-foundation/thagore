@@ -110,8 +110,8 @@ jobs:
           done
           [[ -n "$STAGE0_BIN" ]] || (echo "CRITICAL: stage0 binary not found on Unix"; exit 1)
           chmod +x "$STAGE0_BIN" || true
-          STAGE1_OUT="stage1_seed"
-          STAGE2_OUT="stage2_seed"
+          STAGE1_OUT="stage1"
+          STAGE2_OUT="stage2"
           HELLO_OUT="hello_seed"
           FIB_OUT="fib_seed"
 
