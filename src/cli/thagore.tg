@@ -81,6 +81,15 @@ func _is_macos() -> i32:
         return 1
     return 0
 
+func _macos_llvm_libcxx_flags() -> String:
+    if (_is_macos() == 0):
+        return ""
+    if (process.run("sh -lc 'test -d /opt/homebrew/opt/llvm/lib/c++'") == 0):
+        return " -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++"
+    if (process.run("sh -lc 'test -d /usr/local/opt/llvm/lib/c++'") == 0):
+        return " -L/usr/local/opt/llvm/lib/c++ -Wl,-rpath,/usr/local/opt/llvm/lib/c++"
+    return ""
+
 func _detect_runtime_lib() -> String:
     if (_is_windows() == 1):
         if (process.run("cmd /c if exist thag_runtime.lib (exit 0) else (exit 1)") == 0):
@@ -275,7 +284,7 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     let extra_link = ""
     if (_is_windows() == 0):
         if (_is_macos() == 1):
-            extra_link = " -lc++ -lc++abi"
+            extra_link = _macos_llvm_libcxx_flags() + " -lc++ -lc++abi"
         else:
             extra_link = " -lstdc++"
     let cmd = linker_bin + " " + output_ll + " " + runtime_lib + " -o " + output_exe + " -Wno-override-module" + extra_link
