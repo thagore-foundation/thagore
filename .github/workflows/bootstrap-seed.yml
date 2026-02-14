@@ -19,11 +19,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
+          if command -v clang >/dev/null 2>&1; then
+            echo "Using preinstalled clang on Linux:"
+            clang --version
+            exit 0
+          fi
+          sudo apt-get update || true
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 21 all
-          echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          sudo /tmp/llvm.sh 21 all || true
+          if [[ -d /usr/lib/llvm-21/bin ]]; then
+            echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          fi
+          clang --version
 
       - name: Download stage1 seed asset
         shell: bash
