@@ -434,7 +434,11 @@ jobs:
           }
           chmod +x "$FINAL_BIN" || true
           if [[ -f "$STAGE1_BIN" ]]; then
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              export THAG_STAGE0_HELPER="$STAGE1_BIN"
+            else
+              export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+            fi
           fi
           echo "[CMD] ./$FINAL_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
           thg_build_strict "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"

@@ -279,7 +279,11 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PROBE_COMPILER_BIN="stage1_compiler_probe.exe"
           fi
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            export THAG_STAGE0_HELPER="$STAGE1_BIN"
+          else
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          fi
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
           STAGE1_OK=1
           if thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "$PROBE_BIN"; then
@@ -400,7 +404,11 @@ jobs:
             return 0
           }
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            export THAG_STAGE0_HELPER="$STAGE1_BIN"
+          else
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          fi
           if thg_build_strict "$STAGE1_BIN" "src/thagore.tg" "$STAGE2_BIN"; then
             STAGE2_RUN="$THG_BUILD_RESOLVED"
           else
@@ -411,7 +419,11 @@ jobs:
           chmod +x "$STAGE2_BIN" || true
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            export THAG_STAGE0_HELPER="$STAGE1_BIN"
+          else
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          fi
           if thg_build_strict "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN"; then
             STAGE22_RUN="$THG_BUILD_RESOLVED"
           else
@@ -470,7 +482,11 @@ jobs:
             return 1
           }
           echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            export THAG_STAGE0_HELPER="$STAGE1_BIN"
+          else
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          fi
           if thg_build_strict "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN"; then
             HELLO_RUN="$THG_BUILD_RESOLVED"
           else
