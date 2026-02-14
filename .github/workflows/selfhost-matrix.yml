@@ -214,8 +214,15 @@ jobs:
           fi
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            if [[ -f "legacy/thag_runtime.lib" ]]; then
-              cp legacy/thag_runtime.lib thag_runtime.lib
+            RUNTIME_CXX="clang++"
+            if ! command -v "$RUNTIME_CXX" >/dev/null 2>&1; then
+              RUNTIME_CXX="c++"
+            fi
+            "$RUNTIME_CXX" -std=c++17 -Ilegacy/include -c legacy/src/runtime/runtime.cpp -o thag_runtime.o
+            if command -v llvm-ar >/dev/null 2>&1; then
+              llvm-ar rcs thag_runtime.lib thag_runtime.o
+            else
+              ar rcs thag_runtime.lib thag_runtime.o
             fi
           else
             RUNTIME_CXX="clang++"
