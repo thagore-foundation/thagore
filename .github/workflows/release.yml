@@ -49,7 +49,7 @@ jobs:
             package_name: thagore-windows.tar.gz
             stage1_seed_name: thagore-stage1.exe
     env:
-      BOOTSTRAP_STAGE1_TAG: ""
+      BOOTSTRAP_STAGE1_TAG: "v0.3.20-foundation"
       STAGE_TRACE_FILE: release-stage-trace.log
     steps:
       - name: Checkout
