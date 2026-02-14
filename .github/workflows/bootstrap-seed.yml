@@ -34,7 +34,9 @@ jobs:
           mkdir -p bootstrap
           gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
           tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap
-          cp bootstrap/bin/thagore stage1
+          CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+          [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in seed asset"; exit 1)
+          cp "$CANDIDATE" stage1
           chmod +x stage1
 
       - name: Build runtime artifact
@@ -53,4 +55,3 @@ jobs:
           ./stage2 build src/thagore.tg -o stage2_rebuild
           ./stage2_rebuild build examples/hello.tg -o hello_seed
           ./hello_seed
-

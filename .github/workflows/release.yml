@@ -99,7 +99,9 @@ jobs:
             cp "bootstrap/${{ matrix.stage1_asset }}" "${{ matrix.stage1_bin }}"
           else
             tar -xzf "bootstrap/${{ matrix.stage1_asset }}" -C bootstrap
-            cp bootstrap/bin/thagore "${{ matrix.stage1_bin }}"
+            CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in unix seed asset"; exit 1)
+            cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
 
@@ -209,4 +211,3 @@ jobs:
             artifacts/**/thagore-stage1-macos.tar.gz
             artifacts/**/thagore-stage1.exe
             artifacts/**/release-stage-trace.log
-

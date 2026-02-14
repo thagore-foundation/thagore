@@ -77,13 +77,17 @@ jobs:
             STAGE1_BIN="stage1"
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
-            cp bootstrap/bin/thagore "$STAGE1_BIN"
+            CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in linux seed asset"; exit 1)
+            cp "$CANDIDATE" "$STAGE1_BIN"
           else
             STAGE1_ASSET="thagore-stage1-macos.tar.gz"
             STAGE1_BIN="stage1"
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
-            cp bootstrap/bin/thagore "$STAGE1_BIN"
+            CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in macos seed asset"; exit 1)
+            cp "$CANDIDATE" "$STAGE1_BIN"
           fi
           chmod +x "$STAGE1_BIN" || true
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
@@ -161,4 +165,3 @@ jobs:
           fi
           echo "Stage trace is clean:"
           cat "$STAGE_TRACE_FILE"
-
