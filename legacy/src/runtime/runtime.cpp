@@ -2579,9 +2579,9 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
 #else
-  std::error_code rmErr {};
-  std::filesystem::remove(sourcePath, rmErr);
-  std::filesystem::remove(irPath, rmErr);
+  std::error_code cleanupErr {};
+  std::filesystem::remove(sourcePath, cleanupErr);
+  std::filesystem::remove(irPath, cleanupErr);
   std::fprintf(
     stderr,
     "codegen helper is disabled on Unix in stage1-only bootstrap mode. Provide a valid stage1 release asset.\n"
