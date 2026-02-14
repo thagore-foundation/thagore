@@ -144,6 +144,19 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE2_BIN="stage2.exe"
             STAGE2_REBUILD_BIN="stage2_rebuild.exe"
@@ -158,34 +171,35 @@ jobs:
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE1_BIN" build src/thagore.tg -o "$STAGE2_BIN"
+          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE2_REBUILD_BIN"
+          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg")"
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
           echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "$HELLO_BIN"
+          HELLO_BIN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           test -f "$HELLO_BIN"
 
           echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "$FIB_BIN"
+          FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           test -f "$FIB_BIN"
+          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+          echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Run hello/fib
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./hello_ci.exe
-            ./fib_ci.exe
-          else
-            chmod +x hello_ci fib_ci || true
-            ./hello_ci
-            ./fib_ci
-          fi
+          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
 
       - name: Guard no-stage0 path
         shell: bash

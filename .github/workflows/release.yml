@@ -163,36 +163,51 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
           echo "[CMD] ./${{ matrix.stage1_bin }} build src/thagore.tg -o ${{ matrix.stage2_bin }}" | tee -a "$STAGE_TRACE_FILE"
           "./${{ matrix.stage1_bin }}" build src/thagore.tg -o "${{ matrix.stage2_bin }}"
-          test -f "${{ matrix.stage2_bin }}"
-          chmod +x "${{ matrix.stage2_bin }}" || true
+          STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
+          test -f "$STAGE2_BIN"
+          chmod +x "$STAGE2_BIN" || true
 
-          echo "[CMD] ./${{ matrix.stage2_bin }} build src/thagore.tg -o ${{ matrix.stage2_rebuild_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./${{ matrix.stage2_bin }}" build src/thagore.tg -o "${{ matrix.stage2_rebuild_bin }}"
-          test -f "${{ matrix.stage2_rebuild_bin }}"
-          chmod +x "${{ matrix.stage2_rebuild_bin }}" || true
+          echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o ${{ matrix.stage2_rebuild_bin }}" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_BIN" build src/thagore.tg -o "${{ matrix.stage2_rebuild_bin }}"
+          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg")"
+          test -f "$STAGE2_REBUILD_BIN"
+          chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          echo "[CMD] ./${{ matrix.stage2_rebuild_bin }} build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./${{ matrix.stage2_rebuild_bin }}" build examples/hello.tg -o "${{ matrix.hello_bin }}"
-          test -f "${{ matrix.hello_bin }}"
+          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+          HELLO_BIN="$(resolve_bin "${{ matrix.hello_bin }}" "examples/hello.tg")"
+          test -f "$HELLO_BIN"
 
-          echo "[CMD] ./${{ matrix.stage2_rebuild_bin }} build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./${{ matrix.stage2_rebuild_bin }}" build examples/fib.tg -o "${{ matrix.fib_bin }}"
-          test -f "${{ matrix.fib_bin }}"
+          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+          FIB_BIN="$(resolve_bin "${{ matrix.fib_bin }}" "examples/fib.tg")"
+          test -f "$FIB_BIN"
+          echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+          echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+          echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Run hello + fib
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./${{ matrix.hello_bin }}
-            ./${{ matrix.fib_bin }}
-          else
-            chmod +x "${{ matrix.hello_bin }}" "${{ matrix.fib_bin }}" || true
-            ./${{ matrix.hello_bin }}
-            ./${{ matrix.fib_bin }}
-          fi
+          chmod +x "$HELLO_BIN" "$FIB_BIN" || true
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
 
       - name: Guard no stage0 markers
         shell: bash
@@ -210,7 +225,7 @@ jobs:
           set -euxo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
-          cp "${{ matrix.stage2_rebuild_bin }}" "dist/bin/${{ matrix.output_bin }}"
+          cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           cp -R std "dist/lib/std"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "${{ matrix.stage2_rebuild_bin }}" "${{ matrix.stage1_seed_name }}"
