@@ -97,7 +97,7 @@ jobs:
           fi
 
           if [[ ! -f "$STAGE1_BIN" ]]; then
-            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" ]]; then
+            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               echo "[CMD] cmake -S legacy -B legacy/build -G Ninja" | tee -a "$STAGE_TRACE_FILE"
               cmake -S legacy -B legacy/build -G Ninja
               echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
@@ -109,7 +109,7 @@ jobs:
               fi
             else
               echo "CRITICAL: Stage1 release asset missing; stage0 fallback is disabled."
-              echo "Set repo variable ALLOW_STAGE0_BOOTSTRAP=true to allow fallback."
+              echo "Set repo variable ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow fallback."
               exit 1
             fi
           fi

@@ -18,6 +18,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       STAGE_TRACE_FILE: stage-commands.log
+      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,9 +117,21 @@ jobs:
           fi
 
           if [[ ! -f "$STAGE1_BIN" ]]; then
-            echo "CRITICAL: Stage1 bootstrap asset is required but not found in GitHub Releases."
-            echo "This workflow does not build stage0. Seed a stage1 release first."
-            exit 1
+            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+              echo "[CMD] cmake -S legacy -B legacy/build -G Ninja" | tee -a "$STAGE_TRACE_FILE"
+              cmake -S legacy -B legacy/build -G Ninja
+              echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
+              cmake --build legacy/build --config Release
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                cp legacy/build/stage0.exe "$STAGE1_BIN"
+              else
+                cp legacy/build/stage0 "$STAGE1_BIN"
+              fi
+            else
+              echo "CRITICAL: Stage1 bootstrap asset is required but not found in GitHub Releases."
+              echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
+              exit 1
+            fi
           fi
 
           chmod +x "$STAGE1_BIN" || true
