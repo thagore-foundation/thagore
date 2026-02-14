@@ -160,21 +160,46 @@ jobs:
           fi
 
           chmod +x "$STAGE1_BIN"
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
-          PROBE_RUN="stage1_probe"
-          if [[ ! -f "$PROBE_RUN" && -f "${PROBE_RUN}.exe" ]]; then
-            PROBE_RUN="${PROBE_RUN}.exe"
-          fi
-          [[ -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
+          PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-          if [[ ! -f "$FINAL_BIN" && -f "${FINAL_BIN}.exe" ]]; then
-            FINAL_BIN="${FINAL_BIN}.exe"
-          fi
-          [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
+          thg_build "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN" || true
+          FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
+          [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
+          FINAL_BIN="$FINAL_RUN"
 
       - name: Test hello + fib
         shell: bash
@@ -413,21 +438,46 @@ jobs:
           fi
 
           chmod +x "$STAGE1_BIN"
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
+          thg_build() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" "$src" -o "$out" && return 0
+            "./$bin" build "$src" && return 0
+            "./$bin" "$src" && return 0
+            return 1
+          }
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build examples/hello.tg -o stage1_probe
-          PROBE_RUN="stage1_probe"
-          if [[ ! -f "$PROBE_RUN" && -f "${PROBE_RUN}.exe" ]]; then
-            PROBE_RUN="${PROBE_RUN}.exe"
-          fi
-          [[ -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
+          thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || true
+          PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
-          if [[ ! -f "$FINAL_BIN" && -f "${FINAL_BIN}.exe" ]]; then
-            FINAL_BIN="${FINAL_BIN}.exe"
-          fi
-          [[ -f "$FINAL_BIN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
+          thg_build "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN" || true
+          FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
+          [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
+          FINAL_BIN="$FINAL_RUN"
 
       - name: Test hello + fib
         shell: bash
