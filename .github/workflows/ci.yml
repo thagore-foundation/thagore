@@ -92,7 +92,7 @@ jobs:
             local src="$2"
             local base
             base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
@@ -240,7 +240,7 @@ jobs:
             resolve_local() {
               local preferred="$1"
               local src_base="$2"
-              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$src_base" "$src_base.exe" "examples/$src_base" "examples/$src_base.exe" "src/$src_base" "src/$src_base.exe"; do
+              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$src_base" "$src_base.exe" "examples/$src_base" "examples/$src_base.exe" "src/$src_base" "src/$src_base.exe" "a.out" "a.exe" "out" "out.exe"; do
                 if [[ -f "$c" ]]; then
                   echo "$c"
                   return 0
@@ -265,7 +265,7 @@ jobs:
             local src="$2"
             local base
             base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
