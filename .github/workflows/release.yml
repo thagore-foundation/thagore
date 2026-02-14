@@ -23,6 +23,7 @@ jobs:
       RELEASE_ASSET_LEGACY: thag-linux.tar.gz
       STAGE_TRACE_FILE: stage-commands.log
       ALLOW_STAGE0_BOOTSTRAP: 'false'
+      BOOTSTRAP_STAGE1_TAG: 'v0.3.21-stage1-seed'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,16 +47,13 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          MIN_BOOTSTRAP_SIZE=20000
-          BOOTSTRAP_TAG="$(
-            gh api "repos/${{ github.repository }}/releases?per_page=30" --jq ".[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; ((.name == \"$RELEASE_ASSET\" or .name == \"$RELEASE_ASSET_LEGACY\") and (.size >= $MIN_BOOTSTRAP_SIZE)))) | .tag_name" | head -n 1 || true
-          )"
+          BOOTSTRAP_TAG="$BOOTSTRAP_STAGE1_TAG"
           DL_TAG_ARGS=()
           if [[ -n "$BOOTSTRAP_TAG" ]]; then
             echo "Using bootstrap release tag: $BOOTSTRAP_TAG" | tee -a "$STAGE_TRACE_FILE"
             DL_TAG_ARGS=("$BOOTSTRAP_TAG")
           else
-            echo "WARN: could not find a healthy historical Linux bootstrap release; trying latest." | tee -a "$STAGE_TRACE_FILE"
+            echo "WARN: BOOTSTRAP_STAGE1_TAG is empty; trying latest." | tee -a "$STAGE_TRACE_FILE"
           fi
 
           if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
@@ -147,21 +145,35 @@ jobs:
             fi
             return 1
           }
-          thg_build() {
+          thg_build_strict() {
             local bin="$1"
             local src="$2"
             local out="$3"
-            "./$bin" build "$src" -o "$out" && return 0
-            "./$bin" --build "$src" -o "$out" && return 0
-            "./$bin" "$src" -o "$out" && return 0
-            "./$bin" build "$src" && return 0
-            "./$bin" --build "$src" && return 0
-            "./$bin" "$src" && return 0
-            return 1
+            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
+            if "./$bin" build "$src" -o "$out"; then
+              :
+            elif "./$bin" --build "$src" -o "$out"; then
+              :
+            else
+              return 1
+            fi
+            local resolved
+            resolved="$(resolve_bin "$out" "$src" || true)"
+            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
+              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out" | tee -a "$STAGE_TRACE_FILE"
+              find . -maxdepth 3 -type f | sed -n '1,200p' || true
+              return 1
+            fi
+            THG_BUILD_RESOLVED="$resolved"
+            return 0
           }
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || (echo "CRITICAL: stage1 probe build command failed on Linux."; exit 1)
-          PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "stage1_probe"; then
+            PROBE_RUN="$THG_BUILD_RESOLVED"
+          else
+            PROBE_RUN=""
+          fi
           if [[ ! -n "$PROBE_RUN" || ! -f "$PROBE_RUN" ]]; then
             echo "CRITICAL: downloaded stage1 asset is invalid on Linux."
             exit 1
@@ -171,8 +183,11 @@ jobs:
           "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN" || (echo "CRITICAL: stage1->stage2 build command failed on Linux."; exit 1)
-          FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
+          if thg_build_strict "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN"; then
+            FINAL_RUN="$THG_BUILD_RESOLVED"
+          else
+            FINAL_RUN=""
+          fi
           [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
           FINAL_BIN="$FINAL_RUN"
           chmod +x "$FINAL_BIN" || true
@@ -181,6 +196,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          thg_build_strict() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
+            if "./$bin" build "$src" -o "$out"; then
+              :
+            elif "./$bin" --build "$src" -o "$out"; then
+              :
+            else
+              return 1
+            fi
+            local resolved
+            resolved="$(resolve_bin "$out" "$src" || true)"
+            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
+              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out"
+              find . -maxdepth 3 -type f | sed -n '1,200p' || true
+              return 1
+            fi
+            THG_BUILD_RESOLVED="$resolved"
+            return 0
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -200,10 +237,11 @@ jobs:
             fi
             return 1
           }
-          "./$STAGE1_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$STAGE1_BIN" build examples/fib.tg -o "$FIB_BIN"
-          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
-          FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          thg_build_strict "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"
+          HELLO_RUN="$THG_BUILD_RESOLVED"
+          thg_build_strict "$FINAL_BIN" "examples/fib.tg" "$FIB_BIN"
+          FIB_RUN="$THG_BUILD_RESOLVED"
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
@@ -271,6 +309,7 @@ jobs:
       RELEASE_ASSET: thagore-macos.pkg
       STAGE_TRACE_FILE: stage-commands.log
       ALLOW_STAGE0_BOOTSTRAP: 'false'
+      BOOTSTRAP_STAGE1_TAG: 'v0.3.21-stage1-seed'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -292,16 +331,13 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          MIN_BOOTSTRAP_SIZE=15000
-          BOOTSTRAP_TAG="$(
-            gh api "repos/${{ github.repository }}/releases?per_page=30" --jq ".[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; ((.name == \"$BOOTSTRAP_ASSET\" or .name == \"$BOOTSTRAP_ASSET_LEGACY\") and (.size >= $MIN_BOOTSTRAP_SIZE)))) | .tag_name" | head -n 1 || true
-          )"
+          BOOTSTRAP_TAG="$BOOTSTRAP_STAGE1_TAG"
           DL_TAG_ARGS=()
           if [[ -n "$BOOTSTRAP_TAG" ]]; then
             echo "Using bootstrap release tag: $BOOTSTRAP_TAG" | tee -a "$STAGE_TRACE_FILE"
             DL_TAG_ARGS=("$BOOTSTRAP_TAG")
           else
-            echo "WARN: could not find a healthy historical macOS bootstrap release; trying latest." | tee -a "$STAGE_TRACE_FILE"
+            echo "WARN: BOOTSTRAP_STAGE1_TAG is empty; trying latest." | tee -a "$STAGE_TRACE_FILE"
           fi
 
           if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
@@ -397,21 +433,35 @@ jobs:
             fi
             return 1
           }
-          thg_build() {
+          thg_build_strict() {
             local bin="$1"
             local src="$2"
             local out="$3"
-            "./$bin" build "$src" -o "$out" && return 0
-            "./$bin" --build "$src" -o "$out" && return 0
-            "./$bin" "$src" -o "$out" && return 0
-            "./$bin" build "$src" && return 0
-            "./$bin" --build "$src" && return 0
-            "./$bin" "$src" && return 0
-            return 1
+            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
+            if "./$bin" build "$src" -o "$out"; then
+              :
+            elif "./$bin" --build "$src" -o "$out"; then
+              :
+            else
+              return 1
+            fi
+            local resolved
+            resolved="$(resolve_bin "$out" "$src" || true)"
+            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
+              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out" | tee -a "$STAGE_TRACE_FILE"
+              find . -maxdepth 3 -type f | sed -n '1,200p' || true
+              return 1
+            fi
+            THG_BUILD_RESOLVED="$resolved"
+            return 0
           }
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE1_BIN" "examples/hello.tg" "stage1_probe" || (echo "CRITICAL: stage1 probe build command failed on macOS."; exit 1)
-          PROBE_RUN="$(resolve_bin "stage1_probe" "examples/hello.tg" || true)"
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          if thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "stage1_probe"; then
+            PROBE_RUN="$THG_BUILD_RESOLVED"
+          else
+            PROBE_RUN=""
+          fi
           if [[ ! -n "$PROBE_RUN" || ! -f "$PROBE_RUN" ]]; then
             echo "CRITICAL: downloaded stage1 asset is invalid on macOS."
             exit 1
@@ -421,8 +471,11 @@ jobs:
           "./$PROBE_RUN" || true
 
           echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN" || (echo "CRITICAL: stage1->stage2 build command failed on macOS."; exit 1)
-          FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
+          if thg_build_strict "$STAGE1_BIN" "src/thagore.tg" "$FINAL_BIN"; then
+            FINAL_RUN="$THG_BUILD_RESOLVED"
+          else
+            FINAL_RUN=""
+          fi
           [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
           FINAL_BIN="$FINAL_RUN"
           chmod +x "$FINAL_BIN" || true
@@ -431,6 +484,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          thg_build_strict() {
+            local bin="$1"
+            local src="$2"
+            local out="$3"
+            rm -f "$out" "${out%.exe}" "${out%.exe}.exe" || true
+            if "./$bin" build "$src" -o "$out"; then
+              :
+            elif "./$bin" --build "$src" -o "$out"; then
+              :
+            else
+              return 1
+            fi
+            local resolved
+            resolved="$(resolve_bin "$out" "$src" || true)"
+            if [[ -z "$resolved" || ! -f "$resolved" ]]; then
+              echo "ERROR: build returned success but output missing: bin=$bin src=$src out=$out"
+              find . -maxdepth 3 -type f | sed -n '1,200p' || true
+              return 1
+            fi
+            THG_BUILD_RESOLVED="$resolved"
+            return 0
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -450,10 +525,11 @@ jobs:
             fi
             return 1
           }
-          "./$STAGE1_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          "./$STAGE1_BIN" build examples/fib.tg -o "$FIB_BIN"
-          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
-          FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
+          thg_build_strict "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"
+          HELLO_RUN="$THG_BUILD_RESOLVED"
+          thg_build_strict "$FINAL_BIN" "examples/fib.tg" "$FIB_BIN"
+          FIB_RUN="$THG_BUILD_RESOLVED"
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
