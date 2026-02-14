@@ -123,6 +123,26 @@ auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
 #endif
 }
 
+auto resolveSelfExecutablePath() -> std::filesystem::path {
+  if (g_argv == nullptr || g_argc <= 0 || g_argv[0] == nullptr || g_argv[0][0] == '\0') {
+    return {};
+  }
+  std::error_code ec {};
+  const auto direct = std::filesystem::path(g_argv[0]);
+  if (std::filesystem::exists(direct)) {
+    return direct;
+  }
+  const auto absolute = std::filesystem::absolute(direct, ec);
+  if (!ec && std::filesystem::exists(absolute)) {
+    return absolute;
+  }
+  const auto fileOnly = direct.filename();
+  if (!fileOnly.empty() && std::filesystem::exists(fileOnly)) {
+    return fileOnly;
+  }
+  return {};
+}
+
 auto runCommandCapture(const std::string &command) -> std::optional<std::string> {
 #if defined(_WIN32)
   FILE *pipe = _popen(command.c_str(), "rb");
@@ -2561,36 +2581,42 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     out << sourceText;
   }
 
-  std::filesystem::path helperPath {};
+  std::filesystem::path helperPath = resolveSelfExecutablePath();
 #if defined(_WIN32)
-  const std::array<std::filesystem::path, 8> candidates {
-    std::filesystem::path {".\\stage1.exe"},
-    std::filesystem::path {".\\stage2.exe"},
+  const std::vector<std::filesystem::path> candidates {
     std::filesystem::path {".\\thagore.exe"},
-    std::filesystem::path {"stage1.exe"},
-    std::filesystem::path {"stage2.exe"},
+    std::filesystem::path {".\\stage2.exe"},
+    std::filesystem::path {".\\stage1.exe"},
     std::filesystem::path {"thagore.exe"},
-    std::filesystem::path {"build/stage1.exe"},
+    std::filesystem::path {"stage2.exe"},
+    std::filesystem::path {"stage1.exe"},
     std::filesystem::path {"build/thagore.exe"},
+    std::filesystem::path {"build/stage2.exe"},
+    std::filesystem::path {"build/stage1.exe"},
   };
 #else
-  const std::array<std::filesystem::path, 10> candidates {
-    std::filesystem::path {"./stage1"},
-    std::filesystem::path {"./stage2"},
+  const std::vector<std::filesystem::path> candidates {
     std::filesystem::path {"./thagore"},
-    std::filesystem::path {"stage1"},
-    std::filesystem::path {"stage2"},
+    std::filesystem::path {"./stage2"},
+    std::filesystem::path {"./stage1"},
+    std::filesystem::path {"thagore.exe"},
+    std::filesystem::path {"stage2.exe"},
+    std::filesystem::path {"stage1.exe"},
     std::filesystem::path {"thagore"},
-    std::filesystem::path {"build/stage1"},
-    std::filesystem::path {"build/stage2"},
+    std::filesystem::path {"stage2"},
+    std::filesystem::path {"stage1"},
     std::filesystem::path {"build/thagore"},
+    std::filesystem::path {"build/stage2"},
+    std::filesystem::path {"build/stage1"},
     std::filesystem::path {"bin/thagore"},
   };
 #endif
-  for (const auto &candidate : candidates) {
-    if (std::filesystem::exists(candidate)) {
-      helperPath = candidate;
-      break;
+  if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
+    for (const auto &candidate : candidates) {
+      if (std::filesystem::exists(candidate)) {
+        helperPath = candidate;
+        break;
+      }
     }
   }
 
