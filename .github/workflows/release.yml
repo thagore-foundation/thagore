@@ -34,6 +34,8 @@ jobs:
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 21 all
+          echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          clang --version
 
       - name: Bootstrap Stage1 (release asset only)
         shell: bash
@@ -145,6 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -239,6 +242,8 @@ jobs:
           set -euo pipefail
           brew update
           brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          clang --version
 
       - name: Bootstrap Stage1 (release asset only)
         shell: bash
@@ -353,6 +358,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -533,6 +539,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
           resolve_bin() {
             local preferred="$1"
             local src="$2"
