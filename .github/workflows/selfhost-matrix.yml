@@ -145,6 +145,18 @@ jobs:
                 extract_stage1_seed
               fi
             fi
+            if [[ ! -f "$STAGE1_BIN" && -n "$BOOTSTRAP_TAG" ]]; then
+              echo "INFO: fallback to GitHub API asset download for stage1 seed." | tee -a "$STAGE_TRACE_FILE"
+              ASSET_API_URL="$(
+                gh api "repos/${{ github.repository }}/releases/tags/$BOOTSTRAP_TAG" --jq ".assets[]? | select(.name == \"$ASSET_STAGE1\") | .url" | head -n 1 || true
+              )"
+              if [[ -n "$ASSET_API_URL" ]]; then
+                gh api "$ASSET_API_URL" -H "Accept: application/octet-stream" > "bootstrap/$ASSET_STAGE1" || true
+                if [[ -f "bootstrap/$ASSET_STAGE1" ]]; then
+                  extract_stage1_seed
+                fi
+              fi
+            fi
             if [[ ! -f "$STAGE1_BIN" ]]; then
               if gh release download "${DL_TAG_ARGS[@]}" --repo "${{ github.repository }}" --pattern "$ASSET" -D bootstrap; then
                 mkdir -p bootstrap/extracted
