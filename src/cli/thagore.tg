@@ -213,7 +213,8 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     else:
         if (output_exe.length() == 0):
             output_exe = base + ".exe"
-    let ir = codegen_native.emit_program_from_native(source, base)
+    let normalized = native_typecheck.typecheck_to_normalized(source)
+    let ir = codegen_native.emit_program_typed(normalized, base)
     if (ir.length() == 0):
         print("Error: LLVM IR generation failed")
         return 1

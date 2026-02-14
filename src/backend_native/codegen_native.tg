@@ -551,7 +551,7 @@ func _extract_ret_i32(header_line: String) -> i32:
         return 1
     return 0
 
-func emit_program_from_native(source: String, module_name: String) -> String:
+func _emit_program_from_source(source: String, module_name: String) -> String:
     let out = "; ModuleID = '" + module_name + "'\n"
     let decls = "declare void @__thg_init_env(i32, ptr)\ndeclare void @__thg_print_i32(i32)\ndeclare void @__thg_print_str(ptr, i32)\n\n"
     let total = _line_count(source)
@@ -578,3 +578,9 @@ func emit_program_from_native(source: String, module_name: String) -> String:
         else:
             i = i + 1
     return out + globals + "\n" + decls + code
+
+func emit_program_typed(typed_normalized: String, module_name: String) -> String:
+    return _emit_program_from_source(typed_normalized, module_name)
+
+func emit_program_from_native(source: String, module_name: String) -> String:
+    return _emit_program_from_source(source, module_name)

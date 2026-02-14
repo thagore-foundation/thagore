@@ -1,0 +1,22 @@
+struct TypedProgramNative:
+    source: String
+    normalized: String
+    enums: String
+    aliases: String
+    funcs: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+
+func typed_new(source: String, normalized: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32) -> TypedProgramNative:
+    return TypedProgramNative(source, normalized, enums, aliases, funcs, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count)

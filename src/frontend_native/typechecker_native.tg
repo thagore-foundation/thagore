@@ -1,11 +1,9 @@
-import "src/frontend_native/parser_native.tg" as p
+import "src/frontend_native/parser_native.tg" as parser
+import "src/frontend_native/typed_ir_native.tg" as tir
 import "src/frontend/lowering/language_pipeline.tg" as pipe
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
-
-func _char_at(text: String, index: i32) -> String:
-    return __thg_str_substr(text, index, 1)
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)
@@ -19,55 +17,63 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
-func _feature_has(feature_map: String, key: String) -> i32:
-    let needle = ";" + key + ";"
-    return _contains(feature_map, needle)
-
-func _check_required_features(feature_map: String) -> i32:
-    let required = 0
-    if (_feature_has(feature_map, "enum") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "type_alias") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "array_literal") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "slice_expr") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "struct_shorthand") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "tuple_destruct") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "match") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "range_loop") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "if_expr") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "loop_label") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "unsafe_block") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "extension_impl") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "raw_string") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "visibility") == 1):
-        required = required + 1
-    if (_feature_has(feature_map, "closure") == 1):
-        required = required + 1
-    if (required >= 0):
+func _validate_main_decl(func_table: String) -> i32:
+    if (_contains(func_table, ";main|") == 1):
         return 0
+    print("Typecheck error: missing entry function `func main`.")
     return 1
 
-func _typecheck_compiled(feature_map: String, normalized: String) -> i32:
-    if (_check_required_features(feature_map) != 0):
-        print("Typecheck error: feature map validation failed.")
+func _validate_match_usage(match_count: i32, enum_table: String) -> i32:
+    if (match_count <= 0):
+        return 0
+    if (enum_table == ";"):
+        print("Typecheck error: `match` requires at least one enum declaration.")
         return 1
-    if (pipe.validate(normalized) != 0):
-        print("Typecheck error: language validation failed.")
+    return 0
+
+func _validate_if_expr_usage(if_expr_count: i32) -> i32:
+    if (if_expr_count < 0):
+        print("Typecheck error: invalid if-expression counter.")
+        return 1
+    return 0
+
+func _validate_range_loop_usage(range_loop_count: i32) -> i32:
+    if (range_loop_count < 0):
+        print("Typecheck error: invalid range-loop counter.")
+        return 1
+    return 0
+
+func _validate_closure_usage(closure_count: i32) -> i32:
+    if (closure_count < 0):
+        print("Typecheck error: invalid closure counter.")
         return 1
     return 0
 
 func validate_source(source: String) -> i32:
-    let program = p.parse_program(source)
-    return _typecheck_compiled(program.feature_map, program.normalized)
+    let normalized = parser.parse_normalized(source)
+    let enums = parser.parse_enums(source)
+    let aliases = parser.parse_aliases(source)
+    let funcs = parser.parse_funcs(source)
+    let typed = tir.typed_new(source, normalized, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    if (_validate_main_decl(typed.funcs) != 0):
+        return 1
+    if (_validate_match_usage(typed.match_count, typed.enums) != 0):
+        return 1
+    if (_validate_if_expr_usage(typed.if_expr_count) != 0):
+        return 1
+    if (_validate_range_loop_usage(typed.range_loop_count) != 0):
+        return 1
+    if (_validate_closure_usage(typed.closure_count) != 0):
+        return 1
+    if (pipe.validate(typed.normalized) != 0):
+        print("Typecheck error: language validation failed.")
+        return 1
+    return 0
+
+func typecheck_to_normalized(source: String) -> String:
+    let normalized = parser.parse_normalized(source)
+    let enums = parser.parse_enums(source)
+    let aliases = parser.parse_aliases(source)
+    let funcs = parser.parse_funcs(source)
+    let typed = tir.typed_new(source, normalized, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    return typed.normalized
