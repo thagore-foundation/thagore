@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -13,6 +17,7 @@ jobs:
   selfhost:
     name: selfhost (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +31,7 @@ jobs:
 
       - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -38,6 +44,7 @@ jobs:
 
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -48,11 +55,13 @@ jobs:
 
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 15
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "21.1.8"
 
       - name: Bootstrap Stage1
+        timeout-minutes: 20
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -326,6 +335,7 @@ jobs:
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
 
       - name: Stage1 -> Stage2 -> Stage2
+        timeout-minutes: 35
         shell: bash
         run: |
           set -euo pipefail
@@ -377,6 +387,7 @@ jobs:
           echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
 
       - name: Stage2' e2e test
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail

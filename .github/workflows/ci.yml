@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -12,6 +16,7 @@ jobs:
   verify:
     name: ci (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +30,7 @@ jobs:
 
       - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -37,6 +43,7 @@ jobs:
 
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -47,11 +54,13 @@ jobs:
 
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 15
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "21.1.8"
 
       - name: Bootstrap Stage1 from release asset
+        timeout-minutes: 20
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -359,6 +368,7 @@ jobs:
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Build and run hello/fib
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -406,6 +416,7 @@ jobs:
           "./$FIB_RUN"
 
       - name: CLI smoke
+        timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
