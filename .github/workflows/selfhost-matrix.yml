@@ -24,6 +24,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.20-foundation"
+      BOOTSTRAP_STAGE1_TAG_FALLBACKS: "v0.3.14-foundation,v0.3.13-foundation,v0.3.12-foundation,v0.3.8-foundation,v0.3.7-foundation,v0.3.6-foundation,v0.3.5-foundation,v0.3.4-foundation,v0.3.3-foundation,v0.3.2-foundation,v0.2.6-foundation,v0.2.5-foundation"
       STAGE_TRACE_FILE: selfhost-stage-trace.log
     steps:
       - name: Checkout
@@ -103,10 +104,21 @@ jobs:
           download_asset() {
             local pattern="$1"
             if [[ -n "$BOOTSTRAP_STAGE1_TAG" ]]; then
-              gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
-            else
-              gh release download --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+              if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
+                return 0
+              fi
             fi
+            IFS=',' read -r -a fallback_tags <<< "${BOOTSTRAP_STAGE1_TAG_FALLBACKS:-}"
+            for tag in "${fallback_tags[@]}"; do
+              tag="$(echo "$tag" | xargs)"
+              if [[ -z "$tag" || "$tag" == "$BOOTSTRAP_STAGE1_TAG" ]]; then
+                continue
+              fi
+              if gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
+                return 0
+              fi
+            done
+            gh release download --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
           probe_stage1_chain() {
             local bin="$1"
