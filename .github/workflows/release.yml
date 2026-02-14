@@ -22,7 +22,7 @@ jobs:
       RELEASE_ASSET: thagore-linux.tar.gz
       RELEASE_ASSET_LEGACY: thag-linux.tar.gz
       STAGE_TRACE_FILE: stage-commands.log
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
+      ALLOW_STAGE0_BOOTSTRAP: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -195,7 +195,11 @@ jobs:
           cp scripts/install/install-linux.sh dist/install.sh
           chmod +x dist/install.sh
           tar -czf "$RELEASE_ASSET" -C dist .
-          cp "$RELEASE_ASSET" "$STAGE1_SEED_ASSET"
+          rm -rf seed_dist
+          cp -r dist seed_dist
+          cp "$STAGE1_BIN" seed_dist/bin/thagore
+          chmod +x seed_dist/bin/thagore
+          tar -czf "$STAGE1_SEED_ASSET" -C seed_dist .
           cp "$RELEASE_ASSET" "$RELEASE_ASSET_LEGACY"
 
           VERSION="${GITHUB_REF_NAME#v}"
@@ -242,7 +246,7 @@ jobs:
       BOOTSTRAP_ASSET_LEGACY: thag-macos.tar.gz
       RELEASE_ASSET: thagore-macos.pkg
       STAGE_TRACE_FILE: stage-commands.log
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
+      ALLOW_STAGE0_BOOTSTRAP: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -418,7 +422,11 @@ jobs:
           chmod +x dist/bin/thagore
           cp -r std dist/lib/std
           tar -czf "$BOOTSTRAP_ASSET" -C dist .
-          cp "$BOOTSTRAP_ASSET" "$STAGE1_SEED_ASSET"
+          rm -rf seed_dist
+          cp -r dist seed_dist
+          cp "$STAGE1_BIN" seed_dist/bin/thagore
+          chmod +x seed_dist/bin/thagore
+          tar -czf "$STAGE1_SEED_ASSET" -C seed_dist .
           cp "$BOOTSTRAP_ASSET" "$BOOTSTRAP_ASSET_LEGACY"
 
           rm -rf pkgroot
@@ -453,7 +461,7 @@ jobs:
       RELEASE_ASSET: thagore-windows-setup.exe
       RELEASE_ASSET_LEGACY: thag-windows-setup.exe
       STAGE_TRACE_FILE: stage-commands.log
-      ALLOW_STAGE0_BOOTSTRAP: ${{ vars.ALLOW_STAGE0_BOOTSTRAP || 'false' }}
+      ALLOW_STAGE0_BOOTSTRAP: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -605,7 +613,7 @@ jobs:
           mkdir -p dist/bin dist/lib
           cp "$FINAL_BIN" dist/bin/thagore.exe
           cp "$FINAL_BIN" dist/bin/thag.exe
-          cp "$FINAL_BIN" "$STAGE1_SEED_ASSET"
+          cp "$STAGE1_BIN" "$STAGE1_SEED_ASSET"
           cp -r std dist/lib/std
           VERSION="${GITHUB_REF_NAME#v}"
           [[ "$VERSION" == "$GITHUB_REF_NAME" ]] && VERSION="0.0.0"
