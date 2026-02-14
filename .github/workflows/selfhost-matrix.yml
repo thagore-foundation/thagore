@@ -131,7 +131,14 @@ jobs:
           if [[ ! -f "$STAGE1_BIN" ]]; then
             if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
+                if [[ -n "$LLVM_DOS" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
+                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+                fi
+              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
               elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
@@ -184,9 +191,11 @@ jobs:
 
           chmod +x "$STAGE1_BIN" || true
           PROBE_COMPILER_BIN="stage1_compiler_probe"
+          PROBE_COMPILER2_BIN="stage1_compiler_probe2"
           PROBE_HELLO_BIN="stage1_compiler_probe_hello"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PROBE_COMPILER_BIN="stage1_compiler_probe.exe"
+            PROBE_COMPILER2_BIN="stage1_compiler_probe2.exe"
             PROBE_HELLO_BIN="stage1_compiler_probe_hello.exe"
           fi
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o $PROBE_BIN" | tee -a "$STAGE_TRACE_FILE"
@@ -203,12 +212,24 @@ jobs:
             "./$PROBE_COMPILER_BIN" build examples/hello.tg -o "$PROBE_HELLO_BIN" || STAGE1_OK=0
             [[ -f "$PROBE_HELLO_BIN" ]] || STAGE1_OK=0
           fi
+          if [[ "$STAGE1_OK" == "1" ]]; then
+            echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            "./$PROBE_COMPILER_BIN" build src/thagore.tg -o "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
+            [[ -f "$PROBE_COMPILER2_BIN" ]] || STAGE1_OK=0
+          fi
           if [[ "$STAGE1_OK" != "1" ]]; then
             echo "WARN: downloaded stage1 asset failed self-host probe."
             rm -f "$STAGE1_BIN"
             if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
+                if [[ -n "$LLVM_DOS" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
+                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+                fi
+              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
               elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"

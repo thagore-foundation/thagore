@@ -84,7 +84,14 @@ jobs:
           if [[ ! -f "$STAGE1_BIN" ]]; then
             if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
+                if [[ -n "$LLVM_DOS" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
+                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+                fi
+              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
               elif [[ -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
@@ -282,7 +289,14 @@ jobs:
           if [[ ! -f "$STAGE1_BIN" ]]; then
             if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
+                if [[ -n "$LLVM_DOS" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
+                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+                fi
+              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
               else
                 LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
@@ -465,7 +479,14 @@ jobs:
           if [[ ! -f "$STAGE1_BIN" ]]; then
             if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
               LLVM_ARG=""
-              if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+                LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
+                if [[ -n "$LLVM_DOS" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
+                elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
+                  LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
+                fi
+              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                 LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
               fi
               echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
