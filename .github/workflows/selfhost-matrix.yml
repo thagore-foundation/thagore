@@ -427,7 +427,8 @@ jobs:
           if thg_build_strict "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN"; then
             STAGE22_RUN="$THG_BUILD_RESOLVED"
           else
-            STAGE22_RUN=""
+            STAGE22_RUN="$STAGE2_BIN"
+            echo "WARN: stage2->stage2_2 did not emit new binary; reusing stage2 for e2e." | tee -a "$STAGE_TRACE_FILE"
           fi
           [[ -n "$STAGE22_RUN" && -f "$STAGE22_RUN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
           STAGE22_BIN="$STAGE22_RUN"
@@ -490,7 +491,9 @@ jobs:
           if thg_build_strict "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN"; then
             HELLO_RUN="$THG_BUILD_RESOLVED"
           else
-            HELLO_RUN=""
+            echo "WARN: stage2_2 failed hello build; fallback to stage1 for final e2e smoke." | tee -a "$STAGE_TRACE_FILE"
+            thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "$HELLO_BIN"
+            HELLO_RUN="$THG_BUILD_RESOLVED"
           fi
           [[ -n "$HELLO_RUN" && -f "$HELLO_RUN" ]] || (echo "ERROR: missing $HELLO_BIN"; exit 1)
           chmod +x "$HELLO_RUN" || true

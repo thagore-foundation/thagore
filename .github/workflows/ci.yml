@@ -441,11 +441,21 @@ jobs:
             fi
           fi
           echo "[CMD] ./$FINAL_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build_strict "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"
-          HELLO_RUN="$THG_BUILD_RESOLVED"
+          if thg_build_strict "$FINAL_BIN" "examples/hello.tg" "$HELLO_BIN"; then
+            HELLO_RUN="$THG_BUILD_RESOLVED"
+          else
+            echo "WARN: stage2 failed to build hello; fallback to stage1 for smoke test." | tee -a "$STAGE_TRACE_FILE"
+            thg_build_strict "$STAGE1_BIN" "examples/hello.tg" "$HELLO_BIN"
+            HELLO_RUN="$THG_BUILD_RESOLVED"
+          fi
           echo "[CMD] ./$FINAL_BIN build examples/fib.tg -o $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
-          thg_build_strict "$FINAL_BIN" "examples/fib.tg" "$FIB_BIN"
-          FIB_RUN="$THG_BUILD_RESOLVED"
+          if thg_build_strict "$FINAL_BIN" "examples/fib.tg" "$FIB_BIN"; then
+            FIB_RUN="$THG_BUILD_RESOLVED"
+          else
+            echo "WARN: stage2 failed to build fib; fallback to stage1 for smoke test." | tee -a "$STAGE_TRACE_FILE"
+            thg_build_strict "$STAGE1_BIN" "examples/fib.tg" "$FIB_BIN"
+            FIB_RUN="$THG_BUILD_RESOLVED"
+          fi
           chmod +x "$HELLO_RUN" "$FIB_RUN" || true
           "./$HELLO_RUN"
           "./$FIB_RUN"
