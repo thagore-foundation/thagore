@@ -22,7 +22,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: v0.3.21-stage1-seed
+      BOOTSTRAP_STAGE1_TAG: ""
       STAGE_TRACE_FILE: stage-trace.log
     steps:
       - name: Checkout
@@ -67,23 +67,31 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          download_asset() {
+            local pattern="$1"
+            if [[ -n "$BOOTSTRAP_STAGE1_TAG" ]]; then
+              gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            else
+              gh release download --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            fi
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE1_ASSET="thagore-stage1.exe"
             STAGE1_BIN="stage1.exe"
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            download_asset "$STAGE1_ASSET"
             cp "bootstrap/$STAGE1_ASSET" "$STAGE1_BIN"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            STAGE1_ASSET="thagore-stage1-linux.tar.gz"
+            STAGE1_ASSET="thagore-linux.tar.gz"
             STAGE1_BIN="stage1"
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            download_asset "$STAGE1_ASSET"
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
             CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in linux seed asset"; exit 1)
             cp "$CANDIDATE" "$STAGE1_BIN"
           else
-            STAGE1_ASSET="thagore-stage1-macos.tar.gz"
+            STAGE1_ASSET="thagore-macos.tar.gz"
             STAGE1_BIN="stage1"
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$STAGE1_ASSET" -D bootstrap
+            download_asset "$STAGE1_ASSET"
             tar -xzf "bootstrap/$STAGE1_ASSET" -C bootstrap
             CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in macos seed asset"; exit 1)
