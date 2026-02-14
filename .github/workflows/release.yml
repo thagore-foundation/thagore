@@ -152,8 +152,10 @@ jobs:
             local src="$2"
             local out="$3"
             "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
             "./$bin" "$src" -o "$out" && return 0
             "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
             "./$bin" "$src" && return 0
             return 1
           }
@@ -164,6 +166,7 @@ jobs:
             echo "CRITICAL: downloaded stage1 asset is invalid on Linux."
             exit 1
           fi
+          chmod +x "$PROBE_RUN" || true
           [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
@@ -172,6 +175,7 @@ jobs:
           FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
           [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
           FINAL_BIN="$FINAL_RUN"
+          chmod +x "$FINAL_BIN" || true
 
       - name: Test hello + fib
         shell: bash
@@ -398,8 +402,10 @@ jobs:
             local src="$2"
             local out="$3"
             "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
             "./$bin" "$src" -o "$out" && return 0
             "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
             "./$bin" "$src" && return 0
             return 1
           }
@@ -410,6 +416,7 @@ jobs:
             echo "CRITICAL: downloaded stage1 asset is invalid on macOS."
             exit 1
           fi
+          chmod +x "$PROBE_RUN" || true
           [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]] || (echo "CRITICAL: downloaded stage1 asset is invalid."; exit 1)
           "./$PROBE_RUN" || true
 
@@ -418,6 +425,7 @@ jobs:
           FINAL_RUN="$(resolve_bin "$FINAL_BIN" "src/thagore.tg" || true)"
           [[ -n "$FINAL_RUN" && -f "$FINAL_RUN" ]] || (echo "ERROR: missing stage2 binary"; exit 1)
           FINAL_BIN="$FINAL_RUN"
+          chmod +x "$FINAL_BIN" || true
 
       - name: Test hello + fib
         shell: bash

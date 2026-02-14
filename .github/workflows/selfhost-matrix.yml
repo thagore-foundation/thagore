@@ -247,8 +247,10 @@ jobs:
             local src="$2"
             local out="$3"
             "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
             "./$bin" "$src" -o "$out" && return 0
             "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
             "./$bin" "$src" && return 0
             return 1
           }
@@ -266,6 +268,7 @@ jobs:
           PROBE_RUN="$(resolve_bin "$PROBE_BIN" "examples/hello.tg" || true)"
           if [[ -n "$PROBE_RUN" && -f "$PROBE_RUN" ]]; then
             PROBE_BIN="$PROBE_RUN"
+            chmod +x "$PROBE_BIN" || true
           else
             STAGE1_OK=0
           fi
@@ -275,6 +278,7 @@ jobs:
             PROBE_COMPILER_RUN="$(resolve_bin "$PROBE_COMPILER_BIN" "src/thagore.tg" || true)"
             if [[ -n "$PROBE_COMPILER_RUN" && -f "$PROBE_COMPILER_RUN" ]]; then
               PROBE_COMPILER_BIN="$PROBE_COMPILER_RUN"
+              chmod +x "$PROBE_COMPILER_BIN" || true
             else
               STAGE1_OK=0
             fi
@@ -285,6 +289,7 @@ jobs:
             PROBE_HELLO_RUN="$(resolve_bin "$PROBE_HELLO_BIN" "examples/hello.tg" || true)"
             if [[ -n "$PROBE_HELLO_RUN" && -f "$PROBE_HELLO_RUN" ]]; then
               PROBE_HELLO_BIN="$PROBE_HELLO_RUN"
+              chmod +x "$PROBE_HELLO_BIN" || true
             else
               STAGE1_OK=0
             fi
@@ -295,6 +300,7 @@ jobs:
             PROBE_COMPILER2_RUN="$(resolve_bin "$PROBE_COMPILER2_BIN" "src/thagore.tg" || true)"
             if [[ -n "$PROBE_COMPILER2_RUN" && -f "$PROBE_COMPILER2_RUN" ]]; then
               PROBE_COMPILER2_BIN="$PROBE_COMPILER2_RUN"
+              chmod +x "$PROBE_COMPILER2_BIN" || true
             else
               STAGE1_OK=0
             fi
@@ -373,8 +379,10 @@ jobs:
             local src="$2"
             local out="$3"
             "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
             "./$bin" "$src" -o "$out" && return 0
             "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
             "./$bin" "$src" && return 0
             return 1
           }
@@ -383,12 +391,14 @@ jobs:
           STAGE2_RUN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
           [[ -n "$STAGE2_RUN" && -f "$STAGE2_RUN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
           STAGE2_BIN="$STAGE2_RUN"
+          chmod +x "$STAGE2_BIN" || true
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
           thg_build "$STAGE2_BIN" "src/thagore.tg" "$STAGE22_BIN" || (echo "CRITICAL: stage2->stage2_2 build command failed."; exit 1)
           STAGE22_RUN="$(resolve_bin "$STAGE22_BIN" "src/thagore.tg" || true)"
           [[ -n "$STAGE22_RUN" && -f "$STAGE22_RUN" ]] || (echo "ERROR: missing $STAGE22_BIN"; exit 1)
           STAGE22_BIN="$STAGE22_RUN"
+          chmod +x "$STAGE22_BIN" || true
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE22_BIN=$STAGE22_BIN" >> "$GITHUB_ENV"
 
@@ -401,8 +411,10 @@ jobs:
             local src="$2"
             local out="$3"
             "./$bin" build "$src" -o "$out" && return 0
+            "./$bin" --build "$src" -o "$out" && return 0
             "./$bin" "$src" -o "$out" && return 0
             "./$bin" build "$src" && return 0
+            "./$bin" --build "$src" && return 0
             "./$bin" "$src" && return 0
             return 1
           }
@@ -429,6 +441,7 @@ jobs:
           thg_build "$STAGE22_BIN" "examples/hello.tg" "$HELLO_BIN" || (echo "CRITICAL: stage2_2 hello build command failed."; exit 1)
           HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
           [[ -n "$HELLO_RUN" && -f "$HELLO_RUN" ]] || (echo "ERROR: missing $HELLO_BIN"; exit 1)
+          chmod +x "$HELLO_RUN" || true
           "./$HELLO_RUN"
 
       - name: Upload trace
