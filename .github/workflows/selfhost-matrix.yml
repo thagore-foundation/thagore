@@ -180,11 +180,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
           echo "[CMD] ./$STAGE22_BIN build examples/hello.tg -o $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
           "./$STAGE22_BIN" build examples/hello.tg -o "$HELLO_BIN"
-          HELLO_RUN="$HELLO_BIN"
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
+          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           "./$HELLO_RUN"
 
       - name: Upload trace

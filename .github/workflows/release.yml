@@ -111,14 +111,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          HELLO_RUN="$HELLO_BIN"
-          FIB_RUN="$FIB_BIN"
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN}.exe" ]]; then FIB_RUN="${FIB_BIN}.exe"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN%.exe}" ]]; then FIB_RUN="${FIB_BIN%.exe}"; fi
+          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
@@ -267,14 +282,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          HELLO_RUN="$HELLO_BIN"
-          FIB_RUN="$FIB_BIN"
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN}.exe" ]]; then FIB_RUN="${FIB_BIN}.exe"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN%.exe}" ]]; then FIB_RUN="${FIB_BIN%.exe}"; fi
+          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
@@ -405,14 +435,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find . -maxdepth 3 -type f \( -name "$base" -o -name "$base.exe" \) | head -n 1)"
+            if [[ -n "$found" ]]; then
+              echo "${found#./}"
+              return 0
+            fi
+            return 1
+          }
           "./$FINAL_BIN" build examples/hello.tg -o "$HELLO_BIN"
           "./$FINAL_BIN" build examples/fib.tg -o "$FIB_BIN"
-          HELLO_RUN="$HELLO_BIN"
-          FIB_RUN="$FIB_BIN"
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN}.exe" ]]; then HELLO_RUN="${HELLO_BIN}.exe"; fi
-          if [[ ! -f "$HELLO_RUN" && -f "${HELLO_BIN%.exe}" ]]; then HELLO_RUN="${HELLO_BIN%.exe}"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN}.exe" ]]; then FIB_RUN="${FIB_BIN}.exe"; fi
-          if [[ ! -f "$FIB_RUN" && -f "${FIB_BIN%.exe}" ]]; then FIB_RUN="${FIB_BIN%.exe}"; fi
+          HELLO_RUN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          FIB_RUN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           "./$HELLO_RUN"
           "./$FIB_RUN"
 
