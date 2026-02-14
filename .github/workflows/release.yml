@@ -46,6 +46,7 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          BOOTSTRAPPED_FROM_STAGE0=0
 
           if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted_stage1
@@ -125,6 +126,7 @@ jobs:
                 echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
                 exit 1
               fi
+              BOOTSTRAPPED_FROM_STAGE0=1
             else
               echo "CRITICAL: Stage1 bootstrap asset not found on Linux."
               echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
@@ -142,6 +144,13 @@ jobs:
           if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
+          fi
+
+          if [[ "$BOOTSTRAPPED_FROM_STAGE0" == "1" ]]; then
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o stage1_from_stage0" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE1_BIN" build src/thagore.tg -o stage1_from_stage0
+            [[ -f "stage1_from_stage0" ]] || (echo "CRITICAL: failed to produce stage1 from stage0 fallback."; exit 1)
+            STAGE1_BIN="stage1_from_stage0"
           fi
 
           chmod +x "$STAGE1_BIN"
@@ -270,6 +279,7 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          BOOTSTRAPPED_FROM_STAGE0=0
 
           if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
             mkdir -p bootstrap/extracted_stage1
@@ -352,6 +362,7 @@ jobs:
                 echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
                 exit 1
               fi
+              BOOTSTRAPPED_FROM_STAGE0=1
             else
               echo "CRITICAL: Stage1 bootstrap asset not found on macOS."
               echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
@@ -373,6 +384,13 @@ jobs:
           if [[ ! -f "thag_runtime.lib" && ! -f "libthag_runtime.a" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib/libthag_runtime.a)."
             exit 1
+          fi
+
+          if [[ "$BOOTSTRAPPED_FROM_STAGE0" == "1" ]]; then
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o stage1_from_stage0" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE1_BIN" build src/thagore.tg -o stage1_from_stage0
+            [[ -f "stage1_from_stage0" ]] || (echo "CRITICAL: failed to produce stage1 from stage0 fallback."; exit 1)
+            STAGE1_BIN="stage1_from_stage0"
           fi
 
           chmod +x "$STAGE1_BIN"
@@ -487,6 +505,7 @@ jobs:
           set -euo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          BOOTSTRAPPED_FROM_STAGE0=0
 
           if gh release download --repo "${{ github.repository }}" --pattern "$STAGE1_SEED_ASSET" -D bootstrap; then
             if [[ -f "bootstrap/$STAGE1_SEED_ASSET" ]]; then
@@ -556,6 +575,7 @@ jobs:
                 echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
                 exit 1
               fi
+              BOOTSTRAPPED_FROM_STAGE0=1
             else
               echo "CRITICAL: Stage1 bootstrap asset not found. Release build stops here."
               echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
@@ -569,6 +589,13 @@ jobs:
           if [[ ! -f "thag_runtime.lib" ]]; then
             echo "CRITICAL: runtime library missing (thag_runtime.lib)."
             exit 1
+          fi
+
+          if [[ "$BOOTSTRAPPED_FROM_STAGE0" == "1" ]]; then
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o stage1_from_stage0.exe" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE1_BIN" build src/thagore.tg -o stage1_from_stage0.exe
+            [[ -f "stage1_from_stage0.exe" ]] || (echo "CRITICAL: failed to produce stage1 from stage0 fallback."; exit 1)
+            STAGE1_BIN="stage1_from_stage0.exe"
           fi
 
           echo "[CMD] ./$STAGE1_BIN build examples/hello.tg -o stage1_probe.exe" | tee -a "$STAGE_TRACE_FILE"
