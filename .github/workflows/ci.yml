@@ -140,6 +140,8 @@ jobs:
               tar -xzf "bootstrap/$BOOTSTRAP_STAGE1_ASSET" -C bootstrap/extracted_stage1
               if [[ -f "bootstrap/extracted_stage1/bin/thagore" ]]; then
                 cp "bootstrap/extracted_stage1/bin/thagore" "$STAGE1_BIN"
+              elif [[ -f "bootstrap/extracted_stage1/bin/thag" ]]; then
+                cp "bootstrap/extracted_stage1/bin/thag" "$STAGE1_BIN"
               elif [[ -f "bootstrap/extracted_stage1/dist/bin/thagore" ]]; then
                 cp "bootstrap/extracted_stage1/dist/bin/thagore" "$STAGE1_BIN"
               elif [[ -f "bootstrap/extracted_stage1/dist/bin/thag" ]]; then
