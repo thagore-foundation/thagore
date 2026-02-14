@@ -40,6 +40,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          STAGE_TRACE_FILE="stage-commands.log"
+          : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
           BOOTSTRAP_SOURCE="release"
@@ -101,14 +103,18 @@ jobs:
               cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
             fi
             chmod +x "$STAGE0_BIN" || true
+            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
             BOOTSTRAP_SOURCE="stage0"
           fi
 
           chmod +x "$STAGE1_BIN" || true
           if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
+            STAGE2_EXECUTED=0
             FINAL_BIN="$STAGE1_BIN"
           else
+            STAGE2_EXECUTED=1
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
             if [[ ! -f "$FINAL_BIN" ]]; then
               FINAL_BIN="$STAGE1_BIN"
@@ -129,6 +135,9 @@ jobs:
           fi
 
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
+          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
+          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
@@ -171,6 +180,26 @@ jobs:
           "./$FINAL_BIN" --version
           "./$FINAL_BIN" doctor || true
 
+      - name: Stage command trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
+          {
+            echo "### Stage Trace (linux)"
+            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
+            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
+            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
+            echo ""
+            echo '```text'
+            if [[ -f "$TRACE_FILE" ]]; then
+              cat "$TRACE_FILE"
+            else
+              echo "trace file missing: $TRACE_FILE"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ci-macos:
     name: ci (macos)
     runs-on: macos-latest
@@ -199,6 +228,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          STAGE_TRACE_FILE="stage-commands.log"
+          : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
           BOOTSTRAP_SOURCE="release"
@@ -262,14 +293,18 @@ jobs:
               cp legacy/build/libthag_runtime.a legacy/build/thag_runtime.lib
             fi
             chmod +x "$STAGE0_BIN" || true
+            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
             BOOTSTRAP_SOURCE="stage0"
           fi
 
           chmod +x "$STAGE1_BIN" || true
           if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
+            STAGE2_EXECUTED=0
             FINAL_BIN="$STAGE1_BIN"
           else
+            STAGE2_EXECUTED=1
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN"
             if [[ ! -f "$FINAL_BIN" ]]; then
               FINAL_BIN="$STAGE1_BIN"
@@ -290,6 +325,9 @@ jobs:
           fi
 
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
+          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
+          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
@@ -332,6 +370,26 @@ jobs:
           "./$FINAL_BIN" --version
           "./$FINAL_BIN" doctor || true
 
+      - name: Stage command trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
+          {
+            echo "### Stage Trace (macos)"
+            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
+            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
+            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
+            echo ""
+            echo '```text'
+            if [[ -f "$TRACE_FILE" ]]; then
+              cat "$TRACE_FILE"
+            else
+              echo "trace file missing: $TRACE_FILE"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   ci-windows:
     name: ci (windows)
     runs-on: windows-latest
@@ -356,6 +414,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          STAGE_TRACE_FILE="stage-commands.log"
+          : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
           BOOTSTRAP_SOURCE="release"
@@ -421,13 +481,17 @@ jobs:
               echo "ERROR: stage0.exe not found"
               exit 1
             fi
+            echo "[CMD] $STAGE0_BIN build src/thagore.tg -o $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
             "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
             BOOTSTRAP_SOURCE="stage0"
           fi
 
           if [[ "$BOOTSTRAP_SOURCE" == "stage0" ]]; then
+            STAGE2_EXECUTED=0
             FINAL_BIN="$STAGE1_BIN"
           else
+            STAGE2_EXECUTED=1
+            echo "[CMD] ./$STAGE1_BIN build src/thagore.tg -o $FINAL_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$STAGE1_BIN" build src/thagore.tg -o "$FINAL_BIN" || true
             if [[ ! -f "$FINAL_BIN" ]]; then
               FINAL_BIN="$STAGE1_BIN"
@@ -447,6 +511,9 @@ jobs:
           fi
 
           echo "FINAL_BIN=$FINAL_BIN" >> "$GITHUB_ENV"
+          echo "BOOTSTRAP_SOURCE=$BOOTSTRAP_SOURCE" >> "$GITHUB_ENV"
+          echo "STAGE2_EXECUTED=$STAGE2_EXECUTED" >> "$GITHUB_ENV"
+          echo "STAGE_TRACE_FILE=$STAGE_TRACE_FILE" >> "$GITHUB_ENV"
 
       - name: Test hello + fib
         shell: bash
@@ -465,3 +532,23 @@ jobs:
           FINAL_BIN="${FINAL_BIN:-$STAGE1_BIN}"
           "./$FINAL_BIN" --version
           "./$FINAL_BIN" doctor || true
+
+      - name: Stage command trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE_FILE="${STAGE_TRACE_FILE:-stage-commands.log}"
+          {
+            echo "### Stage Trace (windows)"
+            echo "- bootstrap_source: ${BOOTSTRAP_SOURCE:-unknown}"
+            echo "- stage2_executed: ${STAGE2_EXECUTED:-unknown}"
+            echo "- compiler_bin_for_tests: ${FINAL_BIN:-$STAGE1_BIN}"
+            echo ""
+            echo '```text'
+            if [[ -f "$TRACE_FILE" ]]; then
+              cat "$TRACE_FILE"
+            else
+              echo "trace file missing: $TRACE_FILE"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
