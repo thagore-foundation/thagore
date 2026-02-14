@@ -55,9 +55,19 @@ jobs:
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 15
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "21.1.8"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            echo "Using preinstalled clang:"
+            clang --version
+            exit 0
+          fi
+          choco install llvm --version=21.1.8 --no-progress -y
+          if [[ -d "/c/Program Files/LLVM/bin" ]]; then
+            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          fi
+          clang --version
 
       - name: Bootstrap Stage1 from release asset
         timeout-minutes: 20
