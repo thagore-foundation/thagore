@@ -232,6 +232,7 @@ jobs:
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
             "./$PROBE_COMPILER_BIN" build src/thagore.tg -o "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
             [[ -f "$PROBE_COMPILER2_BIN" ]] || STAGE1_OK=0
           fi

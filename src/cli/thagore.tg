@@ -1,10 +1,9 @@
 import env
 import fs
 import process
-import "src/backend_native/codegen_native.tg" as codegen_native
-import "src/frontend_native/typechecker_native.tg" as native_typecheck
 
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_codegen_emit_llvm_from_source(source: String, module_name: String) -> String
 
 func _version() -> String:
     return "0.5.0"
@@ -204,10 +203,6 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     if (source.length() == 0):
         print("Error: Empty file or file not found.")
         return 1
-    let native_check = native_typecheck.validate_source(source)
-    if (native_check != 0):
-        print("Build aborted by native parser/typechecker.")
-        return native_check
     let base = _sanitize_name(_basename_no_ext(input_path))
     let output_exe = output_override
     let output_ll = base + ".ll"
@@ -217,8 +212,7 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     else:
         if (output_exe.length() == 0):
             output_exe = base + ".exe"
-    let normalized = native_typecheck.typecheck_to_normalized(source)
-    let ir = codegen_native.emit_program_typed(normalized, base)
+    let ir = __thg_codegen_emit_llvm_from_source(source, base)
     if (ir.length() == 0):
         print("Error: LLVM IR generation failed")
         return 1
