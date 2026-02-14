@@ -7,7 +7,8 @@
 - `lib/`: standard library modules used by compiler/runtime (`env`, `fs`, `process`, etc.).
 - `examples/`: runnable Thagore programs (`hello.tg`, `fib.tg`, etc.).
 - `scripts/`: automation utilities (`bootstrap.bat`, `benchmark_fib.py`).
-- `legacy/`: C++ Stage0 launcher/toolchain. Treat as frozen except critical bootstrap fixes.
+- `.github/workflows/`: CI, selfhost matrix, release, and bootstrap seed pipelines.
+- `legacy/`: C++ Stage0 launcher/toolchain. Treat as frozen except critical bootstrap/runtime fixes.
 
 ## Build, Test, and Development Commands
 - `cmd /c scripts\bootstrap.bat`: full bootstrap cycle (Stage0 -> Stage1 -> Stage2 -> hello_v2).
@@ -16,6 +17,15 @@
 - `stage1.exe build src/thagore.tg -o stage2.exe`: self-host Stage2 compiler.
 - `python scripts/benchmark_fib.py`: benchmark Python vs Thagore native on `fib(35)`.
 - `cmake -B legacy/build -DBUILD_TESTING=ON && ctest --test-dir legacy/build --output-on-failure`: run C++ tests.
+
+## Bootstrap & Release Policy
+- Unix (`ubuntu`, `macos`) is **Stage1-only bootstrap** in CI/Release. Do not add Stage0 fallback there.
+- Windows may use Stage0 fallback only when `ALLOW_STAGE0_BOOTSTRAP=true`.
+- Seed tag for bootstrap assets: `v0.3.21-stage1-seed`.
+- Stage1 seed archives must support both binaries:
+  - `bin/thagore`
+  - `bin/thag` (legacy-compatible path used by existing macOS seed tar).
+- Keep workflow traces explicit (`[CMD] ...`) so Stage1 -> Stage2 execution is auditable.
 
 ## Coding Style & Naming Conventions
 - Thagore (`*.tg`): 4-space indentation, colon-based blocks, clear function boundaries.
@@ -43,3 +53,6 @@
 ## Architecture Notes
 - Current direction: freeze `legacy/` as Stage0 launcher.
 - All new language features (e.g., new syntax/control flow) must be implemented in self-hosted Thagore under `src/`.
+- CI must pass both:
+  - `CI` workflow (all matrix OS),
+  - `Selfhost Matrix` workflow (Stage1 -> Stage2 -> Stage2).
