@@ -153,44 +153,39 @@ jobs:
           fi
 
           if [[ ! -f "$STAGE1_BIN" ]]; then
-            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" && ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") ]]; then
               LLVM_ARG=""
-              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+              if [[ -n "${LLVM_PATH:-}" ]]; then
                 LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
                 if [[ -n "$LLVM_DOS" ]]; then
                   LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
                 elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                   LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
                 fi
-              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-                LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
-              elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
-                LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
-              elif [[ "${{ runner.os }}" == "macOS" ]]; then
-                LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
-                if [[ -n "$LLVM_PREFIX" && -d "$LLVM_PREFIX/lib/cmake/llvm" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm"
-                fi
               fi
               echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
               cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
               echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
               cmake --build legacy/build --config Release
-              if [[ -f "legacy/build/thag" ]]; then
-                cp "legacy/build/thag" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/thag.exe" ]]; then
+              if [[ -f "legacy/build/thag.exe" ]]; then
                 cp "legacy/build/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag" ]]; then
-                cp "legacy/build/Release/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" "$STAGE1_BIN"
               elif [[ -f "legacy/build/Release/thag.exe" ]]; then
                 cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" "$STAGE1_BIN"
               else
                 echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
                 exit 1
               fi
             else
               echo "CRITICAL: Stage1 release asset missing."
-              echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback."
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                echo "Set ALLOW_STAGE0_BOOTSTRAP=true (or 1) to allow stage0 fallback on Windows."
+              else
+                echo "Unix runners require a valid Stage1 release asset; stage0 fallback is disabled."
+              fi
               exit 1
             fi
           fi
@@ -247,7 +242,6 @@ jobs:
           fi
           if [[ "$STAGE1_OK" == "1" ]]; then
             echo "[CMD] ./$PROBE_COMPILER_BIN build src/thagore.tg -o $PROBE_COMPILER2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            export THAG_STAGE0_HELPER="./$STAGE1_BIN"
             "./$PROBE_COMPILER_BIN" build src/thagore.tg -o "$PROBE_COMPILER2_BIN" || STAGE1_OK=0
             if [[ ! -f "$PROBE_COMPILER2_BIN" && -f "${PROBE_COMPILER2_BIN}.exe" ]]; then
               PROBE_COMPILER2_BIN="${PROBE_COMPILER2_BIN}.exe"
@@ -257,43 +251,39 @@ jobs:
           if [[ "$STAGE1_OK" != "1" ]]; then
             echo "WARN: downloaded stage1 asset failed self-host probe."
             rm -f "$STAGE1_BIN"
-            if [[ "$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" && ("$ALLOW_STAGE0_BOOTSTRAP" == "true" || "$ALLOW_STAGE0_BOOTSTRAP" == "1" || "$ALLOW_STAGE0_BOOTSTRAP" == "TRUE" || "$ALLOW_STAGE0_BOOTSTRAP" == "yes" || "$ALLOW_STAGE0_BOOTSTRAP" == "YES") ]]; then
               LLVM_ARG=""
-              if [[ "${{ runner.os }}" == "Windows" && -n "${LLVM_PATH:-}" ]]; then
+              if [[ -n "${LLVM_PATH:-}" ]]; then
                 LLVM_DOS="$(cygpath -d "$LLVM_PATH" 2>/dev/null || true)"
                 if [[ -n "$LLVM_DOS" ]]; then
                   LLVM_ARG="-DLLVM_DIR=${LLVM_DOS}/lib/cmake/llvm"
                 elif [[ -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
                   LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
                 fi
-              elif [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/lib/cmake/llvm" ]]; then
-                LLVM_ARG="-DLLVM_DIR=${LLVM_PATH}/lib/cmake/llvm"
-              elif [[ "${{ runner.os }}" == "Linux" && -d "/usr/lib/llvm-21/lib/cmake/llvm" ]]; then
-                LLVM_ARG="-DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm"
-              elif [[ "${{ runner.os }}" == "macOS" ]]; then
-                LLVM_PREFIX="$(brew --prefix llvm 2>/dev/null || true)"
-                if [[ -n "$LLVM_PREFIX" && -d "$LLVM_PREFIX/lib/cmake/llvm" ]]; then
-                  LLVM_ARG="-DLLVM_DIR=$LLVM_PREFIX/lib/cmake/llvm"
-                fi
               fi
               echo "[CMD] cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}" | tee -a "$STAGE_TRACE_FILE"
               cmake -S legacy -B legacy/build -G Ninja -DCMAKE_BUILD_TYPE=Release ${LLVM_ARG}
               echo "[CMD] cmake --build legacy/build --config Release" | tee -a "$STAGE_TRACE_FILE"
               cmake --build legacy/build --config Release
-              if [[ -f "legacy/build/thag" ]]; then
-                cp "legacy/build/thag" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/thag.exe" ]]; then
+              if [[ -f "legacy/build/thag.exe" ]]; then
                 cp "legacy/build/thag.exe" "$STAGE1_BIN"
-              elif [[ -f "legacy/build/Release/thag" ]]; then
-                cp "legacy/build/Release/thag" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/thag" ]]; then
+                cp "legacy/build/thag" "$STAGE1_BIN"
               elif [[ -f "legacy/build/Release/thag.exe" ]]; then
                 cp "legacy/build/Release/thag.exe" "$STAGE1_BIN"
+              elif [[ -f "legacy/build/Release/thag" ]]; then
+                cp "legacy/build/Release/thag" "$STAGE1_BIN"
               else
                 echo "CRITICAL: stage0 fallback enabled but legacy build output not found."
                 exit 1
               fi
             else
-              echo "CRITICAL: stage1 asset invalid and ALLOW_STAGE0_BOOTSTRAP is not enabled."
+              echo "CRITICAL: stage1 asset invalid."
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                echo "Enable ALLOW_STAGE0_BOOTSTRAP only on Windows to allow fallback."
+              else
+                echo "Unix runners require a valid Stage1 release asset; stage0 fallback is disabled."
+              fi
               exit 1
             fi
           fi
@@ -316,7 +306,6 @@ jobs:
           [[ -f "$STAGE2_BIN" ]] || (echo "ERROR: missing $STAGE2_BIN"; exit 1)
 
           echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o $STAGE22_BIN" | tee -a "$STAGE_TRACE_FILE"
-          export THAG_STAGE0_HELPER="./$STAGE1_BIN"
           "./$STAGE2_BIN" build src/thagore.tg -o "$STAGE22_BIN"
           if [[ ! -f "$STAGE22_BIN" && -f "${STAGE22_BIN}.exe" ]]; then
             STAGE22_BIN="${STAGE22_BIN}.exe"
