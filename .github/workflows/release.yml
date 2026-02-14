@@ -101,6 +101,18 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
+            mkdir -p runtime/build
+            clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
+              cp runtime/build/thag_runtime.lib thag_runtime.lib
+            else
+              ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
+              cp runtime/build/libthag_runtime.a libthag_runtime.a
+              cp runtime/build/libthag_runtime.a thag_runtime.lib
+            fi
+          fi
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -124,15 +136,26 @@ jobs:
           }
           probe_stage1_chain() {
             local bin="$1"
-            rm -f s1_probe_s2 s1_probe_s2.exe s1_probe_s2_rebuild s1_probe_s2_rebuild.exe || true
-            if ! "./$bin" build src/thagore.tg -o s1_probe_s2 >/dev/null 2>&1; then
-              if ! "./$bin" --build src/thagore.tg -o s1_probe_s2 >/dev/null 2>&1; then
-                return 1
+            thg_build() {
+              local cc="$1"
+              local src="$2"
+              local out="$3"
+              if "./$cc" build "$src" -o "$out" >/dev/null 2>&1; then
+                return 0
               fi
-            fi
+              "./$cc" --build "$src" -o "$out" >/dev/null 2>&1
+            }
+            rm -f s1_probe_s2 s1_probe_s2.exe s1_probe_s2_rebuild s1_probe_s2_rebuild.exe || true
+            rm -f s1_probe_hello s1_probe_hello.exe || true
+            thg_build "$bin" src/thagore.tg s1_probe_s2 || return 1
             local probe_s2
             probe_s2="$(resolve_bin "s1_probe_s2" "src/thagore.tg" || true)"
             [[ -n "$probe_s2" && -f "$probe_s2" ]] || return 1
+            chmod +x "$probe_s2" || true
+            thg_build "$probe_s2" examples/hello.tg s1_probe_hello || return 1
+            local probe_hello
+            probe_hello="$(resolve_bin "s1_probe_hello" "examples/hello.tg" || true)"
+            [[ -n "$probe_hello" && -f "$probe_hello" ]] || return 1
             return 0
           }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -141,8 +164,12 @@ jobs:
               if download_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
-                STAGE1_ASSET="$ASSET"
-                break
+                if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
+                  STAGE1_ASSET="$ASSET"
+                  break
+                fi
+                echo "Rejecting bootstrap asset $ASSET: probe failed"
+                rm -f "${{ matrix.stage1_bin }}"
               fi
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
@@ -158,8 +185,12 @@ jobs:
                   [[ -n "$CANDIDATE" ]] || continue
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                   chmod +x "${{ matrix.stage1_bin }}" || true
-                  STAGE1_ASSET="$ASSET"
-                  break
+                  if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
+                    STAGE1_ASSET="$ASSET"
+                    break
+                  fi
+                  echo "Rejecting bootstrap asset $ASSET: probe failed"
+                  rm -f "${{ matrix.stage1_bin }}"
                 fi
               done
             else
@@ -172,8 +203,12 @@ jobs:
                   [[ -n "$CANDIDATE" ]] || continue
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                   chmod +x "${{ matrix.stage1_bin }}" || true
-                  STAGE1_ASSET="$ASSET"
-                  break
+                  if probe_stage1_chain "${{ matrix.stage1_bin }}"; then
+                    STAGE1_ASSET="$ASSET"
+                    break
+                  fi
+                  echo "Rejecting bootstrap asset $ASSET: probe failed"
+                  rm -f "${{ matrix.stage1_bin }}"
                 fi
               done
             fi
@@ -200,6 +235,17 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          thg_build() {
+            local cc="$1"
+            local src="$2"
+            local out="$3"
+            echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+            if "./$cc" build "$src" -o "$out"; then
+              return 0
+            fi
+            echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" --build "$src" -o "$out"
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -213,14 +259,12 @@ jobs:
             done
             return 1
           }
-          echo "[CMD] ./${{ matrix.stage1_bin }} build src/thagore.tg -o ${{ matrix.stage2_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./${{ matrix.stage1_bin }}" build src/thagore.tg -o "${{ matrix.stage2_bin }}"
+          thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
 
-          echo "[CMD] ./$STAGE2_BIN build src/thagore.tg -o ${{ matrix.stage2_rebuild_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_BIN" build src/thagore.tg -o "${{ matrix.stage2_rebuild_bin }}"
+          thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"
           STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
           if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
@@ -228,13 +272,11 @@ jobs:
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "${{ matrix.hello_bin }}"
           HELLO_BIN="$(resolve_bin "${{ matrix.hello_bin }}" "examples/hello.tg")"
           test -f "$HELLO_BIN"
 
-          echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "${{ matrix.fib_bin }}"
           FIB_BIN="$(resolve_bin "${{ matrix.fib_bin }}" "examples/fib.tg")"
           test -f "$FIB_BIN"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
