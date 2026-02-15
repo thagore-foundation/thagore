@@ -217,19 +217,66 @@ func _map_set(map_text: String, key: String, value: String) -> String:
     let right = __thg_str_substr(map_text, p + strlen(needle), strlen(map_text) - p - strlen(needle))
     return left + key + "=" + value + ";" + right
 
-func _escape_string_literal(text: String) -> String:
-    let out = ""
-    let i = 0
+func _ascii_code(ch: String) -> i32:
+    if (ch == " "):
+        return 32
+    if (ch == "!"):
+        return 33
+    if (ch == ","):
+        return 44
+    if (ch == "-"):
+        return 45
+    if (ch == "."):
+        return 46
+    if (ch == "/"):
+        return 47
+    if (_contains("0123456789", ch) == 1):
+        return 48 + _find("0123456789", ch)
+    if (ch == ":"):
+        return 58
+    if (ch == ";"):
+        return 59
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 65 + _find("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch)
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 97 + _find("abcdefghijklmnopqrstuvwxyz", ch)
+    if (ch == "_"):
+        return 95
+    if (ch == "("):
+        return 40
+    if (ch == ")"):
+        return 41
+    if (ch == "["):
+        return 91
+    if (ch == "]"):
+        return 93
+    if (ch == "{"):
+        return 123
+    if (ch == "}"):
+        return 125
+    if (ch == "<"):
+        return 60
+    if (ch == ">"):
+        return 62
+    if (ch == "?"):
+        return 63
+    if (ch == "+"):
+        return 43
+    if (ch == "="):
+        return 61
+    if (ch == "*"):
+        return 42
+    return 63
+
+func _emit_i8_array(text: String) -> String:
     let n = strlen(text)
+    let i = 0
+    let out = ""
     while (i < n):
-        let ch = _char_at(text, i)
-        if (ch == "\\"):
-            out = out + "\\5C"
-        else:
-            if (ch == "\n"):
-                out = out + "\\0A"
-            else:
-                out = out + ch
+        let code = _ascii_code(_char_at(text, i))
+        if (i > 0):
+            out = out + ", "
+        out = out + "i8 " + _to_string_i32(code)
         i = i + 1
     return out
 
@@ -238,11 +285,9 @@ func _unwrap_string_literal(text: String) -> String:
     let n = strlen(s)
     if (n < 2):
         return ""
-    if ((_char_at(s, 0) == "\"") and (_char_at(s, n - 1) == "\"")):
-        return __thg_str_substr(s, 1, n - 2)
-    if ((n >= 3) and (_char_at(s, 0) == "v") and (_char_at(s, 1) == "\"") and (_char_at(s, n - 1) == "\"")):
+    if ((_char_at(s, 0) == "v") and (n >= 3)):
         return __thg_str_substr(s, 2, n - 3)
-    return ""
+    return __thg_str_substr(s, 1, n - 2)
 
 func _digit_char(digit: i32) -> String:
     return __thg_str_substr("0123456789", digit, 1)
@@ -364,9 +409,9 @@ func _emit_print_stmt(line: String, slots: String, t: i32, sidx: i32, globals: S
     let lit = _unwrap_string_literal(arg)
     if (lit.length() > 0):
         let gid = "@.str." + _tag(sidx)
-        let esc = _escape_string_literal(lit)
         let n = strlen(lit) + 1
-        let gline = gid + " = private unnamed_addr constant [" + _to_string_i32(n) + " x i8] c\"" + esc + "\\00\"\n"
+        let bytes = _emit_i8_array(lit)
+        let gline = gid + " = private unnamed_addr constant [" + _to_string_i32(n) + " x i8] [" + bytes + ", i8 0]\n"
         let ir = "  call void @__thg_print_str(ptr " + gid + ", i32 " + _to_string_i32(strlen(lit)) + ")\n"
         return EmitPrintResult(ir, t, sidx + 1, globals + gline)
     let e = _emit_expr(arg, slots, t, sidx, globals)

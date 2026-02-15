@@ -1,4 +1,207 @@
-extern func __thg_cli_main_native() -> i32
+import "lib/env.tg" as env
+import "lib/fs.tg" as fs
+import "lib/process.tg" as process
+import "src/frontend/lowering/pipeline.tg" as lowering
+import "src/frontend/native/typechecker.tg" as typechecker
+import "src/backend/llvm/emitter.tg" as emitter
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return text
+    let l = 0
+    while (l < n):
+        let ch = _char_at(text, l)
+        if ((ch == " ") or (ch == "\t") or (ch == "\r") or (ch == "\n")):
+            l = l + 1
+        else:
+            l = n
+    let left = 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if ((ch == " ") or (ch == "\t") or (ch == "\r") or (ch == "\n")):
+            i = i + 1
+            left = i
+        else:
+            i = n
+    let right = n - 1
+    let j = n - 1
+    while (j >= left):
+        let ch2 = _char_at(text, j)
+        if ((ch2 == " ") or (ch2 == "\t") or (ch2 == "\r") or (ch2 == "\n")):
+            j = j - 1
+            right = j
+        else:
+            j = left - 1
+    if (right < left):
+        return ""
+    return __thg_str_substr(text, left, right - left + 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _quote(s: String) -> String:
+    return s
+
+func _base_name(path: String) -> String:
+    let n = strlen(path)
+    let last_sep = -1
+    let i = 0
+    while (i < n):
+        let ch = _char_at(path, i)
+        if (ch == "/"):
+            last_sep = i
+        i = i + 1
+    if (last_sep < 0):
+        return path
+    return __thg_str_substr(path, last_sep + 1, n - last_sep - 1)
+
+func _strip_ext(name: String) -> String:
+    let n = strlen(name)
+    let last_dot = -1
+    let i = 0
+    while (i < n):
+        if (_char_at(name, i) == "."):
+            last_dot = i
+        i = i + 1
+    if (last_dot < 0):
+        return name
+    return __thg_str_substr(name, 0, last_dot)
+
+func _default_output(input_path: String) -> String:
+    return _strip_ext(_base_name(input_path))
+
+func _detect_clang() -> String:
+    if (process.run("clang --version > thagore_clang_probe.log 2>&1") == 0):
+        return "clang"
+    if (process.run("C:/Progra~1/LLVM/bin/clang.exe --version > thagore_clang_probe.log 2>&1") == 0):
+        return "C:/Progra~1/LLVM/bin/clang.exe"
+    if (process.run("/usr/bin/clang --version > thagore_clang_probe.log 2>&1") == 0):
+        return "/usr/bin/clang"
+    if (process.run("/usr/local/bin/clang --version > thagore_clang_probe.log 2>&1") == 0):
+        return "/usr/local/bin/clang"
+    return ""
+
+func _link_exe(ir_path: String, out_path: String) -> i32:
+    let clang_bin = _detect_clang()
+    if (clang_bin.length() == 0):
+        print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
+        return 1
+    let cmd1 = clang_bin + " " + _quote(ir_path) + " -o " + _quote(out_path) + " -Wno-override-module thag_runtime.lib"
+    if (process.run(cmd1) == 0):
+        return 0
+    let cmd2 = clang_bin + " " + _quote(ir_path) + " -o " + _quote(out_path) + " -Wno-override-module libthag_runtime.a"
+    if (process.run(cmd2) == 0):
+        return 0
+    let cmd3 = clang_bin + " " + _quote(ir_path) + " -o " + _quote(out_path) + " -Wno-override-module"
+    if (process.run(cmd3) == 0):
+        return 0
+    return 1
+
+func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
+    let source = fs.read_text(input_path)
+    if (source.length() == 0):
+        print("ERROR: cannot read source file: " + input_path)
+        return 1
+    let lowered = lowering.preprocess(source)
+    if (typechecker.validate_source(lowered) != 0):
+        print("ERROR: typecheck failed.")
+        return 1
+    let module_name = _strip_ext(_base_name(input_path))
+    let ir = emitter.emit_program_from_source(lowered, module_name)
+    let ir_path = out_path + ".ll"
+    if (emit_only == 1):
+        if (out_path.length() > 3):
+            if (__thg_str_substr(out_path, out_path.length() - 3, 3) == ".ll"):
+                ir_path = out_path
+    if (fs.write_text(ir_path, ir) != 0):
+        print("ERROR: failed to write IR file: " + ir_path)
+        return 1
+    if (emit_only == 1):
+        print(ir_path)
+        return 0
+    if (_link_exe(ir_path, out_path) != 0):
+        print("ERROR: link failed.")
+        return 1
+    print("Build success.")
+    return 0
+
+func _print_help() -> void:
+    print("Thagore Compiler CLI")
+    print("Usage:")
+    print("  thagore build <input.tg> -o <output>")
+    print("  thagore build <input.tg> --emit-llvm")
+    print("  thagore <input.tg> --emit-llvm")
+    print("  thagore install toolchain")
+    print("  thagore --version")
+
+func _install_toolchain() -> i32:
+    if (process.run("clang --version") == 0):
+        print("LLVM already installed.")
+        return 0
+    print("Installing LLVM toolchain...")
+    if (process.run("winget --version > thagore_winget_probe.log 2>&1") == 0):
+        return process.run("winget install LLVM.LLVM")
+    if (process.run("brew --version > thagore_brew_probe.log 2>&1") == 0):
+        return process.run("brew install llvm")
+    if (process.run("apt-get --version > thagore_apt_probe.log 2>&1") == 0):
+        return process.run("sudo apt-get update && sudo apt-get install -y clang lld")
+    print("ERROR: unsupported platform package manager. Install LLVM manually.")
+    return 1
 
 func main() -> i32:
-    return __thg_cli_main_native()
+    let argc = env.count()
+    if (argc <= 1):
+        _print_help()
+        return 0
+    let cmd = _trim(env.get(1))
+    if ((cmd == "--help") or (cmd == "help")):
+        _print_help()
+        return 0
+    if ((cmd == "--version") or (cmd == "version")):
+        print("thagore 0.4.0-native-cli")
+        return 0
+    if ((cmd == "install") and (argc > 2)):
+        if (_trim(env.get(2)) == "toolchain"):
+            return _install_toolchain()
+    let emit_only = 0
+    let input_path = ""
+    let out_path = ""
+    let i = 1
+    if ((cmd == "build") or (cmd == "--build")):
+        if (argc <= 2):
+            print("ERROR: missing input path.")
+            return 1
+        input_path = _trim(env.get(2))
+        i = 3
+    else:
+        input_path = cmd
+        i = 2
+    while (i < argc):
+        let arg = _trim(env.get(i))
+        if (arg == "--emit-llvm"):
+            emit_only = 1
+        else:
+            if ((arg == "-o") and ((i + 1) < argc)):
+                out_path = _trim(env.get(i + 1))
+                i = i + 1
+        i = i + 1
+    if (out_path.length() == 0):
+        out_path = _default_output(input_path)
+    return _build(input_path, out_path, emit_only)
