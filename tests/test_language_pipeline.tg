@@ -40,6 +40,11 @@ func main() -> i32:
     let out_comp = pipe.preprocess(src_comp)
     fails = fails + _expect_str_contains("strip comptime wrapper", out_comp, "let x = 1 + 2")
 
+    let src_comp_fn = "comptime func add(a: i32, b: i32) -> i32:\n    return a + b\nfunc main() -> i32:\n    let y = comptime add(40, 2)\n    return y\n"
+    let out_comp_fn = pipe.preprocess(src_comp_fn)
+    fails = fails + _expect_str_contains("fold comptime func call", out_comp_fn, "let y = 42")
+    fails = fails + _expect_i32("drop comptime func body", _contains(out_comp_fn, "comptime func add"), 0)
+
     let src_gen = "func id[T](x: T) -> T:\n    return x\n"
     let out_gen = pipe.preprocess(src_gen)
     fails = fails + _expect_str_contains("strip generic clause", out_gen, "func id(x: T) -> T:")
