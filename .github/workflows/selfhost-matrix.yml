@@ -245,6 +245,36 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
+            if [[ -z "$got" ]]; then
+              local ll_out="${out}.ll"
+              local runtime_lib="thag_runtime.lib"
+              if [[ "${{ runner.os }}" != "Windows" && -f "libthag_runtime.a" ]]; then
+                runtime_lib="libthag_runtime.a"
+              fi
+              local linker="clang"
+              if command -v clang++ >/dev/null 2>&1; then
+                linker="clang++"
+              fi
+              echo "[CMD] ./$cc --emit-llvm-internal $src -o $ll_out" | tee -a "$STAGE_TRACE_FILE"
+              if "./$cc" --emit-llvm-internal "$src" -o "$ll_out"; then
+                :
+              else
+                echo "[CMD] ./$cc --emit-llvm $src -o $ll_out" | tee -a "$STAGE_TRACE_FILE"
+                "./$cc" --emit-llvm "$src" -o "$ll_out" || return 1
+              fi
+              [[ -f "$ll_out" ]] || return 1
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module || return 1
+              elif [[ "${{ runner.os }}" == "macOS" ]]; then
+                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lc++ -lc++abi" | tee -a "$STAGE_TRACE_FILE"
+                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lc++ -lc++abi || return 1
+              else
+                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lstdc++" | tee -a "$STAGE_TRACE_FILE"
+                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lstdc++ || return 1
+              fi
+              got="$(resolve_local "$out" "$base" || true)"
+            fi
             [[ -n "$got" ]]
           }
           resolve_bin() {
