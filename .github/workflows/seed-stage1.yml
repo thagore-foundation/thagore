@@ -245,7 +245,6 @@ jobs:
             seed-artifacts/**/thagore-stage1.exe
             seed-artifacts/**/thagore-stage1-linux.tar.gz
             seed-artifacts/**/thagore-stage1-macos.tar.gz
-            seed-artifacts/**/seed-stage-trace.log
           make_latest: false
           prerelease: true
           overwrite_files: true
