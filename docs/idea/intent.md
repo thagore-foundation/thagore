@@ -1,4 +1,4 @@
-# Thagore Intent Engine (SIE)
+# Thagore Static Intent Engine (SIE)
 
 Implementation approval: Approved  
 Status: Implemented (MVP + CI hardening baseline)  
@@ -6,6 +6,8 @@ Owner: Thagore Compiler / Optimizer
 Last updated: 2026-02-15
 
 ## 1) Vision
+
+`SIE` = `Static Intent Engine`.
 
 `intent` is a deterministic optimization feature that lets developers describe *goal + constraints* while Thagore generates and selects an efficient implementation at build time.
 

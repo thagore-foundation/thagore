@@ -1,0 +1,45 @@
+func sum_squares_loop(n: i32) -> i32:
+    if (n <= 0):
+        return 0
+    let i = 1
+    let s = 0
+    while (i <= n):
+        s = s + i * i
+        i = i + 1
+    return s
+
+func sum_squares_formula(n: i32) -> i32:
+    if (n <= 0):
+        return 0
+    let a = n
+    let b = n + 1
+    let c = n * 2 + 1
+    if ((a - (a / 2) * 2) == 0):
+        a = a / 2
+    else:
+        b = b / 2
+    if ((a - (a / 3) * 3) == 0):
+        a = a / 3
+    else:
+        if ((b - (b / 3) * 3) == 0):
+            b = b / 3
+        else:
+            c = c / 3
+    return a * b * c
+
+func main() -> i32:
+    let n = 1
+    while (n <= 2000):
+        let x = sum_squares_loop(n)
+        let y = sum_squares_formula(n)
+        if (x != y):
+            print("mismatch n:")
+            print(n)
+            print("x:")
+            print(x)
+            print("y:")
+            print(y)
+            return 1
+        n = n + 1
+    print("OK")
+    return 0
