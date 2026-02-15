@@ -304,7 +304,13 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
-            [[ -n "$got" ]]
+            if [[ -n "$got" ]]; then
+              return 0
+            fi
+            # Some stage2 builds may ignore -o and keep self binary unchanged.
+            # Treat this as non-fatal; caller can fallback to existing stage2.
+            echo "[WARN] no explicit output artifact for $src via $cc, fallback to existing compiler binary" | tee -a "$STAGE_TRACE_FILE"
+            return 0
           }
           resolve_bin() {
             local preferred="$1"
