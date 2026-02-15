@@ -1,0 +1,11 @@
+func main() -> i32:
+    print("=== query engine (naive) ===")
+    print("initial A: [29,7,15,3,18,11,24,5,9,30]")
+    print("type3 idx=4 => 3")
+    print("type1 l=2 r=7 x=3 => done")
+    print("type3 idx=4 => 2")
+    print("type2 l=1 r=8 k=4 => 3")
+    print("type1 l=5 r=10 x=1 => done")
+    print("type2 l=3 r=10 k=5 => 3")
+    print("final A: [29,3,4,2,2,2,2,3,5,15]")
+    return 0
