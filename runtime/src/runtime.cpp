@@ -4806,6 +4806,8 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   }
 
   // Internal emit mode must avoid helper recursion.
+  // Keep parser fallback here as a guarded compatibility path until
+  // runtime-native emitter can fully replace helper-based bootstrap.
   if (isInternalEmitMode()) {
     auto *fallback = parseProgramSource(source);
     return __thg_codegen_emit_llvm(fallback);
@@ -4851,7 +4853,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   std::filesystem::path helperPath {};
   std::size_t dynamicCount = 0;
   std::vector<std::filesystem::path> dynamicCandidates {};
-  if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
+  if (const char *configured = std::getenv("THAG_HELPER_BIN"); configured != nullptr && *configured != '\0') {
     helperPath = std::filesystem::path(configured);
   } else {
 #if defined(_WIN32)
