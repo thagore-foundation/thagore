@@ -119,6 +119,52 @@ def run_state(jobs: List[Dict[str, Any]]) -> str:
     return "SUCCESS"
 
 
+def status_icon(state: str) -> str:
+    return {
+        "SUCCESS": "✅",
+        "RUNNING": "🟡",
+        "FAIL": "❌",
+        "success": "✅",
+        "running": "🟡",
+        "wait": "⏳",
+        "skip": "⏭️",
+        "fail": "❌",
+    }.get(state, "ℹ️")
+
+
+def status_color(state: str) -> int:
+    return {
+        "SUCCESS": 0x2ECC71,
+        "RUNNING": 0xF1C40F,
+        "FAIL": 0xE74C3C,
+    }.get(state, 0x95A5A6)
+
+
+def truncate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def chunk_lines(lines: List[str], max_len: int = 950) -> List[str]:
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+    for line in lines:
+        piece = truncate(line, 300)
+        add_len = len(piece) + (1 if cur else 0)
+        if cur and (cur_len + add_len) > max_len:
+            chunks.append("\n".join(cur))
+            cur = [piece]
+            cur_len = len(piece)
+        else:
+            cur.append(piece)
+            cur_len += add_len
+    if cur:
+        chunks.append("\n".join(cur))
+    return chunks
+
+
 def current_step_name(job: Dict[str, Any]) -> str:
     for step in job.get("steps", []) or []:
         if step.get("status") == "in_progress":
@@ -131,15 +177,15 @@ def is_notify_job(job_name: str) -> bool:
     return "discord-notify" in lowered or "discord-finalize" in lowered
 
 
-def build_content(
+def build_payload(
     repo: str,
     run: Dict[str, Any],
     commit: Dict[str, Any],
     jobs: List[Dict[str, Any]],
     milestone: str,
-) -> str:
+) -> Dict[str, Any]:
     sha = run.get("head_sha", "")
-    commit_first_line = to_one_line(commit.get("commit", {}).get("message", ""))
+    commit_first_line = to_one_line(commit.get("commit", {}).get("message", "")) or "(no message)"
     author = (
         commit.get("author", {}) or {}
     ).get("login") or (commit.get("commit", {}).get("author", {}) or {}).get("name") or run.get(
@@ -151,18 +197,9 @@ def build_content(
     run_url = run.get("html_url", "")
     workflow_name = run.get("name", "Workflow")
     event = run.get("event", "")
-    branch = run.get("head_branch", "")
+    branch = run.get("head_branch", "") or "-"
 
-    lines = [
-        f"**[{workflow_name}] {status}**",
-        f"Repo: `{repo}`",
-        f"Branch/Event: `{branch}` / `{event}`",
-        f"Commit: `{to_short_sha(sha)}` - {commit_first_line}",
-        f"By: `{author}`",
-        f"Run: {run_url}",
-        "",
-        "**Jobs**",
-    ]
+    job_lines: List[str] = []
 
     for job in sorted(jobs, key=lambda j: j.get("name", "")):
         name = job.get("name", "unknown-job")
@@ -170,11 +207,43 @@ def build_content(
         step_name = current_step_name(job)
         if milestone and state == "running" and step_name.startswith("Discord update -"):
             step_name = milestone
-        line = f"- `{name}`: `{state}` - step: `{step_name}`"
+        icon = status_icon(state)
+        line = f"{icon} `{name}` • `{state}` • `{step_name}`"
         if state in ("running", "fail") and job.get("html_url"):
-            line += f" - {job['html_url']}"
-        lines.append(line)
-    return "\n".join(lines)
+            line += f" • [link]({job['html_url']})"
+        job_lines.append(line)
+
+    fields: List[Dict[str, Any]] = [
+        {
+            "name": "🧾 Commit",
+            "value": truncate(f"`{to_short_sha(sha)}` {commit_first_line}", 1024),
+            "inline": False,
+        },
+        {"name": "👤 By", "value": truncate(f"`{author}`", 1024), "inline": True},
+        {
+            "name": "🌿 Branch / Event",
+            "value": truncate(f"`{branch}` / `{event}`", 1024),
+            "inline": True,
+        },
+    ]
+
+    chunks = chunk_lines(job_lines) or ["(no jobs)"]
+    for idx, chunk in enumerate(chunks, start=1):
+        suffix = "" if len(chunks) == 1 else f" ({idx}/{len(chunks)})"
+        fields.append({"name": f"🛠️ Jobs{suffix}", "value": chunk, "inline": False})
+
+    embed: Dict[str, Any] = {
+        "title": f"{status_icon(status)} [{workflow_name}] {status}",
+        "url": run_url,
+        "color": status_color(status),
+        "fields": fields[:25],
+        "footer": {"text": f"📦 {repo}"},
+    }
+    timestamp = run.get("updated_at") or run.get("run_started_at")
+    if timestamp:
+        embed["timestamp"] = timestamp
+
+    return {"content": "", "embeds": [embed], "allowed_mentions": {"parse": []}}
 
 
 def main() -> int:
@@ -206,8 +275,7 @@ def main() -> int:
             continue
         jobs.append(job)
 
-    content = build_content(repo, run, commit, jobs, milestone)
-    payload = {"content": content}
+    payload = build_payload(repo, run, commit, jobs, milestone)
 
     if mode == "init":
         response = webhook_request("POST", webhook_url, payload)
