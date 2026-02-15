@@ -327,15 +327,14 @@ Mitigation: `min|max` modes and lock reuse.
 - Auto-inventing unknown algorithms outside approved rule space.
 - Runtime adaptive optimization service.
 
-## 16) Relationship with Capsule
+## 16) Relationship with Drago
 
 - `intent` optimizes internal algorithm strategy.
-- `capsule` optimizes deployment/distribution.
+- `drago` handles package/distribution workflows.
 
 Combined workflow:
 
 1. `thagore intent lock src/app.tg`
-2. `thagore capsule build src/app.tg --lock thagore.capsule.lock`
+2. `drago pack src/app.tg --lock drago.lock`
 
 Both remain optional and independent from default `build`.
-

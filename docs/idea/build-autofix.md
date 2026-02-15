@@ -255,12 +255,11 @@ Mitigation: dry-run mode, explain output, rollback support.
 ## 17) Relationship with other ideas
 
 - Works with `intent`: AutoFix cleans syntax/semantic friction before intent optimization.
-- Works with `capsule`: AutoFix stabilizes build input before packaging.
+- Works with `drago`: AutoFix stabilizes build input before packaging/distribution.
 
 Recommended combined pipeline:
 
 1. `thagore fix dry-run src/app.tg`
 2. `thagore build src/app.tg --autofix=safe`
 3. `thagore intent lock src/app.tg`
-4. `thagore capsule build src/app.tg`
-
+4. `drago pack src/app.tg --lock drago.lock`
