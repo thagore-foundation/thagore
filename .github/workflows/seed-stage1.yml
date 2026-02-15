@@ -83,7 +83,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          choco install llvm --version=21.1.8 --no-progress -y
+          if command -v clang >/dev/null 2>&1; then
+            echo "Using preinstalled clang on Windows:"
+            clang --version
+            exit 0
+          fi
+          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
+            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+            clang --version
+            exit 0
+          fi
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
           echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
           clang --version
 
