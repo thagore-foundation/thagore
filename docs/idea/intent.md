@@ -275,7 +275,9 @@ Never allowed:
 - `count_greater_sorted` *(sorted count `> x` via `n - upper_bound`)*
 - `count_greater_equal_sorted` *(sorted count `>= x` via `n - lower_bound`)*
 - `count_equal_sorted` *(sorted count `== x` via two binary bounds)*
+- `count_not_equal_sorted` *(sorted count `!= x` via `n - count_equal`)*
 - `count_range_sorted` *(sorted count `[lo..hi]` via two binary bounds)*
+- `count_outside_range_sorted` *(sorted count outside `[lo..hi]` via `n - count_range`)*
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
@@ -291,6 +293,8 @@ Never allowed:
 - `sum_cubes_formula` *(looped sum of cubes -> closed form)*
 - `sum_even_squares_formula` *(sum of even squares up to `n` -> closed form)*
 - `sum_odd_squares_formula` *(sum of odd squares up to `n` -> closed form)*
+- `sum_even_cubes_formula` *(sum of even cubes up to `n` -> closed form)*
+- `sum_odd_cubes_formula` *(sum of odd cubes up to `n` -> closed form)*
 - `sum_even_formula` *(sum of even numbers up to `n` -> closed form)*
 - `sum_odd_formula` *(sum of odd numbers up to `n` -> closed form)*
 - `sort_ascending`
@@ -324,11 +328,15 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `search.count_greater.v1`
 - `search.count_greater_equal.v1`
 - `search.count_equal.v1`
+- `search.count_not_equal.v1`
 - `search.count_range.v1`
+- `search.count_outside_range.v1`
 - `math.sum_squares.formula.v1`
 - `math.sum_cubes.formula.v1`
 - `math.sum_even_squares.formula.v1`
 - `math.sum_odd_squares.formula.v1`
+- `math.sum_even_cubes.formula.v1`
+- `math.sum_odd_cubes.formula.v1`
 - `math.sum_even.formula.v1`
 - `math.sum_odd.formula.v1`
 
@@ -441,6 +449,32 @@ Measured benchmark in this repo (same machine/session):
 - speedup: `2.05x` (median)
 
 This pack demonstrates multi-rule composition across sorted counting kernels and closed-form numeric rewrites in one deterministic intent build.
+
+### 11.4 Visual Example: Ultra Pack (`not-equal/outside-range + parity cubes`)
+
+Files:
+
+- `examples/intent_real_ultra_pack_naive.tg`
+- `examples/intent_real_ultra_pack_intent.tg`
+
+Intent variant pins:
+
+- `goal: count_not_equal_sorted` + `strategy: search.count_not_equal.v1`
+- `goal: count_outside_range_sorted` + `strategy: search.count_outside_range.v1`
+- `goal: sum_even_cubes_formula` + `strategy: math.sum_even_cubes.formula.v1`
+- `goal: sum_odd_cubes_formula` + `strategy: math.sum_odd_cubes.formula.v1`
+
+Benchmark command:
+
+- `py -3 scripts/benchmark_ultra_pack_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+
+Measured benchmark in this repo (same machine/session):
+
+- native median: `0.827634s`
+- intent median: `0.343419s`
+- speedup: `2.41x` (median)
+
+This pack stresses mixed sorted-count and parity-cube formulas and confirms deterministic rewrite composition with matching runtime outputs.
 
 ## 12) Implementation plan
 
