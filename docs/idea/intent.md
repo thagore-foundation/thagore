@@ -340,6 +340,23 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `math.sum_even.formula.v1`
 - `math.sum_odd.formula.v1`
 
+### 11.0 Adaptive Matching Layer (new)
+
+To scale beyond strict MVP templates, Stage0 now includes a deterministic matcher-normalization layer:
+
+- condition normalization for `if (...)` / `while (...)` (strip redundant outer parentheses),
+- comparator equivalence matching (e.g. `arr[i] >= x` and `x <= arr[i]` are treated as same intent shape),
+- tolerant `return` matching (`return x` and `return(x)`),
+- loop-bound extraction tolerant to reversed form (`i < n` and `n > i`).
+
+This significantly improves `auto_plan` behavior on real-world style variance without introducing non-determinism.
+
+Reference smoke:
+
+- source: `examples/intent_adaptive_style_auto_plan.tg`
+- checker: `scripts/intent_adaptive_smoke.py`
+- command: `py -3 scripts/intent_adaptive_smoke.py --compiler legacy/build/Release/thag.exe`
+
 ### 11.1 Visual Example: Sprinkler Cover
 
 Problem shape:

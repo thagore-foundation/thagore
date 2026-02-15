@@ -1,0 +1,52 @@
+import fs
+
+intent func qx(arr: [i32; 32], n: i32, x: i32) -> i32:
+    goal: auto_plan
+    constraints:
+        deterministic == true
+
+intent func zz(arr: [i32; 32], n: i32, x: i32) -> i32:
+    goal: auto_plan
+    constraints:
+        deterministic == true
+
+intent func mm(arr: [i32; 32], n: i32, low: i32, high: i32) -> i32:
+    goal: auto_plan
+    constraints:
+        deterministic == true
+
+func qx(arr: [i32; 32], n: i32, x: i32) -> i32:
+    let i = 0
+    while (n > i):
+        if (x <= arr[i]):
+            return (i)
+        i = i + 1
+    return (n)
+
+func zz(arr: [i32; 32], n: i32, x: i32) -> i32:
+    let p = 0
+    while ((p < n) and (arr[p] < x)):
+        p = p + 1
+    let q = p
+    while ((q < n) and (arr[q] == x)):
+        q = q + 1
+    return (n - (q - p))
+
+func mm(arr: [i32; 32], n: i32, low: i32, high: i32) -> i32:
+    let i = 0
+    let out = 0
+    while (n > i):
+        if ((low > arr[i]) or (high < arr[i])):
+            out = out + 1
+        i = i + 1
+    return (out)
+
+func main() -> i32:
+    let arr = [1, 2, 2, 3, 3, 5, 8, 13, 13, 21, 21, 21, 34, 55, 55, 89, 89, 144, 233, 377, 610, 610, 987, 1597, 1597, 1597, 2584, 4181, 6765, 6765, 10946, 17711]
+    let n = 32
+    let a = qx(arr, n, 21)
+    let b = zz(arr, n, 21)
+    let c = mm(arr, n, 8, 1000)
+    print("adaptive checksum:")
+    print(a + b + c)
+    return 0

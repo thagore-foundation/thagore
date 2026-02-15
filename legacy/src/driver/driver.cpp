@@ -109,6 +109,152 @@ auto normalizedLowerNoSpace(std::string_view text) -> std::string {
   return compactNoSpace(toLowerCopy(text));
 }
 
+auto stripOuterParens(std::string text) -> std::string {
+  while (text.size() >= 2 && text.front() == '(' && text.back() == ')') {
+    int depth = 0;
+    bool wrapsAll = true;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      if (text[i] == '(') {
+        ++depth;
+      } else if (text[i] == ')') {
+        --depth;
+        if (depth == 0 && i + 1 < text.size()) {
+          wrapsAll = false;
+          break;
+        }
+      }
+      if (depth < 0) {
+        wrapsAll = false;
+        break;
+      }
+    }
+    if (!wrapsAll || depth != 0) {
+      break;
+    }
+    text = text.substr(1, text.size() - 2);
+  }
+  return text;
+}
+
+auto reverseComparator(std::string_view op) -> std::string_view {
+  if (op == "<") {
+    return ">";
+  }
+  if (op == "<=") {
+    return ">=";
+  }
+  if (op == ">") {
+    return "<";
+  }
+  if (op == ">=") {
+    return "<=";
+  }
+  return op;
+}
+
+auto extractIfConditionCompact(const std::string &lineCompact) -> std::optional<std::string> {
+  if (!(lineCompact.starts_with("if(") && lineCompact.ends_with("):"))) {
+    return std::nullopt;
+  }
+  auto cond = lineCompact.substr(3, lineCompact.size() - 5);
+  cond = stripOuterParens(std::move(cond));
+  return cond;
+}
+
+auto extractWhileConditionCompact(const std::string &lineCompact) -> std::optional<std::string> {
+  if (!(lineCompact.starts_with("while(") && lineCompact.ends_with("):"))) {
+    return std::nullopt;
+  }
+  auto cond = lineCompact.substr(6, lineCompact.size() - 8);
+  cond = stripOuterParens(std::move(cond));
+  return cond;
+}
+
+auto matchComparatorEquivalent(
+  std::string_view cond,
+  std::string_view left,
+  std::string_view op,
+  std::string_view right
+) -> bool {
+  const auto direct = std::string(left) + std::string(op) + std::string(right);
+  if (cond == direct) {
+    return true;
+  }
+  const auto rev = reverseComparator(op);
+  const auto swapped = std::string(right) + std::string(rev) + std::string(left);
+  return cond == swapped;
+}
+
+auto ifComparatorMatches(
+  const std::string &lineCompact,
+  std::string_view left,
+  std::string_view op,
+  std::string_view right
+) -> bool {
+  const auto cond = extractIfConditionCompact(lineCompact);
+  if (!cond.has_value()) {
+    return false;
+  }
+  return matchComparatorEquivalent(*cond, left, op, right);
+}
+
+auto whileComparatorMatches(
+  const std::string &lineCompact,
+  std::string_view left,
+  std::string_view op,
+  std::string_view right
+) -> bool {
+  const auto cond = extractWhileConditionCompact(lineCompact);
+  if (!cond.has_value()) {
+    return false;
+  }
+  return matchComparatorEquivalent(*cond, left, op, right);
+}
+
+auto returnExprMatches(const std::string &lineCompact, std::string_view expr) -> bool {
+  if (lineCompact == std::string("return") + std::string(expr)) {
+    return true;
+  }
+  return lineCompact == std::string("return(") + std::string(expr) + ")";
+}
+
+auto tryExtractLoopVarAgainstBound(
+  const std::string &lineCompact,
+  std::string_view bound,
+  std::string &loopVarOut
+) -> bool {
+  const auto condOpt = extractWhileConditionCompact(lineCompact);
+  if (!condOpt.has_value()) {
+    return false;
+  }
+  const auto &cond = *condOpt;
+
+  const auto tryDirect = [&](std::string_view op) -> bool {
+    const auto suffix = std::string(op) + std::string(bound);
+    if (cond.ends_with(suffix) && cond.size() > suffix.size()) {
+      loopVarOut = stripOuterParens(cond.substr(0, cond.size() - suffix.size()));
+      return !loopVarOut.empty();
+    }
+    return false;
+  };
+  if (tryDirect("<") || tryDirect("<=")) {
+    return true;
+  }
+
+  const auto tryReverse = [&](std::string_view op) -> bool {
+    const auto prefix = std::string(bound) + std::string(op);
+    if (cond.starts_with(prefix) && cond.size() > prefix.size()) {
+      loopVarOut = stripOuterParens(cond.substr(prefix.size()));
+      return !loopVarOut.empty();
+    }
+    return false;
+  };
+  if (tryReverse(">") || tryReverse(">=")) {
+    return true;
+  }
+  return false;
+}
+
 auto splitLinesNormalized(const std::string &source) -> std::vector<std::string> {
   std::vector<std::string> lines {};
   std::string current {};
@@ -520,12 +666,7 @@ auto inferRewriteKindFromBody(
     bool hasPrimeReturn0 = false;
     bool hasPrimeReturn1 = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<" + nCompact + "):");
-        if (p != std::string::npos) {
-          primeLoopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, nCompact, primeLoopVar)) {}
       if (!primeLoopVar.empty()) {
         if (c == primeLoopVar + "=" + primeLoopVar + "+1") {
           hasPrimeLoopInc = true;
@@ -555,12 +696,7 @@ auto inferRewriteKindFromBody(
     bool hasDivInc = false;
     bool hasDivCountInc = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<=" + nCompact + "):");
-        if (p != std::string::npos) {
-          divLoopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, nCompact, divLoopVar)) {}
       if (c.starts_with("return")) {
         const auto candidate = c.substr(6);
         if (!candidate.empty() && std::isalpha(static_cast<unsigned char>(candidate[0])) != 0) {
@@ -596,12 +732,7 @@ auto inferRewriteKindFromBody(
     bool hasCubeInc = false;
     bool hasCubeReturn = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<=" + nCompact + "):");
-        if (p != std::string::npos) {
-          cubeLoopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, nCompact, cubeLoopVar)) {}
       if (!cubeLoopVar.empty()) {
         if (c.find("+" + cubeLoopVar + "*" + cubeLoopVar + "*" + cubeLoopVar) != std::string::npos
             && c.find('=') != std::string::npos) {
@@ -646,12 +777,7 @@ auto inferRewriteKindFromBody(
     bool hasSquareInc = false;
     bool hasSquareReturn = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<=" + nCompact + "):");
-        if (p != std::string::npos) {
-          squareLoopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, nCompact, squareLoopVar)) {}
       if (!squareLoopVar.empty()) {
         if (c.find("+" + squareLoopVar + "*" + squareLoopVar) != std::string::npos
             && c.find("+" + squareLoopVar + "*" + squareLoopVar + "*" + squareLoopVar) == std::string::npos
@@ -697,12 +823,7 @@ auto inferRewriteKindFromBody(
     bool hasOddCond = false;
     bool hasReturn = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<=" + nCompact + "):");
-        if (p != std::string::npos) {
-          loopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, nCompact, loopVar)) {}
       if (!loopVar.empty()) {
         if (c.find("+" + loopVar) != std::string::npos && c.find('=') != std::string::npos) {
           hasSumStep = true;
@@ -772,12 +893,7 @@ auto inferRewriteKindFromBody(
     std::string powerLoopVar {};
     std::string powerReturnVar {};
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<" + second + "):");
-        if (p != std::string::npos) {
-          powerLoopVar = c.substr(6, p - 6);
-        }
-      }
+      if (tryExtractLoopVarAgainstBound(c, second, powerLoopVar)) {}
       if (c.starts_with("return")) {
         const auto candidate = c.substr(6);
         if (!candidate.empty() && std::isalpha(static_cast<unsigned char>(candidate[0])) != 0) {
@@ -870,52 +986,48 @@ auto inferRewriteKindFromBody(
       bool hasCountRightWhile = false;
       bool hasCountRightInit = false;
       bool hasCountReturn = false;
+      bool hasCountNotEqualReturn = false;
       for (const auto &c : compact) {
-        if (c.starts_with("while(") && c.ends_with("):")) {
-          const auto p = c.find("<" + nParam + "):");
-          if (p != std::string::npos) {
-            loopVar = c.substr(6, p - 6);
+        if (tryExtractLoopVarAgainstBound(c, nParam, loopVar)) {}
+        const auto leftSig = "<" + nParam + ")and(" + arrParam + "[";
+        const auto rightSig = "<" + nParam + ")and(" + arrParam + "[";
+        if (c.starts_with("while((")
+            && c.find(leftSig) != std::string::npos
+            && c.find("<" + targetParam + ")):" ) != std::string::npos) {
+          const auto leftPos = std::size_t {7};
+          const auto endPos = c.find("<" + nParam + ")");
+          if (endPos != std::string::npos && endPos > leftPos) {
+            countLeftVar = c.substr(leftPos, endPos - leftPos);
+            hasCountLeftWhile = true;
           }
-          const auto leftSig = "<" + nParam + ")and(" + arrParam + "[";
-          const auto rightSig = "<" + nParam + ")and(" + arrParam + "[";
-          if (c.starts_with("while((")
-              && c.find(leftSig) != std::string::npos
-              && c.find("<" + targetParam + ")):" ) != std::string::npos) {
-            const auto leftPos = std::size_t {7};
-            const auto endPos = c.find("<" + nParam + ")");
-            if (endPos != std::string::npos && endPos > leftPos) {
-              countLeftVar = c.substr(leftPos, endPos - leftPos);
-              hasCountLeftWhile = true;
-            }
-          }
-          if (c.starts_with("while((")
-              && c.find(rightSig) != std::string::npos
-              && c.find("==" + targetParam + ")):" ) != std::string::npos) {
-            const auto leftPos = std::size_t {7};
-            const auto endPos = c.find("<" + nParam + ")");
-            if (endPos != std::string::npos && endPos > leftPos) {
-              countRightVar = c.substr(leftPos, endPos - leftPos);
-              hasCountRightWhile = true;
-            }
+        }
+        if (c.starts_with("while((")
+            && c.find(rightSig) != std::string::npos
+            && c.find("==" + targetParam + ")):" ) != std::string::npos) {
+          const auto leftPos = std::size_t {7};
+          const auto endPos = c.find("<" + nParam + ")");
+          if (endPos != std::string::npos && endPos > leftPos) {
+            countRightVar = c.substr(leftPos, endPos - leftPos);
+            hasCountRightWhile = true;
           }
         }
         if (!loopVar.empty()) {
-          if (c == "if(" + arrParam + "[" + loopVar + "]>=" + targetParam + "):") {
+          if (ifComparatorMatches(c, arrParam + "[" + loopVar + "]", ">=", targetParam)) {
             hasLowerBoundIf = true;
           }
-          if (c == "if(" + arrParam + "[" + loopVar + "]==" + targetParam + "):") {
+          if (ifComparatorMatches(c, arrParam + "[" + loopVar + "]", "==", targetParam)) {
             hasEqTarget = true;
           }
-          if (c == "if(" + arrParam + "[" + loopVar + "]>" + targetParam + "):") {
+          if (ifComparatorMatches(c, arrParam + "[" + loopVar + "]", ">", targetParam)) {
             hasGtTarget = true;
             hasUpperBoundIf = true;
           }
-          if (c == "return" + loopVar) {
+          if (returnExprMatches(c, loopVar)) {
             hasUpperBoundRetLoop = true;
             hasLowerBoundRetLoop = true;
             hasRetLoop = true;
           }
-          if (c == "return" + nParam + "-" + loopVar) {
+          if (returnExprMatches(c, nParam + "-" + loopVar)) {
             hasRetNMinusLoop = true;
           }
           if (c == loopVar + "=" + loopVar + "+1") {
@@ -928,10 +1040,16 @@ auto inferRewriteKindFromBody(
           hasCountRightInit = true;
         }
         if (!countLeftVar.empty() && !countRightVar.empty()
-            && c == "return" + countRightVar + "-" + countLeftVar) {
+            && returnExprMatches(c, countRightVar + "-" + countLeftVar)) {
           hasCountReturn = true;
         }
-        if (c == "return" + nParam) {
+        if (!countLeftVar.empty() && !countRightVar.empty()) {
+          if (returnExprMatches(c, nParam + "-(" + countRightVar + "-" + countLeftVar + ")")
+              || returnExprMatches(c, nParam + "-" + countRightVar + "+" + countLeftVar)) {
+            hasCountNotEqualReturn = true;
+          }
+        }
+        if (returnExprMatches(c, nParam)) {
           hasUpperBoundRetN = true;
           hasLowerBoundRetN = true;
         }
@@ -962,10 +1080,30 @@ auto inferRewriteKindFromBody(
         out.detectedGoal = "count_greater_equal_sorted";
         return out;
       }
+      if (!countLeftVar.empty() && !countRightVar.empty() && !hasCountRightInit) {
+        for (const auto &c : compact) {
+          if (c == "let" + countRightVar + "=" + countLeftVar || c == countRightVar + "=" + countLeftVar) {
+            hasCountRightInit = true;
+            break;
+          }
+        }
+      }
       if (!countLeftVar.empty() && !countRightVar.empty()
           && hasCountLeftWhile && hasCountRightWhile && hasCountRightInit && hasCountReturn) {
         out.kind = IntentRewriteKind::CountEqualSorted;
         out.detectedGoal = "count_equal_sorted";
+        return out;
+      }
+      if (!countLeftVar.empty() && !countRightVar.empty()
+          && hasCountLeftWhile && hasCountRightWhile && hasCountRightInit && hasCountNotEqualReturn) {
+        out.kind = IntentRewriteKind::CountNotEqualSorted;
+        out.detectedGoal = "count_not_equal_sorted";
+        return out;
+      }
+      if (!countLeftVar.empty() && !countRightVar.empty()
+          && hasCountLeftWhile && hasCountRightWhile && hasCountNotEqualReturn) {
+        out.kind = IntentRewriteKind::CountNotEqualSorted;
+        out.detectedGoal = "count_not_equal_sorted";
         return out;
       }
       if (!loopVar.empty() && hasEqTarget && hasGtTarget && hasRetLoop && hasInc && hasRetNeg1) {
@@ -986,7 +1124,14 @@ auto inferRewriteKindFromBody(
       bool hasRightWhile = false;
       bool hasRightInit = false;
       bool hasRangeReturn = false;
+      bool hasOutsideRangeReturn = false;
+      std::string scanVar {};
+      std::string outsideCountVar {};
+      bool hasOutsideIf = false;
+      bool hasOutsideInc = false;
+      bool hasOutsideReturn = false;
       for (const auto &c : compact) {
+        if (tryExtractLoopVarAgainstBound(c, nParam, scanVar)) {}
         const auto sharedSig = "<" + nParam + ")and(" + arrParam + "[";
         if (c.starts_with("while((")
             && c.find(sharedSig) != std::string::npos
@@ -1015,10 +1160,67 @@ auto inferRewriteKindFromBody(
         if (!leftVar.empty() && !rightVar.empty() && c == "return" + rightVar + "-" + leftVar) {
           hasRangeReturn = true;
         }
+        if (!leftVar.empty() && !rightVar.empty()) {
+          if (returnExprMatches(c, nParam + "-(" + rightVar + "-" + leftVar + ")")
+              || returnExprMatches(c, nParam + "-" + rightVar + "+" + leftVar)) {
+            hasOutsideRangeReturn = true;
+          }
+        }
+
+        if (!scanVar.empty()) {
+          const auto cond = extractIfConditionCompact(c);
+          if (cond.has_value() && cond->find("or") != std::string::npos) {
+            const auto leftA = std::string(arrParam) + "[" + scanVar + "]<" + std::string(loParam);
+            const auto leftB = std::string(loParam) + ">" + std::string(arrParam) + "[" + scanVar + "]";
+            const auto rightA = std::string(arrParam) + "[" + scanVar + "]>" + std::string(hiParam);
+            const auto rightB = std::string(hiParam) + "<" + std::string(arrParam) + "[" + scanVar + "]";
+            const bool hasLoCmp = cond->find(leftA) != std::string::npos || cond->find(leftB) != std::string::npos;
+            const bool hasHiCmp = cond->find(rightA) != std::string::npos || cond->find(rightB) != std::string::npos;
+            if (hasLoCmp && hasHiCmp) {
+              hasOutsideIf = true;
+            }
+          }
+        }
+
+        const auto eqPos = c.find('=');
+        if (eqPos != std::string::npos && eqPos > 0 && eqPos + 1 < c.size()) {
+          const auto lhs = c.substr(0, eqPos);
+          const auto rhs = c.substr(eqPos + 1);
+          if (rhs == lhs + "+1") {
+            if (outsideCountVar.empty()) {
+              outsideCountVar = lhs;
+            }
+            if (lhs == outsideCountVar) {
+              hasOutsideInc = true;
+            }
+          }
+        }
+        if (!outsideCountVar.empty() && returnExprMatches(c, outsideCountVar)) {
+          hasOutsideReturn = true;
+        }
+      }
+      if (!leftVar.empty() && !rightVar.empty() && !hasRightInit) {
+        for (const auto &c : compact) {
+          if (c == "let" + rightVar + "=" + leftVar || c == rightVar + "=" + leftVar) {
+            hasRightInit = true;
+            break;
+          }
+        }
       }
       if (!leftVar.empty() && !rightVar.empty() && hasLeftWhile && hasRightWhile && hasRightInit && hasRangeReturn) {
         out.kind = IntentRewriteKind::CountRangeSorted;
         out.detectedGoal = "count_range_sorted";
+        return out;
+      }
+      if (!leftVar.empty() && !rightVar.empty()
+          && hasLeftWhile && hasRightWhile && hasRightInit && hasOutsideRangeReturn) {
+        out.kind = IntentRewriteKind::CountOutsideRangeSorted;
+        out.detectedGoal = "count_outside_range_sorted";
+        return out;
+      }
+      if (!scanVar.empty() && hasOutsideIf && hasOutsideInc && hasOutsideReturn) {
+        out.kind = IntentRewriteKind::CountOutsideRangeSorted;
+        out.detectedGoal = "count_outside_range_sorted";
         return out;
       }
     }
@@ -1030,16 +1232,11 @@ auto inferRewriteKindFromBody(
     bool hasRetLoop = false;
     bool hasRetNeg1 = false;
     for (const auto &c : compact) {
-      if (c.starts_with("while(") && c.ends_with("):")) {
-        const auto p = c.find("<" + n + "):");
-        if (p != std::string::npos) {
-          loopVar = c.substr(6, p - 6);
-        }
-      }
-      if (!loopVar.empty() && c == "if(" + loopVar + "==" + target + "):") {
+      if (tryExtractLoopVarAgainstBound(c, n, loopVar)) {}
+      if (!loopVar.empty() && ifComparatorMatches(c, loopVar, "==", target)) {
         hasIfEq = true;
       }
-      if (!loopVar.empty() && c == "return" + loopVar) {
+      if (!loopVar.empty() && returnExprMatches(c, loopVar)) {
         hasRetLoop = true;
       }
       if (c == "return-1") {
