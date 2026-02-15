@@ -4786,8 +4786,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
   const std::string sourceText {source};
-  if (sourceText.find("func main") != std::string::npos
-      && sourceText.find("__thg_cli_main_native") != std::string::npos) {
+  const bool isMainWrapperLike =
+    sourceText.find("func main") != std::string::npos
+    && sourceText.find("import ") != std::string::npos
+    && sourceText.find(".main()") != std::string::npos;
+  if (isMainWrapperLike
+      || (sourceText.find("func main") != std::string::npos
+          && sourceText.find("__thg_cli_main_native") != std::string::npos)) {
     std::string out {};
     out += "declare void @__thg_init_env(i32, ptr)\n";
     out += "declare i32 @__thg_cli_main_native()\n\n";
@@ -4800,13 +4805,8 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedString(out);
   }
 
-  const bool hasImportLike =
-    sourceText.find("import ") != std::string::npos
-    || sourceText.find("use ") != std::string::npos;
-
-  // Internal emit mode must avoid helper recursion. For this runtime build,
-  // import-heavy sources still use the lightweight fallback path.
-  if (!hasImportLike || isInternalEmitMode()) {
+  // Internal emit mode must avoid helper recursion.
+  if (isInternalEmitMode()) {
     auto *fallback = parseProgramSource(source);
     return __thg_codegen_emit_llvm(fallback);
   }
@@ -4822,6 +4822,19 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     }
   }
 
+  // Guard helper recursion on repeatedly-lowered wrapper names like
+  // thagore_0_41_0_41_...; in this case, avoid spawning helper again.
+  int loweredDepth = 0;
+  std::size_t pos = 0;
+  while ((pos = moduleNameText.find("_0_41", pos)) != std::string::npos) {
+    ++loweredDepth;
+    pos += 5;
+  }
+  if (loweredDepth >= 3) {
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
+  }
+
   const auto nonce = std::to_string(__time_now_ms()) + "_" + std::to_string(std::rand());
   const auto sourcePath = std::filesystem::path(moduleNameText + "_" + nonce + ".tg");
   const auto irPath = std::filesystem::path(moduleNameText + "_" + nonce + ".ll");
@@ -4834,8 +4847,80 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     out << sourceText;
   }
 
-  std::filesystem::path helperPath = resolveSelfExecutablePath();
+  const std::filesystem::path selfPath = resolveSelfExecutablePath();
+  std::filesystem::path helperPath {};
+  std::size_t dynamicCount = 0;
+  if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
+    helperPath = std::filesystem::path(configured);
+  } else {
 #if defined(_WIN32)
+  std::vector<std::filesystem::path> dynamicCandidates {};
+  std::error_code scanErr {};
+  for (const auto &entry : std::filesystem::directory_iterator(std::filesystem::path {"."}, scanErr)) {
+    if (scanErr) {
+      break;
+    }
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto name = entry.path().filename().string();
+    if (name.size() < 5) {
+      continue;
+    }
+    const bool isExe = name.substr(name.size() - 4) == ".exe";
+    if (!isExe) {
+      continue;
+    }
+    const bool looksStage2 = name.rfind("stage2", 0) == 0;
+    const bool looksThagore = name.rfind("thagore", 0) == 0;
+    if (looksStage2 || looksThagore) {
+      dynamicCandidates.push_back(entry.path());
+    }
+  }
+  auto lowerAscii = [](std::string value) -> std::string {
+    for (auto &ch : value) {
+      if (ch >= 'A' && ch <= 'Z') {
+        ch = static_cast<char>(ch - 'A' + 'a');
+      }
+    }
+    return value;
+  };
+  auto candidateScore = [&](const std::filesystem::path &candidate) -> int {
+    const auto name = lowerAscii(candidate.filename().string());
+    if (name == "stage2.exe") {
+      return 1000;
+    }
+    if (name == "thagore.exe") {
+      return 950;
+    }
+    if (name.rfind("stage2", 0) == 0) {
+      return 900;
+    }
+    if (name.rfind("thagore", 0) == 0) {
+      return 850;
+    }
+    return 0;
+  };
+  std::sort(
+    dynamicCandidates.begin(),
+    dynamicCandidates.end(),
+    [&](const std::filesystem::path &lhs, const std::filesystem::path &rhs) -> bool {
+      const int lhsScore = candidateScore(lhs);
+      const int rhsScore = candidateScore(rhs);
+      if (lhsScore != rhsScore) {
+        return lhsScore > rhsScore;
+      }
+      std::error_code lErr {};
+      std::error_code rErr {};
+      const auto lTime = std::filesystem::last_write_time(lhs, lErr);
+      const auto rTime = std::filesystem::last_write_time(rhs, rErr);
+      if (lErr || rErr) {
+        return lhs.string() < rhs.string();
+      }
+      return lTime > rTime;
+    }
+  );
+  dynamicCount = dynamicCandidates.size();
   const std::vector<std::filesystem::path> candidates {
     std::filesystem::path {".\\thagore.exe"},
     std::filesystem::path {".\\stage2.exe"},
@@ -4864,13 +4949,54 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     std::filesystem::path {"bin/thagore"},
   };
 #endif
+  auto samePath = [&](const std::filesystem::path &a, const std::filesystem::path &b) -> bool {
+    if (a.empty() || b.empty()) {
+      return false;
+    }
+    std::error_code ecA {};
+    std::error_code ecB {};
+    const auto ca = std::filesystem::weakly_canonical(a, ecA);
+    const auto cb = std::filesystem::weakly_canonical(b, ecB);
+    if (ecA || ecB) {
+      return false;
+    }
+    return ca == cb;
+  };
+
+  if ((helperPath.empty() || !std::filesystem::exists(helperPath)) && !selfPath.empty()) {
+    const auto selfFile = selfPath.filename().string();
+    if (selfFile.rfind("stage3", 0) == 0) {
+      std::string preferredName = "stage2" + selfFile.substr(6);
+      const auto preferred = selfPath.parent_path() / preferredName;
+      if (std::filesystem::exists(preferred) && !samePath(preferred, selfPath)) {
+        helperPath = preferred;
+      }
+    }
+  }
+
   if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
-    for (const auto &candidate : candidates) {
-      if (std::filesystem::exists(candidate)) {
+    for (const auto &candidate : dynamicCandidates) {
+      if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
         helperPath = candidate;
         break;
       }
     }
+  }
+
+  if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
+    for (const auto &candidate : candidates) {
+      if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
+        helperPath = candidate;
+        break;
+      }
+    }
+  }
+
+  if ((helperPath.empty() || !std::filesystem::exists(helperPath))
+      && !selfPath.empty()
+      && std::filesystem::exists(selfPath)) {
+    helperPath = selfPath;
+  }
   }
 
   if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
@@ -4884,12 +5010,32 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
 
-  const auto helperExec = formatExecPathForShell(helperPath);
+  const bool traceHelper = []() {
+    const char *v = std::getenv("THAG_TRACE_HELPER");
+    return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+  }();
+  if (traceHelper) {
+    std::fprintf(
+      stderr,
+      "[helper] self=%s selected=%s module=%s dynamic=%zu\n",
+      selfPath.string().c_str(),
+      helperPath.string().c_str(),
+      moduleNameText.c_str(),
+      dynamicCount
+    );
+  }
+
+  auto helperExec = formatExecPathForShell(helperPath);
   const auto sourceArg = quoteShellArg(sourcePath.string());
   const auto irArg = quoteShellArg(irPath.string());
 #if defined(_WIN32)
+  std::string helperExecWin = helperPath.string();
+  if (helperExecWin.rfind("./", 0) == 0 || helperExecWin.rfind(".\\", 0) == 0) {
+    helperExecWin = helperExecWin.substr(2);
+  }
+  helperExecWin = quoteShellArg(helperExecWin);
   const std::vector<std::string> helperCommands {
-    "set \"THAGORE_INTERNAL_EMIT=1\" && " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+    "set \"THAGORE_INTERNAL_EMIT=1\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
 #else
   const std::vector<std::string> helperCommands {
@@ -4900,6 +5046,9 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   bool commandOk = false;
   std::string lastCommand {};
   for (const auto &command : helperCommands) {
+    if (traceHelper) {
+      std::fprintf(stderr, "[helper-cmd] %s\n", command.c_str());
+    }
     lastCommand = command;
     const int code = std::system(command.c_str());
     if (code == 0 && std::filesystem::exists(irPath)) {
