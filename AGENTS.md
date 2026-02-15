@@ -21,7 +21,7 @@
 ## Bootstrap & Release Policy
 - Unix (`ubuntu`, `macos`) is **Stage1-only bootstrap** in CI/Release. Do not add Stage0 fallback there.
 - Windows may use Stage0 fallback only when `ALLOW_STAGE0_BOOTSTRAP=true`.
-- Seed tag for bootstrap assets: `v0.3.21-stage1-seed`.
+- Seed tag for bootstrap assets: `v0.3.24-stage1-seed`.
 - Stage1 seed archives must support both binaries:
   - `bin/thagore`
   - `bin/thag` (legacy-compatible path used by existing macOS seed tar).

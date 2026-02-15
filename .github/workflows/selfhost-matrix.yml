@@ -23,7 +23,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.24-stage1-seed"
       STAGE_TRACE_FILE: selfhost-stage-trace.log
     steps:
       - name: Checkout

@@ -10,7 +10,7 @@ jobs:
   verify-stage1-seed:
     runs-on: ubuntu-latest
     env:
-      BOOTSTRAP_STAGE1_TAG: v0.3.22-stage1-seed
+      BOOTSTRAP_STAGE1_TAG: v0.3.24-stage1-seed
     steps:
       - name: Checkout
         uses: actions/checkout@v4
