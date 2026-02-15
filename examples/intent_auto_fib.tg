@@ -1,0 +1,14 @@
+intent func fib(n: i32) -> i32:
+    goal: auto_plan
+    constraints:
+        deterministic == true
+
+func fib(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+    let result = fib(35)
+    print(result)
+    return 0

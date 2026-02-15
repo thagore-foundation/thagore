@@ -243,6 +243,10 @@ Never allowed:
 - `dot_product`
 - `polynomial_eval`
 - `fibonacci_dp` *(experimental rewrite path)*
+- `sort_ascending`
+- `search_element`
+- `sqrt_bounded_loop`
+- `auto_plan` *(pattern inference, deterministic heuristic)*
 
 Each goal ships with 2-4 deterministic strategies max in MVP.
 

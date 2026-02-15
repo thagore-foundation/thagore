@@ -158,6 +158,8 @@ func goal_count(goals_text: String) -> i32:
     return count
 
 func is_supported_goal(goal: String) -> i32:
+    if (goal == "auto_plan"):
+        return 1
     if (goal == "reduce_sum"):
         return 1
     if (goal == "map_filter_reduce"):
@@ -173,6 +175,12 @@ func is_supported_goal(goal: String) -> i32:
     if (goal == "polynomial_eval"):
         return 1
     if (goal == "fibonacci_dp"):
+        return 1
+    if (goal == "sort_ascending"):
+        return 1
+    if (goal == "search_element"):
+        return 1
+    if (goal == "sqrt_bounded_loop"):
         return 1
     return 0
 
@@ -193,6 +201,8 @@ func validate_goals(source: String) -> i32:
     return 1
 
 func select_rule(goal: String, mode: String) -> String:
+    if (goal == "auto_plan"):
+        return "rule.auto_plan.resolve.v1"
     if (goal == "reduce_sum"):
         if (mode == "max"):
             return "rule.reduce_sum.simd.v2"
@@ -225,4 +235,16 @@ func select_rule(goal: String, mode: String) -> String:
         if (mode == "max"):
             return "rule.fibonacci_dp.iterative.v2"
         return "rule.fibonacci_dp.iterative.v1"
+    if (goal == "sort_ascending"):
+        if (mode == "max"):
+            return "rule.sort_ascending.introsort.v2"
+        return "rule.sort_ascending.quicksort.v1"
+    if (goal == "search_element"):
+        if (mode == "max"):
+            return "rule.search_element.binary_iter.v2"
+        return "rule.search_element.binary_classic.v1"
+    if (goal == "sqrt_bounded_loop"):
+        if (mode == "max"):
+            return "rule.sqrt_bounded_loop.mul_guard.v2"
+        return "rule.sqrt_bounded_loop.div_guard.v1"
     return "rule.unsupported"

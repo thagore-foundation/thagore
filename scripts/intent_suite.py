@@ -21,6 +21,9 @@ SUPPORTED_GOALS = [
     "dot_product",
     "polynomial_eval",
     "fibonacci_dp",
+    "sort_ascending",
+    "search_element",
+    "sqrt_bounded_loop",
 ]
 
 

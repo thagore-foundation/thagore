@@ -2656,6 +2656,7 @@ static auto cliIntentFallbackValid(const std::string &mode) -> bool {
 
 static auto cliIntentGoalSupported(const std::string &goal) -> bool {
   static const std::unordered_set<std::string> supported {
+    "auto_plan",
     "reduce_sum",
     "map_filter_reduce",
     "deduplicate_sorted",
@@ -2664,6 +2665,9 @@ static auto cliIntentGoalSupported(const std::string &goal) -> bool {
     "dot_product",
     "polynomial_eval",
     "fibonacci_dp",
+    "sort_ascending",
+    "search_element",
+    "sqrt_bounded_loop",
   };
   return supported.find(goal) != supported.end();
 }
@@ -2770,14 +2774,17 @@ static auto cliIntentComplexityRank(const std::string &complexityText) -> int {
   if (norm == "o(logn)" || norm == "o(log2n)") {
     return 1;
   }
-  if (norm == "o(n)") {
+  if (norm == "o(sqrtn)" || norm == "o(sqrt(n))") {
     return 2;
   }
-  if (norm == "o(nlogn)") {
+  if (norm == "o(n)") {
     return 3;
   }
-  if (norm == "o(n^2)" || norm == "o(n2)") {
+  if (norm == "o(nlogn)") {
     return 4;
+  }
+  if (norm == "o(n^2)" || norm == "o(n2)") {
+    return 5;
   }
   return 99;
 }
@@ -2851,6 +2858,21 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
     add_rule("rule.fibonacci_dp.iterative.v1", "O(n)", true, true, false, false, 2, 1, 0.0);
     add_rule("rule.fibonacci_dp.iterative.v2", "O(n)", true, true, false, false, 1, 1, 0.0);
     add_rule("rule.fibonacci_dp.memoized.v3", "O(n)", true, false, false, false, 1, 3, 0.0);
+    return;
+  }
+  if (goal == "sort_ascending") {
+    add_rule("rule.sort_ascending.quicksort.v1", "O(nlogn)", true, false, false, false, 2, 3, 0.0);
+    add_rule("rule.sort_ascending.introsort.v2", "O(nlogn)", true, false, true, true, 1, 3, 0.0);
+    return;
+  }
+  if (goal == "search_element") {
+    add_rule("rule.search_element.binary_classic.v1", "O(logn)", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.search_element.binary_iter.v2", "O(logn)", true, true, true, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sqrt_bounded_loop") {
+    add_rule("rule.sqrt_bounded_loop.div_guard.v1", "O(sqrt(n))", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.sqrt_bounded_loop.mul_guard.v2", "O(sqrt(n))", true, true, false, false, 1, 1, 0.0);
   }
 }
 
@@ -3301,6 +3323,178 @@ static void cliIntentParseEntries(
   }
 }
 
+static auto cliIntentParseSingleI32ParamNameInline(std::string_view funcHeader, std::string *paramNameOut) -> bool {
+  if (paramNameOut == nullptr) {
+    return false;
+  }
+  const auto header = trim(funcHeader);
+  if (!startsWith(header, "func ")) {
+    return false;
+  }
+  const std::size_t lp = header.find('(');
+  const std::size_t rp = header.find(')', lp == std::string_view::npos ? 0 : lp + 1);
+  if (lp == std::string_view::npos || rp == std::string_view::npos || rp <= (lp + 1)) {
+    return false;
+  }
+  const auto params = trim(header.substr(lp + 1, rp - lp - 1));
+  if (params.empty() || params.find(',') != std::string_view::npos) {
+    return false;
+  }
+  const std::size_t colon = params.find(':');
+  if (colon == std::string_view::npos) {
+    return false;
+  }
+  const auto name = trim(params.substr(0, colon));
+  const auto type = trim(params.substr(colon + 1));
+  if (name.empty() || type != "i32") {
+    return false;
+  }
+  *paramNameOut = std::string(name);
+  return true;
+}
+
+static auto cliIntentCountOccurrences(const std::string &text, const std::string &needle) -> int {
+  if (needle.empty()) {
+    return 0;
+  }
+  int count = 0;
+  std::size_t pos = 0;
+  while (true) {
+    pos = text.find(needle, pos);
+    if (pos == std::string::npos) {
+      break;
+    }
+    ++count;
+    pos += needle.size();
+  }
+  return count;
+}
+
+static auto cliIntentInferGoalFromFunctionBody(
+  const std::vector<std::string> &lines,
+  std::size_t funcStart,
+  std::size_t funcEnd,
+  const IntentEntry &entry,
+  std::string *goalOut,
+  std::string *reasonOut
+) -> bool {
+  if (goalOut == nullptr) {
+    return false;
+  }
+  std::string body {};
+  for (std::size_t i = funcStart + 1; i < funcEnd; ++i) {
+    body += lines[i];
+    body.push_back('\n');
+  }
+  const auto header = std::string_view(lines[funcStart]);
+
+  const std::string callNeedle = entry.targetName + "(";
+  if (cliIntentCountOccurrences(body, callNeedle) >= 2 && body.find("return ") != std::string::npos && body.find('+') != std::string::npos) {
+    *goalOut = "fibonacci_dp";
+    return true;
+  }
+
+  const int whileCount = cliIntentCountOccurrences(body, "while (");
+  if (whileCount >= 2 && body.find("[j]") != std::string::npos && body.find("[j + 1]") != std::string::npos && body.find('>') != std::string::npos) {
+    *goalOut = "sort_ascending";
+    return true;
+  }
+
+  if (body.find("mid") != std::string::npos && body.find("while (") != std::string::npos && body.find("==") != std::string::npos) {
+    *goalOut = "search_element";
+    return true;
+  }
+
+  std::string paramName {};
+  if (cliIntentParseSingleI32ParamNameInline(header, &paramName)) {
+    const std::string sqrtCond = "while (i <= " + paramName + "):";
+    if (body.find(sqrtCond) != std::string::npos && body.find('%') != std::string::npos) {
+      *goalOut = "sqrt_bounded_loop";
+      return true;
+    }
+  }
+
+  if (reasonOut != nullptr) {
+    *reasonOut = "unable to infer algorithm pattern for auto_plan";
+  }
+  return false;
+}
+
+static auto cliIntentResolveAutoGoals(
+  const std::string &source,
+  std::vector<IntentEntry> *entries,
+  std::string *errorOut
+) -> bool {
+  if (entries == nullptr) {
+    return false;
+  }
+  std::vector<std::string> lines {};
+  {
+    std::size_t cursor = 0;
+    while (cursor <= source.size()) {
+      const std::size_t end = source.find('\n', cursor);
+      const std::size_t lineEnd = end == std::string::npos ? source.size() : end;
+      lines.emplace_back(source.substr(cursor, lineEnd - cursor));
+      if (end == std::string::npos) {
+        break;
+      }
+      cursor = end + 1;
+    }
+  }
+
+  for (auto &entry : *entries) {
+    if (entry.goal != "auto_plan") {
+      continue;
+    }
+    if (entry.kind != "func" || entry.targetName.empty()) {
+      if (errorOut != nullptr) {
+        *errorOut = "auto_plan currently supports only `intent func` with explicit target name";
+      }
+      return false;
+    }
+
+    const std::string funcPrefix = "func " + entry.targetName + "(";
+    std::size_t funcStart = std::string::npos;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+      const auto text = trim(lines[i]);
+      if (startsWith(text, funcPrefix) && !text.empty() && text.back() == ':') {
+        funcStart = i;
+        break;
+      }
+    }
+    if (funcStart == std::string::npos) {
+      if (errorOut != nullptr) {
+        *errorOut = "auto_plan target function `" + entry.targetName + "` was not found";
+      }
+      return false;
+    }
+
+    const int baseIndent = leadingSpaces(lines[funcStart]);
+    std::size_t funcEnd = lines.size();
+    for (std::size_t i = funcStart + 1; i < lines.size(); ++i) {
+      const auto text = trim(lines[i]);
+      if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
+        continue;
+      }
+      if (leadingSpaces(lines[i]) <= baseIndent) {
+        funcEnd = i;
+        break;
+      }
+    }
+
+    std::string inferredGoal {};
+    std::string inferReason {};
+    if (!cliIntentInferGoalFromFunctionBody(lines, funcStart, funcEnd, entry, &inferredGoal, &inferReason)) {
+      if (errorOut != nullptr) {
+        *errorOut = "intent at line " + std::to_string(entry.line) + " auto_plan failed: " + inferReason;
+      }
+      return false;
+    }
+    entry.goal = inferredGoal;
+  }
+  return true;
+}
+
 static auto cliIntentValidateEntries(
   const std::vector<IntentEntry> &entries,
   bool requireKnownGoal,
@@ -3721,6 +3915,87 @@ static auto cliIntentRewriteFibonacciFunc(
   return true;
 }
 
+static auto cliIntentRewriteSqrtLoopFunc(
+  const std::string &source,
+  const IntentEntry &entry,
+  std::string *outSource,
+  std::string *reasonOut
+) -> bool {
+  if (outSource == nullptr) {
+    return false;
+  }
+  if (entry.kind != "func" || entry.targetName.empty()) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "intent target is not a function";
+    }
+    return false;
+  }
+
+  bool trailingNewline = false;
+  auto lines = cliIntentSplitLines(source, &trailingNewline);
+  std::size_t funcStart = std::string::npos;
+  const std::string funcPrefix = "func " + entry.targetName + "(";
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (startsWith(text, funcPrefix) && !text.empty() && text.back() == ':') {
+      funcStart = i;
+      break;
+    }
+  }
+  if (funcStart == std::string::npos) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "target function `" + entry.targetName + "` was not found";
+    }
+    return false;
+  }
+
+  std::string paramName {};
+  if (!cliIntentParseSingleI32ParamName(lines[funcStart], &paramName)) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function signature must be a single i32 parameter";
+    }
+    return false;
+  }
+
+  const int baseIndent = leadingSpaces(lines[funcStart]);
+  std::size_t funcEnd = lines.size();
+  for (std::size_t i = funcStart + 1; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
+      continue;
+    }
+    if (leadingSpaces(lines[i]) <= baseIndent) {
+      funcEnd = i;
+      break;
+    }
+  }
+
+  const std::string needle = "while (i <= " + paramName + "):";
+  const std::string replacement = "while ((i * i) <= " + paramName + "):";
+  std::size_t whileLine = std::string::npos;
+  bool hasModulo = false;
+  for (std::size_t i = funcStart + 1; i < funcEnd; ++i) {
+    const auto text = trim(lines[i]);
+    if (text == needle && whileLine == std::string::npos) {
+      whileLine = i;
+    }
+    if (text.find("% i") != std::string::npos || text.find("%i") != std::string::npos) {
+      hasModulo = true;
+    }
+  }
+  if (whileLine == std::string::npos || !hasModulo) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function body does not match supported sqrt-loop pattern";
+    }
+    return false;
+  }
+
+  const int whileIndent = leadingSpaces(lines[whileLine]);
+  lines[whileLine] = std::string(static_cast<std::size_t>(whileIndent), ' ') + replacement;
+  *outSource = cliIntentJoinLines(lines, trailingNewline);
+  return true;
+}
+
 static auto cliIntentApplyPlansToSource(
   const std::string &source,
   const std::vector<IntentEntry> &entries,
@@ -3734,10 +4009,10 @@ static auto cliIntentApplyPlansToSource(
   *outSource = source;
 
   for (const auto &plan : plans) {
-    if (plan.goal != "fibonacci_dp") {
+    if (plan.goal != "fibonacci_dp" && plan.goal != "sqrt_bounded_loop") {
       continue;
     }
-    if (!startsWith(plan.selectedRule, "rule.fibonacci_dp.")) {
+    if (!startsWith(plan.selectedRule, "rule.fibonacci_dp.") && !startsWith(plan.selectedRule, "rule.sqrt_bounded_loop.")) {
       continue;
     }
 
@@ -3753,7 +4028,13 @@ static auto cliIntentApplyPlansToSource(
 
     std::string rewritten {};
     std::string reason {};
-    if (cliIntentRewriteFibonacciFunc(*outSource, *entryIt, &rewritten, &reason)) {
+    bool rewrittenOk = false;
+    if (plan.goal == "fibonacci_dp") {
+      rewrittenOk = cliIntentRewriteFibonacciFunc(*outSource, *entryIt, &rewritten, &reason);
+    } else if (plan.goal == "sqrt_bounded_loop") {
+      rewrittenOk = cliIntentRewriteSqrtLoopFunc(*outSource, *entryIt, &rewritten, &reason);
+    }
+    if (rewrittenOk) {
       *outSource = std::move(rewritten);
       if (notesOut != nullptr) {
         notesOut->push_back(
@@ -3780,7 +4061,7 @@ static auto cliIntentApplyPlansToSource(
 static auto cliIntentDoctor(const std::string &entryPath) -> int {
   std::printf("[intent] engine=ready\n");
   std::printf("[intent] determinism=enabled\n");
-  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval,fibonacci_dp\n");
+  std::printf("[intent] supported_goals=auto_plan,reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval,fibonacci_dp,sort_ascending,search_element,sqrt_bounded_loop\n");
   const auto clangPath = cliDetectClang();
   if (clangPath.empty()) {
     std::printf("[intent] toolchain=clang_missing\n");
@@ -3798,6 +4079,11 @@ static auto cliIntentDoctor(const std::string &entryPath) -> int {
   }
   std::vector<IntentEntry> entries {};
   cliIntentParseEntries(source, entryPath, &entries);
+  std::string autoGoalError {};
+  if (!cliIntentResolveAutoGoals(source, &entries, &autoGoalError)) {
+    std::fprintf(stderr, "Intent doctor failed: %s\n", autoGoalError.c_str());
+    return 1;
+  }
   std::string reason {};
   if (!cliIntentValidateEntries(entries, false, &reason)) {
     std::fprintf(stderr, "Intent doctor failed: %s\n", reason.c_str());
@@ -3825,6 +4111,11 @@ static auto cliIntentExplain(const std::string &entryPath, bool asJson, const st
   }
   std::vector<IntentEntry> entries {};
   cliIntentParseEntries(source, entryPath, &entries);
+  std::string autoGoalError {};
+  if (!cliIntentResolveAutoGoals(source, &entries, &autoGoalError)) {
+    std::fprintf(stderr, "Intent explain failed: %s\n", autoGoalError.c_str());
+    return 1;
+  }
   std::string reason {};
   if (!cliIntentValidateEntries(entries, false, &reason)) {
     std::fprintf(stderr, "Intent explain failed: %s\n", reason.c_str());
@@ -3965,6 +4256,11 @@ static auto cliIntentLock(const std::string &entryPath, const std::string &outpu
   }
   std::vector<IntentEntry> entries {};
   cliIntentParseEntries(source, entryPath, &entries);
+  std::string autoGoalError {};
+  if (!cliIntentResolveAutoGoals(source, &entries, &autoGoalError)) {
+    std::fprintf(stderr, "Intent lock failed: %s\n", autoGoalError.c_str());
+    return 1;
+  }
   std::string reason {};
   if (!cliIntentValidateEntries(entries, true, &reason)) {
     std::fprintf(stderr, "Intent lock failed: %s\n", reason.c_str());
@@ -4041,6 +4337,15 @@ static auto cliBuildOrEmit(
   if (intentMode != "off") {
     std::vector<IntentEntry> entries {};
     cliIntentParseEntries(source, inputPath, &entries);
+    std::string autoGoalError {};
+    if (!cliIntentResolveAutoGoals(source, &entries, &autoGoalError)) {
+      if (!allowFallback) {
+        std::fprintf(stderr, "Intent auto goal resolution failed: %s\n", autoGoalError.c_str());
+        return 1;
+      }
+      std::fprintf(stderr, "Warning: intent auto goal resolution failed, using fallback path (%s).\n", autoGoalError.c_str());
+      entries.clear();
+    }
     std::string reason {};
     if (!cliIntentValidateEntries(entries, false, &reason)) {
       if (!allowFallback) {
