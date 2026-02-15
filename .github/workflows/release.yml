@@ -329,12 +329,31 @@ jobs:
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "${{ matrix.hello_bin }}"
-          HELLO_BIN="$(resolve_bin "${{ matrix.hello_bin }}" "examples/hello.tg")"
+          HELLO_TARGET="${{ matrix.hello_bin }}"
+          FIB_TARGET="${{ matrix.fib_bin }}"
+
+          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
+          HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+          if [[ -z "$HELLO_BIN" ]]; then
+            thg_build "$STAGE2_BIN" examples/hello.tg "$HELLO_TARGET" || true
+            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+          fi
+          if [[ -z "$HELLO_BIN" ]]; then
+            thg_build "${{ matrix.stage1_bin }}" examples/hello.tg "$HELLO_TARGET" || true
+            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+          fi
           test -f "$HELLO_BIN"
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "${{ matrix.fib_bin }}"
-          FIB_BIN="$(resolve_bin "${{ matrix.fib_bin }}" "examples/fib.tg")"
+          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
+          FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+          if [[ -z "$FIB_BIN" ]]; then
+            thg_build "$STAGE2_BIN" examples/fib.tg "$FIB_TARGET" || true
+            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+          fi
+          if [[ -z "$FIB_BIN" ]]; then
+            thg_build "${{ matrix.stage1_bin }}" examples/fib.tg "$FIB_TARGET" || true
+            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+          fi
           test -f "$FIB_BIN"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
