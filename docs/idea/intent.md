@@ -268,6 +268,7 @@ Never allowed:
 - `deduplicate_sorted`
 - `binary_search`
 - `binary_search_sorted` *(linear scan on sorted data -> binary search rewrite)*
+- `lower_bound_sorted` *(linear first-`>=x` scan on sorted data -> binary lower_bound rewrite)*
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
@@ -304,6 +305,7 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `number.divisors.sqrt.v1`
 - `greedy.sweep.v1`
 - `search.binary.v1`
+- `search.lower_bound.v1`
 - `math.sum_squares.formula.v1`
 
 ### 11.1 Visual Example: Sprinkler Cover
