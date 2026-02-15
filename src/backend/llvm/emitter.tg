@@ -62,8 +62,6 @@ func emit_program(root: ptr) -> String:
     return ""
 
 func emit_program_from_source(source: String, module_name: String) -> String:
-    if (_starts_with(module_name, "thagore") == 1):
-        return _emit_runtime_wrapper_ir(module_name)
     if (_is_cli_wrapper_source(source) == 1):
         let ir_wrap = native_codegen.emit_program_from_native(source, module_name)
         if (ir_wrap.length() > 0):
@@ -78,8 +76,6 @@ func emit_program_from_source(source: String, module_name: String) -> String:
     return __thg_codegen_emit_llvm_from_source(source, module_name)
 
 func emit_program_typed(typed_normalized: String, module_name: String) -> String:
-    if (_starts_with(module_name, "thagore") == 1):
-        return _emit_runtime_wrapper_ir(module_name)
     if (_is_cli_wrapper_source(typed_normalized) == 1):
         let ir_wrap = native_codegen.emit_program_typed(typed_normalized, module_name)
         if (ir_wrap.length() > 0):

@@ -2898,8 +2898,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
   const std::string sourceText {source};
-  if (sourceText.find("func main") != std::string::npos
-      && sourceText.find("__thg_cli_main_native") != std::string::npos) {
+  const bool isMainWrapperLike =
+    sourceText.find("func main") != std::string::npos
+    && sourceText.find("import ") != std::string::npos
+    && sourceText.find(".main()") != std::string::npos;
+  if (isMainWrapperLike
+      || (sourceText.find("func main") != std::string::npos
+          && sourceText.find("__thg_cli_main_native") != std::string::npos)) {
     std::string out {};
     out += "declare void @__thg_init_env(i32, ptr)\n";
     out += "declare i32 @__thg_cli_main_native()\n\n";
@@ -2912,9 +2917,16 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedString(out);
   }
 
-  // Simple scripts (no imports) are handled by lightweight fallback emitter
-  // to avoid invoking helper stage0 and noisy diagnostics.
-  if (sourceText.find("import ") == std::string::npos && sourceText.find("use ") == std::string::npos) {
+  const bool hasImportLike =
+    sourceText.find("import ") != std::string::npos
+    || sourceText.find("use ") != std::string::npos;
+  const bool internalEmitMode = []() {
+    const char *v = std::getenv("THAGORE_INTERNAL_EMIT");
+    return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+  }();
+
+  // In internal emit mode, never recurse into helper again.
+  if (!hasImportLike || internalEmitMode) {
     auto *fallback = parseProgramSource(source);
     return __thg_codegen_emit_llvm(fallback);
   }
@@ -2928,6 +2940,17 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     if (!alphaNum && ch != '_') {
       ch = '_';
     }
+  }
+
+  int loweredDepth = 0;
+  std::size_t markerPos = 0;
+  while ((markerPos = moduleNameText.find("_0_41", markerPos)) != std::string::npos) {
+    ++loweredDepth;
+    markerPos += 5;
+  }
+  if (loweredDepth >= 3) {
+    auto *fallback = parseProgramSource(source);
+    return __thg_codegen_emit_llvm(fallback);
   }
 
   const auto nonce = std::to_string(__time_now_ms()) + "_" + std::to_string(std::rand());
@@ -3001,9 +3024,15 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   const auto helperExec = formatExecPathForShell(helperPath);
   const auto sourceArg = quoteShellArg(sourcePath.string());
   const auto irArg = quoteShellArg(irPath.string());
+#if defined(_WIN32)
   const std::vector<std::string> helperCommands {
-    helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+    "set \"THAGORE_INTERNAL_EMIT=1\" && " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
+#else
+  const std::vector<std::string> helperCommands {
+    "THAGORE_INTERNAL_EMIT=1 " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+  };
+#endif
 
   bool commandOk = false;
   std::string lastCommand {};
