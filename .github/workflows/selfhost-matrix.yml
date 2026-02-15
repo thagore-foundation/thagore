@@ -278,11 +278,14 @@ jobs:
               fi
               ll_out="${base}.ll"
               if [[ ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
+                ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" ! -name "*.raw.ll" | head -n 1 || true)"
               fi
               if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
                 for c in *.ll; do
                   if [[ -f "$c" ]]; then
+                    if [[ "$c" == *.raw.ll ]]; then
+                      continue
+                    fi
                     if [[ "$before_ll" != *";${c};"* ]]; then
                       ll_out="$c"
                       break
@@ -291,7 +294,28 @@ jobs:
                 done
               fi
               if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "*.ll" | sort | tail -n 1 || true)"
+                ll_out="$(find . -maxdepth 1 -type f -name "*.ll" ! -name "*.raw.ll" | sort | tail -n 1 || true)"
+              fi
+              if [[ "$ll_out" == *.raw.ll ]]; then
+                alt_ll="${ll_out%.raw.ll}.ll"
+                if [[ -f "$alt_ll" ]]; then
+                  ll_out="$alt_ll"
+                fi
+              fi
+              if [[ -n "$ll_out" && -f "$ll_out" ]]; then
+                if ! grep -Eq "define .*@main\\(" "$ll_out"; then
+                  ll_out=""
+                fi
+              fi
+              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
+                for c in *.ll; do
+                  if [[ -f "$c" && "$c" != *.raw.ll ]]; then
+                    if grep -Eq "define .*@main\\(" "$c"; then
+                      ll_out="$c"
+                      break
+                    fi
+                  fi
+                done
               fi
               [[ -f "$ll_out" ]] || return 1
               if [[ "${{ runner.os }}" == "Windows" ]]; then
