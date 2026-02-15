@@ -3,6 +3,7 @@ import fs
 import process
 import "src/frontend/parser/parser.tg" as parser
 import "src/backend/interpreter/eval.tg" as eval
+import "src/backend/llvm/codegen_llvm.tg" as llvm_codegen
 
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __thg_codegen_emit_llvm_from_source(source: String, module_name: String) -> String
@@ -309,6 +310,26 @@ func _build_or_emit(input_path: String, output_override: String, emit_llvm_only:
     print(output_exe)
     return 0
 
+func _emit_llvm_internal_only(input_path: String, output_override: String) -> i32:
+    let source = fs.read_text(input_path)
+    if (source.length() == 0):
+        print("Error: Empty file or file not found.")
+        return 1
+    let base = _sanitize_name(_basename_no_ext(input_path))
+    let output_ll = base + ".ll"
+    if (output_override.length() > 0):
+        output_ll = output_override
+    let ir = llvm_codegen.emit_program_from_source(source, base)
+    if (ir.length() == 0):
+        print("Error: LLVM IR generation failed")
+        return 1
+    if (fs.write_text(output_ll, ir) == 0):
+        print("Error: cannot write LLVM IR file")
+        return 1
+    print("Generated LLVM IR:")
+    print(output_ll)
+    return 0
+
 func _interpret_source(source: String, strict_interpret: i32) -> i32:
     let program_ast = parser.parse_program(source)
     let interpreter = eval.new()
@@ -360,6 +381,23 @@ func main() -> i32:
                 return _install_toolchain()
         print("Usage: thagore install toolchain")
         return 2
+    if (arg1 == "--emit-llvm-internal"):
+        if (env.count() < 3):
+            print("Error: missing input file.")
+            return 2
+        let internal_input = env.get(2)
+        let internal_output = ""
+        let j = 3
+        while (j < env.count()):
+            if (env.get(j) == "-o"):
+                if ((j + 1) >= env.count()):
+                    print("Error: missing output path after -o")
+                    return 2
+                internal_output = env.get(j + 1)
+                j = j + 2
+            else:
+                j = j + 1
+        return _emit_llvm_internal_only(internal_input, internal_output)
     let build_mode = 0
     let compile_mode = 0
     let llvm_mode = 0

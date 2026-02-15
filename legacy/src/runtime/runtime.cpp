@@ -2645,9 +2645,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   const auto sourceArg = quoteShellArg(sourcePath.string());
   const auto irArg = quoteShellArg(irPath.string());
   const std::vector<std::string> helperCommands {
-    helperExec + " " + sourceArg + " --emit-ir -o " + irArg,
-    helperExec + " " + sourceArg + " --emit-llvm -o " + irArg,
-    helperExec + " --emit-llvm " + sourceArg + " -o " + irArg,
+    helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
 
   bool commandOk = false;
