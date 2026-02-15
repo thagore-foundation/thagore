@@ -1,6 +1,7 @@
 # Thagore Capsule
 
-Status: Draft proposal  
+Status: Draft proposal (not approved for implementation)  
+Implementation approval: Not approved  
 Owner: Thagore CLI / Tooling  
 Last updated: 2026-02-15
 
@@ -305,4 +306,3 @@ Usage:
   thagore capsule extract <artifact> -o <dir>
   thagore capsule publish <artifact> [--channel stable|beta|nightly]
 ```
-
