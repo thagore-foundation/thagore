@@ -438,7 +438,7 @@ jobs:
           done
           [[ "$ok" -eq 1 ]] || (echo "CRITICAL: comptime LLVM output not found"; ls -la; exit 1)
           [[ -f "$TEST_LL" ]] || (echo "CRITICAL: comptime LLVM output not found"; ls -la; exit 1)
-          grep -q "define i32 @main" "$TEST_LL" || (echo "CRITICAL: comptime LLVM output missing @main"; cat "$TEST_LL"; exit 1)
+          grep -Eq "define .*@main\\(" "$TEST_LL" || (echo "CRITICAL: comptime LLVM output missing @main"; cat "$TEST_LL"; exit 1)
 
       - name: Guard no-stage0 path
         shell: bash
