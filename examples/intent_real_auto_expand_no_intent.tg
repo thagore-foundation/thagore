@@ -51,6 +51,27 @@ func gcd_subtractive(a: i32, b: i32) -> i32:
             y = y - x
     return x
 
+func is_prime_naive(n: i32) -> i32:
+    if (n < 2):
+        return 0
+    let i = 2
+    while (i < n):
+        if ((n - (n / i) * i) == 0):
+            return 0
+        i = i + 1
+    return 1
+
+func count_divisors_naive(n: i32) -> i32:
+    if (n <= 0):
+        return 0
+    let i = 1
+    let count = 0
+    while (i <= n):
+        if ((n - (n / i) * i) == 0):
+            count = count + 1
+        i = i + 1
+    return count
+
 func bit_peel_recursive(a: i32, x: i32) -> i32:
     if (x == 0):
         return a
@@ -107,6 +128,24 @@ func bench_mix(seed: i32) -> i32:
         if (gb > 2600):
             gb = 1999
         g = g + 1
+
+    let p2 = 0
+    let prime_n = 16000
+    while (p2 < 3500):
+        acc = acc + is_prime_naive(prime_n)
+        prime_n = prime_n + 1
+        if (prime_n > 16800):
+            prime_n = 16000
+        p2 = p2 + 1
+
+    let d2 = 0
+    let div_n = 26000
+    while (d2 < 2600):
+        acc = acc + count_divisors_naive(div_n)
+        div_n = div_n + 1
+        if (div_n > 26800):
+            div_n = 26000
+        d2 = d2 + 1
 
     let b = 0
     let cur = 1000000007

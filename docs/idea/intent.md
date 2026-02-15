@@ -246,6 +246,8 @@ Never allowed:
 - `factorial_iterative` *(recursive factorial -> iterative loop)*
 - `power_fast` *(linear multiplication -> binary exponentiation)*
 - `gcd_euclid` *(subtractive gcd -> modulo Euclid)*
+- `is_prime_fast` *(naive divisor scan -> sqrt-bounded prime check)*
+- `count_divisors_sqrt` *(count divisors from O(n) to O(sqrt(n)))*
 - `bit_peel_iterative` *(recursive bit peel -> iterative fold)*
 - `sort_ascending`
 - `search_element`

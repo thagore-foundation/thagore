@@ -230,6 +230,13 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   if (containsWord(loweredName, "gcd")) {
     return "gcd_euclid";
   }
+  if (containsWord(loweredName, "prime")) {
+    return "is_prime_fast";
+  }
+  if (containsWord(loweredName, "divisor") || containsWord(loweredName, "factor_count")
+      || containsWord(loweredName, "count_div")) {
+    return "count_divisors_sqrt";
+  }
   if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
       || containsWord(loweredName, "peel")) {
     return "bit_peel_iterative";
@@ -252,6 +259,8 @@ enum class IntentRewriteKind {
   FactorialIterative,
   PowerBinaryExp,
   GcdEuclidModulo,
+  PrimeCheckSqrt,
+  DivisorCountSqrt,
   BitPeelIterative,
   ReduceSumFormula,
   SqrtBoundedLoop,
@@ -344,6 +353,81 @@ auto inferRewriteKindFromBody(
     if (hasSqrtPattern && hasIStep) {
       out.kind = IntentRewriteKind::SqrtBoundedLoop;
       out.detectedGoal = "sqrt_bounded_loop";
+      return out;
+    }
+
+    std::string primeLoopVar {};
+    bool hasPrimeDivCheck = false;
+    bool hasPrimeLoopInc = false;
+    bool hasPrimeReturn0 = false;
+    bool hasPrimeReturn1 = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto p = c.find("<" + nCompact + "):");
+        if (p != std::string::npos) {
+          primeLoopVar = c.substr(6, p - 6);
+        }
+      }
+      if (!primeLoopVar.empty()) {
+        if (c == primeLoopVar + "=" + primeLoopVar + "+1") {
+          hasPrimeLoopInc = true;
+        }
+        if ((c == "if((" + nCompact + "%"+ primeLoopVar + ")==0):")
+            || (c == "if((" + nCompact + "-(" + nCompact + "/" + primeLoopVar + ")*" + primeLoopVar + ")==0):")
+            || (c == "if(((" + nCompact + "/" + primeLoopVar + ")*" + primeLoopVar + ")==" + nCompact + "):")) {
+          hasPrimeDivCheck = true;
+        }
+      }
+      if (c == "return0") {
+        hasPrimeReturn0 = true;
+      }
+      if (c == "return1") {
+        hasPrimeReturn1 = true;
+      }
+    }
+    if (!primeLoopVar.empty() && hasPrimeDivCheck && hasPrimeLoopInc && hasPrimeReturn0 && hasPrimeReturn1) {
+      out.kind = IntentRewriteKind::PrimeCheckSqrt;
+      out.detectedGoal = "is_prime_fast";
+      return out;
+    }
+
+    std::string divLoopVar {};
+    std::string divCountVar {};
+    bool hasDivCheck = false;
+    bool hasDivInc = false;
+    bool hasDivCountInc = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto p = c.find("<=" + nCompact + "):");
+        if (p != std::string::npos) {
+          divLoopVar = c.substr(6, p - 6);
+        }
+      }
+      if (c.starts_with("return")) {
+        const auto candidate = c.substr(6);
+        if (!candidate.empty() && std::isalpha(static_cast<unsigned char>(candidate[0])) != 0) {
+          divCountVar = candidate;
+        }
+      }
+      if (!divLoopVar.empty() && c == divLoopVar + "=" + divLoopVar + "+1") {
+        hasDivInc = true;
+      }
+    }
+    for (const auto &c : compact) {
+      if (!divLoopVar.empty()) {
+        if ((c == "if((" + nCompact + "%"+ divLoopVar + ")==0):")
+            || (c == "if((" + nCompact + "-(" + nCompact + "/" + divLoopVar + ")*" + divLoopVar + ")==0):")
+            || (c == "if(((" + nCompact + "/" + divLoopVar + ")*" + divLoopVar + ")==" + nCompact + "):")) {
+          hasDivCheck = true;
+        }
+      }
+      if (!divCountVar.empty() && (c == divCountVar + "=" + divCountVar + "+1")) {
+        hasDivCountInc = true;
+      }
+    }
+    if (!divLoopVar.empty() && !divCountVar.empty() && hasDivCheck && hasDivInc && hasDivCountInc) {
+      out.kind = IntentRewriteKind::DivisorCountSqrt;
+      out.detectedGoal = "count_divisors_sqrt";
       return out;
     }
 
@@ -531,6 +615,12 @@ auto selectRewriteKind(std::string_view functionName, std::string_view rawGoal) 
   if (goal == "gcd_euclid" || goal == "gcd_modulo") {
     return IntentRewriteKind::GcdEuclidModulo;
   }
+  if (goal == "is_prime_fast" || goal == "prime_check_sqrt" || goal == "prime_sqrt") {
+    return IntentRewriteKind::PrimeCheckSqrt;
+  }
+  if (goal == "count_divisors_sqrt" || goal == "divisor_count_sqrt") {
+    return IntentRewriteKind::DivisorCountSqrt;
+  }
   if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
     return IntentRewriteKind::BitPeelIterative;
   }
@@ -625,6 +715,54 @@ void appendGcdEuclidBody(
   out.push_back(std::format("{}x = y", indent2));
   out.push_back(std::format("{}y = t", indent2));
   out.push_back(std::format("{}return x", indent1));
+}
+
+void appendPrimeCheckSqrtBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}if ({} < 2):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}if ({} == 2):", indent1, paramName));
+  out.push_back(std::format("{}return 1", indent2));
+  out.push_back(std::format("{}let even = {} - ({} / 2) * 2", indent1, paramName, paramName));
+  out.push_back(std::format("{}if (even == 0):", indent1));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let i = 3", indent1));
+  out.push_back(std::format("{}while ((i * i) <= {}):", indent1, paramName));
+  out.push_back(std::format("{}let rem = {} - ({} / i) * i", indent2, paramName, paramName));
+  out.push_back(std::format("{}if (rem == 0):", indent2));
+  out.push_back(std::format("{}return 0", indent3));
+  out.push_back(std::format("{}i = i + 2", indent2));
+  out.push_back(std::format("{}return 1", indent1));
+}
+
+void appendDivisorCountSqrtBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  const std::string indent4(baseIndent + 16, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let i = 1", indent1));
+  out.push_back(std::format("{}let count = 0", indent1));
+  out.push_back(std::format("{}while ((i * i) <= {}):", indent1, paramName));
+  out.push_back(std::format("{}let rem = {} - ({} / i) * i", indent2, paramName, paramName));
+  out.push_back(std::format("{}if (rem == 0):", indent2));
+  out.push_back(std::format("{}if ((i * i) == {}):", indent3, paramName));
+  out.push_back(std::format("{}count = count + 1", indent4));
+  out.push_back(std::format("{}else:", indent3));
+  out.push_back(std::format("{}count = count + 2", indent4));
+  out.push_back(std::format("{}i = i + 1", indent2));
+  out.push_back(std::format("{}return count", indent1));
 }
 
 void appendBitPeelIterativeBody(
@@ -874,6 +1012,22 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           continue;
         }
         appendGcdEuclidBody(rewritten, baseIndent, params[0], params[1]);
+        break;
+      case IntentRewriteKind::PrimeCheckSqrt:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendPrimeCheckSqrtBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::DivisorCountSqrt:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendDivisorCountSqrtBody(rewritten, baseIndent, params[0]);
         break;
       case IntentRewriteKind::BitPeelIterative:
         if (params.size() < 2) {
