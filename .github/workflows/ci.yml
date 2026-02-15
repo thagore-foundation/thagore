@@ -421,8 +421,8 @@ jobs:
           emit_ll() {
             local cc="$1"
             [[ -n "$cc" && -f "$cc" ]] || return 1
-            echo "[CMD] ./$cc --emit-llvm $TEST_SRC -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --emit-llvm "$TEST_SRC" -o "$TEST_LL" || true
+            echo "[CMD] ./$cc $TEST_SRC --emit-llvm -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" "$TEST_SRC" --emit-llvm -o "$TEST_LL" || true
             [[ -f "$TEST_LL" ]] && return 0
 
             echo "[CMD] ./$cc $TEST_SRC --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
@@ -435,19 +435,25 @@ jobs:
 
             local base="test_comptime_func"
             if [[ -f "${base}.ll" ]]; then
-              cp "${base}.ll" "$TEST_LL"
-              return 0
+              if grep -Eq "define .*@main\\(" "${base}.ll"; then
+                cp "${base}.ll" "$TEST_LL"
+                return 0
+              fi
             fi
             local pick=""
-            pick="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
+            pick="$(find . -maxdepth 1 -type f -name "${base}*.ll" ! -name "*.raw.ll" | head -n 1 || true)"
             if [[ -n "$pick" && -f "$pick" ]]; then
-              cp "$pick" "$TEST_LL"
-              return 0
+              if grep -Eq "define .*@main\\(" "$pick"; then
+                cp "$pick" "$TEST_LL"
+                return 0
+              fi
             fi
             for c in *.ll; do
-              if [[ -f "$c" && "$before_ll" != *";${c};"* ]]; then
-                cp "$c" "$TEST_LL"
-                return 0
+              if [[ -f "$c" && "$c" != *.raw.ll && "$before_ll" != *";${c};"* ]]; then
+                if grep -Eq "define .*@main\\(" "$c"; then
+                  cp "$c" "$TEST_LL"
+                  return 0
+                fi
               fi
             done
             return 1
