@@ -130,7 +130,7 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
         if (out_path.length() > 3):
             if (__thg_str_substr(out_path, out_path.length() - 3, 3) == ".ll"):
                 ir_path = out_path
-    if (fs.write_text(ir_path, ir) != 0):
+    if (fs.write_text(ir_path, ir) == 0):
         print("ERROR: failed to write IR file: " + ir_path)
         return 1
     if (emit_only == 1):
