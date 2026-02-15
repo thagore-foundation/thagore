@@ -29,6 +29,11 @@ func _has_feature(feature_set: String, feature: String) -> i32:
         return 1
     return 0
 
+func _feature_count(feature_set: String, feature: String) -> i32:
+    if (_has_feature(feature_set, feature) == 1):
+        return 1
+    return 0
+
 func _validate_match_usage(feature_set: String, enum_table: String) -> i32:
     if (_has_feature(feature_set, "match") == 0):
         return 0
@@ -43,7 +48,7 @@ func validate_source(source: String) -> i32:
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"))
     if (_validate_main_decl(typed.funcs) != 0):
         return 1
     if (_validate_match_usage(typed.feature_set, typed.enums) != 0):
@@ -63,5 +68,5 @@ func typecheck_to_normalized(source: String) -> String:
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"))
     return typed.normalized

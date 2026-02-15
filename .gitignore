@@ -5,3 +5,5 @@ build/
 *.tar.xz
 /llvm/
 LLVM-*.exe
+*.log
+*.ll
