@@ -13,7 +13,7 @@ import { Aside } from "@astrojs/starlight/components";
 2. `src/frontend/parser/*`: parser wrapper + AST FFI bindings.
 3. `src/frontend/parser/headers.tg`: helper parse cho syntax headers nâng cao.
 
-```tg title="src/frontend/lexer/keywords.tg" mark={2,4,20}
+```python title="src/frontend/lexer/keywords.tg" mark={2,4,20}
 func keyword_kind(word: String) -> String:
     if (word == "enum"):
         return "ENUM"
@@ -23,7 +23,7 @@ func keyword_kind(word: String) -> String:
         return "COMPTIME"
 ```
 
-```tg title="src/frontend/parser/parser.tg" mark={19,25,28}
+```python title="src/frontend/parser/parser.tg" mark={19,25,28}
 func parse_expr(source: String) -> ptr:
     let p = new_parser(source)
     let out = p.parse()

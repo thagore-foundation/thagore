@@ -9,14 +9,14 @@ import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## C FFI
 
-```tg title="ffi_math.tg" mark={1,2}
+```python title="ffi_math.tg" mark={1,2}
 extern func sqrt(x: f64) -> f64
 extern func pow(base: f64, exp: f64) -> f64
 ```
 
 ## Python Bridge
 
-```tg title="python_bridge.tg" mark={1,3,5}
+```python title="python_bridge.tg" mark={1,3,5}
 extern func __thg_py_initialize() -> void
 extern func __thg_py_import(name: String) -> ptr
 extern func __thg_py_getattr(obj: ptr, name: String) -> ptr

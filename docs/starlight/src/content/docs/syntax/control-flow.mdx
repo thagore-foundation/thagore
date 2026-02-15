@@ -9,7 +9,7 @@ import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## if/else + while
 
-```tg title="if-while.tg" mark={3,6}
+```python title="if-while.tg" mark={3,6}
 func main() -> i32:
     let i = 0
     while (i < 5):
@@ -23,7 +23,7 @@ func main() -> i32:
 
 ## loop keyword
 
-```tg title="loop.tg"
+```python title="loop.tg"
 loop:
     # explicit break/return pattern in body
     return 0
@@ -31,7 +31,7 @@ loop:
 
 ## for range header
 
-```tg title="for-range.tg" ins={1}
+```python title="for-range.tg" ins={1}
 for i in 0..10:
     print(i)
 ```
@@ -43,7 +43,7 @@ Validation sẽ reject range-loop không đúng dạng `for i in a..b:` nếu li
 <Tabs>
   <TabItem label="Thagore">
 
-```tg title="thagore-if.tg"
+```python title="thagore-if.tg"
 if (x > 0):
     print(x)
 ```

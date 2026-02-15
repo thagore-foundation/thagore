@@ -9,7 +9,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## Trait / Impl / Generics
 
-```tg title="trait-generic.tg" mark={1,4}
+```python title="trait-generic.tg" mark={1,4}
 trait Add:
 impl Add for Vec[i32]:
 func sum[T: Add](a: T, b: T) -> T:
@@ -18,7 +18,7 @@ func sum[T: Add](a: T, b: T) -> T:
 
 ## Match / Enum / Type Alias
 
-```tg title="enum-match.tg"
+```python title="enum-match.tg"
 enum Option[T]: Some(i32)
 match value:
 type Bytes = [i32]
@@ -26,7 +26,7 @@ type Bytes = [i32]
 
 ## Comptime Folding
 
-```tg title="comptime.tg" ins={1,4}
+```python title="comptime.tg" ins={1,4}
 comptime func add(a: i32, b: i32) -> i32:
     return a + b
 func main() -> i32:
@@ -36,7 +36,7 @@ func main() -> i32:
 
 ## Defer / Unsafe
 
-```tg title="defer-unsafe.tg"
+```python title="defer-unsafe.tg"
 func main() -> i32:
     defer print("cleanup")
     unsafe:

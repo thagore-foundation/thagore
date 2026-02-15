@@ -7,14 +7,14 @@ import { Aside } from "@astrojs/starlight/components";
 
 # `import` / `use` / `extern func`
 
-```tg title="ffi.tg" mark={1,4}
+```python title="ffi.tg" mark={1,4}
 extern func sqrtf(x: f32) -> f32
 
 func calc_hypotenuse(a: f32, b: f32) -> f32:
     return sqrtf(a * a + b * b)
 ```
 
-```tg title="module-import.tg"
+```python title="module-import.tg"
 import fs
 import process
 ```

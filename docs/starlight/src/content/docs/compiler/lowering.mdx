@@ -15,13 +15,13 @@ Module chính: `src/frontend/lowering/pipeline.tg`.
 2. Rewrite một số header (`impl Trait for Type`, `pub`, `unsafe`).
 3. Validate syntax contracts (`defer` scope, `match` header, range loop, `?` usage).
 
-```tg title="src/frontend/lowering/pipeline.tg" mark={156,171,221}
+```python title="src/frontend/lowering/pipeline.tg" mark={156,171,221}
 func preprocess(source: String) -> String:
     let catalog = _collect_comptime_catalog(source)
     let folded = _fold_all_comptime_calls(catalog.source_wo_comptime_funcs, catalog.params_map, catalog.body_map)
 ```
 
-```tg title="src/frontend/lowering/pipeline.tg" mark={248,257}
+```python title="src/frontend/lowering/pipeline.tg" mark={248,257}
 func validate(source: String) -> i32:
     if (check_result_try_sugar(source) != 0):
         return 1
