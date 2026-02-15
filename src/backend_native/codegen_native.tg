@@ -227,110 +227,34 @@ func _escape_string_literal(text: String) -> String:
         i = i + 1
     return out
 
-func _tag(idx: i32) -> String:
-    if (idx == 0):
+func _digit_char(digit: i32) -> String:
+    return __thg_str_substr("0123456789", digit, 1)
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
         return "0"
-    if (idx == 1):
-        return "1"
-    if (idx == 2):
-        return "2"
-    if (idx == 3):
-        return "3"
-    if (idx == 4):
-        return "4"
-    if (idx == 5):
-        return "5"
-    if (idx == 6):
-        return "6"
-    if (idx == 7):
-        return "7"
-    if (idx == 8):
-        return "8"
-    if (idx == 9):
-        return "9"
-    if (idx == 10):
-        return "10"
-    if (idx == 11):
-        return "11"
-    if (idx == 12):
-        return "12"
-    if (idx == 13):
-        return "13"
-    if (idx == 14):
-        return "14"
-    if (idx == 15):
-        return "15"
-    if (idx == 16):
-        return "16"
-    if (idx == 17):
-        return "17"
-    if (idx == 18):
-        return "18"
-    if (idx == 19):
-        return "19"
-    if (idx == 20):
-        return "20"
-    if (idx == 21):
-        return "21"
-    if (idx == 22):
-        return "22"
-    if (idx == 23):
-        return "23"
-    if (idx == 24):
-        return "24"
-    if (idx == 25):
-        return "25"
-    if (idx == 26):
-        return "26"
-    if (idx == 27):
-        return "27"
-    if (idx == 28):
-        return "28"
-    if (idx == 29):
-        return "29"
-    if (idx == 30):
-        return "30"
-    if (idx == 31):
-        return "31"
-    if (idx == 32):
-        return "32"
-    if (idx == 33):
-        return "33"
-    if (idx == 34):
-        return "34"
-    if (idx == 35):
-        return "35"
-    if (idx == 36):
-        return "36"
-    if (idx == 37):
-        return "37"
-    if (idx == 38):
-        return "38"
-    if (idx == 39):
-        return "39"
-    if (idx == 40):
-        return "40"
-    if (idx == 41):
-        return "41"
-    if (idx == 42):
-        return "42"
-    if (idx == 43):
-        return "43"
-    if (idx == 44):
-        return "44"
-    if (idx == 45):
-        return "45"
-    if (idx == 46):
-        return "46"
-    if (idx == 47):
-        return "47"
-    if (idx == 48):
-        return "48"
-    if (idx == 49):
-        return "49"
-    if (idx == 50):
-        return "50"
-    return "51"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let reversed = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        reversed = reversed + _digit_char(r)
+        n = q
+    let out = ""
+    let i = strlen(reversed) - 1
+    while (i >= 0):
+        out = out + __thg_str_substr(reversed, i, 1)
+        i = i - 1
+    return sign + out
+
+func _tag(idx: i32) -> String:
+    return _to_string_i32(idx)
 
 func _new_temp(prefix: String, idx: i32) -> String:
     return "%" + prefix + _tag(idx)

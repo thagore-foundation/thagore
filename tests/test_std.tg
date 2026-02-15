@@ -85,6 +85,18 @@ func main() -> i32:
     total = total + 1
     passed = passed + assert_bool("string.equals false", string.equals("a", "b"), (1 == 0))
 
+    total = total + 1
+    passed = passed + assert_str("string.to_string_i32 zero", string.to_string_i32(0), "0")
+
+    total = total + 1
+    passed = passed + assert_str("string.to_string_i32 positive", string.to_string_i32(12345), "12345")
+
+    total = total + 1
+    passed = passed + assert_str("string.to_string_i32 negative", string.to_string_i32(-9876), "-9876")
+
+    total = total + 1
+    passed = passed + assert_str("string.to_string_i32 min", string.to_string_i32(-2147483647 - 1), "-2147483648")
+
     let sb = string.builder_new()
     sb = string.append(sb, "Tha")
     sb = string.append(sb, "go")
