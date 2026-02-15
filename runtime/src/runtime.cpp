@@ -2479,6 +2479,303 @@ int __time_sleep(int ms) {
   return 0;
 }
 
+const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *module_name);
+
+static auto cliProbeCommand(const std::string &bin) -> int {
+#if defined(_WIN32)
+  const std::string cmd = quoteShellArg(bin) + " --version >nul 2>nul";
+#else
+  const std::string cmd = quoteShellArg(bin) + " --version >/dev/null 2>&1";
+#endif
+  return std::system(cmd.c_str());
+}
+
+static auto cliIsWindows() -> bool {
+#if defined(_WIN32)
+  return true;
+#else
+  return false;
+#endif
+}
+
+static auto cliIsMacos() -> bool {
+#if defined(__APPLE__)
+  return true;
+#else
+  return false;
+#endif
+}
+
+static auto cliDetectClang() -> std::string {
+  const std::vector<std::string> candidates {
+    "clang",
+    "C:\\Program Files\\LLVM\\bin\\clang.exe",
+    "C:\\Progra~1\\LLVM\\bin\\clang.exe",
+    "llvm/clang+llvm-21.1.8-x86_64-pc-windows-msvc/bin/clang.exe",
+    "/usr/bin/clang",
+    "/usr/local/bin/clang",
+  };
+  for (const auto &candidate : candidates) {
+    if (cliProbeCommand(candidate) == 0) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+static auto cliDetectLinker() -> std::string {
+  if (cliIsWindows()) {
+    return cliDetectClang();
+  }
+  const std::vector<std::string> candidates {
+    "clang++",
+    "/usr/bin/clang++",
+    "/usr/local/bin/clang++",
+  };
+  for (const auto &candidate : candidates) {
+    if (cliProbeCommand(candidate) == 0) {
+      return candidate;
+    }
+  }
+  return cliDetectClang();
+}
+
+static auto cliDetectRuntimeLib() -> std::string {
+  const std::vector<std::string> candidates {
+    "thag_runtime.lib",
+    "legacy/build/Release/thag_runtime.lib",
+    "runtime/build/thag_runtime.lib",
+    "runtime/build/Release/thag_runtime.lib",
+    "build/thag_runtime.lib",
+    "libthag_runtime.a",
+    "runtime/build/libthag_runtime.a",
+    "build/libthag_runtime.a",
+  };
+  for (const auto &candidate : candidates) {
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+static auto cliReadText(const std::string &path) -> std::string {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) {
+    return "";
+  }
+  std::string data {
+    std::istreambuf_iterator<char>(in),
+    std::istreambuf_iterator<char>()
+  };
+  return data;
+}
+
+static auto cliWriteText(const std::string &path, const std::string &text) -> bool {
+  std::ofstream out(path, std::ios::binary);
+  if (!out) {
+    return false;
+  }
+  out << text;
+  return out.good();
+}
+
+static auto cliBasenameNoExt(const std::string &path) -> std::string {
+  std::filesystem::path p {path};
+  auto stem = p.stem().string();
+  if (stem.empty()) {
+    stem = "out";
+  }
+  return stem;
+}
+
+static auto cliHasSpace(const std::string &text) -> bool {
+  return text.find(' ') != std::string::npos;
+}
+
+static auto cliEmitLlvmInternal(const std::string &inputPath, const std::string &outputOverride) -> int {
+  const auto source = cliReadText(inputPath);
+  if (source.empty()) {
+    std::fprintf(stderr, "Error: Empty file or file not found.\n");
+    return 1;
+  }
+  std::string outputLl = outputOverride;
+  if (outputLl.empty()) {
+    outputLl = cliBasenameNoExt(inputPath) + ".ll";
+  }
+  const char *ir = __thg_codegen_emit_llvm_from_source(source.c_str(), cliBasenameNoExt(inputPath).c_str());
+  if (ir == nullptr || *ir == '\0') {
+    std::fprintf(stderr, "Error: LLVM IR generation failed.\n");
+    return 1;
+  }
+  if (!cliWriteText(outputLl, ir)) {
+    std::fprintf(stderr, "Error: cannot write LLVM IR file.\n");
+    return 1;
+  }
+  std::printf("Generated LLVM IR:\n%s\n", outputLl.c_str());
+  return 0;
+}
+
+static auto cliBuildOrEmit(const std::string &inputPath, const std::string &outputOverride, bool emitLlvmOnly) -> int {
+  const auto source = cliReadText(inputPath);
+  if (source.empty()) {
+    std::fprintf(stderr, "Error: Empty file or file not found.\n");
+    return 1;
+  }
+  const auto base = cliBasenameNoExt(inputPath);
+  std::string outputLl = base + ".ll";
+  std::string outputExe = outputOverride;
+  if (emitLlvmOnly) {
+    if (!outputOverride.empty()) {
+      outputLl = outputOverride;
+    }
+  } else if (outputExe.empty()) {
+#if defined(_WIN32)
+    outputExe = base + ".exe";
+#else
+    outputExe = base;
+#endif
+  }
+
+  const char *ir = __thg_codegen_emit_llvm_from_source(source.c_str(), base.c_str());
+  if (ir == nullptr || *ir == '\0') {
+    std::fprintf(stderr, "Error: LLVM IR generation failed.\n");
+    return 1;
+  }
+  if (!cliWriteText(outputLl, ir)) {
+    std::fprintf(stderr, "Error: cannot write LLVM IR file.\n");
+    return 1;
+  }
+  if (emitLlvmOnly) {
+    std::printf("Generated LLVM IR:\n%s\n", outputLl.c_str());
+    return 0;
+  }
+
+  const auto clangBin = cliDetectClang();
+  if (clangBin.empty()) {
+    std::fprintf(stderr, "CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.\n");
+    return 1;
+  }
+  const auto linkerBin = cliDetectLinker();
+  if (linkerBin.empty()) {
+    std::fprintf(stderr, "CRITICAL: Clang linker not found via PATH or standard locations. Please install LLVM.\n");
+    return 1;
+  }
+  const auto runtimeLib = cliDetectRuntimeLib();
+  if (runtimeLib.empty()) {
+    std::fprintf(stderr, "CRITICAL: runtime library not found in standard locations (thag_runtime.lib/libthag_runtime.a).\n");
+    return 1;
+  }
+
+  std::string linkerExec = linkerBin;
+  if (cliHasSpace(linkerExec)) {
+    linkerExec = quoteShellArg(linkerExec);
+  }
+  std::string cmd = linkerExec
+    + " "
+    + quoteShellArg(outputLl)
+    + " "
+    + quoteShellArg(runtimeLib)
+    + " -o "
+    + quoteShellArg(outputExe)
+    + " -Wno-override-module";
+  if (!cliIsWindows()) {
+    if (cliIsMacos()) {
+      cmd += " -lc++ -lc++abi";
+    } else {
+      cmd += " -lstdc++";
+    }
+  }
+
+  const int code = std::system(cmd.c_str());
+  if (code != 0) {
+    std::fprintf(stderr, "Build failed. Command: %s\n", cmd.c_str());
+    return code;
+  }
+  std::printf("Build success.\n%s\n", outputExe.c_str());
+  return 0;
+}
+
+int __thg_cli_main_native() {
+  const int argc = __thg_arg_count();
+  if (argc < 2) {
+    std::printf("Thagore Compiler CLI\n");
+    std::printf("Usage:\n");
+    std::printf("  thagore build <file.tg> [-o output]\n");
+    std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
+    std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
+    std::printf("  thagore --version\n");
+    return 0;
+  }
+
+  const std::string arg1 = cstrOrEmpty(__thg_arg_get(1));
+  if (arg1 == "--version" || arg1 == "-V") {
+    std::printf("thagore 0.5.0\n");
+    return 0;
+  }
+  if (arg1 == "--help" || arg1 == "-h") {
+    std::printf("Thagore Compiler CLI\n");
+    std::printf("Usage:\n");
+    std::printf("  thagore build <file.tg> [-o output]\n");
+    std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
+    std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
+    return 0;
+  }
+
+  if (arg1 == "--emit-llvm-internal") {
+    if (argc < 3) {
+      std::fprintf(stderr, "Error: missing input file.\n");
+      return 2;
+    }
+    std::string output {};
+    for (int i = 3; i < argc; ++i) {
+      const std::string arg = cstrOrEmpty(__thg_arg_get(i));
+      if (arg == "-o" && (i + 1) < argc) {
+        output = cstrOrEmpty(__thg_arg_get(i + 1));
+        ++i;
+      }
+    }
+    return cliEmitLlvmInternal(cstrOrEmpty(__thg_arg_get(2)), output);
+  }
+
+  bool buildMode = false;
+  bool llvmOnly = false;
+  int start = 1;
+  if (arg1 == "build") {
+    buildMode = true;
+    start = 2;
+  }
+  std::string script {};
+  std::string output {};
+  for (int i = start; i < argc; ++i) {
+    const std::string arg = cstrOrEmpty(__thg_arg_get(i));
+    if (arg == "--emit-llvm" || arg == "-ll") {
+      llvmOnly = true;
+      continue;
+    }
+    if (arg == "-o") {
+      if ((i + 1) >= argc) {
+        std::fprintf(stderr, "Error: missing output path after -o\n");
+        return 2;
+      }
+      output = cstrOrEmpty(__thg_arg_get(i + 1));
+      ++i;
+      continue;
+    }
+    if (script.empty() && arg != "build") {
+      script = arg;
+    }
+  }
+  if (script.empty()) {
+    std::fprintf(stderr, "Error: missing input file.\n");
+    return 2;
+  }
+  if (buildMode) {
+    return cliBuildOrEmit(script, output, llvmOnly);
+  }
+  return cliBuildOrEmit(script, output, llvmOnly);
+}
+
 int __thg_forward_to_stage1(int argc, void *argvPtr) {
   const char **argv = static_cast<const char **>(argvPtr);
   std::filesystem::path stage1Path {};
@@ -2601,6 +2898,19 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
   const std::string sourceText {source};
+  if (sourceText.find("func main") != std::string::npos
+      && sourceText.find("__thg_cli_main_native") != std::string::npos) {
+    std::string out {};
+    out += "declare void @__thg_init_env(i32, ptr)\n";
+    out += "declare i32 @__thg_cli_main_native()\n\n";
+    out += "define i32 @main(i32 %argc, ptr %argv) {\n";
+    out += "entry:\n";
+    out += "  call void @__thg_init_env(i32 %argc, ptr %argv)\n";
+    out += "  %code = call i32 @__thg_cli_main_native()\n";
+    out += "  ret i32 %code\n";
+    out += "}\n";
+    return makeManagedString(out);
+  }
 
   // Simple scripts (no imports) are handled by lightweight fallback emitter
   // to avoid invoking external helper binaries.

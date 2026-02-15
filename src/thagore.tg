@@ -1,4 +1,4 @@
-import "src/cli/thagore.tg" as cli
+extern func __thg_cli_main_native() -> i32
 
 func main() -> i32:
-    return cli.main()
+    return __thg_cli_main_native()
