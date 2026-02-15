@@ -140,6 +140,14 @@ def status_color(state: str) -> int:
     }.get(state, 0x95A5A6)
 
 
+def run_state_label(state: str) -> str:
+    return {
+        "SUCCESS": "THÀNH CÔNG",
+        "RUNNING": "ĐANG CHẠY",
+        "FAIL": "THẤT BẠI",
+    }.get(state, state)
+
+
 def workflow_icon(name: str) -> str:
     lowered = (name or "").lower()
     if "release" in lowered:
@@ -182,6 +190,14 @@ def chunk_lines(lines: List[str], max_len: int = 950) -> List[str]:
     return chunks
 
 
+def parse_int(value: str, default_value: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default_value
+    return max(minimum, min(maximum, parsed))
+
+
 def current_step_name(job: Dict[str, Any]) -> str:
     for step in job.get("steps", []) or []:
         if step.get("status") == "in_progress":
@@ -202,7 +218,7 @@ def build_payload(
     milestone: str,
 ) -> Dict[str, Any]:
     sha = run.get("head_sha", "")
-    commit_first_line = to_one_line(commit.get("commit", {}).get("message", "")) or "(no message)"
+    commit_first_line = to_one_line(commit.get("commit", {}).get("message", "")) or "(không có nội dung)"
     author = (
         commit.get("author", {}) or {}
     ).get("login") or (commit.get("commit", {}).get("author", {}) or {}).get("name") or run.get(
@@ -214,7 +230,7 @@ def build_payload(
     run_url = run.get("html_url", "")
     workflow_name = run.get("name", "Workflow")
     event = run.get("event", "")
-    branch = run.get("head_branch", "") or "-"
+    branch = run.get("head_branch", "") or "(không rõ)"
     wf_icon = workflow_icon(workflow_name)
 
     job_lines: List[str] = []
@@ -240,9 +256,9 @@ def build_payload(
             "value": truncate(f"`{to_short_sha(sha)}` {commit_first_line}", 1024),
             "inline": False,
         },
-        {"name": "👤 By", "value": truncate(f"`{author}`", 1024), "inline": True},
+        {"name": "👤 Người commit", "value": truncate(f"`{author}`", 1024), "inline": True},
         {
-            "name": "🌿 Branch / Event",
+            "name": "🌿 Nhánh / Sự kiện",
             "value": truncate(f"`{branch}` / `{event}`", 1024),
             "inline": True,
         },
@@ -259,21 +275,21 @@ def build_payload(
         },
     ]
 
-    chunks = chunk_lines(job_lines) or ["(no jobs)"]
+    chunks = chunk_lines(job_lines) or ["(không có job)"]
     for idx, chunk in enumerate(chunks, start=1):
         suffix = "" if len(chunks) == 1 else f" ({idx}/{len(chunks)})"
-        fields.append({"name": f"🛠️ Jobs{suffix}", "value": chunk, "inline": False})
+        fields.append({"name": f"🛠️ Job{suffix}", "value": chunk, "inline": False})
 
     embed: Dict[str, Any] = {
-        "title": f"{wf_icon} {status_icon(status)} [{workflow_name}] {status}",
+        "title": f"{wf_icon} {status_icon(status)} [{workflow_name}] {run_state_label(status)}",
         "url": run_url,
         "color": status_color(status),
         "fields": fields[:25],
-        "footer": {"text": f"📦 {repo}"},
+        "footer": {"text": f"📦 {repo} • cập nhật tự động"},
     }
     actor = run.get("actor", {}) or {}
     if actor.get("login"):
-        author_obj: Dict[str, Any] = {"name": f"👤 {actor['login']}"}
+        author_obj: Dict[str, Any] = {"name": f"👤 Người chạy: {actor['login']}"}
         if actor.get("avatar_url"):
             author_obj["icon_url"] = actor["avatar_url"]
         embed["author"] = author_obj
@@ -286,38 +302,43 @@ def build_payload(
     return {"content": "", "embeds": [embed], "allowed_mentions": {"parse": []}}
 
 
+def fetch_run_and_jobs(repo: str, run_id: str, token: str) -> Dict[str, Any]:
+    run = gh_api(f"/repos/{repo}/actions/runs/{run_id}", token=token)
+    jobs_data = gh_api(
+        f"/repos/{repo}/actions/runs/{run_id}/jobs", token=token, query={"per_page": "100"}
+    )
+    jobs = []
+    for job in jobs_data.get("jobs", []):
+        if is_notify_job(job.get("name", "")):
+            continue
+        jobs.append(job)
+    return {"run": run, "jobs": jobs}
+
+
 def main() -> int:
     mode = getenv_required("INPUT_MODE").lower()
     webhook_url = os.getenv("INPUT_WEBHOOK_URL", "").strip()
     token = os.getenv("INPUT_GITHUB_TOKEN", "").strip()
     message_id = os.getenv("INPUT_MESSAGE_ID", "").strip()
     milestone = os.getenv("INPUT_MILESTONE", "").strip()
+    poll_seconds = parse_int(os.getenv("INPUT_POLL_SECONDS", "20"), 20, 5, 120)
+    max_minutes = parse_int(os.getenv("INPUT_MAX_MINUTES", "180"), 180, 10, 1440)
 
     if not webhook_url:
-        print("DISCORD_WEBHOOK_URL is empty. Skip notification.")
+        print("DISCORD_WEBHOOK_URL đang trống. Bỏ qua thông báo.")
         return 0
     if not token:
-        print("github token is empty. Skip notification.")
+        print("GitHub token đang trống. Bỏ qua thông báo.")
         return 0
 
     repo = getenv_required("GITHUB_REPOSITORY")
     run_id = getenv_required("GITHUB_RUN_ID")
     sha = getenv_required("GITHUB_SHA")
-    run = gh_api(f"/repos/{repo}/actions/runs/{run_id}", token=token)
-    jobs_data = gh_api(
-        f"/repos/{repo}/actions/runs/{run_id}/jobs", token=token, query={"per_page": "100"}
-    )
     commit = gh_api(f"/repos/{repo}/commits/{sha}", token=token)
 
-    jobs = []
-    for job in jobs_data.get("jobs", []):
-        if is_notify_job(job.get("name", "")):
-            continue
-        jobs.append(job)
-
-    payload = build_payload(repo, run, commit, jobs, milestone)
-
     if mode == "init":
+        snapshot = fetch_run_and_jobs(repo, run_id, token)
+        payload = build_payload(repo, snapshot["run"], commit, snapshot["jobs"], milestone)
         response = webhook_request("POST", webhook_url, payload)
         mid = str(response.get("id", "")).strip()
         if mid:
@@ -329,9 +350,29 @@ def main() -> int:
 
     if mode in ("update", "finalize"):
         if not message_id:
-            print("message_id is empty for update/finalize. Skip.")
+            print("message_id đang trống cho update/finalize. Bỏ qua.")
             return 0
+        snapshot = fetch_run_and_jobs(repo, run_id, token)
+        payload = build_payload(repo, snapshot["run"], commit, snapshot["jobs"], milestone)
         webhook_request("PATCH", webhook_url, payload, message_id=message_id)
+        return 0
+
+    if mode == "watch":
+        if not message_id:
+            print("message_id đang trống cho watch. Bỏ qua.")
+            return 0
+        deadline = time.time() + (max_minutes * 60)
+        while True:
+            snapshot = fetch_run_and_jobs(repo, run_id, token)
+            payload = build_payload(repo, snapshot["run"], commit, snapshot["jobs"], "")
+            webhook_request("PATCH", webhook_url, payload, message_id=message_id)
+            state = run_state(snapshot["jobs"])
+            if state in ("SUCCESS", "FAIL"):
+                break
+            if time.time() >= deadline:
+                print("Đã đạt timeout của watch, dừng vòng lặp.")
+                break
+            time.sleep(poll_seconds)
         return 0
 
     raise RuntimeError(f"Unsupported mode: {mode}")

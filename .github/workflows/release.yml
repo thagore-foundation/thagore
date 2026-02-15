@@ -28,6 +28,25 @@ jobs:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+  discord-notify-live:
+    name: discord-notify-live
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    needs: discord-notify-init
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Watch Discord message realtime
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: watch
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          poll_seconds: "20"
+          max_minutes: "240"
+
   build-release:
     name: release (${{ matrix.os }})
     needs: discord-notify-init
@@ -482,7 +501,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, build-release, publish]
+    needs: [discord-notify-init, discord-notify-live, build-release, publish]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

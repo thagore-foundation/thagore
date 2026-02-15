@@ -3,7 +3,7 @@ description: Create and update a single Discord webhook message for a workflow r
 
 inputs:
   mode:
-    description: init, update, or finalize
+    description: init, update, watch, or finalize
     required: true
   webhook_url:
     description: Discord webhook URL
@@ -19,6 +19,14 @@ inputs:
     description: Milestone text for current update
     required: false
     default: ""
+  poll_seconds:
+    description: Poll interval seconds for watch mode
+    required: false
+    default: "20"
+  max_minutes:
+    description: Max minutes for watch mode
+    required: false
+    default: "180"
 
 outputs:
   message_id:
@@ -37,6 +45,8 @@ runs:
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_MESSAGE_ID: ${{ inputs.message_id }}
         INPUT_MILESTONE: ${{ inputs.milestone }}
+        INPUT_POLL_SECONDS: ${{ inputs.poll_seconds }}
+        INPUT_MAX_MINUTES: ${{ inputs.max_minutes }}
       run: |
         if command -v python3 >/dev/null 2>&1; then
           python3 "${{ github.action_path }}/notify.py"
