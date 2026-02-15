@@ -4,7 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       seed_tag:
-        description: "Release tag for stage1 seed assets"
+        description: "Release tag for new stage1 seed assets"
+        required: true
+        default: "v0.3.23-stage1-seed"
+      base_seed_tag:
+        description: "Existing stage1 seed tag used for bootstrap"
         required: true
         default: "v0.3.22-stage1-seed"
 
@@ -19,7 +23,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      BOOTSTRAP_STAGE1_TAG: ${{ github.event.inputs.base_seed_tag }}
+      STAGE_TRACE_FILE: seed-stage-trace.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,24 +59,62 @@ jobs:
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           clang --version
 
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          choco install llvm --version=21.1.8 --no-progress -y
+          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Fetch bootstrap stage1 asset (strict tag)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          : > "$STAGE_TRACE_FILE"
+          [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: base_seed_tag is required."; exit 1)
+          mkdir -p bootstrap
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D bootstrap
+            cp bootstrap/thagore-stage1.exe stage1.exe
+            chmod +x stage1.exe || true
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
+            mkdir -p bootstrap/extract_stage1
+            tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
+            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary missing in Linux seed archive"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1 || true
+          else
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-macos.tar.gz" -D bootstrap
+            mkdir -p bootstrap/extract_stage1
+            tar -xzf bootstrap/thagore-stage1-macos.tar.gz -C bootstrap/extract_stage1
+            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary missing in macOS seed archive"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1 || true
+          fi
+
       - name: Build runtime artifact
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p runtime/build
           clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-          ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-          cp runtime/build/libthag_runtime.a libthag_runtime.a
-          cp runtime/build/libthag_runtime.a thag_runtime.lib
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
+            cp runtime/build/thag_runtime.lib thag_runtime.lib
+          else
+            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
+            cp runtime/build/libthag_runtime.a libthag_runtime.a
+            cp runtime/build/libthag_runtime.a thag_runtime.lib
+          fi
 
-      - name: Build Stage0 (one-time exception)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release
-          cmake --build legacy/build --config Release
-
-      - name: Build and verify stage1 seed
+      - name: Verify Stage1 -> Stage2 -> Stage2 -> samples
         shell: bash
         run: |
           set -euxo pipefail
@@ -91,55 +136,80 @@ jobs:
             local src="$2"
             local out="$3"
             local got=""
+            echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if "./$cc" build "$src" -o "$out"; then
               got="$(resolve_bin "$out" "$src" || true)"
               if [[ -n "$got" ]]; then
                 return 0
               fi
             fi
-            "./$cc" --build "$src" -o "$out" || return 1
+            echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" --build "$src" -o "$out"
             got="$(resolve_bin "$out" "$src" || true)"
             [[ -n "$got" ]]
           }
-          STAGE0_BIN=""
-          for c in "legacy/build/thag" "legacy/build/Release/thag" "legacy/build/thagore" "legacy/build/Release/thagore"; do
-            if [[ -f "$c" ]]; then
-              STAGE0_BIN="$c"
-              break
-            fi
-          done
-          [[ -n "$STAGE0_BIN" ]] || (echo "CRITICAL: stage0 binary not found on Unix"; exit 1)
-          chmod +x "$STAGE0_BIN" || true
-          STAGE1_OUT="stage1"
-          STAGE2_OUT="stage2"
-          HELLO_OUT="hello_seed"
-          FIB_OUT="fib_seed"
 
-          thg_build "$STAGE0_BIN" src/thagore.tg "$STAGE1_OUT"
-          STAGE1_OUT="$(resolve_bin "$STAGE1_OUT" "src/thagore.tg")"
-          chmod +x "$STAGE1_OUT" || true
-
-          thg_build "$STAGE1_OUT" src/thagore.tg "$STAGE2_OUT"
-          STAGE2_OUT="$(resolve_bin "$STAGE2_OUT" "src/thagore.tg")"
-          chmod +x "$STAGE2_OUT" || true
-
-          thg_build "$STAGE2_OUT" examples/hello.tg "$HELLO_OUT"
-          HELLO_OUT="$(resolve_bin "$HELLO_OUT" "examples/hello.tg")"
-          chmod +x "$HELLO_OUT" || true
-          "./$HELLO_OUT"
-
-          thg_build "$STAGE2_OUT" examples/fib.tg "$FIB_OUT"
-          FIB_OUT="$(resolve_bin "$FIB_OUT" "examples/fib.tg")"
-          chmod +x "$FIB_OUT" || true
-          "./$FIB_OUT"
-
-          mkdir -p seed/dist/bin
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            cp "$STAGE1_OUT" "seed/dist/bin/thagore"
-            tar -czf "thagore-stage1-linux.tar.gz" -C seed dist
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STAGE1_BIN="stage1.exe"
+            STAGE2_BIN="stage2.exe"
+            STAGE2_REBUILD_BIN="stage2_rebuild.exe"
+            HELLO_BIN="hello_seed.exe"
+            FIB_BIN="fib_seed.exe"
           else
-            cp "$STAGE1_OUT" "seed/dist/bin/thagore"
-            tar -czf "thagore-stage1-macos.tar.gz" -C seed dist
+            STAGE1_BIN="stage1"
+            STAGE2_BIN="stage2"
+            STAGE2_REBUILD_BIN="stage2_rebuild"
+            HELLO_BIN="hello_seed"
+            FIB_BIN="fib_seed"
+          fi
+
+          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
+          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
+          chmod +x "$STAGE2_BIN" || true
+
+          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
+          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_BIN"
+          fi
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+
+          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_BIN"
+          HELLO_BIN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          chmod +x "$HELLO_BIN" || true
+          "./$HELLO_BIN"
+
+          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_BIN"
+          FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          chmod +x "$FIB_BIN" || true
+          "./$FIB_BIN"
+
+          echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+
+      - name: Guard no stage0 usage
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP" "$STAGE_TRACE_FILE"; then
+            echo "CRITICAL: forbidden stage0 markers detected in seed trace"
+            cat "$STAGE_TRACE_FILE"
+            exit 1
+          fi
+
+      - name: Package stage1 seed artifact from stage2_rebuild
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf seed
+          mkdir -p seed/dist/bin
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "$STAGE2_REBUILD_BIN" thagore-stage1.exe
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
+            tar -czf thagore-stage1-linux.tar.gz -C seed dist
+          else
+            cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
+            tar -czf thagore-stage1-macos.tar.gz -C seed dist
           fi
 
       - name: Upload seed artifacts
@@ -147,8 +217,10 @@ jobs:
         with:
           name: seed-${{ runner.os }}
           path: |
+            thagore-stage1.exe
             thagore-stage1-linux.tar.gz
             thagore-stage1-macos.tar.gz
+            ${{ env.STAGE_TRACE_FILE }}
 
   publish-seed:
     name: publish-seed-release
@@ -160,15 +232,6 @@ jobs:
         with:
           path: seed-artifacts
 
-      - name: Reuse stable Windows stage1 asset
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          mkdir -p seed-artifacts/windows
-          gh release download "v0.3.20-foundation" --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D seed-artifacts/windows
-
       - name: Publish seed release
         uses: softprops/action-gh-release@v2
         with:
@@ -178,6 +241,7 @@ jobs:
             seed-artifacts/**/thagore-stage1.exe
             seed-artifacts/**/thagore-stage1-linux.tar.gz
             seed-artifacts/**/thagore-stage1-macos.tar.gz
+            seed-artifacts/**/seed-stage-trace.log
           make_latest: false
           prerelease: true
           overwrite_files: true

@@ -101,16 +101,8 @@ jobs:
           }
           download_asset() {
             local pattern="$1"
-            if [[ -n "$BOOTSTRAP_STAGE1_TAG" ]]; then
-              if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
-                return 0
-              fi
-            else
-              if gh release download --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
-                return 0
-              fi
-            fi
-            return 1
+            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
           probe_stage1_chain() {
             local bin="$1"
