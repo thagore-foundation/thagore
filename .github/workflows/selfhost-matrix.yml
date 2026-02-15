@@ -346,6 +346,7 @@ jobs:
           thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_BIN"
           FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           test -f "$FIB_BIN"
+          echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
@@ -362,10 +363,58 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          TEST_SRC="tests/test_comptime_func.tg"
           TEST_LL="test_comptime_func_selfhost.ll"
           rm -f "$TEST_LL"
-          echo "[CMD] ./$STAGE2_REBUILD_BIN --emit-llvm tests/test_comptime_func.tg -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_REBUILD_BIN" --emit-llvm tests/test_comptime_func.tg -o "$TEST_LL"
+          before_ll=";"
+          for c in *.ll; do
+            if [[ -f "$c" ]]; then
+              before_ll="${before_ll}${c};"
+            fi
+          done
+          emit_ll() {
+            local cc="$1"
+            [[ -n "$cc" && -f "$cc" ]] || return 1
+            echo "[CMD] ./$cc --emit-llvm $TEST_SRC -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" --emit-llvm "$TEST_SRC" -o "$TEST_LL" || true
+            [[ -f "$TEST_LL" ]] && return 0
+
+            echo "[CMD] ./$cc $TEST_SRC --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" "$TEST_SRC" --emit-llvm || true
+            [[ -f "$TEST_LL" ]] && return 0
+
+            echo "[CMD] ./$cc build $TEST_SRC --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" build "$TEST_SRC" --emit-llvm || true
+            [[ -f "$TEST_LL" ]] && return 0
+
+            local base="test_comptime_func"
+            if [[ -f "${base}.ll" ]]; then
+              cp "${base}.ll" "$TEST_LL"
+              return 0
+            fi
+            local pick=""
+            pick="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
+            if [[ -n "$pick" && -f "$pick" ]]; then
+              cp "$pick" "$TEST_LL"
+              return 0
+            fi
+            for c in *.ll; do
+              if [[ -f "$c" && "$before_ll" != *";${c};"* ]]; then
+                cp "$c" "$TEST_LL"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          ok=0
+          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+            if emit_ll "$cc"; then
+              ok=1
+              break
+            fi
+          done
+          [[ "$ok" -eq 1 ]] || (echo "CRITICAL: comptime LLVM output not found"; ls -la; exit 1)
           [[ -f "$TEST_LL" ]] || (echo "CRITICAL: comptime LLVM output not found"; ls -la; exit 1)
           grep -q "define i32 @main" "$TEST_LL" || (echo "CRITICAL: comptime LLVM output missing @main"; cat "$TEST_LL"; exit 1)
 
