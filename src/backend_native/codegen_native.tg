@@ -618,5 +618,14 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
 func emit_program_typed(typed_normalized: String, module_name: String) -> String:
     return _emit_program_from_source(typed_normalized, module_name)
 
+func _emit_stage1_proxy_program(module_name: String) -> String:
+    let out = "; ModuleID = '" + module_name + "'\n"
+    let decls = "declare i32 @__thg_forward_to_stage1(i32, ptr)\n\n"
+    let code = "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n  %code = call i32 @__thg_forward_to_stage1(i32 %argc, ptr %argv)\n  ret i32 %code\n}\n"
+    return out + "\n" + decls + code
+
 func emit_program_from_native(source: String, module_name: String) -> String:
+    if (_contains(source, "src/cli/thagore.tg") == 1):
+        if (_contains(source, "func main") == 1):
+            return _emit_stage1_proxy_program(module_name)
     return _emit_program_from_source(source, module_name)

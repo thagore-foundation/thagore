@@ -2479,6 +2479,53 @@ int __time_sleep(int ms) {
   return 0;
 }
 
+int __thg_forward_to_stage1(int argc, void *argvPtr) {
+  const char **argv = static_cast<const char **>(argvPtr);
+  std::filesystem::path stage1Path {};
+#if defined(_WIN32)
+  const std::vector<std::filesystem::path> candidates {
+    std::filesystem::path {"stage1.exe"},
+    std::filesystem::path {"thagore-stage1.exe"},
+    std::filesystem::path {"thagore.exe"},
+    std::filesystem::path {"thag.exe"},
+  };
+#else
+  const std::vector<std::filesystem::path> candidates {
+    std::filesystem::path {"./stage1"},
+    std::filesystem::path {"stage1"},
+    std::filesystem::path {"./thagore"},
+    std::filesystem::path {"thagore"},
+  };
+#endif
+  for (const auto &candidate : candidates) {
+    if (std::filesystem::exists(candidate)) {
+      stage1Path = candidate;
+      break;
+    }
+  }
+  if (stage1Path.empty()) {
+    std::fprintf(stderr, "CRITICAL: stage1 bootstrap binary not found for proxy mode.\n");
+    return 127;
+  }
+  std::string command {};
+#if defined(_WIN32)
+  command = stage1Path.string();
+#else
+  command = quoteShellArg(stage1Path.string());
+#endif
+  for (int i = 1; i < argc; ++i) {
+    const char *arg = argv != nullptr ? argv[i] : "";
+    command.push_back(' ');
+#if defined(_WIN32)
+    command += cstrOrEmpty(arg);
+#else
+    command += quoteShellArg(cstrOrEmpty(arg));
+#endif
+  }
+  const int code = std::system(command.c_str());
+  return code;
+}
+
 void *__thg_parse_expr_from_tokens(void *streamPtr) {
   if (streamPtr == nullptr) {
     return nullptr;
