@@ -243,12 +243,21 @@ Never allowed:
 - `dot_product`
 - `polynomial_eval`
 - `fibonacci_dp` *(experimental rewrite path)*
+- `factorial_iterative` *(recursive factorial -> iterative loop)*
+- `power_fast` *(linear multiplication -> binary exponentiation)*
+- `gcd_euclid` *(subtractive gcd -> modulo Euclid)*
+- `bit_peel_iterative` *(recursive bit peel -> iterative fold)*
 - `sort_ascending`
 - `search_element`
 - `sqrt_bounded_loop`
 - `auto_plan` *(pattern inference, deterministic heuristic)*
 
 Each goal ships with 2-4 deterministic strategies max in MVP.
+
+Automatic detection mode:
+
+- `THAG_AUTO_OPT=1` (default): for plain `func` without `intent`, compiler still tries deterministic body-pattern detection and applies verified rewrites.
+- `THAG_AUTO_OPT=0`: disables no-marker auto rewrites (baseline behavior).
 
 ## 12) Implementation plan
 

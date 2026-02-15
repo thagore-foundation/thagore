@@ -45,6 +45,19 @@ struct IntentPreprocessResult {
   std::size_t rewritesApplied {0};
 };
 
+auto intentTraceEnabled() -> bool {
+  const char *env = std::getenv("THAG_INTENT_TRACE");
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
+auto autoOptEnabled() -> bool {
+  const char *env = std::getenv("THAG_AUTO_OPT");
+  if (env == nullptr || env[0] == '\0') {
+    return true;
+  }
+  return env[0] != '0';
+}
+
 auto trimCopy(std::string_view text) -> std::string {
   std::size_t begin = 0;
   while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r')) {
@@ -69,6 +82,18 @@ auto toLowerCopy(std::string_view text) -> std::string {
   std::string out(text);
   for (char &ch : out) {
     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return out;
+}
+
+auto compactNoSpace(std::string_view text) -> std::string {
+  std::string out {};
+  out.reserve(text.size());
+  for (char ch : text) {
+    if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+      continue;
+    }
+    out.push_back(ch);
   }
   return out;
 }
@@ -152,13 +177,373 @@ auto parseFirstParamName(std::string_view trimmedLine) -> std::string {
   return inside;
 }
 
-auto shouldRewriteFibonacci(std::string_view functionName, std::string_view goal) -> bool {
-  const auto loweredGoal = toLowerCopy(goal);
-  if (loweredGoal != "fibonacci_dp" && loweredGoal != "auto_plan" && loweredGoal != "fibonacci_iterative") {
-    return false;
+auto parseParamNames(std::string_view trimmedLine) -> std::vector<std::string> {
+  std::vector<std::string> names {};
+  const auto lparen = trimmedLine.find('(');
+  if (lparen == std::string::npos) {
+    return names;
   }
+  const auto rparen = trimmedLine.find(')', lparen + 1);
+  if (rparen == std::string::npos || rparen <= lparen + 1) {
+    return names;
+  }
+  std::string inside = trimCopy(trimmedLine.substr(lparen + 1, rparen - lparen - 1));
+  if (inside.empty()) {
+    return names;
+  }
+  std::size_t start = 0;
+  while (start < inside.size()) {
+    auto comma = inside.find(',', start);
+    if (comma == std::string::npos) {
+      comma = inside.size();
+    }
+    auto token = trimCopy(std::string_view(inside).substr(start, comma - start));
+    if (!token.empty()) {
+      const auto colon = token.find(':');
+      if (colon != std::string::npos) {
+        token = trimCopy(std::string_view(token).substr(0, colon));
+      }
+      if (!token.empty()) {
+        names.push_back(token);
+      }
+    }
+    start = comma + 1;
+  }
+  return names;
+}
+
+auto containsWord(std::string_view haystackLower, std::string_view needleLower) -> bool {
+  return haystackLower.find(needleLower) != std::string::npos;
+}
+
+auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   const auto loweredName = toLowerCopy(functionName);
-  return loweredName.find("fib") != std::string::npos;
+  if (containsWord(loweredName, "fib")) {
+    return "fibonacci_dp";
+  }
+  if (containsWord(loweredName, "fact")) {
+    return "factorial_iterative";
+  }
+  if (containsWord(loweredName, "pow") || containsWord(loweredName, "exp")) {
+    return "power_fast";
+  }
+  if (containsWord(loweredName, "gcd")) {
+    return "gcd_euclid";
+  }
+  if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
+      || containsWord(loweredName, "peel")) {
+    return "bit_peel_iterative";
+  }
+  if (containsWord(loweredName, "sqrt")) {
+    return "sqrt_bounded_loop";
+  }
+  if (containsWord(loweredName, "sum") || containsWord(loweredName, "reduce")) {
+    return "reduce_sum";
+  }
+  if (containsWord(loweredName, "search") || containsWord(loweredName, "find")) {
+    return "search_element";
+  }
+  return {};
+}
+
+enum class IntentRewriteKind {
+  None,
+  FibonacciIterative,
+  FactorialIterative,
+  PowerBinaryExp,
+  GcdEuclidModulo,
+  BitPeelIterative,
+  ReduceSumFormula,
+  SqrtBoundedLoop,
+  SearchIdentity,
+};
+
+struct FunctionBodySignals {
+  IntentRewriteKind kind {IntentRewriteKind::None};
+  std::string detectedGoal {};
+};
+
+auto inferRewriteKindFromBody(
+  std::string_view functionName,
+  std::string_view headerLine,
+  const std::vector<std::string> &sourceLines,
+  std::size_t bodyStart,
+  std::size_t bodyEnd
+) -> FunctionBodySignals {
+  FunctionBodySignals out {};
+  const auto params = parseParamNames(headerLine);
+  if (params.empty()) {
+    return out;
+  }
+
+  std::vector<std::string> trimmed {};
+  std::vector<std::string> compact {};
+  for (std::size_t i = bodyStart; i < bodyEnd; ++i) {
+    const auto t = trimCopy(sourceLines[i]);
+    if (t.empty()) {
+      continue;
+    }
+    trimmed.push_back(t);
+    compact.push_back(compactNoSpace(t));
+  }
+
+  if (params.size() == 1) {
+    const auto n = params[0];
+    const auto nCompact = compactNoSpace(n);
+    const auto fnCompact = compactNoSpace(functionName);
+
+    bool hasFibBase = false;
+    bool hasFibRec = false;
+    for (std::size_t i = 0; i < compact.size(); ++i) {
+      const auto &c = compact[i];
+      if (c == "if(" + nCompact + "<2):" || c == "if(" + nCompact + "<=1):") {
+        if (i + 1 < compact.size() && compact[i + 1] == "return" + nCompact) {
+          hasFibBase = true;
+        }
+      }
+      if (c == "return" + fnCompact + "(" + nCompact + "-1)+" + fnCompact + "(" + nCompact + "-2)") {
+        hasFibRec = true;
+      }
+    }
+    if (hasFibBase && hasFibRec) {
+      out.kind = IntentRewriteKind::FibonacciIterative;
+      out.detectedGoal = "fibonacci_dp";
+      return out;
+    }
+
+    bool hasFactBase = false;
+    bool hasFactRec = false;
+    for (std::size_t i = 0; i < compact.size(); ++i) {
+      const auto &c = compact[i];
+      if (c == "if(" + nCompact + "<2):" || c == "if(" + nCompact + "<=1):") {
+        if (i + 1 < compact.size() && compact[i + 1] == "return1") {
+          hasFactBase = true;
+        }
+      }
+      if (c == "return" + nCompact + "*" + fnCompact + "(" + nCompact + "-1)"
+          || c == "return" + fnCompact + "(" + nCompact + "-1)*" + nCompact) {
+        hasFactRec = true;
+      }
+    }
+    if (hasFactBase && hasFactRec) {
+      out.kind = IntentRewriteKind::FactorialIterative;
+      out.detectedGoal = "factorial_iterative";
+      return out;
+    }
+
+    bool hasSqrtPattern = false;
+    bool hasIStep = false;
+    for (const auto &c : compact) {
+      if (c == "while(((i+1)*(i+1))<=" + nCompact + "):") {
+        hasSqrtPattern = true;
+      }
+      if (c == "i=i+1") {
+        hasIStep = true;
+      }
+    }
+    if (hasSqrtPattern && hasIStep) {
+      out.kind = IntentRewriteKind::SqrtBoundedLoop;
+      out.detectedGoal = "sqrt_bounded_loop";
+      return out;
+    }
+
+    std::string loopVar {};
+    bool hasSumStep = false;
+    bool hasIncStep = false;
+    bool hasReturn = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto p = c.find("<=" + nCompact + "):");
+        if (p != std::string::npos) {
+          loopVar = c.substr(6, p - 6);
+        }
+      }
+      if (!loopVar.empty()) {
+        if (c.find("+" + loopVar) != std::string::npos && c.find('=') != std::string::npos) {
+          hasSumStep = true;
+        }
+        if (c == loopVar + "=" + loopVar + "+1") {
+          hasIncStep = true;
+        }
+      }
+      if (c.starts_with("return")) {
+        hasReturn = true;
+      }
+    }
+    if (!loopVar.empty() && hasSumStep && hasIncStep && hasReturn) {
+      out.kind = IntentRewriteKind::ReduceSumFormula;
+      out.detectedGoal = "reduce_sum";
+      return out;
+    }
+  }
+
+  if (params.size() >= 2) {
+    const auto first = compactNoSpace(params[0]);
+    const auto second = compactNoSpace(params[1]);
+    const auto fnCompact = compactNoSpace(functionName);
+
+    bool hasPeelBase = false;
+    bool hasPeelRec = false;
+    for (std::size_t i = 0; i < compact.size(); ++i) {
+      const auto &c = compact[i];
+      if (c == "if(" + second + "==0):") {
+        if (i + 1 < compact.size() && compact[i + 1] == "return" + first) {
+          hasPeelBase = true;
+        }
+      }
+      if (c.starts_with("return" + fnCompact + "(") && c.find("," + second + "-1)") != std::string::npos
+          && (c.find(first + "/2") != std::string::npos || c.find("floor(" + first + "/2)") != std::string::npos)
+          && (c.find(first + "%2") != std::string::npos
+              || c.find(first + "-(" + first + "/2)*2") != std::string::npos
+              || c.find(first + "-((" + first + "/2)*2)") != std::string::npos)) {
+        hasPeelRec = true;
+      }
+    }
+    if (hasPeelBase && hasPeelRec) {
+      out.kind = IntentRewriteKind::BitPeelIterative;
+      out.detectedGoal = "bit_peel_iterative";
+      return out;
+    }
+
+    std::string powerLoopVar {};
+    std::string powerReturnVar {};
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto p = c.find("<" + second + "):");
+        if (p != std::string::npos) {
+          powerLoopVar = c.substr(6, p - 6);
+        }
+      }
+      if (c.starts_with("return")) {
+        const auto candidate = c.substr(6);
+        if (!candidate.empty() && std::isalpha(static_cast<unsigned char>(candidate[0])) != 0) {
+          powerReturnVar = candidate;
+        }
+      }
+    }
+    bool hasPowMul = false;
+    bool hasPowInc = false;
+    bool hasPowInit = false;
+    for (const auto &c : compact) {
+      if (!powerReturnVar.empty()) {
+        if (c == powerReturnVar + "=1" || c == "let" + powerReturnVar + "=1") {
+          hasPowInit = true;
+        }
+        if (c == powerReturnVar + "=" + powerReturnVar + "*" + first
+            || c == powerReturnVar + "=" + first + "*" + powerReturnVar) {
+          hasPowMul = true;
+        }
+      }
+      if (!powerLoopVar.empty() && c == powerLoopVar + "=" + powerLoopVar + "+1") {
+        hasPowInc = true;
+      }
+    }
+    if (!powerLoopVar.empty() && !powerReturnVar.empty() && hasPowInit && hasPowMul && hasPowInc) {
+      out.kind = IntentRewriteKind::PowerBinaryExp;
+      out.detectedGoal = "power_fast";
+      return out;
+    }
+
+    std::string gcdA {};
+    std::string gcdB {};
+    bool hasGcdWhile = false;
+    bool hasGcdCond = false;
+    bool hasGcdSub = false;
+    bool hasGcdRet = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto body = c.substr(6, c.size() - 8);
+        const auto p = body.find("!=");
+        if (p != std::string::npos && p > 0 && p + 2 < body.size()) {
+          gcdA = body.substr(0, p);
+          gcdB = body.substr(p + 2);
+        }
+      }
+      if (!gcdA.empty() && !gcdB.empty()
+          && (c == "while(" + gcdA + "!=" + gcdB + "):" || c == "while(" + gcdB + "!=" + gcdA + "):")) {
+        hasGcdWhile = true;
+      }
+      if (!gcdA.empty() && !gcdB.empty()
+          && (c == "if(" + gcdA + ">" + gcdB + "):" || c == "if(" + gcdB + ">" + gcdA + "):")) {
+        hasGcdCond = true;
+      }
+      if (!gcdA.empty() && !gcdB.empty()
+          && (c == gcdA + "=" + gcdA + "-" + gcdB || c == gcdB + "=" + gcdB + "-" + gcdA)) {
+        hasGcdSub = true;
+      }
+      if (!gcdA.empty() && !gcdB.empty() && (c == "return" + gcdA || c == "return" + gcdB)) {
+        hasGcdRet = true;
+      }
+    }
+    if (hasGcdWhile && hasGcdCond && hasGcdSub && hasGcdRet) {
+      out.kind = IntentRewriteKind::GcdEuclidModulo;
+      out.detectedGoal = "gcd_euclid";
+      return out;
+    }
+
+    const auto n = first;
+    const auto target = second;
+    std::string loopVar {};
+    bool hasIfEq = false;
+    bool hasRetLoop = false;
+    bool hasRetNeg1 = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("while(") && c.ends_with("):")) {
+        const auto p = c.find("<" + n + "):");
+        if (p != std::string::npos) {
+          loopVar = c.substr(6, p - 6);
+        }
+      }
+      if (!loopVar.empty() && c == "if(" + loopVar + "==" + target + "):") {
+        hasIfEq = true;
+      }
+      if (!loopVar.empty() && c == "return" + loopVar) {
+        hasRetLoop = true;
+      }
+      if (c == "return-1") {
+        hasRetNeg1 = true;
+      }
+    }
+    if (!loopVar.empty() && hasIfEq && hasRetLoop && hasRetNeg1) {
+      out.kind = IntentRewriteKind::SearchIdentity;
+      out.detectedGoal = "search_element";
+      return out;
+    }
+  }
+
+  return out;
+}
+
+auto selectRewriteKind(std::string_view functionName, std::string_view rawGoal) -> IntentRewriteKind {
+  auto goal = toLowerCopy(rawGoal);
+  if (goal == "auto_plan") {
+    goal = inferAutoGoalByName(functionName);
+  }
+  if (goal == "fibonacci_dp" || goal == "fibonacci_iterative") {
+    return IntentRewriteKind::FibonacciIterative;
+  }
+  if (goal == "factorial_iterative") {
+    return IntentRewriteKind::FactorialIterative;
+  }
+  if (goal == "power_fast" || goal == "pow_fast" || goal == "binary_exponentiation") {
+    return IntentRewriteKind::PowerBinaryExp;
+  }
+  if (goal == "gcd_euclid" || goal == "gcd_modulo") {
+    return IntentRewriteKind::GcdEuclidModulo;
+  }
+  if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
+    return IntentRewriteKind::BitPeelIterative;
+  }
+  if (goal == "reduce_sum") {
+    return IntentRewriteKind::ReduceSumFormula;
+  }
+  if (goal == "sqrt_bounded_loop") {
+    return IntentRewriteKind::SqrtBoundedLoop;
+  }
+  if (goal == "search_element") {
+    return IntentRewriteKind::SearchIdentity;
+  }
+  return IntentRewriteKind::None;
 }
 
 void appendFibonacciIterativeBody(
@@ -179,6 +564,138 @@ void appendFibonacciIterativeBody(
   out.push_back(std::format("{}b = c", indent2));
   out.push_back(std::format("{}i = i + 1", indent2));
   out.push_back(std::format("{}return b", indent1));
+}
+
+void appendFactorialIterativeBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 1):", indent1, paramName));
+  out.push_back(std::format("{}return 1", indent2));
+  out.push_back(std::format("{}let i = 2", indent1));
+  out.push_back(std::format("{}let acc = 1", indent1));
+  out.push_back(std::format("{}while (i <= {}):", indent1, paramName));
+  out.push_back(std::format("{}acc = acc * i", indent2));
+  out.push_back(std::format("{}i = i + 1", indent2));
+  out.push_back(std::format("{}return acc", indent1));
+}
+
+void appendPowerBinaryExpBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view baseParam,
+  std::string_view expParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}if ({} < 0):", indent1, expParam));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let e = {}", indent1, expParam));
+  out.push_back(std::format("{}let b = {}", indent1, baseParam));
+  out.push_back(std::format("{}let result = 1", indent1));
+  out.push_back(std::format("{}while (e > 0):", indent1));
+  out.push_back(std::format("{}let odd = e - (e / 2) * 2", indent2));
+  out.push_back(std::format("{}if (odd == 1):", indent2));
+  out.push_back(std::format("{}result = result * b", indent3));
+  out.push_back(std::format("{}b = b * b", indent2));
+  out.push_back(std::format("{}e = e / 2", indent2));
+  out.push_back(std::format("{}return result", indent1));
+}
+
+void appendGcdEuclidBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view aParam,
+  std::string_view bParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}let x = {}", indent1, aParam));
+  out.push_back(std::format("{}let y = {}", indent1, bParam));
+  out.push_back(std::format("{}if (x < 0):", indent1));
+  out.push_back(std::format("{}x = 0 - x", indent2));
+  out.push_back(std::format("{}if (y < 0):", indent1));
+  out.push_back(std::format("{}y = 0 - y", indent2));
+  out.push_back(std::format("{}while (y != 0):", indent1));
+  out.push_back(std::format("{}let t = x - (x / y) * y", indent2));
+  out.push_back(std::format("{}x = y", indent2));
+  out.push_back(std::format("{}y = t", indent2));
+  out.push_back(std::format("{}return x", indent1));
+}
+
+void appendBitPeelIterativeBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view valueParam,
+  std::string_view stepsParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}let cur = {}", indent1, valueParam));
+  out.push_back(std::format("{}let steps = {}", indent1, stepsParam));
+  out.push_back(std::format("{}let acc = 0", indent1));
+  out.push_back(std::format("{}if (steps <= 0):", indent1));
+  out.push_back(std::format("{}return cur", indent2));
+  out.push_back(std::format("{}while (steps > 0):", indent1));
+  out.push_back(std::format("{}acc = acc + (cur - (cur / 2) * 2)", indent2));
+  out.push_back(std::format("{}cur = cur / 2", indent2));
+  out.push_back(std::format("{}steps = steps - 1", indent2));
+  out.push_back(std::format("{}return cur + acc", indent1));
+}
+
+void appendReduceSumFormulaBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let left = {}", indent1, paramName));
+  out.push_back(std::format("{}let right = {} + 1", indent1, paramName));
+  out.push_back(std::format("{}let even = left - (left / 2) * 2", indent1));
+  out.push_back(std::format("{}if (even == 0):", indent1));
+  out.push_back(std::format("{}left = left / 2", indent2));
+  out.push_back(std::format("{}else:", indent1));
+  out.push_back(std::format("{}right = right / 2", indent2));
+  out.push_back(std::format("{}return left * right", indent1));
+}
+
+void appendSqrtBoundedLoopBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let x = {}", indent1, paramName));
+  out.push_back(std::format("{}let y = (x + 1) / 2", indent1));
+  out.push_back(std::format("{}while (y < x):", indent1));
+  out.push_back(std::format("{}x = y", indent2));
+  out.push_back(std::format("{}y = (x + ({} / x)) / 2", indent2, paramName));
+  out.push_back(std::format("{}return x", indent1));
+}
+
+void appendSearchIdentityBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view nParam,
+  std::string_view targetParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} < 0):", indent1, targetParam));
+  out.push_back(std::format("{}return -1", indent2));
+  out.push_back(std::format("{}if ({} >= {}):", indent1, targetParam, nParam));
+  out.push_back(std::format("{}return -1", indent2));
+  out.push_back(std::format("{}return {}", indent1, targetParam));
 }
 
 auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult {
@@ -213,6 +730,9 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         }
         if (!fnName.empty()) {
           result.functionDirectives[fnName] = IntentDirective {.goal = goal};
+          if (intentTraceEnabled()) {
+            std::cout << std::format("thag: intent directive fn={} goal={}\n", fnName, goal);
+          }
         }
         i = j;
         continue;
@@ -248,21 +768,6 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       continue;
     }
 
-    const auto fnName = parseFunctionName(trimmed);
-    const auto directiveIt = result.functionDirectives.find(fnName);
-    if (directiveIt == result.functionDirectives.end()) {
-      rewritten.push_back(line);
-      ++i;
-      continue;
-    }
-
-    const auto paramName = parseFirstParamName(trimmed);
-    if (paramName.empty() || !shouldRewriteFibonacci(fnName, directiveIt->second.goal)) {
-      rewritten.push_back(line);
-      ++i;
-      continue;
-    }
-
     const std::size_t baseIndent = leadingSpaces(line);
     std::size_t j = i + 1;
     while (j < stripped.size()) {
@@ -277,8 +782,127 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       ++j;
     }
 
+    const auto fnName = parseFunctionName(trimmed);
+    const auto directiveIt = result.functionDirectives.find(fnName);
+
+    IntentRewriteKind rewriteKind = IntentRewriteKind::None;
+    std::string selectedGoal {};
+    if (directiveIt != result.functionDirectives.end()) {
+      selectedGoal = directiveIt->second.goal;
+      rewriteKind = selectRewriteKind(fnName, selectedGoal);
+      if (rewriteKind == IntentRewriteKind::None) {
+        const auto inferred = inferRewriteKindFromBody(fnName, trimmed, stripped, i + 1, j);
+        rewriteKind = inferred.kind;
+        if (!inferred.detectedGoal.empty()) {
+          selectedGoal = inferred.detectedGoal;
+        }
+      }
+    } else if (autoOptEnabled()) {
+      const auto inferred = inferRewriteKindFromBody(fnName, trimmed, stripped, i + 1, j);
+      rewriteKind = inferred.kind;
+      if (!inferred.detectedGoal.empty()) {
+        selectedGoal = inferred.detectedGoal;
+      }
+    }
+
+    if (rewriteKind == IntentRewriteKind::None) {
+      if (intentTraceEnabled()) {
+        if (!selectedGoal.empty()) {
+          std::cout << std::format("thag: rewrite skipped fn={} goal={}\n", fnName, selectedGoal);
+        } else {
+          std::cout << std::format("thag: rewrite skipped fn={}\n", fnName);
+        }
+      }
+      rewritten.push_back(line);
+      ++i;
+      continue;
+    }
+
     rewritten.push_back(line);
-    appendFibonacciIterativeBody(rewritten, baseIndent, paramName);
+    const auto params = parseParamNames(trimmed);
+    auto keepOriginalBody = [&]() {
+      for (std::size_t k = i + 1; k < j; ++k) {
+        rewritten.push_back(stripped[k]);
+      }
+    };
+
+    switch (rewriteKind) {
+      case IntentRewriteKind::FibonacciIterative:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendFibonacciIterativeBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::FactorialIterative:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendFactorialIterativeBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::ReduceSumFormula:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendReduceSumFormulaBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::SqrtBoundedLoop:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendSqrtBoundedLoopBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::PowerBinaryExp:
+        if (params.size() < 2) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendPowerBinaryExpBody(rewritten, baseIndent, params[0], params[1]);
+        break;
+      case IntentRewriteKind::GcdEuclidModulo:
+        if (params.size() < 2) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendGcdEuclidBody(rewritten, baseIndent, params[0], params[1]);
+        break;
+      case IntentRewriteKind::BitPeelIterative:
+        if (params.size() < 2) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendBitPeelIterativeBody(rewritten, baseIndent, params[0], params[1]);
+        break;
+      case IntentRewriteKind::SearchIdentity:
+        if (params.size() < 2) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendSearchIdentityBody(rewritten, baseIndent, params[0], params[1]);
+        break;
+      case IntentRewriteKind::None:
+        keepOriginalBody();
+        i = j;
+        continue;
+    }
+    if (intentTraceEnabled()) {
+      if (!selectedGoal.empty()) {
+        std::cout << std::format("thag: rewrite applied fn={} goal={}\n", fnName, selectedGoal);
+      } else {
+        std::cout << std::format("thag: rewrite applied fn={}\n", fnName);
+      }
+    }
     result.rewritesApplied += 1;
     i = j;
   }

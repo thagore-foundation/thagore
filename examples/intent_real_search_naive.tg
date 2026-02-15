@@ -1,0 +1,31 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func search_identity(n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (i == target):
+            return i
+        i = i + 1
+    return -1
+
+func main() -> i32:
+    let seed = __time_now_ms()
+    let base_n = 50000 + (seed - (seed / 200) * 200)
+    let rounds = 6000
+    let i = 0
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (i < rounds):
+        let n = base_n + (i - (i / 5) * 5)
+        let k = i - (i / 3) * 3
+        let target = n - 1 - k
+        checksum = checksum + search_identity(n, target)
+        i = i + 1
+    let t1 = __time_now_ms()
+    print("naive search:")
+    print(checksum)
+    print("naive elapsed_ms:")
+    print(t1 - t0)
+    return 0
+

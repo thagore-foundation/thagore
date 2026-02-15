@@ -1,0 +1,132 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func fib_recursive(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib_recursive(n - 1) + fib_recursive(n - 2)
+
+func sum_to_n_loop(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        s = s + i
+        i = i + 1
+    return s
+
+func isqrt_loop(n: i32) -> i32:
+    let i = 0
+    while (((i + 1) * (i + 1)) <= n):
+        i = i + 1
+    return i
+
+func search_identity(n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (i == target):
+            return i
+        i = i + 1
+    return -1
+
+func factorial_recursive(n: i32) -> i32:
+    if (n <= 1):
+        return 1
+    return n * factorial_recursive(n - 1)
+
+func pow_linear(base: i32, exp: i32) -> i32:
+    let i = 0
+    let result = 1
+    while (i < exp):
+        result = result * base
+        i = i + 1
+    return result
+
+func gcd_subtractive(a: i32, b: i32) -> i32:
+    let x = a
+    let y = b
+    while (x != y):
+        if (x > y):
+            x = x - y
+        else:
+            y = y - x
+    return x
+
+func bit_peel_recursive(a: i32, x: i32) -> i32:
+    if (x == 0):
+        return a
+    return bit_peel_recursive(a / 2, x - 1) + (a - (a / 2) * 2)
+
+func bench_mix(seed: i32) -> i32:
+    let acc = 0
+
+    let fib_n = 33 + (seed - (seed / 4) * 4)
+    acc = acc + fib_recursive(fib_n)
+
+    let i = 0
+    while (i < 3000):
+        acc = acc + sum_to_n_loop(65000 + (i - (i / 32) * 32))
+        i = i + 1
+
+    let j = 0
+    while (j < 2500):
+        acc = acc + isqrt_loop(123456789 - j)
+        j = j + 1
+
+    let k = 0
+    while (k < 3000):
+        acc = acc + search_identity(50000, 49999 - (k - (k / 8) * 8))
+        k = k + 1
+
+    let f = 0
+    let fn = 10
+    while (f < 60000):
+        acc = acc + factorial_recursive(fn)
+        fn = fn + 1
+        if (fn > 12):
+            fn = 10
+        f = f + 1
+
+    let p = 0
+    let exp = 11
+    while (p < 80000):
+        acc = acc + pow_linear(2, exp)
+        exp = exp + 1
+        if (exp > 18):
+            exp = 11
+        p = p + 1
+
+    let g = 0
+    let ga = 2800
+    let gb = 1999
+    while (g < 12000):
+        acc = acc + gcd_subtractive(ga, gb)
+        ga = ga + 7
+        gb = gb + 11
+        if (ga > 3600):
+            ga = 2800
+        if (gb > 2600):
+            gb = 1999
+        g = g + 1
+
+    let b = 0
+    let cur = 1000000007
+    while (b < 80000):
+        acc = acc + bit_peel_recursive(cur, 16)
+        cur = cur + 12345
+        if (cur > 1000500000):
+            cur = 1000000007
+        b = b + 1
+
+    return acc
+
+func main() -> i32:
+    let seed = __time_now_ms()
+    let t0 = __time_now_ms()
+    let ans = bench_mix(seed)
+    let t1 = __time_now_ms()
+    print("auto-expand no-intent:")
+    print(ans)
+    print("elapsed_ms:")
+    print(t1 - t0)
+    return 0
+

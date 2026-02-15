@@ -1,0 +1,43 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func fib_plain(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib_plain(n - 1) + fib_plain(n - 2)
+
+func sum_to_n_plain(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        s = s + i
+        i = i + 1
+    return s
+
+func isqrt_plain(n: i32) -> i32:
+    let i = 0
+    while (((i + 1) * (i + 1)) <= n):
+        i = i + 1
+    return i
+
+func search_identity_plain(n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (i == target):
+            return i
+        i = i + 1
+    return -1
+
+func main() -> i32:
+    let t0 = __time_now_ms()
+    let a = fib_plain(35)
+    let b = sum_to_n_plain(100000)
+    let c = isqrt_plain(123456789)
+    let d = search_identity_plain(50000, 49999)
+    let t1 = __time_now_ms()
+    print("auto-detect no-intent:")
+    print(a + b + c + d)
+    print("elapsed_ms:")
+    print(t1 - t0)
+    return 0
+

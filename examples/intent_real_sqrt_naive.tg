@@ -1,0 +1,30 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func isqrt_floor(n: i32) -> i32:
+    let i = 0
+    while (((i + 1) * (i + 1)) <= n):
+        i = i + 1
+    return i
+
+func main() -> i32:
+    let seed = __time_now_ms()
+    let base = 1200000000 + (seed - (seed / 1000000) * 1000000)
+    let rounds = 4000
+    let t0 = __time_now_ms()
+    let i = 0
+    let cur = base
+    let last = 0
+    while (i < rounds):
+        last = isqrt_floor(cur)
+        cur = cur + 777
+        if (cur > base + 50000):
+            cur = base
+        i = i + 1
+    let t1 = __time_now_ms()
+    print("naive isqrt:")
+    print(last)
+    print("naive elapsed_ms:")
+    print(t1 - t0)
+    return 0
+
