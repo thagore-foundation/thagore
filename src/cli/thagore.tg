@@ -127,7 +127,7 @@ func _looks_like_valid_llvm(ir: String) -> i32:
         return 0
     if (_contains(ir, "\\n") == 1):
         return 0
-    if (_contains(ir, "define i32 @main") == 0):
+    if (_contains(ir, "@main(") == 0):
         return 0
     return 1
 
@@ -143,6 +143,7 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
     let module_name = _strip_ext(_base_name(input_path))
     let ir = emitter.emit_program_from_source(lowered, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
+        fs.write_text(out_path + ".raw.ll", ir)
         print("WARN: native emitter IR invalid, requesting fallback.")
         return 2
     let ir_path = out_path + ".ll"

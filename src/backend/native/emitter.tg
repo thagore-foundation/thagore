@@ -61,6 +61,85 @@ func _starts_with(text: String, prefix: String) -> i32:
         return 1
     return 0
 
+func _is_printable_ascii(ch: String) -> i32:
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 1
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 1
+    if (_contains("0123456789", ch) == 1):
+        return 1
+    if (_contains(" `~!@#$%^&*()-_=+[]{}|;:',<.>/", ch) == 1):
+        return 1
+    if (ch == "\\"):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    return 0
+
+func _first_newline_char(source: String) -> String:
+    let n = strlen(source)
+    let i = 0
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            return ch
+        i = i + 1
+    return "\n"
+
+func _sanitize_ir_bytes(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (_is_printable_ascii(ch) == 1):
+            out = _s2(out, ch)
+        i = i + 1
+    return out
+
+func _unescape_newlines(text: String, nl: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == "\\") and (c1 == "n")):
+                out = _s2(out, nl)
+                i = i + 2
+            else:
+                out = _s2(out, c0)
+                i = i + 1
+        else:
+            out = _s2(out, _char_at(text, i))
+            i = i + 1
+    return out
+
+func _replace_all(text: String, needle: String, replacement: String) -> String:
+    let out = ""
+    let rest = text
+    let n = strlen(needle)
+    if (n == 0):
+        return text
+    while (1 == 1):
+        let p = _find(rest, needle)
+        if (p < 0):
+            return _s2(out, rest)
+        let left = __thg_str_substr(rest, 0, p)
+        out = _s3(out, left, replacement)
+        rest = __thg_str_substr(rest, p + n, strlen(rest) - p - n)
+    return out
+
+func _finalize_ir(raw: String, source: String) -> String:
+    let clean = _sanitize_ir_bytes(raw)
+    let nl = _first_newline_char(source)
+    let step1 = _replace_all(clean, "__NL__", nl)
+    let step2 = _unescape_newlines(step1, nl)
+    return _replace_all(step2, "PGy", "")
+
 func _is_space(ch: String) -> i32:
     if (ch == " "):
         return 1
@@ -348,15 +427,15 @@ func _emit_call_expr(expr: String, slots: String, t: i32, sidx: i32, globals: St
     let args = _trim_edges(__thg_str_substr(expr, lp + 1, rp - lp - 1))
     if (args.length() == 0):
         let v0 = _new_temp("call", t)
-        let ir0 = _s5("  ", v0, " = call i32 @", name, "()\n")
+        let ir0 = _s5("  ", v0, " = call i32 @", name, "()__NL__")
         return EmitExprResult(v0, ir0, t + 1, sidx, globals)
     if (name == "print"):
         let arg_res = _emit_expr(args, slots, t, sidx, globals)
-        let call_ir = _s3(arg_res.ir, "  call void @__thg_print_i32(i32 ", _s2(arg_res.value, ")\n"))
+        let call_ir = _s3(arg_res.ir, "  call void @__thg_print_i32(i32 ", _s2(arg_res.value, ")__NL__"))
         return EmitExprResult("0", call_ir, arg_res.next_temp, arg_res.next_str, arg_res.globals)
     let arg_emit = _emit_expr(args, slots, t, sidx, globals)
     let v = _new_temp("call", arg_emit.next_temp)
-    let ir = _s2(arg_emit.ir, _s6("  ", v, " = call i32 @", name, "(i32 ", _s2(arg_emit.value, ")\n")))
+    let ir = _s2(arg_emit.ir, _s6("  ", v, " = call i32 @", name, "(i32 ", _s2(arg_emit.value, ")__NL__")))
     return EmitExprResult(v, ir, arg_emit.next_temp + 1, arg_emit.next_str, arg_emit.globals)
 
 func _emit_binary(expr: String, op: String, ir_op: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
@@ -368,7 +447,7 @@ func _emit_binary(expr: String, op: String, ir_op: String, slots: String, t: i32
     let l = _emit_expr(left, slots, t, sidx, globals)
     let r = _emit_expr(right, slots, l.next_temp, l.next_str, l.globals)
     let v = _new_temp("tmp", r.next_temp)
-    let ir_tail = _s6("  ", v, " = ", ir_op, " i32 ", _s2(l.value, _s2(", ", _s2(r.value, "\n"))))
+    let ir_tail = _s6("  ", v, " = ", ir_op, " i32 ", _s2(l.value, _s2(", ", _s2(r.value, "__NL__"))))
     let ir = _s3(l.ir, r.ir, ir_tail)
     return EmitExprResult(v, ir, r.next_temp + 1, r.next_str, r.globals)
 
@@ -413,7 +492,7 @@ func _emit_expr(expr_raw: String, slots: String, t: i32, sidx: i32, globals: Str
     let slot = _map_get(slots, expr)
     if (slot.length() > 0):
         let v = _new_temp("ld", div.next_temp)
-        let ir = _s5("  ", v, " = load i32, ptr ", slot, "\n")
+        let ir = _s5("  ", v, " = load i32, ptr ", slot, "__NL__")
         return EmitExprResult(v, ir, div.next_temp + 1, div.next_str, div.globals)
     return EmitExprResult("0", "", div.next_temp, div.next_str, div.globals)
 
@@ -428,11 +507,11 @@ func _emit_print_stmt(line: String, slots: String, t: i32, sidx: i32, globals: S
         let gid = _s2("@.str.", _tag(sidx))
         let n = strlen(lit) + 1
         let bytes = _emit_i8_array(lit)
-        let gline = _s6(gid, " = private unnamed_addr constant [", _to_string_i32(n), " x i8] [", bytes, ", i8 0]\n")
-        let ir = _s5("  call void @__thg_print_str(ptr ", gid, ", i32 ", _to_string_i32(strlen(lit)), ")\n")
+        let gline = _s6(gid, " = private unnamed_addr constant [", _to_string_i32(n), " x i8] [", bytes, ", i8 0]__NL__")
+        let ir = _s5("  call void @__thg_print_str(ptr ", gid, ", i32 ", _to_string_i32(strlen(lit)), ")__NL__")
         return EmitPrintResult(ir, t, sidx + 1, _s2(globals, gline))
     let e = _emit_expr(arg, slots, t, sidx, globals)
-    let ir_num = _s2(e.ir, _s3("  call void @__thg_print_i32(i32 ", e.value, ")\n"))
+    let ir_num = _s2(e.ir, _s3("  call void @__thg_print_i32(i32 ", e.value, ")__NL__"))
     return EmitPrintResult(ir_num, e.next_temp, e.next_str, e.globals)
 
 func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32, globals: String) -> EmitStmtResult:
@@ -447,7 +526,7 @@ func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32,
         let expr = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
         let e = _emit_expr(expr, slots, t, sidx, globals)
         let slot = _s3("%", name, ".addr")
-        let ir = _s2(e.ir, _s6("  ", slot, " = alloca i32\n  store i32 ", e.value, ", ptr ", _s2(slot, "\n")))
+        let ir = _s2(e.ir, _s6("  ", slot, " = alloca i32__NL__  store i32 ", e.value, ", ptr ", _s2(slot, "__NL__")))
         let next_slots = _map_set(slots, name, slot)
         return EmitStmtResult(ir, next_slots, e.next_temp, l, e.next_str, e.globals)
     if (_starts_with(line, "return ") == 1):
@@ -456,7 +535,7 @@ func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32,
         let ret_v = e.value
         if (_contains(e.value, "%tmp") == 1):
             ret_v = e.value
-        return EmitStmtResult(_s2(e.ir, _s4("  ret i32 ", ret_v, "\n", "")), slots, e.next_temp, l, e.next_str, e.globals)
+        return EmitStmtResult(_s2(e.ir, _s4("  ret i32 ", ret_v, "__NL__", "")), slots, e.next_temp, l, e.next_str, e.globals)
     if (_starts_with(line, "print(") == 1):
         let p = _emit_print_stmt(line, slots, t, sidx, globals)
         return EmitStmtResult(p.ir, slots, p.next_temp, l, p.next_str, p.globals)
@@ -467,7 +546,7 @@ func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32,
         if (slot.length() > 0):
             let expr = _trim_edges(__thg_str_substr(line, p_assign + 1, strlen(line) - p_assign - 1))
             let e = _emit_expr(expr, slots, t, sidx, globals)
-            let ir = _s2(e.ir, _s5("  store i32 ", e.value, ", ptr ", slot, "\n"))
+            let ir = _s2(e.ir, _s5("  store i32 ", e.value, ", ptr ", slot, "__NL__"))
             return EmitStmtResult(ir, slots, e.next_temp, l, e.next_str, e.globals)
     let call_only = _emit_expr(line, slots, t, sidx, globals)
     return EmitStmtResult(call_only.ir, slots, call_only.next_temp, l, call_only.next_str, call_only.globals)
@@ -477,8 +556,8 @@ func _emit_if_block(lines: String, base_indent: i32, start_idx: i32, cond_text: 
     let then_label = _s2("if.then.", _tag(l))
     let else_label = _s2("if.else.", _tag(l))
     let end_label = _s2("if.end.", _tag(l))
-    let ir = _s2(cond.ir, _s6("  br i1 ", cond.value, ", label %", then_label, ", label %", _s2(else_label, "\n")))
-    ir = _s3(ir, then_label, ":\n")
+    let ir = _s2(cond.ir, _s6("  br i1 ", cond.value, ", label %", then_label, ", label %", _s2(else_label, "__NL__")))
+    ir = _s3(ir, then_label, ":__NL__")
     let i = start_idx
     let total = _line_count(lines)
     let st = slots
@@ -505,24 +584,24 @@ func _emit_if_block(lines: String, base_indent: i32, start_idx: i32, cond_text: 
                     ss = one.next_str
                     gg = one.globals
                     i = i + 1
-    ir = _s2(ir, _s3("  br label %", end_label, "\n"))
-    ir = _s3(ir, else_label, ":\n")
-    ir = _s2(ir, _s3("  br label %", end_label, "\n"))
-    ir = _s3(ir, end_label, ":\n")
+    ir = _s2(ir, _s3("  br label %", end_label, "__NL__"))
+    ir = _s3(ir, else_label, ":__NL__")
+    ir = _s2(ir, _s3("  br label %", end_label, "__NL__"))
+    ir = _s3(ir, end_label, ":__NL__")
     return EmitStmtResult(ir, st, tt, l + 10, ss, gg)
 
 func _emit_function(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32, sidx_start: i32, globals: String) -> EmitStmtResult:
     let sig = ""
     if (is_main == 1):
-        sig = "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n  call void @__thg_init_env(i32 %argc, ptr %argv)\n"
+        sig = "define i32 @main(i32 %argc, ptr %argv) {__NL__entry:__NL__  call void @__thg_init_env(i32 %argc, ptr %argv)__NL__"
     else:
-        sig = _s6("define i32 @", func_name, "(i32 %", params_text, ") {\nentry:\n", "")
+        sig = _s6("define i32 @", func_name, "(i32 %", params_text, ") {__NL__entry:__NL__", "")
     let slots = ";"
     let ir = sig
     if (is_main == 0):
         if (params_text.length() > 0):
             let slot = _s3("%", params_text, ".addr")
-            ir = _s2(ir, _s6("  ", slot, " = alloca i32\n  store i32 %", params_text, ", ptr ", _s2(slot, "\n")))
+            ir = _s2(ir, _s6("  ", slot, " = alloca i32__NL__  store i32 %", params_text, ", ptr ", _s2(slot, "__NL__")))
             slots = _map_set(slots, params_text, slot)
     let total = _line_count(body_lines)
     let i = 0
@@ -554,10 +633,10 @@ func _emit_function(func_name: String, params_text: String, body_lines: String, 
                 glb = one.globals
     if (_contains(ir, "ret i32") == 0):
         if (ret_i32 == 1):
-            ir = _s2(ir, "  ret i32 0\n")
+            ir = _s2(ir, "  ret i32 0__NL__")
         else:
-            ir = _s2(ir, "  ret i32 0\n")
-    ir = _s2(ir, "}\n")
+            ir = _s2(ir, "  ret i32 0__NL__")
+    ir = _s2(ir, "}__NL__")
     return EmitStmtResult(ir, st, 0, 0, sidx, glb)
 
 func _extract_body(source: String, header_idx: i32) -> String:
@@ -613,8 +692,8 @@ func _extract_ret_i32(header_line: String) -> i32:
     return 0
 
 func _emit_program_from_source(source: String, module_name: String) -> String:
-    let out = _s3("; ModuleID = '", module_name, "'\n")
-    let decls = "declare void @__thg_init_env(i32, ptr)\ndeclare void @__thg_print_i32(i32)\ndeclare void @__thg_print_str(ptr, i32)\n\n"
+    let out = _s3("; ModuleID = '", module_name, "'__NL__")
+    let decls = "declare void @__thg_init_env(i32, ptr)__NL__declare void @__thg_print_i32(i32)__NL__declare void @__thg_print_str(ptr, i32)__NL____NL__"
     let total = _line_count(source)
     let i = 0
     let code = ""
@@ -632,13 +711,14 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
                 is_main = 1
                 ret_i32 = 1
             let fn = _emit_function(name, param, body, ret_i32, is_main, str_idx, globals)
-            code = _s3(code, fn.ir, "\n")
+            code = _s3(code, fn.ir, "__NL__")
             str_idx = fn.next_str
             globals = fn.globals
             i = i + _line_count(body) + 1
         else:
             i = i + 1
-    return _s5(out, globals, "\n", decls, code)
+    let raw = _s5(out, globals, "__NL__", decls, code)
+    return _finalize_ir(raw, source)
 
 func emit_program_typed(typed_normalized: String, module_name: String) -> String:
     return _emit_program_from_source(typed_normalized, module_name)
