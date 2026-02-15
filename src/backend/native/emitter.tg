@@ -927,11 +927,11 @@ func _extract_ret_i32(header_line: String) -> i32:
 func _is_runtime_wrapper_source(source: String) -> i32:
     if (_contains(source, "import ") == 0):
         return 0
-    if (_contains(source, " as cli") == 0):
+    if (_contains(source, "func main") == 0):
         return 0
-    if (_contains(source, "func main() -> i32:") == 0):
+    if (_contains(source, "return ") == 0):
         return 0
-    if (_contains(source, "return cli.main()") == 0):
+    if (_contains(source, ".main()") == 0):
         return 0
     return 1
 
