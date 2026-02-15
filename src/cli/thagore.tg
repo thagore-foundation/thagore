@@ -125,10 +125,10 @@ func _link_exe(ir_path: String, out_path: String) -> i32:
 func _runtime_cli_cmd(input_path: String, out_path: String, emit_only: i32) -> String:
     let cli_path = ""
     if (fs.exists("runtime/build-intent-ci/Release/thagore_runtime_cli.exe") == 1):
-        cli_path = "runtime/build-intent-ci/Release/thagore_runtime_cli.exe"
+        cli_path = "runtime\\build-intent-ci\\Release\\thagore_runtime_cli.exe"
     else:
         if (fs.exists("runtime/build-intent-ci/thagore_runtime_cli") == 1):
-            cli_path = "runtime/build-intent-ci/thagore_runtime_cli"
+            cli_path = "./runtime/build-intent-ci/thagore_runtime_cli"
     if (cli_path.length() == 0):
         return ""
     if (emit_only == 1):
