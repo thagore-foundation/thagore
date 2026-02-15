@@ -2671,6 +2671,19 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedCString("");
   }
   std::string ir((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  {
+    std::string normalized {};
+    normalized.reserve(ir.size());
+    for (std::size_t i = 0; i < ir.size(); ++i) {
+      if (ir[i] == '\\' && (i + 1) < ir.size() && ir[i + 1] == 'n') {
+        normalized.push_back('\n');
+        ++i;
+      } else {
+        normalized.push_back(ir[i]);
+      }
+    }
+    ir.swap(normalized);
+  }
 
   std::error_code rmErr {};
   std::filesystem::remove(sourcePath, rmErr);

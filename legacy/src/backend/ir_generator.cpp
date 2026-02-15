@@ -224,6 +224,34 @@ private:
     return llvm::Type::getInt32Ty(context);
   }
 
+  auto isStringLikeType(llvm::Type *type) -> bool {
+    if (type == nullptr) {
+      return false;
+    }
+    auto *stringTy = llvmType(BaseType::String);
+    if (type == stringTy) {
+      return true;
+    }
+    auto *st = llvm::dyn_cast<llvm::StructType>(type);
+    if (st == nullptr) {
+      return false;
+    }
+    if (st->hasName() && st->getName() == "thg.string") {
+      return true;
+    }
+    if (st->getNumElements() == 2 && st->getElementType(0)->isPointerTy() && st->getElementType(1)->isIntegerTy(32)) {
+      return true;
+    }
+    return false;
+  }
+
+  auto isNumericType(llvm::Type *type) -> bool {
+    if (type == nullptr) {
+      return false;
+    }
+    return type->isIntegerTy(32) || type->isFloatTy() || type->isDoubleTy();
+  }
+
   auto findStructLayoutByType(llvm::Type *type) const -> const StructLayout * {
     for (const auto &[_, layout] : structLayouts) {
       if (layout.llvmType == type) {
@@ -268,7 +296,7 @@ private:
       }
       const auto &param = decl.params[idx++];
       auto *slot = createAlloca(param.name, arg.getType());
-      const bool isString = arg.getType() == llvmType(BaseType::String);
+      const bool isString = isStringLikeType(arg.getType());
       if (isString) {
         auto cloned = cloneStringValue(&arg, param.span);
         if (!cloned) {
@@ -337,8 +365,7 @@ private:
 
   auto extractStringPointer(llvm::Value *value, const SourceSpan &span, std::string_view nameHint)
     -> Result<llvm::Value *, Diagnostic> {
-    auto *stringTy = llvmType(BaseType::String);
-    if (value->getType() == stringTy) {
+    if (isStringLikeType(value->getType())) {
       return builder.CreateExtractValue(value, {0}, std::format("{}.ptr", nameHint));
     }
     if (value->getType()->isPointerTy()) {
@@ -369,6 +396,19 @@ private:
     return false;
   }
 
+  auto releaseOwnedLoadedValue(const LocalValue &local, llvm::Value *loaded) -> Result<void, Diagnostic> {
+    if (loaded == nullptr) {
+      return {};
+    }
+    if (local.type == BaseType::String || isStringLikeType(loaded->getType())) {
+      return freeStringValue(loaded);
+    }
+    if (loaded->getType()->isPointerTy()) {
+      builder.CreateCall(releaseFn, {loaded});
+    }
+    return {};
+  }
+
   void popScope() {
     if (scopeLocals.empty()) {
       return;
@@ -382,14 +422,10 @@ private:
       }
       if (localIt->second.ownedRef && !terminated()) {
         auto *loaded = builder.CreateLoad(localIt->second.slot->getAllocatedType(), localIt->second.slot);
-        if (localIt->second.type == BaseType::String) {
-          auto freed = freeStringValue(loaded);
-          if (!freed) {
-            locals.erase(localIt);
-            continue;
-          }
-        } else if (loaded->getType()->isPointerTy()) {
-          builder.CreateCall(releaseFn, {loaded});
+        auto released = releaseOwnedLoadedValue(localIt->second, loaded);
+        if (!released) {
+          locals.erase(localIt);
+          continue;
         }
       }
       locals.erase(localIt);
@@ -404,13 +440,9 @@ private:
           continue;
         }
         auto *loaded = builder.CreateLoad(localIt->second.slot->getAllocatedType(), localIt->second.slot);
-        if (localIt->second.type == BaseType::String) {
-          auto freed = freeStringValue(loaded);
-          if (!freed) {
-            continue;
-          }
-        } else if (loaded->getType()->isPointerTy()) {
-          builder.CreateCall(releaseFn, {loaded});
+        auto released = releaseOwnedLoadedValue(localIt->second, loaded);
+        if (!released) {
+          continue;
         }
       }
     }
@@ -463,12 +495,11 @@ private:
       return std::unexpected(init.error());
     }
     llvm::Value *initValue = init.value();
-    auto *stringTy = llvmType(BaseType::String);
     BaseType exprType = inferExprType(*stmt.init);
     if (exprType == BaseType::String && initValue->getType()->isPointerTy()) {
       initValue = packCStringValue(initValue);
     }
-    if (exprType == BaseType::Unknown && initValue->getType() == stringTy) {
+    if (exprType == BaseType::Unknown && isStringLikeType(initValue->getType())) {
       exprType = BaseType::String;
     }
     std::string structName {};
@@ -496,7 +527,7 @@ private:
     }
     auto *alloca = createAlloca(stmt.name, initValue->getType());
     bool shouldRetain = false;
-    if (initValue->getType() == stringTy) {
+    if (isStringLikeType(initValue->getType())) {
       auto cloned = cloneStringValue(initValue, stmt.span);
       if (!cloned) {
         return std::unexpected(cloned.error());
@@ -558,16 +589,12 @@ private:
     llvm::Value *rhsValue = rhs.value();
     if (found->second.ownedRef) {
       auto *oldValue = builder.CreateLoad(found->second.slot->getAllocatedType(), found->second.slot);
-      if (found->second.type == BaseType::String) {
-        auto freed = freeStringValue(oldValue);
-        if (!freed) {
-          return std::unexpected(freed.error());
-        }
-      } else {
-        builder.CreateCall(releaseFn, {oldValue});
+      auto released = releaseOwnedLoadedValue(found->second, oldValue);
+      if (!released) {
+        return std::unexpected(released.error());
       }
     }
-    if (found->second.slot->getAllocatedType() == llvmType(BaseType::String)) {
+    if (isStringLikeType(found->second.slot->getAllocatedType())) {
       if (rhsValue->getType()->isPointerTy()) {
         rhsValue = packCStringValue(rhsValue);
       }
@@ -578,8 +605,7 @@ private:
       rhsValue = cloned.value();
     }
     builder.CreateStore(rhsValue, found->second.slot);
-    auto *stringTy = llvmType(BaseType::String);
-    const bool isStringSlot = found->second.type == BaseType::String || found->second.slot->getAllocatedType() == stringTy;
+    const bool isStringSlot = found->second.type == BaseType::String || isStringLikeType(found->second.slot->getAllocatedType());
     if (isStringSlot) {
       found->second.type = BaseType::String;
       found->second.declaredType = makeType(BaseType::String);
@@ -1274,9 +1300,8 @@ private:
     llvm::Value *lhsValue = lhs.value();
     llvm::Value *rhsValue = rhs.value();
 
-    auto *stringTy = llvmType(BaseType::String);
-    const bool lhsIsString = inferExprType(*expr.left) == BaseType::String || lhsValue->getType() == stringTy;
-    const bool rhsIsString = inferExprType(*expr.right) == BaseType::String || rhsValue->getType() == stringTy;
+    const bool lhsIsString = inferExprType(*expr.left) == BaseType::String || isStringLikeType(lhsValue->getType());
+    const bool rhsIsString = inferExprType(*expr.right) == BaseType::String || isStringLikeType(rhsValue->getType());
     if (expr.op == BinaryOp::Add && lhsIsString && rhsIsString) {
       auto leftPtr = extractStringPointer(lhsValue, expr.left->span, "str.left");
       if (!leftPtr) {
@@ -1322,13 +1347,13 @@ private:
       expr.op == BinaryOp::Gt ||
       expr.op == BinaryOp::Ge;
     if (isComparison && lhsValue->getType() != rhsValue->getType()) {
-      if (lhsValue->getType() == stringTy && rhsValue->getType()->isPointerTy()) {
+      if (isStringLikeType(lhsValue->getType()) && rhsValue->getType()->isPointerTy()) {
         auto ptr = extractStringPointer(lhsValue, expr.left->span, "cmp.lhs");
         if (!ptr) {
           return std::unexpected(ptr.error());
         }
         lhsValue = ptr.value();
-      } else if (rhsValue->getType() == stringTy && lhsValue->getType()->isPointerTy()) {
+      } else if (isStringLikeType(rhsValue->getType()) && lhsValue->getType()->isPointerTy()) {
         auto ptr = extractStringPointer(rhsValue, expr.right->span, "cmp.rhs");
         if (!ptr) {
           return std::unexpected(ptr.error());
@@ -1359,21 +1384,49 @@ private:
 
     switch (expr.op) {
       case BinaryOp::Add:
+        if (!lhsIsString && !rhsIsString && !isNumericType(lhsValue->getType())) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "Operator '+' requires numeric operands or String + String.",
+            .span = expr.span,
+          });
+        }
         if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
           return builder.CreateFAdd(lhsValue, rhsValue, "faddtmp");
         }
         return builder.CreateAdd(lhsValue, rhsValue, "addtmp");
       case BinaryOp::Sub:
+        if (!isNumericType(lhsValue->getType()) || !isNumericType(rhsValue->getType())) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "Operator '-' requires numeric operands.",
+            .span = expr.span,
+          });
+        }
         if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
           return builder.CreateFSub(lhsValue, rhsValue, "fsubtmp");
         }
         return builder.CreateSub(lhsValue, rhsValue, "subtmp");
       case BinaryOp::Mul:
+        if (!isNumericType(lhsValue->getType()) || !isNumericType(rhsValue->getType())) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "Operator '*' requires numeric operands.",
+            .span = expr.span,
+          });
+        }
         if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
           return builder.CreateFMul(lhsValue, rhsValue, "fmultmp");
         }
         return builder.CreateMul(lhsValue, rhsValue, "multmp");
       case BinaryOp::Div:
+        if (!isNumericType(lhsValue->getType()) || !isNumericType(rhsValue->getType())) {
+          return std::unexpected(Diagnostic {
+            .code = ErrorCode::CodegenError,
+            .message = "Operator '/' requires numeric operands.",
+            .span = expr.span,
+          });
+        }
         if (lhsValue->getType()->isFloatingPointTy() && rhsValue->getType()->isFloatingPointTy()) {
           return builder.CreateFDiv(lhsValue, rhsValue, "fdivtmp");
         }
@@ -1490,8 +1543,7 @@ private:
         return llvm::ConstantInt::get(i32Ty, 0);
       }
 
-      auto *stringTy = llvmType(BaseType::String);
-      if (arg.value()->getType() == stringTy) {
+      if (isStringLikeType(arg.value()->getType())) {
         auto *ptr = builder.CreateExtractValue(arg.value(), {0}, "str.ptr");
         auto *len = builder.CreateExtractValue(arg.value(), {1}, "str.len");
         auto printFn = module.getOrInsertFunction(
@@ -1664,7 +1716,7 @@ private:
             if (fn->getReturnType()->isIntegerTy(1)) {
               return BaseType::Bool;
             }
-            if (fn->getReturnType() == llvmType(BaseType::String)) {
+            if (isStringLikeType(fn->getReturnType())) {
               return BaseType::String;
             }
             if (findStructLayoutByType(fn->getReturnType()) != nullptr) {
@@ -1733,7 +1785,7 @@ private:
         if (fn->getReturnType()->isIntegerTy(1)) {
           return BaseType::Bool;
         }
-        if (fn->getReturnType() == llvmType(BaseType::String)) {
+        if (isStringLikeType(fn->getReturnType())) {
           return BaseType::String;
         }
         if (auto it = functionReturnKinds.find(call.callee); it != functionReturnKinds.end() && it->second == BaseType::String) {
