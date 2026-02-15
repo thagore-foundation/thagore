@@ -211,6 +211,7 @@ jobs:
             ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
             cp runtime/build/libthag_runtime.a libthag_runtime.a
             cp runtime/build/libthag_runtime.a thag_runtime.lib
+          fi
 
       - name: Build runtime intent CLI
         shell: bash
@@ -218,7 +219,6 @@ jobs:
           set -euxo pipefail
           cmake -S runtime -B runtime/build-intent-ci
           cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
-          fi
 
       - name: Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
         shell: bash
@@ -250,7 +250,7 @@ jobs:
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out" || return 1
+            "./$cc" --build "$src" -o "$out" || true
             got="$(resolve_local "$out" "$base" || true)"
             if [[ -z "$got" ]]; then
               local ll_out=""

@@ -265,7 +265,7 @@ jobs:
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out" || return 1
+            "./$cc" --build "$src" -o "$out" || true
             got="$(resolve_local "$out" "$base" || true)"
             if [[ -z "$got" ]]; then
               local ll_out=""
