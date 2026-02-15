@@ -237,6 +237,10 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
       || containsWord(loweredName, "count_div")) {
     return "count_divisors_sqrt";
   }
+  if (containsWord(loweredName, "sprinkler") || containsWord(loweredName, "interval_cover")
+      || containsWord(loweredName, "cover_plants")) {
+    return "interval_cover_greedy";
+  }
   if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
       || containsWord(loweredName, "peel")) {
     return "bit_peel_iterative";
@@ -261,6 +265,7 @@ enum class IntentRewriteKind {
   GcdEuclidModulo,
   PrimeCheckSqrt,
   DivisorCountSqrt,
+  IntervalCoverGreedy,
   BitPeelIterative,
   ReduceSumFormula,
   SqrtBoundedLoop,
@@ -621,6 +626,9 @@ auto selectRewriteKind(std::string_view functionName, std::string_view rawGoal) 
   if (goal == "count_divisors_sqrt" || goal == "divisor_count_sqrt") {
     return IntentRewriteKind::DivisorCountSqrt;
   }
+  if (goal == "interval_cover_greedy" || goal == "sprinkler_cover_min") {
+    return IntentRewriteKind::IntervalCoverGreedy;
+  }
   if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
     return IntentRewriteKind::BitPeelIterative;
   }
@@ -763,6 +771,42 @@ void appendDivisorCountSqrtBody(
   out.push_back(std::format("{}count = count + 2", indent4));
   out.push_back(std::format("{}i = i + 1", indent2));
   out.push_back(std::format("{}return count", indent1));
+}
+
+void appendIntervalCoverGreedyBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view treesParam,
+  std::string_view treeCountParam,
+  std::string_view leftParam,
+  std::string_view rightParam,
+  std::string_view sprinklerCountParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}let i = 0", indent1));
+  out.push_back(std::format("{}let j = 0", indent1));
+  out.push_back(std::format("{}let used = 0", indent1));
+  out.push_back(std::format("{}while (i < {}):", indent1, treeCountParam));
+  out.push_back(std::format("{}let need = {}[i]", indent2, treesParam));
+  out.push_back(std::format("{}let best = need - 1", indent2));
+  out.push_back(
+    std::format(
+      "{}while ((j < {}) and ({}[j] <= need)):",
+      indent2,
+      sprinklerCountParam,
+      leftParam
+    )
+  );
+  out.push_back(std::format("{}if ({}[j] > best):", indent2 + "    ", rightParam));
+  out.push_back(std::format("{}best = {}[j]", indent2 + "        ", rightParam));
+  out.push_back(std::format("{}j = j + 1", indent2 + "    "));
+  out.push_back(std::format("{}if (best < need):", indent2));
+  out.push_back(std::format("{}return -1", indent2 + "    "));
+  out.push_back(std::format("{}used = used + 1", indent2));
+  out.push_back(std::format("{}while ((i < {}) and ({}[i] <= best)):", indent2, treeCountParam, treesParam));
+  out.push_back(std::format("{}i = i + 1", indent2 + "    "));
+  out.push_back(std::format("{}return used", indent1));
 }
 
 void appendBitPeelIterativeBody(
@@ -1028,6 +1072,22 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           continue;
         }
         appendDivisorCountSqrtBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::IntervalCoverGreedy:
+        if (params.size() < 5) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendIntervalCoverGreedyBody(
+          rewritten,
+          baseIndent,
+          params[0],
+          params[1],
+          params[2],
+          params[3],
+          params[4]
+        );
         break;
       case IntentRewriteKind::BitPeelIterative:
         if (params.size() < 2) {

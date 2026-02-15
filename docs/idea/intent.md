@@ -248,6 +248,7 @@ Never allowed:
 - `gcd_euclid` *(subtractive gcd -> modulo Euclid)*
 - `is_prime_fast` *(naive divisor scan -> sqrt-bounded prime check)*
 - `count_divisors_sqrt` *(count divisors from O(n) to O(sqrt(n)))*
+- `interval_cover_greedy` *(minimum sprinkler/interval cover on sorted points via greedy two-pointer)*
 - `bit_peel_iterative` *(recursive bit peel -> iterative fold)*
 - `sort_ascending`
 - `search_element`

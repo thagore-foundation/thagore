@@ -1,0 +1,85 @@
+import fs
+extern func __time_now_ms() -> i32
+
+intent func min_sprinklers_scan(trees: [i32; 128], n: i32, lefts: [i32; 128], rights: [i32; 128], m: i32) -> i32:
+    goal: interval_cover_greedy
+    constraints:
+        deterministic == true
+
+func min_sprinklers_scan(trees: [i32; 128], n: i32, lefts: [i32; 128], rights: [i32; 128], m: i32) -> i32:
+    let i = 0
+    let used = 0
+    while (i < n):
+        let need = trees[i]
+        let best = need - 1
+        let j = 0
+        while (j < m):
+            if (lefts[j] <= need):
+                if (rights[j] > best):
+                    best = rights[j]
+            j = j + 1
+        if (best < need):
+            return -1
+        used = used + 1
+        while ((i < n) and (trees[i] <= best)):
+            i = i + 1
+    return used
+
+func main() -> i32:
+    let trees = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let lefts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let rights = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    trees[0] = 1
+    trees[1] = 2
+    trees[2] = 3
+    trees[3] = 10
+    trees[4] = 11
+    trees[5] = 12
+
+    lefts[0] = 1
+    rights[0] = 3
+    lefts[1] = 8
+    rights[1] = 12
+    lefts[2] = 4
+    rights[2] = 8
+    lefts[3] = 12
+    rights[3] = 12
+    lefts[4] = 3
+    rights[4] = 3
+    let sample_ans = min_sprinklers_scan(trees, 6, lefts, rights, 5)
+
+    let n = 128
+    let seed = __time_now_ms()
+    let shift = seed - (seed / 7) * 7
+    let m = 128
+    let bi = 0
+    while (bi < n):
+        trees[bi] = bi * 3 + shift
+        bi = bi + 1
+
+    let bj = 0
+    while (bj < m):
+        lefts[bj] = bj * 3 + shift - 1
+        rights[bj] = bj * 3 + shift + 4
+        bj = bj + 1
+
+    let rounds = 120000
+    let i = 0
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (i < rounds):
+        let span = 120 + (i - (i / 8) * 8)
+        checksum = checksum + min_sprinklers_scan(trees, span, lefts, rights, span)
+        i = i + 1
+    let t1 = __time_now_ms()
+
+    print("intent sprinkler sample:")
+    print(sample_ans)
+    print("intent sprinkler checksum:")
+    print(checksum)
+    print("intent sprinkler elapsed_ms:")
+    print(t1 - t0)
+    return 0
+
+
