@@ -1,7 +1,7 @@
 # Thagore Build AutoFix (Guardian)
 
-Implementation approval: Not approved  
-Status: Draft proposal (not approved for implementation)  
+Implementation approval: Approved  
+Status: Approved for implementation  
 Owner: Thagore Build System / Diagnostics  
 Last updated: 2026-02-15
 
@@ -171,6 +171,10 @@ Output modes:
 
 - human text (default),
 - JSON for IDE/LSP/CI ingestion.
+
+Detailed notification and reporting contract is specified in:
+
+- `docs/idea/autofix-notification-contract.md`
 
 ## 11) Safety policy
 

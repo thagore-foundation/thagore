@@ -63,8 +63,51 @@ struct RuntimeInterpreter {
   bool hadError {false};
 };
 
+struct IntentEntry {
+  std::string id {};
+  std::string kind {};
+  std::string goal {};
+  std::vector<std::string> constraints {};
+  std::vector<std::string> examples {};
+  int line {0};
+  bool hasGoal {false};
+  bool hasConstraintsHeader {false};
+  bool hasExamplesHeader {false};
+};
+
+struct IntentRuleInfo {
+  std::string id {};
+  std::string goal {};
+  std::string complexity {"O(n)"};
+  bool deterministic {true};
+  bool noHeapGrowth {false};
+  bool parallelCapable {false};
+  int timeRank {9};
+  int memoryRank {9};
+  double maxError {0.0};
+};
+
+struct IntentPlan {
+  std::string intentId {};
+  std::string goal {};
+  std::string selectedRule {};
+  std::vector<std::string> candidateRules {};
+  int candidateCount {0};
+  bool verified {false};
+  std::string verifyReason {};
+  std::string constraintsDigest {};
+  std::string verificationDigest {};
+};
+
+struct IntentLockEntry {
+  std::string selectedRule {};
+  std::string constraintsDigest {};
+  std::string verificationDigest {};
+};
+
 int g_argc = 0;
 char **g_argv = nullptr;
+bool g_emitLlvmInternalMode = false;
 
 auto managedStrings() -> std::unordered_map<const char *, ManagedString> & {
   static auto *table = new std::unordered_map<const char *, ManagedString> {};
@@ -113,7 +156,7 @@ auto quoteShellArg(const std::string &arg) -> std::string {
 auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
   std::string raw = path.string();
 #if defined(_WIN32)
-  std::replace(raw.begin(), raw.end(), '\\', '/');
+  std::replace(raw.begin(), raw.end(), '/', '\\');
   if (raw.find(' ') != std::string::npos) {
     return "\"" + raw + "\"";
   }
@@ -145,6 +188,14 @@ auto resolveSelfExecutablePath() -> std::filesystem::path {
     return fileOnly;
   }
   return {};
+}
+
+auto isInternalEmitMode() -> bool {
+  if (g_emitLlvmInternalMode) {
+    return true;
+  }
+  const char *value = std::getenv("THAGORE_INTERNAL_EMIT");
+  return value != nullptr && std::strcmp(value, "1") == 0;
 }
 
 auto runCommandCapture(const std::string &command) -> std::optional<std::string> {
@@ -2593,6 +2644,1059 @@ static auto cliHasSpace(const std::string &text) -> bool {
   return text.find(' ') != std::string::npos;
 }
 
+static auto cliIntentModeValid(const std::string &mode) -> bool {
+  return mode == "off" || mode == "min" || mode == "max";
+}
+
+static auto cliIntentFallbackValid(const std::string &mode) -> bool {
+  return mode == "deny" || mode == "allow";
+}
+
+static auto cliIntentGoalSupported(const std::string &goal) -> bool {
+  static const std::unordered_set<std::string> supported {
+    "reduce_sum",
+    "map_filter_reduce",
+    "deduplicate_sorted",
+    "binary_search",
+    "string_contains",
+    "dot_product",
+  };
+  return supported.find(goal) != supported.end();
+}
+
+static auto cliIntentHashHex(const std::string &text) -> std::string {
+  std::uint64_t hash = 1469598103934665603ull;
+  for (unsigned char ch : text) {
+    hash ^= static_cast<std::uint64_t>(ch);
+    hash *= 1099511628211ull;
+  }
+  char out[17] {};
+  std::snprintf(out, sizeof(out), "%016llx", static_cast<unsigned long long>(hash));
+  return std::string(out);
+}
+
+static auto cliIntentDigest(const std::string &text) -> std::string {
+  return "sha256:fnv1a64-" + cliIntentHashHex(text);
+}
+
+static auto cliJsonEscape(const std::string &text) -> std::string {
+  std::string out {};
+  out.reserve(text.size() + 8);
+  for (unsigned char ch : text) {
+    if (ch == '\\') {
+      out += "\\\\";
+    } else if (ch == '"') {
+      out += "\\\"";
+    } else if (ch == '\n') {
+      out += "\\n";
+    } else if (ch == '\r') {
+      out += "\\r";
+    } else if (ch == '\t') {
+      out += "\\t";
+    } else if (ch < 32) {
+      char buf[7] {};
+      std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned int>(ch));
+      out += buf;
+    } else {
+      out.push_back(static_cast<char>(ch));
+    }
+  }
+  return out;
+}
+
+static auto cliIntentTargetFingerprint() -> std::string {
+#if defined(_M_X64) || defined(__x86_64__)
+  const std::string arch = "x86_64";
+#elif defined(_M_IX86) || defined(__i386__)
+  const std::string arch = "x86";
+#elif defined(_M_ARM64) || defined(__aarch64__)
+  const std::string arch = "aarch64";
+#else
+  const std::string arch = "unknown";
+#endif
+
+#if defined(_WIN32)
+  return arch + "-pc-windows-msvc";
+#elif defined(__APPLE__)
+  return arch + "-apple-darwin";
+#elif defined(__linux__)
+  return arch + "-unknown-linux-gnu";
+#else
+  return arch + "-unknown";
+#endif
+}
+
+static auto cliIntentToLower(std::string text) -> std::string {
+  for (char &ch : text) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return text;
+}
+
+static auto cliIntentNormalizeConstraint(const std::string &text) -> std::string {
+  std::string out {};
+  out.reserve(text.size());
+  for (char ch : text) {
+    if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+      continue;
+    }
+    out.push_back(ch);
+  }
+  return cliIntentToLower(out);
+}
+
+static auto cliIntentTryParseFloat(const std::string &text, double *valueOut) -> bool {
+  if (valueOut == nullptr || text.empty()) {
+    return false;
+  }
+  char *endPtr = nullptr;
+  const double value = std::strtod(text.c_str(), &endPtr);
+  if (endPtr == text.c_str() || *endPtr != '\0') {
+    return false;
+  }
+  *valueOut = value;
+  return true;
+}
+
+static auto cliIntentComplexityRank(const std::string &complexityText) -> int {
+  const std::string norm = cliIntentNormalizeConstraint(complexityText);
+  if (norm == "o(1)") {
+    return 0;
+  }
+  if (norm == "o(logn)" || norm == "o(log2n)") {
+    return 1;
+  }
+  if (norm == "o(n)") {
+    return 2;
+  }
+  if (norm == "o(nlogn)") {
+    return 3;
+  }
+  if (norm == "o(n^2)" || norm == "o(n2)") {
+    return 4;
+  }
+  return 99;
+}
+
+static auto cliIntentComplexityAtMost(const std::string &ruleComplexity, const std::string &limitComplexity) -> bool {
+  return cliIntentComplexityRank(ruleComplexity) <= cliIntentComplexityRank(limitComplexity);
+}
+
+static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<IntentRuleInfo> *outRules) {
+  if (outRules == nullptr) {
+    return;
+  }
+  outRules->clear();
+
+  auto add_rule = [&](const char *id, const char *complexity, bool deterministic, bool noHeapGrowth, bool parallelCapable,
+                      int timeRank, int memoryRank, double maxError) {
+    IntentRuleInfo rule {};
+    rule.id = id;
+    rule.goal = goal;
+    rule.complexity = complexity;
+    rule.deterministic = deterministic;
+    rule.noHeapGrowth = noHeapGrowth;
+    rule.parallelCapable = parallelCapable;
+    rule.timeRank = timeRank;
+    rule.memoryRank = memoryRank;
+    rule.maxError = maxError;
+    outRules->push_back(rule);
+  };
+
+  if (goal == "reduce_sum") {
+    add_rule("rule.reduce_sum.scalar.v1", "O(n)", true, true, false, 3, 1, 0.0);
+    add_rule("rule.reduce_sum.simd.v2", "O(n)", true, true, true, 1, 1, 0.0);
+    add_rule("rule.reduce_sum.parallel.v3", "O(n)", false, true, true, 1, 2, 0.0);
+    return;
+  }
+  if (goal == "map_filter_reduce") {
+    add_rule("rule.map_filter_reduce.fused.v1", "O(n)", true, false, false, 3, 3, 0.0);
+    add_rule("rule.map_filter_reduce.fused.v2", "O(n)", true, false, true, 2, 2, 0.0);
+    add_rule("rule.map_filter_reduce.parallel.v3", "O(n)", false, false, true, 1, 3, 0.0);
+    return;
+  }
+  if (goal == "deduplicate_sorted") {
+    add_rule("rule.deduplicate_sorted.linear.v1", "O(n)", true, true, false, 2, 1, 0.0);
+    add_rule("rule.deduplicate_sorted.branchless.v2", "O(n)", true, true, true, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "binary_search") {
+    add_rule("rule.binary_search.classic.v1", "O(logn)", true, true, false, 2, 1, 0.0);
+    add_rule("rule.binary_search.branchless.v2", "O(logn)", true, true, true, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "string_contains") {
+    add_rule("rule.string_contains.scan.v1", "O(n)", true, true, false, 2, 1, 0.0);
+    add_rule("rule.string_contains.twoway.v2", "O(n)", true, true, true, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "dot_product") {
+    add_rule("rule.dot_product.scalar.v1", "O(n)", true, true, false, 3, 1, 0.0);
+    add_rule("rule.dot_product.simd.v2", "O(n)", true, true, true, 1, 1, 1e-7);
+    add_rule("rule.dot_product.fastmath.v3", "O(n)", false, true, true, 1, 1, 1e-4);
+  }
+}
+
+static auto cliIntentRuleFor(const std::string &goal, const std::string &mode) -> std::string {
+  std::vector<IntentRuleInfo> rules {};
+  cliIntentCollectRulesForGoal(goal, &rules);
+  if (rules.empty()) {
+    return "rule.unsupported";
+  }
+  if (mode == "max" && rules.size() > 1) {
+    return rules[1].id;
+  }
+  return rules[0].id;
+}
+
+static auto cliIntentFindRuleById(
+  const std::vector<IntentRuleInfo> &rules,
+  const std::string &ruleId,
+  IntentRuleInfo *outRule
+) -> bool {
+  if (outRule == nullptr) {
+    return false;
+  }
+  for (const auto &rule : rules) {
+    if (rule.id == ruleId) {
+      *outRule = rule;
+      return true;
+    }
+  }
+  return false;
+}
+
+static auto cliIntentVerifyRuleConstraints(
+  const IntentRuleInfo &rule,
+  const IntentEntry &entry,
+  std::string *reasonOut
+) -> bool {
+  if (entry.hasExamplesHeader && entry.examples.empty()) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "examples section is empty";
+    }
+    return false;
+  }
+
+  for (const auto &example : entry.examples) {
+    if (example.find("==") == std::string::npos) {
+      if (reasonOut != nullptr) {
+        *reasonOut = "example assertion must use == operator";
+      }
+      return false;
+    }
+  }
+
+  for (const auto &rawConstraint : entry.constraints) {
+    const auto norm = cliIntentNormalizeConstraint(rawConstraint);
+    if (norm.empty()) {
+      continue;
+    }
+
+    if (startsWith(norm, "deterministic==")) {
+      const auto value = norm.substr(15);
+      if (value == "true" || value == "1") {
+        if (!rule.deterministic) {
+          if (reasonOut != nullptr) {
+            *reasonOut = "deterministic==true is violated";
+          }
+          return false;
+        }
+      } else if (value == "false" || value == "0") {
+        if (rule.deterministic) {
+          if (reasonOut != nullptr) {
+            *reasonOut = "deterministic==false is violated";
+          }
+          return false;
+        }
+      } else {
+        if (reasonOut != nullptr) {
+          *reasonOut = "invalid deterministic constraint value";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (startsWith(norm, "parallel==")) {
+      const auto value = norm.substr(10);
+      if ((value == "true" || value == "1") && !rule.parallelCapable) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "parallel==true is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (startsWith(norm, "no_heap_growth==")) {
+      const auto value = norm.substr(16);
+      if ((value == "true" || value == "1") && !rule.noHeapGrowth) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "no_heap_growth==true is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (startsWith(norm, "stable==")) {
+      const auto value = norm.substr(8);
+      if ((value == "true" || value == "1") && !rule.deterministic) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "stable==true is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (startsWith(norm, "time<=")) {
+      const auto limit = norm.substr(6);
+      if (!cliIntentComplexityAtMost(rule.complexity, limit)) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "time constraint is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (startsWith(norm, "max_error<=")) {
+      const auto boundText = norm.substr(11);
+      double bound = 0.0;
+      if (!cliIntentTryParseFloat(boundText, &bound)) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "invalid max_error value";
+        }
+        return false;
+      }
+      if (rule.maxError > bound + 1e-15) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "max_error constraint is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
+    if (reasonOut != nullptr) {
+      *reasonOut = "unsupported constraint `" + rawConstraint + "`";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+static auto cliIntentScoreRule(
+  const IntentRuleInfo &rule,
+  const IntentEntry &entry,
+  const std::string &mode,
+  const std::string &target
+) -> int {
+  int score = rule.timeRank * 100 + rule.memoryRank * 10;
+  if (mode == "max" && rule.parallelCapable) {
+    score -= 15;
+  }
+  if (target.find("x86_64") != std::string::npos && rule.parallelCapable) {
+    score -= 10;
+  }
+  if (!rule.deterministic) {
+    score += 50;
+  }
+
+  for (const auto &rawConstraint : entry.constraints) {
+    const auto norm = cliIntentNormalizeConstraint(rawConstraint);
+    if (startsWith(norm, "parallel==true")) {
+      score += rule.parallelCapable ? -30 : 2000;
+    } else if (startsWith(norm, "deterministic==true")) {
+      score += rule.deterministic ? -30 : 5000;
+    } else if (startsWith(norm, "no_heap_growth==true")) {
+      score += rule.noHeapGrowth ? -20 : 2500;
+    } else if (startsWith(norm, "stable==true")) {
+      score += rule.deterministic ? -20 : 2500;
+    } else if (startsWith(norm, "time<=")) {
+      const auto limit = norm.substr(6);
+      score += cliIntentComplexityAtMost(rule.complexity, limit) ? -40 : 4000;
+    } else if (startsWith(norm, "max_error<=")) {
+      const auto boundText = norm.substr(11);
+      double bound = 0.0;
+      if (cliIntentTryParseFloat(boundText, &bound)) {
+        score += rule.maxError <= bound ? -20 : 3000;
+      } else {
+        score += 3000;
+      }
+    } else {
+      score += 6000;
+    }
+  }
+  return score;
+}
+
+static auto cliIntentSelectPlanForEntry(
+  const IntentEntry &entry,
+  const std::string &mode,
+  IntentPlan *planOut,
+  std::string *errorOut
+) -> bool {
+  if (planOut == nullptr) {
+    return false;
+  }
+  *planOut = IntentPlan {};
+  planOut->intentId = entry.id;
+  planOut->goal = entry.goal;
+
+  std::vector<IntentRuleInfo> rules {};
+  cliIntentCollectRulesForGoal(entry.goal, &rules);
+  if (rules.empty()) {
+    if (errorOut != nullptr) {
+      *errorOut = "unsupported goal `" + entry.goal + "`";
+    }
+    return false;
+  }
+
+  for (const auto &rule : rules) {
+    planOut->candidateRules.push_back(rule.id);
+  }
+
+  std::vector<std::pair<int, std::string>> scored {};
+  const std::size_t cap = mode == "min" ? std::min<std::size_t>(2, rules.size()) : rules.size();
+  const auto target = cliIntentTargetFingerprint();
+  for (std::size_t i = 0; i < cap; ++i) {
+    scored.emplace_back(cliIntentScoreRule(rules[i], entry, mode, target), rules[i].id);
+  }
+  std::sort(scored.begin(), scored.end(), [](const auto &a, const auto &b) {
+    if (a.first == b.first) {
+      return a.second < b.second;
+    }
+    return a.first < b.first;
+  });
+
+  planOut->candidateCount = static_cast<int>(scored.size());
+  std::string lastReason {"no candidate"};
+  for (const auto &item : scored) {
+    IntentRuleInfo rule {};
+    if (!cliIntentFindRuleById(rules, item.second, &rule)) {
+      continue;
+    }
+    std::string verifyReason {};
+    if (cliIntentVerifyRuleConstraints(rule, entry, &verifyReason)) {
+      std::string constraintBlob {};
+      for (const auto &constraint : entry.constraints) {
+        constraintBlob += constraint;
+        constraintBlob.push_back('\n');
+      }
+      std::string verifyBlob {};
+      verifyBlob += entry.goal;
+      verifyBlob.push_back('|');
+      verifyBlob += rule.id;
+      verifyBlob.push_back('|');
+      verifyBlob += target;
+      verifyBlob.push_back('|');
+      verifyBlob += constraintBlob;
+      for (const auto &example : entry.examples) {
+        verifyBlob += example;
+        verifyBlob.push_back('\n');
+      }
+
+      planOut->selectedRule = rule.id;
+      planOut->verified = true;
+      planOut->verifyReason = "ok";
+      planOut->constraintsDigest = cliIntentDigest(constraintBlob);
+      planOut->verificationDigest = cliIntentDigest(verifyBlob);
+      return true;
+    }
+    lastReason = verifyReason;
+  }
+
+  planOut->selectedRule = rules.front().id;
+  planOut->verified = false;
+  planOut->verifyReason = lastReason;
+  if (errorOut != nullptr) {
+    *errorOut = lastReason;
+  }
+  return false;
+}
+
+static auto cliIntentBuildPlans(
+  const std::vector<IntentEntry> &entries,
+  const std::string &mode,
+  std::vector<IntentPlan> *plansOut,
+  std::string *errorOut
+) -> bool {
+  if (plansOut == nullptr) {
+    return false;
+  }
+  plansOut->clear();
+  for (const auto &entry : entries) {
+    IntentPlan plan {};
+    std::string err {};
+    if (!cliIntentSelectPlanForEntry(entry, mode, &plan, &err)) {
+      if (errorOut != nullptr) {
+        *errorOut = "intent " + entry.id + " failed: " + err;
+      }
+      return false;
+    }
+    plansOut->push_back(std::move(plan));
+  }
+  return true;
+}
+
+static void cliIntentParseEntries(
+  const std::string &source,
+  const std::string &inputPath,
+  std::vector<IntentEntry> *outEntries
+) {
+  if (outEntries == nullptr) {
+    return;
+  }
+  outEntries->clear();
+  std::vector<std::string> lines {};
+  {
+    std::size_t cursor = 0;
+    while (cursor <= source.size()) {
+      const std::size_t end = source.find('\n', cursor);
+      const std::size_t lineEnd = end == std::string::npos ? source.size() : end;
+      lines.emplace_back(source.substr(cursor, lineEnd - cursor));
+      if (end == std::string::npos) {
+        break;
+      }
+      cursor = end + 1;
+    }
+  }
+
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const std::string_view raw = lines[i];
+    const std::string_view text = trim(raw);
+    if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
+      continue;
+    }
+    if (!startsWith(text, "intent ")) {
+      continue;
+    }
+
+    IntentEntry entry {};
+    entry.line = static_cast<int>(i + 1);
+    entry.id = inputPath + ":" + std::to_string(entry.line) + ":intent_" + std::to_string(outEntries->size() + 1);
+
+    const bool hasColon = !text.empty() && text.back() == ':';
+    if (startsWith(text, "intent func ") && hasColon) {
+      entry.kind = "func";
+    } else if (startsWith(text, "intent loop ") && hasColon) {
+      entry.kind = "loop";
+    } else if (startsWith(text, "intent calc(") && hasColon) {
+      entry.kind = "calc";
+    } else if (text == "intent block:") {
+      entry.kind = "block";
+    }
+
+    const int baseIndent = leadingSpaces(raw);
+    int constraintsIndent = -1;
+    int examplesIndent = -1;
+    for (std::size_t j = i + 1; j < lines.size(); ++j) {
+      const std::string_view bodyRaw = lines[j];
+      const std::string_view body = trim(bodyRaw);
+      if (body.empty() || startsWith(body, "#") || startsWith(body, "//")) {
+        continue;
+      }
+      const int bodyIndent = leadingSpaces(bodyRaw);
+      if (bodyIndent <= baseIndent) {
+        break;
+      }
+      if (startsWith(body, "goal:")) {
+        const auto goalText = trim(body.substr(5));
+        if (!goalText.empty()) {
+          entry.goal = std::string(goalText);
+          entry.hasGoal = true;
+        }
+        constraintsIndent = -1;
+        examplesIndent = -1;
+        continue;
+      }
+      if (body == "constraints:") {
+        entry.hasConstraintsHeader = true;
+        constraintsIndent = bodyIndent;
+        examplesIndent = -1;
+        continue;
+      }
+      if (body == "examples:") {
+        entry.hasExamplesHeader = true;
+        constraintsIndent = -1;
+        examplesIndent = bodyIndent;
+        continue;
+      }
+      if (constraintsIndent >= 0 && bodyIndent > constraintsIndent) {
+        entry.constraints.emplace_back(std::string(body));
+      } else if (constraintsIndent >= 0 && bodyIndent <= constraintsIndent) {
+        constraintsIndent = -1;
+      }
+      if (examplesIndent >= 0 && bodyIndent > examplesIndent) {
+        entry.examples.emplace_back(std::string(body));
+      } else if (examplesIndent >= 0 && bodyIndent <= examplesIndent) {
+        examplesIndent = -1;
+      }
+    }
+    outEntries->push_back(std::move(entry));
+  }
+}
+
+static auto cliIntentValidateEntries(
+  const std::vector<IntentEntry> &entries,
+  bool requireKnownGoal,
+  std::string *error
+) -> bool {
+  for (const auto &entry : entries) {
+    if (entry.kind.empty()) {
+      if (error != nullptr) {
+        *error = "invalid intent header at line " + std::to_string(entry.line);
+      }
+      return false;
+    }
+    if (!entry.hasGoal) {
+      if (error != nullptr) {
+        *error = "intent at line " + std::to_string(entry.line) + " is missing goal";
+      }
+      return false;
+    }
+    if (!entry.hasConstraintsHeader) {
+      if (error != nullptr) {
+        *error = "intent at line " + std::to_string(entry.line) + " is missing constraints section";
+      }
+      return false;
+    }
+    if (entry.constraints.empty()) {
+      if (error != nullptr) {
+        *error = "intent at line " + std::to_string(entry.line) + " has empty constraints section";
+      }
+      return false;
+    }
+    if (entry.hasExamplesHeader && entry.examples.empty()) {
+      if (error != nullptr) {
+        *error = "intent at line " + std::to_string(entry.line) + " has empty examples section";
+      }
+      return false;
+    }
+    if (requireKnownGoal && !cliIntentGoalSupported(entry.goal)) {
+      if (error != nullptr) {
+        *error = "intent at line " + std::to_string(entry.line) + " uses unsupported goal `" + entry.goal + "`";
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+static auto cliIntentFindQuotedValueRange(
+  const std::string &text,
+  const std::string &key,
+  std::size_t startPos,
+  std::size_t endPos,
+  std::string *valueOut,
+  std::size_t *keyPosOut
+) -> bool {
+  if (valueOut == nullptr) {
+    return false;
+  }
+  const std::string keyPattern = "\"" + key + "\"";
+  const std::size_t keyPos = text.find(keyPattern, startPos);
+  if (keyPos == std::string::npos || keyPos >= endPos) {
+    return false;
+  }
+  const std::size_t colonPos = text.find(':', keyPos + keyPattern.size());
+  if (colonPos == std::string::npos || colonPos >= endPos) {
+    return false;
+  }
+  const std::size_t quoteStart = text.find('"', colonPos + 1);
+  if (quoteStart == std::string::npos || quoteStart >= endPos) {
+    return false;
+  }
+  std::string value {};
+  bool escaped = false;
+  for (std::size_t i = quoteStart + 1; i < endPos; ++i) {
+    const char ch = text[i];
+    if (escaped) {
+      value.push_back(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch == '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch == '"') {
+      *valueOut = value;
+      if (keyPosOut != nullptr) {
+        *keyPosOut = keyPos;
+      }
+      return true;
+    }
+    value.push_back(ch);
+  }
+  return false;
+}
+
+static auto cliIntentParseLockFile(
+  const std::string &lockText,
+  std::string *sourceDigestOut,
+  std::unordered_map<std::string, IntentLockEntry> *entriesOut,
+  std::string *errorOut
+) -> bool {
+  if (entriesOut == nullptr) {
+    return false;
+  }
+  entriesOut->clear();
+  if (sourceDigestOut != nullptr) {
+    sourceDigestOut->clear();
+  }
+
+  std::string sourceDigest {};
+  if (cliIntentFindQuotedValueRange(lockText, "source_digest", 0, lockText.size(), &sourceDigest, nullptr)) {
+    if (sourceDigestOut != nullptr) {
+      *sourceDigestOut = sourceDigest;
+    }
+  }
+
+  std::size_t cursor = 0;
+  while (true) {
+    std::string intentId {};
+    std::size_t intentPos = 0;
+    if (!cliIntentFindQuotedValueRange(lockText, "intent_id", cursor, lockText.size(), &intentId, &intentPos)) {
+      break;
+    }
+    std::size_t nextIntentPos = lockText.find("\"intent_id\"", intentPos + 1);
+    if (nextIntentPos == std::string::npos) {
+      nextIntentPos = lockText.size();
+    }
+
+    IntentLockEntry lockEntry {};
+    (void)cliIntentFindQuotedValueRange(lockText, "selected_rule", intentPos, nextIntentPos, &lockEntry.selectedRule, nullptr);
+    (void)cliIntentFindQuotedValueRange(lockText, "constraints_digest", intentPos, nextIntentPos, &lockEntry.constraintsDigest, nullptr);
+    (void)cliIntentFindQuotedValueRange(lockText, "verification_digest", intentPos, nextIntentPos, &lockEntry.verificationDigest, nullptr);
+
+    if (lockEntry.selectedRule.empty()) {
+      if (errorOut != nullptr) {
+        *errorOut = "lock entry is missing selected_rule for intent_id `" + intentId + "`";
+      }
+      return false;
+    }
+    entriesOut->insert_or_assign(intentId, lockEntry);
+    cursor = nextIntentPos;
+  }
+  return true;
+}
+
+static auto cliIntentValidateLockAgainstPlans(
+  const std::string &lockPath,
+  const std::string &sourceDigest,
+  const std::vector<IntentPlan> &plans,
+  bool strictLock,
+  std::vector<std::string> *warningsOut,
+  std::string *errorOut
+) -> bool {
+  if (!std::filesystem::exists(lockPath)) {
+    if (strictLock) {
+      if (errorOut != nullptr) {
+        *errorOut = "strict lock is enabled but lockfile is missing: " + lockPath;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  const auto lockText = cliReadText(lockPath);
+  if (lockText.empty()) {
+    if (strictLock) {
+      if (errorOut != nullptr) {
+        *errorOut = "lockfile is empty: " + lockPath;
+      }
+      return false;
+    }
+    if (warningsOut != nullptr) {
+      warningsOut->push_back("lockfile is empty: " + lockPath);
+    }
+    return true;
+  }
+
+  std::unordered_map<std::string, IntentLockEntry> lockEntries {};
+  std::string lockSourceDigest {};
+  std::string parseError {};
+  if (!cliIntentParseLockFile(lockText, &lockSourceDigest, &lockEntries, &parseError)) {
+    if (strictLock) {
+      if (errorOut != nullptr) {
+        *errorOut = "failed to parse lockfile: " + parseError;
+      }
+      return false;
+    }
+    if (warningsOut != nullptr) {
+      warningsOut->push_back("failed to parse lockfile: " + parseError);
+    }
+    return true;
+  }
+
+  if (!lockSourceDigest.empty() && lockSourceDigest != sourceDigest) {
+    const std::string msg = "source digest mismatch between source and lockfile";
+    if (strictLock) {
+      if (errorOut != nullptr) {
+        *errorOut = msg;
+      }
+      return false;
+    }
+    if (warningsOut != nullptr) {
+      warningsOut->push_back(msg);
+    }
+  }
+
+  for (const auto &plan : plans) {
+    const auto it = lockEntries.find(plan.intentId);
+    if (it == lockEntries.end()) {
+      const std::string msg = "lockfile missing entry for " + plan.intentId;
+      if (strictLock) {
+        if (errorOut != nullptr) {
+          *errorOut = msg;
+        }
+        return false;
+      }
+      if (warningsOut != nullptr) {
+        warningsOut->push_back(msg);
+      }
+      continue;
+    }
+    if (it->second.selectedRule != plan.selectedRule) {
+      const std::string msg = "selected_rule mismatch for " + plan.intentId;
+      if (strictLock) {
+        if (errorOut != nullptr) {
+          *errorOut = msg;
+        }
+        return false;
+      }
+      if (warningsOut != nullptr) {
+        warningsOut->push_back(msg);
+      }
+    }
+    if (!plan.constraintsDigest.empty() && !it->second.constraintsDigest.empty()
+        && it->second.constraintsDigest != plan.constraintsDigest) {
+      const std::string msg = "constraints_digest mismatch for " + plan.intentId;
+      if (strictLock) {
+        if (errorOut != nullptr) {
+          *errorOut = msg;
+        }
+        return false;
+      }
+      if (warningsOut != nullptr) {
+        warningsOut->push_back(msg);
+      }
+    }
+  }
+  return true;
+}
+
+static auto cliIntentDoctor(const std::string &entryPath) -> int {
+  std::printf("[intent] engine=ready\n");
+  std::printf("[intent] determinism=enabled\n");
+  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product\n");
+  const auto clangPath = cliDetectClang();
+  if (clangPath.empty()) {
+    std::printf("[intent] toolchain=clang_missing\n");
+  } else {
+    std::printf("[intent] toolchain=clang_ok\n");
+  }
+  if (entryPath.empty()) {
+    std::printf("[intent] source=not_provided\n");
+    return 0;
+  }
+  const auto source = cliReadText(entryPath);
+  if (source.empty()) {
+    std::fprintf(stderr, "Error: Empty file or file not found.\n");
+    return 1;
+  }
+  std::vector<IntentEntry> entries {};
+  cliIntentParseEntries(source, entryPath, &entries);
+  std::string reason {};
+  if (!cliIntentValidateEntries(entries, false, &reason)) {
+    std::fprintf(stderr, "Intent doctor failed: %s\n", reason.c_str());
+    return 1;
+  }
+  std::vector<IntentPlan> plans {};
+  std::string planError {};
+  if (!cliIntentBuildPlans(entries, "min", &plans, &planError)) {
+    std::fprintf(stderr, "Intent doctor failed: %s\n", planError.c_str());
+    return 1;
+  }
+  std::printf("[intent] source=%s entries=%d status=ok\n", entryPath.c_str(), static_cast<int>(entries.size()));
+  return 0;
+}
+
+static auto cliIntentExplain(const std::string &entryPath, bool asJson, const std::string &mode) -> int {
+  if (!cliIntentModeValid(mode) || mode == "off") {
+    std::fprintf(stderr, "Error: intent explain mode must be min or max.\n");
+    return 2;
+  }
+  const auto source = cliReadText(entryPath);
+  if (source.empty()) {
+    std::fprintf(stderr, "Error: Empty file or file not found.\n");
+    return 1;
+  }
+  std::vector<IntentEntry> entries {};
+  cliIntentParseEntries(source, entryPath, &entries);
+  std::string reason {};
+  if (!cliIntentValidateEntries(entries, false, &reason)) {
+    std::fprintf(stderr, "Intent explain failed: %s\n", reason.c_str());
+    return 1;
+  }
+
+  std::vector<IntentPlan> plans {};
+  plans.reserve(entries.size());
+  for (const auto &entry : entries) {
+    IntentPlan plan {};
+    std::string planError {};
+    if (!cliIntentSelectPlanForEntry(entry, mode, &plan, &planError)) {
+      plan.intentId = entry.id;
+      plan.goal = entry.goal;
+      plan.selectedRule = "rule.unsupported";
+      plan.verified = false;
+      plan.verifyReason = planError;
+      plan.candidateCount = 0;
+    }
+    plans.push_back(std::move(plan));
+  }
+
+  if (!asJson) {
+    std::printf("Intent explain: %s\n", entryPath.c_str());
+    if (entries.empty()) {
+      std::printf("  no intent markers found\n");
+      return 0;
+    }
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+      const auto &entry = entries[i];
+      const auto &plan = plans[i];
+      const bool matched = cliIntentGoalSupported(entry.goal);
+      std::printf("  - %s line=%d kind=%s goal=%s\n", entry.id.c_str(), entry.line, entry.kind.c_str(), entry.goal.c_str());
+      std::printf("    constraints=%d examples=%d matched=%s selected_rule=%s verify=%s\n",
+        static_cast<int>(entry.constraints.size()),
+        static_cast<int>(entry.examples.size()),
+        matched ? "true" : "false",
+        plan.selectedRule.c_str(),
+        plan.verified ? "ok" : plan.verifyReason.c_str());
+    }
+    return 0;
+  }
+
+  std::string out {};
+  out += "{\n";
+  out += "  \"entry\": \"" + cliJsonEscape(entryPath) + "\",\n";
+  out += "  \"mode\": \"" + cliJsonEscape(mode) + "\",\n";
+  out += "  \"entries\": [\n";
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    const auto &entry = entries[i];
+    const auto &plan = plans[i];
+    const bool matched = cliIntentGoalSupported(entry.goal);
+    out += "    {\n";
+    out += "      \"intent_id\": \"" + cliJsonEscape(entry.id) + "\",\n";
+    out += "      \"line\": " + std::to_string(entry.line) + ",\n";
+    out += "      \"kind\": \"" + cliJsonEscape(entry.kind) + "\",\n";
+    out += "      \"goal\": \"" + cliJsonEscape(entry.goal) + "\",\n";
+    out += "      \"matched\": " + std::string(matched ? "true" : "false") + ",\n";
+    out += "      \"selected_rule\": \"" + cliJsonEscape(plan.selectedRule) + "\",\n";
+    out += "      \"verified\": " + std::string(plan.verified ? "true" : "false") + ",\n";
+    out += "      \"verify_reason\": \"" + cliJsonEscape(plan.verifyReason) + "\",\n";
+    out += "      \"constraints\": [";
+    for (std::size_t k = 0; k < entry.constraints.size(); ++k) {
+      if (k > 0) {
+        out += ", ";
+      }
+      out += "\"" + cliJsonEscape(entry.constraints[k]) + "\"";
+    }
+    out += "],\n";
+    out += "      \"candidate_rules\": [";
+    for (std::size_t k = 0; k < plan.candidateRules.size(); ++k) {
+      if (k > 0) {
+        out += ", ";
+      }
+      out += "\"" + cliJsonEscape(plan.candidateRules[k]) + "\"";
+    }
+    out += "]\n";
+    out += "    }";
+    if ((i + 1) < entries.size()) {
+      out += ",";
+    }
+    out += "\n";
+  }
+  out += "  ]\n";
+  out += "}\n";
+  std::printf("%s", out.c_str());
+  return 0;
+}
+
+static auto cliIntentWriteLock(
+  const std::string &entryPath,
+  const std::string &outputPath,
+  const std::string &source,
+  const std::vector<IntentPlan> &plans
+) -> int {
+  std::string out {};
+  out += "{\n";
+  out += "  \"schema_version\": 1,\n";
+  out += "  \"thagore_version\": \"0.5.0\",\n";
+  out += "  \"target\": \"" + cliJsonEscape(cliIntentTargetFingerprint()) + "\",\n";
+  out += "  \"source_digest\": \"" + cliJsonEscape(cliIntentDigest(source)) + "\",\n";
+  out += "  \"entries\": [\n";
+  for (std::size_t i = 0; i < plans.size(); ++i) {
+    const auto &plan = plans[i];
+    out += "    {\n";
+    out += "      \"intent_id\": \"" + cliJsonEscape(plan.intentId) + "\",\n";
+    out += "      \"goal\": \"" + cliJsonEscape(plan.goal) + "\",\n";
+    out += "      \"selected_rule\": \"" + cliJsonEscape(plan.selectedRule) + "\",\n";
+    out += "      \"constraints_digest\": \"" + cliJsonEscape(plan.constraintsDigest) + "\",\n";
+    out += "      \"verification_digest\": \"" + cliJsonEscape(plan.verificationDigest) + "\"\n";
+    out += "    }";
+    if ((i + 1) < plans.size()) {
+      out += ",";
+    }
+    out += "\n";
+  }
+  out += "  ]\n";
+  out += "}\n";
+
+  if (!cliWriteText(outputPath, out)) {
+    std::fprintf(stderr, "Error: cannot write intent lock file.\n");
+    return 1;
+  }
+  std::printf("Generated intent lock:\n%s\n", outputPath.c_str());
+  std::printf("Source:\n%s\n", entryPath.c_str());
+  return 0;
+}
+
+static auto cliIntentLock(const std::string &entryPath, const std::string &outputOverride, const std::string &mode) -> int {
+  if (!cliIntentModeValid(mode) || mode == "off") {
+    std::fprintf(stderr, "Error: intent lock mode must be min or max.\n");
+    return 2;
+  }
+  const auto source = cliReadText(entryPath);
+  if (source.empty()) {
+    std::fprintf(stderr, "Error: Empty file or file not found.\n");
+    return 1;
+  }
+  std::vector<IntentEntry> entries {};
+  cliIntentParseEntries(source, entryPath, &entries);
+  std::string reason {};
+  if (!cliIntentValidateEntries(entries, true, &reason)) {
+    std::fprintf(stderr, "Intent lock failed: %s\n", reason.c_str());
+    return 1;
+  }
+  std::vector<IntentPlan> plans {};
+  std::string planError {};
+  if (!cliIntentBuildPlans(entries, mode, &plans, &planError)) {
+    std::fprintf(stderr, "Intent lock failed: %s\n", planError.c_str());
+    return 1;
+  }
+  std::string outputPath = outputOverride;
+  if (outputPath.empty()) {
+    outputPath = "thagore.intent.lock";
+  }
+  return cliIntentWriteLock(entryPath, outputPath, source, plans);
+}
+
 static auto cliEmitLlvmInternal(const std::string &inputPath, const std::string &outputOverride) -> int {
   const auto source = cliReadText(inputPath);
   if (source.empty()) {
@@ -2603,7 +3707,10 @@ static auto cliEmitLlvmInternal(const std::string &inputPath, const std::string 
   if (outputLl.empty()) {
     outputLl = cliBasenameNoExt(inputPath) + ".ll";
   }
+  const bool previousInternalMode = g_emitLlvmInternalMode;
+  g_emitLlvmInternalMode = true;
   const char *ir = __thg_codegen_emit_llvm_from_source(source.c_str(), cliBasenameNoExt(inputPath).c_str());
+  g_emitLlvmInternalMode = previousInternalMode;
   if (ir == nullptr || *ir == '\0') {
     std::fprintf(stderr, "Error: LLVM IR generation failed.\n");
     return 1;
@@ -2616,11 +3723,79 @@ static auto cliEmitLlvmInternal(const std::string &inputPath, const std::string 
   return 0;
 }
 
-static auto cliBuildOrEmit(const std::string &inputPath, const std::string &outputOverride, bool emitLlvmOnly) -> int {
+static auto cliBuildOrEmit(
+  const std::string &inputPath,
+  const std::string &outputOverride,
+  bool emitLlvmOnly,
+  const std::string &intentMode,
+  const std::string &intentFallbackMode,
+  bool strictLock,
+  const std::string &intentLockPath
+) -> int {
   const auto source = cliReadText(inputPath);
   if (source.empty()) {
     std::fprintf(stderr, "Error: Empty file or file not found.\n");
     return 1;
+  }
+  if (!cliIntentModeValid(intentMode)) {
+    std::fprintf(stderr, "Error: invalid intent mode. Use off|min|max.\n");
+    return 2;
+  }
+  if (!cliIntentFallbackValid(intentFallbackMode)) {
+    std::fprintf(stderr, "Error: invalid intent fallback mode. Use deny|allow.\n");
+    return 2;
+  }
+  if (strictLock && intentMode != "max") {
+    std::fprintf(stderr, "Error: --strict-lock requires --intent=max.\n");
+    return 2;
+  }
+
+  const bool allowFallback = intentFallbackMode == "allow";
+  if (intentMode != "off") {
+    std::vector<IntentEntry> entries {};
+    cliIntentParseEntries(source, inputPath, &entries);
+    std::string reason {};
+    if (!cliIntentValidateEntries(entries, false, &reason)) {
+      if (!allowFallback) {
+        std::fprintf(stderr, "Intent validation failed: %s\n", reason.c_str());
+        return 1;
+      }
+      std::fprintf(stderr, "Warning: intent validation failed, using fallback path (%s).\n", reason.c_str());
+    } else {
+      if (!entries.empty()) {
+        std::vector<IntentPlan> plans {};
+        std::string planError {};
+        if (!cliIntentBuildPlans(entries, intentMode, &plans, &planError)) {
+          if (!allowFallback) {
+            std::fprintf(stderr, "Intent planner failed: %s\n", planError.c_str());
+            return 1;
+          }
+          std::fprintf(stderr, "Warning: intent planner failed, using fallback path (%s).\n", planError.c_str());
+        } else {
+          const std::string lockPath = intentLockPath.empty() ? "thagore.intent.lock" : intentLockPath;
+          std::vector<std::string> warnings {};
+          std::string lockError {};
+          if (!cliIntentValidateLockAgainstPlans(
+            lockPath,
+            cliIntentDigest(source),
+            plans,
+            strictLock,
+            &warnings,
+            &lockError
+          )) {
+            std::fprintf(stderr, "Intent lock validation failed: %s\n", lockError.c_str());
+            return 1;
+          }
+          for (const auto &warning : warnings) {
+            std::fprintf(stderr, "Warning: %s\n", warning.c_str());
+          }
+          std::printf("[intent] mode=%s entries=%d\n", intentMode.c_str(), static_cast<int>(plans.size()));
+          for (const auto &plan : plans) {
+            std::printf("[intent] %s -> %s\n", plan.intentId.c_str(), plan.selectedRule.c_str());
+          }
+        }
+      }
+    }
   }
   const auto base = cliBasenameNoExt(inputPath);
   std::string outputLl = base + ".ll";
@@ -2701,9 +3876,12 @@ int __thg_cli_main_native() {
   if (argc < 2) {
     std::printf("Thagore Compiler CLI\n");
     std::printf("Usage:\n");
-    std::printf("  thagore build <file.tg> [-o output]\n");
+    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock]\n");
     std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
     std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
+    std::printf("  thagore intent doctor [entry.tg]\n");
+    std::printf("  thagore intent explain <entry.tg> [--json] [--mode min|max]\n");
+    std::printf("  thagore intent lock <entry.tg> [-o thagore.intent.lock] [--mode min|max]\n");
     std::printf("  thagore --version\n");
     return 0;
   }
@@ -2716,10 +3894,73 @@ int __thg_cli_main_native() {
   if (arg1 == "--help" || arg1 == "-h") {
     std::printf("Thagore Compiler CLI\n");
     std::printf("Usage:\n");
-    std::printf("  thagore build <file.tg> [-o output]\n");
+    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock]\n");
     std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
     std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
+    std::printf("  thagore intent doctor [entry.tg]\n");
+    std::printf("  thagore intent explain <entry.tg> [--json] [--mode min|max]\n");
+    std::printf("  thagore intent lock <entry.tg> [-o thagore.intent.lock] [--mode min|max]\n");
     return 0;
+  }
+
+  if (arg1 == "intent") {
+    if (argc < 3) {
+      std::fprintf(stderr, "Error: missing intent subcommand. Use doctor|explain|lock.\n");
+      return 2;
+    }
+    const std::string sub = cstrOrEmpty(__thg_arg_get(2));
+    if (sub == "doctor") {
+      std::string entry {};
+      if (argc >= 4) {
+        entry = cstrOrEmpty(__thg_arg_get(3));
+      }
+      return cliIntentDoctor(entry);
+    }
+    if (sub == "explain") {
+      if (argc < 4) {
+        std::fprintf(stderr, "Error: missing input file.\n");
+        return 2;
+      }
+      std::string entry = cstrOrEmpty(__thg_arg_get(3));
+      bool asJson = false;
+      std::string mode {"max"};
+      for (int i = 4; i < argc; ++i) {
+        const std::string arg = cstrOrEmpty(__thg_arg_get(i));
+        if (arg == "--json") {
+          asJson = true;
+        } else if (arg == "--mode" && (i + 1) < argc) {
+          mode = cstrOrEmpty(__thg_arg_get(i + 1));
+          ++i;
+        } else if (arg.rfind("--mode=", 0) == 0) {
+          mode = arg.substr(7);
+        }
+      }
+      return cliIntentExplain(entry, asJson, mode);
+    }
+    if (sub == "lock") {
+      if (argc < 4) {
+        std::fprintf(stderr, "Error: missing input file.\n");
+        return 2;
+      }
+      std::string entry = cstrOrEmpty(__thg_arg_get(3));
+      std::string output {};
+      std::string mode {"max"};
+      for (int i = 4; i < argc; ++i) {
+        const std::string arg = cstrOrEmpty(__thg_arg_get(i));
+        if (arg == "-o" && (i + 1) < argc) {
+          output = cstrOrEmpty(__thg_arg_get(i + 1));
+          ++i;
+        } else if (arg == "--mode" && (i + 1) < argc) {
+          mode = cstrOrEmpty(__thg_arg_get(i + 1));
+          ++i;
+        } else if (arg.rfind("--mode=", 0) == 0) {
+          mode = arg.substr(7);
+        }
+      }
+      return cliIntentLock(entry, output, mode);
+    }
+    std::fprintf(stderr, "Error: unknown intent subcommand `%s`.\n", sub.c_str());
+    return 2;
   }
 
   if (arg1 == "--emit-llvm-internal") {
@@ -2740,6 +3981,10 @@ int __thg_cli_main_native() {
 
   bool buildMode = false;
   bool llvmOnly = false;
+  std::string intentMode {"off"};
+  std::string intentFallbackMode {"deny"};
+  std::string intentLockPath {};
+  bool strictLock = false;
   int start = 1;
   if (arg1 == "build") {
     buildMode = true;
@@ -2751,6 +3996,49 @@ int __thg_cli_main_native() {
     const std::string arg = cstrOrEmpty(__thg_arg_get(i));
     if (arg == "--emit-llvm" || arg == "-ll") {
       llvmOnly = true;
+      continue;
+    }
+    if (arg == "--intent") {
+      if ((i + 1) >= argc) {
+        std::fprintf(stderr, "Error: missing value after --intent\n");
+        return 2;
+      }
+      intentMode = cstrOrEmpty(__thg_arg_get(i + 1));
+      ++i;
+      continue;
+    }
+    if (arg.rfind("--intent=", 0) == 0) {
+      intentMode = arg.substr(9);
+      continue;
+    }
+    if (arg == "--intent-fallback") {
+      if ((i + 1) >= argc) {
+        std::fprintf(stderr, "Error: missing value after --intent-fallback\n");
+        return 2;
+      }
+      intentFallbackMode = cstrOrEmpty(__thg_arg_get(i + 1));
+      ++i;
+      continue;
+    }
+    if (arg.rfind("--intent-fallback=", 0) == 0) {
+      intentFallbackMode = arg.substr(18);
+      continue;
+    }
+    if (arg == "--intent-lock") {
+      if ((i + 1) >= argc) {
+        std::fprintf(stderr, "Error: missing path after --intent-lock\n");
+        return 2;
+      }
+      intentLockPath = cstrOrEmpty(__thg_arg_get(i + 1));
+      ++i;
+      continue;
+    }
+    if (arg.rfind("--intent-lock=", 0) == 0) {
+      intentLockPath = arg.substr(14);
+      continue;
+    }
+    if (arg == "--strict-lock") {
+      strictLock = true;
       continue;
     }
     if (arg == "-o") {
@@ -2771,9 +4059,9 @@ int __thg_cli_main_native() {
     return 2;
   }
   if (buildMode) {
-    return cliBuildOrEmit(script, output, llvmOnly);
+    return cliBuildOrEmit(script, output, llvmOnly, intentMode, intentFallbackMode, strictLock, intentLockPath);
   }
-  return cliBuildOrEmit(script, output, llvmOnly);
+  return cliBuildOrEmit(script, output, llvmOnly, intentMode, intentFallbackMode, strictLock, intentLockPath);
 }
 
 int __thg_forward_to_stage1(int argc, void *argvPtr) {
@@ -2912,9 +4200,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return makeManagedString(out);
   }
 
-  // Simple scripts (no imports) are handled by lightweight fallback emitter
-  // to avoid invoking external helper binaries.
-  if (sourceText.find("import ") == std::string::npos && sourceText.find("use ") == std::string::npos) {
+  const bool hasImportLike =
+    sourceText.find("import ") != std::string::npos
+    || sourceText.find("use ") != std::string::npos;
+
+  // Internal emit mode must avoid helper recursion. For this runtime build,
+  // import-heavy sources still use the lightweight fallback path.
+  if (!hasImportLike || isInternalEmitMode()) {
     auto *fallback = parseProgramSource(source);
     return __thg_codegen_emit_llvm(fallback);
   }
@@ -2995,9 +4287,15 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   const auto helperExec = formatExecPathForShell(helperPath);
   const auto sourceArg = quoteShellArg(sourcePath.string());
   const auto irArg = quoteShellArg(irPath.string());
+#if defined(_WIN32)
   const std::vector<std::string> helperCommands {
-    helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+    "set \"THAGORE_INTERNAL_EMIT=1\" && " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
+#else
+  const std::vector<std::string> helperCommands {
+    "THAGORE_INTERNAL_EMIT=1 " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+  };
+#endif
 
   bool commandOk = false;
   std::string lastCommand {};

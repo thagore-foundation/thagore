@@ -49,6 +49,9 @@ func main() -> i32:
     fails = fails + _expect_i32("parse slice", parsernative.parse_slice_expr_count("let s = xs[0:2]"), 1)
 
     fails = fails + _expect_i32("typecheck native simple", tc.validate_source("func main() -> i32:\n    return 0\n"), 0)
+    fails = fails + _expect_i32("typecheck intent simple", tc.validate_source("intent loop i in 0..10:\n    goal: reduce_sum\n    constraints:\n        deterministic == true\nfunc main() -> i32:\n    return 0\n"), 0)
+    fails = fails + _expect_i32("typecheck intent invalid", tc.validate_source("intent block:\n    constraints:\n        deterministic == true\nfunc main() -> i32:\n    return 0\n"), 1)
+    fails = fails + _expect_i32("typecheck intent unsupported goal", tc.validate_source("intent block:\n    goal: mystery_goal\n    constraints:\n        deterministic == true\nfunc main() -> i32:\n    return 0\n"), 1)
 
     if (fails == 0):
         print("PASS: native pipeline")

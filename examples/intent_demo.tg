@@ -1,0 +1,10 @@
+intent loop i in 0..10:
+    goal: reduce_sum
+    examples:
+        reduce_sum([1,2,3]) == 6
+    constraints:
+        deterministic == true
+        time <= O(n)
+
+func main() -> i32:
+    return 0

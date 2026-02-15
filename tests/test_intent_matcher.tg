@@ -1,0 +1,38 @@
+import "src/frontend/intent/matcher.tg" as im
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("  got : " + got)
+    print("  want: " + want)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let src = "intent loop i in 0..n:\n    goal: reduce_sum\n    constraints:\n        deterministic == true\n"
+
+    fails = fails + _expect_i32("intent marker count", im.count_intent_markers(src), 1)
+    fails = fails + _expect_str("goal parse", im.parse_goals(src), ";reduce_sum;")
+    fails = fails + _expect_i32("goal supported", im.is_supported_goal("reduce_sum"), 1)
+    fails = fails + _expect_i32("goal unsupported", im.is_supported_goal("unknown_goal"), 0)
+    fails = fails + _expect_str("first unsupported empty", im.first_unsupported_goal(src), "")
+    fails = fails + _expect_str("first unsupported found", im.first_unsupported_goal("intent block:\n    goal: mystery_goal\n    constraints:\n        deterministic == true\n"), "mystery_goal")
+    fails = fails + _expect_i32("validate goals ok", im.validate_goals(src), 1)
+    fails = fails + _expect_i32("validate goals fail", im.validate_goals("intent block:\n    goal: mystery_goal\n    constraints:\n        deterministic == true\n"), 0)
+    fails = fails + _expect_str("rule min", im.select_rule("reduce_sum", "min"), "rule.reduce_sum.scalar.v1")
+    fails = fails + _expect_str("rule max", im.select_rule("reduce_sum", "max"), "rule.reduce_sum.simd.v2")
+
+    if (fails == 0):
+        print("PASS: intent matcher")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

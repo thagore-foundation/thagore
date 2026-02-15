@@ -1,0 +1,15 @@
+{
+  "entries": [
+    {
+      "constraints_digest": "__CONSTRAINTS_DIGEST__",
+      "goal": "reduce_sum",
+      "intent_id": "__INTENT_ID_1__",
+      "selected_rule": "rule.reduce_sum.simd.v2",
+      "verification_digest": "__VERIFICATION_DIGEST__"
+    }
+  ],
+  "schema_version": 1,
+  "source_digest": "__SOURCE_DIGEST__",
+  "target": "__TARGET__",
+  "thagore_version": "0.5.0"
+}

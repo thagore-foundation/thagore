@@ -1,7 +1,7 @@
 # Thagore Flow (Saga as Language Primitive)
 
-Implementation approval: Not approved  
-Status: Draft proposal (not approved for implementation)  
+Implementation approval: Approved  
+Status: Approved for implementation  
 Owner: Thagore Compiler / Runtime Reliability  
 Last updated: 2026-02-15
 

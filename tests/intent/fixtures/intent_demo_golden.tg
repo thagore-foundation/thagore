@@ -1,0 +1,11 @@
+intent loop i in 0..n:
+    goal: reduce_sum
+    examples:
+        reduce_sum([1,2,3]) == 6
+    constraints:
+        deterministic == true
+        time <= O(n)
+
+func main() -> i32:
+    print("INTENT_GOLDEN_OK")
+    return 0

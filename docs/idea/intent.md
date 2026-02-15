@@ -1,7 +1,7 @@
 # Thagore Intent Engine (SIE)
 
-Implementation approval: Not approved  
-Status: Draft proposal (not approved for implementation)  
+Implementation approval: Approved  
+Status: Implemented (MVP + CI hardening baseline)  
 Owner: Thagore Compiler / Optimizer  
 Last updated: 2026-02-15
 

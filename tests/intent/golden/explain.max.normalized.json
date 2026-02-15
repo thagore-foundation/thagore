@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "candidate_rules": [
+        "rule.reduce_sum.scalar.v1",
+        "rule.reduce_sum.simd.v2",
+        "rule.reduce_sum.parallel.v3"
+      ],
+      "constraints": [
+        "deterministic == true",
+        "time <= O(n)"
+      ],
+      "goal": "reduce_sum",
+      "intent_id": "__INTENT_ID_1__",
+      "kind": "loop",
+      "line": 1,
+      "matched": true,
+      "selected_rule": "rule.reduce_sum.simd.v2",
+      "verified": true,
+      "verify_reason": "ok"
+    }
+  ],
+  "entry": "__ENTRY__",
+  "mode": "max"
+}

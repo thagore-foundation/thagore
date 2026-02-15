@@ -279,6 +279,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+### Intent validation suite
+
+```bash
+python scripts/intent_suite.py --cli runtime/build/Release/thagore_runtime_cli.exe
+```
+
+This suite runs:
+- `intent doctor` smoke checks
+- golden checks for `intent explain --json` and lockfile schema
+- differential output checks (intent vs canonical source)
+- deterministic property checks and strict-lock negative checks
+
 ## Benchmark Fibonacci (Stage2 vs Python)
 
 ```bash
@@ -296,6 +308,12 @@ This benchmark compares recursive `fib(35)` across:
 - Thagore native binaries compiled from the same emitted LLVM IR at `-O0`, `-O2`, `-O3`
 
 The script prints median/mean/min timings and speedup ratios versus Python.
+
+## Benchmark Intent Build Overhead
+
+```bash
+python scripts/benchmark_intent.py --cli runtime/build/Release/thagore_runtime_cli.exe --runs 7
+```
 
 ## 🤝 Contributing
 

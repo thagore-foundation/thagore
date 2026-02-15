@@ -1,6 +1,7 @@
 import "src/frontend/native/parser.tg" as parser
 import "src/frontend/native/typedir.tg" as tir
 import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/frontend/intent/matcher.tg" as im
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -46,6 +47,10 @@ func validate_source(source: String) -> i32:
     if (_validate_main_decl(typed.funcs) != 0):
         return 1
     if (_validate_match_usage(typed.feature_set, typed.enums) != 0):
+        return 1
+    if (im.validate_goals(source) == 0):
+        print("Typecheck error: unsupported intent goal.")
+        print(im.first_unsupported_goal(source))
         return 1
     if (pipe.validate(typed.normalized) != 0):
         print("Typecheck error: language validation failed.")

@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o thag_runtime.o
+          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o thag_runtime.o
           ar rcs libthag_runtime.a thag_runtime.o
           cp libthag_runtime.a thag_runtime.lib
 

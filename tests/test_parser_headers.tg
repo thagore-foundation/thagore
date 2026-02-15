@@ -39,6 +39,16 @@ func main() -> i32:
     fails = fails + _expect_i32("loop label", ph.has_loop_label("outer: while i < 10:"), 1)
     fails = fails + _expect_i32("unsafe block", ph.is_unsafe_block_header("unsafe:"), 1)
     fails = fails + _expect_i32("extension impl", ph.is_extension_impl_header("impl Display for Vec[i32]:"), 1)
+    fails = fails + _expect_str("intent func kind", ph.parse_intent_kind("intent func sum(xs: [i32]) -> i32:"), "func")
+    fails = fails + _expect_str("intent loop kind", ph.parse_intent_kind("intent loop i in 0..n:"), "loop")
+    fails = fails + _expect_str("intent calc kind", ph.parse_intent_kind("intent calc(x):"), "calc")
+    fails = fails + _expect_str("intent block kind", ph.parse_intent_kind("intent block:"), "block")
+    fails = fails + _expect_i32("intent header yes", ph.is_intent_header("intent block:"), 1)
+    fails = fails + _expect_i32("intent header no", ph.is_intent_header("intent loop i in 0..n"), 0)
+    fails = fails + _expect_i32("intent goal yes", ph.is_intent_goal_line("goal: reduce_sum"), 1)
+    fails = fails + _expect_i32("intent goal no", ph.is_intent_goal_line("goal:"), 0)
+    fails = fails + _expect_i32("intent constraints header", ph.is_intent_constraints_header("constraints:"), 1)
+    fails = fails + _expect_i32("intent examples header", ph.is_intent_examples_header("examples:"), 1)
 
     if (fails == 0):
         print("PASS: parser header helpers")

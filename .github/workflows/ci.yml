@@ -76,7 +76,7 @@ jobs:
           mkdir -p bootstrap
           if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
             mkdir -p runtime/build
-            clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+            clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
               cp runtime/build/thag_runtime.lib thag_runtime.lib
@@ -202,7 +202,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p runtime/build
-          clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
             cp runtime/build/thag_runtime.lib thag_runtime.lib
@@ -211,6 +211,29 @@ jobs:
             cp runtime/build/libthag_runtime.a libthag_runtime.a
             cp runtime/build/libthag_runtime.a thag_runtime.lib
           fi
+
+      - name: Build runtime intent CLI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S runtime -B runtime/build-intent-ci
+          cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/Release/thagore_runtime_cli.exe" >> "$GITHUB_ENV"
+          else
+            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/thagore_runtime_cli" >> "$GITHUB_ENV"
+          fi
+
+      - name: Intent suite (doctor + strict-lock)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"
 
       - name: Selfhost chain Stage1 -> Stage2 -> Stage2
         shell: bash

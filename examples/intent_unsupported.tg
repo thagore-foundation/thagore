@@ -1,0 +1,7 @@
+intent block:
+    goal: mystery_goal
+    constraints:
+        deterministic == true
+
+func main() -> i32:
+    return 0

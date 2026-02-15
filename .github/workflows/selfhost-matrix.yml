@@ -77,7 +77,7 @@ jobs:
           mkdir -p bootstrap
           if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
             mkdir -p runtime/build
-            clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+            clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
               cp runtime/build/thag_runtime.lib thag_runtime.lib
@@ -203,7 +203,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p runtime/build
-          clang++ -std=c++17 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
             cp runtime/build/thag_runtime.lib thag_runtime.lib

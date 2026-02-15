@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "thagore_version": "0.5.0",
+  "target": "x86_64-pc-windows-msvc",
+  "source_digest": "sha256:fnv1a64-75df18f61b16c3e3",
+  "entries": [
+    {
+      "intent_id": "examples\\intent_demo.tg:1:intent_1",
+      "goal": "reduce_sum",
+      "selected_rule": "rule.reduce_sum.scalar.v1",
+      "constraints_digest": "sha256:fnv1a64-63a70078a196ccff",
+      "verification_digest": "sha256:fnv1a64-5e055d61158e9bae"
+    }
+  ]
+}
