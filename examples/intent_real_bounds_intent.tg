@@ -1,0 +1,82 @@
+import fs
+extern func __time_now_ms() -> i32
+
+intent func lower_bound_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    goal: lower_bound_sorted
+    strategy: search.lower_bound.v1
+    constraints:
+        deterministic == true
+
+intent func upper_bound_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    goal: upper_bound_sorted
+    strategy: search.upper_bound.v1
+    constraints:
+        deterministic == true
+
+intent func count_equal_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    goal: count_equal_sorted
+    strategy: search.count_equal.v1
+    constraints:
+        deterministic == true
+
+func lower_bound_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] >= target):
+            return i
+        i = i + 1
+    return n
+
+func upper_bound_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] > target):
+            return i
+        i = i + 1
+    return n
+
+func count_equal_scan(arr: [i32; 512], n: i32, target: i32) -> i32:
+    let i = 0
+    while ((i < n) and (arr[i] < target)):
+        i = i + 1
+    let j = i
+    while ((j < n) and (arr[j] == target)):
+        j = j + 1
+    return j - i
+
+func main() -> i32:
+    let arr = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    let n = 512
+    let seed = __time_now_ms()
+    let shift = seed - (seed / 7) * 7
+
+    let i = 0
+    while (i < n):
+        arr[i] = i / 4 + shift
+        i = i + 1
+
+    let sample_lb = lower_bound_scan(arr, n, shift + 9)
+    let sample_ub = upper_bound_scan(arr, n, shift + 9)
+    let sample_cnt = count_equal_scan(arr, n, shift + 9)
+
+    let rounds = 2500000
+    let qi = 0
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (qi < rounds):
+        let base = qi * 13
+        let target = shift + (base - (base / 140) * 140)
+        checksum = checksum + lower_bound_scan(arr, n, target)
+        checksum = checksum + upper_bound_scan(arr, n, target)
+        checksum = checksum + count_equal_scan(arr, n, target)
+        qi = qi + 1
+    let t1 = __time_now_ms()
+
+    print("intent bounds sample:")
+    print(sample_lb + sample_ub + sample_cnt)
+    print("intent bounds checksum:")
+    print(checksum)
+    print("intent bounds elapsed_ms:")
+    print(t1 - t0)
+    return 0

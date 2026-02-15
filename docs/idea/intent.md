@@ -269,6 +269,10 @@ Never allowed:
 - `binary_search`
 - `binary_search_sorted` *(linear scan on sorted data -> binary search rewrite)*
 - `lower_bound_sorted` *(linear first-`>=x` scan on sorted data -> binary lower_bound rewrite)*
+- `upper_bound_sorted` *(linear first-`>x` scan on sorted data -> binary upper_bound rewrite)*
+- `count_less_sorted` *(sorted count `< x` via binary lower_bound)*
+- `count_less_equal_sorted` *(sorted count `<= x` via binary upper_bound)*
+- `count_equal_sorted` *(sorted count `== x` via two binary bounds)*
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
@@ -280,7 +284,10 @@ Never allowed:
 - `count_divisors_sqrt` *(count divisors from O(n) to O(sqrt(n)))*
 - `interval_cover_greedy` *(minimum sprinkler/interval cover on sorted points via greedy two-pointer)*
 - `bit_peel_iterative` *(recursive bit peel -> iterative fold)*
-- `sum_squares_formula` *(explicit goal/strategy only in current stage0 path)*
+- `sum_squares_formula` *(looped sum of squares -> closed form)*
+- `sum_cubes_formula` *(looped sum of cubes -> closed form)*
+- `sum_even_formula` *(sum of even numbers up to `n` -> closed form)*
+- `sum_odd_formula` *(sum of odd numbers up to `n` -> closed form)*
 - `sort_ascending`
 - `search_element`
 - `sqrt_bounded_loop`
@@ -306,7 +313,14 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `greedy.sweep.v1`
 - `search.binary.v1`
 - `search.lower_bound.v1`
+- `search.upper_bound.v1`
+- `search.count_less.v1`
+- `search.count_less_equal.v1`
+- `search.count_equal.v1`
 - `math.sum_squares.formula.v1`
+- `math.sum_cubes.formula.v1`
+- `math.sum_even.formula.v1`
+- `math.sum_odd.formula.v1`
 
 ### 11.1 Visual Example: Sprinkler Cover
 
@@ -365,6 +379,31 @@ Notes:
 
 - exact numbers depend on machine/OS/load,
 - this example is intended as a direct, reproducible visual comparison.
+
+### 11.2 Visual Example: Bounds Pack (`lower/upper/count`)
+
+Files:
+
+- `examples/intent_real_bounds_naive.tg`
+- `examples/intent_real_bounds_intent.tg`
+
+Intent variant pins:
+
+- `goal: lower_bound_sorted` + `strategy: search.lower_bound.v1`
+- `goal: upper_bound_sorted` + `strategy: search.upper_bound.v1`
+- `goal: count_equal_sorted` + `strategy: search.count_equal.v1`
+
+Benchmark command:
+
+- `py -3 scripts/benchmark_bounds_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+
+Measured benchmark in this repo (same machine/session):
+
+- native median: `5.959336s`
+- intent median: `4.274823s`
+- speedup: `1.39x` (median)
+
+This pack is useful to validate that one `intent` build can optimize multiple sorted-query kernels in the same program.
 
 ## 12) Implementation plan
 

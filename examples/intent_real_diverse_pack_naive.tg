@@ -1,0 +1,56 @@
+import fs
+
+func count_less_scan(arr: [i32; 16], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] >= target):
+            return i
+        i = i + 1
+    return n
+
+func count_less_equal_scan(arr: [i32; 16], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] > target):
+            return i
+        i = i + 1
+    return n
+
+func sum_even_scan(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        if (((i - (i / 2) * 2) == 0)):
+            s = s + i
+        i = i + 1
+    return s
+
+func sum_odd_scan(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        if (((i - (i / 2) * 2) == 1)):
+            s = s + i
+        i = i + 1
+    return s
+
+func sum_cubes_scan(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        s = s + i * i * i
+        i = i + 1
+    return s
+
+func main() -> i32:
+    let arr = [1, 1, 2, 3, 3, 3, 5, 8, 13, 13, 21, 34, 34, 55, 89, 144]
+    let n = 16
+    let a = count_less_scan(arr, n, 34)
+    let b = count_less_equal_scan(arr, n, 34)
+    let c = sum_even_scan(20)
+    let d = sum_odd_scan(19)
+    let e = sum_cubes_scan(10)
+    let checksum = a + b + c + d + e
+    print("diverse naive checksum:")
+    print(checksum)
+    return 0
