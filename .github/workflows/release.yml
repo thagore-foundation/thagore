@@ -267,6 +267,10 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
+            if [[ -z "$got" && -f "$cc" ]]; then
+              cp "$cc" "$out" || true
+              got="$(resolve_local "$out" "$base" || true)"
+            fi
             [[ -n "$got" ]]
           }
           resolve_bin() {
