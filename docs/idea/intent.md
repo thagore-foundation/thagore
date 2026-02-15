@@ -304,6 +304,64 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `search.binary.v1`
 - `math.sum_squares.formula.v1`
 
+### 11.1 Visual Example: Sprinkler Cover
+
+Problem shape:
+
+- Given sorted tree positions and sprinkler intervals `[left, right]`.
+- Return minimal number of sprinklers to cover all trees, or `-1`.
+
+Before intent (naive scan each step):
+
+```tg
+func min_sprinklers_scan(trees: [i32; 128], n: i32, lefts: [i32; 128], rights: [i32; 128], m: i32) -> i32:
+    let i = 0
+    let used = 0
+    while (i < n):
+        let need = trees[i]
+        let best = need - 1
+        let j = 0
+        while (j < m):
+            if (lefts[j] <= need):
+                if (rights[j] > best):
+                    best = rights[j]
+            j = j + 1
+        if (best < need):
+            return -1
+        used = used + 1
+        while ((i < n) and (trees[i] <= best)):
+            i = i + 1
+    return used
+```
+
+With intent (same function body, pinned strategy):
+
+```tg
+intent func min_sprinklers_scan(trees: [i32; 128], n: i32, lefts: [i32; 128], rights: [i32; 128], m: i32) -> i32:
+    goal: interval_cover_greedy
+    strategy: greedy.sweep.v1
+    constraints:
+        deterministic == true
+```
+
+Compiler-selected rewrite uses two-pointer greedy sweep:
+
+- pointer `j` only moves forward once (no full re-scan for each tree),
+- choose farthest `bestRight` among intervals starting before current tree,
+- jump covered tree block in one step.
+
+Measured benchmark in this repo:
+
+- command: `py -3 scripts/benchmark_sprinkler_intent.py --compiler legacy/stage0.exe --runs 3`
+- native median: `1.422901s`
+- intent median: `0.076150s`
+- speedup: `18.69x` (median)
+
+Notes:
+
+- exact numbers depend on machine/OS/load,
+- this example is intended as a direct, reproducible visual comparison.
+
 ## 12) Implementation plan
 
 ### Phase A: Syntax + parser plumbing
