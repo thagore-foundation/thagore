@@ -1,0 +1,19 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func fib(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+    let seed = __time_now_ms()
+    let n = 36 + (seed - (seed / 5) * 5)
+    let t0 = __time_now_ms()
+    let ans = fib(n)
+    let t1 = __time_now_ms()
+    print("naive fib:")
+    print(ans)
+    print("naive elapsed_ms:")
+    print(t1 - t0)
+    return 0

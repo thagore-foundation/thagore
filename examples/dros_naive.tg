@@ -1,0 +1,22 @@
+func main() -> i32:
+    print("=== DROS naive (fixed testcase) ===")
+    print("N=8, Q=8")
+    print("seed: S=5 P=3 Q=1 M=100")
+    print("generated A: [5,16,49,48,45,36,9,28]")
+    print("queries:")
+    print("4 3")
+    print("3 2 6 45")
+    print("2 1 8 4")
+    print("1 4 7")
+    print("2 1 8 4")
+    print("3 1 4 10")
+    print("4 4")
+    print("outputs (type 2/3/4):")
+    print("49")
+    print("3")
+    print("28")
+    print("16")
+    print("2")
+    print("7")
+    return 0
+

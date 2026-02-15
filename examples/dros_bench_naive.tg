@@ -1,0 +1,117 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func modp(a: i32, m: i32) -> i32:
+    let q = a / m
+    let r = a - q * m
+    if (r < 0):
+        return r + m
+    return r
+
+func main() -> i32:
+    let n = 128
+    let qn = 7000
+    let m = 64
+    let s = 7
+    let p = 17
+    let qv = 29
+
+    let a = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let tmp = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    a[0] = s
+    let i = 1
+    while (i < n):
+        a[i] = modp(a[i - 1] * p + qv, m)
+        i = i + 1
+
+    let rnd = 11
+    let checksum = 0
+    let t0 = __time_now_ms()
+
+    let qi = 0
+    while (qi < qn):
+        rnd = modp(rnd * 37 + 11, 1000003)
+        let pick = modp(rnd, 10)
+        let typ = 4
+        if (pick < 5):
+            typ = 2
+        else:
+            if (pick < 7):
+                typ = 3
+            else:
+                if (pick < 9):
+                    typ = 1
+                else:
+                    typ = 4
+
+        if (typ == 1):
+            rnd = modp(rnd * 37 + 11, 1000003)
+            let idx = modp(rnd, n) + 1
+            rnd = modp(rnd * 37 + 11, 1000003)
+            let v = modp(rnd, m)
+            a[idx - 1] = v
+        else:
+            if (typ == 2):
+                rnd = modp(rnd * 37 + 11, 1000003)
+                let l = modp(rnd, n) + 1
+                rnd = modp(rnd * 37 + 11, 1000003)
+                let r = modp(rnd, n) + 1
+                let lo = l
+                let hi = r
+                if (lo > hi):
+                    let z = lo
+                    lo = hi
+                    hi = z
+                let len = hi - lo + 1
+                rnd = modp(rnd * 37 + 11, 1000003)
+                let k = modp(rnd, len) + 1
+
+                let t = 0
+                while (t < len):
+                    tmp[t] = a[(lo - 1) + t]
+                    t = t + 1
+
+                let p1 = 1
+                while (p1 < len):
+                    let key = tmp[p1]
+                    let j = p1 - 1
+                    while ((j >= 0) and (tmp[j] > key)):
+                        tmp[j + 1] = tmp[j]
+                        j = j - 1
+                    tmp[j + 1] = key
+                    p1 = p1 + 1
+                checksum = checksum + tmp[k - 1]
+            else:
+                if (typ == 3):
+                    rnd = modp(rnd * 37 + 11, 1000003)
+                    let l = modp(rnd, n) + 1
+                    rnd = modp(rnd * 37 + 11, 1000003)
+                    let r = modp(rnd, n) + 1
+                    let lo = l
+                    let hi = r
+                    if (lo > hi):
+                        let z = lo
+                        lo = hi
+                        hi = z
+                    rnd = modp(rnd * 37 + 11, 1000003)
+                    let x = modp(rnd, m)
+                    let c = 0
+                    let t = lo - 1
+                    while (t <= hi - 1):
+                        if (a[t] <= x):
+                            c = c + 1
+                        t = t + 1
+                    checksum = checksum + c
+                else:
+                    rnd = modp(rnd * 37 + 11, 1000003)
+                    let idx = modp(rnd, n) + 1
+                    checksum = checksum + a[idx - 1]
+        qi = qi + 1
+
+    let t1 = __time_now_ms()
+    print("naive checksum:")
+    print(checksum)
+    print("naive elapsed_ms:")
+    print(t1 - t0)
+    return 0

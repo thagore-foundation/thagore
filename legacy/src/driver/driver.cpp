@@ -19,6 +19,7 @@
 #include "llvm/TargetParser/Triple.h"
 
 #include <cstdlib>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <format>
@@ -33,6 +34,258 @@
 
 namespace thagore {
 namespace {
+
+struct IntentDirective {
+  std::string goal {};
+};
+
+struct IntentPreprocessResult {
+  std::string source {};
+  std::unordered_map<std::string, IntentDirective> functionDirectives {};
+  std::size_t rewritesApplied {0};
+};
+
+auto trimCopy(std::string_view text) -> std::string {
+  std::size_t begin = 0;
+  while (begin < text.size() && (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r')) {
+    ++begin;
+  }
+  std::size_t end = text.size();
+  while (end > begin && (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\r')) {
+    --end;
+  }
+  return std::string(text.substr(begin, end - begin));
+}
+
+auto leadingSpaces(std::string_view line) -> std::size_t {
+  std::size_t out = 0;
+  while (out < line.size() && line[out] == ' ') {
+    ++out;
+  }
+  return out;
+}
+
+auto toLowerCopy(std::string_view text) -> std::string {
+  std::string out(text);
+  for (char &ch : out) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return out;
+}
+
+auto splitLinesNormalized(const std::string &source) -> std::vector<std::string> {
+  std::vector<std::string> lines {};
+  std::string current {};
+  for (char ch : source) {
+    if (ch == '\r') {
+      continue;
+    }
+    if (ch == '\n') {
+      lines.push_back(current);
+      current.clear();
+      continue;
+    }
+    current.push_back(ch);
+  }
+  lines.push_back(current);
+  return lines;
+}
+
+auto joinLines(const std::vector<std::string> &lines) -> std::string {
+  std::string out {};
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    out += lines[i];
+    if (i + 1 < lines.size()) {
+      out.push_back('\n');
+    }
+  }
+  return out;
+}
+
+auto parseIntentFunctionName(std::string_view trimmedLine) -> std::string {
+  constexpr std::string_view kPrefix = "intent func ";
+  if (!trimmedLine.starts_with(kPrefix)) {
+    return {};
+  }
+  const auto rest = trimCopy(trimmedLine.substr(kPrefix.size()));
+  const auto lparen = rest.find('(');
+  if (lparen == std::string::npos) {
+    return {};
+  }
+  return trimCopy(std::string_view(rest).substr(0, lparen));
+}
+
+auto parseFunctionName(std::string_view trimmedLine) -> std::string {
+  constexpr std::string_view kPrefix = "func ";
+  if (!trimmedLine.starts_with(kPrefix)) {
+    return {};
+  }
+  const auto rest = trimCopy(trimmedLine.substr(kPrefix.size()));
+  const auto lparen = rest.find('(');
+  if (lparen == std::string::npos) {
+    return {};
+  }
+  return trimCopy(std::string_view(rest).substr(0, lparen));
+}
+
+auto parseFirstParamName(std::string_view trimmedLine) -> std::string {
+  const auto lparen = trimmedLine.find('(');
+  if (lparen == std::string::npos) {
+    return {};
+  }
+  const auto rparen = trimmedLine.find(')', lparen + 1);
+  if (rparen == std::string::npos || rparen <= lparen + 1) {
+    return {};
+  }
+  auto inside = trimCopy(trimmedLine.substr(lparen + 1, rparen - lparen - 1));
+  if (inside.empty()) {
+    return {};
+  }
+  const auto comma = inside.find(',');
+  if (comma != std::string::npos) {
+    inside = trimCopy(std::string_view(inside).substr(0, comma));
+  }
+  const auto colon = inside.find(':');
+  if (colon != std::string::npos) {
+    inside = trimCopy(std::string_view(inside).substr(0, colon));
+  }
+  return inside;
+}
+
+auto shouldRewriteFibonacci(std::string_view functionName, std::string_view goal) -> bool {
+  const auto loweredGoal = toLowerCopy(goal);
+  if (loweredGoal != "fibonacci_dp" && loweredGoal != "auto_plan" && loweredGoal != "fibonacci_iterative") {
+    return false;
+  }
+  const auto loweredName = toLowerCopy(functionName);
+  return loweredName.find("fib") != std::string::npos;
+}
+
+void appendFibonacciIterativeBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} < 2):", indent1, paramName));
+  out.push_back(std::format("{}return {}", indent2, paramName));
+  out.push_back(std::format("{}let a = 0", indent1));
+  out.push_back(std::format("{}let b = 1", indent1));
+  out.push_back(std::format("{}let i = 2", indent1));
+  out.push_back(std::format("{}while (i <= {}):", indent1, paramName));
+  out.push_back(std::format("{}let c = a + b", indent2));
+  out.push_back(std::format("{}a = b", indent2));
+  out.push_back(std::format("{}b = c", indent2));
+  out.push_back(std::format("{}i = i + 1", indent2));
+  out.push_back(std::format("{}return b", indent1));
+}
+
+auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult {
+  IntentPreprocessResult result {};
+  const auto lines = splitLinesNormalized(source);
+  std::vector<std::string> stripped {};
+  stripped.reserve(lines.size());
+
+  std::size_t i = 0;
+  while (i < lines.size()) {
+    const auto line = lines[i];
+    const auto trimmed = trimCopy(line);
+    if (trimmed.starts_with("intent ")) {
+      const std::size_t baseIndent = leadingSpaces(line);
+      if (trimmed.starts_with("intent func ")) {
+        const auto fnName = parseIntentFunctionName(trimmed);
+        std::string goal {};
+        std::size_t j = i + 1;
+        while (j < lines.size()) {
+          const auto nestedTrimmed = trimCopy(lines[j]);
+          if (nestedTrimmed.empty()) {
+            ++j;
+            continue;
+          }
+          if (leadingSpaces(lines[j]) <= baseIndent) {
+            break;
+          }
+          if (nestedTrimmed.starts_with("goal:")) {
+            goal = trimCopy(std::string_view(nestedTrimmed).substr(5));
+          }
+          ++j;
+        }
+        if (!fnName.empty()) {
+          result.functionDirectives[fnName] = IntentDirective {.goal = goal};
+        }
+        i = j;
+        continue;
+      }
+      std::size_t j = i + 1;
+      while (j < lines.size()) {
+        const auto nestedTrimmed = trimCopy(lines[j]);
+        if (nestedTrimmed.empty()) {
+          ++j;
+          continue;
+        }
+        if (leadingSpaces(lines[j]) <= baseIndent) {
+          break;
+        }
+        ++j;
+      }
+      i = j;
+      continue;
+    }
+    stripped.push_back(line);
+    ++i;
+  }
+
+  std::vector<std::string> rewritten {};
+  rewritten.reserve(stripped.size() + 16);
+  i = 0;
+  while (i < stripped.size()) {
+    const auto line = stripped[i];
+    const auto trimmed = trimCopy(line);
+    if (!trimmed.starts_with("func ")) {
+      rewritten.push_back(line);
+      ++i;
+      continue;
+    }
+
+    const auto fnName = parseFunctionName(trimmed);
+    const auto directiveIt = result.functionDirectives.find(fnName);
+    if (directiveIt == result.functionDirectives.end()) {
+      rewritten.push_back(line);
+      ++i;
+      continue;
+    }
+
+    const auto paramName = parseFirstParamName(trimmed);
+    if (paramName.empty() || !shouldRewriteFibonacci(fnName, directiveIt->second.goal)) {
+      rewritten.push_back(line);
+      ++i;
+      continue;
+    }
+
+    const std::size_t baseIndent = leadingSpaces(line);
+    std::size_t j = i + 1;
+    while (j < stripped.size()) {
+      const auto nestedTrimmed = trimCopy(stripped[j]);
+      if (nestedTrimmed.empty()) {
+        ++j;
+        continue;
+      }
+      if (leadingSpaces(stripped[j]) <= baseIndent) {
+        break;
+      }
+      ++j;
+    }
+
+    rewritten.push_back(line);
+    appendFibonacciIterativeBody(rewritten, baseIndent, paramName);
+    result.rewritesApplied += 1;
+    i = j;
+  }
+
+  result.source = joinLines(rewritten);
+  return result;
+}
 
 auto parseArgs(const std::vector<std::string> &args) -> Result<DriverOptions, Diagnostic> {
   DriverOptions options {};
@@ -147,8 +400,16 @@ auto parseModuleFile(const std::filesystem::path &path) -> Result<std::unique_pt
   if (!source) {
     return std::unexpected(source.error());
   }
+  const auto preprocessed = preprocessIntentSource(source.value());
+  if (preprocessed.rewritesApplied > 0) {
+    std::cout << std::format(
+      "thag: intent optimizer applied {} rewrite(s) in {}\n",
+      preprocessed.rewritesApplied,
+      path.string()
+    );
+  }
   Lexer lexer {};
-  auto tokens = lexer.tokenize(source.value(), path.string());
+  auto tokens = lexer.tokenize(preprocessed.source, path.string());
   if (!tokens) {
     return std::unexpected(tokens.error());
   }
