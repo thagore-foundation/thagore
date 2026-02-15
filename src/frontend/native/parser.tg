@@ -19,6 +19,12 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
+func _set_add(set_text: String, item: String) -> String:
+    let key = ";" + item + ";"
+    if (_contains(set_text, key) == 1):
+        return set_text
+    return set_text + item + ";"
+
 func _is_space(ch: String) -> i32:
     if (ch == " "):
         return 1
@@ -222,6 +228,48 @@ func parse_funcs(source: String) -> String:
                 let name = _extract_func_name(line)
                 if (name.length() > 0):
                     out = out + name + "|;"
+        i = i + 1
+    return out
+
+func parse_feature_set(source: String) -> String:
+    let clean = lx.strip_comments(source)
+    let total = _line_count(clean)
+    let i = 0
+    let out = ";"
+    while (i < total):
+        let line = _trim_edges(_line_at(clean, i))
+        if (line.length() > 0):
+            let enum_name = headers.parse_enum_name(line)
+            if (enum_name.length() > 0):
+                let p = _find(line, ":")
+                if (p >= 0):
+                    let variants = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
+                    if (_contains(variants, "(") == 1):
+                        out = _set_add(out, "enum_payload")
+            if (headers.is_match_header(line) == 1):
+                out = _set_add(out, "match")
+            if (headers.is_range_loop_header(line) == 1):
+                out = _set_add(out, "range_loop")
+            if (headers.has_if_expression(line) == 1):
+                out = _set_add(out, "if_expr")
+            if (headers.has_closure(line) == 1):
+                out = _set_add(out, "closure")
+            if (headers.is_unsafe_block_header(line) == 1):
+                out = _set_add(out, "unsafe")
+            if (headers.is_extension_impl_header(line) == 1):
+                out = _set_add(out, "extension_impl")
+            if (headers.parse_visibility_decl(line).length() > 0):
+                out = _set_add(out, "visibility")
+            if (headers.has_tuple_destructuring(line) == 1):
+                out = _set_add(out, "tuple_destruct")
+            if (headers.has_array_literal(line) == 1):
+                out = _set_add(out, "array_literal")
+            if (headers.has_slice_expr(line) == 1):
+                out = _set_add(out, "slice_expr")
+            if (headers.has_loop_label(line) == 1):
+                out = _set_add(out, "loop_label")
+            if (headers.has_raw_string(line) == 1):
+                out = _set_add(out, "raw_string")
         i = i + 1
     return out
 

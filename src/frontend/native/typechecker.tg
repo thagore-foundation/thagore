@@ -23,47 +23,29 @@ func _validate_main_decl(func_table: String) -> i32:
     print("Typecheck error: missing entry function `func main`.")
     return 1
 
-func _validate_match_usage(match_count: i32, enum_table: String) -> i32:
-    if (match_count <= 0):
+func _has_feature(feature_set: String, feature: String) -> i32:
+    if (_contains(feature_set, ";" + feature + ";") == 1):
+        return 1
+    return 0
+
+func _validate_match_usage(feature_set: String, enum_table: String) -> i32:
+    if (_has_feature(feature_set, "match") == 0):
         return 0
     if (enum_table == ";"):
         print("Typecheck error: `match` requires at least one enum declaration.")
         return 1
     return 0
 
-func _validate_if_expr_usage(if_expr_count: i32) -> i32:
-    if (if_expr_count < 0):
-        print("Typecheck error: invalid if-expression counter.")
-        return 1
-    return 0
-
-func _validate_range_loop_usage(range_loop_count: i32) -> i32:
-    if (range_loop_count < 0):
-        print("Typecheck error: invalid range-loop counter.")
-        return 1
-    return 0
-
-func _validate_closure_usage(closure_count: i32) -> i32:
-    if (closure_count < 0):
-        print("Typecheck error: invalid closure counter.")
-        return 1
-    return 0
-
 func validate_source(source: String) -> i32:
     let normalized = parser.parse_normalized(source)
+    let feature_set = parser.parse_feature_set(source)
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
     if (_validate_main_decl(typed.funcs) != 0):
         return 1
-    if (_validate_match_usage(typed.match_count, typed.enums) != 0):
-        return 1
-    if (_validate_if_expr_usage(typed.if_expr_count) != 0):
-        return 1
-    if (_validate_range_loop_usage(typed.range_loop_count) != 0):
-        return 1
-    if (_validate_closure_usage(typed.closure_count) != 0):
+    if (_validate_match_usage(typed.feature_set, typed.enums) != 0):
         return 1
     if (pipe.validate(typed.normalized) != 0):
         print("Typecheck error: language validation failed.")
@@ -72,8 +54,9 @@ func validate_source(source: String) -> i32:
 
 func typecheck_to_normalized(source: String) -> String:
     let normalized = parser.parse_normalized(source)
+    let feature_set = parser.parse_feature_set(source)
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, parser.parse_enum_payload_count(source), parser.parse_match_count(source), parser.parse_range_loop_count(source), parser.parse_if_expr_count(source), parser.parse_closure_count(source), parser.parse_unsafe_count(source), parser.parse_extension_impl_count(source), parser.parse_visibility_count(source), parser.parse_tuple_destruct_count(source), parser.parse_array_literal_count(source), parser.parse_slice_expr_count(source), parser.parse_loop_label_count(source), parser.parse_raw_string_count(source))
     return typed.normalized
