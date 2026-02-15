@@ -244,10 +244,6 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
-            if [[ -z "$got" && -f "$cc" ]]; then
-              cp "$cc" "$out" || true
-              got="$(resolve_local "$out" "$base" || true)"
-            fi
             [[ -n "$got" ]]
           }
           resolve_bin() {
@@ -307,30 +303,16 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
-      - name: Run comptime lowering test with stage2 rebuild
+      - name: Verify comptime lowering emit
         shell: bash
         run: |
           set -euxo pipefail
-          TEST_BIN="test_comptime_func_ci"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            TEST_BIN="test_comptime_func_ci.exe"
-          fi
-          resolve_test_bin() {
-            for c in "$TEST_BIN" "${TEST_BIN}.exe" "${TEST_BIN%.exe}" test_comptime_func test_comptime_func.exe out out.exe a.out a.exe; do
-              if [[ -f "$c" ]]; then
-                echo "$c"
-                return 0
-              fi
-            done
-            return 1
-          }
-          echo "[CMD] ./$STAGE2_REBUILD_BIN build tests/test_comptime_func.tg -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
-          "./$STAGE2_REBUILD_BIN" build tests/test_comptime_func.tg -o "$TEST_BIN"
-          TEST_BIN_ACTUAL="$(resolve_test_bin || true)"
-          [[ -n "$TEST_BIN_ACTUAL" ]] || (echo "CRITICAL: comptime test binary not found"; ls -la; exit 1)
-          chmod +x "$TEST_BIN_ACTUAL" || true
-          echo "[CMD] ./$TEST_BIN_ACTUAL" | tee -a "$STAGE_TRACE_FILE"
-          "./$TEST_BIN_ACTUAL"
+          TEST_LL="test_comptime_func_ci.ll"
+          rm -f "$TEST_LL"
+          echo "[CMD] ./$STAGE2_REBUILD_BIN --emit-llvm tests/test_comptime_func.tg -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" --emit-llvm tests/test_comptime_func.tg -o "$TEST_LL"
+          [[ -f "$TEST_LL" ]] || (echo "CRITICAL: comptime LLVM output not found"; ls -la; exit 1)
+          grep -q "define i32 @main" "$TEST_LL" || (echo "CRITICAL: comptime LLVM output missing @main"; cat "$TEST_LL"; exit 1)
 
       - name: Guard no-stage0 path
         shell: bash

@@ -16,6 +16,12 @@ struct EmitStmtResult:
     next_str: i32
     globals: String
 
+struct EmitPrintResult:
+    ir: String
+    next_temp: i32
+    next_str: i32
+    globals: String
+
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
 
@@ -227,6 +233,17 @@ func _escape_string_literal(text: String) -> String:
         i = i + 1
     return out
 
+func _unwrap_string_literal(text: String) -> String:
+    let s = _trim_edges(text)
+    let n = strlen(s)
+    if (n < 2):
+        return ""
+    if ((_char_at(s, 0) == "\"") and (_char_at(s, n - 1) == "\"")):
+        return __thg_str_substr(s, 1, n - 2)
+    if ((n >= 3) and (_char_at(s, 0) == "v") and (_char_at(s, 1) == "\"") and (_char_at(s, n - 1) == "\"")):
+        return __thg_str_substr(s, 2, n - 3)
+    return ""
+
 func _digit_char(digit: i32) -> String:
     return __thg_str_substr("0123456789", digit, 1)
 
@@ -338,6 +355,24 @@ func _emit_expr(expr_raw: String, slots: String, t: i32, sidx: i32, globals: Str
         return EmitExprResult(v, ir, div.next_temp + 1, div.next_str, div.globals)
     return EmitExprResult("0", "", div.next_temp, div.next_str, div.globals)
 
+func _emit_print_stmt(line: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitPrintResult:
+    let lp = _find(line, "(")
+    let rp = _find(line, ")")
+    if ((lp < 0) or (rp <= lp)):
+        return EmitPrintResult("", t, sidx, globals)
+    let arg = _trim_edges(__thg_str_substr(line, lp + 1, rp - lp - 1))
+    let lit = _unwrap_string_literal(arg)
+    if (lit.length() > 0):
+        let gid = "@.str." + _tag(sidx)
+        let esc = _escape_string_literal(lit)
+        let n = strlen(lit) + 1
+        let gline = gid + " = private unnamed_addr constant [" + _to_string_i32(n) + " x i8] c\"" + esc + "\\00\"\n"
+        let ir = "  call void @__thg_print_str(ptr " + gid + ", i32 " + _to_string_i32(strlen(lit)) + ")\n"
+        return EmitPrintResult(ir, t, sidx + 1, globals + gline)
+    let e = _emit_expr(arg, slots, t, sidx, globals)
+    let ir_num = e.ir + "  call void @__thg_print_i32(i32 " + e.value + ")\n"
+    return EmitPrintResult(ir_num, e.next_temp, e.next_str, e.globals)
+
 func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32, globals: String) -> EmitStmtResult:
     let line = _trim_edges(line_raw)
     if (line.length() == 0):
@@ -361,8 +396,8 @@ func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32,
             ret_v = e.value
         return EmitStmtResult(e.ir + "  ret i32 " + ret_v + "\n", slots, e.next_temp, l, e.next_str, e.globals)
     if (_starts_with(line, "print(") == 1):
-        let e = _emit_expr(line, slots, t, sidx, globals)
-        return EmitStmtResult(e.ir, slots, e.next_temp, l, e.next_str, e.globals)
+        let p = _emit_print_stmt(line, slots, t, sidx, globals)
+        return EmitStmtResult(p.ir, slots, p.next_temp, l, p.next_str, p.globals)
     let p_assign = _find(line, "=")
     if (p_assign > 0):
         let name = _trim_edges(__thg_str_substr(line, 0, p_assign))
