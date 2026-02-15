@@ -162,18 +162,16 @@ func _looks_like_valid_llvm(ir: String) -> i32:
     return 1
 
 func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
-    let source = fs.read_text(input_path)
+    let source_raw = fs.read_text(input_path)
+    let source = _unescape_newlines(source_raw)
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 1
     let lowered = _unescape_newlines(lowering.preprocess(source))
     let tc_code = typechecker.validate_source(lowered)
     if (tc_code != 0):
-        if (_contains(input_path, "src/thagore.tg") == 1):
-            print("WARN: bootstrap typecheck bypass for src/thagore.tg")
-        else:
-            print("ERROR: typecheck failed.")
-            return 1
+        print("ERROR: typecheck failed.")
+        return 1
     let module_name = _strip_ext(_base_name(input_path))
     let ir = emitter.emit_program_from_source(source, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
