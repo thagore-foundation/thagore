@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           HITS="$(grep -REn "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP" .github/workflows \
-            | grep -Ev "policy-no-stage0.yml|grep -Eqi \"stage0\|THAG_STAGE0_HELPER\|ALLOW_STAGE0_BOOTSTRAP\"|no stage0|no-stage0|stage0 fallback markers" || true)"
+            | grep -Ev "policy-no-stage0.yml|grep -Eqi \"stage0\|THAG_STAGE0_HELPER\|ALLOW_STAGE0_BOOTSTRAP\"|no stage0|no-stage0|stage0 fallback markers|forbidden stage0 markers" || true)"
           if [[ -n "$HITS" ]]; then
             echo "CRITICAL: Stage0 markers are forbidden in workflows."
             echo "$HITS"
