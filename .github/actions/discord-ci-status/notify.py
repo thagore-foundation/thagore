@@ -140,6 +140,23 @@ def status_color(state: str) -> int:
     }.get(state, 0x95A5A6)
 
 
+def workflow_icon(name: str) -> str:
+    lowered = (name or "").lower()
+    if "release" in lowered:
+        return "🚀"
+    if "seed" in lowered:
+        return "🌱"
+    if "docs" in lowered:
+        return "📚"
+    if "policy" in lowered:
+        return "🛡️"
+    if "selfhost" in lowered:
+        return "🏗️"
+    if "ci" in lowered:
+        return "⚙️"
+    return "🔔"
+
+
 def truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
@@ -198,12 +215,16 @@ def build_payload(
     workflow_name = run.get("name", "Workflow")
     event = run.get("event", "")
     branch = run.get("head_branch", "") or "-"
+    wf_icon = workflow_icon(workflow_name)
 
     job_lines: List[str] = []
+    counts = {"wait": 0, "running": 0, "skip": 0, "success": 0, "fail": 0}
 
     for job in sorted(jobs, key=lambda j: j.get("name", "")):
         name = job.get("name", "unknown-job")
         state = map_job_state(job.get("status", ""), job.get("conclusion", ""))
+        if state in counts:
+            counts[state] += 1
         step_name = current_step_name(job)
         if milestone and state == "running" and step_name.startswith("Discord update -"):
             step_name = milestone
@@ -225,6 +246,17 @@ def build_payload(
             "value": truncate(f"`{branch}` / `{event}`", 1024),
             "inline": True,
         },
+        {
+            "name": "📊 Summary",
+            "value": (
+                f"{status_icon('wait')} `{counts['wait']}`  "
+                f"{status_icon('running')} `{counts['running']}`  "
+                f"{status_icon('skip')} `{counts['skip']}`  "
+                f"{status_icon('success')} `{counts['success']}`  "
+                f"{status_icon('fail')} `{counts['fail']}`"
+            ),
+            "inline": False,
+        },
     ]
 
     chunks = chunk_lines(job_lines) or ["(no jobs)"]
@@ -233,12 +265,20 @@ def build_payload(
         fields.append({"name": f"🛠️ Jobs{suffix}", "value": chunk, "inline": False})
 
     embed: Dict[str, Any] = {
-        "title": f"{status_icon(status)} [{workflow_name}] {status}",
+        "title": f"{wf_icon} {status_icon(status)} [{workflow_name}] {status}",
         "url": run_url,
         "color": status_color(status),
         "fields": fields[:25],
         "footer": {"text": f"📦 {repo}"},
     }
+    actor = run.get("actor", {}) or {}
+    if actor.get("login"):
+        author_obj: Dict[str, Any] = {"name": f"👤 {actor['login']}"}
+        if actor.get("avatar_url"):
+            author_obj["icon_url"] = actor["avatar_url"]
+        embed["author"] = author_obj
+    if actor.get("avatar_url"):
+        embed["thumbnail"] = {"url": actor["avatar_url"]}
     timestamp = run.get("updated_at") or run.get("run_started_at")
     if timestamp:
         embed["timestamp"] = timestamp
