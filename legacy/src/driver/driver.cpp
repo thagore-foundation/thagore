@@ -268,8 +268,17 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   if (containsWord(loweredName, "count_less") || containsWord(loweredName, "count_lt")) {
     return "count_less_sorted";
   }
+  if (containsWord(loweredName, "count_greater_equal") || containsWord(loweredName, "count_ge")) {
+    return "count_greater_equal_sorted";
+  }
+  if (containsWord(loweredName, "count_greater") || containsWord(loweredName, "count_gt")) {
+    return "count_greater_sorted";
+  }
   if (containsWord(loweredName, "count_equal") || containsWord(loweredName, "count_occurrence")) {
     return "count_equal_sorted";
+  }
+  if (containsWord(loweredName, "count_range") || containsWord(loweredName, "range_count")) {
+    return "count_range_sorted";
   }
   if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
       || containsWord(loweredName, "peel")) {
@@ -277,6 +286,12 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   }
   if (containsWord(loweredName, "sum_cube") || containsWord(loweredName, "sum_cubes")) {
     return "sum_cubes_formula";
+  }
+  if (containsWord(loweredName, "sum_even_square") || containsWord(loweredName, "sum_squares_even")) {
+    return "sum_even_squares_formula";
+  }
+  if (containsWord(loweredName, "sum_odd_square") || containsWord(loweredName, "sum_squares_odd")) {
+    return "sum_odd_squares_formula";
   }
   if (containsWord(loweredName, "sum_even")) {
     return "sum_even_formula";
@@ -310,11 +325,16 @@ enum class IntentRewriteKind {
   UpperBoundSorted,
   CountLessSorted,
   CountLessEqualSorted,
+  CountGreaterSorted,
+  CountGreaterEqualSorted,
   CountEqualSorted,
+  CountRangeSorted,
   BitPeelIterative,
   ReduceSumFormula,
   SumSquaresFormula,
   SumCubesFormula,
+  SumEvenSquaresFormula,
+  SumOddSquaresFormula,
   SumEvenFormula,
   SumOddFormula,
   SqrtBoundedLoop,
@@ -347,8 +367,14 @@ auto rewriteRuleId(IntentRewriteKind kind) -> std::string_view {
       return "rule.search.count_less.sorted.v1";
     case IntentRewriteKind::CountLessEqualSorted:
       return "rule.search.count_less_equal.sorted.v1";
+    case IntentRewriteKind::CountGreaterSorted:
+      return "rule.search.count_greater.sorted.v1";
+    case IntentRewriteKind::CountGreaterEqualSorted:
+      return "rule.search.count_greater_equal.sorted.v1";
     case IntentRewriteKind::CountEqualSorted:
       return "rule.search.count_equal.sorted.v1";
+    case IntentRewriteKind::CountRangeSorted:
+      return "rule.search.count_range.sorted.v1";
     case IntentRewriteKind::BitPeelIterative:
       return "rule.number.bit_peel.iterative.v1";
     case IntentRewriteKind::ReduceSumFormula:
@@ -357,6 +383,10 @@ auto rewriteRuleId(IntentRewriteKind kind) -> std::string_view {
       return "rule.math.sum_squares.formula.v1";
     case IntentRewriteKind::SumCubesFormula:
       return "rule.math.sum_cubes.formula.v1";
+    case IntentRewriteKind::SumEvenSquaresFormula:
+      return "rule.math.sum_even_squares.formula.v1";
+    case IntentRewriteKind::SumOddSquaresFormula:
+      return "rule.math.sum_odd_squares.formula.v1";
     case IntentRewriteKind::SumEvenFormula:
       return "rule.math.sum_even.formula.v1";
     case IntentRewriteKind::SumOddFormula:
@@ -567,6 +597,8 @@ auto inferRewriteKindFromBody(
 
     std::string squareLoopVar {};
     bool hasSquareStep = false;
+    bool hasSquareEvenCond = false;
+    bool hasSquareOddCond = false;
     bool hasSquareInc = false;
     bool hasSquareReturn = false;
     for (const auto &c : compact) {
@@ -582,6 +614,14 @@ auto inferRewriteKindFromBody(
             && c.find('=') != std::string::npos) {
           hasSquareStep = true;
         }
+        if (c == "if((" + squareLoopVar + "%2)==0):"
+            || c == "if((" + squareLoopVar + "-(" + squareLoopVar + "/2)*2)==0):") {
+          hasSquareEvenCond = true;
+        }
+        if (c == "if((" + squareLoopVar + "%2)==1):"
+            || c == "if((" + squareLoopVar + "-(" + squareLoopVar + "/2)*2)==1):") {
+          hasSquareOddCond = true;
+        }
         if (c == squareLoopVar + "=" + squareLoopVar + "+1") {
           hasSquareInc = true;
         }
@@ -589,6 +629,16 @@ auto inferRewriteKindFromBody(
       if (c.starts_with("return")) {
         hasSquareReturn = true;
       }
+    }
+    if (!squareLoopVar.empty() && hasSquareStep && hasSquareInc && hasSquareReturn && hasSquareEvenCond) {
+      out.kind = IntentRewriteKind::SumEvenSquaresFormula;
+      out.detectedGoal = "sum_even_squares_formula";
+      return out;
+    }
+    if (!squareLoopVar.empty() && hasSquareStep && hasSquareInc && hasSquareReturn && hasSquareOddCond) {
+      out.kind = IntentRewriteKind::SumOddSquaresFormula;
+      out.detectedGoal = "sum_odd_squares_formula";
+      return out;
     }
     if (!squareLoopVar.empty() && hasSquareStep && hasSquareInc && hasSquareReturn) {
       out.kind = IntentRewriteKind::SumSquaresFormula;
@@ -765,6 +815,8 @@ auto inferRewriteKindFromBody(
       bool hasUpperBoundIf = false;
       bool hasUpperBoundRetLoop = false;
       bool hasUpperBoundRetN = false;
+      bool hasRetNMinusLoop = false;
+      bool hasRetZero = false;
       bool hasRetLoop = false;
       bool hasRetNeg1 = false;
       bool hasInc = false;
@@ -819,6 +871,9 @@ auto inferRewriteKindFromBody(
             hasLowerBoundRetLoop = true;
             hasRetLoop = true;
           }
+          if (c == "return" + nParam + "-" + loopVar) {
+            hasRetNMinusLoop = true;
+          }
           if (c == loopVar + "=" + loopVar + "+1") {
             hasInc = true;
           }
@@ -839,6 +894,9 @@ auto inferRewriteKindFromBody(
         if (c == "return-1") {
           hasRetNeg1 = true;
         }
+        if (c == "return0") {
+          hasRetZero = true;
+        }
       }
       if (!loopVar.empty() && hasLowerBoundIf && hasLowerBoundRetLoop && hasInc && hasLowerBoundRetN) {
         out.kind = IntentRewriteKind::LowerBoundSorted;
@@ -850,6 +908,16 @@ auto inferRewriteKindFromBody(
         out.detectedGoal = "upper_bound_sorted";
         return out;
       }
+      if (!loopVar.empty() && hasUpperBoundIf && hasRetNMinusLoop && hasInc && hasRetZero) {
+        out.kind = IntentRewriteKind::CountGreaterSorted;
+        out.detectedGoal = "count_greater_sorted";
+        return out;
+      }
+      if (!loopVar.empty() && hasLowerBoundIf && hasRetNMinusLoop && hasInc && hasRetZero) {
+        out.kind = IntentRewriteKind::CountGreaterEqualSorted;
+        out.detectedGoal = "count_greater_equal_sorted";
+        return out;
+      }
       if (!countLeftVar.empty() && !countRightVar.empty()
           && hasCountLeftWhile && hasCountRightWhile && hasCountRightInit && hasCountReturn) {
         out.kind = IntentRewriteKind::CountEqualSorted;
@@ -859,6 +927,54 @@ auto inferRewriteKindFromBody(
       if (!loopVar.empty() && hasEqTarget && hasGtTarget && hasRetLoop && hasInc && hasRetNeg1) {
         out.kind = IntentRewriteKind::BinarySearchSorted;
         out.detectedGoal = "binary_search_sorted";
+        return out;
+      }
+    }
+
+    if (params.size() >= 4) {
+      const auto arrParam = compactNoSpace(params[0]);
+      const auto nParam = compactNoSpace(params[1]);
+      const auto loParam = compactNoSpace(params[2]);
+      const auto hiParam = compactNoSpace(params[3]);
+      std::string leftVar {};
+      std::string rightVar {};
+      bool hasLeftWhile = false;
+      bool hasRightWhile = false;
+      bool hasRightInit = false;
+      bool hasRangeReturn = false;
+      for (const auto &c : compact) {
+        const auto sharedSig = "<" + nParam + ")and(" + arrParam + "[";
+        if (c.starts_with("while((")
+            && c.find(sharedSig) != std::string::npos
+            && c.find("<" + loParam + ")):" ) != std::string::npos) {
+          const auto leftPos = std::size_t {7};
+          const auto endPos = c.find("<" + nParam + ")");
+          if (endPos != std::string::npos && endPos > leftPos) {
+            leftVar = c.substr(leftPos, endPos - leftPos);
+            hasLeftWhile = true;
+          }
+        }
+        if (c.starts_with("while((")
+            && c.find(sharedSig) != std::string::npos
+            && c.find("<=" + hiParam + ")):" ) != std::string::npos) {
+          const auto leftPos = std::size_t {7};
+          const auto endPos = c.find("<" + nParam + ")");
+          if (endPos != std::string::npos && endPos > leftPos) {
+            rightVar = c.substr(leftPos, endPos - leftPos);
+            hasRightWhile = true;
+          }
+        }
+        if (!leftVar.empty() && !rightVar.empty()
+            && (c == "let" + rightVar + "=" + leftVar || c == rightVar + "=" + leftVar)) {
+          hasRightInit = true;
+        }
+        if (!leftVar.empty() && !rightVar.empty() && c == "return" + rightVar + "-" + leftVar) {
+          hasRangeReturn = true;
+        }
+      }
+      if (!leftVar.empty() && !rightVar.empty() && hasLeftWhile && hasRightWhile && hasRightInit && hasRangeReturn) {
+        out.kind = IntentRewriteKind::CountRangeSorted;
+        out.detectedGoal = "count_range_sorted";
         return out;
       }
     }
@@ -939,8 +1055,19 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
       || strategy == "search.count_le.v1") {
     return IntentRewriteKind::CountLessEqualSorted;
   }
+  if (strategy == "search.count_greater.v1" || strategy == "search.count_greater.sorted.v1"
+      || strategy == "search.count_gt.v1") {
+    return IntentRewriteKind::CountGreaterSorted;
+  }
+  if (strategy == "search.count_greater_equal.v1" || strategy == "search.count_greater_equal.sorted.v1"
+      || strategy == "search.count_ge.v1") {
+    return IntentRewriteKind::CountGreaterEqualSorted;
+  }
   if (strategy == "search.count_equal.v1" || strategy == "search.count_equal.sorted.v1") {
     return IntentRewriteKind::CountEqualSorted;
+  }
+  if (strategy == "search.count_range.v1" || strategy == "search.count_range.sorted.v1") {
+    return IntentRewriteKind::CountRangeSorted;
   }
   if (strategy == "number.bit_peel.iterative" || strategy == "number.bit_peel.fold.v1") {
     return IntentRewriteKind::BitPeelIterative;
@@ -953,6 +1080,12 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
   }
   if (strategy == "math.sum_cubes.formula.v1") {
     return IntentRewriteKind::SumCubesFormula;
+  }
+  if (strategy == "math.sum_even_squares.formula.v1") {
+    return IntentRewriteKind::SumEvenSquaresFormula;
+  }
+  if (strategy == "math.sum_odd_squares.formula.v1") {
+    return IntentRewriteKind::SumOddSquaresFormula;
   }
   if (strategy == "math.sum_even.formula.v1") {
     return IntentRewriteKind::SumEvenFormula;
@@ -1022,8 +1155,17 @@ auto selectRewriteKind(
   if (goal == "count_less_equal_sorted" || goal == "count_less_equal" || goal == "count_le_sorted") {
     return IntentRewriteKind::CountLessEqualSorted;
   }
+  if (goal == "count_greater_sorted" || goal == "count_greater" || goal == "count_gt_sorted") {
+    return IntentRewriteKind::CountGreaterSorted;
+  }
+  if (goal == "count_greater_equal_sorted" || goal == "count_greater_equal" || goal == "count_ge_sorted") {
+    return IntentRewriteKind::CountGreaterEqualSorted;
+  }
   if (goal == "count_equal_sorted" || goal == "count_equal") {
     return IntentRewriteKind::CountEqualSorted;
+  }
+  if (goal == "count_range_sorted" || goal == "count_range") {
+    return IntentRewriteKind::CountRangeSorted;
   }
   if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
     return IntentRewriteKind::BitPeelIterative;
@@ -1036,6 +1178,12 @@ auto selectRewriteKind(
   }
   if (goal == "sum_cubes_formula" || goal == "reduce_sum_cubes") {
     return IntentRewriteKind::SumCubesFormula;
+  }
+  if (goal == "sum_even_squares_formula" || goal == "reduce_sum_even_squares") {
+    return IntentRewriteKind::SumEvenSquaresFormula;
+  }
+  if (goal == "sum_odd_squares_formula" || goal == "reduce_sum_odd_squares") {
+    return IntentRewriteKind::SumOddSquaresFormula;
   }
   if (goal == "sum_even_formula" || goal == "reduce_sum_even") {
     return IntentRewriteKind::SumEvenFormula;
@@ -1302,6 +1450,48 @@ void appendCountLessEqualSortedBody(
   appendUpperBoundSortedBody(out, baseIndent, arrParam, nParam, targetParam);
 }
 
+void appendCountGreaterSortedBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view arrParam,
+  std::string_view nParam,
+  std::string_view targetParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}let l = 0", indent1));
+  out.push_back(std::format("{}let r = {}", indent1, nParam));
+  out.push_back(std::format("{}while (l < r):", indent1));
+  out.push_back(std::format("{}let mid = l + (r - l) / 2", indent2));
+  out.push_back(std::format("{}if ({}[mid] <= {}):", indent2, arrParam, targetParam));
+  out.push_back(std::format("{}l = mid + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}r = mid", indent3));
+  out.push_back(std::format("{}return {} - l", indent1, nParam));
+}
+
+void appendCountGreaterEqualSortedBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view arrParam,
+  std::string_view nParam,
+  std::string_view targetParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}let l = 0", indent1));
+  out.push_back(std::format("{}let r = {}", indent1, nParam));
+  out.push_back(std::format("{}while (l < r):", indent1));
+  out.push_back(std::format("{}let mid = l + (r - l) / 2", indent2));
+  out.push_back(std::format("{}if ({}[mid] < {}):", indent2, arrParam, targetParam));
+  out.push_back(std::format("{}l = mid + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}r = mid", indent3));
+  out.push_back(std::format("{}return {} - l", indent1, nParam));
+}
+
 void appendCountEqualSortedBody(
   std::vector<std::string> &out,
   std::size_t baseIndent,
@@ -1326,6 +1516,39 @@ void appendCountEqualSortedBody(
   out.push_back(std::format("{}while (ll < rr):", indent1));
   out.push_back(std::format("{}let mid = ll + (rr - ll) / 2", indent2));
   out.push_back(std::format("{}if ({}[mid] <= {}):", indent2, arrParam, targetParam));
+  out.push_back(std::format("{}ll = mid + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}rr = mid", indent3));
+  out.push_back(std::format("{}return ll - left", indent1));
+}
+
+void appendCountRangeSortedBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view arrParam,
+  std::string_view nParam,
+  std::string_view lowParam,
+  std::string_view highParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}if ({} > {}):", indent1, lowParam, highParam));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let ll = 0", indent1));
+  out.push_back(std::format("{}let rr = {}", indent1, nParam));
+  out.push_back(std::format("{}while (ll < rr):", indent1));
+  out.push_back(std::format("{}let mid = ll + (rr - ll) / 2", indent2));
+  out.push_back(std::format("{}if ({}[mid] < {}):", indent2, arrParam, lowParam));
+  out.push_back(std::format("{}ll = mid + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}rr = mid", indent3));
+  out.push_back(std::format("{}let left = ll", indent1));
+  out.push_back(std::format("{}ll = left", indent1));
+  out.push_back(std::format("{}rr = {}", indent1, nParam));
+  out.push_back(std::format("{}while (ll < rr):", indent1));
+  out.push_back(std::format("{}let mid = ll + (rr - ll) / 2", indent2));
+  out.push_back(std::format("{}if ({}[mid] <= {}):", indent2, arrParam, highParam));
   out.push_back(std::format("{}ll = mid + 1", indent3));
   out.push_back(std::format("{}else:", indent2));
   out.push_back(std::format("{}rr = mid", indent3));
@@ -1398,6 +1621,36 @@ void appendSumCubesFormulaBody(
   out.push_back(std::format("{}let a = {} * ({} + 1)", indent1, paramName, paramName));
   out.push_back(std::format("{}let t = a / 2", indent1));
   out.push_back(std::format("{}return t * t", indent1));
+}
+
+void appendSumEvenSquaresFormulaBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let m = {} / 2", indent1, paramName));
+  out.push_back(std::format("{}let p = m * (m + 1)", indent1));
+  out.push_back(std::format("{}let q = p * (m * 2 + 1)", indent1));
+  out.push_back(std::format("{}return (q / 6) * 4", indent1));
+}
+
+void appendSumOddSquaresFormulaBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let m = ({} + 1) / 2", indent1, paramName));
+  out.push_back(std::format("{}let a = m * (m * 2 - 1)", indent1));
+  out.push_back(std::format("{}let b = a * (m * 2 + 1)", indent1));
+  out.push_back(std::format("{}return b / 3", indent1));
 }
 
 void appendSumEvenFormulaBody(
@@ -1706,6 +1959,22 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         }
         appendSumCubesFormulaBody(rewritten, baseIndent, params[0]);
         break;
+      case IntentRewriteKind::SumEvenSquaresFormula:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendSumEvenSquaresFormulaBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::SumOddSquaresFormula:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendSumOddSquaresFormulaBody(rewritten, baseIndent, params[0]);
+        break;
       case IntentRewriteKind::SumEvenFormula:
         if (params.empty()) {
           keepOriginalBody();
@@ -1818,6 +2087,22 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         }
         appendCountLessEqualSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
         break;
+      case IntentRewriteKind::CountGreaterSorted:
+        if (params.size() < 3) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendCountGreaterSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
+        break;
+      case IntentRewriteKind::CountGreaterEqualSorted:
+        if (params.size() < 3) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendCountGreaterEqualSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
+        break;
       case IntentRewriteKind::CountEqualSorted:
         if (params.size() < 3) {
           keepOriginalBody();
@@ -1825,6 +2110,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           continue;
         }
         appendCountEqualSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
+        break;
+      case IntentRewriteKind::CountRangeSorted:
+        if (params.size() < 4) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendCountRangeSortedBody(rewritten, baseIndent, params[0], params[1], params[2], params[3]);
         break;
       case IntentRewriteKind::BitPeelIterative:
         if (params.size() < 2) {

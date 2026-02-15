@@ -1,0 +1,87 @@
+import fs
+extern func __time_now_ms() -> i32
+
+func count_greater_scan(arr: [i32; 128], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] > target):
+            return n - i
+        i = i + 1
+    return 0
+
+func count_greater_equal_scan(arr: [i32; 128], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        if (arr[i] >= target):
+            return n - i
+        i = i + 1
+    return 0
+
+func count_range_scan(arr: [i32; 128], n: i32, low: i32, high: i32) -> i32:
+    if (low > high):
+        return 0
+    let i = 0
+    while ((i < n) and (arr[i] < low)):
+        i = i + 1
+    let j = i
+    while ((j < n) and (arr[j] <= high)):
+        j = j + 1
+    return j - i
+
+func sum_even_squares_scan(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        if (((i - (i / 2) * 2) == 0)):
+            s = s + i * i
+        i = i + 1
+    return s
+
+func sum_odd_squares_scan(n: i32) -> i32:
+    let i = 1
+    let s = 0
+    while (i <= n):
+        if (((i - (i / 2) * 2) == 1)):
+            s = s + i * i
+        i = i + 1
+    return s
+
+func main() -> i32:
+    let arr = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = 128
+    let i = 0
+    while (i < n):
+        arr[i] = i / 3 + 5
+        i = i + 1
+
+    let sample_a = count_greater_scan(arr, n, 19)
+    let sample_b = count_greater_equal_scan(arr, n, 19)
+    let sample_c = count_range_scan(arr, n, 12, 24)
+    let sample_d = sum_even_squares_scan(30)
+    let sample_e = sum_odd_squares_scan(31)
+
+    let rounds = 1800000
+    let qi = 0
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (qi < rounds):
+        let base = qi * 17
+        let target = base - (base / 190) * 190
+        let low = target / 3
+        let high = low + 20
+        let bound = target - (target / 120) * 120 + 1
+        checksum = checksum + count_greater_scan(arr, n, target)
+        checksum = checksum + count_greater_equal_scan(arr, n, target)
+        checksum = checksum + count_range_scan(arr, n, low, high)
+        checksum = checksum + sum_even_squares_scan(bound)
+        checksum = checksum + sum_odd_squares_scan(bound)
+        qi = qi + 1
+    let t1 = __time_now_ms()
+
+    print("advanced naive sample:")
+    print(sample_a + sample_b + sample_c + sample_d + sample_e)
+    print("advanced naive checksum:")
+    print(checksum)
+    print("advanced naive elapsed_ms:")
+    print(t1 - t0)
+    return 0
