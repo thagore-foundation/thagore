@@ -2965,11 +2965,11 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   const std::filesystem::path selfPath = resolveSelfExecutablePath();
   std::filesystem::path helperPath {};
   std::size_t dynamicCount = 0;
+  std::vector<std::filesystem::path> dynamicCandidates {};
   if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
     helperPath = std::filesystem::path(configured);
   } else {
 #if defined(_WIN32)
-    std::vector<std::filesystem::path> dynamicCandidates {};
     std::error_code scanErr {};
     for (const auto &entry : std::filesystem::directory_iterator(std::filesystem::path {"."}, scanErr)) {
       if (scanErr) {
