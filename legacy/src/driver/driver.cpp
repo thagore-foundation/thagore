@@ -252,6 +252,10 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
       || containsWord(loweredName, "cover_plants")) {
     return "interval_cover_greedy";
   }
+  if (containsWord(loweredName, "binary_search") || containsWord(loweredName, "bsearch")
+      || containsWord(loweredName, "lower_bound")) {
+    return "binary_search_sorted";
+  }
   if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
       || containsWord(loweredName, "peel")) {
     return "bit_peel_iterative";
@@ -277,6 +281,7 @@ enum class IntentRewriteKind {
   PrimeCheckSqrt,
   DivisorCountSqrt,
   IntervalCoverGreedy,
+  BinarySearchSorted,
   BitPeelIterative,
   ReduceSumFormula,
   SqrtBoundedLoop,
@@ -581,6 +586,49 @@ auto inferRewriteKindFromBody(
       return out;
     }
 
+    if (params.size() >= 3) {
+      const auto arrParam = compactNoSpace(params[0]);
+      const auto nParam = compactNoSpace(params[1]);
+      const auto targetParam = compactNoSpace(params[2]);
+
+      std::string loopVar {};
+      bool hasEqTarget = false;
+      bool hasGtTarget = false;
+      bool hasRetLoop = false;
+      bool hasRetNeg1 = false;
+      bool hasInc = false;
+      for (const auto &c : compact) {
+        if (c.starts_with("while(") && c.ends_with("):")) {
+          const auto p = c.find("<" + nParam + "):");
+          if (p != std::string::npos) {
+            loopVar = c.substr(6, p - 6);
+          }
+        }
+        if (!loopVar.empty()) {
+          if (c == "if(" + arrParam + "[" + loopVar + "]==" + targetParam + "):") {
+            hasEqTarget = true;
+          }
+          if (c == "if(" + arrParam + "[" + loopVar + "]>" + targetParam + "):") {
+            hasGtTarget = true;
+          }
+          if (c == "return" + loopVar) {
+            hasRetLoop = true;
+          }
+          if (c == loopVar + "=" + loopVar + "+1") {
+            hasInc = true;
+          }
+        }
+        if (c == "return-1") {
+          hasRetNeg1 = true;
+        }
+      }
+      if (!loopVar.empty() && hasEqTarget && hasGtTarget && hasRetLoop && hasInc && hasRetNeg1) {
+        out.kind = IntentRewriteKind::BinarySearchSorted;
+        out.detectedGoal = "binary_search_sorted";
+        return out;
+      }
+    }
+
     const auto n = first;
     const auto target = second;
     std::string loopVar {};
@@ -641,6 +689,9 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
       || strategy == "greedy.interval_cover.v1") {
     return IntentRewriteKind::IntervalCoverGreedy;
   }
+  if (strategy == "search.binary.v1" || strategy == "search.binary.sorted.v1") {
+    return IntentRewriteKind::BinarySearchSorted;
+  }
   if (strategy == "number.bit_peel.iterative" || strategy == "number.bit_peel.fold.v1") {
     return IntentRewriteKind::BitPeelIterative;
   }
@@ -693,6 +744,9 @@ auto selectRewriteKind(
   }
   if (goal == "interval_cover_greedy" || goal == "sprinkler_cover_min") {
     return IntentRewriteKind::IntervalCoverGreedy;
+  }
+  if (goal == "binary_search_sorted" || goal == "binary_search") {
+    return IntentRewriteKind::BinarySearchSorted;
   }
   if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
     return IntentRewriteKind::BitPeelIterative;
@@ -872,6 +926,29 @@ void appendIntervalCoverGreedyBody(
   out.push_back(std::format("{}while ((i < {}) and ({}[i] <= best)):", indent2, treeCountParam, treesParam));
   out.push_back(std::format("{}i = i + 1", indent2 + "    "));
   out.push_back(std::format("{}return used", indent1));
+}
+
+void appendBinarySearchSortedBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view arrParam,
+  std::string_view nParam,
+  std::string_view targetParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}let l = 0", indent1));
+  out.push_back(std::format("{}let r = {} - 1", indent1, nParam));
+  out.push_back(std::format("{}while (l <= r):", indent1));
+  out.push_back(std::format("{}let mid = l + (r - l) / 2", indent2));
+  out.push_back(std::format("{}if ({}[mid] == {}):", indent2, arrParam, targetParam));
+  out.push_back(std::format("{}return mid", indent3));
+  out.push_back(std::format("{}if ({}[mid] < {}):", indent2, arrParam, targetParam));
+  out.push_back(std::format("{}l = mid + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}r = mid - 1", indent3));
+  out.push_back(std::format("{}return -1", indent1));
 }
 
 void appendBitPeelIterativeBody(
@@ -1209,6 +1286,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           params[3],
           params[4]
         );
+        break;
+      case IntentRewriteKind::BinarySearchSorted:
+        if (params.size() < 3) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendBinarySearchSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
         break;
       case IntentRewriteKind::BitPeelIterative:
         if (params.size() < 2) {

@@ -265,6 +265,7 @@ Never allowed:
 - `map_filter_reduce`
 - `deduplicate_sorted`
 - `binary_search`
+- `binary_search_sorted` *(linear scan on sorted data -> binary search rewrite)*
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
@@ -289,6 +290,17 @@ Automatic detection mode:
 - `THAG_AUTO_OPT=0`: disables no-marker auto rewrites (baseline behavior).
 - `THAG_INTENT_EXPLAIN=1`: emit human-readable per-function explain lines for explicit `intent func` blocks (applied/skipped + reason).
 - `THAG_INTENT_TRACE=1`: full trace mode (directive parsing + applied/skipped diagnostics).
+
+Strategy pinning examples currently recognized in Stage0 intent preprocessor:
+
+- `dp.fib.v1`
+- `math.factorial.loop.v1`
+- `math.pow.binary_exp`
+- `math.gcd.euclid`
+- `number.prime.sqrt.v1`
+- `number.divisors.sqrt.v1`
+- `greedy.sweep.v1`
+- `search.binary.v1`
 
 ## 12) Implementation plan
 
