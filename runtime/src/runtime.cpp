@@ -82,6 +82,7 @@ struct IntentRuleInfo {
   bool deterministic {true};
   bool noHeapGrowth {false};
   bool parallelCapable {false};
+  bool vectorizeCapable {false};
   int timeRank {9};
   int memoryRank {9};
   double maxError {0.0};
@@ -2660,6 +2661,7 @@ static auto cliIntentGoalSupported(const std::string &goal) -> bool {
     "binary_search",
     "string_contains",
     "dot_product",
+    "polynomial_eval",
   };
   return supported.find(goal) != supported.end();
 }
@@ -2788,7 +2790,7 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
   }
   outRules->clear();
 
-  auto add_rule = [&](const char *id, const char *complexity, bool deterministic, bool noHeapGrowth, bool parallelCapable,
+  auto add_rule = [&](const char *id, const char *complexity, bool deterministic, bool noHeapGrowth, bool parallelCapable, bool vectorizeCapable,
                       int timeRank, int memoryRank, double maxError) {
     IntentRuleInfo rule {};
     rule.id = id;
@@ -2797,6 +2799,7 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
     rule.deterministic = deterministic;
     rule.noHeapGrowth = noHeapGrowth;
     rule.parallelCapable = parallelCapable;
+    rule.vectorizeCapable = vectorizeCapable;
     rule.timeRank = timeRank;
     rule.memoryRank = memoryRank;
     rule.maxError = maxError;
@@ -2804,36 +2807,42 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
   };
 
   if (goal == "reduce_sum") {
-    add_rule("rule.reduce_sum.scalar.v1", "O(n)", true, true, false, 3, 1, 0.0);
-    add_rule("rule.reduce_sum.simd.v2", "O(n)", true, true, true, 1, 1, 0.0);
-    add_rule("rule.reduce_sum.parallel.v3", "O(n)", false, true, true, 1, 2, 0.0);
+    add_rule("rule.reduce_sum.scalar.v1", "O(n)", true, true, false, false, 3, 1, 0.0);
+    add_rule("rule.reduce_sum.simd.v2", "O(n)", true, true, true, true, 1, 1, 0.0);
+    add_rule("rule.reduce_sum.parallel.v3", "O(n)", false, true, true, true, 1, 2, 0.0);
     return;
   }
   if (goal == "map_filter_reduce") {
-    add_rule("rule.map_filter_reduce.fused.v1", "O(n)", true, false, false, 3, 3, 0.0);
-    add_rule("rule.map_filter_reduce.fused.v2", "O(n)", true, false, true, 2, 2, 0.0);
-    add_rule("rule.map_filter_reduce.parallel.v3", "O(n)", false, false, true, 1, 3, 0.0);
+    add_rule("rule.map_filter_reduce.fused.v1", "O(n)", true, false, false, false, 3, 3, 0.0);
+    add_rule("rule.map_filter_reduce.fused.v2", "O(n)", true, false, true, true, 2, 2, 0.0);
+    add_rule("rule.map_filter_reduce.parallel.v3", "O(n)", false, false, true, true, 1, 3, 0.0);
     return;
   }
   if (goal == "deduplicate_sorted") {
-    add_rule("rule.deduplicate_sorted.linear.v1", "O(n)", true, true, false, 2, 1, 0.0);
-    add_rule("rule.deduplicate_sorted.branchless.v2", "O(n)", true, true, true, 1, 1, 0.0);
+    add_rule("rule.deduplicate_sorted.linear.v1", "O(n)", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.deduplicate_sorted.branchless.v2", "O(n)", true, true, true, true, 1, 1, 0.0);
     return;
   }
   if (goal == "binary_search") {
-    add_rule("rule.binary_search.classic.v1", "O(logn)", true, true, false, 2, 1, 0.0);
-    add_rule("rule.binary_search.branchless.v2", "O(logn)", true, true, true, 1, 1, 0.0);
+    add_rule("rule.binary_search.classic.v1", "O(logn)", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.binary_search.branchless.v2", "O(logn)", true, true, true, true, 1, 1, 0.0);
     return;
   }
   if (goal == "string_contains") {
-    add_rule("rule.string_contains.scan.v1", "O(n)", true, true, false, 2, 1, 0.0);
-    add_rule("rule.string_contains.twoway.v2", "O(n)", true, true, true, 1, 1, 0.0);
+    add_rule("rule.string_contains.scan.v1", "O(n)", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.string_contains.twoway.v2", "O(n)", true, true, true, true, 1, 1, 0.0);
     return;
   }
   if (goal == "dot_product") {
-    add_rule("rule.dot_product.scalar.v1", "O(n)", true, true, false, 3, 1, 0.0);
-    add_rule("rule.dot_product.simd.v2", "O(n)", true, true, true, 1, 1, 1e-7);
-    add_rule("rule.dot_product.fastmath.v3", "O(n)", false, true, true, 1, 1, 1e-4);
+    add_rule("rule.dot_product.scalar.v1", "O(n)", true, true, false, false, 3, 1, 0.0);
+    add_rule("rule.dot_product.simd.v2", "O(n)", true, true, true, true, 1, 1, 1e-7);
+    add_rule("rule.dot_product.fastmath.v3", "O(n)", false, true, true, true, 1, 1, 1e-4);
+    return;
+  }
+  if (goal == "polynomial_eval") {
+    add_rule("rule.polynomial_eval.horner.v1", "O(n)", true, true, false, false, 3, 1, 0.0);
+    add_rule("rule.polynomial_eval.simd.v2", "O(n)", true, true, false, true, 1, 1, 1e-7);
+    add_rule("rule.polynomial_eval.fastmath.v3", "O(n)", false, true, false, true, 1, 1, 1e-5);
   }
 }
 
@@ -2929,6 +2938,23 @@ static auto cliIntentVerifyRuleConstraints(
       continue;
     }
 
+    if (startsWith(norm, "vectorize==")) {
+      const auto value = norm.substr(11);
+      if ((value == "true" || value == "1") && !rule.vectorizeCapable) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "vectorize==true is violated";
+        }
+        return false;
+      }
+      if ((value == "false" || value == "0") && rule.vectorizeCapable) {
+        if (reasonOut != nullptr) {
+          *reasonOut = "vectorize==false is violated";
+        }
+        return false;
+      }
+      continue;
+    }
+
     if (startsWith(norm, "no_heap_growth==")) {
       const auto value = norm.substr(16);
       if ((value == "true" || value == "1") && !rule.noHeapGrowth) {
@@ -2999,7 +3025,13 @@ static auto cliIntentScoreRule(
   if (mode == "max" && rule.parallelCapable) {
     score -= 15;
   }
+  if (mode == "max" && rule.vectorizeCapable) {
+    score -= 10;
+  }
   if (target.find("x86_64") != std::string::npos && rule.parallelCapable) {
+    score -= 10;
+  }
+  if (target.find("x86_64") != std::string::npos && rule.vectorizeCapable) {
     score -= 10;
   }
   if (!rule.deterministic) {
@@ -3010,6 +3042,8 @@ static auto cliIntentScoreRule(
     const auto norm = cliIntentNormalizeConstraint(rawConstraint);
     if (startsWith(norm, "parallel==true")) {
       score += rule.parallelCapable ? -30 : 2000;
+    } else if (startsWith(norm, "vectorize==true")) {
+      score += rule.vectorizeCapable ? -25 : 2000;
     } else if (startsWith(norm, "deterministic==true")) {
       score += rule.deterministic ? -30 : 5000;
     } else if (startsWith(norm, "no_heap_growth==true")) {
@@ -3494,7 +3528,7 @@ static auto cliIntentValidateLockAgainstPlans(
 static auto cliIntentDoctor(const std::string &entryPath) -> int {
   std::printf("[intent] engine=ready\n");
   std::printf("[intent] determinism=enabled\n");
-  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product\n");
+  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval\n");
   const auto clangPath = cliDetectClang();
   if (clangPath.empty()) {
     std::printf("[intent] toolchain=clang_missing\n");

@@ -1,0 +1,9 @@
+intent calc(x):
+    goal: polynomial_eval
+    constraints:
+        deterministic == true
+        vectorize == true
+        max_error <= 1e-6
+
+func main() -> i32:
+    return 0

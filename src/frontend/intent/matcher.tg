@@ -170,6 +170,8 @@ func is_supported_goal(goal: String) -> i32:
         return 1
     if (goal == "dot_product"):
         return 1
+    if (goal == "polynomial_eval"):
+        return 1
     return 0
 
 func first_unsupported_goal(source: String) -> String:
@@ -213,4 +215,8 @@ func select_rule(goal: String, mode: String) -> String:
         if (mode == "max"):
             return "rule.dot_product.simd.v2"
         return "rule.dot_product.scalar.v1"
+    if (goal == "polynomial_eval"):
+        if (mode == "max"):
+            return "rule.polynomial_eval.simd.v2"
+        return "rule.polynomial_eval.horner.v1"
     return "rule.unsupported"

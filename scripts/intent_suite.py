@@ -19,6 +19,7 @@ SUPPORTED_GOALS = [
     "binary_search",
     "string_contains",
     "dot_product",
+    "polynomial_eval",
 ]
 
 

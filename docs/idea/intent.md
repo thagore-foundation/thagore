@@ -241,6 +241,7 @@ Never allowed:
 - `binary_search`
 - `string_contains`
 - `dot_product`
+- `polynomial_eval`
 
 Each goal ships with 2-4 deterministic strategies max in MVP.
 
