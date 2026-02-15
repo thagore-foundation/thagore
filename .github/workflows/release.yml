@@ -7,11 +7,30 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
+  discord-notify-init:
+    name: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      message_id: ${{ steps.init.outputs.message_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init Discord message
+        id: init
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: init
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
   build-release:
     name: release (${{ matrix.os }})
+    needs: discord-notify-init
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -220,6 +239,15 @@ jobs:
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
 
+      - name: Discord update - Download stage1 bootstrap asset
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Download stage1 bootstrap asset
+
       - name: Build runtime artifact from runtime module
         shell: bash
         run: |
@@ -267,60 +295,6 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
-            if [[ -z "$got" ]]; then
-              local ll_out=""
-              local before_ll=";"
-              local c=""
-              for c in *.ll; do
-                if [[ -f "$c" ]]; then
-                  before_ll="${before_ll}${c};"
-                fi
-              done
-              local runtime_lib="thag_runtime.lib"
-              if [[ "${{ runner.os }}" != "Windows" && -f "libthag_runtime.a" ]]; then
-                runtime_lib="libthag_runtime.a"
-              fi
-              local linker="clang"
-              if command -v clang++ >/dev/null 2>&1; then
-                linker="clang++"
-              fi
-              echo "[CMD] ./$cc $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-              "./$cc" "$src" --emit-llvm || true
-              ll_out="${base}.ll"
-              if [[ ! -f "$ll_out" ]]; then
-                echo "[CMD] ./$cc build $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-                "./$cc" build "$src" --emit-llvm || true
-              fi
-              ll_out="${base}.ll"
-              if [[ ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
-              fi
-              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                for c in *.ll; do
-                  if [[ -f "$c" ]]; then
-                    if [[ "$before_ll" != *";${c};"* ]]; then
-                      ll_out="$c"
-                      break
-                    fi
-                  fi
-                done
-              fi
-              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "*.ll" | sort | tail -n 1 || true)"
-              fi
-              [[ -f "$ll_out" ]] || return 1
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module || return 1
-              elif [[ "${{ runner.os }}" == "macOS" ]]; then
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lc++ -lc++abi" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lc++ -lc++abi || return 1
-              else
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lstdc++" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lstdc++ || return 1
-              fi
-              got="$(resolve_local "$out" "$base" || true)"
-            fi
             [[ -n "$got" ]]
           }
           resolve_bin() {
@@ -360,6 +334,15 @@ jobs:
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
+      - name: Discord update - Build Stage2 -> Stage2 (mandatory)
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Build Stage2 -> Stage2 (mandatory)
+
       - name: Run hello + fib
         shell: bash
         run: |
@@ -394,6 +377,15 @@ jobs:
             tar -czf "${{ matrix.package_name }}" -C dist .
           fi
 
+      - name: Discord update - Package release payload
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Package release payload
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -406,8 +398,11 @@ jobs:
   publish:
     name: publish-release
     runs-on: ubuntu-latest
-    needs: [build-release]
+    needs: [discord-notify-init, build-release]
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
@@ -424,3 +419,30 @@ jobs:
             artifacts/**/thagore-stage1-macos.tar.gz
             artifacts/**/thagore-stage1.exe
             artifacts/**/release-stage-trace.log
+
+      - name: Discord update - Publish GitHub Release Assets
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Publish GitHub Release Assets
+
+  discord-notify-finalize:
+    name: discord-notify-finalize
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [discord-notify-init, build-release, publish]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Finalize Discord message
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: finalize
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}

@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -19,8 +20,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discord-notify-init:
+    name: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      message_id: ${{ steps.init.outputs.message_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init Discord message
+        id: init
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: init
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     runs-on: ubuntu-latest
+    needs: discord-notify-init
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,18 +62,57 @@ jobs:
         working-directory: docs/starlight
         run: npm run build
 
+      - name: Discord update - Build Starlight docs
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Build Starlight docs
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/starlight/dist
 
   deploy:
-    needs: build
+    needs: [discord-notify-init, build]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Discord update - Deploy to GitHub Pages
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Deploy to GitHub Pages
+
+  discord-notify-finalize:
+    name: discord-notify-finalize
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [discord-notify-init, build, deploy]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Finalize Discord message
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: finalize
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}

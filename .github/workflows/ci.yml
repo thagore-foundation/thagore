@@ -10,11 +10,30 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
+  discord-notify-init:
+    name: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      message_id: ${{ steps.init.outputs.message_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init Discord message
+        id: init
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: init
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
   verify-selfhost:
     name: ci-selfhost (${{ matrix.os }})
+    needs: discord-notify-init
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -197,6 +216,15 @@ jobs:
           chmod +x "$STAGE1_BIN" || true
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
 
+      - name: Discord update - Bootstrap Stage1 (asset only)
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Bootstrap Stage1 (asset only)
+
       - name: Build runtime artifact (self-owned)
         shell: bash
         run: |
@@ -211,6 +239,15 @@ jobs:
             cp runtime/build/libthag_runtime.a libthag_runtime.a
             cp runtime/build/libthag_runtime.a thag_runtime.lib
           fi
+
+      - name: Discord update - Build runtime artifact (self-owned)
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Build runtime artifact (self-owned)
 
       - name: Build runtime intent CLI
         shell: bash
@@ -265,86 +302,8 @@ jobs:
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out" || true
+            "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
-            if [[ -z "$got" ]]; then
-              local ll_out=""
-              local before_ll=";"
-              local c=""
-              for c in *.ll; do
-                if [[ -f "$c" ]]; then
-                  before_ll="${before_ll}${c};"
-                fi
-              done
-              local runtime_lib="thag_runtime.lib"
-              if [[ "${{ runner.os }}" != "Windows" && -f "libthag_runtime.a" ]]; then
-                runtime_lib="libthag_runtime.a"
-              fi
-              local linker="clang"
-              if command -v clang++ >/dev/null 2>&1; then
-                linker="clang++"
-              fi
-              echo "[CMD] ./$cc $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-              "./$cc" "$src" --emit-llvm || true
-              ll_out="${base}.ll"
-              if [[ ! -f "$ll_out" ]]; then
-                echo "[CMD] ./$cc build $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-                "./$cc" build "$src" --emit-llvm || true
-              fi
-              ll_out="${base}.ll"
-              if [[ ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" ! -name "*.raw.ll" | head -n 1 || true)"
-              fi
-              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                for c in *.ll; do
-                  if [[ -f "$c" ]]; then
-                    if [[ "$c" == *.raw.ll ]]; then
-                      continue
-                    fi
-                    if [[ "$before_ll" != *";${c};"* ]]; then
-                      ll_out="$c"
-                      break
-                    fi
-                  fi
-                done
-              fi
-              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                ll_out="$(find . -maxdepth 1 -type f -name "*.ll" ! -name "*.raw.ll" | sort | tail -n 1 || true)"
-              fi
-              if [[ "$ll_out" == *.raw.ll ]]; then
-                alt_ll="${ll_out%.raw.ll}.ll"
-                if [[ -f "$alt_ll" ]]; then
-                  ll_out="$alt_ll"
-                fi
-              fi
-              if [[ -n "$ll_out" && -f "$ll_out" ]]; then
-                if ! grep -Eq "define .*@main\\(" "$ll_out"; then
-                  ll_out=""
-                fi
-              fi
-              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
-                for c in *.ll; do
-                  if [[ -f "$c" && "$c" != *.raw.ll ]]; then
-                    if grep -Eq "define .*@main\\(" "$c"; then
-                      ll_out="$c"
-                      break
-                    fi
-                  fi
-                done
-              fi
-              [[ -f "$ll_out" ]] || return 1
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module || return 1
-              elif [[ "${{ runner.os }}" == "macOS" ]]; then
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lc++ -lc++abi" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lc++ -lc++abi || return 1
-              else
-                echo "[CMD] $linker $ll_out $runtime_lib -o $out -Wno-override-module -lstdc++" | tee -a "$STAGE_TRACE_FILE"
-                "$linker" "$ll_out" "$runtime_lib" -o "$out" -Wno-override-module -lstdc++ || return 1
-              fi
-              got="$(resolve_local "$out" "$base" || true)"
-            fi
             [[ -n "$got" ]]
           }
           resolve_bin() {
@@ -397,6 +356,15 @@ jobs:
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
+      - name: Discord update - Selfhost chain Stage1 -> Stage2 -> Stage2
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Selfhost chain Stage1 -> Stage2 -> Stage2
+
       - name: Run hello/fib
         shell: bash
         run: |
@@ -412,51 +380,13 @@ jobs:
           TEST_SRC="tests/test_comptime_func.tg"
           TEST_LL="test_comptime_func_ci.ll"
           rm -f "$TEST_LL"
-          before_ll=";"
-          for c in *.ll; do
-            if [[ -f "$c" ]]; then
-              before_ll="${before_ll}${c};"
-            fi
-          done
           emit_ll() {
             local cc="$1"
             [[ -n "$cc" && -f "$cc" ]] || return 1
             echo "[CMD] ./$cc $TEST_SRC --emit-llvm -o $TEST_LL" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" "$TEST_SRC" --emit-llvm -o "$TEST_LL" || true
-            [[ -f "$TEST_LL" ]] && return 0
-
-            echo "[CMD] ./$cc $TEST_SRC --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" "$TEST_SRC" --emit-llvm || true
-            [[ -f "$TEST_LL" ]] && return 0
-
-            echo "[CMD] ./$cc build $TEST_SRC --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" build "$TEST_SRC" --emit-llvm || true
-            [[ -f "$TEST_LL" ]] && return 0
-
-            local base="test_comptime_func"
-            if [[ -f "${base}.ll" ]]; then
-              if grep -Eq "define .*@main\\(" "${base}.ll"; then
-                cp "${base}.ll" "$TEST_LL"
-                return 0
-              fi
-            fi
-            local pick=""
-            pick="$(find . -maxdepth 1 -type f -name "${base}*.ll" ! -name "*.raw.ll" | head -n 1 || true)"
-            if [[ -n "$pick" && -f "$pick" ]]; then
-              if grep -Eq "define .*@main\\(" "$pick"; then
-                cp "$pick" "$TEST_LL"
-                return 0
-              fi
-            fi
-            for c in *.ll; do
-              if [[ -f "$c" && "$c" != *.raw.ll && "$before_ll" != *";${c};"* ]]; then
-                if grep -Eq "define .*@main\\(" "$c"; then
-                  cp "$c" "$TEST_LL"
-                  return 0
-                fi
-              fi
-            done
-            return 1
+            "./$cc" "$TEST_SRC" --emit-llvm -o "$TEST_LL" || return 1
+            [[ -f "$TEST_LL" ]] || return 1
+            return 0
           }
 
           ok=0
@@ -485,7 +415,7 @@ jobs:
   native-cli-canary:
     name: native-cli-canary (ubuntu)
     runs-on: ubuntu-latest
-    needs: verify-selfhost
+    needs: [discord-notify-init, verify-selfhost]
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.21-stage1-seed"
       STAGE_TRACE_FILE: canary-stage-trace.log
@@ -529,6 +459,15 @@ jobs:
           cp "$CANDIDATE" stage1
           chmod +x stage1
 
+      - name: Discord update - Bootstrap Stage1 (linux asset)
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Bootstrap Stage1 (linux asset)
+
       - name: Build runtime artifact
         shell: bash
         run: |
@@ -565,6 +504,15 @@ jobs:
           [[ -f cli_canary.ll ]] || (echo "CRITICAL: native CLI canary did not emit LLVM"; exit 1)
           grep -Eq "define .*@main\\(" cli_canary.ll || (echo "CRITICAL: native CLI canary LLVM missing @main"; cat cli_canary.ll; exit 1)
 
+      - name: Discord update - Canary build native CLI module
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Canary build native CLI module
+
       - name: Guard no-stage0 path (canary)
         shell: bash
         run: |
@@ -584,3 +532,20 @@ jobs:
             canary-stage-trace.log
             cli_canary.ll
             thagore_cli_canary
+
+  discord-notify-finalize:
+    name: discord-notify-finalize
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [discord-notify-init, verify-selfhost, native-cli-canary]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Finalize Discord message
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: finalize
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
