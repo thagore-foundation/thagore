@@ -9,6 +9,12 @@ struct ComptimeCatalog:
     params_map: String
     body_map: String
 
+struct EvalBlockResult:
+    has_return: i32
+    return_value: i32
+    env: String
+    next_idx: i32
+
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
 
@@ -64,11 +70,10 @@ func _line_count(source: String) -> i32:
         if (ch == "\n"):
             count = count + 1
         else:
-            if (ch == "\\"):
-                if ((i + 1) < n):
-                    if (_char_at(source, i + 1) == "n"):
-                        count = count + 1
-                        i = i + 1
+            if ((i + 1) < n):
+                if (__thg_str_substr(source, i, 2) == "\n"):
+                    count = count + 1
+                    i = i + 1
         i = i + 1
     return count
 
@@ -80,10 +85,9 @@ func _line_at(source: String, index: i32) -> String:
     while (i < n):
         let ch = _char_at(source, i)
         let escaped_newline = 0
-        if (ch == "\\"):
-            if ((i + 1) < n):
-                if (_char_at(source, i + 1) == "n"):
-                    escaped_newline = 1
+        if ((i + 1) < n):
+            if (__thg_str_substr(source, i, 2) == "\n"):
+                escaped_newline = 1
         if (ch == "\n"):
             if (line_idx == index):
                 return line
@@ -451,6 +455,30 @@ func _find_top_op(expr: String, op: String) -> i32:
         i = i - 1
     return -1
 
+func _header_expr(line: String, prefix: String) -> String:
+    if (_starts_with(line, prefix) == 0):
+        return ""
+    let s = _trim_edges(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+    if (s.length() == 0):
+        return ""
+    if (_char_at(s, s.length() - 1) == ":"):
+        return _trim_edges(__thg_str_substr(s, 0, s.length() - 1))
+    return s
+
+func _skip_block_end(lines: String, start_idx: i32, base_indent: i32) -> i32:
+    let total = _line_count(lines)
+    let i = start_idx
+    while (i < total):
+        let raw = _line_at(lines, i)
+        let t = _trim_edges(raw)
+        if (t.length() == 0):
+            i = i + 1
+        else:
+            if (_leading_spaces(raw) <= base_indent):
+                return i
+            i = i + 1
+    return total
+
 func _eval_expr_int(expr: String, env: String, params_map: String, body_map: String, depth: i32) -> i32:
     let s = _trim_edges(expr)
     if (s.length() == 0):
@@ -480,21 +508,9 @@ func _eval_expr_int(expr: String, env: String, params_map: String, body_map: Str
                 let aval = _eval_expr_int(aexpr, env, params_map, body_map, depth + 1)
                 local_env = _map_set(local_env, pname, _to_string_i32(aval))
                 i = i + 1
-            let lines = _line_count(body)
-            let j = 0
-            while (j < lines):
-                let one = _trim_edges(_line_at(body, j))
-                if (_starts_with(one, "let ") == 1):
-                    let p = _find(one, "=")
-                    if (p > 0):
-                        let n = _trim_edges(__thg_str_substr(one, 4, p - 4))
-                        let rhs = _trim_edges(__thg_str_substr(one, p + 1, strlen(one) - p - 1))
-                        let vv = _eval_expr_int(rhs, local_env, params_map, body_map, depth + 1)
-                        local_env = _map_set(local_env, n, _to_string_i32(vv))
-                if (_starts_with(one, "return ") == 1):
-                    let re = _trim_edges(__thg_str_substr(one, 7, strlen(one) - 7))
-                    return _eval_expr_int(re, local_env, params_map, body_map, depth + 1)
-                j = j + 1
+            let exec = _eval_block(body, 0, -1, local_env, params_map, body_map, depth + 1)
+            if (exec.has_return == 1):
+                return exec.return_value
             return 0
     let p_eq = _find_top_op(s, "==")
     if (p_eq >= 0):
@@ -555,6 +571,91 @@ func _eval_expr_int(expr: String, env: String, params_map: String, body_map: Str
         return _eval_expr_int(__thg_str_substr(s, 0, p_div), env, params_map, body_map, depth + 1) / rhs
     return 0
 
+func _eval_block(lines: String, start_idx: i32, base_indent: i32, env_in: String, params_map: String, body_map: String, depth: i32) -> EvalBlockResult:
+    let total = _line_count(lines)
+    let i = start_idx
+    let env = env_in
+    while (i < total):
+        let raw = _line_at(lines, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            i = i + 1
+        else:
+            let indent = _leading_spaces(raw)
+            if (indent <= base_indent):
+                return EvalBlockResult(0, 0, env, i)
+            if (_starts_with(line, "let ") == 1):
+                let p = _find(line, "=")
+                if (p > 0):
+                    let name = _trim_edges(__thg_str_substr(line, 4, p - 4))
+                    let rhs = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
+                    let value = _eval_expr_int(rhs, env, params_map, body_map, depth + 1)
+                    env = _map_set(env, name, _to_string_i32(value))
+                i = i + 1
+            else:
+                if (_starts_with(line, "return ") == 1):
+                    let expr = _trim_edges(__thg_str_substr(line, 7, strlen(line) - 7))
+                    let value = _eval_expr_int(expr, env, params_map, body_map, depth + 1)
+                    return EvalBlockResult(1, value, env, i + 1)
+                else:
+                    if (_starts_with(line, "if ") == 1):
+                        let cond_expr = _header_expr(line, "if ")
+                        let cond_value = _eval_expr_int(cond_expr, env, params_map, body_map, depth + 1)
+                        let then_start = i + 1
+                        let then_end = _skip_block_end(lines, then_start, indent)
+                        let else_exists = 0
+                        let else_start = then_end
+                        let else_end = then_end
+                        if (then_end < total):
+                            let else_line = _trim_edges(_line_at(lines, then_end))
+                            let else_indent = _leading_spaces(_line_at(lines, then_end))
+                            if ((else_indent == indent) and (else_line == "else:")):
+                                else_exists = 1
+                                else_start = then_end + 1
+                                else_end = _skip_block_end(lines, else_start, indent)
+                        if (cond_value != 0):
+                            let then_result = _eval_block(lines, then_start, indent, env, params_map, body_map, depth + 1)
+                            env = then_result.env
+                            if (then_result.has_return == 1):
+                                return then_result
+                        else:
+                            if (else_exists == 1):
+                                let else_result = _eval_block(lines, else_start, indent, env, params_map, body_map, depth + 1)
+                                env = else_result.env
+                                if (else_result.has_return == 1):
+                                    return else_result
+                        if (else_exists == 1):
+                            i = else_end
+                        else:
+                            i = then_end
+                    else:
+                        if (_starts_with(line, "while ") == 1):
+                            let cond_expr = _header_expr(line, "while ")
+                            let body_start = i + 1
+                            let loop_end = _skip_block_end(lines, body_start, indent)
+                            let guard = 0
+                            while (guard < 2048):
+                                let cond_value = _eval_expr_int(cond_expr, env, params_map, body_map, depth + 1)
+                                if (cond_value == 0):
+                                    guard = 2048
+                                else:
+                                    let loop_result = _eval_block(lines, body_start, indent, env, params_map, body_map, depth + 1)
+                                    env = loop_result.env
+                                    if (loop_result.has_return == 1):
+                                        return loop_result
+                                    guard = guard + 1
+                            i = loop_end
+                        else:
+                            let p_assign = _find(line, "=")
+                            if (p_assign > 0):
+                                let lhs = _trim_edges(__thg_str_substr(line, 0, p_assign))
+                                let rhs = _trim_edges(__thg_str_substr(line, p_assign + 1, strlen(line) - p_assign - 1))
+                                if (_map_get(env, lhs).length() > 0):
+                                    let vv = _eval_expr_int(rhs, env, params_map, body_map, depth + 1)
+                                    env = _map_set(env, lhs, _to_string_i32(vv))
+                            i = i + 1
+    return EvalBlockResult(0, 0, env, i)
+
 func _eval_simple_int(expr: String, params_map: String, body_map: String) -> String:
     let v = _eval_expr_int(expr, ";", params_map, body_map, 0)
     return _to_string_i32(v)
@@ -581,25 +682,17 @@ func _rewrite_comptime_line(line: String, params_map: String, body_map: String) 
     let k = _find(out, "comptime ")
     if (k >= 0):
         let start = k + 9
-        let lp = _find_char(__thg_str_substr(out, start, strlen(out) - start), "(")
-        if (lp >= 0):
-            let abs_lp = start + lp
-            let p = abs_lp
-            let depth = 0
-            while (p < strlen(out)):
-                let ch = _char_at(out, p)
-                if (ch == "("):
-                    depth = depth + 1
-                else:
-                    if (ch == ")"):
-                        depth = depth - 1
-                        if (depth == 0):
-                            let inner = _trim_edges(__thg_str_substr(out, start, p - start + 1))
-                            let folded = _eval_simple_int(inner, params_map, body_map)
-                            let left = __thg_str_substr(out, 0, k)
-                            let right = __thg_str_substr(out, p + 1, strlen(out) - p - 1)
-                            return left + folded + right
-                p = p + 1
+        let tail = __thg_str_substr(out, start, strlen(out) - start)
+        let nl = _find(tail, "\n")
+        let expr_len = strlen(tail)
+        if (nl >= 0):
+            expr_len = nl
+        let expr_text = _trim_edges(__thg_str_substr(tail, 0, expr_len))
+        if (expr_text.length() > 0):
+            let folded = _eval_simple_int(expr_text, params_map, body_map)
+            let left = __thg_str_substr(out, 0, k)
+            let right = __thg_str_substr(out, start + expr_len, strlen(out) - start - expr_len)
+            return left + folded + right
     return out
 
 func _collect_comptime_catalog(source: String) -> ComptimeCatalog:
@@ -614,11 +707,12 @@ func _collect_comptime_catalog(source: String) -> ComptimeCatalog:
         if (_starts_with(t, "comptime func ") == 1):
             let fn_name = _parse_comptime_func_name(t)
             if (fn_name.length() > 0):
+                let header_idx = i
                 let params = _parse_param_names(t)
-                let body = _extract_indented_block(source, i)
+                let body = _extract_indented_block(source, header_idx)
                 params_map = _map_set(params_map, fn_name, params)
                 body_map = _map_set(body_map, fn_name, body)
-                i = i + _line_count(body) + 1
+                i = _skip_block_end(source, header_idx + 1, _leading_spaces(raw))
             else:
                 i = i + 1
         else:
@@ -684,13 +778,87 @@ func _rewrite_generic_call_line(line: String, func_name: String, type_args: Stri
     let mangled = _generic_mangle(func_name, type_args) + "("
     return _replace_all(line, call_sig, mangled)
 
+func _line_break_pos(text: String, start: i32) -> i32:
+    let i = start
+    let n = strlen(text)
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "\n"):
+            return i
+        if ((i + 1) < n):
+            if (__thg_str_substr(text, i, 2) == "\n"):
+                return i
+        i = i + 1
+    return n
+
+func _fold_all_comptime_calls(text: String, params_map: String, body_map: String) -> String:
+    let out = text
+    let guard = 0
+    while (guard < 4096):
+        let k = _find(out, "comptime")
+        if (k < 0):
+            return out
+        let next = k + 8
+        if (next >= strlen(out)):
+            return out
+        let next_ch = _char_at(out, next)
+        if (next_ch == "("):
+            let p = next
+            let depth = 0
+            while (p < strlen(out)):
+                let ch = _char_at(out, p)
+                if (ch == "("):
+                    depth = depth + 1
+                else:
+                    if (ch == ")"):
+                        depth = depth - 1
+                        if (depth == 0):
+                            let inner = _trim_edges(__thg_str_substr(out, next + 1, p - next - 1))
+                            let folded = _eval_simple_int(inner, params_map, body_map)
+                            let left = __thg_str_substr(out, 0, k)
+                            let right = __thg_str_substr(out, p + 1, strlen(out) - p - 1)
+                            out = left + folded + right
+                            p = strlen(out)
+                p = p + 1
+            guard = guard + 1
+        else:
+            if (next_ch == " "):
+                let start_expr = next + 1
+                let end_expr = _line_break_pos(out, start_expr)
+                let lp = _find_char(__thg_str_substr(out, start_expr, strlen(out) - start_expr), "(")
+                if (lp >= 0):
+                    let abs_lp = start_expr + lp
+                    let p = abs_lp
+                    let depth = 0
+                    while (p < strlen(out)):
+                        let ch = _char_at(out, p)
+                        if (ch == "("):
+                            depth = depth + 1
+                        else:
+                            if (ch == ")"):
+                                depth = depth - 1
+                                if (depth == 0):
+                                    end_expr = p + 1
+                                    p = strlen(out)
+                        p = p + 1
+                let expr = _trim_edges(__thg_str_substr(out, start_expr, end_expr - start_expr))
+                let folded = _eval_simple_int(expr, params_map, body_map)
+                let left = __thg_str_substr(out, 0, k)
+                let right = __thg_str_substr(out, end_expr, strlen(out) - end_expr)
+                out = left + folded + right
+                guard = guard + 1
+            else:
+                return out
+    return out
+
 func preprocess(source: String) -> String:
     let catalog = _collect_comptime_catalog(source)
-    let total = _line_count(catalog.source_wo_comptime_funcs)
+    let folded = _fold_all_comptime_calls(catalog.source_wo_comptime_funcs, catalog.params_map, catalog.body_map)
+    let total = _line_count(folded)
     let i = 0
     let out = ""
     while (i < total):
-        let line = _line_at(catalog.source_wo_comptime_funcs, i)
+        let line = _line_at(folded, i)
         let t = _trim_edges(line)
         let keep = 1
         if (_starts_with(t, "trait ") == 1):
@@ -699,7 +867,6 @@ func preprocess(source: String) -> String:
             line = _rewrite_trait_impl_header(line)
             line = _rewrite_visibility_header(line)
             line = _rewrite_unsafe_header(line)
-            line = _rewrite_comptime_line(line, catalog.params_map, catalog.body_map)
             line = _strip_generic_clause(line)
             out = out + line
             if (i < (total - 1)):

@@ -1,0 +1,53 @@
+import "src/frontend/lowering/pipeline.tg" as pipe
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(hay: String, needle: String) -> i32:
+    let n = strlen(hay)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(hay, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_contains(label: String, hay: String, needle: String) -> i32:
+    if (_contains(hay, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_not_contains(label: String, hay: String, needle: String) -> i32:
+    if (_contains(hay, needle) == 0):
+        return 0
+    print("FAIL: " + label)
+    print("unexpected: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let src_plain = "func main() -> i32:\n    let a = 1\n    return a\n"
+    let out_plain = pipe.preprocess(src_plain)
+    fails = fails + _expect_contains("plain passthrough", out_plain, "let a = 1")
+
+    let src_call = "comptime func add(a: i32, b: i32) -> i32:\n    return a + b\nfunc main() -> i32:\n    let y = comptime add(40, 2)\n    return y\n"
+    let out_call = pipe.preprocess(src_call)
+    fails = fails + _expect_contains("fold call", out_call, "let y = 42")
+    fails = fails + _expect_not_contains("drop def", out_call, "comptime func add")
+
+    let src_while = "comptime func sum_to(n: i32) -> i32:\n    let i = 0\n    let acc = 0\n    while i <= n:\n        acc = acc + i\n        i = i + 1\n    return acc\nfunc main() -> i32:\n    let z = comptime sum_to(10)\n    return z\n"
+    let out_while = pipe.preprocess(src_while)
+    fails = fails + _expect_contains("fold while", out_while, "let z = 55")
+
+    if (fails == 0):
+        print("PASS: comptime func")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
