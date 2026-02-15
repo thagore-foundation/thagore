@@ -259,6 +259,11 @@ jobs:
               "./$cc" "$src" --emit-llvm || true
               ll_out="${base}.ll"
               if [[ ! -f "$ll_out" ]]; then
+                echo "[CMD] ./$cc build $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
+                "./$cc" build "$src" --emit-llvm || true
+              fi
+              ll_out="${base}.ll"
+              if [[ ! -f "$ll_out" ]]; then
                 ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
               fi
               [[ -f "$ll_out" ]] || return 1
