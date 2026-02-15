@@ -211,6 +211,13 @@ jobs:
             ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
             cp runtime/build/libthag_runtime.a libthag_runtime.a
             cp runtime/build/libthag_runtime.a thag_runtime.lib
+
+      - name: Build runtime intent CLI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S runtime -B runtime/build-intent-ci
+          cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
           fi
 
       - name: Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
