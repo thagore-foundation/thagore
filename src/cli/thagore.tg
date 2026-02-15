@@ -7,6 +7,7 @@ import "src/backend/llvm/emitter.tg" as emitter
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
 
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
@@ -66,6 +67,35 @@ func _starts_with(text: String, prefix: String) -> i32:
 
 func _quote(s: String) -> String:
     return s
+
+func _unescape_newlines(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let nl = __string_from_codepoint(10)
+    let cr = __string_from_codepoint(13)
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == "\\") and (c1 == "n")):
+                out = out + nl
+                i = i + 2
+            else:
+                if (((i + 3) < n) and (c0 == "\\") and (c1 == "r")):
+                    if ((_char_at(text, i + 2) == "\\") and (_char_at(text, i + 3) == "n")):
+                        out = out + cr + nl
+                        i = i + 4
+                    else:
+                        out = out + c0
+                        i = i + 1
+                else:
+                    out = out + c0
+                    i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
 
 func _base_name(path: String) -> String:
     let n = strlen(path)
@@ -136,7 +166,7 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 1
-    let lowered = lowering.preprocess(source)
+    let lowered = _unescape_newlines(lowering.preprocess(source))
     let tc_code = typechecker.validate_source(lowered)
     if (tc_code != 0):
         if (_contains(input_path, "src/thagore.tg") == 1):
@@ -145,7 +175,7 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
             print("ERROR: typecheck failed.")
             return 1
     let module_name = _strip_ext(_base_name(input_path))
-    let ir = emitter.emit_program_from_source(lowered, module_name)
+    let ir = emitter.emit_program_from_source(source, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
         fs.write_text(out_path + ".raw.ll", ir)
         print("ERROR: native emitter produced invalid LLVM IR.")
