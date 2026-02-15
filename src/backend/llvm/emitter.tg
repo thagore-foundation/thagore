@@ -25,7 +25,9 @@ func _is_cli_wrapper_source(source: String) -> i32:
     return 1
 
 func _is_runtime_wrapper_source(source: String) -> i32:
-    if (_contains(source, "src/cli/thagore.tg") == 0):
+    if (_contains(source, "import ") == 0):
+        return 0
+    if (_contains(source, " as cli") == 0):
         return 0
     if (_contains(source, "func main() -> i32:") == 0):
         return 0
