@@ -27,6 +27,22 @@
   - `bin/thag` (legacy-compatible path used by existing macOS seed tar).
 - Keep workflow traces explicit (`[CMD] ...`) so Stage1 -> Stage2 execution is auditable.
 
+## Bootstrap Governance (Mandatory)
+- `legacy/` stays in repo only as emergency fallback inventory, not default bootstrap path.
+- Any change touching `.github/workflows/` that impacts bootstrap must pass all:
+  - `Policy No Stage0`,
+  - `CI` (3 OS),
+  - `Selfhost Matrix` (3 OS).
+- Never reintroduce implicit fallback logic:
+  - no `gh release download` without explicit `BOOTSTRAP_STAGE1_TAG`,
+  - no hidden Stage0 branch in CI/Release jobs.
+- Seed rotation rule:
+  - promote seed tag only via successful `Seed Stage1 Assets` run,
+  - then update `BOOTSTRAP_STAGE1_TAG` in `ci.yml`, `selfhost-matrix.yml`, `release.yml`, and `bootstrap-seed.yml`.
+- Release discipline:
+  - release build must consume Stage1 seed asset of the active seed tag,
+  - generated stage trace artifact is required for audit.
+
 ## Coding Style & Naming Conventions
 - Thagore (`*.tg`): 4-space indentation, colon-based blocks, clear function boundaries.
 - Use `snake_case` for variables/functions; keep module names lowercase (`codegen_llvm.tg`).
