@@ -355,27 +355,37 @@ jobs:
           HELLO_TARGET="$HELLO_BIN"
           FIB_TARGET="$FIB_BIN"
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
-          HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-          if [[ -z "$HELLO_BIN" ]]; then
-            thg_build "$STAGE2_BIN" examples/hello.tg "$HELLO_TARGET" || true
-            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-          fi
-          if [[ -z "$HELLO_BIN" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
             thg_build "$STAGE1_BIN" examples/hello.tg "$HELLO_TARGET" || true
             HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+          else
+            thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
+            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+            if [[ -z "$HELLO_BIN" ]]; then
+              thg_build "$STAGE2_BIN" examples/hello.tg "$HELLO_TARGET" || true
+              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+            fi
+            if [[ -z "$HELLO_BIN" ]]; then
+              thg_build "$STAGE1_BIN" examples/hello.tg "$HELLO_TARGET" || true
+              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+            fi
           fi
           test -f "$HELLO_BIN"
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
-          FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-          if [[ -z "$FIB_BIN" ]]; then
-            thg_build "$STAGE2_BIN" examples/fib.tg "$FIB_TARGET" || true
-            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-          fi
-          if [[ -z "$FIB_BIN" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
             thg_build "$STAGE1_BIN" examples/fib.tg "$FIB_TARGET" || true
             FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+          else
+            thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
+            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+            if [[ -z "$FIB_BIN" ]]; then
+              thg_build "$STAGE2_BIN" examples/fib.tg "$FIB_TARGET" || true
+              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+            fi
+            if [[ -z "$FIB_BIN" ]]; then
+              thg_build "$STAGE1_BIN" examples/fib.tg "$FIB_TARGET" || true
+              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+            fi
           fi
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
