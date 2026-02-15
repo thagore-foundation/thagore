@@ -20,6 +20,7 @@ SUPPORTED_GOALS = [
     "string_contains",
     "dot_product",
     "polynomial_eval",
+    "fibonacci_dp",
 ]
 
 

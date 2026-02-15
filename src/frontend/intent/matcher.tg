@@ -172,6 +172,8 @@ func is_supported_goal(goal: String) -> i32:
         return 1
     if (goal == "polynomial_eval"):
         return 1
+    if (goal == "fibonacci_dp"):
+        return 1
     return 0
 
 func first_unsupported_goal(source: String) -> String:
@@ -219,4 +221,8 @@ func select_rule(goal: String, mode: String) -> String:
         if (mode == "max"):
             return "rule.polynomial_eval.simd.v2"
         return "rule.polynomial_eval.horner.v1"
+    if (goal == "fibonacci_dp"):
+        if (mode == "max"):
+            return "rule.fibonacci_dp.iterative.v2"
+        return "rule.fibonacci_dp.iterative.v1"
     return "rule.unsupported"

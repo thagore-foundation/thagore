@@ -23,6 +23,7 @@ func main() -> i32:
     fails = fails + _expect_str("goal parse", im.parse_goals(src), ";reduce_sum;")
     fails = fails + _expect_i32("goal supported", im.is_supported_goal("reduce_sum"), 1)
     fails = fails + _expect_i32("goal supported polynomial_eval", im.is_supported_goal("polynomial_eval"), 1)
+    fails = fails + _expect_i32("goal supported fibonacci_dp", im.is_supported_goal("fibonacci_dp"), 1)
     fails = fails + _expect_i32("goal unsupported", im.is_supported_goal("unknown_goal"), 0)
     fails = fails + _expect_str("first unsupported empty", im.first_unsupported_goal(src), "")
     fails = fails + _expect_str("first unsupported found", im.first_unsupported_goal("intent block:\n    goal: mystery_goal\n    constraints:\n        deterministic == true\n"), "mystery_goal")
@@ -32,6 +33,8 @@ func main() -> i32:
     fails = fails + _expect_str("rule max", im.select_rule("reduce_sum", "max"), "rule.reduce_sum.simd.v2")
     fails = fails + _expect_str("rule polynomial min", im.select_rule("polynomial_eval", "min"), "rule.polynomial_eval.horner.v1")
     fails = fails + _expect_str("rule polynomial max", im.select_rule("polynomial_eval", "max"), "rule.polynomial_eval.simd.v2")
+    fails = fails + _expect_str("rule fib min", im.select_rule("fibonacci_dp", "min"), "rule.fibonacci_dp.iterative.v1")
+    fails = fails + _expect_str("rule fib max", im.select_rule("fibonacci_dp", "max"), "rule.fibonacci_dp.iterative.v2")
 
     if (fails == 0):
         print("PASS: intent matcher")

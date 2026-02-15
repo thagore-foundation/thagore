@@ -66,6 +66,7 @@ struct RuntimeInterpreter {
 struct IntentEntry {
   std::string id {};
   std::string kind {};
+  std::string targetName {};
   std::string goal {};
   std::vector<std::string> constraints {};
   std::vector<std::string> examples {};
@@ -2662,6 +2663,7 @@ static auto cliIntentGoalSupported(const std::string &goal) -> bool {
     "string_contains",
     "dot_product",
     "polynomial_eval",
+    "fibonacci_dp",
   };
   return supported.find(goal) != supported.end();
 }
@@ -2843,6 +2845,12 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
     add_rule("rule.polynomial_eval.horner.v1", "O(n)", true, true, false, false, 3, 1, 0.0);
     add_rule("rule.polynomial_eval.simd.v2", "O(n)", true, true, false, true, 1, 1, 1e-7);
     add_rule("rule.polynomial_eval.fastmath.v3", "O(n)", false, true, false, true, 1, 1, 1e-5);
+    return;
+  }
+  if (goal == "fibonacci_dp") {
+    add_rule("rule.fibonacci_dp.iterative.v1", "O(n)", true, true, false, false, 2, 1, 0.0);
+    add_rule("rule.fibonacci_dp.iterative.v2", "O(n)", true, true, false, false, 1, 1, 0.0);
+    add_rule("rule.fibonacci_dp.memoized.v3", "O(n)", true, false, false, false, 1, 3, 0.0);
   }
 }
 
@@ -3177,6 +3185,23 @@ static auto cliIntentBuildPlans(
   return true;
 }
 
+static auto cliIntentParseTargetName(std::string_view header) -> std::string {
+  const auto text = trim(header);
+  if (!startsWith(text, "intent func ")) {
+    return {};
+  }
+  const auto rest = trim(text.substr(12));
+  const std::size_t paren = rest.find('(');
+  if (paren == std::string_view::npos) {
+    return {};
+  }
+  const auto name = trim(rest.substr(0, paren));
+  if (name.empty()) {
+    return {};
+  }
+  return std::string(name);
+}
+
 static void cliIntentParseEntries(
   const std::string &source,
   const std::string &inputPath,
@@ -3217,6 +3242,7 @@ static void cliIntentParseEntries(
     const bool hasColon = !text.empty() && text.back() == ':';
     if (startsWith(text, "intent func ") && hasColon) {
       entry.kind = "func";
+      entry.targetName = cliIntentParseTargetName(text);
     } else if (startsWith(text, "intent loop ") && hasColon) {
       entry.kind = "loop";
     } else if (startsWith(text, "intent calc(") && hasColon) {
@@ -3525,10 +3551,236 @@ static auto cliIntentValidateLockAgainstPlans(
   return true;
 }
 
+static auto cliIntentSplitLines(const std::string &source, bool *hasTrailingNewline) -> std::vector<std::string> {
+  if (hasTrailingNewline != nullptr) {
+    *hasTrailingNewline = !source.empty() && source.back() == '\n';
+  }
+  std::vector<std::string> lines {};
+  std::size_t cursor = 0;
+  while (cursor <= source.size()) {
+    const std::size_t end = source.find('\n', cursor);
+    const std::size_t lineEnd = end == std::string::npos ? source.size() : end;
+    lines.emplace_back(source.substr(cursor, lineEnd - cursor));
+    if (end == std::string::npos) {
+      break;
+    }
+    cursor = end + 1;
+  }
+  return lines;
+}
+
+static auto cliIntentJoinLines(const std::vector<std::string> &lines, bool trailingNewline) -> std::string {
+  std::string out {};
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    out += lines[i];
+    if ((i + 1) < lines.size()) {
+      out.push_back('\n');
+    }
+  }
+  if (trailingNewline) {
+    out.push_back('\n');
+  }
+  return out;
+}
+
+static auto cliIntentParseSingleI32ParamName(std::string_view funcHeader, std::string *paramNameOut) -> bool {
+  if (paramNameOut == nullptr) {
+    return false;
+  }
+  const auto header = trim(funcHeader);
+  if (!startsWith(header, "func ")) {
+    return false;
+  }
+  const std::size_t lp = header.find('(');
+  const std::size_t rp = header.find(')', lp == std::string_view::npos ? 0 : lp + 1);
+  if (lp == std::string_view::npos || rp == std::string_view::npos || rp <= (lp + 1)) {
+    return false;
+  }
+  const auto params = trim(header.substr(lp + 1, rp - lp - 1));
+  if (params.empty() || params.find(',') != std::string_view::npos) {
+    return false;
+  }
+  const std::size_t colon = params.find(':');
+  if (colon == std::string_view::npos) {
+    return false;
+  }
+  const auto name = trim(params.substr(0, colon));
+  const auto type = trim(params.substr(colon + 1));
+  if (name.empty() || type != "i32") {
+    return false;
+  }
+  *paramNameOut = std::string(name);
+  return true;
+}
+
+static auto cliIntentRewriteFibonacciFunc(
+  const std::string &source,
+  const IntentEntry &entry,
+  std::string *outSource,
+  std::string *reasonOut
+) -> bool {
+  if (outSource == nullptr) {
+    return false;
+  }
+  if (entry.kind != "func" || entry.targetName.empty()) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "intent target is not a function";
+    }
+    return false;
+  }
+
+  bool trailingNewline = false;
+  auto lines = cliIntentSplitLines(source, &trailingNewline);
+  std::size_t funcStart = std::string::npos;
+  const std::string funcPrefix = "func " + entry.targetName + "(";
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (startsWith(text, funcPrefix) && !text.empty() && text.back() == ':') {
+      funcStart = i;
+      break;
+    }
+  }
+  if (funcStart == std::string::npos) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "target function `" + entry.targetName + "` was not found";
+    }
+    return false;
+  }
+
+  const int baseIndent = leadingSpaces(lines[funcStart]);
+  std::size_t funcEnd = lines.size();
+  for (std::size_t i = funcStart + 1; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
+      continue;
+    }
+    if (leadingSpaces(lines[i]) <= baseIndent) {
+      funcEnd = i;
+      break;
+    }
+  }
+
+  const std::string callNeedle = entry.targetName + "(";
+  bool hasRecursiveSumReturn = false;
+  for (std::size_t i = funcStart + 1; i < funcEnd; ++i) {
+    const auto text = trim(lines[i]);
+    if (!startsWith(text, "return ") || text.find('+') == std::string_view::npos) {
+      continue;
+    }
+    const std::size_t p1 = text.find(callNeedle);
+    if (p1 == std::string_view::npos) {
+      continue;
+    }
+    const std::size_t p2 = text.find(callNeedle, p1 + callNeedle.size());
+    if (p2 != std::string_view::npos) {
+      hasRecursiveSumReturn = true;
+      break;
+    }
+  }
+  if (!hasRecursiveSumReturn) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function body does not match supported recursive fibonacci pattern";
+    }
+    return false;
+  }
+
+  std::string paramName {};
+  if (!cliIntentParseSingleI32ParamName(lines[funcStart], &paramName)) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function signature must be a single i32 parameter";
+    }
+    return false;
+  }
+
+  const std::string indent0(static_cast<std::size_t>(baseIndent), ' ');
+  const std::string indent1(static_cast<std::size_t>(baseIndent + 4), ' ');
+  const std::string indent2(static_cast<std::size_t>(baseIndent + 8), ' ');
+  std::vector<std::string> rewrittenFunc {
+    lines[funcStart],
+    indent1 + "if (" + paramName + " < 2):",
+    indent2 + "return " + paramName,
+    indent1 + "let a = 0",
+    indent1 + "let b = 1",
+    indent1 + "let i = 2",
+    indent1 + "while (i <= " + paramName + "):",
+    indent2 + "let c = a + b",
+    indent2 + "a = b",
+    indent2 + "b = c",
+    indent2 + "i = i + 1",
+    indent1 + "return b",
+  };
+
+  std::vector<std::string> merged {};
+  merged.reserve(lines.size() + rewrittenFunc.size());
+  merged.insert(merged.end(), lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(funcStart));
+  merged.insert(merged.end(), rewrittenFunc.begin(), rewrittenFunc.end());
+  merged.insert(merged.end(), lines.begin() + static_cast<std::ptrdiff_t>(funcEnd), lines.end());
+
+  *outSource = cliIntentJoinLines(merged, trailingNewline);
+  (void)indent0;
+  return true;
+}
+
+static auto cliIntentApplyPlansToSource(
+  const std::string &source,
+  const std::vector<IntentEntry> &entries,
+  const std::vector<IntentPlan> &plans,
+  std::string *outSource,
+  std::vector<std::string> *notesOut
+) -> bool {
+  if (outSource == nullptr) {
+    return false;
+  }
+  *outSource = source;
+
+  for (const auto &plan : plans) {
+    if (plan.goal != "fibonacci_dp") {
+      continue;
+    }
+    if (!startsWith(plan.selectedRule, "rule.fibonacci_dp.")) {
+      continue;
+    }
+
+    const auto entryIt = std::find_if(entries.begin(), entries.end(), [&](const IntentEntry &entry) {
+      return entry.id == plan.intentId;
+    });
+    if (entryIt == entries.end()) {
+      if (notesOut != nullptr) {
+        notesOut->push_back("intent rewrite skipped: missing entry for " + plan.intentId);
+      }
+      continue;
+    }
+
+    std::string rewritten {};
+    std::string reason {};
+    if (cliIntentRewriteFibonacciFunc(*outSource, *entryIt, &rewritten, &reason)) {
+      *outSource = std::move(rewritten);
+      if (notesOut != nullptr) {
+        notesOut->push_back(
+          "intent rewrite applied for "
+          + entryIt->targetName
+          + " using "
+          + plan.selectedRule
+        );
+      }
+    } else if (notesOut != nullptr) {
+      notesOut->push_back(
+        "intent rewrite skipped for "
+        + entryIt->id
+        + " ("
+        + reason
+        + ")"
+      );
+    }
+  }
+
+  return true;
+}
+
 static auto cliIntentDoctor(const std::string &entryPath) -> int {
   std::printf("[intent] engine=ready\n");
   std::printf("[intent] determinism=enabled\n");
-  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval\n");
+  std::printf("[intent] supported_goals=reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval,fibonacci_dp\n");
   const auto clangPath = cliDetectClang();
   if (clangPath.empty()) {
     std::printf("[intent] toolchain=clang_missing\n");
@@ -3785,6 +4037,7 @@ static auto cliBuildOrEmit(
   }
 
   const bool allowFallback = intentFallbackMode == "allow";
+  std::string sourceForCodegen = source;
   if (intentMode != "off") {
     std::vector<IntentEntry> entries {};
     cliIntentParseEntries(source, inputPath, &entries);
@@ -3827,6 +4080,14 @@ static auto cliBuildOrEmit(
           for (const auto &plan : plans) {
             std::printf("[intent] %s -> %s\n", plan.intentId.c_str(), plan.selectedRule.c_str());
           }
+          std::vector<std::string> rewriteNotes {};
+          std::string rewrittenSource {};
+          if (cliIntentApplyPlansToSource(sourceForCodegen, entries, plans, &rewrittenSource, &rewriteNotes)) {
+            sourceForCodegen = std::move(rewrittenSource);
+          }
+          for (const auto &note : rewriteNotes) {
+            std::printf("[intent] %s\n", note.c_str());
+          }
         }
       }
     }
@@ -3846,7 +4107,7 @@ static auto cliBuildOrEmit(
 #endif
   }
 
-  const char *ir = __thg_codegen_emit_llvm_from_source(source.c_str(), base.c_str());
+  const char *ir = __thg_codegen_emit_llvm_from_source(sourceForCodegen.c_str(), base.c_str());
   if (ir == nullptr || *ir == '\0') {
     std::fprintf(stderr, "Error: LLVM IR generation failed.\n");
     return 1;

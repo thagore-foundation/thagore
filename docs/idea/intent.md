@@ -242,6 +242,7 @@ Never allowed:
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
+- `fibonacci_dp` *(experimental rewrite path)*
 
 Each goal ships with 2-4 deterministic strategies max in MVP.
 
