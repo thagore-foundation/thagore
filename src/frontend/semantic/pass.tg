@@ -1,5 +1,5 @@
-import "src/frontend/parser/parser_headers.tg" as ph
-import "src/frontend/semantic/generics_traits.tg" as gt
+import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/semantic/traits.tg" as gt
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

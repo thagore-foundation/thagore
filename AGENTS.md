@@ -2,8 +2,11 @@
 
 ## Project Structure & Module Organization
 - `src/`: Self-hosted Thagore compiler sources (preferred location for new language features).
-  - `src/syntax/`: lexer/parser/token logic.
-  - `src/compiler/`: AST, evaluator, and codegen-facing modules.
+  - `src/frontend/`: lexer, parser, semantic, lowering.
+  - `src/frontend/native/`: native parser/typechecker/typed IR helpers.
+  - `src/backend/llvm/`: LLVM-facing emitter adapter.
+  - `src/backend/native/`: native LLVM IR emitter core.
+  - `src/cli/`: CLI entry/compat layer.
 - `lib/`: standard library modules used by compiler/runtime (`env`, `fs`, `process`, etc.).
 - `examples/`: runnable Thagore programs (`hello.tg`, `fib.tg`, etc.).
 - `scripts/`: automation utilities (`bootstrap.bat`, `benchmark_fib.py`).
@@ -45,9 +48,10 @@
 
 ## Coding Style & Naming Conventions
 - Thagore (`*.tg`): 4-space indentation, colon-based blocks, clear function boundaries.
-- Use `snake_case` for variables/functions; keep module names lowercase (`codegen_llvm.tg`).
+- Use `snake_case` for variables/functions.
+- File names must be lowercase alnum only, no `_` or `-` (example: `semantic/pass.tg`, `backend/native/emitter.tg`).
 - Keep changes minimal and localized; avoid broad refactors in the same PR.
-- Prefer implementing language features in `src/syntax/` and `src/compiler/`, not `legacy/`.
+- Prefer implementing language features in `src/frontend/` and `src/backend/`, not `legacy/`.
 
 ## Testing Guidelines
 - Add or update an example under `examples/` for every language/runtime change.

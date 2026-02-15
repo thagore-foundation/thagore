@@ -1,4 +1,4 @@
-import "src/backend_native/codegen_native.tg" as native_codegen
+import "src/backend/native/emitter.tg" as native_codegen
 
 func emit_program(root: ptr) -> String:
     root = root

@@ -1,4 +1,4 @@
-import "src/frontend/parser/parser_headers.tg" as ph
+import "src/frontend/parser/headers.tg" as ph
 
 func _expect_str(label: String, got: String, want: String) -> i32:
     if (got == want):

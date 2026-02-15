@@ -1,4 +1,4 @@
-import "src/frontend/lowering/language_pipeline.tg" as pipe
+import "src/frontend/lowering/pipeline.tg" as pipe
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
