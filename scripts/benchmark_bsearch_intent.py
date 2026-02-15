@@ -1,4 +1,5 @@
 import argparse
+import os
 import re
 import statistics
 import subprocess
@@ -23,8 +24,8 @@ def detect_compiler() -> Path:
     raise SystemExit("FAIL: compiler not found")
 
 
-def run_checked(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+def run_checked(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         raise SystemExit(
             "\n".join(
@@ -41,8 +42,10 @@ def run_checked(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return proc
 
 
-def build(compiler: Path, src: Path, out_exe: Path) -> None:
-    run_checked([str(compiler), "build", str(src), "-o", str(out_exe)])
+def build(compiler: Path, src: Path, out_exe: Path, auto_opt: bool) -> None:
+    env = os.environ.copy()
+    env["THAG_AUTO_OPT"] = "1" if auto_opt else "0"
+    run_checked([str(compiler), "build", str(src), "-o", str(out_exe)], env=env)
     if not out_exe.exists():
         raise SystemExit(f"FAIL: missing output: {out_exe}")
 
@@ -88,8 +91,8 @@ def main() -> int:
     naive_exe = ROOT / "intent_real_bsearch_naive.exe"
     intent_exe = ROOT / "intent_real_bsearch_intent.exe"
 
-    build(compiler, NAIVE_SRC, naive_exe)
-    build(compiler, INTENT_SRC, intent_exe)
+    build(compiler, NAIVE_SRC, naive_exe, auto_opt=False)
+    build(compiler, INTENT_SRC, intent_exe, auto_opt=True)
 
     expected = parse_checksum(run_checked([str(naive_exe)]).stdout)
 

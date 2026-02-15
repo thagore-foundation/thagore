@@ -277,6 +277,7 @@ Never allowed:
 - `count_divisors_sqrt` *(count divisors from O(n) to O(sqrt(n)))*
 - `interval_cover_greedy` *(minimum sprinkler/interval cover on sorted points via greedy two-pointer)*
 - `bit_peel_iterative` *(recursive bit peel -> iterative fold)*
+- `sum_squares_formula` *(explicit goal/strategy only in current stage0 path)*
 - `sort_ascending`
 - `search_element`
 - `sqrt_bounded_loop`
@@ -288,7 +289,7 @@ Automatic detection mode:
 
 - `THAG_AUTO_OPT=1` (default): for plain `func` without `intent`, compiler still tries deterministic body-pattern detection and applies verified rewrites.
 - `THAG_AUTO_OPT=0`: disables no-marker auto rewrites (baseline behavior).
-- `THAG_INTENT_EXPLAIN=1`: emit human-readable per-function explain lines for explicit `intent func` blocks (applied/skipped + reason).
+- `THAG_INTENT_EXPLAIN=1`: emit human-readable per-function explain lines for explicit `intent func` blocks (applied/skipped, selected/candidate rule, reason).
 - `THAG_INTENT_TRACE=1`: full trace mode (directive parsing + applied/skipped diagnostics).
 
 Strategy pinning examples currently recognized in Stage0 intent preprocessor:
@@ -301,6 +302,7 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `number.divisors.sqrt.v1`
 - `greedy.sweep.v1`
 - `search.binary.v1`
+- `math.sum_squares.formula.v1`
 
 ## 12) Implementation plan
 

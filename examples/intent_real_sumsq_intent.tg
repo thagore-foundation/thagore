@@ -1,0 +1,49 @@
+import fs
+extern func __time_now_ms() -> i32
+
+intent func sum_squares_loop(n: i32) -> i32:
+    goal: sum_squares_formula
+    strategy: math.sum_squares.formula.v1
+    constraints:
+        deterministic == true
+
+func modp(a: i32, m: i32) -> i32:
+    let q = a / m
+    let r = a - q * m
+    if (r < 0):
+        return r + m
+    return r
+
+func sum_squares_loop(n: i32) -> i32:
+    if (n <= 0):
+        return 0
+    let i = 1
+    let s = 0
+    while (i <= n):
+        s = s + i * i
+        i = i + 1
+    return s
+
+func main() -> i32:
+    let sample = sum_squares_loop(10)
+
+    let seed = __time_now_ms()
+    let rounds = 500000
+    let i = 0
+    let rnd = seed
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (i < rounds):
+        rnd = modp(rnd * 37 + 11, 1000003)
+        let n = 900 + modp(rnd, 32)
+        checksum = modp(checksum + sum_squares_loop(n), 1000000007)
+        i = i + 1
+    let t1 = __time_now_ms()
+
+    print("intent sumsq sample:")
+    print(sample)
+    print("intent sumsq checksum:")
+    print(checksum)
+    print("intent sumsq elapsed_ms:")
+    print(t1 - t0)
+    return 0

@@ -284,9 +284,44 @@ enum class IntentRewriteKind {
   BinarySearchSorted,
   BitPeelIterative,
   ReduceSumFormula,
+  SumSquaresFormula,
   SqrtBoundedLoop,
   SearchIdentity,
 };
+
+auto rewriteRuleId(IntentRewriteKind kind) -> std::string_view {
+  switch (kind) {
+    case IntentRewriteKind::FibonacciIterative:
+      return "rule.dp.fib.iterative.v1";
+    case IntentRewriteKind::FactorialIterative:
+      return "rule.math.factorial.loop.v1";
+    case IntentRewriteKind::PowerBinaryExp:
+      return "rule.math.pow.binary_exp.v1";
+    case IntentRewriteKind::GcdEuclidModulo:
+      return "rule.math.gcd.euclid.v1";
+    case IntentRewriteKind::PrimeCheckSqrt:
+      return "rule.number.prime.sqrt.v1";
+    case IntentRewriteKind::DivisorCountSqrt:
+      return "rule.number.divisors.sqrt.v1";
+    case IntentRewriteKind::IntervalCoverGreedy:
+      return "rule.greedy.interval_cover.v1";
+    case IntentRewriteKind::BinarySearchSorted:
+      return "rule.search.binary.sorted.v1";
+    case IntentRewriteKind::BitPeelIterative:
+      return "rule.number.bit_peel.iterative.v1";
+    case IntentRewriteKind::ReduceSumFormula:
+      return "rule.math.sum.formula.v1";
+    case IntentRewriteKind::SumSquaresFormula:
+      return "rule.math.sum_squares.formula.v1";
+    case IntentRewriteKind::SqrtBoundedLoop:
+      return "rule.math.sqrt.newton.v1";
+    case IntentRewriteKind::SearchIdentity:
+      return "rule.search.identity.bounds.v1";
+    case IntentRewriteKind::None:
+      return "rule.none";
+  }
+  return "rule.none";
+}
 
 struct FunctionBodySignals {
   IntentRewriteKind kind {IntentRewriteKind::None};
@@ -480,6 +515,7 @@ auto inferRewriteKindFromBody(
       out.detectedGoal = "reduce_sum";
       return out;
     }
+
   }
 
   if (params.size() >= 2) {
@@ -698,6 +734,9 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
   if (strategy == "math.sum.formula.v1") {
     return IntentRewriteKind::ReduceSumFormula;
   }
+  if (strategy == "math.sum_squares.formula.v1") {
+    return IntentRewriteKind::SumSquaresFormula;
+  }
   if (strategy == "math.sqrt.newton.v1") {
     return IntentRewriteKind::SqrtBoundedLoop;
   }
@@ -753,6 +792,9 @@ auto selectRewriteKind(
   }
   if (goal == "reduce_sum") {
     return IntentRewriteKind::ReduceSumFormula;
+  }
+  if (goal == "sum_squares_formula" || goal == "reduce_sum_squares") {
+    return IntentRewriteKind::SumSquaresFormula;
   }
   if (goal == "sqrt_bounded_loop") {
     return IntentRewriteKind::SqrtBoundedLoop;
@@ -990,6 +1032,21 @@ void appendReduceSumFormulaBody(
   out.push_back(std::format("{}return left * right", indent1));
 }
 
+void appendSumSquaresFormulaBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let a = {} * ({} + 1)", indent1, paramName, paramName));
+  out.push_back(std::format("{}let b = a / 2", indent1));
+  out.push_back(std::format("{}let c = b * ({} * 2 + 1)", indent1, paramName));
+  out.push_back(std::format("{}return c / 3", indent1));
+}
+
 void appendSqrtBoundedLoopBody(
   std::vector<std::string> &out,
   std::size_t baseIndent,
@@ -1138,6 +1195,7 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
     std::string selectedGoal {};
     std::string selectedStrategy {};
     std::string skipReason {};
+    std::string selectionSource {};
     if (directiveIt != result.functionDirectives.end()) {
       selectedGoal = directiveIt->second.goal;
       selectedStrategy = directiveIt->second.strategy;
@@ -1145,6 +1203,17 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         skipReason = "intent-disabled";
       } else {
         rewriteKind = selectRewriteKind(fnName, selectedGoal, selectedStrategy);
+        if (rewriteKind != IntentRewriteKind::None) {
+          if (!selectedStrategy.empty()) {
+            selectionSource = "strategy-pin";
+          } else if (toLowerCopy(selectedGoal) == "auto_plan") {
+            selectionSource = "auto-plan-name";
+          } else if (!selectedGoal.empty()) {
+            selectionSource = "goal";
+          } else {
+            selectionSource = "goal-implicit";
+          }
+        }
       }
       if (rewriteKind == IntentRewriteKind::None && skipReason.empty()) {
         if (!selectedStrategy.empty()) {
@@ -1159,6 +1228,7 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           if (!inferred.detectedGoal.empty()) {
             selectedGoal = inferred.detectedGoal;
             skipReason.clear();
+            selectionSource = "auto-plan-body";
           }
         }
       }
@@ -1167,26 +1237,36 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       rewriteKind = inferred.kind;
       if (!inferred.detectedGoal.empty()) {
         selectedGoal = inferred.detectedGoal;
+        selectionSource = "auto-detect-body";
       }
     }
 
     if (rewriteKind == IntentRewriteKind::None) {
       if (shouldExplain) {
+        IntentRewriteKind candidateKind = IntentRewriteKind::None;
+        if (!selectedStrategy.empty()) {
+          candidateKind = selectRewriteKindByStrategy(selectedStrategy);
+        } else if (!selectedGoal.empty()) {
+          candidateKind = selectRewriteKind(fnName, selectedGoal, "");
+        }
+        const auto candidateRule = rewriteRuleId(candidateKind);
         if (!selectedGoal.empty() || !selectedStrategy.empty()) {
           if (!skipReason.empty()) {
             std::cout << std::format(
-              "thag: rewrite skipped fn={} goal={} strategy={} reason={} hint=use goal: off or a supported goal/strategy\n",
+              "thag: rewrite skipped fn={} goal={} strategy={} candidate_rule={} reason={} hint=use goal: off or a supported goal/strategy\n",
               fnName,
               selectedGoal,
               selectedStrategy,
+              candidateRule,
               skipReason
             );
           } else {
             std::cout << std::format(
-              "thag: rewrite skipped fn={} goal={} strategy={}\n",
+              "thag: rewrite skipped fn={} goal={} strategy={} candidate_rule={}\n",
               fnName,
               selectedGoal,
-              selectedStrategy
+              selectedStrategy,
+              candidateRule
             );
           }
         } else {
@@ -1230,6 +1310,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           continue;
         }
         appendReduceSumFormulaBody(rewritten, baseIndent, params[0]);
+        break;
+      case IntentRewriteKind::SumSquaresFormula:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendSumSquaresFormulaBody(rewritten, baseIndent, params[0]);
         break;
       case IntentRewriteKind::SqrtBoundedLoop:
         if (params.empty()) {
@@ -1318,11 +1406,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
     }
     if (shouldExplain) {
       if (!selectedGoal.empty() || !selectedStrategy.empty()) {
+        const auto selectedRule = rewriteRuleId(rewriteKind);
         std::cout << std::format(
-          "thag: rewrite applied fn={} goal={} strategy={}\n",
+          "thag: rewrite applied fn={} goal={} strategy={} selected_rule={} selection_source={}\n",
           fnName,
           selectedGoal,
-          selectedStrategy
+          selectedStrategy,
+          selectedRule,
+          selectionSource
         );
       } else {
         std::cout << std::format("thag: rewrite applied fn={}\n", fnName);
