@@ -245,7 +245,7 @@ jobs:
             "./$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" "$base" || true)"
             if [[ -z "$got" ]]; then
-              local ll_out="${out}.ll"
+              local ll_out=""
               local runtime_lib="thag_runtime.lib"
               if [[ "${{ runner.os }}" != "Windows" && -f "libthag_runtime.a" ]]; then
                 runtime_lib="libthag_runtime.a"
@@ -254,12 +254,11 @@ jobs:
               if command -v clang++ >/dev/null 2>&1; then
                 linker="clang++"
               fi
-              echo "[CMD] ./$cc --emit-llvm-internal $src -o $ll_out" | tee -a "$STAGE_TRACE_FILE"
-              if "./$cc" --emit-llvm-internal "$src" -o "$ll_out"; then
-                :
-              else
-                echo "[CMD] ./$cc --emit-llvm $src -o $ll_out" | tee -a "$STAGE_TRACE_FILE"
-                "./$cc" --emit-llvm "$src" -o "$ll_out" || return 1
+              echo "[CMD] ./$cc $src --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
+              "./$cc" "$src" --emit-llvm || true
+              ll_out="${base}.ll"
+              if [[ ! -f "$ll_out" ]]; then
+                ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
               fi
               [[ -f "$ll_out" ]] || return 1
               if [[ "${{ runner.os }}" == "Windows" ]]; then
