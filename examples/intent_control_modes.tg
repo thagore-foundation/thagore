@@ -1,0 +1,27 @@
+intent func fib_auto(n: i32) -> i32:
+    goal: auto_plan
+    strategy: dp.fib.v1
+    constraints:
+        deterministic == true
+
+intent func fib_off(n: i32) -> i32:
+    goal: off
+    constraints:
+        deterministic == true
+
+func fib_auto(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib_auto(n - 1) + fib_auto(n - 2)
+
+func fib_off(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib_off(n - 1) + fib_off(n - 2)
+
+func main() -> i32:
+    print("fib_auto(20):")
+    print(fib_auto(20))
+    print("fib_off(20):")
+    print(fib_off(20))
+    return 0

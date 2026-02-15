@@ -45,6 +45,32 @@ intent func dedup_sorted(xs: [i32]) -> [i32]:
         deterministic == true
 ```
 
+Control extensions (implemented in Stage0 intent preprocessor path):
+
+```tg
+intent func cover_plants(...) -> i32:
+    goal: interval_cover_greedy
+    strategy: greedy.sweep.v1
+    constraints:
+        deterministic == true
+```
+
+- `goal`: choose algorithm family (or `auto_plan`).
+- `strategy`: optional strategy pinning; when present, strategy selection is locked to that rule id.
+- disable per function:
+
+```tg
+intent func slow_path(...) -> i32:
+    goal: off
+```
+
+or inside constraints:
+
+```tg
+constraints:
+    intent == false
+```
+
 ### 3.2 `intent loop`
 
 For local loop optimization.
@@ -261,6 +287,8 @@ Automatic detection mode:
 
 - `THAG_AUTO_OPT=1` (default): for plain `func` without `intent`, compiler still tries deterministic body-pattern detection and applies verified rewrites.
 - `THAG_AUTO_OPT=0`: disables no-marker auto rewrites (baseline behavior).
+- `THAG_INTENT_EXPLAIN=1`: emit human-readable per-function explain lines for explicit `intent func` blocks (applied/skipped + reason).
+- `THAG_INTENT_TRACE=1`: full trace mode (directive parsing + applied/skipped diagnostics).
 
 ## 12) Implementation plan
 

@@ -37,6 +37,8 @@ namespace {
 
 struct IntentDirective {
   std::string goal {};
+  std::string strategy {};
+  bool intentEnabled {true};
 };
 
 struct IntentPreprocessResult {
@@ -47,6 +49,11 @@ struct IntentPreprocessResult {
 
 auto intentTraceEnabled() -> bool {
   const char *env = std::getenv("THAG_INTENT_TRACE");
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
+auto intentExplainEnabled() -> bool {
+  const char *env = std::getenv("THAG_INTENT_EXPLAIN");
   return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
@@ -96,6 +103,10 @@ auto compactNoSpace(std::string_view text) -> std::string {
     out.push_back(ch);
   }
   return out;
+}
+
+auto normalizedLowerNoSpace(std::string_view text) -> std::string {
+  return compactNoSpace(toLowerCopy(text));
 }
 
 auto splitLinesNormalized(const std::string &source) -> std::vector<std::string> {
@@ -603,7 +614,61 @@ auto inferRewriteKindFromBody(
   return out;
 }
 
-auto selectRewriteKind(std::string_view functionName, std::string_view rawGoal) -> IntentRewriteKind {
+auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteKind {
+  const auto strategy = toLowerCopy(rawStrategy);
+  if (strategy.empty()) {
+    return IntentRewriteKind::None;
+  }
+  if (strategy == "dp.fibonacci.iterative" || strategy == "dp.fib.v1") {
+    return IntentRewriteKind::FibonacciIterative;
+  }
+  if (strategy == "math.factorial.iterative" || strategy == "math.factorial.loop.v1") {
+    return IntentRewriteKind::FactorialIterative;
+  }
+  if (strategy == "math.pow.binary_exp" || strategy == "pow.binary_exp" || strategy == "math.pow.fast.v1") {
+    return IntentRewriteKind::PowerBinaryExp;
+  }
+  if (strategy == "math.gcd.euclid" || strategy == "math.gcd.modulo.v1") {
+    return IntentRewriteKind::GcdEuclidModulo;
+  }
+  if (strategy == "number.prime.sqrt" || strategy == "number.prime.sqrt.v1") {
+    return IntentRewriteKind::PrimeCheckSqrt;
+  }
+  if (strategy == "number.divisors.sqrt" || strategy == "number.divisors.sqrt.v1") {
+    return IntentRewriteKind::DivisorCountSqrt;
+  }
+  if (strategy == "greedy.sweep.v1" || strategy == "greedy.sweep.interval_cover.v1"
+      || strategy == "greedy.interval_cover.v1") {
+    return IntentRewriteKind::IntervalCoverGreedy;
+  }
+  if (strategy == "number.bit_peel.iterative" || strategy == "number.bit_peel.fold.v1") {
+    return IntentRewriteKind::BitPeelIterative;
+  }
+  if (strategy == "math.sum.formula.v1") {
+    return IntentRewriteKind::ReduceSumFormula;
+  }
+  if (strategy == "math.sqrt.newton.v1") {
+    return IntentRewriteKind::SqrtBoundedLoop;
+  }
+  if (strategy == "search.identity.bounds.v1") {
+    return IntentRewriteKind::SearchIdentity;
+  }
+  return IntentRewriteKind::None;
+}
+
+auto selectRewriteKind(
+  std::string_view functionName,
+  std::string_view rawGoal,
+  std::string_view rawStrategy
+) -> IntentRewriteKind {
+  const auto pinned = selectRewriteKindByStrategy(rawStrategy);
+  if (pinned != IntentRewriteKind::None) {
+    return pinned;
+  }
+  if (!trimCopy(rawStrategy).empty()) {
+    return IntentRewriteKind::None;
+  }
+
   auto goal = toLowerCopy(rawGoal);
   if (goal == "auto_plan") {
     goal = inferAutoGoalByName(functionName);
@@ -895,6 +960,8 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       if (trimmed.starts_with("intent func ")) {
         const auto fnName = parseIntentFunctionName(trimmed);
         std::string goal {};
+        std::string strategy {};
+        bool intentEnabled = true;
         std::size_t j = i + 1;
         while (j < lines.size()) {
           const auto nestedTrimmed = trimCopy(lines[j]);
@@ -907,13 +974,34 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           }
           if (nestedTrimmed.starts_with("goal:")) {
             goal = trimCopy(std::string_view(nestedTrimmed).substr(5));
+          } else if (nestedTrimmed.starts_with("strategy:")) {
+            strategy = trimCopy(std::string_view(nestedTrimmed).substr(9));
+          }
+
+          const auto normalized = normalizedLowerNoSpace(nestedTrimmed);
+          if (normalized.find("intent==false") != std::string::npos
+              || normalized.find("intent=false") != std::string::npos) {
+            intentEnabled = false;
           }
           ++j;
         }
+        if (toLowerCopy(goal) == "off") {
+          intentEnabled = false;
+        }
         if (!fnName.empty()) {
-          result.functionDirectives[fnName] = IntentDirective {.goal = goal};
+          result.functionDirectives[fnName] = IntentDirective {
+            .goal = goal,
+            .strategy = strategy,
+            .intentEnabled = intentEnabled,
+          };
           if (intentTraceEnabled()) {
-            std::cout << std::format("thag: intent directive fn={} goal={}\n", fnName, goal);
+            std::cout << std::format(
+              "thag: intent directive fn={} goal={} strategy={} enabled={}\n",
+              fnName,
+              goal,
+              strategy,
+              intentEnabled ? "true" : "false"
+            );
           }
         }
         i = j;
@@ -966,17 +1054,35 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
 
     const auto fnName = parseFunctionName(trimmed);
     const auto directiveIt = result.functionDirectives.find(fnName);
+    const bool shouldExplain =
+      intentTraceEnabled() || (intentExplainEnabled() && directiveIt != result.functionDirectives.end());
 
     IntentRewriteKind rewriteKind = IntentRewriteKind::None;
     std::string selectedGoal {};
+    std::string selectedStrategy {};
+    std::string skipReason {};
     if (directiveIt != result.functionDirectives.end()) {
       selectedGoal = directiveIt->second.goal;
-      rewriteKind = selectRewriteKind(fnName, selectedGoal);
-      if (rewriteKind == IntentRewriteKind::None) {
+      selectedStrategy = directiveIt->second.strategy;
+      if (!directiveIt->second.intentEnabled) {
+        skipReason = "intent-disabled";
+      } else {
+        rewriteKind = selectRewriteKind(fnName, selectedGoal, selectedStrategy);
+      }
+      if (rewriteKind == IntentRewriteKind::None && skipReason.empty()) {
+        if (!selectedStrategy.empty()) {
+          skipReason = "strategy-not-supported";
+        } else if (!selectedGoal.empty() && toLowerCopy(selectedGoal) != "auto_plan") {
+          skipReason = "goal-not-matched";
+        }
         const auto inferred = inferRewriteKindFromBody(fnName, trimmed, stripped, i + 1, j);
-        rewriteKind = inferred.kind;
-        if (!inferred.detectedGoal.empty()) {
-          selectedGoal = inferred.detectedGoal;
+        if (rewriteKind == IntentRewriteKind::None
+            && (selectedGoal.empty() || toLowerCopy(selectedGoal) == "auto_plan")) {
+          rewriteKind = inferred.kind;
+          if (!inferred.detectedGoal.empty()) {
+            selectedGoal = inferred.detectedGoal;
+            skipReason.clear();
+          }
         }
       }
     } else if (autoOptEnabled()) {
@@ -988,9 +1094,24 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
     }
 
     if (rewriteKind == IntentRewriteKind::None) {
-      if (intentTraceEnabled()) {
-        if (!selectedGoal.empty()) {
-          std::cout << std::format("thag: rewrite skipped fn={} goal={}\n", fnName, selectedGoal);
+      if (shouldExplain) {
+        if (!selectedGoal.empty() || !selectedStrategy.empty()) {
+          if (!skipReason.empty()) {
+            std::cout << std::format(
+              "thag: rewrite skipped fn={} goal={} strategy={} reason={} hint=use goal: off or a supported goal/strategy\n",
+              fnName,
+              selectedGoal,
+              selectedStrategy,
+              skipReason
+            );
+          } else {
+            std::cout << std::format(
+              "thag: rewrite skipped fn={} goal={} strategy={}\n",
+              fnName,
+              selectedGoal,
+              selectedStrategy
+            );
+          }
         } else {
           std::cout << std::format("thag: rewrite skipped fn={}\n", fnName);
         }
@@ -1110,9 +1231,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         i = j;
         continue;
     }
-    if (intentTraceEnabled()) {
-      if (!selectedGoal.empty()) {
-        std::cout << std::format("thag: rewrite applied fn={} goal={}\n", fnName, selectedGoal);
+    if (shouldExplain) {
+      if (!selectedGoal.empty() || !selectedStrategy.empty()) {
+        std::cout << std::format(
+          "thag: rewrite applied fn={} goal={} strategy={}\n",
+          fnName,
+          selectedGoal,
+          selectedStrategy
+        );
       } else {
         std::cout << std::format("thag: rewrite applied fn={}\n", fnName);
       }
