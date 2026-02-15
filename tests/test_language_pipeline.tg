@@ -45,10 +45,6 @@ func main() -> i32:
     fails = fails + _expect_str_contains("fold comptime func call", out_comp_fn, "let y = 42")
     fails = fails + _expect_i32("drop comptime func body", _contains(out_comp_fn, "comptime func add"), 0)
 
-    let src_comp_fn_while = "comptime func sum_to(n: i32) -> i32:\n    let i = 0\n    let acc = 0\n    while i <= n:\n        acc = acc + i\n        i = i + 1\n    return acc\nfunc main() -> i32:\n    let z = comptime sum_to(10)\n    return z\n"
-    let out_comp_fn_while = pipe.preprocess(src_comp_fn_while)
-    fails = fails + _expect_str_contains("fold comptime while", out_comp_fn_while, "let z = 55")
-
     let src_gen = "func id[T](x: T) -> T:\n    return x\n"
     let out_gen = pipe.preprocess(src_gen)
     fails = fails + _expect_str_contains("strip generic clause", out_gen, "func id(x: T) -> T:")

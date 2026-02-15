@@ -455,6 +455,21 @@ func _find_top_op(expr: String, op: String) -> i32:
         i = i - 1
     return -1
 
+func _matching_rparen(text: String, lp: i32) -> i32:
+    let i = lp
+    let depth = 0
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth == 0):
+                    return i
+        i = i + 1
+    return -1
+
 func _header_expr(line: String, prefix: String) -> String:
     if (_starts_with(line, prefix) == 0):
         return ""
@@ -493,25 +508,27 @@ func _eval_expr_int(expr: String, env: String, params_map: String, body_map: Str
     if (bound.length() > 0):
         return _parse_i32(bound)
     let call_lp = _find_char(s, "(")
-    if ((call_lp > 0) and (_char_at(s, strlen(s) - 1) == ")")):
-        let name = _trim_edges(__thg_str_substr(s, 0, call_lp))
-        let param_spec = _map_get(params_map, name)
-        let body = _map_get(body_map, name)
-        if (body.length() > 0):
-            let args_csv = __thg_str_substr(s, call_lp + 1, strlen(s) - call_lp - 2)
-            let total = _csv_count(param_spec)
-            let local_env = ";"
-            let i = 0
-            while (i < total):
-                let pname = _csv_item(param_spec, i)
-                let aexpr = _csv_item(args_csv, i)
-                let aval = _eval_expr_int(aexpr, env, params_map, body_map, depth + 1)
-                local_env = _map_set(local_env, pname, _to_string_i32(aval))
-                i = i + 1
-            let exec = _eval_block(body, 0, -1, local_env, params_map, body_map, depth + 1)
-            if (exec.has_return == 1):
-                return exec.return_value
-            return 0
+    if (call_lp > 0):
+        let call_rp = _matching_rparen(s, call_lp)
+        if (call_rp == (strlen(s) - 1)):
+            let name = _trim_edges(__thg_str_substr(s, 0, call_lp))
+            let param_spec = _map_get(params_map, name)
+            let body = _map_get(body_map, name)
+            if (body.length() > 0):
+                let args_csv = __thg_str_substr(s, call_lp + 1, strlen(s) - call_lp - 2)
+                let total = _csv_count(param_spec)
+                let local_env = ";"
+                let i = 0
+                while (i < total):
+                    let pname = _csv_item(param_spec, i)
+                    let aexpr = _csv_item(args_csv, i)
+                    let aval = _eval_expr_int(aexpr, env, params_map, body_map, depth + 1)
+                    local_env = _map_set(local_env, pname, _to_string_i32(aval))
+                    i = i + 1
+                let exec = _eval_block(body, 0, -1, local_env, params_map, body_map, depth + 1)
+                if (exec.has_return == 1):
+                    return exec.return_value
+                return 0
     let p_eq = _find_top_op(s, "==")
     if (p_eq >= 0):
         let a = _eval_expr_int(__thg_str_substr(s, 0, p_eq), env, params_map, body_map, depth + 1)

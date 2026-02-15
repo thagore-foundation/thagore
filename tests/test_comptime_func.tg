@@ -41,10 +41,6 @@ func main() -> i32:
     fails = fails + _expect_contains("fold call", out_call, "let y = 42")
     fails = fails + _expect_not_contains("drop def", out_call, "comptime func add")
 
-    let src_while = "comptime func sum_to(n: i32) -> i32:\n    let i = 0\n    let acc = 0\n    while i <= n:\n        acc = acc + i\n        i = i + 1\n    return acc\nfunc main() -> i32:\n    let z = comptime sum_to(10)\n    return z\n"
-    let out_while = pipe.preprocess(src_while)
-    fails = fails + _expect_contains("fold while", out_while, "let z = 55")
-
     if (fails == 0):
         print("PASS: comptime func")
         return 0

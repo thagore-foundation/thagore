@@ -296,6 +296,7 @@ jobs:
           thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_BIN"
           FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           test -f "$FIB_BIN"
+          echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
@@ -306,6 +307,20 @@ jobs:
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           "./$HELLO_BIN"
           "./$FIB_BIN"
+
+      - name: Execute comptime lowering test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          TEST_BIN="test_comptime_func_selfhost"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            TEST_BIN="test_comptime_func_selfhost.exe"
+          fi
+          echo "[CMD] ./$STAGE2_REBUILD_BIN build tests/test_comptime_func.tg -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$STAGE2_REBUILD_BIN" build tests/test_comptime_func.tg -o "$TEST_BIN"
+          chmod +x "$TEST_BIN" || true
+          echo "[CMD] ./$TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
+          "./$TEST_BIN"
 
       - name: Assert no stage0 fallback markers
         shell: bash
