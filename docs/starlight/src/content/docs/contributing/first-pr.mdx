@@ -1,0 +1,33 @@
+---
+title: First PR Guide
+description: Hướng dẫn đóng góp thay đổi đầu tiên cho Thagore.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# First PR Guide
+
+<Steps>
+1. Sync branch mới từ `main`.
+2. Chọn một thay đổi nhỏ, cô lập.
+3. Thêm example hoặc test liên quan.
+4. Build và chạy test trọng tâm.
+5. Ghi rõ verification commands trong PR description.
+</Steps>
+
+## Recommended Verification
+
+```bash
+cmd /c scripts\bootstrap.bat
+python scripts/benchmark_fib.py
+```
+
+## PR Checklist
+
+1. Một logical change per commit.
+2. Không trộn refactor unrelated.
+3. Có risk notes nếu đụng `legacy/` hoặc workflows bootstrap.
+
+<Aside type="caution" title="Bootstrap Governance">
+Không reintroduce implicit Stage0 fallback trong CI/Release workflows.
+</Aside>

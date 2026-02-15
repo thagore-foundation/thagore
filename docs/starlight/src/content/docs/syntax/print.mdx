@@ -1,0 +1,50 @@
+---
+title: print
+description: Cú pháp in output trong Thagore.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+# `print`
+
+`print(...)` là primitive được compiler/runtime bridge xử lý.
+
+```tg title="print.tg" mark={2,3}
+func main() -> i32:
+    print("Hello Thagore")
+    print(42)
+    return 0
+```
+
+## Runtime Behavior
+
+1. Với số nguyên: bridge tới `__thg_print_i32`.
+2. Với string: dùng runtime string printing path.
+
+<Aside type="tip" title="Deterministic Output">
+Trong test matrix, `print` được dùng như observable behavior chính để so sánh interpreter vs compiled binary.
+</Aside>
+
+<Tabs>
+  <TabItem label="Thagore">
+
+```tg title="print-simple.tg"
+print("ok")
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python title="print-simple.py"
+print("ok")
+```
+
+  </TabItem>
+  <TabItem label="C++">
+
+```cpp title="print-simple.cpp"
+std::cout << "ok\n";
+```
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,49 @@
+---
+title: Advanced Features
+description: trait/generics/match/comptime/defer/unsafe và các syntax nâng cao.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Advanced Features
+
+## Trait / Impl / Generics
+
+```tg title="trait-generic.tg" mark={1,4}
+trait Add:
+impl Add for Vec[i32]:
+func sum[T: Add](a: T, b: T) -> T:
+    return a
+```
+
+## Match / Enum / Type Alias
+
+```tg title="enum-match.tg"
+enum Option[T]: Some(i32)
+match value:
+type Bytes = [i32]
+```
+
+## Comptime Folding
+
+```tg title="comptime.tg" ins={1,4}
+comptime func add(a: i32, b: i32) -> i32:
+    return a + b
+func main() -> i32:
+    let y = comptime add(40, 2)
+    return y
+```
+
+## Defer / Unsafe
+
+```tg title="defer-unsafe.tg"
+func main() -> i32:
+    defer print("cleanup")
+    unsafe:
+        print(1)
+    return 0
+```
+
+<Aside type="caution" title="Validation Boundaries">
+Pipeline hiện validate mạnh ở syntax headers (match/range/unsafe/pub/defer scope). Không coi đây là full semantic proof cho mọi construct.
+</Aside>

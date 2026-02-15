@@ -1,0 +1,45 @@
+---
+title: C FFI and Python Bridge
+description: Thagore interop thực tế với C functions và Python runtime.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+# C FFI and Python Bridge
+
+## C FFI
+
+```tg title="ffi_math.tg" mark={1,2}
+extern func sqrt(x: f64) -> f64
+extern func pow(base: f64, exp: f64) -> f64
+```
+
+## Python Bridge
+
+```tg title="python_bridge.tg" mark={1,3,5}
+extern func __thg_py_initialize() -> void
+extern func __thg_py_import(name: String) -> ptr
+extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
+```
+
+<Tabs>
+  <TabItem label="Use Case">
+
+1. Initialize Python runtime.
+2. Import module (`math`, `torch`, ...).
+3. Get attribute/callable.
+4. Convert args and invoke.
+
+  </TabItem>
+  <TabItem label="Risk">
+
+1. ABI mismatch.
+2. Missing runtime DLL/shared library.
+3. Lifetime ownership across boundary.
+
+  </TabItem>
+</Tabs>
+
+<Aside type="tip" title="Boundary Design">
+Giữ interop layer mỏng: define `extern func` trong file dedicated, wrap business logic ở module khác.
+</Aside>

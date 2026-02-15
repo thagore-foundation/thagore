@@ -1,0 +1,27 @@
+---
+title: Idiomatic Thagore
+description: Best practices để code rõ ràng và hiệu quả với compiler hiện tại.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Idiomatic Thagore
+
+## Recommended
+
+1. Luôn có `func main() -> i32` rõ ràng cho executable entry.
+2. Giữ control-flow phẳng, tránh header mơ hồ.
+3. Dùng `comptime` cho constant-heavy calculations phù hợp.
+4. Tách interop boundary (`extern func`) ra module riêng.
+5. Dùng examples/tests làm baseline cho syntax mới.
+
+```tg title="idiomatic-main.tg" ins={1,4}
+func main() -> i32:
+    let total = 40 + 2
+    print(total)
+    return 0
+```
+
+<Aside type="tip" title="Performance">
+Trong phase hiện tại, hiệu năng tốt nhất đến từ code đơn giản, predictable cho lowering/emitter. Tránh patterns quá dynamic nếu không cần.
+</Aside>

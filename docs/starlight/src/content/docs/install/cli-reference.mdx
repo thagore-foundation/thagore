@@ -1,0 +1,32 @@
+---
+title: CLI Reference
+description: Lệnh CLI chính của compiler runtime entrypoint.
+---
+
+# CLI Reference
+
+Các command chính (runtime `__thg_cli_main_native`):
+
+```text
+thagore build <file.tg> [-o output]
+thagore --emit-llvm <file.tg> [-o output.ll]
+thagore --emit-llvm-internal <file.tg> [-o output.ll]
+thagore --version
+thagore --help
+```
+
+## Examples
+
+```bash title="build-hello.sh" mark={1}
+thagore build examples/hello.tg -o hello.exe
+```
+
+```bash title="emit-llvm.sh" mark={1}
+thagore --emit-llvm examples/fib.tg -o fib.ll
+```
+
+## Exit Codes
+
+1. `0`: success.
+2. `2`: invalid usage (missing file/output).
+3. non-zero linker/codegen: build/link failure.

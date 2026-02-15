@@ -1,0 +1,38 @@
+---
+title: IO, Env, Process
+description: fs/env/process modules trong lib và compat std.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# IO, Env, Process
+
+## `lib/fs.tg` + `lib/rthagore/std/fs.tg`
+
+Các wrapper quanh runtime builtins: `__fs_read_text`, `__fs_write_text`, `__fs_open_binary`, `__fs_read_bytes`, ...
+
+| API | Return | Complexity |
+|---|---|---|
+| `read_text(path)` | `String` | IO-bound O(file_size) |
+| `write_text(path,text)` | `i32` | IO-bound O(text_size) |
+| `list_dir(path)` | `String` | IO-bound O(entries) |
+| `open_binary(path,mode)` | `ptr` | O(1) open-call |
+
+## `lib/env.tg` + `lib/rthagore/std/env.tg`
+
+| API | Return | Complexity |
+|---|---|---|
+| `count()/args()` | `i32`/`String` | O(argc) |
+| `get(index)/get(key)` | `String` | O(1) expected |
+| `set(key,val)` | `i32` | O(1) expected |
+| `cwd()` | `String` | O(path_len) |
+
+## `lib/process.tg` + `lib/rthagore/std/process.tg`
+
+| API | Return | Complexity |
+|---|---|---|
+| `run(cmd)` | `i32` | external process-bound |
+
+<Aside type="caution" title="Compat Semantics">
+Nhiều API compat chuẩn hóa lỗi/null về `""` hoặc code đơn giản để giữ call contract ổn định trong bootstrap phase.
+</Aside>

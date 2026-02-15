@@ -1,0 +1,24 @@
+---
+title: Static Typing Model
+description: Mô hình kiểu dữ liệu trong Thagore ở trạng thái hiện tại.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Static Typing Model
+
+## Practical Model Today
+
+1. Syntax chính theo typed function signatures (`a: i32`, `-> i32`).
+2. Typechecker native hiện tại tập trung vào structural checks + language validation contracts.
+3. Một số module compat dùng `any` (`Option`, `Result`) để giữ portability trong transition phase.
+
+## Inference Boundaries
+
+1. Có các điểm suy diễn đơn giản ở parser/lowering flows.
+2. Chưa là full Hindley-Milner style inference engine.
+3. Generic/trait hỗ trợ ở mức header parsing + rewrite/mangle pipeline.
+
+<Aside type="note" title="Code-Truth">
+Nếu cần semantics sâu cho từng case, ưu tiên đọc test files `tests/test_parser_headers.tg`, `tests/test_semantic_headers.tg`, `tests/test_language_pipeline.tg`.
+</Aside>

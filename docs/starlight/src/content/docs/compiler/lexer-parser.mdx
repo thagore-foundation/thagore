@@ -1,0 +1,36 @@
+---
+title: Lexer and Parser
+description: Lexer/parser layers, token kinds, AST bindings.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Lexer and Parser
+
+## Layers
+
+1. `src/frontend/lexer/*`: token wrappers + keyword/symbol classification.
+2. `src/frontend/parser/*`: parser wrapper + AST FFI bindings.
+3. `src/frontend/parser/headers.tg`: helper parse cho syntax headers nâng cao.
+
+```tg title="src/frontend/lexer/keywords.tg" mark={2,4,20}
+func keyword_kind(word: String) -> String:
+    if (word == "enum"):
+        return "ENUM"
+    if (word == "match"):
+        return "MATCH"
+    if (word == "comptime"):
+        return "COMPTIME"
+```
+
+```tg title="src/frontend/parser/parser.tg" mark={19,25,28}
+func parse_expr(source: String) -> ptr:
+    let p = new_parser(source)
+    let out = p.parse()
+    lexer.stream_free(p.stream)
+    return out
+```
+
+<Aside type="note" title="Runtime-backed parsing">
+Nhiều parse entrypoint hiện đi qua runtime native hooks (`__thg_parse_*`) để giữ compatibility trong self-host transition.
+</Aside>

@@ -1,0 +1,36 @@
+---
+title: Backend and Runtime ABI
+description: Native emitter, LLVM bridge, runtime ABI functions, CLI flow.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+# Backend and Runtime ABI
+
+## Backend Layers
+
+1. `src/backend/native/emitter.tg`: emit LLVM IR text từ source normalized.
+2. `src/backend/llvm/emitter.tg`: adapter gọi native emitter.
+3. `runtime/src/runtime.cpp`: runtime builtins + CLI + parse/codegen hooks.
+
+```tg title="src/backend/llvm/emitter.tg" mark={7}
+func emit_program_from_source(source: String, module_name: String) -> String:
+    return native_codegen.emit_program_from_native(source, module_name)
+```
+
+## Runtime ABI Highlights
+
+1. Managed string registry (`ManagedString`, retain/release).
+2. Builtins: `__thg_str_*`, `__fs_*`, `__env_*`, `__http_*`, `__time_*`.
+3. CLI entrypoint: `__thg_cli_main_native`.
+
+<Steps>
+1. Parse input args.
+2. Chọn `build` hoặc `emit-llvm`.
+3. Emit LLVM IR.
+4. Link với runtime library.
+</Steps>
+
+<Aside type="tip" title="Memory Contract">
+`__thg_str_free` đi qua `__thg_release`; runtime xử lý null/unknown pointers theo hướng no-op an toàn.
+</Aside>

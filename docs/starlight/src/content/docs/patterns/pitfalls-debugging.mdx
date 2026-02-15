@@ -1,0 +1,44 @@
+---
+title: Pitfalls and Debugging
+description: Common pitfalls và playbook debug cho Thagore compiler/runtime.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# Pitfalls and Debugging
+
+## Common Pitfalls
+
+1. `defer` ngoài function body -> validation fail.
+2. `match` header thiếu `:` -> validation fail.
+3. `unsafe` không đúng `unsafe:` -> validation fail.
+4. `impl Trait for Type` sai header -> extension impl check fail.
+5. Thiếu `main` -> typechecker fail.
+
+## Debug Playbook
+
+<Steps>
+1. Chạy emit LLVM:
+
+   ```bash
+   thagore --emit-llvm your.tg -o out.ll
+   ```
+
+2. Chạy interpreter strict (nếu dùng script matrix/tooling):
+
+   ```bash
+   python scripts/interpreter_matrix.py --compiler stage2.exe
+   ```
+
+3. Chạy test liên quan syntax/lowering:
+
+   ```bash
+   stage2.exe build tests/test_language_pipeline.tg -o t.exe
+   ```
+
+4. So sánh hành vi examples với expected outputs.
+</Steps>
+
+<Aside type="caution" title="Interop Failures">
+Nếu lỗi nằm ở `extern func`, kiểm tra symbol runtime/ABI trước khi nghi ngờ parser/lowering.
+</Aside>

@@ -1,0 +1,27 @@
+---
+title: Variables and let
+description: Biến, assignment, và scope cơ bản.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Variables and `let`
+
+```tg title="variables.tg" ins={2,6}
+func main() -> i32:
+    let x = 1
+    let y = 2
+    let z = x + y
+    x = z
+    return x
+```
+
+## Rules
+
+1. `let` tạo binding mới.
+2. `name = expr` cập nhật binding hiện có.
+3. Trong lowering/typecheck hiện tại, validation tập trung vào header/scope patterns hơn là full static lifetime checker.
+
+<Aside type="caution" title="Pitfall">
+`defer` chỉ hợp lệ trong function body; top-level `defer` bị reject ở validation pipeline.
+</Aside>

@@ -1,0 +1,22 @@
+---
+title: Unix Stage1 Seed Flow
+description: Bootstrap trên Linux/macOS theo policy Stage1 seed.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# Unix Stage1 Seed Flow
+
+Repo policy hiện tại yêu cầu Unix CI/release bootstrap từ Stage1 seed asset.
+
+<Steps>
+1. Lấy đúng seed tag (`BOOTSTRAP_STAGE1_TAG`) từ workflow.
+2. Download asset `thagore-stage1-linux.tar.gz` hoặc `thagore-stage1-macos.tar.gz`.
+3. Extract binary `thagore`/`thag`.
+4. Build `src/thagore.tg` ra Stage2.
+5. Rebuild Stage2 và compile `examples/hello.tg`, `examples/fib.tg`.
+</Steps>
+
+<Aside type="caution" title="No Stage0 Markers">
+Policy workflow cấm marker fallback Stage0 trong luồng Unix release/CI (`policy-no-stage0.yml`).
+</Aside>

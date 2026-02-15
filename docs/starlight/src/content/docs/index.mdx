@@ -1,0 +1,41 @@
+---
+title: Thagore Developer Docs
+description: Bộ tài liệu kỹ thuật cho Developer làm việc với ngôn ngữ và compiler Thagore.
+---
+
+import { Card, CardGrid, Aside } from "@astrojs/starlight/components";
+
+# Thagore Docs (Code-Truth)
+
+<Aside type="note" title="Code-Truth Strict">
+Toàn bộ nội dung bám theo mã nguồn hiện tại của repo. Các phần `compat shim`, `stub`, hoặc `experimental` đều được ghi rõ.
+</Aside>
+
+<CardGrid>
+  <Card title="Philosophy" href="/philosophy/why-thagore" icon="sparkles">
+    Vì sao Thagore tồn tại, design goals, và trade-offs thực tế.
+  </Card>
+  <Card title="Install & Tooling" href="/install/prerequisites" icon="seti:gear">
+    Cài đặt compiler, bootstrap Stage1/Stage2, CLI, và tooling.
+  </Card>
+  <Card title="Syntax (Granular)" href="/syntax/index" icon="seti:code">
+    Mỗi tính năng syntax một file riêng, ví dụ `syntax/print.mdx`.
+  </Card>
+  <Card title="Compiler Internals" href="/compiler/index" icon="seti:binary">
+    Lexer, parser, lowering, emitter, runtime bridge.
+  </Card>
+  <Card title="Stdlib API" href="/stdlib/index" icon="seti:library">
+    API reference theo module với maturity level và complexity notes.
+  </Card>
+  <Card title="Integration" href="/integration/index" icon="seti:network">
+    C FFI, Python bridge, và playbook tích hợp Vyro/OpenAnycast.
+  </Card>
+</CardGrid>
+
+## Quick Start Path
+
+1. Đọc `philosophy/why-thagore`.
+2. Làm `install/prerequisites` -> `install/windows-bootstrap` hoặc `install/unix-stage1-seed`.
+3. Học `syntax/index`.
+4. Tra cứu `stdlib/index`.
+5. Đọc `contributing/first-pr`.

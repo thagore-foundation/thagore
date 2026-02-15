@@ -1,0 +1,40 @@
+---
+title: Core Std Modules
+description: API chính trong std/core, std/list, std/string.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Core Std Modules
+
+## `std/core.tg` (Maturity: Stable for bootstrap core)
+
+| API | Return | Complexity | Ghi chú |
+|---|---|---|---|
+| `print_i32(value)` | `i32` | O(1) | bridge `printf` |
+| `print_str(text)` | `i32` | O(n) | output string |
+| `str_substr(s,start,len)` | `String` | O(len) | runtime substring |
+| `ptr_get/set` | `ptr`/`i32` | O(1) | pointer table ops |
+
+## `std/list.tg` (Maturity: Stable for ptr-list pattern)
+
+| API | Return | Complexity | Ghi chú |
+|---|---|---|---|
+| `new()` | `List` | O(capacity init) | alloc ban đầu |
+| `push(self,item)` | `List` | amortized O(1) | reallocate khi full |
+| `get(self,index)` | `ptr` | O(1) | null nếu OOB |
+| `set(self,index,val)` | `List` | O(1) | no-op nếu OOB |
+| `dispose(self)` | `i32` | O(1) | free buffer |
+
+## `std/string.tg` (Maturity: Stable for current test scope)
+
+| API | Return | Complexity | Ghi chú |
+|---|---|---|---|
+| `substring(text,start,count)` | `String` | O(count) | bounded |
+| `char_at(text,index)` | `String` | O(1) | qua substring |
+| `to_string_i32(value)` | `String` | O(digits) | manual conversion |
+| `builder_new/append/to_string` | `StringBuilder`/`String` | O(n) append | uses `__thg_str_add` |
+
+<Aside type="tip" title="Reference Tests">
+`tests/test_std.tg` là executable spec tốt nhất cho expected behavior của nhóm core std này.
+</Aside>

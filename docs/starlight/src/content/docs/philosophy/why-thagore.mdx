@@ -1,0 +1,63 @@
+---
+title: Why Thagore
+description: Philosophy, design goals, và bài toán Thagore giải quyết.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+# Why Thagore
+
+Thagore theo đuổi mô hình: **Python-like authoring experience** + **native executable output**.
+
+## Core Problem
+
+Nhiều team gặp khoảng cách giữa:
+
+1. Tốc độ viết code với cú pháp dễ đọc.
+2. Hiệu năng khi deploy production binary.
+3. Khả năng interop với C/Python ecosystem.
+
+Thagore giải quyết bằng pipeline compile native và runtime bridge rõ ràng.
+
+## Syntax Philosophy
+
+<Tabs>
+  <TabItem label="Thagore">
+
+```tg title="hello.tg" mark={1,2}
+func main() -> i32:
+    print("Hello Self-Hosted World!")
+    return 0
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python title="hello.py"
+def main():
+    print("Hello")
+```
+
+  </TabItem>
+  <TabItem label="C++">
+
+```cpp title="hello.cpp"
+int main() {
+  std::cout << "Hello\n";
+  return 0;
+}
+```
+
+  </TabItem>
+</Tabs>
+
+<Aside type="tip" title="Reality Check">
+Repo hiện có cả đường đi production và compat. Một số module tooling/std được giữ ở mức shim để phục vụ bootstrap/stability.
+</Aside>
+
+## What Thagore Is Good At Today
+
+1. Build native binary từ source `.tg`.
+2. Self-host flow Stage1 -> Stage2 trong CI/release.
+3. C FFI và Python bridge ở mức runtime function bridge.
+4. Lowering features như `comptime` folding, header validation.

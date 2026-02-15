@@ -1,0 +1,39 @@
+---
+title: Structs and impl
+description: Struct declarations, methods, và operator overloading.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Structs and `impl`
+
+```tg title="struct-method.tg" mark={1,5,10}
+struct Rect:
+    width: i32
+    height: i32
+
+impl Rect:
+    func area(self) -> i32:
+        return self.width * self.height
+
+func main() -> i32:
+    let r = Rect(10, 20)
+    print(r.area())
+    return 0
+```
+
+## Operator Overloading
+
+```tg title="ops.tg" mark={6}
+struct Vec2:
+    x: i32
+    y: i32
+
+impl Vec2:
+    func __add__(self, other: Vec2) -> Vec2:
+        return Vec2(self.x + other.x, self.y + other.y)
+```
+
+<Aside type="tip" title="Extension Impl">
+Parser header helpers hỗ trợ detect `impl Trait for Type:`; lowering có rewrite về dạng impl theo type name cho phase downstream hiện tại.
+</Aside>

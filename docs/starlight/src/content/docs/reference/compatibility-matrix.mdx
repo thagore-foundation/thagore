@@ -1,0 +1,21 @@
+---
+title: Compatibility Matrix
+description: Bảng trạng thái tính năng và module theo maturity level.
+---
+
+# Compatibility Matrix
+
+| Area | Status | Notes |
+|---|---|---|
+| Core CLI build/emission | Stable | `__thg_cli_main_native` path hoạt động |
+| Stage1 -> Stage2 selfhost chain | Stable | enforced qua CI/selfhost/release workflows |
+| Lexer/parser core (`let`, `func`, `if`, `while`) | Stable | runtime-backed parser hooks |
+| Advanced headers (`match`, `unsafe`, `pub`, extension impl) | Compat | validated bởi lowering/header helpers |
+| `comptime` fold | Compat | arithmetic/control subset thực thi |
+| LLVM emitter adapter | Compat | delegate vào native emitter |
+| Native emitter (`src/backend/native/emitter.tg`) | Compat | i32-centric emission path |
+| `lib/rthagore/std/*` nhiều module | Compat shim | wrapper/stub mix tùy module |
+| `lib/rthagore/tools/lsp.tg` | Stub/Compat | completion/filter diagnostics đơn giản |
+| `lib/rthagore/tools/debugger.tg` | Stub | trả về placeholder |
+| Python bridge examples | Compat | runtime bridge callable, cần env phù hợp |
+| Vyro/OpenAnycast adapter | Planned (Playbook) | chưa có native adapter trong repo |

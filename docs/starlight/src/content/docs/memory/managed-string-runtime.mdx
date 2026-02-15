@@ -1,0 +1,26 @@
+---
+title: Managed String Runtime
+description: Cơ chế quản lý bộ nhớ string trong runtime Thagore.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Managed String Runtime
+
+Runtime (`runtime/src/runtime.cpp`) dùng registry `ManagedString` với `refCount`.
+
+## Core APIs
+
+1. `__thg_retain(ptr)`
+2. `__thg_release(ptr)`
+3. `__thg_str_free(s)` -> `__thg_release(s)`
+
+## Contract
+
+1. Buffer tạo qua runtime managed path sẽ được đăng ký vào table.
+2. `release` giảm ref-count, free khi count về ngưỡng.
+3. Pointer null/không thuộc registry được xử lý an toàn (no-op hoặc free path guarded).
+
+<Aside type="caution" title="Interop Ownership">
+Khi crossing FFI boundary, cần quy ước rõ ai retain/release string để tránh leak hoặc use-after-free.
+</Aside>

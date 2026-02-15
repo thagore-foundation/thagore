@@ -1,0 +1,38 @@
+---
+title: Windows Bootstrap
+description: Bootstrap compiler trên Windows với Stage0 -> Stage1 -> Stage2.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# Windows Bootstrap
+
+<Steps>
+1. Build legacy stage0 + runtime:
+
+   ```bat title="scripts/bootstrap.bat" mark={4,22,31}
+   cmake --build legacy\build --config Debug
+   copy /Y legacy\build\Debug\thag.exe legacy\stage0.exe
+   copy /Y legacy\build\Debug\thag_runtime.lib thag_runtime.lib
+   legacy\stage0.exe build src/thagore.tg -o stage1.exe
+   stage1.exe build src/thagore.tg -o stage2.exe
+   stage2.exe build examples/hello.tg -o hello_v2.exe
+   hello_v2.exe
+   ```
+
+2. Hoặc chạy script tự động:
+
+   ```bat
+   cmd /c scripts\bootstrap.bat
+   ```
+
+3. Verify build output:
+
+   ```bat
+   stage2.exe --version
+   ```
+</Steps>
+
+<Aside type="tip" title="Guard Timeout">
+Bạn có thể dùng `scripts/bootstrap_stage.bat` để chạy qua `stage_guard.py`, tránh treo tiến trình khi stage build lỗi/hang.
+</Aside>

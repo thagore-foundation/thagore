@@ -1,0 +1,27 @@
+---
+title: Functions
+description: Khai báo hàm, return type, parameter patterns.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Functions
+
+```tg title="functions.tg" mark={1,4}
+func add(a: i32, b: i32) -> i32:
+    return a + b
+
+func main() -> i32:
+    let v = add(10, 32)
+    print(v)
+    return 0
+```
+
+## Notes
+
+1. Entry point kỳ vọng: `func main() -> i32`.
+2. Native typechecker hiện có check bắt buộc `main` xuất hiện trong function table.
+
+<Aside type="note" title="Generic Signatures">
+Generic clause trong header có thể xuất hiện ở source (`func id[T](x: T)`), và được lowering strip/mangle theo pipeline hiện tại.
+</Aside>

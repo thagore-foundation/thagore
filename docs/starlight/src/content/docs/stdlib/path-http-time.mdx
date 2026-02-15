@@ -1,0 +1,28 @@
+---
+title: Path, HTTP, Time, Platform
+description: path/http/time wrappers và platform abstraction.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Path, HTTP, Time, Platform
+
+## `path`
+
+`basename`, `dirname`, `ext`, `join`, `strip_trailing`, `strip_leading` đều wrap runtime path helpers.
+
+## `http`
+
+`request/get/post` wrap `__http_get` / `__http_post`.
+
+## `time`
+
+`now()/sleep(ms)` wrap `__time_now_ms` / `__time_sleep`.
+
+## `platform/sys_*`
+
+Có abstraction theo OS (`sys_windows`, `sys_linux`, `sys_bsd`, `sys_mach`, `sys_platform`), hiện thiên về compatibility wrappers.
+
+<Aside type="note" title="Maturity">
+`path/http/time` usable ở mức wrapper. Một số phần platform sâu (mmap/process/socket variant) cần xem như compat surface, không nên assume parity đầy đủ như system language mature runtimes.
+</Aside>

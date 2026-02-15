@@ -1,0 +1,43 @@
+---
+title: Vyro and OpenAnycast Playbook
+description: Playbook tích hợp Vyro/OpenAnycast qua integration boundaries hiện có.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# Vyro and OpenAnycast Playbook
+
+<Aside type="note" title="Current State">
+Repo hiện chưa có native adapter riêng cho Vyro/OpenAnycast. Hướng dưới đây là playbook triển khai qua boundary đã tồn tại (FFI/process/http/plugin).
+</Aside>
+
+## Integration Pattern A: C ABI Adapter
+
+<Steps>
+1. Viết bridge C/C++ expose function signature ổn định.
+2. Khai báo `extern func` trong Thagore.
+3. Chuẩn hóa error code + string payload.
+4. Đóng gói vào build/release runtime path.
+</Steps>
+
+## Integration Pattern B: Process Boundary
+
+<Steps>
+1. Dùng `process.run` gọi adapter CLI.
+2. Dùng `fs`/stdout protocol để trao đổi dữ liệu.
+3. Parse response thành format app-level.
+</Steps>
+
+## Integration Pattern C: HTTP Bridge
+
+<Steps>
+1. Dùng `http.get/post` gọi gateway service.
+2. Serialize request/response qua JSON string.
+3. Bọc logic retry/timeouts ở module wrapper.
+</Steps>
+
+## Contract Checklist
+
+1. Định nghĩa ownership cho pointer/string qua boundary.
+2. Version hóa adapter ABI.
+3. Có smoke test riêng cho từng integration path.

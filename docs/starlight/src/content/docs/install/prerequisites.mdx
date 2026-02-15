@@ -1,0 +1,40 @@
+---
+title: Prerequisites
+description: Môi trường cần có để build và chạy Thagore compiler.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+# Prerequisites
+
+## Required
+
+1. LLVM/Clang toolchain.
+2. Python 3 (cho một số script bootstrap/test).
+3. Runtime lib `thag_runtime.lib` (Windows) hoặc `libthag_runtime.a` (Unix).
+
+<Aside type="caution" title="Bootstrap Policy">
+Theo workflow hiện tại, Unix CI/release bootstrap từ Stage1 seed asset; Stage0 fallback chỉ là inventory khẩn cấp, không phải mặc định.
+</Aside>
+
+## Verify Environment
+
+<Steps>
+1. Kiểm tra compiler binary:
+
+   ```bash
+   thagore --version
+   ```
+
+2. Kiểm tra linker path (LLVM clang):
+
+   ```bash
+   clang --version
+   ```
+
+3. Kiểm tra runtime lib ở root repo:
+
+   ```bash
+   ls thag_runtime.lib
+   ```
+</Steps>

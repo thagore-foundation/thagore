@@ -1,0 +1,67 @@
+---
+title: Control Flow
+description: if/else, while, loop, for-range trong Thagore.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+# Control Flow
+
+## if/else + while
+
+```tg title="if-while.tg" mark={3,6}
+func main() -> i32:
+    let i = 0
+    while (i < 5):
+        if (i == 3):
+            print(100)
+        else:
+            print(i)
+        i = i + 1
+    return 0
+```
+
+## loop keyword
+
+```tg title="loop.tg"
+loop:
+    # explicit break/return pattern in body
+    return 0
+```
+
+## for range header
+
+```tg title="for-range.tg" ins={1}
+for i in 0..10:
+    print(i)
+```
+
+<Aside type="caution" title="Header Validation">
+Validation sẽ reject range-loop không đúng dạng `for i in a..b:` nếu line mang hình thức range loop nhưng sai header.
+</Aside>
+
+<Tabs>
+  <TabItem label="Thagore">
+
+```tg title="thagore-if.tg"
+if (x > 0):
+    print(x)
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python title="python-if.py"
+if x > 0:
+    print(x)
+```
+
+  </TabItem>
+  <TabItem label="C++">
+
+```cpp title="cpp-if.cpp"
+if (x > 0) { std::cout << x; }
+```
+
+  </TabItem>
+</Tabs>

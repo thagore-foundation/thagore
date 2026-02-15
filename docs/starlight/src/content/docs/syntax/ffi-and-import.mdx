@@ -1,0 +1,29 @@
+---
+title: FFI and import
+description: Module import và extern function bridge.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# `import` / `use` / `extern func`
+
+```tg title="ffi.tg" mark={1,4}
+extern func sqrtf(x: f32) -> f32
+
+func calc_hypotenuse(a: f32, b: f32) -> f32:
+    return sqrtf(a * a + b * b)
+```
+
+```tg title="module-import.tg"
+import fs
+import process
+```
+
+## Interop Notes
+
+1. C ABI interop đi qua `extern func`.
+2. Runtime bridge expose nhiều symbol (`__fs_*`, `__env_*`, `__http_*`, `__time_*`).
+
+<Aside type="note" title="Python Bridge">
+Các example `python_bridge.tg`, `clean_python.tg`, `pytorch_tensor.tg` dùng nhóm `__thg_py_*` API để gọi Python runtime.
+</Aside>
