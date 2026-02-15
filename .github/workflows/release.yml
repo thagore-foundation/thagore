@@ -269,6 +269,13 @@ jobs:
             got="$(resolve_local "$out" "$base" || true)"
             if [[ -z "$got" ]]; then
               local ll_out=""
+              local before_ll=";"
+              local c=""
+              for c in *.ll; do
+                if [[ -f "$c" ]]; then
+                  before_ll="${before_ll}${c};"
+                fi
+              done
               local runtime_lib="thag_runtime.lib"
               if [[ "${{ runner.os }}" != "Windows" && -f "libthag_runtime.a" ]]; then
                 runtime_lib="libthag_runtime.a"
@@ -287,6 +294,19 @@ jobs:
               ll_out="${base}.ll"
               if [[ ! -f "$ll_out" ]]; then
                 ll_out="$(find . -maxdepth 1 -type f -name "${base}*.ll" | head -n 1 || true)"
+              fi
+              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
+                for c in *.ll; do
+                  if [[ -f "$c" ]]; then
+                    if [[ "$before_ll" != *";${c};"* ]]; then
+                      ll_out="$c"
+                      break
+                    fi
+                  fi
+                done
+              fi
+              if [[ -z "$ll_out" || ! -f "$ll_out" ]]; then
+                ll_out="$(find . -maxdepth 1 -type f -name "*.ll" | sort | tail -n 1 || true)"
               fi
               [[ -f "$ll_out" ]] || return 1
               if [[ "${{ runner.os }}" == "Windows" ]]; then
