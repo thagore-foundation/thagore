@@ -122,6 +122,25 @@ func _link_exe(ir_path: String, out_path: String) -> i32:
         return 0
     return 1
 
+func _runtime_cli_cmd(input_path: String, out_path: String, emit_only: i32) -> String:
+    let cli_path = ""
+    if (fs.exists("runtime/build-intent-ci/Release/thagore_runtime_cli.exe") == 1):
+        cli_path = "runtime/build-intent-ci/Release/thagore_runtime_cli.exe"
+    else:
+        if (fs.exists("runtime/build-intent-ci/thagore_runtime_cli") == 1):
+            cli_path = "runtime/build-intent-ci/thagore_runtime_cli"
+    if (cli_path.length() == 0):
+        return ""
+    if (emit_only == 1):
+        return cli_path + " --emit-llvm " + input_path + " -o " + out_path
+    return cli_path + " build " + input_path + " -o " + out_path
+
+func _fallback_runtime_build(input_path: String, out_path: String, emit_only: i32) -> i32:
+    let cmd = _runtime_cli_cmd(input_path, out_path, emit_only)
+    if (cmd.length() == 0):
+        return 1
+    return process.run(cmd)
+
 func _looks_like_valid_llvm(ir: String) -> i32:
     if (_starts_with(ir, "; ModuleID = '") == 0):
         return 0
@@ -148,7 +167,10 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
     let ir = emitter.emit_program_from_source(lowered, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
         fs.write_text(out_path + ".raw.ll", ir)
-        print("WARN: native emitter IR invalid, requesting fallback.")
+        print("WARN: native emitter IR invalid, attempting runtime-cli fallback.")
+        if (_fallback_runtime_build(input_path, out_path, emit_only) == 0):
+            return 0
+        print("WARN: runtime-cli fallback unavailable.")
         return 2
     let ir_path = out_path + ".ll"
     if (emit_only == 1):
