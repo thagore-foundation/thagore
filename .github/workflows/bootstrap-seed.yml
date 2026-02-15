@@ -63,3 +63,5 @@ jobs:
           ./stage2 build src/thagore.tg -o stage2_rebuild
           ./stage2_rebuild build examples/hello.tg -o hello_seed
           ./hello_seed
+          ./stage2_rebuild build examples/fib.tg -o fib_seed
+          ./fib_seed
