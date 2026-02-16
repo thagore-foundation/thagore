@@ -1,12 +1,18 @@
 @echo off
 setlocal
 
+if /I not "%ALLOW_STAGE0_BOOTSTRAP%"=="1" if /I not "%ALLOW_STAGE0_BOOTSTRAP%"=="true" (
+  echo [BLOCKED] Stage0 bootstrap is disabled by default.
+  echo [HINT] Set ALLOW_STAGE0_BOOTSTRAP=1 to run this legacy bootstrap script.
+  exit /b 1
+)
+
 if not exist legacy\stage0.exe (
   echo [ERROR] Missing legacy\stage0.exe
   exit /b 1
 )
 
-echo [1/3] Building stage1.exe from legacy\stage0.exe
+echo [1/4] Building stage1.exe from legacy\stage0.exe
 python scripts\stage_guard.py --timeout 180 -- legacy\stage0.exe build src\thagore.tg -o stage1.exe
 if errorlevel 1 (
   echo [ERROR] Stage1 build failed.
@@ -31,7 +37,7 @@ copy /Y thagore.exe thagore_stage2.exe >nul
 
 echo [3/4] Comparing stage1 and stage2 hashes
 certutil -hashfile stage1.exe SHA256
-certutil -hashfile thg_stage2.exe SHA256
+certutil -hashfile thagore_stage2.exe SHA256
 
 echo [4/4] Verifying interpolation with stage2
 python scripts\stage_guard.py --timeout 120 -- .\thagore_stage2.exe test_pure_v.tg --build

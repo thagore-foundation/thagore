@@ -1,6 +1,12 @@
 @echo off
 setlocal
 
+if /I not "%ALLOW_STAGE0_BOOTSTRAP%"=="1" if /I not "%ALLOW_STAGE0_BOOTSTRAP%"=="true" (
+  echo [BLOCKED] Stage0 bootstrap is disabled by default.
+  echo [HINT] Set ALLOW_STAGE0_BOOTSTRAP=1 to run this legacy bootstrap script.
+  exit /b 1
+)
+
 echo [1/5] Build legacy stage0...
 cmake --build legacy\build --config Debug
 if errorlevel 1 (
