@@ -65,7 +65,7 @@ jobs:
             exit 1
           fi
           FALLBACK_HITS="$(grep -REn "fallback to existing compiler binary|fallback to previous stage2 binary|allow_missing_output" .github/workflows \
-            | grep -Ev "policy-no-stage0.yml:.*fallback to existing compiler binary\\|fallback to previous stage2 binary\\|allow_missing_output" || true)"
+            | grep -Ev "policy-no-stage0.yml" || true)"
           if [[ -n "$FALLBACK_HITS" ]]; then
             echo "CRITICAL: compiler-output fallback paths are forbidden in workflows."
             echo "$FALLBACK_HITS"

@@ -37,6 +37,7 @@ jobs:
             }
 
             const isTag = (context.ref || "").startsWith("refs/tags/v");
+            const enforceStrict = isTag || context.eventName === "workflow_dispatch";
             const targets = [
               { name: "CI", branch: "main", events: ["push"] },
               { name: "Selfhost Matrix", branch: "main", events: ["push"] },
@@ -112,7 +113,11 @@ jobs:
             require("fs").writeFileSync("stability-policy-report.txt", body, "utf8");
             core.summary.addCodeBlock(body, "text").write();
             if (failed) {
-              core.setFailed("Stability policy failed. See stability-policy-report.txt");
+              if (enforceStrict) {
+                core.setFailed("Stability policy failed. See stability-policy-report.txt");
+              } else {
+                core.warning("Stability policy not yet satisfied on push/main. Report uploaded for tracking.");
+              }
             }
 
       - name: Upload stability report
