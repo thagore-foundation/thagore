@@ -74,6 +74,8 @@ constraints:
     intent == false
 ```
 
+Runtime CLI treats both forms as deterministic disable controls (`selected_rule = rule.intent.off`).
+
 ### 3.2 `intent loop`
 
 For local loop optimization.

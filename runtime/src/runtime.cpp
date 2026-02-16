@@ -69,6 +69,7 @@ struct IntentEntry {
   std::string targetName {};
   std::string goal {};
   std::string strategy {};
+  bool intentEnabled {true};
   std::vector<std::string> constraints {};
   std::vector<std::string> examples {};
   int line {0};
@@ -2964,6 +2965,11 @@ static auto cliIntentNormalizeConstraint(const std::string &text) -> std::string
   return cliIntentToLower(out);
 }
 
+static auto cliIntentConstraintDisablesIntent(const std::string &text) -> bool {
+  const auto norm = cliIntentNormalizeConstraint(text);
+  return norm == "intent==false" || norm == "intent=false" || norm == "intent==0" || norm == "intent=0";
+}
+
 static auto cliIntentTryParseFloat(const std::string &text, double *valueOut) -> bool {
   if (valueOut == nullptr || text.empty()) {
     return false;
@@ -3439,6 +3445,30 @@ static auto cliIntentSelectPlanForEntry(
   planOut->intentId = entry.id;
   planOut->goal = entry.goal;
 
+  if (!entry.intentEnabled) {
+    std::string constraintBlob {};
+    for (const auto &constraint : entry.constraints) {
+      constraintBlob += constraint;
+      constraintBlob.push_back('\n');
+    }
+    std::string verifyBlob {};
+    verifyBlob += entry.goal;
+    verifyBlob.push_back('|');
+    verifyBlob += "rule.intent.off";
+    verifyBlob.push_back('|');
+    verifyBlob += cliIntentTargetFingerprint();
+    verifyBlob.push_back('|');
+    verifyBlob += constraintBlob;
+
+    planOut->selectedRule = "rule.intent.off";
+    planOut->verified = true;
+    planOut->verifyReason = "intent-disabled";
+    planOut->candidateCount = 0;
+    planOut->constraintsDigest = cliIntentDigest(constraintBlob);
+    planOut->verificationDigest = cliIntentDigest(verifyBlob);
+    return true;
+  }
+
   std::vector<IntentRuleInfo> rules {};
   cliIntentCollectRulesForGoal(entry.goal, &rules);
   if (rules.empty()) {
@@ -3623,6 +3653,9 @@ static void cliIntentParseEntries(
     if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
       continue;
     }
+    if (leadingSpaces(raw) != 0) {
+      continue;
+    }
     if (!startsWith(text, "intent ")) {
       continue;
     }
@@ -3659,8 +3692,12 @@ static void cliIntentParseEntries(
       if (startsWith(body, "goal:")) {
         const auto goalText = trim(body.substr(5));
         if (!goalText.empty()) {
-          entry.goal = std::string(goalText);
+          const auto parsedGoal = std::string(goalText);
+          entry.goal = parsedGoal;
           entry.hasGoal = true;
+          if (cliIntentToLower(parsedGoal) == "off") {
+            entry.intentEnabled = false;
+          }
         }
         constraintsIndent = -1;
         examplesIndent = -1;
@@ -3690,6 +3727,9 @@ static void cliIntentParseEntries(
       }
       if (constraintsIndent >= 0 && bodyIndent > constraintsIndent) {
         entry.constraints.emplace_back(std::string(body));
+        if (cliIntentConstraintDisablesIntent(entry.constraints.back())) {
+          entry.intentEnabled = false;
+        }
       } else if (constraintsIndent >= 0 && bodyIndent <= constraintsIndent) {
         constraintsIndent = -1;
       }
@@ -3830,7 +3870,7 @@ static auto cliIntentResolveAutoGoals(
   }
 
   for (auto &entry : *entries) {
-    if (entry.goal != "auto_plan") {
+    if (!entry.intentEnabled || entry.goal != "auto_plan") {
       continue;
     }
     if (entry.kind != "func" || entry.targetName.empty()) {
@@ -3899,6 +3939,9 @@ static auto cliIntentValidateEntries(
         *error = "intent at line " + std::to_string(entry.line) + " is missing goal";
       }
       return false;
+    }
+    if (!entry.intentEnabled) {
+      continue;
     }
     if (!entry.hasConstraintsHeader) {
       if (error != nullptr) {
@@ -4685,17 +4728,25 @@ static auto cliIntentExplain(const std::string &entryPath, bool asJson, const st
     for (std::size_t i = 0; i < entries.size(); ++i) {
       const auto &entry = entries[i];
       const auto &plan = plans[i];
-      const bool matched = cliIntentGoalSupported(entry.goal);
+      const bool matched = !entry.intentEnabled || cliIntentGoalSupported(entry.goal);
       if (entry.strategy.empty()) {
-        std::printf("  - %s line=%d kind=%s goal=%s\n", entry.id.c_str(), entry.line, entry.kind.c_str(), entry.goal.c_str());
-      } else {
         std::printf(
-          "  - %s line=%d kind=%s goal=%s strategy=%s\n",
+          "  - %s line=%d kind=%s goal=%s enabled=%s\n",
           entry.id.c_str(),
           entry.line,
           entry.kind.c_str(),
           entry.goal.c_str(),
-          entry.strategy.c_str()
+          entry.intentEnabled ? "true" : "false"
+        );
+      } else {
+        std::printf(
+          "  - %s line=%d kind=%s goal=%s strategy=%s enabled=%s\n",
+          entry.id.c_str(),
+          entry.line,
+          entry.kind.c_str(),
+          entry.goal.c_str(),
+          entry.strategy.c_str(),
+          entry.intentEnabled ? "true" : "false"
         );
       }
       std::printf("    constraints=%d examples=%d matched=%s selected_rule=%s verify=%s\n",
@@ -4716,12 +4767,15 @@ static auto cliIntentExplain(const std::string &entryPath, bool asJson, const st
   for (std::size_t i = 0; i < entries.size(); ++i) {
     const auto &entry = entries[i];
     const auto &plan = plans[i];
-    const bool matched = cliIntentGoalSupported(entry.goal);
+    const bool matched = !entry.intentEnabled || cliIntentGoalSupported(entry.goal);
     out += "    {\n";
     out += "      \"intent_id\": \"" + cliJsonEscape(entry.id) + "\",\n";
     out += "      \"line\": " + std::to_string(entry.line) + ",\n";
     out += "      \"kind\": \"" + cliJsonEscape(entry.kind) + "\",\n";
     out += "      \"goal\": \"" + cliJsonEscape(entry.goal) + "\",\n";
+    if (!entry.intentEnabled) {
+      out += "      \"enabled\": false,\n";
+    }
     if (!entry.strategy.empty()) {
       out += "      \"strategy\": \"" + cliJsonEscape(entry.strategy) + "\",\n";
     }

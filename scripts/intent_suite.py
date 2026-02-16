@@ -470,6 +470,53 @@ def strategy_pinning_test(cli: Path, workdir: Path) -> None:
     run_cmd([str(cli), "intent", "lock", str(bad_mismatch), "--mode=max"], expect=1)
 
 
+def intent_disable_test(cli: Path, workdir: Path) -> None:
+    goal_off_src = workdir / "intent_goal_off.tg"
+    goal_off_src.write_text(
+        "intent block:\n"
+        "    goal: off\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"GOAL_OFF_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    explain_goal_off = run_cmd([str(cli), "intent", "explain", str(goal_off_src), "--json", "--mode=max"])
+    payload_goal_off = json.loads(explain_goal_off.stdout)
+    entry_goal_off = payload_goal_off.get("entries", [{}])[0]
+    if entry_goal_off.get("selected_rule") != "rule.intent.off":
+        raise SystemExit("FAIL: goal: off must select rule.intent.off")
+    if not bool(entry_goal_off.get("verified", False)):
+        raise SystemExit("FAIL: goal: off must be verified")
+
+    lock_goal_off = workdir / "goal_off.lock"
+    run_cmd([str(cli), "intent", "lock", str(goal_off_src), "-o", str(lock_goal_off), "--mode=max"])
+    lock_payload = load_json(lock_goal_off)
+    if lock_payload["entries"][0]["selected_rule"] != "rule.intent.off":
+        raise SystemExit("FAIL: goal: off lock entry must use rule.intent.off")
+
+    constraint_off_src = workdir / "intent_constraint_off.tg"
+    constraint_off_src.write_text(
+        "intent block:\n"
+        "    goal: fibonacci_dp\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "        intent == false\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"CONSTRAINT_OFF_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    explain_constraint_off = run_cmd([str(cli), "intent", "explain", str(constraint_off_src), "--json", "--mode=max"])
+    payload_constraint_off = json.loads(explain_constraint_off.stdout)
+    entry_constraint_off = payload_constraint_off.get("entries", [{}])[0]
+    if entry_constraint_off.get("selected_rule") != "rule.intent.off":
+        raise SystemExit("FAIL: constraints intent==false must select rule.intent.off")
+    if entry_constraint_off.get("verify_reason") != "intent-disabled":
+        raise SystemExit("FAIL: disabled intent should return verify_reason=intent-disabled")
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -498,6 +545,7 @@ def main() -> int:
         policy_presets_test(cli, temp_root)
         tribonacci_rewrite_smoke(cli, temp_root)
         strategy_pinning_test(cli, temp_root)
+        intent_disable_test(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0
