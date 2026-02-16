@@ -1,0 +1,34 @@
+# Custom attribute for Thagore source code
+[attr]thagore text eol=lf whitespace=tab-in-indent,trailing-space,tabwidth=4
+
+# Default behavior
+* text=auto eol=lf
+
+# Thagore source files (borrowing Rust highlighting)
+*.tg thagore linguist-language=Rust diff=rust
+
+# Config & Documentation
+*.md text
+*.yml text
+*.yaml text
+*.toml text
+.gitignore text
+.gitattributes text
+LICENSE text
+
+# Binary files (do not touch line endings)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.a binary
+*.lib binary
