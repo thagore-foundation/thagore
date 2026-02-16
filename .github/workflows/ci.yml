@@ -487,6 +487,19 @@ jobs:
             "./$cc" build "$TEST_SRC" -o "$TEST_BIN" || return 1
             return 0
           }
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "tests/$base" "tests/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
           ok=0
           for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
             if build_test "$cc"; then
@@ -498,9 +511,11 @@ jobs:
             echo "CRITICAL: failed to compile syntax matrix test."
             exit 1
           fi
-          RUN_BIN="$TEST_BIN"
-          if [[ ! -f "$RUN_BIN" && -f "${RUN_BIN}.exe" ]]; then
-            RUN_BIN="${RUN_BIN}.exe"
+          RUN_BIN="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+          if [[ -z "$RUN_BIN" ]]; then
+            echo "CRITICAL: syntax matrix binary not found after compile."
+            ls -la || true
+            exit 1
           fi
           test -f "$RUN_BIN"
           chmod +x "$RUN_BIN" || true
