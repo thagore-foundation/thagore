@@ -491,6 +491,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          REPORT="syntax-matrix-report.txt"
+          : > "$REPORT"
+          echo "runner_os=${{ runner.os }}" >> "$REPORT"
+          echo "seed_tag=$BOOTSTRAP_STAGE1_TAG" >> "$REPORT"
           build_test() {
             local cc="$1"
             local test_src="$2"
@@ -505,6 +509,7 @@ jobs:
               return 1
             fi
             BUILT_BIN="$got"
+            USED_CC="$cc"
             return 0
           }
           resolve_bin() {
@@ -530,6 +535,7 @@ jobs:
             rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
             ok=0
             BUILT_BIN=""
+            USED_CC=""
             for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
               if build_test "$cc" "$TEST_SRC" "$TEST_BIN"; then
                 ok=1
@@ -537,11 +543,13 @@ jobs:
               fi
             done
             if [[ "$ok" -ne 1 ]]; then
+              echo "FAIL|$TEST_SRC|compile_failed" >> "$REPORT"
               echo "CRITICAL: failed to compile syntax matrix test $TEST_SRC."
               exit 1
             fi
             RUN_BIN="$BUILT_BIN"
             if [[ -z "$RUN_BIN" ]]; then
+              echo "FAIL|$TEST_SRC|missing_binary" >> "$REPORT"
               echo "CRITICAL: syntax matrix binary not found after compile for $TEST_SRC."
               ls -la || true
               exit 1
@@ -549,7 +557,16 @@ jobs:
             test -f "$RUN_BIN"
             chmod +x "$RUN_BIN" || true
             "./$RUN_BIN"
+            echo "PASS|$TEST_SRC|compiler=$USED_CC|binary=$RUN_BIN" >> "$REPORT"
           done
+          cat "$REPORT" | tee -a "$STAGE_TRACE_FILE"
+
+      - name: Upload syntax matrix report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: syntax-matrix-report-ci-${{ matrix.os }}
+          path: syntax-matrix-report.txt
 
       - name: Canary match-negative typecheck (non-blocking, Windows)
         if: runner.os == 'Windows'
