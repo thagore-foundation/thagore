@@ -1,7 +1,7 @@
 <div align="center">
 
 # Thagore
-[![Ask GeyWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/thagore-foundation/thagore)
+
 **A statically-typed, compiled programming language powered by LLVM.**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -9,6 +9,7 @@
 [![LLVM](https://img.shields.io/badge/LLVM-21-262D3A?logo=llvm&logoColor=white)](https://llvm.org/)
 [![CMake](https://img.shields.io/badge/CMake-3.28+-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/thagore/thagore/pulls)
+[![Ask GeyWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/thagore-foundation/thagore)
 
 *Clean syntax · Native performance · Python interop*
 
