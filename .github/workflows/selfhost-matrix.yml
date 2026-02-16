@@ -534,6 +534,61 @@ jobs:
             "./$RUN_BIN"
           done
 
+      - name: Canary match-negative typecheck (non-blocking, Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euxo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "tests/$base" "tests/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
+          build_test() {
+            local cc="$1"
+            local test_src="$2"
+            local test_bin="$3"
+            [[ -n "$cc" && -f "$cc" ]] || return 1
+            echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" build "$test_src" -o "$test_bin" || return 1
+            local got
+            got="$(resolve_bin "$test_bin" "$test_src" || true)"
+            if [[ -z "$got" ]]; then
+              return 1
+            fi
+            BUILT_BIN="$got"
+            USED_CC="$cc"
+            return 0
+          }
+
+          TEST_SRC="tests/test_typecheck_match_negative.tg"
+          TEST_BIN="test_typecheck_match_negative_selfhost.exe"
+          rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
+          ok=0
+          BUILT_BIN=""
+          USED_CC=""
+          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+            if build_test "$cc" "$TEST_SRC" "$TEST_BIN"; then
+              ok=1
+              break
+            fi
+          done
+          if [[ "$ok" -ne 1 ]]; then
+            echo "::warning::Canary compile failed for $TEST_SRC on Windows stage1 seed."
+            exit 1
+          fi
+          chmod +x "$BUILT_BIN" || true
+          "./$BUILT_BIN"
+
       - name: Verify comptime lowering emit
         shell: bash
         run: |

@@ -1,0 +1,11 @@
+import "src/frontend/native/typechecker.tg" as tc
+
+func main() -> i32:
+    let bad_src = "func main() -> i32:\n    match v:\n        return 0\n    return 0\n"
+    let got = tc.validate_source(bad_src)
+    if (got == 1):
+        print("PASS: canary match negative")
+        return 0
+    print("CANARY_FAIL: expected typecheck reject match without enum")
+    print(got)
+    return 1
