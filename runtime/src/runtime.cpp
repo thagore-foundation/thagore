@@ -2654,6 +2654,10 @@ static auto cliIntentFallbackValid(const std::string &mode) -> bool {
   return mode == "deny" || mode == "allow";
 }
 
+static auto cliIntentPolicyValid(const std::string &policy) -> bool {
+  return policy.empty() || policy == "safe" || policy == "fast" || policy == "debug";
+}
+
 static auto cliIntentGoalSupported(const std::string &goal) -> bool {
   static const std::unordered_set<std::string> supported {
     "auto_plan",
@@ -2739,6 +2743,50 @@ static auto cliIntentToLower(std::string text) -> std::string {
     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
   }
   return text;
+}
+
+static void cliIntentApplyPolicyDefaults(
+  const std::string &policy,
+  bool explicitIntentMode,
+  bool explicitFallbackMode,
+  bool explicitStrictLock,
+  std::string *intentMode,
+  std::string *intentFallbackMode,
+  bool *strictLock
+) {
+  if (intentMode == nullptr || intentFallbackMode == nullptr || strictLock == nullptr) {
+    return;
+  }
+  if (policy.empty()) {
+    return;
+  }
+
+  std::string defaultMode {"off"};
+  std::string defaultFallback {"deny"};
+  bool defaultStrictLock = false;
+  if (policy == "safe") {
+    defaultMode = "max";
+    defaultFallback = "deny";
+    defaultStrictLock = true;
+  } else if (policy == "fast") {
+    defaultMode = "min";
+    defaultFallback = "allow";
+    defaultStrictLock = false;
+  } else if (policy == "debug") {
+    defaultMode = "off";
+    defaultFallback = "allow";
+    defaultStrictLock = false;
+  }
+
+  if (!explicitIntentMode) {
+    *intentMode = defaultMode;
+  }
+  if (!explicitFallbackMode) {
+    *intentFallbackMode = defaultFallback;
+  }
+  if (!explicitStrictLock) {
+    *strictLock = defaultStrictLock;
+  }
 }
 
 static auto cliIntentNormalizeConstraint(const std::string &text) -> std::string {
@@ -4476,7 +4524,7 @@ int __thg_cli_main_native() {
   if (argc < 2) {
     std::printf("Thagore Compiler CLI\n");
     std::printf("Usage:\n");
-    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock]\n");
+    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-policy=safe|fast|debug] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock|--no-strict-lock]\n");
     std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
     std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
     std::printf("  thagore intent doctor [entry.tg]\n");
@@ -4494,7 +4542,7 @@ int __thg_cli_main_native() {
   if (arg1 == "--help" || arg1 == "-h") {
     std::printf("Thagore Compiler CLI\n");
     std::printf("Usage:\n");
-    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock]\n");
+    std::printf("  thagore build <file.tg> [-o output] [--intent=off|min|max] [--intent-policy=safe|fast|debug] [--intent-fallback=deny|allow] [--intent-lock path] [--strict-lock|--no-strict-lock]\n");
     std::printf("  thagore --emit-llvm <file.tg> [-o output.ll]\n");
     std::printf("  thagore --emit-llvm-internal <file.tg> [-o output.ll]\n");
     std::printf("  thagore intent doctor [entry.tg]\n");
@@ -4583,6 +4631,10 @@ int __thg_cli_main_native() {
   bool llvmOnly = false;
   std::string intentMode {"off"};
   std::string intentFallbackMode {"deny"};
+  std::string intentPolicy {};
+  bool intentModeExplicit = false;
+  bool intentFallbackExplicit = false;
+  bool strictLockExplicit = false;
   std::string intentLockPath {};
   bool strictLock = false;
   int start = 1;
@@ -4590,6 +4642,11 @@ int __thg_cli_main_native() {
     buildMode = true;
     start = 2;
   }
+
+  if (const char *envPolicy = std::getenv("THAG_INTENT_POLICY"); envPolicy != nullptr && envPolicy[0] != '\0') {
+    intentPolicy = cliIntentToLower(std::string(trim(std::string_view(envPolicy))));
+  }
+
   std::string script {};
   std::string output {};
   for (int i = start; i < argc; ++i) {
@@ -4603,12 +4660,27 @@ int __thg_cli_main_native() {
         std::fprintf(stderr, "Error: missing value after --intent\n");
         return 2;
       }
-      intentMode = cstrOrEmpty(__thg_arg_get(i + 1));
+      intentMode = cliIntentToLower(cstrOrEmpty(__thg_arg_get(i + 1)));
+      intentModeExplicit = true;
       ++i;
       continue;
     }
     if (arg.rfind("--intent=", 0) == 0) {
-      intentMode = arg.substr(9);
+      intentMode = cliIntentToLower(arg.substr(9));
+      intentModeExplicit = true;
+      continue;
+    }
+    if (arg == "--intent-policy") {
+      if ((i + 1) >= argc) {
+        std::fprintf(stderr, "Error: missing value after --intent-policy\n");
+        return 2;
+      }
+      intentPolicy = cliIntentToLower(cstrOrEmpty(__thg_arg_get(i + 1)));
+      ++i;
+      continue;
+    }
+    if (arg.rfind("--intent-policy=", 0) == 0) {
+      intentPolicy = cliIntentToLower(arg.substr(16));
       continue;
     }
     if (arg == "--intent-fallback") {
@@ -4616,12 +4688,14 @@ int __thg_cli_main_native() {
         std::fprintf(stderr, "Error: missing value after --intent-fallback\n");
         return 2;
       }
-      intentFallbackMode = cstrOrEmpty(__thg_arg_get(i + 1));
+      intentFallbackMode = cliIntentToLower(cstrOrEmpty(__thg_arg_get(i + 1)));
+      intentFallbackExplicit = true;
       ++i;
       continue;
     }
     if (arg.rfind("--intent-fallback=", 0) == 0) {
-      intentFallbackMode = arg.substr(18);
+      intentFallbackMode = cliIntentToLower(arg.substr(18));
+      intentFallbackExplicit = true;
       continue;
     }
     if (arg == "--intent-lock") {
@@ -4639,6 +4713,12 @@ int __thg_cli_main_native() {
     }
     if (arg == "--strict-lock") {
       strictLock = true;
+      strictLockExplicit = true;
+      continue;
+    }
+    if (arg == "--no-strict-lock") {
+      strictLock = false;
+      strictLockExplicit = true;
       continue;
     }
     if (arg == "-o") {
@@ -4658,6 +4738,19 @@ int __thg_cli_main_native() {
     std::fprintf(stderr, "Error: missing input file.\n");
     return 2;
   }
+  if (!cliIntentPolicyValid(intentPolicy)) {
+    std::fprintf(stderr, "Error: invalid intent policy. Use safe|fast|debug.\n");
+    return 2;
+  }
+  cliIntentApplyPolicyDefaults(
+    intentPolicy,
+    intentModeExplicit,
+    intentFallbackExplicit,
+    strictLockExplicit,
+    &intentMode,
+    &intentFallbackMode,
+    &strictLock
+  );
   if (buildMode) {
     return cliBuildOrEmit(script, output, llvmOnly, intentMode, intentFallbackMode, strictLock, intentLockPath);
   }

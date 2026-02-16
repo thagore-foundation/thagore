@@ -286,6 +286,17 @@ jobs:
           cmake -S runtime -B runtime/build-intent-ci
           cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
 
+      - name: Intent registry budget gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/intent_budget_gate.py
+
       - name: Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
         shell: bash
         run: |

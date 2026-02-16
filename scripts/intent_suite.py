@@ -41,8 +41,16 @@ def detect_cli() -> Path:
     raise SystemExit("FAIL: unable to find thagore_runtime_cli binary. Pass --cli explicitly.")
 
 
-def run_cmd(cmd: list[str], expect: int = 0, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+def run_cmd(
+    cmd: list[str],
+    expect: int = 0,
+    cwd: Path = ROOT,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
     if proc.returncode != expect:
         sys.stderr.write(f"FAIL: command exit={proc.returncode}, expected={expect}\n")
         sys.stderr.write("CMD: " + " ".join(cmd) + "\n")
@@ -252,6 +260,97 @@ def strict_lock_gate_test(cli: Path, workdir: Path) -> None:
     )
 
 
+def policy_presets_test(cli: Path, workdir: Path) -> None:
+    src = workdir / "policy_src.tg"
+    src.write_text(
+        "intent loop i in 0..n:\n"
+        "    goal: reduce_sum\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"POLICY_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    lock_good = workdir / "policy.lock"
+    run_cmd([str(cli), "intent", "lock", str(src), "-o", str(lock_good), "--mode=max"])
+    lock_bad = workdir / "policy.bad.lock"
+    payload = load_json(lock_good)
+    payload["entries"][0]["selected_rule"] = "rule.reduce_sum.scalar.v1"
+    lock_bad.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    exe_ext = ".exe" if os.name == "nt" else ""
+    run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent-policy=safe",
+            "--intent-lock",
+            str(lock_good),
+            "-o",
+            str(workdir / f"policy_safe_ok{exe_ext}"),
+        ]
+    )
+    run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent-policy=safe",
+            "--intent-lock",
+            str(lock_bad),
+            "-o",
+            str(workdir / f"policy_safe_bad{exe_ext}"),
+        ],
+        expect=1,
+    )
+
+    run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent-policy=debug",
+            "--intent-lock",
+            str(lock_bad),
+            "-o",
+            str(workdir / f"policy_debug_ok{exe_ext}"),
+        ]
+    )
+    run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent-policy=safe",
+            "--no-strict-lock",
+            "--intent=max",
+            "--intent-lock",
+            str(lock_bad),
+            "-o",
+            str(workdir / f"policy_override_ok{exe_ext}"),
+        ]
+    )
+
+    env_proc = run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent-lock",
+            str(lock_good),
+            "-o",
+            str(workdir / f"policy_env_ok{exe_ext}"),
+        ],
+        extra_env={"THAG_INTENT_POLICY": "fast"},
+    )
+    if "[intent] mode=min" not in env_proc.stdout:
+        raise SystemExit("FAIL: THAG_INTENT_POLICY=fast did not resolve to intent mode=min")
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -277,6 +376,7 @@ def main() -> int:
         differential_test(cli, temp_root)
         property_tests(cli, temp_root, args.rounds)
         strict_lock_gate_test(cli, temp_root)
+        policy_presets_test(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0

@@ -118,6 +118,7 @@ thagore intent explain <entry.tg> [--json]
 thagore build <entry.tg> --intent=min
 thagore build <entry.tg> --intent=max
 thagore build <entry.tg> --intent=off
+thagore build <entry.tg> --intent-policy=safe|fast|debug
 ```
 
 Command behavior:
@@ -128,6 +129,12 @@ Command behavior:
 - `--intent=off`: skip intent pipeline.
 - `--intent=min`: local deterministic matcher + rewrite + verify.
 - `--intent=max`: deeper search in known strategy space (still deterministic).
+- `--intent-policy=safe|fast|debug`: preset wrapper around mode/fallback/strictness.
+  - `safe`: defaults to `intent=max`, `fallback=deny`, `strict-lock=on`.
+  - `fast`: defaults to `intent=min`, `fallback=allow`, `strict-lock=off`.
+  - `debug`: defaults to `intent=off`, `fallback=allow`, `strict-lock=off`.
+  - explicit flags still win (`--intent=...`, `--intent-fallback=...`, `--strict-lock`, `--no-strict-lock`).
+- environment: `THAG_INTENT_POLICY=safe|fast|debug` applies the same preset defaults.
 
 ## 5) Compiler architecture
 

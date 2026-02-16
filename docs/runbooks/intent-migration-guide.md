@@ -9,8 +9,9 @@ This guide describes how to roll existing Thagore projects into deterministic `i
   - `thagore intent explain`
   - `thagore intent lock`
   - `thagore build --intent=off|min|max`
+  - `thagore build --intent-policy=safe|fast|debug`
   - `--intent-fallback=deny|allow`
-  - `--strict-lock` + `--intent-lock <path>`
+  - `--strict-lock` / `--no-strict-lock` + `--intent-lock <path>`
 
 ## 2) Introduce intent blocks gradually
 
@@ -72,6 +73,12 @@ Behavior:
   - `--intent=max --intent-fallback=allow` during active migration.
 - Protected branch / release:
   - `--intent=max --strict-lock` with committed lockfile.
+
+Policy preset shortcut:
+
+- `--intent-policy=fast` for migration/dev speed path.
+- `--intent-policy=safe` for CI/release strict path.
+- `THAG_INTENT_POLICY=<preset>` can set default policy in shell/CI environment.
 
 ## 7) Troubleshooting
 

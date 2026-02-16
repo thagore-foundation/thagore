@@ -8,8 +8,9 @@ Use this checklist before cutting a release that includes `intent`.
 - [ ] `thagore intent explain <file> --json --mode=max` works.
 - [ ] `thagore intent lock <file> --mode=max` writes valid lockfile.
 - [ ] `thagore build <file> --intent=off|min|max` works.
+- [ ] `--intent-policy=safe|fast|debug` preset behavior is correct.
 - [ ] `--intent-fallback=deny|allow` behavior matches policy.
-- [ ] `--strict-lock` requires `--intent=max` and fails on mismatch.
+- [ ] `--strict-lock` requires `--intent=max` and fails on mismatch (`--no-strict-lock` override works).
 
 ## B) Determinism and lock contracts
 

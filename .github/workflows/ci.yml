@@ -290,6 +290,17 @@ jobs:
             echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/thagore_runtime_cli" >> "$GITHUB_ENV"
           fi
 
+      - name: Intent registry budget gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/intent_budget_gate.py
+
       - name: Intent suite (doctor + strict-lock)
         shell: bash
         run: |
