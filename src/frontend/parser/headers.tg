@@ -140,6 +140,8 @@ func is_range_loop_header(line: String) -> i32:
         return 0
     if (_contains(s, "..") == 0):
         return 0
+    if (_contains(s, "...") == 1):
+        return 0
     if (_find_char(s, ":") < 0):
         return 0
     return 1

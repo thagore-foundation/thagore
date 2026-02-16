@@ -126,11 +126,13 @@ func _extract_func_name(header_line: String) -> String:
 
 func _parse_count(source: String, target: String) -> i32:
     let clean = lx.strip_comments(source)
+    let raw = source
     let total = _line_count(clean)
     let i = 0
     let out = 0
     while (i < total):
         let line = _trim_edges(_line_at(clean, i))
+        let line_raw = _trim_edges(_line_at(raw, i))
         if (line.length() > 0):
             if (target == "enum_payload"):
                 let enum_name = headers.parse_enum_name(line)
@@ -153,7 +155,7 @@ func _parse_count(source: String, target: String) -> i32:
                 if (headers.has_closure(line) == 1):
                     out = out + 1
             if (target == "unsafe"):
-                if (headers.is_unsafe_block_header(line) == 1):
+                if (_contains(line, "unsafe:") == 1):
                     out = out + 1
             if (target == "extension_impl"):
                 if (headers.is_extension_impl_header(line) == 1):
@@ -174,7 +176,7 @@ func _parse_count(source: String, target: String) -> i32:
                 if (headers.has_loop_label(line) == 1):
                     out = out + 1
             if (target == "raw_string"):
-                if (headers.has_raw_string(line) == 1):
+                if (_contains(line_raw, "r#") == 1):
                     out = out + 1
         i = i + 1
     return out
@@ -233,11 +235,13 @@ func parse_funcs(source: String) -> String:
 
 func parse_feature_set(source: String) -> String:
     let clean = lx.strip_comments(source)
+    let raw = source
     let total = _line_count(clean)
     let i = 0
     let out = ";"
     while (i < total):
         let line = _trim_edges(_line_at(clean, i))
+        let line_raw = _trim_edges(_line_at(raw, i))
         if (line.length() > 0):
             let enum_name = headers.parse_enum_name(line)
             if (enum_name.length() > 0):
@@ -254,7 +258,7 @@ func parse_feature_set(source: String) -> String:
                 out = _set_add(out, "if_expr")
             if (headers.has_closure(line) == 1):
                 out = _set_add(out, "closure")
-            if (headers.is_unsafe_block_header(line) == 1):
+            if (_contains(line, "unsafe:") == 1):
                 out = _set_add(out, "unsafe")
             if (headers.is_extension_impl_header(line) == 1):
                 out = _set_add(out, "extension_impl")
@@ -268,7 +272,7 @@ func parse_feature_set(source: String) -> String:
                 out = _set_add(out, "slice_expr")
             if (headers.has_loop_label(line) == 1):
                 out = _set_add(out, "loop_label")
-            if (headers.has_raw_string(line) == 1):
+            if (_contains(line_raw, "r#") == 1):
                 out = _set_add(out, "raw_string")
         i = i + 1
     return out
