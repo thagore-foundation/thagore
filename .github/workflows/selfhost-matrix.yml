@@ -18,6 +18,7 @@ jobs:
   discord-notify-init:
     name: discord-notify-init
     runs-on: ubuntu-latest
+    continue-on-error: true
     outputs:
       message_id: ${{ steps.init.outputs.message_id }}
     steps:
@@ -27,6 +28,7 @@ jobs:
       - name: Init Discord message
         id: init
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: init
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -35,6 +37,7 @@ jobs:
   discord-notify-live:
     name: discord-notify-live
     runs-on: ubuntu-latest
+    continue-on-error: true
     timeout-minutes: 180
     needs: discord-notify-init
     steps:
@@ -43,6 +46,7 @@ jobs:
 
       - name: Watch Discord message realtime
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: watch
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -248,6 +252,7 @@ jobs:
 
       - name: Discord update - Fetch stage1 bootstrap asset
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: update
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -272,6 +277,7 @@ jobs:
 
       - name: Discord update - Build runtime artifact
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: update
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -448,6 +454,7 @@ jobs:
 
       - name: Discord update - Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: update
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -582,6 +589,7 @@ jobs:
   discord-notify-finalize:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
+    continue-on-error: true
     if: always()
     needs: [discord-notify-init, discord-notify-live, selfhost]
     steps:
@@ -590,6 +598,7 @@ jobs:
 
       - name: Finalize Discord message
         uses: ./.github/actions/discord-ci-status
+        continue-on-error: true
         with:
           mode: finalize
           webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
