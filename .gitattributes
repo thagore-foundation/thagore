@@ -5,7 +5,7 @@
 * text=auto eol=lf
 
 # Thagore source files (borrowing Rust highlighting)
-*.tg thagore linguist-language=Rust diff=rust
+*.tg thagore linguist-language=Thagore diff=rust
 
 # Config & Documentation
 *.md text
