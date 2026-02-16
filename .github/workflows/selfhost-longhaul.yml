@@ -248,7 +248,7 @@ jobs:
             chmod +x "$S2R_REAL" || true
 
             LAST_BIN=""
-            build_with_candidates examples/hello.tg "$H" "$S2R_REAL"
+            build_with_candidates examples/hello.tg "$H" "$S2R_REAL" "$S2_REAL" "$STAGE1_BIN"
             H_REAL="$LAST_BIN"
             test -n "$H_REAL"
             test -f "$H_REAL"
@@ -256,7 +256,7 @@ jobs:
             "./$H_REAL"
 
             LAST_BIN=""
-            build_with_candidates examples/fib.tg "$F" "$S2R_REAL"
+            build_with_candidates examples/fib.tg "$F" "$S2R_REAL" "$S2_REAL" "$STAGE1_BIN"
             F_REAL="$LAST_BIN"
             test -n "$F_REAL"
             test -f "$F_REAL"
