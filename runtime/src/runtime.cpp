@@ -4837,9 +4837,18 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return __thg_codegen_emit_llvm(fallback);
   }
 
+  std::string tempStem = moduleNameText;
+  if (tempStem.size() > 48) {
+    std::uint32_t hash = 2166136261u;
+    for (unsigned char ch : moduleNameText) {
+      hash ^= static_cast<std::uint32_t>(ch);
+      hash *= 16777619u;
+    }
+    tempStem = moduleNameText.substr(0, 24) + "_" + std::to_string(hash);
+  }
   const auto nonce = std::to_string(__time_now_ms()) + "_" + std::to_string(std::rand());
-  const auto sourcePath = std::filesystem::path(moduleNameText + "_" + nonce + ".tg");
-  const auto irPath = std::filesystem::path(moduleNameText + "_" + nonce + ".ll");
+  const auto sourcePath = std::filesystem::path(tempStem + "_" + nonce + ".tg");
+  const auto irPath = std::filesystem::path(tempStem + "_" + nonce + ".ll");
 
   {
     std::ofstream out(sourcePath, std::ios::binary);
