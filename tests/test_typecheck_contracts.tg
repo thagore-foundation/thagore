@@ -1,0 +1,24 @@
+import "src/frontend/native/typechecker.tg" as tc
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    fails = fails + _expect_i32("missing main rejected", tc.validate_source("func not_main() -> i32:\n    return 0\n"), 1)
+    fails = fails + _expect_i32("malformed match header rejected", tc.validate_source("enum Opt: Some(i32)\nfunc main() -> i32:\n    match v\n        return 0\n    return 0\n"), 1)
+    fails = fails + _expect_i32("malformed range header rejected", tc.validate_source("func main() -> i32:\n    for i in 0...3:\n        return i\n"), 1)
+    fails = fails + _expect_i32("valid match + enum accepted", tc.validate_source("enum Opt: Some(i32)\nfunc main() -> i32:\n    match v:\n        return 0\n    return 0\n"), 0)
+    fails = fails + _expect_i32("valid range accepted", tc.validate_source("func main() -> i32:\n    for i in 0..3:\n        return i\n"), 0)
+
+    if (fails == 0):
+        print("PASS: typecheck contracts")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
