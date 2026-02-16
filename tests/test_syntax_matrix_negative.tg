@@ -1,0 +1,87 @@
+import "src/frontend/native/parser.tg" as pn
+import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/lowering/pipeline.tg" as pipe
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("got: " + got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    # 1) Enum payload
+    fails = fails + _expect_i32("enum payload negative", pn.parse_enum_payload_count("enum Option: None"), 0)
+
+    # 2) Type alias
+    fails = fails + _expect_str("type alias negative", ph.parse_type_alias_name("type = i32"), "")
+
+    # 3) Array literal + slice expression
+    fails = fails + _expect_i32("array literal negative", pn.parse_array_literal_count("let xs = values"), 0)
+    fails = fails + _expect_i32("slice expr negative", pn.parse_slice_expr_count("let s = xs[0]"), 0)
+
+    # 4) Struct init shorthand
+    fails = fails + _expect_i32("struct shorthand negative", ph.has_struct_init_shorthand("let p = Point{x: x, y: y}"), 0)
+
+    # 5) Tuple destructuring
+    fails = fails + _expect_i32("tuple destructuring negative", ph.has_tuple_destructuring("let a = pair"), 0)
+
+    # 6) Match
+    fails = fails + _expect_i32("match header negative", ph.is_match_header("match value"), 0)
+    fails = fails + _expect_i32(
+        "match validate malformed",
+        pipe.validate("func main() -> i32:\n    match value\n        return 1\n"),
+        1
+    )
+
+    # 7) for .. in range
+    fails = fails + _expect_i32("range header negative", ph.is_range_loop_header("for i in values:"), 0)
+    fails = fails + _expect_i32(
+        "range validate malformed",
+        pipe.validate("func main() -> i32:\n    for i in 0...3:\n        return i\n"),
+        1
+    )
+
+    # 8) String interpolation
+    fails = fails + _expect_i32(
+        "interpolation validate malformed",
+        pipe.validate("func main() -> i32:\n    print(v\"Value: {1)\n    return 0\n"),
+        1
+    )
+
+    # 9) Loop labels
+    fails = fails + _expect_i32("loop label negative", ph.has_loop_label("while i < 3:"), 0)
+
+    # 10) If expression
+    fails = fails + _expect_i32("if expression negative", ph.has_if_expression("if ok:\n    return 1"), 0)
+
+    # 11) Unsafe block
+    fails = fails + _expect_i32("unsafe block negative", ph.is_unsafe_block_header("unsafe x"), 0)
+
+    # 12) Extension methods
+    fails = fails + _expect_i32("extension impl negative", ph.is_extension_impl_header("impl Vec[i32]:"), 0)
+
+    # 13) Raw strings
+    fails = fails + _expect_i32("raw string negative", ph.has_raw_string("let p = \"C:\\\\temp\""), 0)
+
+    # 14) Visibility
+    fails = fails + _expect_str("visibility negative", ph.parse_visibility_decl("let x = 1"), "")
+
+    # 15) Closures
+    fails = fails + _expect_i32("closure negative", ph.has_closure("let f = x + 1"), 0)
+
+    if (fails == 0):
+        print("PASS: syntax matrix negative")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
