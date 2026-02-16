@@ -3938,6 +3938,121 @@ static auto cliIntentCountOccurrences(const std::string &text, const std::string
   return count;
 }
 
+static auto cliIntentInferAutoGoalByName(std::string_view rawName) -> std::string {
+  std::string name = std::string(trim(rawName));
+  for (char &ch : name) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  if (name.empty()) {
+    return {};
+  }
+
+  auto has = [&](std::string_view needle) {
+    return name.find(needle) != std::string::npos;
+  };
+
+  if (has("trib")) {
+    return "tribonacci_dp";
+  }
+  if (has("fib")) {
+    return "fibonacci_dp";
+  }
+  if (has("sort")) {
+    return "sort_ascending";
+  }
+  if (has("lower_bound") || (has("lower") && has("bound"))) {
+    return "lower_bound_sorted";
+  }
+  if (has("upper_bound") || (has("upper") && has("bound"))) {
+    return "upper_bound_sorted";
+  }
+  if (has("count_range") || (has("count") && has("range"))) {
+    return "count_range_sorted";
+  }
+  if (has("count_outside") || (has("outside") && has("range"))) {
+    return "count_outside_range_sorted";
+  }
+  if (has("count_less_equal") || has("count_le")) {
+    return "count_less_equal_sorted";
+  }
+  if (has("count_less") || has("count_lt")) {
+    return "count_less_sorted";
+  }
+  if (has("count_greater_equal") || has("count_ge")) {
+    return "count_greater_equal_sorted";
+  }
+  if (has("count_greater") || has("count_gt")) {
+    return "count_greater_sorted";
+  }
+  if (has("count_not_equal") || has("count_ne")) {
+    return "count_not_equal_sorted";
+  }
+  if (has("count_equal")) {
+    return "count_equal_sorted";
+  }
+  if (has("two_sum") || has("pair_sum")) {
+    return "two_sum_sorted_exists";
+  }
+  if (has("binary_search") || has("bsearch")) {
+    return "binary_search_sorted";
+  }
+  if (has("search") || has("find")) {
+    return "search_element";
+  }
+  if (has("factorial")) {
+    return "factorial_iterative";
+  }
+  if (has("pow") || has("exp")) {
+    return "power_fast";
+  }
+  if (has("gcd")) {
+    return "gcd_euclid";
+  }
+  if (has("prime")) {
+    return "is_prime_fast";
+  }
+  if (has("divisor")) {
+    return "count_divisors_sqrt";
+  }
+  if (has("sprinkler") || has("interval_cover") || has("cover")) {
+    return "interval_cover_greedy";
+  }
+  if (has("bit_peel")) {
+    return "bit_peel_iterative";
+  }
+  if (has("sum_even_squares")) {
+    return "sum_even_squares_formula";
+  }
+  if (has("sum_odd_squares")) {
+    return "sum_odd_squares_formula";
+  }
+  if (has("sum_even_cubes")) {
+    return "sum_even_cubes_formula";
+  }
+  if (has("sum_odd_cubes")) {
+    return "sum_odd_cubes_formula";
+  }
+  if (has("sum_squares")) {
+    return "sum_squares_formula";
+  }
+  if (has("sum_cubes")) {
+    return "sum_cubes_formula";
+  }
+  if (has("sum_even")) {
+    return "sum_even_formula";
+  }
+  if (has("sum_odd")) {
+    return "sum_odd_formula";
+  }
+  if (has("sum")) {
+    return "sum_formula";
+  }
+  if (has("sqrt")) {
+    return "sqrt_bounded_loop";
+  }
+  return {};
+}
+
 static auto cliIntentInferGoalFromFunctionBody(
   const std::vector<std::string> &lines,
   std::size_t funcStart,
@@ -3987,6 +4102,12 @@ static auto cliIntentInferGoalFromFunctionBody(
       *goalOut = "sqrt_bounded_loop";
       return true;
     }
+  }
+
+  const auto nameGoal = cliIntentInferAutoGoalByName(entry.targetName);
+  if (!nameGoal.empty()) {
+    *goalOut = nameGoal;
+    return true;
   }
 
   if (reasonOut != nullptr) {

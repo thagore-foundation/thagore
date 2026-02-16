@@ -583,6 +583,53 @@ def runtime_registry_gate_test(cli: Path, workdir: Path) -> None:
     )
 
 
+def auto_plan_name_heuristic_test(cli: Path, workdir: Path) -> None:
+    cases = [
+        ("lower_bound_index", "lower_bound_sorted", "rule.search.lower_bound.sorted.v1"),
+        ("count_range_query", "count_range_sorted", "rule.search.count_range.sorted.v1"),
+        ("two_sum_exists", "two_sum_sorted_exists", "rule.search.two_sum.sorted.v1"),
+        ("gcd_value", "gcd_euclid", "rule.math.gcd.euclid.v1"),
+        ("fast_pow", "power_fast", "rule.math.pow.binary_exp.v1"),
+        ("prime_check", "is_prime_fast", "rule.number.prime.sqrt.v1"),
+        ("sprinkler_cover", "interval_cover_greedy", "rule.greedy.interval_cover.v1"),
+        ("sum_even_values", "sum_even_formula", "rule.math.sum_even.formula.v1"),
+    ]
+    for idx, (fn_name, expected_goal, expected_rule) in enumerate(cases, start=1):
+        src = workdir / f"auto_name_case_{idx}.tg"
+        src.write_text(
+            f"intent func {fn_name}(n: i32) -> i32:\n"
+            "    goal: auto_plan\n"
+            "    constraints:\n"
+            "        deterministic == true\n"
+            "\n"
+            f"func {fn_name}(n: i32) -> i32:\n"
+            "    return n\n"
+            "\n"
+            "func main() -> i32:\n"
+            "    print(\"AUTO_NAME_OK\")\n"
+            "    return 0\n",
+            encoding="utf-8",
+        )
+        proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
+        payload = json.loads(proc.stdout)
+        entries = payload.get("entries", [])
+        if len(entries) != 1:
+            raise SystemExit(f"FAIL: expected one entry for auto-plan name case {fn_name}")
+        entry = entries[0]
+        if entry.get("goal") != expected_goal:
+            raise SystemExit(
+                f"FAIL: auto_plan name heuristic goal mismatch for {fn_name}: "
+                f"{entry.get('goal')} != {expected_goal}"
+            )
+        if entry.get("selected_rule") != expected_rule:
+            raise SystemExit(
+                f"FAIL: auto_plan selected rule mismatch for {fn_name}: "
+                f"{entry.get('selected_rule')} != {expected_rule}"
+            )
+        if not bool(entry.get("verified", False)):
+            raise SystemExit(f"FAIL: auto-plan name case {fn_name} must be verified")
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -613,6 +660,7 @@ def main() -> int:
         strategy_pinning_test(cli, temp_root)
         intent_disable_test(cli, temp_root)
         runtime_registry_gate_test(cli, temp_root)
+        auto_plan_name_heuristic_test(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0

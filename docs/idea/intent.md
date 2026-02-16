@@ -371,6 +371,15 @@ Reference smoke:
 - checker: `scripts/intent_adaptive_smoke.py`
 - command: `py -3 scripts/intent_adaptive_smoke.py --compiler legacy/build/Release/thag.exe`
 
+Runtime auto-plan addition:
+
+- runtime intent planner now also has deterministic **function-name heuristics** when body-pattern inference is not matched.
+- this expands practical auto-plan coverage for goals like:
+  - bounds/count search families (`lower_bound`, `count_range`, ...),
+  - math/number families (`gcd`, `pow`, `prime`, `divisor`, ...),
+  - interval cover (`sprinkler/cover`),
+  - sum formula families (`sum_even`, `sum_squares`, ...).
+
 ### 11.0.1 Rule Budget And Registry Gate (new)
 
 To prevent unbounded rule growth, Stage0 now supports a deterministic rule registry gate:
