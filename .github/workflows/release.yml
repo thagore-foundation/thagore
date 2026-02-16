@@ -90,7 +90,7 @@ jobs:
             stage1_seed_name: thagore-stage1.exe
             stage_trace_file: release-stage-trace-windows.log
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.21-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.24-stage1-seed"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
       - name: Checkout

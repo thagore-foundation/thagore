@@ -64,7 +64,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.21-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.24-stage1-seed"
       STAGE_TRACE_FILE: stage-trace.log
     steps:
       - name: Checkout
@@ -602,12 +602,23 @@ jobs:
           echo "Stage trace is clean:"
           cat "$STAGE_TRACE_FILE"
 
+      - name: Upload selfhost artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-selfhost-${{ matrix.os }}
+          path: |
+            stage-trace.log
+            stage1*
+            stage2*
+            runtime/build/*
+
   native-cli-canary:
     name: native-cli-canary (ubuntu)
     runs-on: ubuntu-latest
     needs: [discord-notify-init, verify-selfhost]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.21-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.24-stage1-seed"
       STAGE_TRACE_FILE: canary-stage-trace.log
     steps:
       - name: Checkout
