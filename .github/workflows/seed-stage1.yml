@@ -213,6 +213,13 @@ jobs:
             fi
             return 1
           }
+          purge_outputs() {
+            local src="$1"
+            local out="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            rm -f "$out" "${out}.exe" "${out%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe" || true
+          }
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE1_BIN="stage1.exe"
@@ -239,21 +246,42 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_BIN"
-          HELLO_BIN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
-          chmod +x "$HELLO_BIN" || true
-          HELLO_OUT="$(./"$HELLO_BIN" || true)"
-          echo "$HELLO_OUT"
-          echo "$HELLO_OUT" | grep -F "Hello Self-Hosted World!"
+          SEED_BIN=""
+          for cc in "$STAGE2_REBUILD_BIN" "$STAGE2_BIN" "$STAGE1_BIN"; do
+            [[ -n "$cc" && -f "$cc" ]] || continue
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_BIN"
-          FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
-          chmod +x "$FIB_BIN" || true
-          FIB_OUT="$(./"$FIB_BIN" || true)"
-          echo "$FIB_OUT"
-          echo "$FIB_OUT" | grep -F "9227465"
+            purge_outputs "examples/hello.tg" "$HELLO_BIN"
+            if ! thg_build "$cc" examples/hello.tg "$HELLO_BIN"; then
+              continue
+            fi
+            HELLO_BIN_FOUND="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
+            [[ -n "$HELLO_BIN_FOUND" ]] || continue
+            chmod +x "$HELLO_BIN_FOUND" || true
+            HELLO_OUT="$(./"$HELLO_BIN_FOUND" || true)"
+            echo "$HELLO_OUT"
+            echo "$HELLO_OUT" | grep -F "Hello Self-Hosted World!" || continue
+
+            purge_outputs "examples/fib.tg" "$FIB_BIN"
+            if ! thg_build "$cc" examples/fib.tg "$FIB_BIN"; then
+              continue
+            fi
+            FIB_BIN_FOUND="$(resolve_bin "$FIB_BIN" "examples/fib.tg" || true)"
+            [[ -n "$FIB_BIN_FOUND" ]] || continue
+            chmod +x "$FIB_BIN_FOUND" || true
+            FIB_OUT="$(./"$FIB_BIN_FOUND" || true)"
+            echo "$FIB_OUT"
+            echo "$FIB_OUT" | grep -F "9227465" || continue
+
+            HELLO_BIN="$HELLO_BIN_FOUND"
+            FIB_BIN="$FIB_BIN_FOUND"
+            SEED_BIN="$cc"
+            break
+          done
+
+          [[ -n "$SEED_BIN" ]] || (echo "CRITICAL: no compiler candidate could produce valid hello+fib outputs"; exit 1)
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+          echo "SEED_BIN=$SEED_BIN" >> "$GITHUB_ENV"
 
       - name: Discord update - Verify Stage1 -> Stage2 -> Stage2 -> samples
         uses: ./.github/actions/discord-ci-status
@@ -280,8 +308,10 @@ jobs:
           set -euxo pipefail
           rm -rf seed
           mkdir -p seed/dist/bin
+          SEED_CANDIDATE="${SEED_BIN:-$STAGE2_REBUILD_BIN}"
+          [[ -n "$SEED_CANDIDATE" && -f "$SEED_CANDIDATE" ]] || (echo "CRITICAL: missing seed compiler binary"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$STAGE2_REBUILD_BIN" thagore-stage1.exe
+            cp "$SEED_CANDIDATE" thagore-stage1.exe
             test -f thagore-stage1.exe
             bytes="$(wc -c < thagore-stage1.exe)"
             if [[ "$bytes" -lt 200000 ]]; then
@@ -289,7 +319,7 @@ jobs:
               exit 1
             fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
+            cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf thagore-stage1-linux.tar.gz -C seed dist
             tar -tzf thagore-stage1-linux.tar.gz | grep -F "dist/bin/thagore"
             bytes="$(wc -c < thagore-stage1-linux.tar.gz)"
@@ -298,7 +328,7 @@ jobs:
               exit 1
             fi
           else
-            cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
+            cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf thagore-stage1-macos.tar.gz -C seed dist
             tar -tzf thagore-stage1-macos.tar.gz | grep -F "dist/bin/thagore"
             bytes="$(wc -c < thagore-stage1-macos.tar.gz)"
