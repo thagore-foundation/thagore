@@ -463,8 +463,9 @@ jobs:
             cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
           fi
           cp -R std "dist/lib/std"
+          [[ -f "bootstrap/${{ matrix.stage1_seed_name }}" ]] || (echo "CRITICAL: missing bootstrap seed asset bootstrap/${{ matrix.stage1_seed_name }}"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "${{ matrix.stage2_rebuild_bin }}" "${{ matrix.stage1_seed_name }}"
+            cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
             bytes_stage1="$(wc -c < "${{ matrix.stage1_seed_name }}")"
             if [[ "$bytes_stage1" -lt 200000 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes_stage1 bytes)."
@@ -472,12 +473,8 @@ jobs:
             fi
             tar -czf "${{ matrix.package_name }}" -C dist .
           else
-            rm -rf stage1seed
-            mkdir -p stage1seed/dist/bin
-            cp "dist/bin/${{ matrix.output_bin }}" stage1seed/dist/bin/thagore
-            cp "dist/bin/${{ matrix.output_bin }}" stage1seed/dist/bin/thag
-            tar -czf "${{ matrix.stage1_seed_name }}" -C stage1seed dist
-            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
+            cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
+            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -Eq "thagore|thag"
             bytes_stage1="$(wc -c < "${{ matrix.stage1_seed_name }}")"
             if [[ "$bytes_stage1" -lt 20000 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes_stage1 bytes)."
