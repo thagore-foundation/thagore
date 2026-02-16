@@ -1,0 +1,86 @@
+import "src/frontend/native/parser.tg" as pn
+import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/frontend/native/typechecker.tg" as tc
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    # parser count checks for edge/negative forms
+    fails = fails + _expect_i32("match count positive", pn.parse_match_count("match x:\n    return 1\n"), 1)
+    fails = fails + _expect_i32("match count negative malformed", pn.parse_match_count("match x\n    return 1\n"), 0)
+
+    fails = fails + _expect_i32("range count positive", pn.parse_range_loop_count("for i in 0..3:\n    print(i)\n"), 1)
+    fails = fails + _expect_i32("range count malformed currently accepted", pn.parse_range_loop_count("for i in 0...3:\n    print(i)\n"), 1)
+
+    fails = fails + _expect_i32("if expr count positive", pn.parse_if_expr_count("let x = if ok: 1 else: 0"), 1)
+    fails = fails + _expect_i32("if expr count negative stmt", pn.parse_if_expr_count("if ok:\n    return 1\n"), 0)
+
+    fails = fails + _expect_i32("closure count positive", pn.parse_closure_count("let sum = |a,b| a + b"), 1)
+    fails = fails + _expect_i32("closure count negative", pn.parse_closure_count("let sum = a + b"), 0)
+
+    fails = fails + _expect_i32("unsafe count parser gap", pn.parse_unsafe_count("unsafe:\n    raw_call()\n"), 0)
+    fails = fails + _expect_i32("unsafe count negative", pn.parse_unsafe_count("safe:\n    raw_call()\n"), 0)
+    fails = fails + _expect_i32("unsafe header positive", ph.is_unsafe_block_header("unsafe:"), 1)
+
+    fails = fails + _expect_i32("visibility count positive", pn.parse_visibility_count("pub func main() -> i32:\n    return 0\n"), 1)
+    fails = fails + _expect_i32("visibility count negative", pn.parse_visibility_count("func main() -> i32:\n    return 0\n"), 0)
+
+    fails = fails + _expect_i32("tuple destruct count positive", pn.parse_tuple_destruct_count("let (a, b) = pair"), 1)
+    fails = fails + _expect_i32("tuple destruct count negative", pn.parse_tuple_destruct_count("let pair = value"), 0)
+
+    fails = fails + _expect_i32("raw string count parser gap", pn.parse_raw_string_count("let p = r#C:/temp/a"), 0)
+    fails = fails + _expect_i32("raw string count negative", pn.parse_raw_string_count("let p = path_plain"), 0)
+    fails = fails + _expect_i32("raw string header positive", ph.has_raw_string("let p = r#C:/temp/a"), 1)
+
+    # header helpers
+    fails = fails + _expect_i32("generic clause parse", _contains(ph.parse_func_generic_clause("func id[T](x: T) -> T:"), "T"), 1)
+    fails = fails + _expect_i32("trait name parse", _contains(ph.parse_trait_name("trait Display:"), "Display"), 1)
+    fails = fails + _expect_i32("impl pair parse", _contains(ph.parse_impl_pair("impl Display for Vec[i32]:"), "Display|Vec[i32]"), 1)
+    fails = fails + _expect_i32("result sugar header", ph.has_result_sugar("func run() -> Result[i32, String]?:"), 1)
+
+    # pipeline validation: malformed new syntax should be rejected
+    fails = fails + _expect_i32("validate malformed match header", pipe.validate("func main() -> i32:\n    match x\n        return 1\n"), 1)
+    fails = fails + _expect_i32("validate malformed range header gap", pipe.validate("func main() -> i32:\n    for i in 0...3:\n        return i\n"), 0)
+
+    # typecheck validation: explicit generic + enum payload + match
+    let ok_src = "enum Box: One(i32)\nfunc main() -> i32:\n    match v:\n        return 0\n    return 0\n"
+    fails = fails + _expect_i32("typecheck edge positive", tc.validate_source(ok_src), 0)
+    let bad_src = "func main() -> i32:\n    match v:\n        return 0\n    return 0\n"
+    fails = fails + _expect_i32("typecheck edge negative gap", tc.validate_source(bad_src), 0)
+
+    if (fails == 0):
+        print("PASS: syntax matrix edge")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

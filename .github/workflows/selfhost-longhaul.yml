@@ -252,13 +252,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          TEST_SRC="tests/test_syntax_matrix.tg"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            TEST_BIN="test_syntax_matrix_longhaul.exe"
-          else
-            TEST_BIN="test_syntax_matrix_longhaul"
-          fi
-          rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -274,37 +267,48 @@ jobs:
           }
           build_test() {
             local cc="$1"
+            local test_src="$2"
+            local test_bin="$3"
             [[ -n "$cc" && -f "$cc" ]] || return 1
-            echo "[CMD] ./$cc build $TEST_SRC -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
-            if "./$cc" build "$TEST_SRC" -o "$TEST_BIN"; then
+            echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
+            if "./$cc" build "$test_src" -o "$test_bin"; then
               local got
-              got="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+              got="$(resolve_bin "$test_bin" "$test_src" || true)"
               if [[ -n "$got" ]]; then
                 BUILT_BIN="$got"
                 return 0
               fi
             fi
-            echo "[CMD] ./$cc --build $TEST_SRC -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
-            if "./$cc" --build "$TEST_SRC" -o "$TEST_BIN"; then
+            echo "[CMD] ./$cc --build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
+            if "./$cc" --build "$test_src" -o "$test_bin"; then
               local got2
-              got2="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+              got2="$(resolve_bin "$test_bin" "$test_src" || true)"
               if [[ -n "$got2" ]]; then
                 BUILT_BIN="$got2"
                 return 0
               fi
             fi
-            echo "[WARN] $cc returned no syntax matrix artifact in longhaul." | tee -a "$STAGE_TRACE_FILE"
+            echo "[WARN] $cc returned no syntax matrix artifact in longhaul for $test_src." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
-          BUILT_BIN=""
-          if ! build_test "$STAGE1_BIN"; then
-            echo "CRITICAL: failed to compile syntax matrix in longhaul."
-            exit 1
-          fi
-          test -n "$BUILT_BIN"
-          test -f "$BUILT_BIN"
-          chmod +x "$BUILT_BIN" || true
-          "./$BUILT_BIN"
+          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg; do
+            BASE="$(basename "$TEST_SRC" .tg)"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              TEST_BIN="${BASE}_longhaul.exe"
+            else
+              TEST_BIN="${BASE}_longhaul"
+            fi
+            rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
+            BUILT_BIN=""
+            if ! build_test "$STAGE1_BIN" "$TEST_SRC" "$TEST_BIN"; then
+              echo "CRITICAL: failed to compile syntax matrix in longhaul for $TEST_SRC."
+              exit 1
+            fi
+            test -n "$BUILT_BIN"
+            test -f "$BUILT_BIN"
+            chmod +x "$BUILT_BIN" || true
+            "./$BUILT_BIN"
+          done
 
       - name: Guard no-stage0 markers
         shell: bash

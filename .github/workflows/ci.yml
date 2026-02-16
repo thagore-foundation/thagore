@@ -491,22 +491,17 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          TEST_SRC="tests/test_syntax_matrix.tg"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            TEST_BIN="test_syntax_matrix_ci.exe"
-          else
-            TEST_BIN="test_syntax_matrix_ci"
-          fi
-          rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
           build_test() {
             local cc="$1"
+            local test_src="$2"
+            local test_bin="$3"
             [[ -n "$cc" && -f "$cc" ]] || return 1
-            echo "[CMD] ./$cc build $TEST_SRC -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" build "$TEST_SRC" -o "$TEST_BIN" || return 1
+            echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" build "$test_src" -o "$test_bin" || return 1
             local got
-            got="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+            got="$(resolve_bin "$test_bin" "$test_src" || true)"
             if [[ -z "$got" ]]; then
-              echo "[WARN] $cc returned success but no syntax matrix artifact; trying next compiler." | tee -a "$STAGE_TRACE_FILE"
+              echo "[WARN] $cc returned success but no syntax matrix artifact for $test_src; trying next compiler." | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
             BUILT_BIN="$got"
@@ -525,27 +520,36 @@ jobs:
             done
             return 1
           }
-          ok=0
-          BUILT_BIN=""
-          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
-            if build_test "$cc"; then
-              ok=1
-              break
+          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg; do
+            BASE="$(basename "$TEST_SRC" .tg)"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              TEST_BIN="${BASE}_ci.exe"
+            else
+              TEST_BIN="${BASE}_ci"
             fi
+            rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
+            ok=0
+            BUILT_BIN=""
+            for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+              if build_test "$cc" "$TEST_SRC" "$TEST_BIN"; then
+                ok=1
+                break
+              fi
+            done
+            if [[ "$ok" -ne 1 ]]; then
+              echo "CRITICAL: failed to compile syntax matrix test $TEST_SRC."
+              exit 1
+            fi
+            RUN_BIN="$BUILT_BIN"
+            if [[ -z "$RUN_BIN" ]]; then
+              echo "CRITICAL: syntax matrix binary not found after compile for $TEST_SRC."
+              ls -la || true
+              exit 1
+            fi
+            test -f "$RUN_BIN"
+            chmod +x "$RUN_BIN" || true
+            "./$RUN_BIN"
           done
-          if [[ "$ok" -ne 1 ]]; then
-            echo "CRITICAL: failed to compile syntax matrix test."
-            exit 1
-          fi
-          RUN_BIN="$BUILT_BIN"
-          if [[ -z "$RUN_BIN" ]]; then
-            echo "CRITICAL: syntax matrix binary not found after compile."
-            ls -la || true
-            exit 1
-          fi
-          test -f "$RUN_BIN"
-          chmod +x "$RUN_BIN" || true
-          "./$RUN_BIN"
 
       - name: Verify comptime lowering emit
         shell: bash
