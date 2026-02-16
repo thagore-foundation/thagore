@@ -468,6 +468,13 @@ jobs:
             [[ -n "$cc" && -f "$cc" ]] || return 1
             echo "[CMD] ./$cc build $TEST_SRC -o $TEST_BIN" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" build "$TEST_SRC" -o "$TEST_BIN" || return 1
+            local got
+            got="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+            if [[ -z "$got" ]]; then
+              echo "[WARN] $cc returned success but no syntax matrix artifact; trying next compiler." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            BUILT_BIN="$got"
             return 0
           }
           resolve_bin() {
@@ -484,6 +491,7 @@ jobs:
             return 1
           }
           ok=0
+          BUILT_BIN=""
           for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
             if build_test "$cc"; then
               ok=1
@@ -494,7 +502,7 @@ jobs:
             echo "CRITICAL: failed to compile syntax matrix test."
             exit 1
           fi
-          RUN_BIN="$(resolve_bin "$TEST_BIN" "$TEST_SRC" || true)"
+          RUN_BIN="$BUILT_BIN"
           if [[ -z "$RUN_BIN" ]]; then
             echo "CRITICAL: syntax matrix binary not found after compile."
             ls -la || true
