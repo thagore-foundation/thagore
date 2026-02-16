@@ -1,0 +1,129 @@
+import "src/frontend/native/parser.tg" as pn
+import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/frontend/native/typechecker.tg" as tc
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("got: " + got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    # 1) Enum payload (ADT-like)
+    fails = fails + _expect_i32("enum payload positive", pn.parse_enum_payload_count("enum Option: Some(i32)"), 1)
+    fails = fails + _expect_i32("enum payload negative", pn.parse_enum_payload_count("enum Option: None"), 0)
+
+    # 2) Type alias
+    fails = fails + _expect_contains("type alias positive", pn.parse_aliases("type Bytes = [i32]"), "Bytes|[i32]")
+    fails = fails + _expect_str("type alias negative", ph.parse_type_alias_name("let x = 1"), "")
+
+    # 3) Slice + array literal
+    fails = fails + _expect_i32("array literal positive", pn.parse_array_literal_count("let xs = [1,2,3]"), 1)
+    fails = fails + _expect_i32("array literal negative", pn.parse_array_literal_count("let x = y"), 0)
+    fails = fails + _expect_i32("slice expr positive", pn.parse_slice_expr_count("let h = xs[0:2]"), 1)
+    fails = fails + _expect_i32("slice expr negative", pn.parse_slice_expr_count("let h = xs[0]"), 0)
+
+    # 4) Struct init shorthand
+    fails = fails + _expect_i32("struct shorthand positive", ph.has_struct_init_shorthand("let p = Point{x, y}"), 1)
+    fails = fails + _expect_i32("struct shorthand negative", ph.has_struct_init_shorthand("let p = Point{x: x, y: y}"), 0)
+
+    # 5) Tuple + destructuring
+    fails = fails + _expect_i32("tuple destruct positive", ph.has_tuple_destructuring("let(a,b)=pair"), 1)
+    fails = fails + _expect_i32("tuple destruct negative", ph.has_tuple_destructuring("let a = pair"), 0)
+
+    # 6) match
+    fails = fails + _expect_i32("match header positive", ph.is_match_header("match value:"), 1)
+    fails = fails + _expect_i32("match header negative", ph.is_match_header("match value"), 0)
+
+    # 7) for .. in range
+    fails = fails + _expect_i32("range loop positive", ph.is_range_loop_header("for i in 0..10:"), 1)
+    fails = fails + _expect_i32("range loop negative", ph.is_range_loop_header("for i in xs:"), 0)
+
+    # 8) String interpolation
+    fails = fails + _expect_i32("string interpolation positive", pipe.validate("func main() -> i32:\n    print(v\"Value: {1}\")\n    return 0\n"), 0)
+    fails = fails + _expect_i32("string interpolation negative", pipe.validate("func main() -> i32:\n    print(v\"Value: {1})\n    return 0\n"), 1)
+
+    # 9) Loop labels
+    fails = fails + _expect_i32("loop label positive", ph.has_loop_label("outer: while i < 10:"), 1)
+    fails = fails + _expect_i32("loop label negative", ph.has_loop_label("while i < 10:"), 0)
+
+    # 10) If expression
+    fails = fails + _expect_i32("if expr positive", ph.has_if_expression("let x = if ok: 1 else: 0"), 1)
+    fails = fails + _expect_i32("if expr negative", ph.has_if_expression("if ok:\n    return 1"), 0)
+
+    # 11) Unsafe block
+    fails = fails + _expect_i32("unsafe positive", ph.is_unsafe_block_header("unsafe:"), 1)
+    fails = fails + _expect_i32("unsafe negative", ph.is_unsafe_block_header("unsafe x"), 0)
+
+    # 12) Extension impl
+    fails = fails + _expect_i32("extension impl positive", ph.is_extension_impl_header("impl Display for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("extension impl negative", ph.is_extension_impl_header("impl Vec[i32]:"), 0)
+
+    # 13) Raw string
+    fails = fails + _expect_i32("raw string positive", ph.has_raw_string("let p = r#C:\\tmp"), 1)
+    fails = fails + _expect_i32("raw string negative", ph.has_raw_string("let p = \"C:\\tmp\""), 0)
+
+    # 14) Visibility pub
+    fails = fails + _expect_i32("pub positive", _contains(ph.parse_visibility_decl("pub enum Option:"), "enum"), 1)
+    fails = fails + _expect_str("pub negative", ph.parse_visibility_decl("pub let x = 1"), "")
+
+    # 15) Closures
+    fails = fails + _expect_i32("closure positive", ph.has_closure("let f = |x| x + 1"), 1)
+    fails = fails + _expect_i32("closure negative", ph.has_closure("let f = x + 1"), 0)
+
+    # Result + ? sugar
+    fails = fails + _expect_i32("result ? positive", pipe.validate("func run() -> Result[i32, String]?:\n    return 0\n"), 0)
+    fails = fails + _expect_i32("result ? negative", pipe.validate("foo?\n"), 1)
+
+    # defer scope
+    fails = fails + _expect_i32("defer scope positive", pipe.validate("func main() -> i32:\n    defer print(1)\n    return 0\n"), 0)
+    fails = fails + _expect_i32("defer scope negative", pipe.validate("defer print(1)\n"), 1)
+
+    # comptime fold
+    let folded = pipe.preprocess("comptime func add(a: i32, b: i32) -> i32:\n    return a + b\nfunc main() -> i32:\n    let y = comptime add(40, 2)\n    return y\n")
+    fails = fails + _expect_i32("comptime fold positive", _contains(folded, "let y = 42"), 1)
+    fails = fails + _expect_i32("comptime fold negative", _contains(folded, "comptime func add"), 0)
+
+    # typecheck guard: match requires enum decl
+    fails = fails + _expect_i32("typecheck match positive", tc.validate_source("enum Option: Some(i32)\nfunc main() -> i32:\n    match value:\n        return 0\n    return 0\n"), 0)
+    fails = fails + _expect_i32("typecheck match negative", tc.validate_source("func main() -> i32:\n    match value:\n        return 0\n    return 0\n"), 1)
+
+    if (fails == 0):
+        print("PASS: syntax matrix")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

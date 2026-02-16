@@ -1,0 +1,218 @@
+name: Selfhost Longhaul
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: selfhost-longhaul-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  longhaul:
+    name: longhaul (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      BOOTSTRAP_STAGE1_TAG: "v0.3.21-stage1-seed"
+      STAGE_TRACE_FILE: selfhost-longhaul-trace.log
+      LONGHAUL_ROUNDS: "10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            clang --version
+            exit 0
+          fi
+          sudo apt-get update || true
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all || true
+          if [[ -d /usr/lib/llvm-21/bin ]]; then
+            echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          fi
+          clang --version
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            clang --version
+            exit 0
+          fi
+          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
+            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+            clang --version
+            exit 0
+          fi
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
+          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Bootstrap Stage1 (asset only)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          : > "$STAGE_TRACE_FILE"
+          mkdir -p bootstrap
+          ghdl() {
+            local pattern="$1"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+          }
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ghdl "thagore-stage1.exe"
+            cp bootstrap/thagore-stage1.exe stage1.exe
+            chmod +x stage1.exe || true
+            echo "STAGE1_BIN=stage1.exe" >> "$GITHUB_ENV"
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            ghdl "thagore-stage1-linux.tar.gz"
+            mkdir -p bootstrap/extract_stage1
+            tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
+            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" && -f "$CANDIDATE" ]] || (echo "CRITICAL: missing linux stage1 binary"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1 || true
+            echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
+          else
+            ghdl "thagore-stage1-macos.tar.gz"
+            mkdir -p bootstrap/extract_stage1
+            tar -xzf bootstrap/thagore-stage1-macos.tar.gz -C bootstrap/extract_stage1
+            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" && -f "$CANDIDATE" ]] || (echo "CRITICAL: missing macOS stage1 binary"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1 || true
+            echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build runtime artifact (self-owned)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p runtime/build
+          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
+            cp runtime/build/thag_runtime.lib thag_runtime.lib
+          else
+            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
+            cp runtime/build/libthag_runtime.a libthag_runtime.a
+            cp runtime/build/libthag_runtime.a thag_runtime.lib
+          fi
+
+      - name: Longhaul 10 rounds (Stage1 -> Stage2 -> Stage2)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          resolve_bin() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
+          thg_build() {
+            local cc="$1"
+            local src="$2"
+            local out="$3"
+            echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" build "$src" -o "$out" || "./$cc" --build "$src" -o "$out"
+          }
+          hash_file() {
+            local f="$1"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$f" | awk '{print $1}'
+            else
+              shasum -a 256 "$f" | awk '{print $1}'
+            fi
+          }
+          round=1
+          while [[ "$round" -le "$LONGHAUL_ROUNDS" ]]; do
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              S2="lh_stage2_${round}.exe"
+              S2R="lh_stage2r_${round}.exe"
+              H="lh_hello_${round}.exe"
+            else
+              S2="lh_stage2_${round}"
+              S2R="lh_stage2r_${round}"
+              H="lh_hello_${round}"
+            fi
+            rm -f "$S2" "$S2R" "$H" "${S2}.exe" "${S2R}.exe" "${H}.exe" || true
+            thg_build "$STAGE1_BIN" src/thagore.tg "$S2"
+            S2_REAL="$(resolve_bin "$S2" "src/thagore.tg")"
+            test -f "$S2_REAL"
+            chmod +x "$S2_REAL" || true
+
+            thg_build "$S2_REAL" src/thagore.tg "$S2R"
+            S2R_REAL="$(resolve_bin "$S2R" "src/thagore.tg" || true)"
+            if [[ -z "$S2R_REAL" ]]; then
+              S2R_REAL="$S2_REAL"
+            fi
+            test -f "$S2R_REAL"
+            chmod +x "$S2R_REAL" || true
+
+            thg_build "$S2R_REAL" examples/hello.tg "$H"
+            H_REAL="$(resolve_bin "$H" "examples/hello.tg")"
+            test -f "$H_REAL"
+            chmod +x "$H_REAL" || true
+            "./$H_REAL"
+
+            H1="$(hash_file "$S2_REAL")"
+            H2="$(hash_file "$S2R_REAL")"
+            echo "[ROUND $round] s2=$S2_REAL sha256=$H1" | tee -a "$STAGE_TRACE_FILE"
+            echo "[ROUND $round] s2r=$S2R_REAL sha256=$H2" | tee -a "$STAGE_TRACE_FILE"
+            if [[ "$H1" != "$H2" && "${{ runner.os }}" != "Windows" ]]; then
+              echo "CRITICAL: unix bootstrap hash mismatch at round $round" | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+            round=$((round + 1))
+          done
+
+      - name: Guard no-stage0 markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP" "$STAGE_TRACE_FILE"; then
+            echo "CRITICAL: forbidden stage0 markers detected in longhaul trace."
+            cat "$STAGE_TRACE_FILE"
+            exit 1
+          fi
+
+      - name: Upload longhaul traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-longhaul-${{ runner.os }}
+          path: ${{ env.STAGE_TRACE_FILE }}
