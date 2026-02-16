@@ -9,7 +9,6 @@
 [![LLVM](https://img.shields.io/badge/LLVM-21-262D3A?logo=llvm&logoColor=white)](https://llvm.org/)
 [![CMake](https://img.shields.io/badge/CMake-3.28+-064F8C?logo=cmake&logoColor=white)](https://cmake.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/thagore/thagore/pulls)
-[![Ask GeyWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/thagore-foundation/thagore)
 
 *Clean syntax · Native performance · Python interop*
 
