@@ -6,11 +6,11 @@ on:
       seed_tag:
         description: "Release tag for new stage1 seed assets"
         required: true
-        default: "v0.3.23-stage1-seed"
+        default: "v0.3.25-stage1-seed"
       base_seed_tag:
         description: "Existing stage1 seed tag used for bootstrap"
         required: true
-        default: "v0.3.24-stage1-seed"
+        default: "v0.3.21-stage1-seed"
 
 permissions:
   actions: read
@@ -203,10 +203,6 @@ jobs:
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             "./$cc" --build "$src" -o "$out"
             got="$(resolve_bin "$out" "$src" || true)"
-            if [[ -z "$got" && -f "$cc" ]]; then
-              cp "$cc" "$out" || true
-              got="$(resolve_bin "$out" "$src" || true)"
-            fi
             [[ -n "$got" ]]
           }
 
@@ -238,12 +234,16 @@ jobs:
           thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_BIN"
           HELLO_BIN="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
           chmod +x "$HELLO_BIN" || true
-          "./$HELLO_BIN"
+          HELLO_OUT="$(./"$HELLO_BIN" || true)"
+          echo "$HELLO_OUT"
+          echo "$HELLO_OUT" | grep -F "Hello Self-Hosted World!"
 
           thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_BIN"
           FIB_BIN="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
           chmod +x "$FIB_BIN" || true
-          "./$FIB_BIN"
+          FIB_OUT="$(./"$FIB_BIN" || true)"
+          echo "$FIB_OUT"
+          echo "$FIB_OUT" | grep -F "9227465"
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
 
@@ -274,12 +274,30 @@ jobs:
           mkdir -p seed/dist/bin
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" thagore-stage1.exe
+            test -f thagore-stage1.exe
+            bytes="$(wc -c < thagore-stage1.exe)"
+            if [[ "$bytes" -lt 200000 ]]; then
+              echo "CRITICAL: thagore-stage1.exe too small ($bytes bytes), abort publish."
+              exit 1
+            fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
             tar -czf thagore-stage1-linux.tar.gz -C seed dist
+            tar -tzf thagore-stage1-linux.tar.gz | grep -F "dist/bin/thagore"
+            bytes="$(wc -c < thagore-stage1-linux.tar.gz)"
+            if [[ "$bytes" -lt 20000 ]]; then
+              echo "CRITICAL: thagore-stage1-linux.tar.gz too small ($bytes bytes), abort publish."
+              exit 1
+            fi
           else
             cp "$STAGE2_REBUILD_BIN" seed/dist/bin/thagore
             tar -czf thagore-stage1-macos.tar.gz -C seed dist
+            tar -tzf thagore-stage1-macos.tar.gz | grep -F "dist/bin/thagore"
+            bytes="$(wc -c < thagore-stage1-macos.tar.gz)"
+            if [[ "$bytes" -lt 20000 ]]; then
+              echo "CRITICAL: thagore-stage1-macos.tar.gz too small ($bytes bytes), abort publish."
+              exit 1
+            fi
           fi
 
       - name: Discord update - Package stage1 seed artifact from stage2_rebuild
