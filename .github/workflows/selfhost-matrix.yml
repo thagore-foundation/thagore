@@ -551,6 +551,32 @@ jobs:
           name: syntax-matrix-report-selfhost-${{ runner.os }}
           path: syntax-matrix-report.txt
 
+      - name: Validate syntax matrix report contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="syntax-matrix-report.txt"
+          test -f "$REPORT"
+          grep -q '^runner_os=' "$REPORT"
+          grep -q '^seed_tag=' "$REPORT"
+          REQUIRED_TESTS=(
+            "tests/test_syntax_matrix.tg"
+            "tests/test_syntax_matrix_edge.tg"
+            "tests/test_syntax_matrix_negative.tg"
+          )
+          for t in "${REQUIRED_TESTS[@]}"; do
+            if ! grep -q "^PASS|${t}|" "$REPORT"; then
+              echo "CRITICAL: missing PASS entry for ${t} in ${REPORT}"
+              cat "$REPORT"
+              exit 1
+            fi
+          done
+          if grep -q '^FAIL|' "$REPORT"; then
+            echo "CRITICAL: FAIL rows found in ${REPORT}"
+            cat "$REPORT"
+            exit 1
+          fi
+
       - name: Canary match-negative typecheck (non-blocking, Windows)
         if: runner.os == 'Windows'
         continue-on-error: true
