@@ -339,6 +339,34 @@ jobs:
             echo "SYNTAX|$TEST_SRC|status=pass|binary=$BUILT_BIN" >> "$SOAK_REPORT_FILE"
           done
 
+      - name: Validate soak report contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$SOAK_REPORT_FILE"
+          test -f "$REPORT"
+          grep -q '^runner_os=' "$REPORT"
+          grep -q '^seed_tag=' "$REPORT"
+          grep -q '^rounds=' "$REPORT"
+          REQUIRED_TESTS=(
+            "tests/test_syntax_matrix.tg"
+            "tests/test_syntax_matrix_edge.tg"
+            "tests/test_syntax_matrix_negative.tg"
+          )
+          for t in "${REQUIRED_TESTS[@]}"; do
+            if ! grep -q "^SYNTAX|${t}|status=pass|" "$REPORT"; then
+              echo "CRITICAL: missing SYNTAX pass entry for ${t}"
+              cat "$REPORT"
+              exit 1
+            fi
+          done
+          PASS_ROUNDS="$(grep -Ec '^ROUND\|[0-9]+\|status=pass$' "$REPORT" || true)"
+          if [[ "${PASS_ROUNDS}" -ne "${LONGHAUL_ROUNDS}" ]]; then
+            echo "CRITICAL: pass rounds mismatch, got=${PASS_ROUNDS}, expect=${LONGHAUL_ROUNDS}"
+            cat "$REPORT"
+            exit 1
+          fi
+
       - name: Guard no-stage0 markers
         shell: bash
         run: |
