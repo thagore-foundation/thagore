@@ -361,6 +361,33 @@ Reference smoke:
 - checker: `scripts/intent_adaptive_smoke.py`
 - command: `py -3 scripts/intent_adaptive_smoke.py --compiler legacy/build/Release/thag.exe`
 
+### 11.0.1 Rule Budget And Registry Gate (new)
+
+To prevent unbounded rule growth, Stage0 now supports a deterministic rule registry gate:
+
+- registry file: `docs/idea/intent_rule_registry.txt`
+- controls:
+  - `budget.total=<N>` global rewrite-family budget,
+  - `budget.family.<family>=<N>` per-family cap,
+  - `rule=<rule.id>` allowlist (only listed rules are eligible).
+- runtime behavior:
+  - if selected rule is not in registry -> rewrite skipped with `registry-rule-disabled`,
+  - if global/family budget is exhausted -> rewrite skipped with explicit reason.
+
+Environment override:
+
+- `THAG_INTENT_REGISTRY=<path>` to use a custom registry file.
+
+CI/static gate script:
+
+- `scripts/intent_budget_gate.py`
+- command: `python scripts/intent_budget_gate.py`
+
+The gate verifies:
+
+- driver rule set matches registry allowlist,
+- total and per-family caps are not exceeded.
+
 ### 11.1 Visual Example: Sprinkler Cover
 
 Problem shape:
@@ -515,8 +542,8 @@ Benchmark command:
 Measured benchmark in this repo (same machine/session):
 
 - native median: `0.322789s`
-- intent median: `0.071002s`
-- speedup: `4.55x` (median)
+- intent median: `0.083727s`
+- speedup: `4.24x` (median)
 
 This example shows a real asymptotic rewrite from nested scan (`O(n^2)`) to two pointers (`O(n)`) on sorted data.
 

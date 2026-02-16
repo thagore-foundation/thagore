@@ -29,8 +29,10 @@
 #endif
 #include <optional>
 #include <sstream>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace thagore {
 namespace {
@@ -46,6 +48,9 @@ struct IntentPreprocessResult {
   std::unordered_map<std::string, IntentDirective> functionDirectives {};
   std::size_t rewritesApplied {0};
 };
+
+auto trimCopy(std::string_view text) -> std::string;
+auto toLowerCopy(std::string_view text) -> std::string;
 
 auto intentTraceEnabled() -> bool {
   const char *env = std::getenv("THAG_INTENT_TRACE");
@@ -63,6 +68,131 @@ auto autoOptEnabled() -> bool {
     return true;
   }
   return env[0] != '0';
+}
+
+struct IntentRuleRegistry {
+  bool enabled {false};
+  std::size_t totalBudget {std::numeric_limits<std::size_t>::max()};
+  std::unordered_map<std::string, std::size_t> familyBudget {};
+  std::unordered_set<std::string> allowedRules {};
+  std::filesystem::path sourcePath {};
+};
+
+auto deriveRuleFamily(std::string_view ruleId) -> std::string {
+  constexpr std::string_view prefix = "rule.";
+  if (!ruleId.starts_with(prefix)) {
+    return "misc";
+  }
+  const auto rem = ruleId.substr(prefix.size());
+  const auto dot = rem.find('.');
+  if (dot == std::string_view::npos || dot == 0) {
+    return "misc";
+  }
+  return std::string(rem.substr(0, dot));
+}
+
+auto parseUnsigned(std::string_view text) -> std::optional<std::size_t> {
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (char ch : text) {
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+auto resolveDefaultIntentRegistryPath() -> std::optional<std::filesystem::path> {
+  std::error_code ec {};
+  auto cur = std::filesystem::current_path(ec);
+  if (ec) {
+    return std::nullopt;
+  }
+  for (int depth = 0; depth < 8; ++depth) {
+    const auto candidate = cur / "docs" / "idea" / "intent_rule_registry.txt";
+    if (std::filesystem::exists(candidate, ec) && !ec) {
+      return candidate;
+    }
+    if (!cur.has_parent_path()) {
+      break;
+    }
+    const auto parent = cur.parent_path();
+    if (parent == cur) {
+      break;
+    }
+    cur = parent;
+  }
+  return std::nullopt;
+}
+
+auto loadIntentRuleRegistry() -> std::optional<IntentRuleRegistry> {
+  std::filesystem::path path {};
+  if (const char *env = std::getenv("THAG_INTENT_REGISTRY"); env != nullptr && env[0] != '\0') {
+    path = env;
+  } else {
+    const auto resolved = resolveDefaultIntentRegistryPath();
+    if (!resolved.has_value()) {
+      return std::nullopt;
+    }
+    path = *resolved;
+  }
+
+  std::ifstream in(path);
+  if (!in.is_open()) {
+    return std::nullopt;
+  }
+
+  IntentRuleRegistry reg {};
+  reg.enabled = true;
+  reg.sourcePath = path;
+
+  std::string line {};
+  while (std::getline(in, line)) {
+    auto t = line;
+    if (!t.empty() && t.back() == '\r') {
+      t.pop_back();
+    }
+    t = trimCopy(t);
+    if (t.empty() || t.starts_with("#")) {
+      continue;
+    }
+    if (t.starts_with("enabled=")) {
+      const auto v = trimCopy(std::string_view(t).substr(8));
+      reg.enabled = !(v == "0" || toLowerCopy(v) == "false");
+      continue;
+    }
+    if (t.starts_with("budget.total=")) {
+      const auto v = parseUnsigned(trimCopy(std::string_view(t).substr(13)));
+      if (v.has_value()) {
+        reg.totalBudget = *v;
+      }
+      continue;
+    }
+    if (t.starts_with("budget.family.")) {
+      const auto eq = t.find('=');
+      if (eq == std::string::npos || eq <= 14 || eq + 1 >= t.size()) {
+        continue;
+      }
+      const auto family = trimCopy(std::string_view(t).substr(14, eq - 14));
+      const auto value = parseUnsigned(trimCopy(std::string_view(t).substr(eq + 1)));
+      if (!family.empty() && value.has_value()) {
+        reg.familyBudget[family] = *value;
+      }
+      continue;
+    }
+    if (t.starts_with("rule=")) {
+      const auto id = trimCopy(std::string_view(t).substr(5));
+      if (!id.empty()) {
+        reg.allowedRules.insert(id);
+      }
+      continue;
+    }
+  }
+
+  return reg;
 }
 
 auto trimCopy(std::string_view text) -> std::string {
@@ -2377,6 +2507,19 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
 
   std::vector<std::string> rewritten {};
   rewritten.reserve(stripped.size() + 16);
+  const auto ruleRegistry = loadIntentRuleRegistry();
+  const bool ruleRegistryEnabled = ruleRegistry.has_value() && ruleRegistry->enabled;
+  std::unordered_map<std::string, std::size_t> appliedFamilyCount {};
+  if (ruleRegistryEnabled && intentTraceEnabled()) {
+    std::cout << std::format(
+      "thag: intent registry enabled path={} total_budget={} rules={}\n",
+      ruleRegistry->sourcePath.string(),
+      ruleRegistry->totalBudget == std::numeric_limits<std::size_t>::max()
+        ? std::string("unbounded")
+        : std::to_string(ruleRegistry->totalBudget),
+      ruleRegistry->allowedRules.size()
+    );
+  }
   i = 0;
   while (i < stripped.size()) {
     const auto line = stripped[i];
@@ -2411,6 +2554,8 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
     std::string selectedStrategy {};
     std::string skipReason {};
     std::string selectionSource {};
+    std::string selectedRule {};
+    std::string selectedFamily {};
     if (directiveIt != result.functionDirectives.end()) {
       selectedGoal = directiveIt->second.goal;
       selectedStrategy = directiveIt->second.strategy;
@@ -2453,6 +2598,29 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       if (!inferred.detectedGoal.empty()) {
         selectedGoal = inferred.detectedGoal;
         selectionSource = "auto-detect-body";
+      }
+    }
+
+    if (rewriteKind != IntentRewriteKind::None) {
+      selectedRule = std::string(rewriteRuleId(rewriteKind));
+      selectedFamily = deriveRuleFamily(selectedRule);
+      if (ruleRegistryEnabled) {
+        const auto &reg = *ruleRegistry;
+        if (!reg.allowedRules.empty() && reg.allowedRules.find(selectedRule) == reg.allowedRules.end()) {
+          skipReason = "registry-rule-disabled";
+          rewriteKind = IntentRewriteKind::None;
+        } else if (reg.totalBudget != std::numeric_limits<std::size_t>::max()
+                   && result.rewritesApplied >= reg.totalBudget) {
+          skipReason = "registry-total-budget-exceeded";
+          rewriteKind = IntentRewriteKind::None;
+        } else {
+          const auto limitIt = reg.familyBudget.find(selectedFamily);
+          if (limitIt != reg.familyBudget.end()
+              && appliedFamilyCount[selectedFamily] >= limitIt->second) {
+            skipReason = std::format("registry-family-budget-exceeded:{}", selectedFamily);
+            rewriteKind = IntentRewriteKind::None;
+          }
+        }
       }
     }
 
@@ -2785,6 +2953,9 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
       } else {
         std::cout << std::format("thag: rewrite applied fn={}\n", fnName);
       }
+    }
+    if (ruleRegistryEnabled && !selectedFamily.empty()) {
+      appliedFamilyCount[selectedFamily] += 1;
     }
     result.rewritesApplied += 1;
     i = j;
