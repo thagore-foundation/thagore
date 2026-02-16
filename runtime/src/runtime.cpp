@@ -68,10 +68,12 @@ struct IntentEntry {
   std::string kind {};
   std::string targetName {};
   std::string goal {};
+  std::string strategy {};
   std::vector<std::string> constraints {};
   std::vector<std::string> examples {};
   int line {0};
   bool hasGoal {false};
+  bool hasStrategy {false};
   bool hasConstraintsHeader {false};
   bool hasExamplesHeader {false};
 };
@@ -2725,6 +2727,118 @@ static auto cliIntentGoalSupported(const std::string &goal) -> bool {
   return std::find(goals.begin(), goals.end(), goal) != goals.end();
 }
 
+static auto cliIntentRuleIdFromStrategy(std::string_view rawStrategy) -> std::optional<std::string> {
+  std::string strategy = std::string(trim(rawStrategy));
+  for (char &ch : strategy) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  if (strategy.empty()) {
+    return std::nullopt;
+  }
+  if (strategy == "dp.fibonacci.iterative" || strategy == "dp.fib.v1") {
+    return std::string("rule.fibonacci_dp.iterative.v1");
+  }
+  if (strategy == "dp.tribonacci.iterative" || strategy == "dp.trib.v1") {
+    return std::string("rule.dp.trib.iterative.v1");
+  }
+  if (strategy == "math.factorial.iterative" || strategy == "math.factorial.loop.v1") {
+    return std::string("rule.math.factorial.loop.v1");
+  }
+  if (strategy == "math.pow.binary_exp" || strategy == "pow.binary_exp" || strategy == "math.pow.fast.v1") {
+    return std::string("rule.math.pow.binary_exp.v1");
+  }
+  if (strategy == "math.gcd.euclid" || strategy == "math.gcd.modulo.v1") {
+    return std::string("rule.math.gcd.euclid.v1");
+  }
+  if (strategy == "number.prime.sqrt" || strategy == "number.prime.sqrt.v1") {
+    return std::string("rule.number.prime.sqrt.v1");
+  }
+  if (strategy == "number.divisors.sqrt" || strategy == "number.divisors.sqrt.v1") {
+    return std::string("rule.number.divisors.sqrt.v1");
+  }
+  if (strategy == "greedy.sweep.v1" || strategy == "greedy.sweep.interval_cover.v1"
+      || strategy == "greedy.interval_cover.v1") {
+    return std::string("rule.greedy.interval_cover.v1");
+  }
+  if (strategy == "search.binary.v1" || strategy == "search.binary.sorted.v1") {
+    return std::string("rule.search.binary.sorted.v1");
+  }
+  if (strategy == "search.lower_bound.v1" || strategy == "search.lower_bound.sorted.v1") {
+    return std::string("rule.search.lower_bound.sorted.v1");
+  }
+  if (strategy == "search.upper_bound.v1" || strategy == "search.upper_bound.sorted.v1") {
+    return std::string("rule.search.upper_bound.sorted.v1");
+  }
+  if (strategy == "search.count_less.v1" || strategy == "search.count_less.sorted.v1") {
+    return std::string("rule.search.count_less.sorted.v1");
+  }
+  if (strategy == "search.count_less_equal.v1" || strategy == "search.count_less_equal.sorted.v1"
+      || strategy == "search.count_le.v1") {
+    return std::string("rule.search.count_less_equal.sorted.v1");
+  }
+  if (strategy == "search.count_greater.v1" || strategy == "search.count_greater.sorted.v1"
+      || strategy == "search.count_gt.v1") {
+    return std::string("rule.search.count_greater.sorted.v1");
+  }
+  if (strategy == "search.count_greater_equal.v1" || strategy == "search.count_greater_equal.sorted.v1"
+      || strategy == "search.count_ge.v1") {
+    return std::string("rule.search.count_greater_equal.sorted.v1");
+  }
+  if (strategy == "search.count_equal.v1" || strategy == "search.count_equal.sorted.v1") {
+    return std::string("rule.search.count_equal.sorted.v1");
+  }
+  if (strategy == "search.count_not_equal.v1" || strategy == "search.count_not_equal.sorted.v1"
+      || strategy == "search.count_ne.v1") {
+    return std::string("rule.search.count_not_equal.sorted.v1");
+  }
+  if (strategy == "search.count_range.v1" || strategy == "search.count_range.sorted.v1") {
+    return std::string("rule.search.count_range.sorted.v1");
+  }
+  if (strategy == "search.count_outside_range.v1" || strategy == "search.count_outside_range.sorted.v1") {
+    return std::string("rule.search.count_outside_range.sorted.v1");
+  }
+  if (strategy == "search.two_sum.v1" || strategy == "search.two_sum.sorted.v1") {
+    return std::string("rule.search.two_sum.sorted.v1");
+  }
+  if (strategy == "number.bit_peel.iterative" || strategy == "number.bit_peel.fold.v1") {
+    return std::string("rule.number.bit_peel.iterative.v1");
+  }
+  if (strategy == "math.sum.formula.v1") {
+    return std::string("rule.math.sum.formula.v1");
+  }
+  if (strategy == "math.sum_squares.formula.v1") {
+    return std::string("rule.math.sum_squares.formula.v1");
+  }
+  if (strategy == "math.sum_cubes.formula.v1") {
+    return std::string("rule.math.sum_cubes.formula.v1");
+  }
+  if (strategy == "math.sum_even_squares.formula.v1") {
+    return std::string("rule.math.sum_even_squares.formula.v1");
+  }
+  if (strategy == "math.sum_odd_squares.formula.v1") {
+    return std::string("rule.math.sum_odd_squares.formula.v1");
+  }
+  if (strategy == "math.sum_even_cubes.formula.v1") {
+    return std::string("rule.math.sum_even_cubes.formula.v1");
+  }
+  if (strategy == "math.sum_odd_cubes.formula.v1") {
+    return std::string("rule.math.sum_odd_cubes.formula.v1");
+  }
+  if (strategy == "math.sum_even.formula.v1") {
+    return std::string("rule.math.sum_even.formula.v1");
+  }
+  if (strategy == "math.sum_odd.formula.v1") {
+    return std::string("rule.math.sum_odd.formula.v1");
+  }
+  if (strategy == "math.sqrt.newton.v1") {
+    return std::string("rule.sqrt_bounded_loop.mul_guard.v2");
+  }
+  if (strategy == "search.identity.bounds.v1") {
+    return std::string("rule.search_element.binary_iter.v2");
+  }
+  return std::nullopt;
+}
+
 static auto cliIntentHashHex(const std::string &text) -> std::string {
   std::uint64_t hash = 1469598103934665603ull;
   for (unsigned char ch : text) {
@@ -3338,9 +3452,73 @@ static auto cliIntentSelectPlanForEntry(
     planOut->candidateRules.push_back(rule.id);
   }
 
+  const auto target = cliIntentTargetFingerprint();
+  auto finalizeVerifiedPlan = [&](const IntentRuleInfo &rule) {
+    std::string constraintBlob {};
+    for (const auto &constraint : entry.constraints) {
+      constraintBlob += constraint;
+      constraintBlob.push_back('\n');
+    }
+    std::string verifyBlob {};
+    verifyBlob += entry.goal;
+    verifyBlob.push_back('|');
+    verifyBlob += rule.id;
+    verifyBlob.push_back('|');
+    verifyBlob += target;
+    verifyBlob.push_back('|');
+    verifyBlob += constraintBlob;
+    for (const auto &example : entry.examples) {
+      verifyBlob += example;
+      verifyBlob.push_back('\n');
+    }
+
+    planOut->selectedRule = rule.id;
+    planOut->verified = true;
+    planOut->verifyReason = "ok";
+    planOut->constraintsDigest = cliIntentDigest(constraintBlob);
+    planOut->verificationDigest = cliIntentDigest(verifyBlob);
+  };
+
+  if (!entry.strategy.empty()) {
+    const auto pinnedRuleId = cliIntentRuleIdFromStrategy(entry.strategy);
+    if (!pinnedRuleId.has_value()) {
+      if (errorOut != nullptr) {
+        *errorOut = "unsupported strategy `" + entry.strategy + "`";
+      }
+      planOut->selectedRule = "rule.unsupported";
+      planOut->verified = false;
+      planOut->verifyReason = "unsupported strategy";
+      return false;
+    }
+
+    IntentRuleInfo pinnedRule {};
+    if (!cliIntentFindRuleById(rules, *pinnedRuleId, &pinnedRule)) {
+      if (errorOut != nullptr) {
+        *errorOut = "strategy `" + entry.strategy + "` is not compatible with goal `" + entry.goal + "`";
+      }
+      planOut->selectedRule = *pinnedRuleId;
+      planOut->verified = false;
+      planOut->verifyReason = "strategy-goal-mismatch";
+      return false;
+    }
+
+    std::string verifyReason {};
+    planOut->candidateCount = 1;
+    if (!cliIntentVerifyRuleConstraints(pinnedRule, entry, &verifyReason)) {
+      if (errorOut != nullptr) {
+        *errorOut = verifyReason;
+      }
+      planOut->selectedRule = pinnedRule.id;
+      planOut->verified = false;
+      planOut->verifyReason = verifyReason;
+      return false;
+    }
+    finalizeVerifiedPlan(pinnedRule);
+    return true;
+  }
+
   std::vector<std::pair<int, std::string>> scored {};
   const std::size_t cap = mode == "min" ? std::min<std::size_t>(2, rules.size()) : rules.size();
-  const auto target = cliIntentTargetFingerprint();
   for (std::size_t i = 0; i < cap; ++i) {
     scored.emplace_back(cliIntentScoreRule(rules[i], entry, mode, target), rules[i].id);
   }
@@ -3360,29 +3538,7 @@ static auto cliIntentSelectPlanForEntry(
     }
     std::string verifyReason {};
     if (cliIntentVerifyRuleConstraints(rule, entry, &verifyReason)) {
-      std::string constraintBlob {};
-      for (const auto &constraint : entry.constraints) {
-        constraintBlob += constraint;
-        constraintBlob.push_back('\n');
-      }
-      std::string verifyBlob {};
-      verifyBlob += entry.goal;
-      verifyBlob.push_back('|');
-      verifyBlob += rule.id;
-      verifyBlob.push_back('|');
-      verifyBlob += target;
-      verifyBlob.push_back('|');
-      verifyBlob += constraintBlob;
-      for (const auto &example : entry.examples) {
-        verifyBlob += example;
-        verifyBlob.push_back('\n');
-      }
-
-      planOut->selectedRule = rule.id;
-      planOut->verified = true;
-      planOut->verifyReason = "ok";
-      planOut->constraintsDigest = cliIntentDigest(constraintBlob);
-      planOut->verificationDigest = cliIntentDigest(verifyBlob);
+      finalizeVerifiedPlan(rule);
       return true;
     }
     lastReason = verifyReason;
@@ -3505,6 +3661,16 @@ static void cliIntentParseEntries(
         if (!goalText.empty()) {
           entry.goal = std::string(goalText);
           entry.hasGoal = true;
+        }
+        constraintsIndent = -1;
+        examplesIndent = -1;
+        continue;
+      }
+      if (startsWith(body, "strategy:")) {
+        const auto strategyText = trim(body.substr(9));
+        if (!strategyText.empty()) {
+          entry.strategy = std::string(strategyText);
+          entry.hasStrategy = true;
         }
         constraintsIndent = -1;
         examplesIndent = -1;
@@ -4520,7 +4686,18 @@ static auto cliIntentExplain(const std::string &entryPath, bool asJson, const st
       const auto &entry = entries[i];
       const auto &plan = plans[i];
       const bool matched = cliIntentGoalSupported(entry.goal);
-      std::printf("  - %s line=%d kind=%s goal=%s\n", entry.id.c_str(), entry.line, entry.kind.c_str(), entry.goal.c_str());
+      if (entry.strategy.empty()) {
+        std::printf("  - %s line=%d kind=%s goal=%s\n", entry.id.c_str(), entry.line, entry.kind.c_str(), entry.goal.c_str());
+      } else {
+        std::printf(
+          "  - %s line=%d kind=%s goal=%s strategy=%s\n",
+          entry.id.c_str(),
+          entry.line,
+          entry.kind.c_str(),
+          entry.goal.c_str(),
+          entry.strategy.c_str()
+        );
+      }
       std::printf("    constraints=%d examples=%d matched=%s selected_rule=%s verify=%s\n",
         static_cast<int>(entry.constraints.size()),
         static_cast<int>(entry.examples.size()),
@@ -4545,6 +4722,9 @@ static auto cliIntentExplain(const std::string &entryPath, bool asJson, const st
     out += "      \"line\": " + std::to_string(entry.line) + ",\n";
     out += "      \"kind\": \"" + cliJsonEscape(entry.kind) + "\",\n";
     out += "      \"goal\": \"" + cliJsonEscape(entry.goal) + "\",\n";
+    if (!entry.strategy.empty()) {
+      out += "      \"strategy\": \"" + cliJsonEscape(entry.strategy) + "\",\n";
+    }
     out += "      \"matched\": " + std::string(matched ? "true" : "false") + ",\n";
     out += "      \"selected_rule\": \"" + cliJsonEscape(plan.selectedRule) + "\",\n";
     out += "      \"verified\": " + std::string(plan.verified ? "true" : "false") + ",\n";
