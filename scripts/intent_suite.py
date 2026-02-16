@@ -409,6 +409,67 @@ def tribonacci_rewrite_smoke(cli: Path, workdir: Path) -> None:
         raise SystemExit("FAIL: tribonacci rewrite note was not emitted")
 
 
+def strategy_pinning_test(cli: Path, workdir: Path) -> None:
+    src = workdir / "strategy_pin_ok.tg"
+    src.write_text(
+        "intent func fib(n: i32) -> i32:\n"
+        "    goal: fibonacci_dp\n"
+        "    strategy: dp.fib.v1\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func fib(n: i32) -> i32:\n"
+        "    if (n < 2):\n"
+        "        return n\n"
+        "    return fib(n - 1) + fib(n - 2)\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"STRATEGY_PIN_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
+    payload = json.loads(proc.stdout)
+    entries = payload.get("entries", [])
+    if len(entries) != 1:
+        raise SystemExit("FAIL: expected one intent entry for strategy pin test")
+    entry = entries[0]
+    if entry.get("selected_rule") != "rule.fibonacci_dp.iterative.v1":
+        raise SystemExit("FAIL: strategy pin dp.fib.v1 did not force rule.fibonacci_dp.iterative.v1")
+    if not bool(entry.get("verified", False)):
+        raise SystemExit("FAIL: strategy pin selected rule must be verified")
+
+    bad_unknown = workdir / "strategy_pin_unknown.tg"
+    bad_unknown.write_text(
+        "intent block:\n"
+        "    goal: fibonacci_dp\n"
+        "    strategy: totally.unknown.strategy\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"BAD\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    run_cmd([str(cli), "intent", "lock", str(bad_unknown), "--mode=max"], expect=1)
+
+    bad_mismatch = workdir / "strategy_pin_mismatch.tg"
+    bad_mismatch.write_text(
+        "intent block:\n"
+        "    goal: fibonacci_dp\n"
+        "    strategy: search.binary.v1\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"BAD\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    run_cmd([str(cli), "intent", "lock", str(bad_mismatch), "--mode=max"], expect=1)
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -436,6 +497,7 @@ def main() -> int:
         strict_lock_gate_test(cli, temp_root)
         policy_presets_test(cli, temp_root)
         tribonacci_rewrite_smoke(cli, temp_root)
+        strategy_pinning_test(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0

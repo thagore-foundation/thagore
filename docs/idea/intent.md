@@ -59,6 +59,7 @@ intent func cover_plants(...) -> i32:
 
 - `goal`: choose algorithm family (or `auto_plan`).
 - `strategy`: optional strategy pinning; when present, strategy selection is locked to that rule id.
+  - runtime CLI enforces this pin deterministically and fails if strategy is unknown or incompatible with the selected goal.
 - disable per function:
 
 ```tg
