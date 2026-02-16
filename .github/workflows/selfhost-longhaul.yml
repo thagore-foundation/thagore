@@ -291,7 +291,7 @@ jobs:
             echo "[WARN] $cc returned no syntax matrix artifact in longhaul for $test_src." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
-          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg; do
+          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg tests/test_syntax_matrix_negative.tg; do
             BASE="$(basename "$TEST_SRC" .tg)"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               TEST_BIN="${BASE}_longhaul.exe"
