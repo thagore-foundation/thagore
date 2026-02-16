@@ -40,9 +40,11 @@ func _feature_count(feature_set: String, feature: String) -> i32:
 
 func _validate_match_usage(feature_set: String, enum_table: String, source: String) -> i32:
     let has_match = _has_feature(feature_set, "match")
+    let match_count = parser.parse_match_count(source)
     if (has_match == 0):
-        if (_contains(source, "match ") == 0):
-            return 0
+        if (match_count == 0):
+            if (_contains(source, "match") == 0):
+                return 0
     if (enum_table == ";"):
         print("Typecheck error: `match` requires at least one enum declaration.")
         return 1

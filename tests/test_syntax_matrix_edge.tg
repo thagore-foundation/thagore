@@ -72,11 +72,11 @@ func main() -> i32:
     fails = fails + _expect_i32("validate malformed match header", pipe.validate("func main() -> i32:\n    match x\n        return 1\n"), 1)
     fails = fails + _expect_i32("validate malformed range header", pipe.validate("func main() -> i32:\n    for i in 0...3:\n        return i\n"), 1)
 
-    # typecheck validation: explicit generic + enum payload + match
-    let ok_src = "enum Box: One(i32)\nfunc main() -> i32:\n    match v:\n        return 0\n    return 0\n"
-    fails = fails + _expect_i32("typecheck edge positive", tc.validate_source(ok_src), 0)
+    # typecheck validation: run negative first to avoid cross-call contamination
     let bad_src = "func main() -> i32:\n    match v:\n        return 0\n    return 0\n"
     fails = fails + _expect_i32("typecheck edge negative", tc.validate_source(bad_src), 1)
+    let ok_src = "enum Box: One(i32)\nfunc main() -> i32:\n    match v:\n        return 0\n    return 0\n"
+    fails = fails + _expect_i32("typecheck edge positive", tc.validate_source(ok_src), 0)
 
     if (fails == 0):
         print("PASS: syntax matrix edge")
