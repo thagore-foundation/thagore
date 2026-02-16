@@ -22,8 +22,8 @@
 - `cmake -B legacy/build -DBUILD_TESTING=ON && ctest --test-dir legacy/build --output-on-failure`: run C++ tests.
 
 ## Bootstrap & Release Policy
-- Unix (`ubuntu`, `macos`) is **Stage1-only bootstrap** in CI/Release. Do not add Stage0 fallback there.
-- Windows may use Stage0 fallback only when `ALLOW_STAGE0_BOOTSTRAP=true`.
+- CI/Release is **Stage1-only bootstrap** on all OS. Do not add Stage0 fallback branches.
+- Local scripts may use Stage0 only when `ALLOW_STAGE0_BOOTSTRAP=true` is explicitly set.
 - Seed tag for bootstrap assets: `v0.3.24-stage1-seed`.
 - Stage1 seed archives must support both binaries:
   - `bin/thagore`

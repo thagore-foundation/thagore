@@ -12,16 +12,22 @@ INTENT_SRC = ROOT / "examples" / "intent_real_ultra_pack_intent.tg"
 
 
 def detect_compiler() -> Path:
+    allow_stage0 = os.environ.get("ALLOW_STAGE0_BOOTSTRAP", "").strip().lower() in {"1", "true", "yes"}
     candidates = [
-        ROOT / "legacy" / "stage0.exe",
-        ROOT / "legacy" / "stage0",
         ROOT / "stage2.exe",
         ROOT / "stage2",
     ]
+    if allow_stage0:
+        candidates.extend([ROOT / "legacy" / "stage0.exe", ROOT / "legacy" / "stage0"])
     for c in candidates:
         if c.exists():
             return c
-    raise SystemExit("FAIL: compiler not found")
+    if allow_stage0:
+        raise SystemExit("FAIL: compiler not found (expected stage2(.exe) or legacy/stage0(.exe))")
+    raise SystemExit(
+        "FAIL: compiler not found (expected stage2(.exe)). "
+        "Set ALLOW_STAGE0_BOOTSTRAP=1 to allow legacy/stage0 fallback."
+    )
 
 
 def run_checked(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

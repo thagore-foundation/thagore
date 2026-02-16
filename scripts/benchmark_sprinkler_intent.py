@@ -11,16 +11,22 @@ INTENT_SRC = ROOT / "examples" / "sprinkler_cover_intent.tg"
 
 
 def detect_compiler() -> Path:
+    allow_stage0 = os.environ.get("ALLOW_STAGE0_BOOTSTRAP", "").strip().lower() in {"1", "true", "yes"}
     candidates = [
-        ROOT / "legacy" / "stage0.exe",
-        ROOT / "legacy" / "stage0",
         ROOT / "stage2.exe",
         ROOT / "stage2",
     ]
+    if allow_stage0:
+        candidates.extend([ROOT / "legacy" / "stage0.exe", ROOT / "legacy" / "stage0"])
     for c in candidates:
         if c.exists():
             return c
-    raise SystemExit("FAIL: compiler not found (stage0/stage2)")
+    if allow_stage0:
+        raise SystemExit("FAIL: compiler not found (expected stage2(.exe) or legacy/stage0(.exe))")
+    raise SystemExit(
+        "FAIL: compiler not found (expected stage2(.exe)). "
+        "Set ALLOW_STAGE0_BOOTSTRAP=1 to allow legacy/stage0 fallback."
+    )
 
 
 def run_checked(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -76,7 +82,7 @@ def measure(exe: Path, expected_checksum: int, runs: int) -> dict[str, float]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark sprinkler native vs intent")
-    parser.add_argument("--compiler", default="", help="Path to stage0/stage2 compiler")
+    parser.add_argument("--compiler", default="", help="Path to compiler (default: stage2)")
     parser.add_argument("--runs", type=int, default=7, help="Runs per variant")
     return parser.parse_args()
 

@@ -297,9 +297,10 @@ This suite runs:
 python scripts/benchmark_fib.py
 ```
 
-If `stage2.exe` is blocked in your environment, use:
+Emergency fallback via `legacy/stage0.exe` is disabled by default. If you must use it, set `ALLOW_STAGE0_BOOTSTRAP=1` explicitly:
 
 ```bash
+set ALLOW_STAGE0_BOOTSTRAP=1
 python scripts/benchmark_fib.py --compiler legacy\stage0.exe
 ```
 
