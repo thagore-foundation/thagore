@@ -1,7 +1,26 @@
 name: Selfhost Longhaul
 
 on:
+  workflow_call:
+    inputs:
+      longhaul_rounds:
+        required: false
+        type: string
+        default: "10"
+      bootstrap_stage1_tag:
+        required: false
+        type: string
+        default: "v0.3.25-stage1-seed"
   workflow_dispatch:
+    inputs:
+      longhaul_rounds:
+        description: "Number of Stage1->Stage2->Stage2 rounds"
+        required: false
+        default: "10"
+      bootstrap_stage1_tag:
+        description: "Bootstrap seed tag"
+        required: false
+        default: "v0.3.25-stage1-seed"
   schedule:
     - cron: "0 */6 * * *"
 
@@ -23,9 +42,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: ${{ inputs.bootstrap_stage1_tag || github.event.inputs.bootstrap_stage1_tag || 'v0.3.25-stage1-seed' }}
       STAGE_TRACE_FILE: selfhost-longhaul-trace.log
-      LONGHAUL_ROUNDS: "10"
+      SOAK_REPORT_FILE: selfhost-longhaul-report.txt
+      LONGHAUL_ROUNDS: ${{ inputs.longhaul_rounds || github.event.inputs.longhaul_rounds || '10' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -132,6 +152,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          : > "$SOAK_REPORT_FILE"
+          echo "runner_os=${{ runner.os }}" >> "$SOAK_REPORT_FILE"
+          echo "seed_tag=$BOOTSTRAP_STAGE1_TAG" >> "$SOAK_REPORT_FILE"
+          echo "rounds=$LONGHAUL_ROUNDS" >> "$SOAK_REPORT_FILE"
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -241,10 +265,14 @@ jobs:
             H2="$(hash_file "$S2R_REAL")"
             echo "[ROUND $round] s2=$S2_REAL sha256=$H1" | tee -a "$STAGE_TRACE_FILE"
             echo "[ROUND $round] s2r=$S2R_REAL sha256=$H2" | tee -a "$STAGE_TRACE_FILE"
+            echo "ROUND|$round|stage2=$S2_REAL|sha256=$H1" >> "$SOAK_REPORT_FILE"
+            echo "ROUND|$round|stage2_rebuild=$S2R_REAL|sha256=$H2" >> "$SOAK_REPORT_FILE"
             if [[ "$H1" != "$H2" && "${{ runner.os }}" != "Windows" ]]; then
+              echo "ROUND|$round|status=hash_mismatch_unix" >> "$SOAK_REPORT_FILE"
               echo "CRITICAL: unix bootstrap hash mismatch at round $round" | tee -a "$STAGE_TRACE_FILE"
               exit 1
             fi
+            echo "ROUND|$round|status=pass" >> "$SOAK_REPORT_FILE"
             round=$((round + 1))
           done
 
@@ -308,6 +336,7 @@ jobs:
             test -f "$BUILT_BIN"
             chmod +x "$BUILT_BIN" || true
             "./$BUILT_BIN"
+            echo "SYNTAX|$TEST_SRC|status=pass|binary=$BUILT_BIN" >> "$SOAK_REPORT_FILE"
           done
 
       - name: Guard no-stage0 markers
@@ -325,4 +354,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: selfhost-longhaul-${{ runner.os }}
-          path: ${{ env.STAGE_TRACE_FILE }}
+          path: |
+            ${{ env.STAGE_TRACE_FILE }}
+            ${{ env.SOAK_REPORT_FILE }}
