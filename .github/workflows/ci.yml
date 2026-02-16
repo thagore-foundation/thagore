@@ -316,8 +316,12 @@ jobs:
           else
             PY=python3
           fi
-          if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"; then
-            echo "WARN: intent suite failed on ${{ runner.os }}; continuing CI while keeping selfhost gates."
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"
+          else
+            if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"; then
+              echo "WARN: intent suite failed on ${{ runner.os }}; continuing CI while keeping Linux strict gate."
+            fi
           fi
 
       - name: Selfhost chain Stage1 -> Stage2 -> Stage2

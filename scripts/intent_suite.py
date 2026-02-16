@@ -470,6 +470,70 @@ def strategy_pinning_test(cli: Path, workdir: Path) -> None:
     run_cmd([str(cli), "intent", "lock", str(bad_mismatch), "--mode=max"], expect=1)
 
 
+def strategy_matrix_pinning_test(cli: Path, workdir: Path) -> None:
+    matrix = [
+        ("dp.fib.v1", "fibonacci_dp", "rule.fibonacci_dp.iterative.v1"),
+        ("dp.trib.v1", "tribonacci_dp", "rule.dp.trib.iterative.v1"),
+        ("math.factorial.loop.v1", "factorial_iterative", "rule.math.factorial.loop.v1"),
+        ("math.pow.binary_exp", "power_fast", "rule.math.pow.binary_exp.v1"),
+        ("math.gcd.euclid", "gcd_euclid", "rule.math.gcd.euclid.v1"),
+        ("number.prime.sqrt.v1", "is_prime_fast", "rule.number.prime.sqrt.v1"),
+        ("number.divisors.sqrt.v1", "count_divisors_sqrt", "rule.number.divisors.sqrt.v1"),
+        ("greedy.sweep.v1", "interval_cover_greedy", "rule.greedy.interval_cover.v1"),
+        ("search.binary.v1", "binary_search_sorted", "rule.search.binary.sorted.v1"),
+        ("search.lower_bound.v1", "lower_bound_sorted", "rule.search.lower_bound.sorted.v1"),
+        ("search.upper_bound.v1", "upper_bound_sorted", "rule.search.upper_bound.sorted.v1"),
+        ("search.count_less.v1", "count_less_sorted", "rule.search.count_less.sorted.v1"),
+        ("search.count_less_equal.v1", "count_less_equal_sorted", "rule.search.count_less_equal.sorted.v1"),
+        ("search.count_greater.v1", "count_greater_sorted", "rule.search.count_greater.sorted.v1"),
+        ("search.count_greater_equal.v1", "count_greater_equal_sorted", "rule.search.count_greater_equal.sorted.v1"),
+        ("search.count_equal.v1", "count_equal_sorted", "rule.search.count_equal.sorted.v1"),
+        ("search.count_not_equal.v1", "count_not_equal_sorted", "rule.search.count_not_equal.sorted.v1"),
+        ("search.count_range.v1", "count_range_sorted", "rule.search.count_range.sorted.v1"),
+        ("search.count_outside_range.v1", "count_outside_range_sorted", "rule.search.count_outside_range.sorted.v1"),
+        ("search.two_sum.v1", "two_sum_sorted_exists", "rule.search.two_sum.sorted.v1"),
+        ("number.bit_peel.iterative", "bit_peel_iterative", "rule.number.bit_peel.iterative.v1"),
+        ("math.sum.formula.v1", "sum_formula", "rule.math.sum.formula.v1"),
+        ("math.sum_squares.formula.v1", "sum_squares_formula", "rule.math.sum_squares.formula.v1"),
+        ("math.sum_cubes.formula.v1", "sum_cubes_formula", "rule.math.sum_cubes.formula.v1"),
+        ("math.sum_even_squares.formula.v1", "sum_even_squares_formula", "rule.math.sum_even_squares.formula.v1"),
+        ("math.sum_odd_squares.formula.v1", "sum_odd_squares_formula", "rule.math.sum_odd_squares.formula.v1"),
+        ("math.sum_even_cubes.formula.v1", "sum_even_cubes_formula", "rule.math.sum_even_cubes.formula.v1"),
+        ("math.sum_odd_cubes.formula.v1", "sum_odd_cubes_formula", "rule.math.sum_odd_cubes.formula.v1"),
+        ("math.sum_even.formula.v1", "sum_even_formula", "rule.math.sum_even.formula.v1"),
+        ("math.sum_odd.formula.v1", "sum_odd_formula", "rule.math.sum_odd.formula.v1"),
+        ("math.sqrt.newton.v1", "sqrt_bounded_loop", "rule.sqrt_bounded_loop.mul_guard.v2"),
+        ("search.identity.bounds.v1", "search_element", "rule.search_element.binary_iter.v2"),
+    ]
+
+    for idx, (strategy, goal, expected_rule) in enumerate(matrix, start=1):
+        src = workdir / f"strategy_matrix_{idx}.tg"
+        src.write_text(
+            "intent block:\n"
+            f"    goal: {goal}\n"
+            f"    strategy: {strategy}\n"
+            "    constraints:\n"
+            "        deterministic == true\n"
+            "\n"
+            "func main() -> i32:\n"
+            "    print(\"STRATEGY_MATRIX_OK\")\n"
+            "    return 0\n",
+            encoding="utf-8",
+        )
+        proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
+        payload = json.loads(proc.stdout)
+        entries = payload.get("entries", [])
+        if len(entries) != 1:
+            raise SystemExit(f"FAIL: expected one entry for strategy matrix case {strategy}")
+        entry = entries[0]
+        if entry.get("selected_rule") != expected_rule:
+            raise SystemExit(
+                f"FAIL: strategy {strategy} selected {entry.get('selected_rule')} != {expected_rule}"
+            )
+        if not bool(entry.get("verified", False)):
+            raise SystemExit(f"FAIL: strategy {strategy} must be verified")
+
+
 def intent_disable_test(cli: Path, workdir: Path) -> None:
     goal_off_src = workdir / "intent_goal_off.tg"
     goal_off_src.write_text(
@@ -658,6 +722,7 @@ def main() -> int:
         policy_presets_test(cli, temp_root)
         tribonacci_rewrite_smoke(cli, temp_root)
         strategy_pinning_test(cli, temp_root)
+        strategy_matrix_pinning_test(cli, temp_root)
         intent_disable_test(cli, temp_root)
         runtime_registry_gate_test(cli, temp_root)
         auto_plan_name_heuristic_test(cli, temp_root)

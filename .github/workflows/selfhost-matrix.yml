@@ -291,6 +291,11 @@ jobs:
           set -euxo pipefail
           cmake -S runtime -B runtime/build-intent-ci
           cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/Release/thagore_runtime_cli.exe" >> "$GITHUB_ENV"
+          else
+            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/thagore_runtime_cli" >> "$GITHUB_ENV"
+          fi
 
       - name: Intent registry budget gate
         shell: bash
@@ -302,6 +307,23 @@ jobs:
             PY=python3
           fi
           "$PY" scripts/intent_budget_gate.py
+
+      - name: Intent suite (strict on Linux)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"
+          else
+            if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"; then
+              echo "WARN: intent suite failed on ${{ runner.os }}; continuing selfhost while Linux strict gate remains."
+            fi
+          fi
 
       - name: Mandatory selfhost chain (Stage1 -> Stage2 -> Stage2)
         shell: bash
