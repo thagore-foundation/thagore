@@ -18,6 +18,39 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _is_ident_char(ch: String) -> i32:
+    if (ch == "_"):
+        return 1
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 1
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 1
+    if (_contains("0123456789", ch) == 1):
+        return 1
+    return 0
+
+func _has_match_keyword(source: String) -> i32:
+    let n = strlen(source)
+    let i = 0
+    while ((i + 5) <= n):
+        if (__thg_str_substr(source, i, 5) == "match"):
+            let left_ok = 1
+            let right_ok = 1
+            if (i > 0):
+                if (_is_ident_char(_char_at(source, i - 1)) == 1):
+                    left_ok = 0
+            if ((i + 5) < n):
+                if (_is_ident_char(_char_at(source, i + 5)) == 1):
+                    right_ok = 0
+            if (left_ok == 1):
+                if (right_ok == 1):
+                    return 1
+        i = i + 1
+    return 0
+
 func _validate_main_decl(func_table: String, source: String) -> i32:
     if (_contains(func_table, ";main|") == 1):
         return 0
@@ -40,11 +73,9 @@ func _feature_count(feature_set: String, feature: String) -> i32:
 
 func _validate_match_usage(feature_set: String, enum_table: String, source: String) -> i32:
     let has_match = _has_feature(feature_set, "match")
-    let match_count = parser.parse_match_count(source)
     if (has_match == 0):
-        if (match_count == 0):
-            if (_contains(source, "match") == 0):
-                return 0
+        if (_has_match_keyword(source) == 0):
+            return 0
     if (enum_table == ";"):
         print("Typecheck error: `match` requires at least one enum declaration.")
         return 1
