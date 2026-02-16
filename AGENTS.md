@@ -24,7 +24,7 @@
 ## Bootstrap & Release Policy
 - CI/Release is **Stage1-only bootstrap** on all OS. Do not add Stage0 fallback branches.
 - Local scripts may use Stage0 only when `ALLOW_STAGE0_BOOTSTRAP=true` is explicitly set.
-- Seed tag for bootstrap assets: `v0.3.24-stage1-seed`.
+- Seed tag for bootstrap assets: `v0.3.25-stage1-seed`.
 - Stage1 seed archives must support both binaries:
   - `bin/thagore`
   - `bin/thag` (legacy-compatible path used by existing macOS seed tar).
@@ -34,11 +34,13 @@
 - `legacy/` stays in repo only as emergency fallback inventory, not default bootstrap path.
 - Any change touching `.github/workflows/` that impacts bootstrap must pass all:
   - `Policy No Stage0`,
+  - `Stability Policy`,
   - `CI` (3 OS),
   - `Selfhost Matrix` (3 OS).
 - Never reintroduce implicit fallback logic:
   - no `gh release download` without explicit `BOOTSTRAP_STAGE1_TAG`,
-  - no hidden Stage0 branch in CI/Release jobs.
+  - no hidden Stage0 branch in CI/Release jobs,
+  - no compiler-output fallback path (`fallback to existing compiler binary`, `fallback to previous stage2 binary`, `allow_missing_output`).
 - Seed rotation rule:
   - promote seed tag only via successful `Seed Stage1 Assets` run,
   - then update `BOOTSTRAP_STAGE1_TAG` in `ci.yml`, `selfhost-matrix.yml`, `release.yml`, and `bootstrap-seed.yml`.
@@ -74,5 +76,6 @@
 - Current direction: freeze `legacy/` as Stage0 launcher.
 - All new language features (e.g., new syntax/control flow) must be implemented in self-hosted Thagore under `src/`.
 - CI must pass both:
+  - `Stability Policy` workflow,
   - `CI` workflow (all matrix OS),
   - `Selfhost Matrix` workflow (Stage1 -> Stage2 -> Stage2).

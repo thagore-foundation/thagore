@@ -192,7 +192,6 @@ jobs:
             local cc="$1"
             local src="$2"
             local out="$3"
-            local allow_missing_output="${4:-0}"
             local got=""
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if "./$cc" build "$src" -o "$out"; then
@@ -207,10 +206,7 @@ jobs:
             if [[ -n "$got" ]]; then
               return 0
             fi
-            if [[ "$allow_missing_output" == "1" ]]; then
-              echo "[WARN] no explicit output artifact for $src via $cc, fallback to existing compiler binary" | tee -a "$STAGE_TRACE_FILE"
-              return 0
-            fi
+            echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
           purge_outputs() {
@@ -248,56 +244,38 @@ jobs:
             FIB_BIN="fib_seed"
           fi
 
-          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN" 1
+          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
           STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
           chmod +x "$STAGE2_BIN" || true
 
-          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN" 1
-          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-          fi
+          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
+          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg")"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          SEED_BIN=""
-          for cc in "$STAGE2_REBUILD_BIN" "$STAGE2_BIN" "$STAGE1_BIN"; do
-            [[ -n "$cc" && -f "$cc" ]] || continue
+          SEED_BIN="$STAGE2_REBUILD_BIN"
+          purge_outputs "examples/hello.tg" "$HELLO_BIN"
+          thg_build "$SEED_BIN" examples/hello.tg "$HELLO_BIN"
+          HELLO_BIN_FOUND="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          chmod +x "$HELLO_BIN_FOUND" || true
+          HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
+          CC_HASH="$(hash_file "$SEED_BIN")"
+          if [[ -n "$HELLO_HASH" && -n "$CC_HASH" && "$HELLO_HASH" == "$CC_HASH" ]]; then
+            echo "CRITICAL: hello output binary unexpectedly equals compiler binary hash."
+            exit 1
+          fi
+          "./$HELLO_BIN_FOUND" >/dev/null 2>&1
 
-            purge_outputs "examples/hello.tg" "$HELLO_BIN"
-            if ! thg_build "$cc" examples/hello.tg "$HELLO_BIN"; then
-              continue
-            fi
-            HELLO_BIN_FOUND="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
-            [[ -n "$HELLO_BIN_FOUND" ]] || continue
-            chmod +x "$HELLO_BIN_FOUND" || true
-            HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
-            CC_HASH="$(hash_file "$cc")"
-            if [[ -n "$HELLO_HASH" && -n "$CC_HASH" && "$HELLO_HASH" == "$CC_HASH" ]]; then
-              continue
-            fi
-            "./$HELLO_BIN_FOUND" >/dev/null 2>&1 || continue
-
-            purge_outputs "examples/fib.tg" "$FIB_BIN"
-            if ! thg_build "$cc" examples/fib.tg "$FIB_BIN"; then
-              continue
-            fi
-            FIB_BIN_FOUND="$(resolve_bin "$FIB_BIN" "examples/fib.tg" || true)"
-            [[ -n "$FIB_BIN_FOUND" ]] || continue
-            chmod +x "$FIB_BIN_FOUND" || true
-            FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
-            CC_HASH="$(hash_file "$cc")"
-            if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
-              continue
-            fi
-            "./$FIB_BIN_FOUND" >/dev/null 2>&1 || continue
-
-            HELLO_BIN="$HELLO_BIN_FOUND"
-            FIB_BIN="$FIB_BIN_FOUND"
-            SEED_BIN="$cc"
-            break
-          done
-
-          [[ -n "$SEED_BIN" ]] || (echo "CRITICAL: no compiler candidate could produce valid hello+fib outputs"; exit 1)
+          purge_outputs "examples/fib.tg" "$FIB_BIN"
+          thg_build "$SEED_BIN" examples/fib.tg "$FIB_BIN"
+          FIB_BIN_FOUND="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          chmod +x "$FIB_BIN_FOUND" || true
+          FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
+          CC_HASH="$(hash_file "$SEED_BIN")"
+          if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
+            echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
+            exit 1
+          fi
+          "./$FIB_BIN_FOUND" >/dev/null 2>&1
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "SEED_BIN=$SEED_BIN" >> "$GITHUB_ENV"

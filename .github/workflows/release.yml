@@ -325,10 +325,8 @@ jobs:
             if [[ -n "$got" ]]; then
               return 0
             fi
-            # Some stage2 builds may ignore -o and keep self binary unchanged.
-            # Treat this as non-fatal; caller can fallback to existing stage2.
-            echo "[WARN] no explicit output artifact for $src via $cc, fallback to existing compiler binary" | tee -a "$STAGE_TRACE_FILE"
-            return 0
+            echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
+            return 1
           }
           resolve_bin() {
             local preferred="$1"
@@ -347,48 +345,19 @@ jobs:
           chmod +x "$STAGE2_BIN" || true
 
           thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"
-          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-          fi
+          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg")"
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            thg_build "${{ matrix.stage1_bin }}" examples/hello.tg "$HELLO_TARGET" || true
-            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-          else
-            thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
-            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-            if [[ -z "$HELLO_BIN" ]]; then
-              thg_build "$STAGE2_BIN" examples/hello.tg "$HELLO_TARGET" || true
-              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-            fi
-            if [[ -z "$HELLO_BIN" ]]; then
-              thg_build "${{ matrix.stage1_bin }}" examples/hello.tg "$HELLO_TARGET" || true
-              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-            fi
-          fi
+          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
+          HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg")"
           test -f "$HELLO_BIN"
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            thg_build "${{ matrix.stage1_bin }}" examples/fib.tg "$FIB_TARGET" || true
-            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-          else
-            thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
-            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-            if [[ -z "$FIB_BIN" ]]; then
-              thg_build "$STAGE2_BIN" examples/fib.tg "$FIB_TARGET" || true
-              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-            fi
-            if [[ -z "$FIB_BIN" ]]; then
-              thg_build "${{ matrix.stage1_bin }}" examples/fib.tg "$FIB_TARGET" || true
-              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-            fi
-          fi
+          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
+          FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg")"
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"

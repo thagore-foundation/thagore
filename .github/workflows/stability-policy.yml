@@ -1,0 +1,123 @@
+name: Stability Policy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      window:
+        description: "Consecutive success window"
+        required: false
+        default: "10"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  enforce-stability:
+    name: enforce-stability
+    runs-on: ubuntu-latest
+    env:
+      STABILITY_WINDOW: ${{ github.event.inputs.window || '10' }}
+    steps:
+      - name: Evaluate workflow streaks
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const windowSize = Number(process.env.STABILITY_WINDOW || "10");
+            if (!Number.isInteger(windowSize) || windowSize <= 0) {
+              core.setFailed(`Invalid STABILITY_WINDOW=${process.env.STABILITY_WINDOW}`);
+              return;
+            }
+
+            const isTag = (context.ref || "").startsWith("refs/tags/v");
+            const targets = [
+              { name: "CI", branch: "main", events: ["push"] },
+              { name: "Selfhost Matrix", branch: "main", events: ["push"] },
+            ];
+            if (isTag) {
+              targets.push({ name: "Release", branch: null, events: ["push", "workflow_dispatch"] });
+            }
+
+            const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const wfByName = new Map(workflows.map((w) => [w.name, w]));
+
+            const report = [];
+            let failed = false;
+
+            for (const target of targets) {
+              const wf = wfByName.get(target.name);
+              if (!wf) {
+                report.push(`FAIL|${target.name}|workflow_not_found`);
+                failed = true;
+                continue;
+              }
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner,
+                repo,
+                workflow_id: wf.id,
+                per_page: 100,
+              });
+              const filtered = runs.filter((r) => {
+                if (r.status !== "completed") return false;
+                if (!target.events.includes(r.event)) return false;
+                if (target.branch && r.head_branch !== target.branch) return false;
+                return true;
+              });
+
+              let streak = 0;
+              let breakRun = null;
+              const inspected = [];
+              for (const r of filtered) {
+                if (inspected.length >= windowSize) break;
+                inspected.push(`${r.id}:${r.conclusion}:${r.head_branch}:${r.event}`);
+                if (r.conclusion === "success") {
+                  streak += 1;
+                } else {
+                  breakRun = r;
+                  break;
+                }
+              }
+
+              if (streak < windowSize) {
+                failed = true;
+                if (breakRun) {
+                  report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|break_run=${breakRun.id}|break_conclusion=${breakRun.conclusion}`);
+                } else {
+                  report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|insufficient_history`);
+                }
+              } else {
+                report.push(`PASS|${target.name}|streak=${streak}/${windowSize}`);
+              }
+              for (const row of inspected) {
+                report.push(`RUN|${target.name}|${row}`);
+              }
+            }
+
+            const body = [
+              `ref=${context.ref}`,
+              `window=${windowSize}`,
+              ...report,
+            ].join("\n") + "\n";
+            require("fs").writeFileSync("stability-policy-report.txt", body, "utf8");
+            core.summary.addCodeBlock(body, "text").write();
+            if (failed) {
+              core.setFailed("Stability policy failed. See stability-policy-report.txt");
+            }
+
+      - name: Upload stability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stability-policy-report
+          path: stability-policy-report.txt

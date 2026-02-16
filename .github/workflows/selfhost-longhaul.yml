@@ -236,17 +236,14 @@ jobs:
             chmod +x "$S2_REAL" || true
 
             LAST_BIN=""
-            if build_require_artifact "$S2_REAL" src/thagore.tg "$S2R"; then
-              S2R_REAL="$LAST_BIN"
-            else
-              echo "[WARN] rebuild compiler did not emit new stage2; fallback to previous stage2 binary." | tee -a "$STAGE_TRACE_FILE"
-              S2R_REAL="$S2_REAL"
-            fi
+            build_require_artifact "$S2_REAL" src/thagore.tg "$S2R"
+            S2R_REAL="$LAST_BIN"
+            test -n "$S2R_REAL"
             test -f "$S2R_REAL"
             chmod +x "$S2R_REAL" || true
 
             LAST_BIN=""
-            build_with_candidates examples/hello.tg "$H" "$S2R_REAL" "$S2_REAL" "$STAGE1_BIN"
+            build_with_candidates examples/hello.tg "$H" "$S2R_REAL"
             H_REAL="$LAST_BIN"
             test -n "$H_REAL"
             test -f "$H_REAL"
@@ -254,7 +251,7 @@ jobs:
             "./$H_REAL"
 
             LAST_BIN=""
-            build_with_candidates examples/fib.tg "$F" "$S2R_REAL" "$S2_REAL" "$STAGE1_BIN"
+            build_with_candidates examples/fib.tg "$F" "$S2R_REAL"
             F_REAL="$LAST_BIN"
             test -n "$F_REAL"
             test -f "$F_REAL"
