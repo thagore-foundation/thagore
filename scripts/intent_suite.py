@@ -517,6 +517,72 @@ def intent_disable_test(cli: Path, workdir: Path) -> None:
         raise SystemExit("FAIL: disabled intent should return verify_reason=intent-disabled")
 
 
+def runtime_registry_gate_test(cli: Path, workdir: Path) -> None:
+    src = workdir / "registry_gate_src.tg"
+    src.write_text(
+        "intent block:\n"
+        "    goal: reduce_sum\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"REGISTRY_GATE_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    reg_ok = workdir / "registry.ok.txt"
+    reg_ok.write_text(
+        "enabled=1\n"
+        "budget.total=4\n"
+        "budget.family.reduce_sum=4\n"
+        "rule=rule.reduce_sum.simd.v2\n",
+        encoding="utf-8",
+    )
+    run_cmd(
+        [str(cli), "intent", "lock", str(src), "-o", str(workdir / "registry_ok.lock"), "--mode=max"],
+        extra_env={"THAG_INTENT_REGISTRY": str(reg_ok)},
+    )
+
+    reg_block = workdir / "registry.block.txt"
+    reg_block.write_text(
+        "enabled=1\n"
+        "budget.total=4\n"
+        "rule=rule.reduce_sum.scalar.v1\n",
+        encoding="utf-8",
+    )
+    run_cmd(
+        [str(cli), "intent", "lock", str(src), "-o", str(workdir / "registry_block.lock"), "--mode=max"],
+        expect=1,
+        extra_env={"THAG_INTENT_REGISTRY": str(reg_block)},
+    )
+
+    reg_budget_zero = workdir / "registry.budget0.txt"
+    reg_budget_zero.write_text(
+        "enabled=1\n"
+        "budget.total=0\n"
+        "rule=rule.reduce_sum.simd.v2\n",
+        encoding="utf-8",
+    )
+    run_cmd(
+        [str(cli), "intent", "lock", str(src), "-o", str(workdir / "registry_budget0.lock"), "--mode=max"],
+        expect=1,
+        extra_env={"THAG_INTENT_REGISTRY": str(reg_budget_zero)},
+    )
+
+    reg_disabled = workdir / "registry.disabled.txt"
+    reg_disabled.write_text(
+        "enabled=0\n"
+        "budget.total=0\n"
+        "rule=rule.unsupported\n",
+        encoding="utf-8",
+    )
+    run_cmd(
+        [str(cli), "intent", "lock", str(src), "-o", str(workdir / "registry_disabled.lock"), "--mode=max"],
+        extra_env={"THAG_INTENT_REGISTRY": str(reg_disabled)},
+    )
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -546,6 +612,7 @@ def main() -> int:
         tribonacci_rewrite_smoke(cli, temp_root)
         strategy_pinning_test(cli, temp_root)
         intent_disable_test(cli, temp_root)
+        runtime_registry_gate_test(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0

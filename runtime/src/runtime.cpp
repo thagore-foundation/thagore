@@ -110,6 +110,14 @@ struct IntentLockEntry {
   std::string verificationDigest {};
 };
 
+struct CliIntentRuleRegistry {
+  bool enabled {false};
+  std::size_t totalBudget {std::numeric_limits<std::size_t>::max()};
+  std::unordered_map<std::string, std::size_t> familyBudget {};
+  std::unordered_set<std::string> allowedRules {};
+  std::string sourcePath {};
+};
+
 int g_argc = 0;
 char **g_argv = nullptr;
 bool g_emitLlvmInternalMode = false;
@@ -2657,6 +2665,116 @@ static auto cliIntentFallbackValid(const std::string &mode) -> bool {
   return mode == "deny" || mode == "allow";
 }
 
+static auto cliIntentRuleFamily(std::string_view ruleId) -> std::string {
+  constexpr std::string_view prefix = "rule.";
+  if (!startsWith(ruleId, prefix)) {
+    return "misc";
+  }
+  const auto rem = ruleId.substr(prefix.size());
+  const auto dot = rem.find('.');
+  if (dot == std::string_view::npos || dot == 0) {
+    return "misc";
+  }
+  return std::string(rem.substr(0, dot));
+}
+
+static auto cliIntentParseUnsigned(std::string_view text, std::size_t *out) -> bool {
+  if (out == nullptr) {
+    return false;
+  }
+  const auto valueText = trim(text);
+  if (valueText.empty()) {
+    return false;
+  }
+  std::size_t value = 0;
+  for (char ch : valueText) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+    value = value * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  *out = value;
+  return true;
+}
+
+static auto cliIntentParseBoolEnabled(std::string_view text, bool defaultValue) -> bool {
+  std::string value = std::string(trim(text));
+  for (char &ch : value) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  if (value.empty()) {
+    return defaultValue;
+  }
+  if (value == "0" || value == "false" || value == "off" || value == "no") {
+    return false;
+  }
+  return true;
+}
+
+static auto cliIntentLoadRuleRegistry(CliIntentRuleRegistry *outRegistry) -> bool {
+  if (outRegistry == nullptr) {
+    return false;
+  }
+  *outRegistry = CliIntentRuleRegistry {};
+  const char *envPath = std::getenv("THAG_INTENT_REGISTRY");
+  if (envPath == nullptr || envPath[0] == '\0') {
+    return false;
+  }
+  std::filesystem::path path {envPath};
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open()) {
+    return false;
+  }
+
+  CliIntentRuleRegistry registry {};
+  registry.enabled = true;
+  registry.sourcePath = path.string();
+
+  std::string line {};
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    const auto text = std::string(trim(line));
+    if (text.empty() || startsWith(text, "#")) {
+      continue;
+    }
+    if (startsWith(text, "enabled=")) {
+      registry.enabled = cliIntentParseBoolEnabled(std::string_view(text).substr(8), true);
+      continue;
+    }
+    if (startsWith(text, "budget.total=")) {
+      std::size_t parsed = 0;
+      if (cliIntentParseUnsigned(std::string_view(text).substr(13), &parsed)) {
+        registry.totalBudget = parsed;
+      }
+      continue;
+    }
+    if (startsWith(text, "budget.family.")) {
+      const std::size_t eq = text.find('=');
+      if (eq == std::string::npos || eq <= 14 || (eq + 1) >= text.size()) {
+        continue;
+      }
+      const auto family = std::string(trim(std::string_view(text).substr(14, eq - 14)));
+      std::size_t parsed = 0;
+      if (!family.empty() && cliIntentParseUnsigned(std::string_view(text).substr(eq + 1), &parsed)) {
+        registry.familyBudget[family] = parsed;
+      }
+      continue;
+    }
+    if (startsWith(text, "rule=")) {
+      const auto id = std::string(trim(std::string_view(text).substr(5)));
+      if (!id.empty()) {
+        registry.allowedRules.insert(id);
+      }
+      continue;
+    }
+  }
+
+  *outRegistry = std::move(registry);
+  return true;
+}
+
 static auto cliIntentPolicyValid(const std::string &policy) -> bool {
   return policy.empty() || policy == "safe" || policy == "fast" || policy == "debug";
 }
@@ -3593,6 +3711,11 @@ static auto cliIntentBuildPlans(
     return false;
   }
   plansOut->clear();
+  CliIntentRuleRegistry registry {};
+  const bool hasRegistry = cliIntentLoadRuleRegistry(&registry);
+  const bool registryEnabled = hasRegistry && registry.enabled;
+  std::size_t appliedTotal = 0;
+  std::unordered_map<std::string, std::size_t> appliedFamily {};
   for (const auto &entry : entries) {
     IntentPlan plan {};
     std::string err {};
@@ -3601,6 +3724,31 @@ static auto cliIntentBuildPlans(
         *errorOut = "intent " + entry.id + " failed: " + err;
       }
       return false;
+    }
+    if (registryEnabled && plan.selectedRule != "rule.intent.off") {
+      const auto &reg = registry;
+      if (!reg.allowedRules.empty() && reg.allowedRules.find(plan.selectedRule) == reg.allowedRules.end()) {
+        if (errorOut != nullptr) {
+          *errorOut = "intent " + entry.id + " blocked by registry-rule-disabled (" + plan.selectedRule + ")";
+        }
+        return false;
+      }
+      if (reg.totalBudget != std::numeric_limits<std::size_t>::max() && appliedTotal >= reg.totalBudget) {
+        if (errorOut != nullptr) {
+          *errorOut = "intent " + entry.id + " blocked by registry-total-budget-exceeded";
+        }
+        return false;
+      }
+      const auto family = cliIntentRuleFamily(plan.selectedRule);
+      const auto familyLimitIt = reg.familyBudget.find(family);
+      if (familyLimitIt != reg.familyBudget.end() && appliedFamily[family] >= familyLimitIt->second) {
+        if (errorOut != nullptr) {
+          *errorOut = "intent " + entry.id + " blocked by registry-family-budget-exceeded:" + family;
+        }
+        return false;
+      }
+      appliedTotal += 1;
+      appliedFamily[family] += 1;
     }
     plansOut->push_back(std::move(plan));
   }
@@ -4643,6 +4791,21 @@ static auto cliIntentDoctor(const std::string &entryPath) -> int {
   std::printf("[intent] engine=ready\n");
   std::printf("[intent] determinism=enabled\n");
   std::printf("[intent] supported_goals=%s\n", cliIntentSupportedGoalsCsv().c_str());
+  CliIntentRuleRegistry registry {};
+  const bool hasRegistry = cliIntentLoadRuleRegistry(&registry);
+  if (hasRegistry && registry.enabled) {
+    const auto totalBudgetText = registry.totalBudget == std::numeric_limits<std::size_t>::max()
+      ? std::string("unbounded")
+      : std::to_string(registry.totalBudget);
+    std::printf(
+      "[intent] registry=enabled path=%s total_budget=%s rules=%d\n",
+      registry.sourcePath.c_str(),
+      totalBudgetText.c_str(),
+      static_cast<int>(registry.allowedRules.size())
+    );
+  } else {
+    std::printf("[intent] registry=disabled\n");
+  }
   const auto clangPath = cliDetectClang();
   if (clangPath.empty()) {
     std::printf("[intent] toolchain=clang_missing\n");

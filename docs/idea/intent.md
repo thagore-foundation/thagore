@@ -388,6 +388,15 @@ Environment override:
 
 - `THAG_INTENT_REGISTRY=<path>` to use a custom registry file.
 
+Runtime CLI note:
+
+- runtime intent planner now supports the same registry format as an **opt-in gate** via `THAG_INTENT_REGISTRY`.
+- if set and `enabled=1`, `intent lock/build` will fail on:
+  - rule not in allowlist (`registry-rule-disabled`),
+  - `budget.total` exhausted,
+  - `budget.family.<name>` exhausted.
+- if unset, runtime planner keeps default behavior (no registry enforcement).
+
 CI/static gate script:
 
 - `scripts/intent_budget_gate.py`
