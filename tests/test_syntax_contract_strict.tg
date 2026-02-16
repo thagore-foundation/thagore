@@ -1,0 +1,36 @@
+import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/lowering/pipeline.tg" as pipe
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    fails = fails + _expect_i32("match missing expr", ph.is_match_header("match :"), 0)
+    fails = fails + _expect_i32("match no trailing colon", ph.is_match_header("match value"), 0)
+    fails = fails + _expect_i32("match valid", ph.is_match_header("match value:"), 1)
+
+    fails = fails + _expect_i32("range triple dot", ph.is_range_loop_header("for i in 0...3:"), 0)
+    fails = fails + _expect_i32("range valid", ph.is_range_loop_header("for i in 0..3:"), 1)
+
+    fails = fails + _expect_i32("if expr requires assignment", ph.has_if_expression("if ok: 1 else: 0"), 0)
+    fails = fails + _expect_i32("if expr valid", ph.has_if_expression("let x = if ok: 1 else: 0"), 1)
+
+    fails = fails + _expect_i32("closure requires rhs", ph.has_closure("let f ="), 0)
+    fails = fails + _expect_i32("closure valid", ph.has_closure("let f = |x| x + 1"), 1)
+
+    fails = fails + _expect_i32("validate malformed match", pipe.validate("func main() -> i32:\n    match :\n        return 1\n"), 1)
+    fails = fails + _expect_i32("validate malformed range triple-dot", pipe.validate("func main() -> i32:\n    for i in 0...3:\n        return 0\n"), 1)
+    fails = fails + _expect_i32("validate valid range", pipe.validate("func main() -> i32:\n    for i in 0..3:\n        return i\n"), 0)
+
+    if (fails == 0):
+        print("PASS: syntax contract strict")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

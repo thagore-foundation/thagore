@@ -15,6 +15,36 @@ func _find_char(text: String, ch: String) -> i32:
         i = i + 1
     return -1
 
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _ends_with_colon(text: String) -> i32:
+    let s = gt.trim(text)
+    let n = strlen(s)
+    if (n <= 0):
+        return 0
+    if (_char_at(s, n - 1) == ":"):
+        return 1
+    return 0
+
+func _drop_trailing_colon(text: String) -> String:
+    let s = gt.trim(text)
+    if (_ends_with_colon(s) == 0):
+        return s
+    let n = strlen(s)
+    if (n <= 1):
+        return ""
+    return gt.trim(__thg_str_substr(s, 0, n - 1))
+
 func _starts_with(text: String, prefix: String) -> i32:
     let pn = strlen(prefix)
     if (strlen(text) < pn):
@@ -130,6 +160,10 @@ func is_match_header(line: String) -> i32:
         return 0
     if (_find_char(s, ":") < 0):
         return 0
+    if (_starts_with(s, "match:") == 1):
+        return 0
+    if (_starts_with(s, "match :") == 1):
+        return 0
     return 1
 
 func is_range_loop_header(line: String) -> i32:
@@ -144,10 +178,18 @@ func is_range_loop_header(line: String) -> i32:
         return 0
     if (_find_char(s, ":") < 0):
         return 0
+    if (_starts_with(s, "for in") == 1):
+        return 0
+    if (_contains(s, "for in ") == 1):
+        return 0
+    if (_contains(s, " in :") == 1):
+        return 0
     return 1
 
 func has_if_expression(line: String) -> i32:
     let s = gt.trim(line)
+    if (_contains(s, "=") == 0):
+        return 0
     if (_contains(s, "if") == 0):
         return 0
     if (_contains(s, "else") == 0):
@@ -200,6 +242,8 @@ func has_raw_string(line: String) -> i32:
 
 func has_closure(line: String) -> i32:
     let s = gt.trim(line)
+    if (_contains(s, "=") == 0):
+        return 0
     if (_find_char(s, "|") < 0):
         return 0
     let p1 = _find_char(s, "|")
