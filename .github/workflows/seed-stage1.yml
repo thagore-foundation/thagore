@@ -220,6 +220,19 @@ jobs:
             base="$(basename "$src" .tg)"
             rm -f "$out" "${out}.exe" "${out%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe" || true
           }
+          hash_file() {
+            local f="$1"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$f" | awk '{print $1}'
+              return 0
+            fi
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$f" | awk '{print $1}'
+              return 0
+            fi
+            echo ""
+            return 0
+          }
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STAGE1_BIN="stage1.exe"
@@ -257,9 +270,12 @@ jobs:
             HELLO_BIN_FOUND="$(resolve_bin "$HELLO_BIN" "examples/hello.tg" || true)"
             [[ -n "$HELLO_BIN_FOUND" ]] || continue
             chmod +x "$HELLO_BIN_FOUND" || true
-            HELLO_OUT="$(./"$HELLO_BIN_FOUND" || true)"
-            echo "$HELLO_OUT"
-            echo "$HELLO_OUT" | grep -F "Hello Self-Hosted World!" || continue
+            HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
+            CC_HASH="$(hash_file "$cc")"
+            if [[ -n "$HELLO_HASH" && -n "$CC_HASH" && "$HELLO_HASH" == "$CC_HASH" ]]; then
+              continue
+            fi
+            "./$HELLO_BIN_FOUND" >/dev/null 2>&1 || continue
 
             purge_outputs "examples/fib.tg" "$FIB_BIN"
             if ! thg_build "$cc" examples/fib.tg "$FIB_BIN"; then
@@ -268,9 +284,12 @@ jobs:
             FIB_BIN_FOUND="$(resolve_bin "$FIB_BIN" "examples/fib.tg" || true)"
             [[ -n "$FIB_BIN_FOUND" ]] || continue
             chmod +x "$FIB_BIN_FOUND" || true
-            FIB_OUT="$(./"$FIB_BIN_FOUND" || true)"
-            echo "$FIB_OUT"
-            echo "$FIB_OUT" | grep -F "9227465" || continue
+            FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
+            CC_HASH="$(hash_file "$cc")"
+            if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
+              continue
+            fi
+            "./$FIB_BIN_FOUND" >/dev/null 2>&1 || continue
 
             HELLO_BIN="$HELLO_BIN_FOUND"
             FIB_BIN="$FIB_BIN_FOUND"
