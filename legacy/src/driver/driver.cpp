@@ -176,13 +176,26 @@ auto matchComparatorEquivalent(
   std::string_view op,
   std::string_view right
 ) -> bool {
-  const auto direct = std::string(left) + std::string(op) + std::string(right);
-  if (cond == direct) {
+  auto dropParens = [](std::string_view x) {
+    std::string out {};
+    out.reserve(x.size());
+    for (char ch : x) {
+      if (ch == '(' || ch == ')') {
+        continue;
+      }
+      out.push_back(ch);
+    }
+    return out;
+  };
+
+  const auto condNorm = dropParens(cond);
+  const auto direct = dropParens(std::string(left) + std::string(op) + std::string(right));
+  if (condNorm == direct) {
     return true;
   }
   const auto rev = reverseComparator(op);
-  const auto swapped = std::string(right) + std::string(rev) + std::string(left);
-  return cond == swapped;
+  const auto swapped = dropParens(std::string(right) + std::string(rev) + std::string(left));
+  return condNorm == swapped;
 }
 
 auto ifComparatorMatches(
@@ -381,6 +394,9 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   if (containsWord(loweredName, "fact")) {
     return "factorial_iterative";
   }
+  if (containsWord(loweredName, "trib")) {
+    return "tribonacci_dp";
+  }
   if (containsWord(loweredName, "pow") || containsWord(loweredName, "exp")) {
     return "power_fast";
   }
@@ -432,6 +448,9 @@ auto inferAutoGoalByName(std::string_view functionName) -> std::string {
   if (containsWord(loweredName, "count_outside_range") || containsWord(loweredName, "range_outside_count")) {
     return "count_outside_range_sorted";
   }
+  if (containsWord(loweredName, "two_sum") || containsWord(loweredName, "pair_sum")) {
+    return "two_sum_sorted_exists";
+  }
   if (containsWord(loweredName, "bit") || containsWord(loweredName, "popcount")
       || containsWord(loweredName, "peel")) {
     return "bit_peel_iterative";
@@ -473,6 +492,7 @@ enum class IntentRewriteKind {
   None,
   FibonacciIterative,
   FactorialIterative,
+  TribonacciIterative,
   PowerBinaryExp,
   GcdEuclidModulo,
   PrimeCheckSqrt,
@@ -489,6 +509,7 @@ enum class IntentRewriteKind {
   CountNotEqualSorted,
   CountRangeSorted,
   CountOutsideRangeSorted,
+  TwoSumSortedTwoPointers,
   BitPeelIterative,
   ReduceSumFormula,
   SumSquaresFormula,
@@ -509,6 +530,8 @@ auto rewriteRuleId(IntentRewriteKind kind) -> std::string_view {
       return "rule.dp.fib.iterative.v1";
     case IntentRewriteKind::FactorialIterative:
       return "rule.math.factorial.loop.v1";
+    case IntentRewriteKind::TribonacciIterative:
+      return "rule.dp.trib.iterative.v1";
     case IntentRewriteKind::PowerBinaryExp:
       return "rule.math.pow.binary_exp.v1";
     case IntentRewriteKind::GcdEuclidModulo:
@@ -541,6 +564,8 @@ auto rewriteRuleId(IntentRewriteKind kind) -> std::string_view {
       return "rule.search.count_range.sorted.v1";
     case IntentRewriteKind::CountOutsideRangeSorted:
       return "rule.search.count_outside_range.sorted.v1";
+    case IntentRewriteKind::TwoSumSortedTwoPointers:
+      return "rule.search.two_sum.sorted.v1";
     case IntentRewriteKind::BitPeelIterative:
       return "rule.number.bit_peel.iterative.v1";
     case IntentRewriteKind::ReduceSumFormula:
@@ -641,6 +666,29 @@ auto inferRewriteKindFromBody(
     if (hasFactBase && hasFactRec) {
       out.kind = IntentRewriteKind::FactorialIterative;
       out.detectedGoal = "factorial_iterative";
+      return out;
+    }
+
+    bool hasTribRec = false;
+    bool hasTribRet0 = false;
+    bool hasTribRet1 = false;
+    for (const auto &c : compact) {
+      if (c.starts_with("return" + fnCompact + "(")
+          && c.find(fnCompact + "(" + nCompact + "-1)") != std::string::npos
+          && c.find(fnCompact + "(" + nCompact + "-2)") != std::string::npos
+          && c.find(fnCompact + "(" + nCompact + "-3)") != std::string::npos) {
+        hasTribRec = true;
+      }
+      if (returnExprMatches(c, "0")) {
+        hasTribRet0 = true;
+      }
+      if (returnExprMatches(c, "1")) {
+        hasTribRet1 = true;
+      }
+    }
+    if (hasTribRec && hasTribRet0 && hasTribRet1) {
+      out.kind = IntentRewriteKind::TribonacciIterative;
+      out.detectedGoal = "tribonacci_dp";
       return out;
     }
 
@@ -987,8 +1035,26 @@ auto inferRewriteKindFromBody(
       bool hasCountRightInit = false;
       bool hasCountReturn = false;
       bool hasCountNotEqualReturn = false;
+      std::vector<std::string> loopVars {};
+      bool hasTwoSumRetOne = false;
+      bool hasTwoSumRetZero = false;
+      auto recordLoopVar = [&](const std::string &v) {
+        if (v.empty()) {
+          return;
+        }
+        for (const auto &cur : loopVars) {
+          if (cur == v) {
+            return;
+          }
+        }
+        loopVars.push_back(v);
+      };
       for (const auto &c : compact) {
-        if (tryExtractLoopVarAgainstBound(c, nParam, loopVar)) {}
+        std::string maybeLoop {};
+        if (tryExtractLoopVarAgainstBound(c, nParam, maybeLoop)) {
+          loopVar = maybeLoop;
+          recordLoopVar(maybeLoop);
+        }
         const auto leftSig = "<" + nParam + ")and(" + arrParam + "[";
         const auto rightSig = "<" + nParam + ")and(" + arrParam + "[";
         if (c.starts_with("while((")
@@ -1056,8 +1122,12 @@ auto inferRewriteKindFromBody(
         if (c == "return-1") {
           hasRetNeg1 = true;
         }
-        if (c == "return0") {
+        if (returnExprMatches(c, "0")) {
           hasRetZero = true;
+          hasTwoSumRetZero = true;
+        }
+        if (returnExprMatches(c, "1")) {
+          hasTwoSumRetOne = true;
         }
       }
       if (!loopVar.empty() && hasLowerBoundIf && hasLowerBoundRetLoop && hasInc && hasLowerBoundRetN) {
@@ -1105,6 +1175,98 @@ auto inferRewriteKindFromBody(
         out.kind = IntentRewriteKind::CountNotEqualSorted;
         out.detectedGoal = "count_not_equal_sorted";
         return out;
+      }
+      if (loopVars.size() >= 2 && hasTwoSumRetOne && hasTwoSumRetZero) {
+        for (std::size_t i = 0; i < loopVars.size(); ++i) {
+          for (std::size_t j = i + 1; j < loopVars.size(); ++j) {
+            const auto &aVar = loopVars[i];
+            const auto &bVar = loopVars[j];
+            const auto sumAB = arrParam + "[" + aVar + "]+" + arrParam + "[" + bVar + "]";
+            const auto sumBA = arrParam + "[" + bVar + "]+" + arrParam + "[" + aVar + "]";
+            bool hasTwoSumEq = false;
+            bool hasIncA = false;
+            bool hasIncB = false;
+            for (const auto &c : compact) {
+              if (ifComparatorMatches(c, sumAB, "==", targetParam)
+                  || ifComparatorMatches(c, sumBA, "==", targetParam)) {
+                hasTwoSumEq = true;
+              }
+              if (c == aVar + "=" + aVar + "+1") {
+                hasIncA = true;
+              }
+              if (c == bVar + "=" + bVar + "+1") {
+                hasIncB = true;
+              }
+            }
+            if (hasTwoSumEq && hasIncA && hasIncB) {
+              out.kind = IntentRewriteKind::TwoSumSortedTwoPointers;
+              out.detectedGoal = "two_sum_sorted_exists";
+              return out;
+            }
+          }
+        }
+      }
+      if (hasTwoSumRetOne && hasTwoSumRetZero) {
+        std::string twoA {};
+        std::string twoB {};
+        bool foundTwoVars = false;
+        for (const auto &c : compact) {
+          const auto cond = extractIfConditionCompact(c);
+          if (!cond.has_value()) {
+            continue;
+          }
+          const auto prefix = arrParam + "[";
+          const auto p1 = cond->find(prefix);
+          if (p1 == std::string::npos) {
+            continue;
+          }
+          const auto e1 = cond->find(']', p1 + prefix.size());
+          if (e1 == std::string::npos || e1 <= p1 + prefix.size()) {
+            continue;
+          }
+          const auto plus = cond->find('+', e1 + 1);
+          if (plus == std::string::npos) {
+            continue;
+          }
+          const auto p2 = cond->find(prefix, plus + 1);
+          if (p2 == std::string::npos) {
+            continue;
+          }
+          const auto e2 = cond->find(']', p2 + prefix.size());
+          if (e2 == std::string::npos || e2 <= p2 + prefix.size()) {
+            continue;
+          }
+          const auto tail = cond->substr(e2 + 1);
+          if (tail != "==" + targetParam && tail != "==" + targetParam + ")" && tail != "):" + targetParam) {
+            const auto eqPos = cond->find("==");
+            if (eqPos == std::string::npos || cond->substr(0, eqPos) != targetParam) {
+              continue;
+            }
+          }
+          twoA = cond->substr(p1 + prefix.size(), e1 - (p1 + prefix.size()));
+          twoB = cond->substr(p2 + prefix.size(), e2 - (p2 + prefix.size()));
+          if (!twoA.empty() && !twoB.empty()) {
+            foundTwoVars = true;
+            break;
+          }
+        }
+        if (foundTwoVars) {
+          bool incA = false;
+          bool incB = false;
+          for (const auto &c : compact) {
+            if (c == twoA + "=" + twoA + "+1") {
+              incA = true;
+            }
+            if (c == twoB + "=" + twoB + "+1") {
+              incB = true;
+            }
+          }
+          if (incA && incB) {
+            out.kind = IntentRewriteKind::TwoSumSortedTwoPointers;
+            out.detectedGoal = "two_sum_sorted_exists";
+            return out;
+          }
+        }
       }
       if (!loopVar.empty() && hasEqTarget && hasGtTarget && hasRetLoop && hasInc && hasRetNeg1) {
         out.kind = IntentRewriteKind::BinarySearchSorted;
@@ -1264,6 +1426,9 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
   if (strategy == "math.factorial.iterative" || strategy == "math.factorial.loop.v1") {
     return IntentRewriteKind::FactorialIterative;
   }
+  if (strategy == "dp.tribonacci.iterative" || strategy == "dp.trib.v1") {
+    return IntentRewriteKind::TribonacciIterative;
+  }
   if (strategy == "math.pow.binary_exp" || strategy == "pow.binary_exp" || strategy == "math.pow.fast.v1") {
     return IntentRewriteKind::PowerBinaryExp;
   }
@@ -1316,6 +1481,9 @@ auto selectRewriteKindByStrategy(std::string_view rawStrategy) -> IntentRewriteK
   }
   if (strategy == "search.count_outside_range.v1" || strategy == "search.count_outside_range.sorted.v1") {
     return IntentRewriteKind::CountOutsideRangeSorted;
+  }
+  if (strategy == "search.two_sum.v1" || strategy == "search.two_sum.sorted.v1") {
+    return IntentRewriteKind::TwoSumSortedTwoPointers;
   }
   if (strategy == "number.bit_peel.iterative" || strategy == "number.bit_peel.fold.v1") {
     return IntentRewriteKind::BitPeelIterative;
@@ -1379,6 +1547,9 @@ auto selectRewriteKind(
   if (goal == "factorial_iterative") {
     return IntentRewriteKind::FactorialIterative;
   }
+  if (goal == "tribonacci_dp" || goal == "tribonacci_iterative") {
+    return IntentRewriteKind::TribonacciIterative;
+  }
   if (goal == "power_fast" || goal == "pow_fast" || goal == "binary_exponentiation") {
     return IntentRewriteKind::PowerBinaryExp;
   }
@@ -1426,6 +1597,9 @@ auto selectRewriteKind(
   }
   if (goal == "count_outside_range_sorted" || goal == "count_outside_range") {
     return IntentRewriteKind::CountOutsideRangeSorted;
+  }
+  if (goal == "two_sum_sorted_exists" || goal == "two_sum_sorted" || goal == "pair_sum_sorted_exists") {
+    return IntentRewriteKind::TwoSumSortedTwoPointers;
   }
   if (goal == "bit_peel_iterative" || goal == "bit_peel_fold" || goal == "recursive_bit_peel") {
     return IntentRewriteKind::BitPeelIterative;
@@ -1501,6 +1675,30 @@ void appendFactorialIterativeBody(
   out.push_back(std::format("{}acc = acc * i", indent2));
   out.push_back(std::format("{}i = i + 1", indent2));
   out.push_back(std::format("{}return acc", indent1));
+}
+
+void appendTribonacciIterativeBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view paramName
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  out.push_back(std::format("{}if ({} <= 0):", indent1, paramName));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}if ({} < 3):", indent1, paramName));
+  out.push_back(std::format("{}return 1", indent2));
+  out.push_back(std::format("{}let a = 0", indent1));
+  out.push_back(std::format("{}let b = 1", indent1));
+  out.push_back(std::format("{}let c = 1", indent1));
+  out.push_back(std::format("{}let i = 3", indent1));
+  out.push_back(std::format("{}while (i <= {}):", indent1, paramName));
+  out.push_back(std::format("{}let d = a + b + c", indent2));
+  out.push_back(std::format("{}a = b", indent2));
+  out.push_back(std::format("{}b = c", indent2));
+  out.push_back(std::format("{}c = d", indent2));
+  out.push_back(std::format("{}i = i + 1", indent2));
+  out.push_back(std::format("{}return c", indent1));
 }
 
 void appendPowerBinaryExpBody(
@@ -1884,6 +2082,31 @@ void appendCountOutsideRangeSortedBody(
   out.push_back(std::format("{}rr = mid", indent3));
   out.push_back(std::format("{}let inside = ll - left", indent1));
   out.push_back(std::format("{}return {} - inside", indent1, nParam));
+}
+
+void appendTwoSumSortedBody(
+  std::vector<std::string> &out,
+  std::size_t baseIndent,
+  std::string_view arrParam,
+  std::string_view nParam,
+  std::string_view targetParam
+) {
+  const std::string indent1(baseIndent + 4, ' ');
+  const std::string indent2(baseIndent + 8, ' ');
+  const std::string indent3(baseIndent + 12, ' ');
+  out.push_back(std::format("{}if ({} < 2):", indent1, nParam));
+  out.push_back(std::format("{}return 0", indent2));
+  out.push_back(std::format("{}let l = 0", indent1));
+  out.push_back(std::format("{}let r = {} - 1", indent1, nParam));
+  out.push_back(std::format("{}while (l < r):", indent1));
+  out.push_back(std::format("{}let s = {}[l] + {}[r]", indent2, arrParam, arrParam));
+  out.push_back(std::format("{}if (s == {}):", indent2, targetParam));
+  out.push_back(std::format("{}return 1", indent3));
+  out.push_back(std::format("{}if (s < {}):", indent2, targetParam));
+  out.push_back(std::format("{}l = l + 1", indent3));
+  out.push_back(std::format("{}else:", indent2));
+  out.push_back(std::format("{}r = r - 1", indent3));
+  out.push_back(std::format("{}return 0", indent1));
 }
 
 void appendBitPeelIterativeBody(
@@ -2295,6 +2518,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
         }
         appendFactorialIterativeBody(rewritten, baseIndent, params[0]);
         break;
+      case IntentRewriteKind::TribonacciIterative:
+        if (params.empty()) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendTribonacciIterativeBody(rewritten, baseIndent, params[0]);
+        break;
       case IntentRewriteKind::ReduceSumFormula:
         if (params.empty()) {
           keepOriginalBody();
@@ -2510,6 +2741,14 @@ auto preprocessIntentSource(const std::string &source) -> IntentPreprocessResult
           continue;
         }
         appendCountOutsideRangeSortedBody(rewritten, baseIndent, params[0], params[1], params[2], params[3]);
+        break;
+      case IntentRewriteKind::TwoSumSortedTwoPointers:
+        if (params.size() < 3) {
+          keepOriginalBody();
+          i = j;
+          continue;
+        }
+        appendTwoSumSortedBody(rewritten, baseIndent, params[0], params[1], params[2]);
         break;
       case IntentRewriteKind::BitPeelIterative:
         if (params.size() < 2) {

@@ -278,10 +278,12 @@ Never allowed:
 - `count_not_equal_sorted` *(sorted count `!= x` via `n - count_equal`)*
 - `count_range_sorted` *(sorted count `[lo..hi]` via two binary bounds)*
 - `count_outside_range_sorted` *(sorted count outside `[lo..hi]` via `n - count_range`)*
+- `two_sum_sorted_exists` *(nested-loop pair-sum on sorted data -> two-pointer scan)*
 - `string_contains`
 - `dot_product`
 - `polynomial_eval`
 - `fibonacci_dp` *(experimental rewrite path)*
+- `tribonacci_dp` *(recursive tribonacci -> iterative DP)*
 - `factorial_iterative` *(recursive factorial -> iterative loop)*
 - `power_fast` *(linear multiplication -> binary exponentiation)*
 - `gcd_euclid` *(subtractive gcd -> modulo Euclid)*
@@ -314,6 +316,7 @@ Automatic detection mode:
 Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 
 - `dp.fib.v1`
+- `dp.trib.v1`
 - `math.factorial.loop.v1`
 - `math.pow.binary_exp`
 - `math.gcd.euclid`
@@ -331,6 +334,7 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 - `search.count_not_equal.v1`
 - `search.count_range.v1`
 - `search.count_outside_range.v1`
+- `search.two_sum.v1`
 - `math.sum_squares.formula.v1`
 - `math.sum_cubes.formula.v1`
 - `math.sum_even_squares.formula.v1`
@@ -492,6 +496,46 @@ Measured benchmark in this repo (same machine/session):
 - speedup: `2.41x` (median)
 
 This pack stresses mixed sorted-count and parity-cube formulas and confirms deterministic rewrite composition with matching runtime outputs.
+
+### 11.5 Visual Example: Two-Sum Sorted (`O(n^2)` -> `O(n)`)
+
+Files:
+
+- `examples/intent_real_two_sum_naive.tg`
+- `examples/intent_real_two_sum_intent.tg`
+
+Intent variant pin:
+
+- `goal: two_sum_sorted_exists` + `strategy: search.two_sum.v1`
+
+Benchmark command:
+
+- `python scripts/benchmark_twosum_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+
+Measured benchmark in this repo (same machine/session):
+
+- native median: `0.322789s`
+- intent median: `0.071002s`
+- speedup: `4.55x` (median)
+
+This example shows a real asymptotic rewrite from nested scan (`O(n^2)`) to two pointers (`O(n)`) on sorted data.
+
+### 11.6 Visual Example: Tribonacci DP Rewrite
+
+Files:
+
+- `examples/intent_real_tribonacci_naive.tg`
+- `examples/intent_real_tribonacci_intent.tg`
+
+Intent variant pin:
+
+- `goal: tribonacci_dp` + `strategy: dp.trib.v1`
+
+Expected output parity:
+
+- both variants print `755476` for `n = 24`
+
+This extends the DP family beyond Fibonacci while keeping deterministic compile-time rewrite behavior.
 
 ## 12) Implementation plan
 

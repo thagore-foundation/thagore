@@ -1,0 +1,51 @@
+import fs
+extern func __time_now_ms() -> i32
+
+intent func has_pair_sum_scan(arr: [i32; 96], n: i32, target: i32) -> i32:
+    goal: two_sum_sorted_exists
+    strategy: search.two_sum.v1
+    constraints:
+        deterministic == true
+
+func has_pair_sum_scan(arr: [i32; 96], n: i32, target: i32) -> i32:
+    let i = 0
+    while (i < n):
+        let j = i + 1
+        while (j < n):
+            if ((arr[i] + arr[j]) == target):
+                return 1
+            j = j + 1
+        i = i + 1
+    return 0
+
+func main() -> i32:
+    let arr = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = 96
+    let shift = 3
+
+    let i = 0
+    while (i < n):
+        arr[i] = i * 2 + shift
+        i = i + 1
+
+    let sample = has_pair_sum_scan(arr, n, arr[10] + arr[80])
+
+    let rounds = 180000
+    let qi = 0
+    let checksum = 0
+    let t0 = __time_now_ms()
+    while (qi < rounds):
+        let base = qi * 17
+        let x = base - (base / 220) * 220
+        checksum = checksum + has_pair_sum_scan(arr, n, x + shift * 2)
+        qi = qi + 1
+    let t1 = __time_now_ms()
+
+    print("two_sum intent sample:")
+    print(sample)
+    print("two_sum intent checksum:")
+    print(checksum)
+    print("two_sum intent elapsed_ms:")
+    print(t1 - t0)
+    return 0
+
