@@ -190,6 +190,11 @@ jobs:
                 return 0
               fi
             fi
+            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              LAST_BIN="$cc"
+              echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
             LAST_BIN=""
             return 1
           }

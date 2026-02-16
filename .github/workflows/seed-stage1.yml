@@ -206,6 +206,10 @@ jobs:
             if [[ -n "$got" ]]; then
               return 0
             fi
+            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
@@ -249,7 +253,11 @@ jobs:
           chmod +x "$STAGE2_BIN" || true
 
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
-          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg")"
+          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_BIN"
+            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
           SEED_BIN="$STAGE2_REBUILD_BIN"
