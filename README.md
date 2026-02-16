@@ -1,7 +1,7 @@
 <div align="center">
 
 # Thagore
-
+[![Ask GeyWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/thagore-foundation/thagore)
 **A statically-typed, compiled programming language powered by LLVM.**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
