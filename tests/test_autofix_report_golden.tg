@@ -1,0 +1,61 @@
+import "lib/fs.tg" as fs
+import "src/cli/autofix.tg" as autofix
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let nl = __string_from_codepoint(10)
+    let dq = __string_from_codepoint(34)
+    let sample = "tests/__autofix_report_golden_case.tg"
+    let src = "pub pub fn main()" + nl + "    return 1" + nl
+    fails = fails + _expect_i32("write sample", fs.write_text(sample, src), 1)
+    fails = fails + _expect_i32("apply safe", autofix.run_fix_apply(sample, "safe", "", 0), 0)
+    let report_path = autofix.latest_applied_report_path()
+    fails = fails + _expect_contains("report path json", report_path, ".json")
+    let report = fs.read_text(report_path)
+
+    fails = fails + _expect_contains("golden has fixes array", report, dq + "fixes" + dq + ":[")
+    fails = fails + _expect_contains("golden has diff unified", report, dq + "diff_unified" + dq + ":")
+    fails = fails + _expect_contains("golden has diagnostic family", report, dq + "diagnostic_family" + dq + ":")
+    fails = fails + _expect_contains("golden has missing colon rule", report, dq + "rule" + dq + ":" + dq + "missing_colon_block_header" + dq)
+    fails = fails + _expect_contains("golden has deprecated fn rule", report, dq + "rule" + dq + ":" + dq + "normalize_deprecated_fn_keyword" + dq)
+    fails = fails + _expect_contains("golden has duplicate modifier rule", report, dq + "rule" + dq + ":" + dq + "remove_duplicate_trivial_modifiers" + dq)
+    fails = fails + _expect_contains("golden has expected diff hunk", report, "@@ -1,1 +1,1 @@")
+    fails = fails + _expect_contains("golden has expected header rewrite", report, "pub pub fn main()")
+    fails = fails + _expect_contains("golden has rewritten header", report, "pub func main():")
+
+    if (fails == 0):
+        print("PASS: autofix report golden")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

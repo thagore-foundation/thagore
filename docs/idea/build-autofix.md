@@ -244,6 +244,7 @@ When enabled:
 - Idempotency tests (applying same fix twice yields no change).
 - Safety tests (forbidden files/rules never modified).
 - Regression tests for build speed in `autofix=off`.
+- Local regression gate scripts: `scripts/autofix_off_regression.py` and `scripts/autofix_off_regression.ps1`.
 
 ## 16) Risks and mitigations
 

@@ -1,6 +1,7 @@
 import "lib/env.tg" as env
 import "lib/fs.tg" as fs
 import "lib/process.tg" as process
+import "src/cli/autofix.tg" as autofix
 import "src/frontend/lowering/pipeline.tg" as lowering
 import "src/frontend/native/typechecker.tg" as typechecker
 import "src/backend/llvm/emitter.tg" as emitter
@@ -9,8 +10,23 @@ extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __string_from_codepoint(cp: i32) -> String
 
+struct AutofixApplyBatchResult:
+    changed: i32
+    files_touched: i32
+    sessions_set: String
+    error: i32
+
+func _batch_result(changed: i32, files_touched: i32, sessions_set: String, error: i32) -> AutofixApplyBatchResult:
+    return AutofixApplyBatchResult(changed, files_touched, sessions_set, error)
+
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
 
 func _trim(text: String) -> String:
     let n = strlen(text)
@@ -65,8 +81,262 @@ func _starts_with(text: String, prefix: String) -> i32:
         return 1
     return 0
 
+func _ends_with(text: String, suffix: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(suffix)
+    if (m > n):
+        return 0
+    if (__thg_str_substr(text, n - m, m) == suffix):
+        return 1
+    return 0
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_path(path: String) -> String:
+    return _replace_all(path, "\\", "/")
+
+func _dir_name(path: String) -> String:
+    let p = _normalize_path(path)
+    let n = strlen(p)
+    let i = 0
+    let last = -1
+    while (i < n):
+        if (_char_at(p, i) == "/"):
+            last = i
+        i = i + 1
+    if (last < 0):
+        return "."
+    if (last == 0):
+        return "/"
+    return __thg_str_substr(p, 0, last)
+
+func _line_count(text: String) -> i32:
+    let n = strlen(text)
+    if (n == 0):
+        return 0
+    let i = 0
+    let c = 1
+    while (i < n):
+        if (_char_at(text, i) == _nl()):
+            c = c + 1
+        i = i + 1
+    return c
+
+func _line_at(text: String, index: i32) -> String:
+    let n = strlen(text)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+            i = i + 1
+        else:
+            line = line + ch
+            i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _set_contains(set_text: String, value: String) -> i32:
+    return _contains(set_text, ";" + value + ";")
+
+func _set_add_unique(set_text: String, value: String) -> String:
+    if (strlen(value) == 0):
+        return set_text
+    if (_set_contains(set_text, value) == 1):
+        return set_text
+    return set_text + value + ";"
+
+func _set_union(left: String, right: String) -> String:
+    let out = left
+    let i = 0
+    let n = strlen(right)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(right, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = _set_add_unique(out, token)
+    return out
+
+func _is_protected_autofix_path(path: String) -> i32:
+    let p = _normalize_path(path)
+    if (_starts_with(p, ".github/") == 1):
+        return 1
+    if (_starts_with(p, "legacy/") == 1):
+        return 1
+    if (_starts_with(p, ".thagore/") == 1):
+        return 1
+    return 0
+
+func _extract_import_path(line: String) -> String:
+    let s = _trim(line)
+    if (_starts_with(s, "import ") == 0):
+        return ""
+    let q1 = _find_char(s, _dq())
+    if (q1 < 0):
+        return ""
+    let j = q1 + 1
+    let n = strlen(s)
+    while (j < n):
+        if (_char_at(s, j) == _dq()):
+            return __thg_str_substr(s, q1 + 1, j - q1 - 1)
+        j = j + 1
+    return ""
+
+func _resolve_import_path(entry_path: String, import_path: String) -> String:
+    let imp = _normalize_path(import_path)
+    if (_starts_with(imp, "/") == 1):
+        return imp
+    if (_contains(imp, ":") == 1):
+        return imp
+    if ((_starts_with(imp, "lib/") == 1) or (_starts_with(imp, "src/") == 1) or (_starts_with(imp, "tests/") == 1) or (_starts_with(imp, "examples/") == 1)):
+        return imp
+    let base = _dir_name(entry_path)
+    if (base == "."):
+        return imp
+    return _normalize_path(base + "/" + imp)
+
+func _collect_autofix_targets(entry_path: String) -> String:
+    let entry = _normalize_path(entry_path)
+    let targets = ";" + entry + ";"
+    if (fs.exists(entry_path) == 0):
+        return targets
+    let source_raw = fs.read_text(entry_path)
+    let source = _unescape_newlines(source_raw)
+    let total = _line_count(source)
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let imp = _extract_import_path(line)
+        if ((strlen(imp) > 0) and (_ends_with(imp, ".tg") == 1) and (_starts_with(imp, "lib/") == 0)):
+            let resolved = _resolve_import_path(entry_path, imp)
+            if ((resolved != entry) and (fs.exists(resolved) == 1) and (_is_protected_autofix_path(resolved) == 0)):
+                targets = _set_add_unique(targets, resolved)
+        i = i + 1
+    return targets
+
+func _error_severity_rank(code: i32) -> i32:
+    if (code == 0):
+        return 0
+    if (code == 21):
+        return 1
+    if (code == 2):
+        return 2
+    if (code == 1):
+        return 3
+    if (code == 11):
+        return 4
+    return 5
+
+func _rollback_sessions(session_set: String) -> void:
+    let n = strlen(session_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(session_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let rc = autofix.run_fix_rollback(token)
+                if (rc != 0):
+                    print("[autofix] rollback warning: failed session=" + token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let rc2 = autofix.run_fix_rollback(token)
+        if (rc2 != 0):
+            print("[autofix] rollback warning: failed session=" + token)
+
+func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, lock_strict: i32, max_files_touched: i32) -> AutofixApplyBatchResult:
+    let targets = _collect_autofix_targets(entry_path)
+    let changed_total = 0
+    let files_touched = 0
+    let sessions = ";"
+    let n = strlen(targets)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(targets, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (files_touched >= max_files_touched):
+                    print("[autofix] conflict: max files touched exceeded.")
+                    return _batch_result(changed_total, files_touched, sessions, 1)
+                let changed = autofix.apply_for_build(token, mode, lock_path, lock_strict)
+                if (changed < 0):
+                    return _batch_result(changed_total, files_touched, sessions, 1)
+                if (changed > 0):
+                    changed_total = changed_total + changed
+                    files_touched = files_touched + 1
+                    let sid = autofix.latest_session_id()
+                    if (strlen(sid) > 0):
+                        sessions = _set_add_unique(sessions, sid)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (files_touched >= max_files_touched):
+            print("[autofix] conflict: max files touched exceeded.")
+            return _batch_result(changed_total, files_touched, sessions, 1)
+        let changed_last = autofix.apply_for_build(token, mode, lock_path, lock_strict)
+        if (changed_last < 0):
+            return _batch_result(changed_total, files_touched, sessions, 1)
+        if (changed_last > 0):
+            changed_total = changed_total + changed_last
+            files_touched = files_touched + 1
+            let sid_last = autofix.latest_session_id()
+            if (strlen(sid_last) > 0):
+                sessions = _set_add_unique(sessions, sid_last)
+    return _batch_result(changed_total, files_touched, sessions, 0)
+
 func _quote(s: String) -> String:
     return s
+
+func _value_after_prefix(text: String, prefix: String) -> String:
+    if (_starts_with(text, prefix) == 0):
+        return ""
+    return __thg_str_substr(text, strlen(prefix), strlen(text) - strlen(prefix))
 
 func _unescape_newlines(text: String) -> String:
     let n = strlen(text)
@@ -125,6 +395,32 @@ func _strip_ext(name: String) -> String:
 func _default_output(input_path: String) -> String:
     return _strip_ext(_base_name(input_path))
 
+func _digit_char(d: i32) -> String:
+    return __thg_str_substr("0123456789", d, 1)
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + _digit_char(r)
+        n = q
+    let out = ""
+    let i2 = strlen(rev) - 1
+    while (i2 >= 0):
+        out = out + _char_at(rev, i2)
+        i2 = i2 - 1
+    return sign + out
+
 func _detect_clang() -> String:
     if (process.run("clang --version > thagore_clang_probe.log 2>&1") == 0):
         return "clang"
@@ -135,6 +431,18 @@ func _detect_clang() -> String:
     if (process.run("/usr/local/bin/clang --version > thagore_clang_probe.log 2>&1") == 0):
         return "/usr/local/bin/clang"
     return ""
+
+func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
+    if (total_fixed > 0):
+        print("[autofix] rebuild=failed after fixes_applied=" + _to_string_i32(total_fixed))
+    print("[autofix] failing_diagnostic=build_code_" + _to_string_i32(code))
+    let report_path = ""
+    if (total_fixed > 0):
+        report_path = autofix.latest_applied_report_path()
+    if (strlen(report_path) == 0):
+        report_path = autofix.latest_report_path()
+    if (strlen(report_path) > 0):
+        print("[autofix] report: " + report_path)
 
 func _link_exe(ir_path: String, out_path: String) -> i32:
     let clang_bin = _detect_clang()
@@ -161,17 +469,17 @@ func _looks_like_valid_llvm(ir: String) -> i32:
         return 0
     return 1
 
-func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
+func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
     let source_raw = fs.read_text(input_path)
     let source = _unescape_newlines(source_raw)
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
-        return 1
+        return 11
     let lowered = _unescape_newlines(lowering.preprocess(source))
     let tc_code = typechecker.validate_source(lowered)
     if (tc_code != 0):
         print("ERROR: typecheck failed.")
-        return 1
+        return 21
     let module_name = _strip_ext(_base_name(input_path))
     let ir = emitter.emit_program_from_source(source, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
@@ -195,12 +503,57 @@ func _build(input_path: String, out_path: String, emit_only: i32) -> i32:
     print("Build success.")
     return 0
 
+func _build(input_path: String, out_path: String, emit_only: i32, autofix_mode_raw: String, autofix_lock: String, autofix_lock_strict: i32) -> i32:
+    let mode = autofix.normalize_mode(autofix_mode_raw)
+    if (mode == "off"):
+        return _build_once(input_path, out_path, emit_only)
+    let pass_idx = 0
+    let total_fixed = 0
+    let applied_sessions = ";"
+    let baseline_rank = _error_severity_rank(21)
+    while (pass_idx < 3):
+        let code = _build_once(input_path, out_path, emit_only)
+        if (code == 0):
+            if (pass_idx > 0):
+                print("[autofix] rebuild=success")
+            return 0
+        if ((pass_idx > 0) and (total_fixed > 0)):
+            let now_rank = _error_severity_rank(code)
+            if (now_rank > baseline_rank):
+                print("[autofix] severity_increase_detected after autofix; rolling back applied sessions.")
+                _rollback_sessions(applied_sessions)
+                _print_autofix_build_failure(total_fixed, code)
+                return code
+        if (code != 21):
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        if (pass_idx >= 2):
+            print("[autofix] max_passes_reached=3")
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        let batch = _apply_autofix_batch(input_path, mode, autofix_lock, autofix_lock_strict, 10)
+        if ((batch.error == 1) or (batch.changed <= 0)):
+            print("[autofix] rebuild=failed")
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        total_fixed = total_fixed + batch.changed
+        applied_sessions = _set_union(applied_sessions, batch.sessions_set)
+        pass_idx = pass_idx + 1
+    print("[autofix] rebuild=failed")
+    return 1
+
 func _print_help() -> void:
     print("Thagore Compiler CLI")
     print("Usage:")
-    print("  thagore build <input.tg> -o <output>")
+    print("  thagore build <input.tg> -o <output> [--autofix=<off|safe|aggressive>]")
+    print("       [--autofix-lock <path>] [--autofix-lock-strict]")
     print("  thagore build <input.tg> --emit-llvm")
     print("  thagore <input.tg> --emit-llvm")
+    print("  thagore fix doctor <entry.tg> [--lock <path>] [--lock-strict]")
+    print("  thagore fix dry-run <entry.tg> [--lock <path>] [--lock-strict]")
+    print("  thagore fix apply <entry.tg> [--level safe|aggressive] [--lock <path>] [--lock-strict]")
+    print("  thagore fix explain <entry.tg> [--json] [--lock <path>] [--lock-strict]")
+    print("  thagore fix rollback <session-id>")
     print("  thagore install toolchain")
     print("  thagore --version")
 
@@ -218,6 +571,12 @@ func _install_toolchain() -> i32:
     print("ERROR: unsupported platform package manager. Install LLVM manually.")
     return 1
 
+func _fix_level(raw: String) -> String:
+    let m = _trim(raw)
+    if (m == "aggressive"):
+        return "aggressive"
+    return "safe"
+
 func main() -> i32:
     let argc = env.count()
     if (argc <= 1):
@@ -230,10 +589,67 @@ func main() -> i32:
     if ((cmd == "--version") or (cmd == "version")):
         print("thagore 0.4.0-native-cli")
         return 0
+    if (cmd == "fix"):
+        if (argc <= 2):
+            print("ERROR: missing fix subcommand.")
+            return 1
+        let sub = _trim(env.get(2))
+        if (sub == "rollback"):
+            if (argc <= 3):
+                print("ERROR: missing fix session id.")
+                return 1
+            return autofix.run_fix_rollback(_trim(env.get(3)))
+        if (argc <= 3):
+            print("ERROR: missing entry path for fix command.")
+            return 1
+        let entry = _trim(env.get(3))
+        let level = "safe"
+        let as_json = 0
+        let lock_path = ""
+        let lock_strict = 0
+        let i_fix = 4
+        while (i_fix < argc):
+            let arg_fix = _trim(env.get(i_fix))
+            if (_starts_with(arg_fix, "--level=") == 1):
+                level = _fix_level(_value_after_prefix(arg_fix, "--level="))
+            else:
+                if ((arg_fix == "--level") and ((i_fix + 1) < argc)):
+                    level = _fix_level(_trim(env.get(i_fix + 1)))
+                    i_fix = i_fix + 1
+                else:
+                    if (_starts_with(arg_fix, "--lock=") == 1):
+                        lock_path = _trim(_value_after_prefix(arg_fix, "--lock="))
+                    else:
+                        if ((arg_fix == "--lock") and ((i_fix + 1) < argc) and (_starts_with(_trim(env.get(i_fix + 1)), "--") == 0)):
+                            lock_path = _trim(env.get(i_fix + 1))
+                            i_fix = i_fix + 1
+                        else:
+                            if (arg_fix == "--lock"):
+                                lock_path = "thagore.fix.lock"
+                            else:
+                                if (arg_fix == "--lock-strict"):
+                                    lock_strict = 1
+                                else:
+                                    if (arg_fix == "--json"):
+                                        as_json = 1
+            i_fix = i_fix + 1
+        if (sub == "doctor"):
+            return autofix.run_fix_doctor(entry, level, lock_path, lock_strict)
+        if (sub == "dry-run"):
+            return autofix.run_fix_dry_run(entry, level, lock_path, lock_strict)
+        if (sub == "apply"):
+            return autofix.run_fix_apply(entry, level, lock_path, lock_strict)
+        if (sub == "explain"):
+            return autofix.run_fix_explain(entry, level, as_json, lock_path, lock_strict)
+        print("ERROR: unknown fix subcommand: " + sub)
+        return 1
     if ((cmd == "install") and (argc > 2)):
         if (_trim(env.get(2)) == "toolchain"):
             return _install_toolchain()
     let emit_only = 0
+    let autofix_mode = "off"
+    let autofix_lock = ""
+    let autofix_lock_strict = 0
     let input_path = ""
     let out_path = ""
     let i = 1
@@ -251,10 +667,33 @@ func main() -> i32:
         if (arg == "--emit-llvm"):
             emit_only = 1
         else:
-            if ((arg == "-o") and ((i + 1) < argc)):
-                out_path = _trim(env.get(i + 1))
-                i = i + 1
+            if (_starts_with(arg, "--autofix=") == 1):
+                autofix_mode = _value_after_prefix(arg, "--autofix=")
+            else:
+                if (arg == "--autofix"):
+                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                        autofix_mode = _trim(env.get(i + 1))
+                        i = i + 1
+                    else:
+                        autofix_mode = "safe"
+                else:
+                    if (_starts_with(arg, "--autofix-lock=") == 1):
+                        autofix_lock = _trim(_value_after_prefix(arg, "--autofix-lock="))
+                    else:
+                        if ((arg == "--autofix-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                            autofix_lock = _trim(env.get(i + 1))
+                            i = i + 1
+                        else:
+                            if (arg == "--autofix-lock"):
+                                autofix_lock = "thagore.fix.lock"
+                            else:
+                                if (arg == "--autofix-lock-strict"):
+                                    autofix_lock_strict = 1
+                                else:
+                                    if ((arg == "-o") and ((i + 1) < argc)):
+                                        out_path = _trim(env.get(i + 1))
+                                        i = i + 1
         i = i + 1
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
-    return _build(input_path, out_path, emit_only)
+    return _build(input_path, out_path, emit_only, autofix_mode, autofix_lock, autofix_lock_strict)

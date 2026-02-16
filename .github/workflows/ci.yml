@@ -491,6 +491,38 @@ jobs:
           "./$HELLO_BIN"
           "./$FIB_BIN"
 
+      - name: Autofix off regression gate (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          COMPILER_PATH=".\\${STAGE1_BIN}"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/autofix_off_regression.ps1 \
+            -Compiler "$COMPILER_PATH" \
+            -Entry "examples/hello.tg" \
+            -Runs 2 \
+            -MaxOverheadPct 25 \
+            -JsonOut "autofix-off-regression.json"
+
+      - name: Autofix contract tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            BIN1="autofix_cli_ci.exe"
+            BIN2="autofix_report_golden_ci.exe"
+          else
+            BIN1="autofix_cli_ci"
+            BIN2="autofix_report_golden_ci"
+          fi
+          "./$STAGE1_BIN" build tests/test_autofix_cli.tg -o "$BIN1"
+          "./$STAGE1_BIN" build tests/test_autofix_report_golden.tg -o "$BIN2"
+          test -f "$BIN1"
+          test -f "$BIN2"
+          chmod +x "$BIN1" "$BIN2" || true
+          "./$BIN1"
+          "./$BIN2"
+
       - name: Run syntax matrix (15 features)
         shell: bash
         run: |
@@ -571,6 +603,13 @@ jobs:
         with:
           name: syntax-matrix-report-ci-${{ matrix.os }}
           path: syntax-matrix-report.txt
+
+      - name: Upload autofix off regression report (Windows)
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autofix-off-regression-ci-windows
+          path: autofix-off-regression.json
 
       - name: Canary match-negative typecheck (non-blocking, Windows)
         if: runner.os == 'Windows'
