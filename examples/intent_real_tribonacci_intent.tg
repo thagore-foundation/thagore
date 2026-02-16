@@ -1,0 +1,20 @@
+import fs
+
+intent func trib(n: i32) -> i32:
+    goal: tribonacci_dp
+    strategy: dp.trib.v1
+    constraints:
+        deterministic == true
+
+func trib(n: i32) -> i32:
+    if (n <= 0):
+        return 0
+    if (n < 3):
+        return 1
+    return trib(n - 1) + trib(n - 2) + trib(n - 3)
+
+func main() -> i32:
+    let v = trib(24)
+    print("trib intent:")
+    print(v)
+    return 0
