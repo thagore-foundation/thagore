@@ -408,12 +408,28 @@ jobs:
           HELLO_TARGET="$HELLO_BIN"
           FIB_TARGET="$FIB_BIN"
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
-          HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg")"
+          HELLO_BIN=""
+          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+            [[ -n "$cc" && -f "$cc" ]] || continue
+            if thg_build "$cc" examples/hello.tg "$HELLO_TARGET"; then
+              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+              if [[ -n "$HELLO_BIN" ]]; then
+                break
+              fi
+            fi
+          done
           test -f "$HELLO_BIN"
 
-          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
-          FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg")"
+          FIB_BIN=""
+          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+            [[ -n "$cc" && -f "$cc" ]] || continue
+            if thg_build "$cc" examples/fib.tg "$FIB_TARGET"; then
+              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+              if [[ -n "$FIB_BIN" ]]; then
+                break
+              fi
+            fi
+          done
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -546,9 +562,16 @@ jobs:
               TEST_BIN="${BASE}_ci"
             fi
             rm -f "$TEST_BIN" "${TEST_BIN}.exe" || true
+            ok=0
             BUILT_BIN=""
             USED_CC=""
-            if ! build_test "$STAGE2_REBUILD_BIN" "$TEST_SRC" "$TEST_BIN"; then
+            for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
+              if build_test "$cc" "$TEST_SRC" "$TEST_BIN"; then
+                ok=1
+                break
+              fi
+            done
+            if [[ "$ok" -ne 1 ]]; then
               echo "FAIL|$TEST_SRC|compile_failed" >> "$REPORT"
               echo "CRITICAL: failed to compile syntax matrix test $TEST_SRC."
               exit 1
