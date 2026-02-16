@@ -17,10 +17,39 @@ SUPPORTED_GOALS = [
     "map_filter_reduce",
     "deduplicate_sorted",
     "binary_search",
+    "binary_search_sorted",
+    "lower_bound_sorted",
+    "upper_bound_sorted",
+    "count_less_sorted",
+    "count_less_equal_sorted",
+    "count_greater_sorted",
+    "count_greater_equal_sorted",
+    "count_equal_sorted",
+    "count_not_equal_sorted",
+    "count_range_sorted",
+    "count_outside_range_sorted",
+    "two_sum_sorted_exists",
     "string_contains",
     "dot_product",
     "polynomial_eval",
     "fibonacci_dp",
+    "tribonacci_dp",
+    "factorial_iterative",
+    "power_fast",
+    "gcd_euclid",
+    "is_prime_fast",
+    "count_divisors_sqrt",
+    "interval_cover_greedy",
+    "bit_peel_iterative",
+    "sum_formula",
+    "sum_squares_formula",
+    "sum_cubes_formula",
+    "sum_even_squares_formula",
+    "sum_odd_squares_formula",
+    "sum_even_cubes_formula",
+    "sum_odd_cubes_formula",
+    "sum_even_formula",
+    "sum_odd_formula",
     "sort_ascending",
     "search_element",
     "sqrt_bounded_loop",
@@ -351,6 +380,35 @@ def policy_presets_test(cli: Path, workdir: Path) -> None:
         raise SystemExit("FAIL: THAG_INTENT_POLICY=fast did not resolve to intent mode=min")
 
 
+def tribonacci_rewrite_smoke(cli: Path, workdir: Path) -> None:
+    src = workdir / "trib_rewrite.tg"
+    src.write_text(
+        "intent func trib(n: i32) -> i32:\n"
+        "    goal: tribonacci_dp\n"
+        "    constraints:\n"
+        "        deterministic == true\n"
+        "\n"
+        "func trib(n: i32) -> i32:\n"
+        "    if (n == 0):\n"
+        "        return 0\n"
+        "    if (n == 1):\n"
+        "        return 1\n"
+        "    if (n == 2):\n"
+        "        return 1\n"
+        "    return trib(n - 1) + trib(n - 2) + trib(n - 3)\n"
+        "\n"
+        "func main() -> i32:\n"
+        "    print(\"TRI_REWRITE_OK\")\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+    exe_ext = ".exe" if os.name == "nt" else ""
+    out_bin = workdir / f"trib_rewrite{exe_ext}"
+    proc = run_cmd([str(cli), "build", str(src), "--intent=max", "-o", str(out_bin)])
+    if "intent rewrite applied for trib using rule.dp.trib.iterative.v1" not in proc.stdout:
+        raise SystemExit("FAIL: tribonacci rewrite note was not emitted")
+
+
 def doctor_smoke(cli: Path) -> None:
     run_cmd([str(cli), "intent", "doctor", str(FIXTURE)])
 
@@ -377,6 +435,7 @@ def main() -> int:
         property_tests(cli, temp_root, args.rounds)
         strict_lock_gate_test(cli, temp_root)
         policy_presets_test(cli, temp_root)
+        tribonacci_rewrite_smoke(cli, temp_root)
         print("PASS: intent suite")
         print(f"workdir: {temp_root}")
         return 0

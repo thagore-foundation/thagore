@@ -2658,22 +2658,71 @@ static auto cliIntentPolicyValid(const std::string &policy) -> bool {
   return policy.empty() || policy == "safe" || policy == "fast" || policy == "debug";
 }
 
-static auto cliIntentGoalSupported(const std::string &goal) -> bool {
-  static const std::unordered_set<std::string> supported {
+static auto cliIntentSupportedGoals() -> const std::vector<std::string> & {
+  static const std::vector<std::string> goals {
     "auto_plan",
     "reduce_sum",
     "map_filter_reduce",
     "deduplicate_sorted",
     "binary_search",
+    "binary_search_sorted",
+    "lower_bound_sorted",
+    "upper_bound_sorted",
+    "count_less_sorted",
+    "count_less_equal_sorted",
+    "count_greater_sorted",
+    "count_greater_equal_sorted",
+    "count_equal_sorted",
+    "count_not_equal_sorted",
+    "count_range_sorted",
+    "count_outside_range_sorted",
+    "two_sum_sorted_exists",
     "string_contains",
     "dot_product",
     "polynomial_eval",
     "fibonacci_dp",
+    "tribonacci_dp",
+    "factorial_iterative",
+    "power_fast",
+    "gcd_euclid",
+    "is_prime_fast",
+    "count_divisors_sqrt",
+    "interval_cover_greedy",
+    "bit_peel_iterative",
+    "sum_formula",
+    "sum_squares_formula",
+    "sum_cubes_formula",
+    "sum_even_squares_formula",
+    "sum_odd_squares_formula",
+    "sum_even_cubes_formula",
+    "sum_odd_cubes_formula",
+    "sum_even_formula",
+    "sum_odd_formula",
     "sort_ascending",
     "search_element",
     "sqrt_bounded_loop",
   };
-  return supported.find(goal) != supported.end();
+  return goals;
+}
+
+static auto cliIntentSupportedGoalsCsv() -> const std::string & {
+  static const std::string csv = []() {
+    const auto &goals = cliIntentSupportedGoals();
+    std::string out {};
+    for (std::size_t i = 0; i < goals.size(); ++i) {
+      if (i > 0) {
+        out.push_back(',');
+      }
+      out += goals[i];
+    }
+    return out;
+  }();
+  return csv;
+}
+
+static auto cliIntentGoalSupported(const std::string &goal) -> bool {
+  const auto &goals = cliIntentSupportedGoals();
+  return std::find(goals.begin(), goals.end(), goal) != goals.end();
 }
 
 static auto cliIntentHashHex(const std::string &text) -> std::string {
@@ -2885,6 +2934,54 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
     add_rule("rule.binary_search.branchless.v2", "O(logn)", true, true, true, true, 1, 1, 0.0);
     return;
   }
+  if (goal == "binary_search_sorted") {
+    add_rule("rule.search.binary.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "lower_bound_sorted") {
+    add_rule("rule.search.lower_bound.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "upper_bound_sorted") {
+    add_rule("rule.search.upper_bound.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_less_sorted") {
+    add_rule("rule.search.count_less.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_less_equal_sorted") {
+    add_rule("rule.search.count_less_equal.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_greater_sorted") {
+    add_rule("rule.search.count_greater.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_greater_equal_sorted") {
+    add_rule("rule.search.count_greater_equal.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_equal_sorted") {
+    add_rule("rule.search.count_equal.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_not_equal_sorted") {
+    add_rule("rule.search.count_not_equal.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_range_sorted") {
+    add_rule("rule.search.count_range.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_outside_range_sorted") {
+    add_rule("rule.search.count_outside_range.sorted.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "two_sum_sorted_exists") {
+    add_rule("rule.search.two_sum.sorted.v1", "O(n)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
   if (goal == "string_contains") {
     add_rule("rule.string_contains.scan.v1", "O(n)", true, true, false, false, 2, 1, 0.0);
     add_rule("rule.string_contains.twoway.v2", "O(n)", true, true, true, true, 1, 1, 0.0);
@@ -2908,6 +3005,74 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
     add_rule("rule.fibonacci_dp.memoized.v3", "O(n)", true, false, false, false, 1, 3, 0.0);
     return;
   }
+  if (goal == "tribonacci_dp") {
+    add_rule("rule.dp.trib.iterative.v1", "O(n)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "factorial_iterative") {
+    add_rule("rule.math.factorial.loop.v1", "O(n)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "power_fast") {
+    add_rule("rule.math.pow.binary_exp.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "gcd_euclid") {
+    add_rule("rule.math.gcd.euclid.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "is_prime_fast") {
+    add_rule("rule.number.prime.sqrt.v1", "O(sqrt(n))", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "count_divisors_sqrt") {
+    add_rule("rule.number.divisors.sqrt.v1", "O(sqrt(n))", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "interval_cover_greedy") {
+    add_rule("rule.greedy.interval_cover.v1", "O(nlogn)", true, false, false, false, 1, 2, 0.0);
+    return;
+  }
+  if (goal == "bit_peel_iterative") {
+    add_rule("rule.number.bit_peel.iterative.v1", "O(logn)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_formula") {
+    add_rule("rule.math.sum.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_squares_formula") {
+    add_rule("rule.math.sum_squares.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_cubes_formula") {
+    add_rule("rule.math.sum_cubes.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_even_squares_formula") {
+    add_rule("rule.math.sum_even_squares.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_odd_squares_formula") {
+    add_rule("rule.math.sum_odd_squares.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_even_cubes_formula") {
+    add_rule("rule.math.sum_even_cubes.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_odd_cubes_formula") {
+    add_rule("rule.math.sum_odd_cubes.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_even_formula") {
+    add_rule("rule.math.sum_even.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
+  if (goal == "sum_odd_formula") {
+    add_rule("rule.math.sum_odd.formula.v1", "O(1)", true, true, false, false, 1, 1, 0.0);
+    return;
+  }
   if (goal == "sort_ascending") {
     add_rule("rule.sort_ascending.quicksort.v1", "O(nlogn)", true, false, false, false, 2, 3, 0.0);
     add_rule("rule.sort_ascending.introsort.v2", "O(nlogn)", true, false, true, true, 1, 3, 0.0);
@@ -2921,6 +3086,7 @@ static void cliIntentCollectRulesForGoal(const std::string &goal, std::vector<In
   if (goal == "sqrt_bounded_loop") {
     add_rule("rule.sqrt_bounded_loop.div_guard.v1", "O(sqrt(n))", true, true, false, false, 2, 1, 0.0);
     add_rule("rule.sqrt_bounded_loop.mul_guard.v2", "O(sqrt(n))", true, true, false, false, 1, 1, 0.0);
+    return;
   }
 }
 
@@ -3437,6 +3603,13 @@ static auto cliIntentInferGoalFromFunctionBody(
   const auto header = std::string_view(lines[funcStart]);
 
   const std::string callNeedle = entry.targetName + "(";
+  if (cliIntentCountOccurrences(body, callNeedle) >= 3
+      && body.find("return ") != std::string::npos
+      && cliIntentCountOccurrences(body, "+") >= 2) {
+    *goalOut = "tribonacci_dp";
+    return true;
+  }
+
   if (cliIntentCountOccurrences(body, callNeedle) >= 2 && body.find("return ") != std::string::npos && body.find('+') != std::string::npos) {
     *goalOut = "fibonacci_dp";
     return true;
@@ -3963,6 +4136,153 @@ static auto cliIntentRewriteFibonacciFunc(
   return true;
 }
 
+static auto cliIntentRewriteTribonacciFunc(
+  const std::string &source,
+  const IntentEntry &entry,
+  std::string *outSource,
+  std::string *reasonOut
+) -> bool {
+  if (outSource == nullptr) {
+    return false;
+  }
+  if (entry.kind != "func" || entry.targetName.empty()) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "intent target is not a function";
+    }
+    return false;
+  }
+
+  bool trailingNewline = false;
+  auto lines = cliIntentSplitLines(source, &trailingNewline);
+  std::size_t funcStart = std::string::npos;
+  const std::string funcPrefix = "func " + entry.targetName + "(";
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (startsWith(text, funcPrefix) && !text.empty() && text.back() == ':') {
+      funcStart = i;
+      break;
+    }
+  }
+  if (funcStart == std::string::npos) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "target function `" + entry.targetName + "` was not found";
+    }
+    return false;
+  }
+
+  const int baseIndent = leadingSpaces(lines[funcStart]);
+  std::size_t funcEnd = lines.size();
+  for (std::size_t i = funcStart + 1; i < lines.size(); ++i) {
+    const auto text = trim(lines[i]);
+    if (text.empty() || startsWith(text, "#") || startsWith(text, "//")) {
+      continue;
+    }
+    if (leadingSpaces(lines[i]) <= baseIndent) {
+      funcEnd = i;
+      break;
+    }
+  }
+
+  const std::string callNeedle = entry.targetName + "(";
+  auto count_occurrences = [](std::string_view text, std::string_view needle) -> int {
+    if (needle.empty()) {
+      return 0;
+    }
+    int count = 0;
+    std::size_t pos = 0;
+    while (true) {
+      const auto found = text.find(needle, pos);
+      if (found == std::string_view::npos) {
+        break;
+      }
+      ++count;
+      pos = found + needle.size();
+    }
+    return count;
+  };
+
+  bool hasRecursiveSumReturn = false;
+  for (std::size_t i = funcStart + 1; i < funcEnd; ++i) {
+    const auto text = trim(lines[i]);
+    if (!startsWith(text, "return ")) {
+      continue;
+    }
+    const int selfCalls = count_occurrences(text, callNeedle);
+    const int plusCount = count_occurrences(text, "+");
+    if (selfCalls >= 3 && plusCount >= 2) {
+      hasRecursiveSumReturn = true;
+      break;
+    }
+  }
+  if (!hasRecursiveSumReturn) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function body does not match supported recursive tribonacci pattern";
+    }
+    return false;
+  }
+
+  std::string paramName {};
+  if (!cliIntentParseSingleI32ParamName(lines[funcStart], &paramName)) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "function signature must be a single i32 parameter";
+    }
+    return false;
+  }
+
+  std::string body {};
+  for (std::size_t i = funcStart + 1; i < funcEnd; ++i) {
+    body += lines[i];
+    body.push_back('\n');
+  }
+  const std::string base0 = "if (" + paramName + " == 0):";
+  const std::string base1 = "if (" + paramName + " == 1):";
+  const std::string base2 = "if (" + paramName + " == 2):";
+  if (body.find(base0) == std::string::npos
+      || body.find(base1) == std::string::npos
+      || body.find(base2) == std::string::npos
+      || body.find("return 0") == std::string::npos
+      || count_occurrences(body, "return 1") < 2) {
+    if (reasonOut != nullptr) {
+      *reasonOut = "tribonacci rewrite requires base cases n=0->0, n=1->1, n=2->1";
+    }
+    return false;
+  }
+
+  const std::string indent0(static_cast<std::size_t>(baseIndent), ' ');
+  const std::string indent1(static_cast<std::size_t>(baseIndent + 4), ' ');
+  const std::string indent2(static_cast<std::size_t>(baseIndent + 8), ' ');
+  std::vector<std::string> rewrittenFunc {
+    lines[funcStart],
+    indent1 + "if (" + paramName + " == 0):",
+    indent2 + "return 0",
+    indent1 + "if (" + paramName + " == 1):",
+    indent2 + "return 1",
+    indent1 + "if (" + paramName + " == 2):",
+    indent2 + "return 1",
+    indent1 + "let a = 0",
+    indent1 + "let b = 1",
+    indent1 + "let c = 1",
+    indent1 + "let i = 3",
+    indent1 + "while (i <= " + paramName + "):",
+    indent2 + "let d = a + b + c",
+    indent2 + "a = b",
+    indent2 + "b = c",
+    indent2 + "c = d",
+    indent2 + "i = i + 1",
+    indent1 + "return c",
+  };
+
+  std::vector<std::string> merged {};
+  merged.reserve(lines.size() + rewrittenFunc.size());
+  merged.insert(merged.end(), lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(funcStart));
+  merged.insert(merged.end(), rewrittenFunc.begin(), rewrittenFunc.end());
+  merged.insert(merged.end(), lines.begin() + static_cast<std::ptrdiff_t>(funcEnd), lines.end());
+
+  *outSource = cliIntentJoinLines(merged, trailingNewline);
+  (void)indent0;
+  return true;
+}
+
 static auto cliIntentRewriteSqrtLoopFunc(
   const std::string &source,
   const IntentEntry &entry,
@@ -4057,10 +4377,12 @@ static auto cliIntentApplyPlansToSource(
   *outSource = source;
 
   for (const auto &plan : plans) {
-    if (plan.goal != "fibonacci_dp" && plan.goal != "sqrt_bounded_loop") {
+    if (plan.goal != "fibonacci_dp" && plan.goal != "tribonacci_dp" && plan.goal != "sqrt_bounded_loop") {
       continue;
     }
-    if (!startsWith(plan.selectedRule, "rule.fibonacci_dp.") && !startsWith(plan.selectedRule, "rule.sqrt_bounded_loop.")) {
+    if (!startsWith(plan.selectedRule, "rule.fibonacci_dp.")
+        && !startsWith(plan.selectedRule, "rule.dp.trib.")
+        && !startsWith(plan.selectedRule, "rule.sqrt_bounded_loop.")) {
       continue;
     }
 
@@ -4079,6 +4401,8 @@ static auto cliIntentApplyPlansToSource(
     bool rewrittenOk = false;
     if (plan.goal == "fibonacci_dp") {
       rewrittenOk = cliIntentRewriteFibonacciFunc(*outSource, *entryIt, &rewritten, &reason);
+    } else if (plan.goal == "tribonacci_dp") {
+      rewrittenOk = cliIntentRewriteTribonacciFunc(*outSource, *entryIt, &rewritten, &reason);
     } else if (plan.goal == "sqrt_bounded_loop") {
       rewrittenOk = cliIntentRewriteSqrtLoopFunc(*outSource, *entryIt, &rewritten, &reason);
     }
@@ -4109,7 +4433,7 @@ static auto cliIntentApplyPlansToSource(
 static auto cliIntentDoctor(const std::string &entryPath) -> int {
   std::printf("[intent] engine=ready\n");
   std::printf("[intent] determinism=enabled\n");
-  std::printf("[intent] supported_goals=auto_plan,reduce_sum,map_filter_reduce,deduplicate_sorted,binary_search,string_contains,dot_product,polynomial_eval,fibonacci_dp,sort_ascending,search_element,sqrt_bounded_loop\n");
+  std::printf("[intent] supported_goals=%s\n", cliIntentSupportedGoalsCsv().c_str());
   const auto clangPath = cliDetectClang();
   if (clangPath.empty()) {
     std::printf("[intent] toolchain=clang_missing\n");
