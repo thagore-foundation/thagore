@@ -132,6 +132,17 @@ func _decode_escaped_newlines(text: String) -> String:
             i = i + 1
     return out
 
+func _normalize_source_newlines(source: String) -> String:
+    let nl = _newline_char()
+    if (_contains(source, nl) == 1):
+        return source
+    let bs = _backslash_char()
+    let esc_n = _s2(bs, "n")
+    let esc_rn = _s4(bs, "r", bs, "n")
+    if ((_contains(source, esc_n) == 1) or (_contains(source, esc_rn) == 1)):
+        return _decode_escaped_newlines(source)
+    return source
+
 func _trim_edges(text: String) -> String:
     let n = strlen(text)
     if (n == 0):
@@ -1200,7 +1211,7 @@ func _emit_runtime_wrapper_ir(module_name: String) -> String:
     return _finalize_ir(out)
 
 func _emit_program_from_source(source: String, module_name: String) -> String:
-    let src = source
+    let src = _normalize_source_newlines(source)
     if (_is_runtime_wrapper_source(src) == 1):
         return _emit_runtime_wrapper_ir(module_name)
     let out = _s3("; ModuleID = '", module_name, "'__NL__")
@@ -1258,6 +1269,7 @@ func emit_program_typed(typed_normalized: String, module_name: String) -> String
     return _emit_program_from_source(typed_normalized, module_name)
 
 func emit_program_from_native(source: String, module_name: String) -> String:
-    if (_has_unsupported_func_signature(source) == 1):
+    let normalized = _normalize_source_newlines(source)
+    if (_has_unsupported_func_signature(normalized) == 1):
         return ""
-    return _emit_program_from_source(source, module_name)
+    return _emit_program_from_source(normalized, module_name)

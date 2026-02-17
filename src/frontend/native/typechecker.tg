@@ -48,14 +48,59 @@ func _dq() -> String:
 func _bs() -> String:
     return __string_from_codepoint(92)
 
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _tab() -> String:
+    return __string_from_codepoint(9)
+
+func _decode_escaped_newlines(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == _bs()) and (c1 == "n")):
+                out = out + _nl()
+                i = i + 2
+            else:
+                if (((i + 3) < n) and (c0 == _bs()) and (c1 == "r")):
+                    if ((_char_at(text, i + 2) == _bs()) and (_char_at(text, i + 3) == "n")):
+                        out = out + _nl()
+                        i = i + 4
+                    else:
+                        out = out + c0
+                        i = i + 1
+                else:
+                    out = out + c0
+                    i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_source_newlines(source: String) -> String:
+    if (_contains(source, _nl()) == 1):
+        return source
+    let esc_n = _bs() + "n"
+    let esc_rn = _bs() + "r" + _bs() + "n"
+    if ((_contains(source, esc_n) == 1) or (_contains(source, esc_rn) == 1)):
+        return _decode_escaped_newlines(source)
+    return source
+
 func _is_ws(ch: String) -> i32:
     if (ch == " "):
         return 1
-    if (ch == "\t"):
+    if (ch == _tab()):
         return 1
-    if (ch == "\n"):
+    if (ch == _nl()):
         return 1
-    if (ch == "\r"):
+    if (ch == _cr()):
         return 1
     return 0
 
@@ -111,8 +156,8 @@ func _mask_string_literals(text: String) -> String:
         else:
             if (esc == 1):
                 esc = 0
-                if (ch == "\n"):
-                    out = out + "\n"
+                if (ch == _nl()):
+                    out = out + _nl()
                 else:
                     out = out + " "
             else:
@@ -124,8 +169,8 @@ func _mask_string_literals(text: String) -> String:
                         in_str = 0
                         out = out + _dq()
                     else:
-                        if (ch == "\n"):
-                            out = out + "\n"
+                        if (ch == _nl()):
+                            out = out + _nl()
                         else:
                             out = out + " "
         i = i + 1
@@ -175,7 +220,7 @@ func _first_unsupported_goal_local(source: String) -> String:
     let line = ""
     while (i < n):
         let ch = _char_at(source, i)
-        if (ch == "\n"):
+        if (ch == _nl()):
             let tline = _trim_edges(line)
             if (_starts_with(tline, "goal:") == 1):
                 let g = _trim_edges(__thg_str_substr(tline, 5, strlen(tline) - 5))
@@ -184,7 +229,7 @@ func _first_unsupported_goal_local(source: String) -> String:
                         return g
             line = ""
         else:
-            if (ch != "\r"):
+            if (ch != _cr()):
                 line = line + ch
         i = i + 1
     let last = _trim_edges(line)
@@ -300,12 +345,13 @@ func _validate_match_usage(feature_set: String, enum_table: String, source: Stri
     return 0
 
 func validate_source(source: String) -> i32:
-    let normalized = parser.parse_normalized(source)
-    let feature_set = parser.parse_feature_set(source)
-    let enums = parser.parse_enums(source)
-    let aliases = parser.parse_aliases(source)
-    let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
+    let source_norm = _normalize_source_newlines(source)
+    let normalized = parser.parse_normalized(source_norm)
+    let feature_set = parser.parse_feature_set(source_norm)
+    let enums = parser.parse_enums(source_norm)
+    let aliases = parser.parse_aliases(source_norm)
+    let funcs = parser.parse_funcs(source_norm)
+    let typed = tir.typed_new(source_norm, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
     let analysis_source = _mask_string_literals(typed.normalized)
     if (_validate_header_contracts(analysis_source) != 0):
         return 1
@@ -328,10 +374,11 @@ func validate_source(source: String) -> i32:
     return 0
 
 func typecheck_to_normalized(source: String) -> String:
-    let normalized = parser.parse_normalized(source)
-    let feature_set = parser.parse_feature_set(source)
-    let enums = parser.parse_enums(source)
-    let aliases = parser.parse_aliases(source)
-    let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
+    let source_norm = _normalize_source_newlines(source)
+    let normalized = parser.parse_normalized(source_norm)
+    let feature_set = parser.parse_feature_set(source_norm)
+    let enums = parser.parse_enums(source_norm)
+    let aliases = parser.parse_aliases(source_norm)
+    let funcs = parser.parse_funcs(source_norm)
+    let typed = tir.typed_new(source_norm, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
     return typed.normalized
