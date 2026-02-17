@@ -5909,6 +5909,11 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return ca == cb;
   };
 
+  const bool internalEmit = []() {
+    const char *v = std::getenv("THAGORE_INTERNAL_EMIT");
+    return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+  }();
+
   if ((helperPath.empty() || !std::filesystem::exists(helperPath)) && !selfPath.empty()) {
     const auto selfFile = selfPath.filename().string();
     if (selfFile.rfind("stage3", 0) == 0) {
@@ -5918,6 +5923,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
         helperPath = preferred;
       }
     }
+  }
+
+  if ((helperPath.empty() || !std::filesystem::exists(helperPath))
+      && !internalEmit
+      && !selfPath.empty()
+      && std::filesystem::exists(selfPath)) {
+    helperPath = selfPath;
   }
 
   if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
@@ -5938,17 +5950,6 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     }
   }
 
-  const bool internalEmit = []() {
-    const char *v = std::getenv("THAGORE_INTERNAL_EMIT");
-    return v != nullptr && v[0] != '\0' && std::string(v) != "0";
-  }();
-
-  if ((helperPath.empty() || !std::filesystem::exists(helperPath))
-      && !internalEmit
-      && !selfPath.empty()
-      && std::filesystem::exists(selfPath)) {
-    helperPath = selfPath;
-  }
   if (internalEmit && !helperPath.empty() && samePath(helperPath, selfPath)) {
     std::error_code rmErr {};
     std::filesystem::remove(sourcePath, rmErr);
