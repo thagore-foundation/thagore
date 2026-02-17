@@ -43,6 +43,12 @@ func main() -> i32:
     let src_if_ne = "func main() -> i32:\n    let n = 3\n    if (n != 5):\n        return n\n    return 0\n"
     let ir_if_ne = em.emit_program_from_source(src_if_ne, "contract_if_ne")
     fails = fails + _expect_i32("emit if != uses icmp ne", _contains(ir_if_ne, "icmp ne"), 1)
+    let src_if_and = "func main() -> i32:\n    let n = 3\n    if (n > 0 and n < 5):\n        return n\n    return 0\n"
+    let ir_if_and = em.emit_program_from_source(src_if_and, "contract_if_and")
+    fails = fails + _expect_i32("emit if and uses and i1", _contains(ir_if_and, " = and i1 "), 1)
+    let src_if_or = "func main() -> i32:\n    let n = 3\n    if (n == 0 or n == 3):\n        return n\n    return 0\n"
+    let ir_if_or = em.emit_program_from_source(src_if_or, "contract_if_or")
+    fails = fails + _expect_i32("emit if or uses or i1", _contains(ir_if_or, " = or i1 "), 1)
 
     let src_while = "func main() -> i32:\n    let i = 0\n    while (i < 2):\n        return i\n    return 0\n"
     let ir_while = em.emit_program_from_source(src_while, "contract_while")
@@ -51,6 +57,9 @@ func main() -> i32:
     let src_while_le = "func main() -> i32:\n    let i = 0\n    while (i <= 2):\n        return i\n    return 0\n"
     let ir_while_le = em.emit_program_from_source(src_while_le, "contract_while_le")
     fails = fails + _expect_i32("emit while <= uses icmp sle", _contains(ir_while_le, "icmp sle"), 1)
+    let src_while_and = "func main() -> i32:\n    let i = 0\n    while (i >= 0 and i <= 2):\n        return i\n    return 0\n"
+    let ir_while_and = em.emit_program_from_source(src_while_and, "contract_while_and")
+    fails = fails + _expect_i32("emit while and uses and i1", _contains(ir_while_and, " = and i1 "), 1)
 
     if (fails == 0):
         print("PASS: codegen native contracts")
