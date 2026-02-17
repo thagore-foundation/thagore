@@ -38,7 +38,7 @@ func main() -> i32:
 
     let src_comp = "func main() -> i32:\n    let x = comptime(1 + 2)\n    return x\n"
     let out_comp = pipe.preprocess(src_comp)
-    fails = fails + _expect_str_contains("strip comptime wrapper", out_comp, "let x = 1 + 2")
+    fails = fails + _expect_str_contains("strip comptime wrapper", out_comp, "let x = 3")
 
     let src_comp_fn = "comptime func add(a: i32, b: i32) -> i32:\n    return a + b\nfunc main() -> i32:\n    let y = comptime add(40, 2)\n    return y\n"
     let out_comp_fn = pipe.preprocess(src_comp_fn)

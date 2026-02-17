@@ -18,6 +18,18 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
 
@@ -31,6 +43,62 @@ func _is_ident_char(ch: String) -> i32:
     if (_contains("0123456789", ch) == 1):
         return 1
     return 0
+
+func _is_supported_goal_local(goal: String) -> i32:
+    if (goal == "auto_plan"):
+        return 1
+    if (goal == "reduce_sum"):
+        return 1
+    if (goal == "map_filter_reduce"):
+        return 1
+    if (goal == "deduplicate_sorted"):
+        return 1
+    if (goal == "binary_search"):
+        return 1
+    if (goal == "string_contains"):
+        return 1
+    if (goal == "dot_product"):
+        return 1
+    if (goal == "polynomial_eval"):
+        return 1
+    if (goal == "fibonacci_dp"):
+        return 1
+    if (goal == "sort_ascending"):
+        return 1
+    if (goal == "search_element"):
+        return 1
+    if (goal == "sqrt_bounded_loop"):
+        return 1
+    return 0
+
+func _first_unsupported_goal_local(source: String) -> String:
+    let n = strlen(source)
+    let i = 0
+    while ((i + 5) <= n):
+        if (__thg_str_substr(source, i, 5) == "goal:"):
+            let j = i + 5
+            let in_ws = 1
+            let g = ""
+            while (j < n):
+                let ch = _char_at(source, j)
+                if (in_ws == 1):
+                    if ((ch == " ") or (ch == "\t")):
+                        j = j + 1
+                    else:
+                        in_ws = 0
+                else:
+                    if (_is_ident_char(ch) == 1):
+                        g = g + ch
+                        j = j + 1
+                    else:
+                        j = n
+            if (g.length() > 0):
+                if (_is_supported_goal_local(g) == 0):
+                    return g
+            i = i + 5
+        else:
+            i = i + 1
+    return ""
 
 func _has_match_keyword(source: String) -> i32:
     let n = strlen(source)
@@ -160,6 +228,11 @@ func validate_source(source: String) -> i32:
     if (_validate_feature_contract(typed.feature_set, source) != 0):
         return 1
     if (_validate_match_usage(typed.feature_set, typed.enums, source) != 0):
+        return 1
+    let unsupported_goal = _first_unsupported_goal_local(source)
+    if (unsupported_goal.length() > 0):
+        print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")
+        print(unsupported_goal)
         return 1
     if (im.validate_goals(source) == 0):
         print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")

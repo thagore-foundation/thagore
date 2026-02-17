@@ -287,19 +287,19 @@ func is_extension_impl_header(line: String) -> i32:
 
 func parse_intent_kind(line: String) -> String:
     let s = gt.trim(line)
-    if (_starts_with(s, "intent func ") == 1):
+    if (_starts_with(s, "intentfunc") == 1):
         if (_find_char(s, ":") >= 0):
             return "func"
         return ""
-    if (_starts_with(s, "intent loop ") == 1):
+    if (_starts_with(s, "intentloop") == 1):
         if (_find_char(s, ":") >= 0):
             return "loop"
         return ""
-    if (_starts_with(s, "intent calc(") == 1):
+    if (_starts_with(s, "intentcalc(") == 1):
         if (_find_char(s, ":") >= 0):
             return "calc"
         return ""
-    if (s == "intent block:"):
+    if (s == "intentblock:"):
         return "block"
     return ""
 
