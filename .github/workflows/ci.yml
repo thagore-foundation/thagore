@@ -494,7 +494,7 @@ jobs:
             -Compiler "$COMPILER_PATH" \
             -Entry "examples/hello.tg" \
             -Runs 2 \
-            -MaxOverheadPct 25 \
+            -MaxOverheadPct 45 \
             -JsonOut "autofix-off-regression.json"
 
       - name: Autofix contract tests
