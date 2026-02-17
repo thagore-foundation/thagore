@@ -91,9 +91,7 @@ func _decode_escaped_newlines(text: String) -> String:
     return out
 
 func _normalize_validation_source(source: String) -> String:
-    if ((_line_count_raw(source) <= 1) and (_contains(source, "\\n") == 1)):
-        return _decode_escaped_newlines(source)
-    return source
+    return _decode_escaped_newlines(source)
 
 func _starts_with(text: String, prefix: String) -> i32:
     let pn = strlen(prefix)
