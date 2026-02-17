@@ -599,7 +599,9 @@ func _cond_ir_op(op: String) -> String:
     return "icmp slt"
 
 func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
-    let cond_text = _trim_edges(cond_text_raw)
+    let cond_norm1 = _replace_all(cond_text_raw, "&&", " and ")
+    let cond_norm2 = _replace_all(cond_norm1, "||", " or ")
+    let cond_text = _trim_edges(cond_norm2)
     let p_and = _find(cond_text, " and ")
     if (p_and >= 0):
         let left = _trim_edges(__thg_str_substr(cond_text, 0, p_and))
