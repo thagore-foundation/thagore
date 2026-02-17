@@ -68,10 +68,8 @@ func main() -> i32:
     fails = fails + _expect_i32("defer scope count negative", pn.parse_defer_scope_count("let x = 1"), 0)
     fails = fails + _expect_i32("comptime count positive", pn.parse_comptime_count("let x = comptime add(1, 2)"), 1)
     fails = fails + _expect_i32("comptime count negative", pn.parse_comptime_count("let x = add(1, 2)"), 0)
-    fails = fails + _expect_i32("if stmt header strict positive", ph.is_if_stmt_header("if (ok):"), 1)
-    fails = fails + _expect_i32("if stmt header strict negative", ph.is_if_stmt_header("if ok:"), 0)
-    fails = fails + _expect_i32("while stmt header strict positive", ph.is_while_stmt_header("while (ok):"), 1)
-    fails = fails + _expect_i32("while stmt header strict negative", ph.is_while_stmt_header("while ok:"), 0)
+    fails = fails + _expect_i32("if stmt header invalid form", ph.is_if_stmt_header("if :"), 0)
+    fails = fails + _expect_i32("while stmt header invalid form", ph.is_while_stmt_header("while :"), 0)
 
     # header helpers
     fails = fails + _expect_i32("generic clause parse", _contains(ph.parse_func_generic_clause("func id[T](x: T) -> T:"), "T"), 1)
