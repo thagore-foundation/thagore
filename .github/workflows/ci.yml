@@ -554,7 +554,7 @@ jobs:
             done
             return 1
           }
-          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg tests/test_syntax_matrix_negative.tg tests/test_syntax_contract_strict.tg tests/test_typecheck_contracts.tg; do
+          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg tests/test_syntax_matrix_negative.tg tests/test_syntax_contract_strict.tg tests/test_typecheck_contracts.tg tests/test_codegen_native_contracts.tg; do
             BASE="$(basename "$TEST_SRC" .tg)"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               TEST_BIN="${BASE}_ci.exe"
@@ -611,6 +611,7 @@ jobs:
             "tests/test_syntax_matrix_negative.tg"
             "tests/test_syntax_contract_strict.tg"
             "tests/test_typecheck_contracts.tg"
+            "tests/test_codegen_native_contracts.tg"
           )
           for t in "${REQUIRED_TESTS[@]}"; do
             if ! grep -q "^PASS|${t}|" "$REPORT"; then
