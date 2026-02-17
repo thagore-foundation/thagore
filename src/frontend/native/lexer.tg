@@ -1,8 +1,15 @@
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
 
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
+
+func _quote_char() -> String:
+    return __string_from_codepoint(34)
+
+func _backslash_char() -> String:
+    return __string_from_codepoint(92)
 
 func _is_space(ch: String) -> i32:
     if (ch == " "):
@@ -12,6 +19,27 @@ func _is_space(ch: String) -> i32:
     if (ch == "\r"):
         return 1
     if (ch == "\n"):
+        return 1
+    return 0
+
+func _is_digit(ch: String) -> i32:
+    if (_contains("0123456789", ch) == 1):
+        return 1
+    return 0
+
+func _is_alpha(ch: String) -> i32:
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 1
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 1
+    if (ch == "_"):
+        return 1
+    return 0
+
+func _is_ident_char(ch: String) -> i32:
+    if (_is_alpha(ch) == 1):
+        return 1
+    if (_is_digit(ch) == 1):
         return 1
     return 0
 
@@ -61,6 +89,18 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
 func _line_count(source: String) -> i32:
     let n = strlen(source)
     if (n == 0):
@@ -93,6 +133,43 @@ func _line_at(source: String, index: i32) -> String:
         return out
     return ""
 
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    let neg = 0
+    let v = value
+    if (v < 0):
+        neg = 1
+        v = 0 - v
+    let out = ""
+    while (v > 0):
+        let q = v / 10
+        let digit = v - (q * 10)
+        out = __thg_str_substr("0123456789", digit, 1) + out
+        v = q
+    if (neg == 1):
+        return "-" + out
+    return out
+
+func _parse_i32(text: String) -> i32:
+    let n = strlen(text)
+    if (n <= 0):
+        return 0
+    let i = 0
+    let sign = 1
+    let v = 0
+    if (_char_at(text, 0) == "-"):
+        sign = -1
+        i = 1
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (_is_digit(ch) == 0):
+            return sign * v
+        let d = _find("0123456789", ch)
+        v = (v * 10) + d
+        i = i + 1
+    return sign * v
+
 func strip_comments(source: String) -> String:
     let total = _line_count(source)
     let i = 0
@@ -117,45 +194,247 @@ func strip_comments(source: String) -> String:
                         j = j + 1
                 else:
                     j = j + 1
-        let clean = _trim_edges(__thg_str_substr(line, 0, cut))
+        let clean = __thg_str_substr(line, 0, cut)
         out = out + clean
         if (i < (total - 1)):
             out = out + "\n"
         i = i + 1
     return out
 
+func _stack_push(stack: String, value: i32) -> String:
+    return stack + _to_string_i32(value) + ";"
+
+func _stack_peek(stack: String) -> i32:
+    let n = strlen(stack)
+    if (n <= 0):
+        return 0
+    let i = n - 1
+    while (i >= 0):
+        if (_char_at(stack, i) == ";"):
+            if (i == (n - 1)):
+                i = i - 1
+            else:
+                return _parse_i32(__thg_str_substr(stack, i + 1, n - i - 1))
+        i = i - 1
+    return _parse_i32(stack)
+
+func _stack_pop(stack: String) -> String:
+    let n = strlen(stack)
+    if (n <= 0):
+        return ""
+    let i = n - 1
+    let seen_tail = 0
+    while (i >= 0):
+        if (_char_at(stack, i) == ";"):
+            if (seen_tail == 0):
+                seen_tail = 1
+                i = i - 1
+            else:
+                return __thg_str_substr(stack, 0, i + 1)
+        else:
+            i = i - 1
+    return ""
+
+func _keyword_kind(word: String) -> String:
+    if (word == "func"):
+        return "FUNC"
+    if (word == "let"):
+        return "LET"
+    if (word == "if"):
+        return "IF"
+    if (word == "else"):
+        return "ELSE"
+    if (word == "while"):
+        return "WHILE"
+    if (word == "for"):
+        return "FOR"
+    if (word == "in"):
+        return "IN"
+    if (word == "match"):
+        return "MATCH"
+    if (word == "enum"):
+        return "ENUM"
+    if (word == "type"):
+        return "TYPE"
+    if (word == "trait"):
+        return "TRAIT"
+    if (word == "impl"):
+        return "IMPL"
+    if (word == "pub"):
+        return "PUB"
+    if (word == "unsafe"):
+        return "UNSAFE"
+    if (word == "defer"):
+        return "DEFER"
+    if (word == "comptime"):
+        return "COMPTIME"
+    if (word == "return"):
+        return "RETURN"
+    return "IDENT"
+
+func _scan_ident_end(raw: String, start: i32) -> i32:
+    let j = start
+    let done = 0
+    while (j < strlen(raw)):
+        if (done == 0):
+            if (_is_ident_char(_char_at(raw, j)) == 1):
+                j = j + 1
+            else:
+                done = 1
+        else:
+            j = strlen(raw)
+    return j
+
+func _scan_number_end(raw: String, start: i32) -> i32:
+    let j = start
+    let done = 0
+    while (j < strlen(raw)):
+        if (done == 0):
+            if (_is_digit(_char_at(raw, j)) == 1):
+                j = j + 1
+            else:
+                done = 1
+        else:
+            j = strlen(raw)
+    return j
+
+func _scan_string_end(raw: String, start_quote: i32) -> i32:
+    let j = start_quote + 1
+    let escaped = 0
+    let done = 0
+    let quote = _quote_char()
+    let bs = _backslash_char()
+    while (j < strlen(raw)):
+        if (done == 0):
+            let ch = _char_at(raw, j)
+            if (escaped == 1):
+                escaped = 0
+                j = j + 1
+            else:
+                if (ch == bs):
+                    escaped = 1
+                    j = j + 1
+                else:
+                    if (ch == quote):
+                        done = 1
+                        j = j + 1
+                    else:
+                        j = j + 1
+        else:
+            j = strlen(raw)
+    return j
+
+func _push_token(tokens: String, kind: String, text: String, line: i32, col: i32, indent: i32) -> String:
+    return tokens + kind + "|" + text + "|" + _to_string_i32(line) + "|" + _to_string_i32(col) + "|" + _to_string_i32(indent) + ";"
+
+func tokenize_native(source: String) -> String:
+    let clean = strip_comments(source)
+    let total = _line_count(clean)
+    let line_idx = 0
+    let tokens = ""
+    let indent_stack = "0;"
+    let emitted_stmt = 0
+    while (line_idx < total):
+        let raw = _line_at(clean, line_idx)
+        let text = _trim_edges(raw)
+        let current_indent = 0
+        let c = 0
+        while (c < strlen(raw)):
+            let ch = _char_at(raw, c)
+            if (ch == " "):
+                current_indent = current_indent + 1
+                c = c + 1
+            else:
+                if (ch == "\t"):
+                    current_indent = current_indent + 4
+                    c = c + 1
+                else:
+                    c = strlen(raw)
+        if (strlen(text) > 0):
+            if (emitted_stmt == 1):
+                tokens = _push_token(tokens, "NEWLINE", "\\n", line_idx + 1, 1, current_indent)
+            let last_indent = _stack_peek(indent_stack)
+            if (current_indent > last_indent):
+                indent_stack = _stack_push(indent_stack, current_indent)
+                tokens = _push_token(tokens, "INDENT", "", line_idx + 1, 1, current_indent)
+            else:
+                while (current_indent < _stack_peek(indent_stack)):
+                    indent_stack = _stack_pop(indent_stack)
+                    tokens = _push_token(tokens, "DEDENT", "", line_idx + 1, 1, current_indent)
+                if (current_indent != _stack_peek(indent_stack)):
+                    tokens = _push_token(tokens, "E_INDENT", "mismatch", line_idx + 1, 1, current_indent)
+            emitted_stmt = 1
+            let quote = _quote_char()
+            let i = 0
+            while (i < strlen(raw)):
+                let ch = _char_at(raw, i)
+                if (_is_space(ch) == 1):
+                    i = i + 1
+                else:
+                    if (_is_alpha(ch) == 1):
+                        let j = _scan_ident_end(raw, i)
+                        let word = __thg_str_substr(raw, i, j - i)
+                        tokens = _push_token(tokens, _keyword_kind(word), word, line_idx + 1, i + 1, current_indent)
+                        i = j
+                    else:
+                        if (_is_digit(ch) == 1):
+                            let jn = _scan_number_end(raw, i)
+                            let num = __thg_str_substr(raw, i, jn - i)
+                            tokens = _push_token(tokens, "NUMBER", num, line_idx + 1, i + 1, current_indent)
+                            i = jn
+                        else:
+                            if ((ch == "v") and ((i + 1) < strlen(raw)) and (_char_at(raw, i + 1) == quote)):
+                                let jv = _scan_string_end(raw, i + 1)
+                                tokens = _push_token(tokens, "INTERPOLATED_STRING", "vstr", line_idx + 1, i + 1, current_indent)
+                                i = jv
+                            else:
+                                if (ch == quote):
+                                    let js = _scan_string_end(raw, i)
+                                    tokens = _push_token(tokens, "STRING", "str", line_idx + 1, i + 1, current_indent)
+                                    i = js
+                                else:
+                                    if ((i + 1) < strlen(raw)):
+                                        let pair = ch + _char_at(raw, i + 1)
+                                        if (pair == "=="):
+                                            tokens = _push_token(tokens, "EQEQ", pair, line_idx + 1, i + 1, current_indent)
+                                            i = i + 2
+                                        else:
+                                            if (pair == "!="):
+                                                tokens = _push_token(tokens, "NEQ", pair, line_idx + 1, i + 1, current_indent)
+                                                i = i + 2
+                                            else:
+                                                if (pair == ">="):
+                                                    tokens = _push_token(tokens, "GTE", pair, line_idx + 1, i + 1, current_indent)
+                                                    i = i + 2
+                                                else:
+                                                    if (pair == "<="):
+                                                        tokens = _push_token(tokens, "LTE", pair, line_idx + 1, i + 1, current_indent)
+                                                        i = i + 2
+                                                    else:
+                                                        if (pair == "->"):
+                                                            tokens = _push_token(tokens, "ARROW", pair, line_idx + 1, i + 1, current_indent)
+                                                            i = i + 2
+                                                        else:
+                                                            if (pair == ".."):
+                                                                tokens = _push_token(tokens, "RANGE", pair, line_idx + 1, i + 1, current_indent)
+                                                                i = i + 2
+                                                            else:
+                                                                tokens = _push_token(tokens, "SYMBOL", ch, line_idx + 1, i + 1, current_indent)
+                                                                i = i + 1
+                                    else:
+                                        tokens = _push_token(tokens, "SYMBOL", ch, line_idx + 1, i + 1, current_indent)
+                                        i = i + 1
+        line_idx = line_idx + 1
+    while (_stack_peek(indent_stack) > 0):
+        indent_stack = _stack_pop(indent_stack)
+        tokens = _push_token(tokens, "DEDENT", "", total, 1, 0)
+    tokens = _push_token(tokens, "EOF", "", total + 1, 1, 0)
+    return tokens
+
 func has_sig_indentation(source: String) -> i32:
-    let total = _line_count(source)
-    let i = 0
-    while (i < total):
-        let line = _line_at(source, i)
-        if (strlen(_trim_edges(line)) > 0):
-            if (_contains(line, "    ") == 1):
-                return 1
-        i = i + 1
+    if (_contains(tokenize_native(source), "INDENT|") == 1):
+        return 1
     return 0
 
 func token_summary(source: String) -> String:
-    let clean = strip_comments(source)
-    let out = ""
-    if (_contains(clean, "enum") == 1):
-        out = out + "enum;"
-    if (_contains(clean, "match") == 1):
-        out = out + "match;"
-    if (_contains(clean, "type") == 1):
-        out = out + "type;"
-    if (_contains(clean, "pub") == 1):
-        out = out + "pub;"
-    if (_contains(clean, "unsafe:") == 1):
-        out = out + "unsafe;"
-    if (_contains(clean, "|") == 1):
-        out = out + "closure;"
-    if (_contains(clean, "..") == 1):
-        out = out + "range;"
-    if (_contains(clean, "[") == 1):
-        out = out + "array;"
-    if (_contains(clean, "if") == 1):
-        out = out + "if;"
-    if (has_sig_indentation(clean) == 1):
-        out = out + "indent;"
-    return out
+    return tokenize_native(source)

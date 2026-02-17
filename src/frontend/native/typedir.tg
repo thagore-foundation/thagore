@@ -1,10 +1,73 @@
-struct TypedProgramNative:
+struct TypeRef:
+    kind: String
+    name: String
+    detail: String
+
+struct Symbol:
+    name: String
+    type_name: String
+    scope: String
+    mutable_flag: i32
+
+struct ExprT:
+    id: i32
+    kind: String
+    type_name: String
+    payload: String
+    left_id: i32
+    right_id: i32
+    extra: String
+
+struct StmtT:
+    id: i32
+    kind: String
+    payload: String
+    expr_id: i32
+    block_id: i32
+    next_id: i32
+
+struct BlockT:
+    id: i32
+    parent_id: i32
+    stmt_ids: String
+
+struct FuncT:
+    name: String
+    params: String
+    return_type: String
+    body_block_id: i32
+    is_pub: i32
+    is_generic: i32
+
+struct EnumT:
+    name: String
+    variants: String
+
+struct TraitT:
+    name: String
+    methods: String
+
+struct ImplT:
+    trait_name: String
+    target_type: String
+    methods: String
+
+struct ProgramT:
     source: String
     normalized: String
     feature_set: String
     enums: String
     aliases: String
     funcs: String
+    symbols: String
+    exprs: String
+    stmts: String
+    blocks: String
+    trait_rows: String
+    impl_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
     enum_payload_count: i32
     match_count: i32
     range_loop_count: i32
@@ -18,9 +81,21 @@ struct TypedProgramNative:
     slice_expr_count: i32
     loop_label_count: i32
     raw_string_count: i32
+    interpolated_string_count: i32
     result_sugar_count: i32
     defer_scope_count: i32
     comptime_count: i32
 
-func typed_new(source: String, normalized: String, feature_set: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32, result_sugar_count: i32, defer_scope_count: i32, comptime_count: i32) -> TypedProgramNative:
-    return TypedProgramNative(source, normalized, feature_set, enums, aliases, funcs, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, result_sugar_count, defer_scope_count, comptime_count)
+func program_new(source: String, normalized: String, feature_set: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32, interpolated_string_count: i32, result_sugar_count: i32, defer_scope_count: i32, comptime_count: i32) -> ProgramT:
+    return ProgramT(source, normalized, feature_set, enums, aliases, funcs, ";", ";", ";", ";", ";", ";", 0, "", "", enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
+
+func program_set_error(program: ProgramT, code: String, message: String) -> ProgramT:
+    return ProgramT(program.source, program.normalized, program.feature_set, program.enums, program.aliases, program.funcs, program.symbols, program.exprs, program.stmts, program.blocks, program.trait_rows, program.impl_rows, program.error_count + 1, code, message, program.enum_payload_count, program.match_count, program.range_loop_count, program.if_expr_count, program.closure_count, program.unsafe_count, program.extension_impl_count, program.visibility_count, program.tuple_destruct_count, program.array_literal_count, program.slice_expr_count, program.loop_label_count, program.raw_string_count, program.interpolated_string_count, program.result_sugar_count, program.defer_scope_count, program.comptime_count)
+
+func program_has_error(program: ProgramT) -> i32:
+    if (program.error_count > 0):
+        return 1
+    return 0
+
+func typed_new(source: String, normalized: String, feature_set: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32, result_sugar_count: i32, defer_scope_count: i32, comptime_count: i32) -> ProgramT:
+    return program_new(source, normalized, feature_set, enums, aliases, funcs, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, 0, result_sugar_count, defer_scope_count, comptime_count)

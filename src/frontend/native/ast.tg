@@ -19,9 +19,12 @@ struct FuncDeclNative:
 struct ProgramAstNative:
     source: String
     normalized: String
+    token_stream: String
     enums: String
     aliases: String
     funcs: String
+    node_rows: String
+    next_node_id: i32
     enum_payload_count: i32
     match_count: i32
     range_loop_count: i32
@@ -35,6 +38,10 @@ struct ProgramAstNative:
     slice_expr_count: i32
     loop_label_count: i32
     raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)
@@ -48,6 +55,24 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    let neg = 0
+    let v = value
+    if (v < 0):
+        neg = 1
+        v = 0 - v
+    let out = ""
+    while (v > 0):
+        let q = v / 10
+        let d = v - (q * 10)
+        out = __thg_str_substr("0123456789", d, 1) + out
+        v = q
+    if (neg == 1):
+        return "-" + out
+    return out
+
 func _set_add(set_text: String, item: String) -> String:
     let key = ";" + item + ";"
     if (_contains(set_text, key) == 1):
@@ -55,53 +80,130 @@ func _set_add(set_text: String, item: String) -> String:
     return set_text + item + ";"
 
 func ast_new(source: String, normalized: String) -> ProgramAstNative:
-    return ProgramAstNative(source, normalized, ";", ";", ";", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    return ProgramAstNative(source, normalized, "", ";", ";", ";", ";", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+func ast_set_tokens(ast: ProgramAstNative, token_stream: String) -> ProgramAstNative:
+    return ProgramAstNative(ast.source, ast.normalized, token_stream, ast.enums, ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+
+func ast_add_node(ast: ProgramAstNative, parent_id: i32, kind: String, payload: String) -> ProgramAstNative:
+    let id = ast.next_node_id
+    let row = _set_add(ast.node_rows, _to_string_i32(id) + "|" + _to_string_i32(parent_id) + "|" + kind + "|" + payload)
+    return ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, ast.funcs, row, id + 1, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
 
 func ast_add_enum(ast: ProgramAstNative, name: String, variants: String) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, _set_add(ast.enums, name + "|" + variants), ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, _set_add(ast.enums, name + "|" + variants), ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "enum", name + "|" + variants)
 
 func ast_add_alias(ast: ProgramAstNative, name: String, target: String) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, _set_add(ast.aliases, name + "|" + target), ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, _set_add(ast.aliases, name + "|" + target), ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "type_alias", name + "|" + target)
 
 func ast_add_func(ast: ProgramAstNative, name: String, params: String, return_type: String, body: String, is_pub: i32) -> ProgramAstNative:
     let row = name + "|" + params + "|" + return_type + "|" + body + "|" + is_pub
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, _set_add(ast.funcs, row), ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, _set_add(ast.funcs, row), ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "func", name + "|" + return_type)
+
+func _bump(ast: ProgramAstNative, field_name: String) -> ProgramAstNative:
+    let enum_payload_count = ast.enum_payload_count
+    let match_count = ast.match_count
+    let range_loop_count = ast.range_loop_count
+    let if_expr_count = ast.if_expr_count
+    let closure_count = ast.closure_count
+    let unsafe_count = ast.unsafe_count
+    let extension_impl_count = ast.extension_impl_count
+    let visibility_count = ast.visibility_count
+    let tuple_destruct_count = ast.tuple_destruct_count
+    let array_literal_count = ast.array_literal_count
+    let slice_expr_count = ast.slice_expr_count
+    let loop_label_count = ast.loop_label_count
+    let raw_string_count = ast.raw_string_count
+    let interpolated_string_count = ast.interpolated_string_count
+    let result_sugar_count = ast.result_sugar_count
+    let defer_scope_count = ast.defer_scope_count
+    let comptime_count = ast.comptime_count
+    if (field_name == "enum_payload"):
+        enum_payload_count = enum_payload_count + 1
+    if (field_name == "match"):
+        match_count = match_count + 1
+    if (field_name == "range_loop"):
+        range_loop_count = range_loop_count + 1
+    if (field_name == "if_expr"):
+        if_expr_count = if_expr_count + 1
+    if (field_name == "closure"):
+        closure_count = closure_count + 1
+    if (field_name == "unsafe"):
+        unsafe_count = unsafe_count + 1
+    if (field_name == "extension_impl"):
+        extension_impl_count = extension_impl_count + 1
+    if (field_name == "visibility"):
+        visibility_count = visibility_count + 1
+    if (field_name == "tuple_destruct"):
+        tuple_destruct_count = tuple_destruct_count + 1
+    if (field_name == "array_literal"):
+        array_literal_count = array_literal_count + 1
+    if (field_name == "slice_expr"):
+        slice_expr_count = slice_expr_count + 1
+    if (field_name == "loop_label"):
+        loop_label_count = loop_label_count + 1
+    if (field_name == "raw_string"):
+        raw_string_count = raw_string_count + 1
+    if (field_name == "interpolated_string"):
+        interpolated_string_count = interpolated_string_count + 1
+    if (field_name == "result_sugar"):
+        result_sugar_count = result_sugar_count + 1
+    if (field_name == "defer_scope"):
+        defer_scope_count = defer_scope_count + 1
+    if (field_name == "comptime"):
+        comptime_count = comptime_count + 1
+    return ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
 
 func ast_inc_enum_payload(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count + 1, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "enum_payload")
 
 func ast_inc_match(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count + 1, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "match")
 
 func ast_inc_range_loop(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count + 1, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "range_loop")
 
 func ast_inc_if_expr(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count + 1, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "if_expr")
 
 func ast_inc_closure(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count + 1, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "closure")
 
 func ast_inc_unsafe(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count + 1, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "unsafe")
 
 func ast_inc_extension_impl(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count + 1, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "extension_impl")
 
 func ast_inc_visibility(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count + 1, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "visibility")
 
 func ast_inc_tuple_destruct(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count + 1, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "tuple_destruct")
 
 func ast_inc_array_literal(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count + 1, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "array_literal")
 
 func ast_inc_slice_expr(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count + 1, ast.loop_label_count, ast.raw_string_count)
+    return _bump(ast, "slice_expr")
 
 func ast_inc_loop_label(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count + 1, ast.raw_string_count)
+    return _bump(ast, "loop_label")
 
 func ast_inc_raw_string(ast: ProgramAstNative) -> ProgramAstNative:
-    return ProgramAstNative(ast.source, ast.normalized, ast.enums, ast.aliases, ast.funcs, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count + 1)
+    return _bump(ast, "raw_string")
+
+func ast_inc_interpolated_string(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "interpolated_string")
+
+func ast_inc_result_sugar(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "result_sugar")
+
+func ast_inc_defer_scope(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "defer_scope")
+
+func ast_inc_comptime(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "comptime")

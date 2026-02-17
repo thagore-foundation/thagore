@@ -1,0 +1,151 @@
+import "src/frontend/native/typechecker.tg" as tc
+import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/frontend/lowering/coreir.tg" as cir
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_gt0(label: String, got: i32) -> i32:
+    if (got > 0):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_valid(label: String, source: String) -> i32:
+    let typed = tc.typecheck_to_typed(source)
+    if (typed.error_count > 0):
+        print("FAIL: " + label)
+        print(typed.error_code)
+        print(typed.error_message)
+        return 1
+    let core = pipe.lower_program(typed)
+    if (cir.core_has_error(core) == 1):
+        print("FAIL: " + label + " lower")
+        print(core.error_code)
+        print(core.error_message)
+        return 1
+    return 0
+
+func _expect_invalid(label: String, source: String) -> i32:
+    let typed = tc.typecheck_to_typed(source)
+    if (typed.error_count > 0):
+        return 0
+    print("FAIL: " + label)
+    print("expected invalid but got valid")
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let src_enum = "enum Option: Some(i32)\nfunc main() -> i32:\n    match value:\n        return 0\n    return 0\n"
+    let t_enum = tc.typecheck_to_typed(src_enum)
+    fails = fails + _expect_i32("enum payload count", t_enum.enum_payload_count, 1)
+    fails = fails + _expect_i32("match count", t_enum.match_count, 1)
+
+    let src_type_alias = "type Bytes = [i32]\nfunc main() -> i32:\n    return 0\n"
+    let t_alias = tc.typecheck_to_typed(src_type_alias)
+    fails = fails + _expect_valid("type alias", src_type_alias)
+    fails = fails + _expect_contains("alias rows", t_alias.aliases, "Bytes|[i32]")
+
+    let src_array_slice = "func main() -> i32:\n    let xs = [1,2,3]\n    let s = xs[0:2]\n    return 0\n"
+    let t_array = tc.typecheck_to_typed(src_array_slice)
+    fails = fails + _expect_valid("array + slice", src_array_slice)
+    fails = fails + _expect_gt0("array count", t_array.array_literal_count)
+    fails = fails + _expect_gt0("slice count", t_array.slice_expr_count)
+
+    let src_struct_short = "func main() -> i32:\n    let p = Point{x, y}\n    return 0\n"
+    fails = fails + _expect_valid("struct shorthand", src_struct_short)
+
+    let src_tuple = "func main() -> i32:\n    let(a,b)=pair\n    return 0\n"
+    let t_tuple = tc.typecheck_to_typed(src_tuple)
+    fails = fails + _expect_valid("tuple destruct", src_tuple)
+    fails = fails + _expect_gt0("tuple destruct count", t_tuple.tuple_destruct_count)
+
+    let src_range = "func main() -> i32:\n    for i in 0..10:\n        return i\n    return 0\n"
+    let t_range = tc.typecheck_to_typed(src_range)
+    fails = fails + _expect_valid("range for", src_range)
+    fails = fails + _expect_gt0("range count", t_range.range_loop_count)
+
+    let src_interpolate = "func main() -> i32:\n    print(v\"Value: {1}\")\n    return 0\n"
+    let t_interp = tc.typecheck_to_typed(src_interpolate)
+    fails = fails + _expect_valid("interpolated string", src_interpolate)
+    fails = fails + _expect_gt0("interpolated count", t_interp.interpolated_string_count)
+
+    let src_label = "func main() -> i32:\n    outer: while (1):\n        return 0\n    return 0\n"
+    let t_label = tc.typecheck_to_typed(src_label)
+    fails = fails + _expect_valid("loop label", src_label)
+    fails = fails + _expect_gt0("loop label count", t_label.loop_label_count)
+
+    let src_if_expr = "func main() -> i32:\n    let x = if ok: 1 else: 0\n    return x\n"
+    let t_if_expr = tc.typecheck_to_typed(src_if_expr)
+    fails = fails + _expect_valid("if expression", src_if_expr)
+    fails = fails + _expect_gt0("if expr count", t_if_expr.if_expr_count)
+
+    let src_unsafe = "func main() -> i32:\n    unsafe:\n        return 0\n    return 0\n"
+    let t_unsafe = tc.typecheck_to_typed(src_unsafe)
+    fails = fails + _expect_valid("unsafe block", src_unsafe)
+    fails = fails + _expect_gt0("unsafe count", t_unsafe.unsafe_count)
+
+    let src_ext = "trait Display:\nimpl Display for Vec[i32]:\nfunc main() -> i32:\n    return 0\n"
+    let t_ext = tc.typecheck_to_typed(src_ext)
+    fails = fails + _expect_valid("extension impl", src_ext)
+    fails = fails + _expect_gt0("extension impl count", t_ext.extension_impl_count)
+
+    let src_raw = "func main() -> i32:\n    let p = r#C:/tmp\n    return 0\n"
+    let t_raw = tc.typecheck_to_typed(src_raw)
+    fails = fails + _expect_valid("raw string", src_raw)
+    fails = fails + _expect_gt0("raw string count", t_raw.raw_string_count)
+
+    let src_pub = "pub enum Option: Some(i32)\nfunc main() -> i32:\n    return 0\n"
+    let t_pub = tc.typecheck_to_typed(src_pub)
+    fails = fails + _expect_valid("visibility pub", src_pub)
+    fails = fails + _expect_gt0("visibility count", t_pub.visibility_count)
+
+    let src_closure = "func main() -> i32:\n    let f = |x| x + 1\n    return 0\n"
+    let t_closure = tc.typecheck_to_typed(src_closure)
+    fails = fails + _expect_valid("closure", src_closure)
+    fails = fails + _expect_gt0("closure count", t_closure.closure_count)
+
+    let core = pipe.lower_program(t_enum)
+    fails = fails + _expect_contains("lower match rule", core.lower_rows, "lower.match|")
+    fails = fails + _expect_contains("lower enum rule", core.lower_rows, "lower.enum_payload|")
+
+    fails = fails + _expect_invalid("invalid match no colon", "func main() -> i32:\n    match x\n        return 0\n")
+    fails = fails + _expect_invalid("invalid range header", "func main() -> i32:\n    for i in 0...3:\n        return i\n")
+    fails = fails + _expect_invalid("invalid if header", "func main() -> i32:\n    if x > 0:\n        return 1\n")
+    fails = fails + _expect_invalid("invalid unsafe header", "func main() -> i32:\n    unsafe x\n    return 0\n")
+    fails = fails + _expect_invalid("invalid closure", "func main() -> i32:\n    let f = |x|\n    return 0\n")
+
+    if (fails == 0):
+        print("PASS: spec parser typecheck lowering")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

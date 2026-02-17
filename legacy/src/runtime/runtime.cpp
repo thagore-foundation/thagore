@@ -3109,10 +3109,26 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
       }
     }
 
+    const bool internalEmit = []() {
+      const char *v = std::getenv("THAGORE_INTERNAL_EMIT");
+      return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+    }();
+
     if ((helperPath.empty() || !std::filesystem::exists(helperPath))
+        && !internalEmit
         && !selfPath.empty()
         && std::filesystem::exists(selfPath)) {
       helperPath = selfPath;
+    }
+    if (internalEmit && !helperPath.empty() && samePath(helperPath, selfPath)) {
+      std::error_code rmErr {};
+      std::filesystem::remove(sourcePath, rmErr);
+      std::filesystem::remove(irPath, rmErr);
+      std::fprintf(
+        stderr,
+        "codegen helper recursion blocked: internal emit cannot re-enter same executable.\n"
+      );
+      return makeManagedCString("");
     }
   }
 

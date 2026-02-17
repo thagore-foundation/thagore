@@ -1,0 +1,40 @@
+import "src/frontend/native/typedir.tg" as tir
+
+struct CoreProgram:
+    normalized_source: String
+    feature_set: String
+    enum_rows: String
+    alias_rows: String
+    func_rows: String
+    lower_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+
+func core_new(typed: ProgramT, normalized_source: String, lower_rows: String) -> CoreProgram:
+    return CoreProgram(normalized_source, typed.feature_set, typed.enums, typed.aliases, typed.funcs, lower_rows, 0, "", "", typed.enum_payload_count, typed.match_count, typed.range_loop_count, typed.if_expr_count, typed.closure_count, typed.unsafe_count, typed.extension_impl_count, typed.visibility_count, typed.tuple_destruct_count, typed.array_literal_count, typed.slice_expr_count, typed.loop_label_count, typed.raw_string_count, typed.interpolated_string_count, typed.result_sugar_count, typed.defer_scope_count, typed.comptime_count)
+
+func core_set_error(core: CoreProgram, code: String, message: String) -> CoreProgram:
+    return CoreProgram(core.normalized_source, core.feature_set, core.enum_rows, core.alias_rows, core.func_rows, core.lower_rows, core.error_count + 1, code, message, core.enum_payload_count, core.match_count, core.range_loop_count, core.if_expr_count, core.closure_count, core.unsafe_count, core.extension_impl_count, core.visibility_count, core.tuple_destruct_count, core.array_literal_count, core.slice_expr_count, core.loop_label_count, core.raw_string_count, core.interpolated_string_count, core.result_sugar_count, core.defer_scope_count, core.comptime_count)
+
+func core_has_error(core: CoreProgram) -> i32:
+    if (core.error_count > 0):
+        return 1
+    return 0

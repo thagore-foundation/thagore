@@ -225,10 +225,10 @@ func _is_parenthesized_stmt_header(line: String, head: String) -> i32:
     return 1
 
 func is_if_stmt_header(line: String) -> i32:
-    return _is_parenthesized_stmt_header(line, "if(")
+    return _is_parenthesized_stmt_header(line, "if (")
 
 func is_while_stmt_header(line: String) -> i32:
-    return _is_parenthesized_stmt_header(line, "while(")
+    return _is_parenthesized_stmt_header(line, "while (")
 
 func has_if_expression(line: String) -> i32:
     let s = gt.trim(line)

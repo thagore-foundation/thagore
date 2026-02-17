@@ -4,6 +4,33 @@ import "src/frontend/native/lexer.tg" as lx
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 
+struct ProgramAstNative:
+    source: String
+    normalized: String
+    token_stream: String
+    enums: String
+    aliases: String
+    funcs: String
+    node_rows: String
+    next_node_id: i32
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
 
@@ -20,18 +47,12 @@ func _contains(text: String, needle: String) -> i32:
     return 0
 
 func _starts_with(text: String, prefix: String) -> i32:
-    let pn = strlen(prefix)
-    if (strlen(text) < pn):
+    let n = strlen(prefix)
+    if (strlen(text) < n):
         return 0
-    if (__thg_str_substr(text, 0, pn) == prefix):
+    if (__thg_str_substr(text, 0, n) == prefix):
         return 1
     return 0
-
-func _set_add(set_text: String, item: String) -> String:
-    let key = ";" + item + ";"
-    if (_contains(set_text, key) == 1):
-        return set_text
-    return set_text + item + ";"
 
 func _is_space(ch: String) -> i32:
     if (ch == " "):
@@ -53,8 +74,7 @@ func _trim_edges(text: String) -> String:
     let left_done = 0
     while (i < n):
         if (left_done == 0):
-            let ch = _char_at(text, i)
-            if (_is_space(ch) == 1):
+            if (_is_space(_char_at(text, i)) == 1):
                 i = i + 1
                 l = i
             else:
@@ -67,8 +87,7 @@ func _trim_edges(text: String) -> String:
     let right_done = 0
     while (j >= l):
         if (right_done == 0):
-            let ch = _char_at(text, j)
-            if (_is_space(ch) == 1):
+            if (_is_space(_char_at(text, j)) == 1):
                 j = j - 1
                 r = j
             else:
@@ -115,14 +134,167 @@ func _line_at(source: String, index: i32) -> String:
 func _find(text: String, needle: String) -> i32:
     let n = strlen(text)
     let m = strlen(needle)
-    let i = 0
     if (m == 0):
         return 0
+    let i = 0
     while ((i + m) <= n):
         if (__thg_str_substr(text, i, m) == needle):
             return i
         i = i + 1
     return -1
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    let neg = 0
+    let v = value
+    if (v < 0):
+        neg = 1
+        v = 0 - v
+    let out = ""
+    while (v > 0):
+        let q = v / 10
+        let d = v - (q * 10)
+        out = __thg_str_substr("0123456789", d, 1) + out
+        v = q
+    if (neg == 1):
+        return "-" + out
+    return out
+
+func _set_add(set_text: String, item: String) -> String:
+    let key = ";" + item + ";"
+    if (_contains(set_text, key) == 1):
+        return set_text
+    return set_text + item + ";"
+
+func ast_new(source: String, normalized: String) -> ProgramAstNative:
+    return ProgramAstNative(source, normalized, "", ";", ";", ";", ";", 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+func ast_set_tokens(ast: ProgramAstNative, token_stream: String) -> ProgramAstNative:
+    return ProgramAstNative(ast.source, ast.normalized, token_stream, ast.enums, ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+
+func ast_add_node(ast: ProgramAstNative, parent_id: i32, kind: String, payload: String) -> ProgramAstNative:
+    let id = ast.next_node_id
+    let row = _set_add(ast.node_rows, _to_string_i32(id) + "|" + _to_string_i32(parent_id) + "|" + kind + "|" + payload)
+    return ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, ast.funcs, row, id + 1, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+
+func ast_add_enum(ast: ProgramAstNative, name: String, variants: String) -> ProgramAstNative:
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, _set_add(ast.enums, name + "|" + variants), ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "enum", name + "|" + variants)
+
+func ast_add_alias(ast: ProgramAstNative, name: String, target: String) -> ProgramAstNative:
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, _set_add(ast.aliases, name + "|" + target), ast.funcs, ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "type_alias", name + "|" + target)
+
+func ast_add_func(ast: ProgramAstNative, name: String, params: String, return_type: String, body: String, is_pub: i32) -> ProgramAstNative:
+    let row = name + "|" + params + "|" + return_type + "|" + body + "|" + _to_string_i32(is_pub)
+    let next = ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, _set_add(ast.funcs, row), ast.node_rows, ast.next_node_id, ast.enum_payload_count, ast.match_count, ast.range_loop_count, ast.if_expr_count, ast.closure_count, ast.unsafe_count, ast.extension_impl_count, ast.visibility_count, ast.tuple_destruct_count, ast.array_literal_count, ast.slice_expr_count, ast.loop_label_count, ast.raw_string_count, ast.interpolated_string_count, ast.result_sugar_count, ast.defer_scope_count, ast.comptime_count)
+    return ast_add_node(next, 0, "func", name + "|" + return_type)
+
+func _bump(ast: ProgramAstNative, field_name: String) -> ProgramAstNative:
+    let enum_payload_count = ast.enum_payload_count
+    let match_count = ast.match_count
+    let range_loop_count = ast.range_loop_count
+    let if_expr_count = ast.if_expr_count
+    let closure_count = ast.closure_count
+    let unsafe_count = ast.unsafe_count
+    let extension_impl_count = ast.extension_impl_count
+    let visibility_count = ast.visibility_count
+    let tuple_destruct_count = ast.tuple_destruct_count
+    let array_literal_count = ast.array_literal_count
+    let slice_expr_count = ast.slice_expr_count
+    let loop_label_count = ast.loop_label_count
+    let raw_string_count = ast.raw_string_count
+    let interpolated_string_count = ast.interpolated_string_count
+    let result_sugar_count = ast.result_sugar_count
+    let defer_scope_count = ast.defer_scope_count
+    let comptime_count = ast.comptime_count
+    if (field_name == "enum_payload"):
+        enum_payload_count = enum_payload_count + 1
+    if (field_name == "match"):
+        match_count = match_count + 1
+    if (field_name == "range_loop"):
+        range_loop_count = range_loop_count + 1
+    if (field_name == "if_expr"):
+        if_expr_count = if_expr_count + 1
+    if (field_name == "closure"):
+        closure_count = closure_count + 1
+    if (field_name == "unsafe"):
+        unsafe_count = unsafe_count + 1
+    if (field_name == "extension_impl"):
+        extension_impl_count = extension_impl_count + 1
+    if (field_name == "visibility"):
+        visibility_count = visibility_count + 1
+    if (field_name == "tuple_destruct"):
+        tuple_destruct_count = tuple_destruct_count + 1
+    if (field_name == "array_literal"):
+        array_literal_count = array_literal_count + 1
+    if (field_name == "slice_expr"):
+        slice_expr_count = slice_expr_count + 1
+    if (field_name == "loop_label"):
+        loop_label_count = loop_label_count + 1
+    if (field_name == "raw_string"):
+        raw_string_count = raw_string_count + 1
+    if (field_name == "interpolated_string"):
+        interpolated_string_count = interpolated_string_count + 1
+    if (field_name == "result_sugar"):
+        result_sugar_count = result_sugar_count + 1
+    if (field_name == "defer_scope"):
+        defer_scope_count = defer_scope_count + 1
+    if (field_name == "comptime"):
+        comptime_count = comptime_count + 1
+    return ProgramAstNative(ast.source, ast.normalized, ast.token_stream, ast.enums, ast.aliases, ast.funcs, ast.node_rows, ast.next_node_id, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
+
+func ast_inc_enum_payload(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "enum_payload")
+
+func ast_inc_match(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "match")
+
+func ast_inc_range_loop(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "range_loop")
+
+func ast_inc_if_expr(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "if_expr")
+
+func ast_inc_closure(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "closure")
+
+func ast_inc_unsafe(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "unsafe")
+
+func ast_inc_extension_impl(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "extension_impl")
+
+func ast_inc_visibility(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "visibility")
+
+func ast_inc_tuple_destruct(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "tuple_destruct")
+
+func ast_inc_array_literal(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "array_literal")
+
+func ast_inc_slice_expr(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "slice_expr")
+
+func ast_inc_loop_label(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "loop_label")
+
+func ast_inc_raw_string(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "raw_string")
+
+func ast_inc_interpolated_string(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "interpolated_string")
+
+func ast_inc_result_sugar(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "result_sugar")
+
+func ast_inc_defer_scope(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "defer_scope")
+
+func ast_inc_comptime(ast: ProgramAstNative) -> ProgramAstNative:
+    return _bump(ast, "comptime")
 
 func _extract_func_name(header_line: String) -> String:
     let s = _trim_edges(header_line)
@@ -132,218 +304,195 @@ func _extract_func_name(header_line: String) -> String:
         return _trim_edges(body)
     return _trim_edges(__thg_str_substr(body, 0, lp))
 
-func _parse_count(source: String, target: String) -> i32:
+func _extract_func_params(header_line: String) -> String:
+    let s = _trim_edges(header_line)
+    let lp = _find(s, "(")
+    let rp = _find(s, ")")
+    if ((lp < 0) or (rp <= lp)):
+        return ""
+    return _trim_edges(__thg_str_substr(s, lp + 1, rp - lp - 1))
+
+func _extract_func_ret(header_line: String) -> String:
+    let s = _trim_edges(header_line)
+    let p = _find(s, "->")
+    if (p < 0):
+        return ""
+    let tail = _trim_edges(__thg_str_substr(s, p + 2, strlen(s) - p - 2))
+    let c = _find(tail, ":")
+    if (c < 0):
+        return tail
+    return _trim_edges(__thg_str_substr(tail, 0, c))
+
+func _build_feature_set(ast: ProgramAstNative) -> String:
+    let out = ";"
+    if (ast.enum_payload_count > 0):
+        out = out + "enum_payload;"
+    if (ast.match_count > 0):
+        out = out + "match;"
+    if (ast.range_loop_count > 0):
+        out = out + "range_loop;"
+    if (ast.if_expr_count > 0):
+        out = out + "if_expr;"
+    if (ast.closure_count > 0):
+        out = out + "closure;"
+    if (ast.unsafe_count > 0):
+        out = out + "unsafe;"
+    if (ast.extension_impl_count > 0):
+        out = out + "extension_impl;"
+    if (ast.visibility_count > 0):
+        out = out + "visibility;"
+    if (ast.tuple_destruct_count > 0):
+        out = out + "tuple_destruct;"
+    if (ast.array_literal_count > 0):
+        out = out + "array_literal;"
+    if (ast.slice_expr_count > 0):
+        out = out + "slice_expr;"
+    if (ast.loop_label_count > 0):
+        out = out + "loop_label;"
+    if (ast.raw_string_count > 0):
+        out = out + "raw_string;"
+    if (ast.interpolated_string_count > 0):
+        out = out + "interpolated_string;"
+    if (ast.result_sugar_count > 0):
+        out = out + "result_sugar;"
+    if (ast.defer_scope_count > 0):
+        out = out + "defer_scope;"
+    if (ast.comptime_count > 0):
+        out = out + "comptime;"
+    return out
+
+func parse_to_ast(source: String) -> ProgramAstNative:
     let clean = lx.strip_comments(source)
     let raw = source
     let total = _line_count(clean)
     let i = 0
-    let out = 0
+    let ast = ast_new(source, clean)
+    ast = ast_set_tokens(ast, lx.tokenize_native(source))
     while (i < total):
         let line = _trim_edges(_line_at(clean, i))
-        let line_raw = _trim_edges(_line_at(raw, i))
-        if (line.length() > 0):
-            if (target == "enum_payload"):
-                let enum_name = headers.parse_enum_name(line)
-                if (enum_name.length() > 0):
-                    let p = _find(line, ":")
-                    if (p >= 0):
-                        let variants = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
-                        if (_contains(variants, "(") == 1):
-                            out = out + 1
-            if (target == "match"):
-                if (headers.is_match_header(line) == 1):
-                    out = out + 1
-            if (target == "range_loop"):
-                if (headers.is_range_loop_header(line) == 1):
-                    out = out + 1
-            if (target == "if_expr"):
-                if (headers.has_if_expression(line) == 1):
-                    out = out + 1
-            if (target == "closure"):
-                if (headers.has_closure(line) == 1):
-                    out = out + 1
-            if (target == "unsafe"):
-                if (_contains(line, "unsafe:") == 1):
-                    out = out + 1
-            if (target == "extension_impl"):
-                if (headers.is_extension_impl_header(line) == 1):
-                    out = out + 1
-            if (target == "visibility"):
-                if (headers.parse_visibility_decl(line).length() > 0):
-                    out = out + 1
-            if (target == "tuple_destruct"):
-                if (headers.has_tuple_destructuring(line) == 1):
-                    out = out + 1
-            if (target == "array_literal"):
-                if (headers.has_array_literal(line) == 1):
-                    out = out + 1
-            if (target == "slice_expr"):
-                if (headers.has_slice_expr(line) == 1):
-                    out = out + 1
-            if (target == "loop_label"):
-                if (headers.has_loop_label(line) == 1):
-                    out = out + 1
-            if (target == "raw_string"):
-                if (_contains(line_raw, "r#") == 1):
-                    out = out + 1
-            if (target == "result_sugar"):
-                if (headers.has_result_sugar(line) == 1):
-                    out = out + 1
-            if (target == "defer_scope"):
-                if (_starts_with(line, "defer ") == 1):
-                    out = out + 1
-            if (target == "comptime"):
-                if (_contains(line, "comptime ") == 1):
-                    out = out + 1
-        i = i + 1
-    return out
-
-func parse_normalized(source: String) -> String:
-    return lx.strip_comments(source)
-
-func parse_enums(source: String) -> String:
-    let clean = lx.strip_comments(source)
-    let total = _line_count(clean)
-    let i = 0
-    let out = ";"
-    while (i < total):
-        let line = _trim_edges(_line_at(clean, i))
-        let enum_name = headers.parse_enum_name(line)
-        if (enum_name.length() > 0):
-            let p = _find(line, ":")
-            let variants = ""
-            if (p >= 0):
-                variants = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
-            out = out + enum_name + "|" + variants + ";"
-        i = i + 1
-    return out
-
-func parse_aliases(source: String) -> String:
-    let clean = lx.strip_comments(source)
-    let total = _line_count(clean)
-    let i = 0
-    let out = ";"
-    while (i < total):
-        let line = _trim_edges(_line_at(clean, i))
-        let alias_name = headers.parse_type_alias_name(line)
-        if (alias_name.length() > 0):
-            let eq = _find(line, "=")
-            let target = ""
-            if (eq >= 0):
-                target = _trim_edges(__thg_str_substr(line, eq + 1, strlen(line) - eq - 1))
-            out = out + alias_name + "|" + target + ";"
-        i = i + 1
-    return out
-
-func parse_funcs(source: String) -> String:
-    let clean = lx.strip_comments(source)
-    let total = _line_count(clean)
-    let i = 0
-    let out = ";"
-    while (i < total):
-        let line = _trim_edges(_line_at(clean, i))
-        if (_contains(line, "func ") == 1):
-            if (_find(line, "func ") == 0):
-                let name = _extract_func_name(line)
-                if (name.length() > 0):
-                    out = out + name + "|;"
-        i = i + 1
-    return out
-
-func parse_feature_set(source: String) -> String:
-    let clean = lx.strip_comments(source)
-    let raw = source
-    let total = _line_count(clean)
-    let i = 0
-    let out = ";"
-    while (i < total):
-        let line = _trim_edges(_line_at(clean, i))
-        let line_raw = _trim_edges(_line_at(raw, i))
-        if (line.length() > 0):
+        let raw_line = _trim_edges(_line_at(raw, i))
+        if (strlen(line) > 0):
             let enum_name = headers.parse_enum_name(line)
             if (enum_name.length() > 0):
                 let p = _find(line, ":")
+                let variants = ""
                 if (p >= 0):
-                    let variants = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
-                    if (_contains(variants, "(") == 1):
-                        out = _set_add(out, "enum_payload")
+                    variants = _trim_edges(__thg_str_substr(line, p + 1, strlen(line) - p - 1))
+                ast = ast_add_enum(ast, enum_name, variants)
+                if (_contains(variants, "(") == 1):
+                    ast = ast_inc_enum_payload(ast)
+            let alias_name = headers.parse_type_alias_name(line)
+            if ((alias_name.length() > 0) and (_starts_with(line, "type ") == 1)):
+                let eq = _find(line, "=")
+                let target = ""
+                if (eq >= 0):
+                    target = _trim_edges(__thg_str_substr(line, eq + 1, strlen(line) - eq - 1))
+                ast = ast_add_alias(ast, alias_name, target)
+            if (_starts_with(line, "func ") == 1):
+                let fn = _extract_func_name(line)
+                let params = _extract_func_params(line)
+                let ret = _extract_func_ret(line)
+                let is_pub = 0
+                ast = ast_add_func(ast, fn, params, ret, "", is_pub)
             if (headers.is_match_header(line) == 1):
-                out = _set_add(out, "match")
+                ast = ast_inc_match(ast)
             if (headers.is_range_loop_header(line) == 1):
-                out = _set_add(out, "range_loop")
+                ast = ast_inc_range_loop(ast)
             if (headers.has_if_expression(line) == 1):
-                out = _set_add(out, "if_expr")
+                ast = ast_inc_if_expr(ast)
             if (headers.has_closure(line) == 1):
-                out = _set_add(out, "closure")
-            if (_contains(line, "unsafe:") == 1):
-                out = _set_add(out, "unsafe")
+                ast = ast_inc_closure(ast)
+            if (headers.is_unsafe_block_header(line) == 1):
+                ast = ast_inc_unsafe(ast)
             if (headers.is_extension_impl_header(line) == 1):
-                out = _set_add(out, "extension_impl")
+                ast = ast_inc_extension_impl(ast)
             if (headers.parse_visibility_decl(line).length() > 0):
-                out = _set_add(out, "visibility")
+                ast = ast_inc_visibility(ast)
             if (headers.has_tuple_destructuring(line) == 1):
-                out = _set_add(out, "tuple_destruct")
+                ast = ast_inc_tuple_destruct(ast)
             if (headers.has_array_literal(line) == 1):
-                out = _set_add(out, "array_literal")
+                ast = ast_inc_array_literal(ast)
             if (headers.has_slice_expr(line) == 1):
-                out = _set_add(out, "slice_expr")
+                ast = ast_inc_slice_expr(ast)
             if (headers.has_loop_label(line) == 1):
-                out = _set_add(out, "loop_label")
-            if (_contains(line_raw, "r#") == 1):
-                out = _set_add(out, "raw_string")
+                ast = ast_inc_loop_label(ast)
+            if (_contains(raw_line, "r#") == 1):
+                ast = ast_inc_raw_string(ast)
+            if ((_contains(raw_line, "v") == 1) and (_contains(raw_line, "{") == 1) and (_contains(raw_line, "}") == 1)):
+                ast = ast_inc_interpolated_string(ast)
             if (headers.has_result_sugar(line) == 1):
-                out = _set_add(out, "result_sugar")
+                ast = ast_inc_result_sugar(ast)
             if (_starts_with(line, "defer ") == 1):
-                out = _set_add(out, "defer_scope")
+                ast = ast_inc_defer_scope(ast)
             if (_contains(line, "comptime ") == 1):
-                out = _set_add(out, "comptime")
+                ast = ast_inc_comptime(ast)
         i = i + 1
-    return out
+    return ast
+
+func parse_normalized(source: String) -> String:
+    let ast = parse_to_ast(source)
+    return ast.normalized
+
+func parse_enums(source: String) -> String:
+    let ast = parse_to_ast(source)
+    return ast.enums
+
+func parse_aliases(source: String) -> String:
+    let ast = parse_to_ast(source)
+    return ast.aliases
+
+func parse_funcs(source: String) -> String:
+    let ast = parse_to_ast(source)
+    return ast.funcs
+
+func parse_feature_set(source: String) -> String:
+    let ast = parse_to_ast(source)
+    return _build_feature_set(ast)
 
 func parse_enum_payload_count(source: String) -> i32:
-    return _parse_count(source, "enum_payload")
+    return parse_to_ast(source).enum_payload_count
 
 func parse_match_count(source: String) -> i32:
-    return _parse_count(source, "match")
+    return parse_to_ast(source).match_count
 
 func parse_range_loop_count(source: String) -> i32:
-    return _parse_count(source, "range_loop")
+    return parse_to_ast(source).range_loop_count
 
 func parse_if_expr_count(source: String) -> i32:
-    return _parse_count(source, "if_expr")
+    return parse_to_ast(source).if_expr_count
 
 func parse_closure_count(source: String) -> i32:
-    return _parse_count(source, "closure")
+    return parse_to_ast(source).closure_count
 
 func parse_unsafe_count(source: String) -> i32:
-    return _parse_count(source, "unsafe")
+    return parse_to_ast(source).unsafe_count
 
 func parse_extension_impl_count(source: String) -> i32:
-    return _parse_count(source, "extension_impl")
+    return parse_to_ast(source).extension_impl_count
 
 func parse_visibility_count(source: String) -> i32:
-    return _parse_count(source, "visibility")
+    return parse_to_ast(source).visibility_count
 
 func parse_tuple_destruct_count(source: String) -> i32:
-    return _parse_count(source, "tuple_destruct")
+    return parse_to_ast(source).tuple_destruct_count
 
 func parse_array_literal_count(source: String) -> i32:
-    return _parse_count(source, "array_literal")
+    return parse_to_ast(source).array_literal_count
 
 func parse_slice_expr_count(source: String) -> i32:
-    return _parse_count(source, "slice_expr")
+    return parse_to_ast(source).slice_expr_count
 
 func parse_loop_label_count(source: String) -> i32:
-    return _parse_count(source, "loop_label")
+    return parse_to_ast(source).loop_label_count
 
 func parse_raw_string_count(source: String) -> i32:
-    return _parse_count(source, "raw_string")
+    return parse_to_ast(source).raw_string_count
 
 func parse_result_sugar_count(source: String) -> i32:
-    return _parse_count(source, "result_sugar")
+    return parse_to_ast(source).result_sugar_count
 
 func parse_defer_scope_count(source: String) -> i32:
-    return _parse_count(source, "defer_scope")
+    return parse_to_ast(source).defer_scope_count
 
 func parse_comptime_count(source: String) -> i32:
-    return _parse_count(source, "comptime")
+    return parse_to_ast(source).comptime_count

@@ -1,11 +1,56 @@
 import "src/frontend/native/parser.tg" as parser
-import "src/frontend/native/typedir.tg" as tir
 import "src/frontend/lowering/pipeline.tg" as pipe
 import "src/frontend/intent/matcher.tg" as im
+import "src/frontend/semantic/pass.tg" as sempass
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __string_from_codepoint(cp: i32) -> String
+
+struct ProgramT:
+    source: String
+    normalized: String
+    feature_set: String
+    enums: String
+    aliases: String
+    funcs: String
+    symbols: String
+    exprs: String
+    stmts: String
+    blocks: String
+    trait_rows: String
+    impl_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+
+func _program_new(source: String, normalized: String, feature_set: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32, interpolated_string_count: i32, result_sugar_count: i32, defer_scope_count: i32, comptime_count: i32) -> ProgramT:
+    return ProgramT(source, normalized, feature_set, enums, aliases, funcs, ";", ";", ";", ";", ";", ";", 0, "", "", enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
+
+func _program_set_error(program: ProgramT, code: String, message: String) -> ProgramT:
+    return ProgramT(program.source, program.normalized, program.feature_set, program.enums, program.aliases, program.funcs, program.symbols, program.exprs, program.stmts, program.blocks, program.trait_rows, program.impl_rows, program.error_count + 1, code, message, program.enum_payload_count, program.match_count, program.range_loop_count, program.if_expr_count, program.closure_count, program.unsafe_count, program.extension_impl_count, program.visibility_count, program.tuple_destruct_count, program.array_literal_count, program.slice_expr_count, program.loop_label_count, program.raw_string_count, program.interpolated_string_count, program.result_sugar_count, program.defer_scope_count, program.comptime_count)
+
+func _program_has_error(program: ProgramT) -> i32:
+    if (program.error_count > 0):
+        return 1
+    return 0
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)
@@ -19,31 +64,8 @@ func _contains(text: String, needle: String) -> i32:
         i = i + 1
     return 0
 
-func _starts_with(text: String, prefix: String) -> i32:
-    let pn = strlen(prefix)
-    if (strlen(text) < pn):
-        return 0
-    if (__thg_str_substr(text, 0, pn) == prefix):
-        return 1
-    return 0
-
-func _find(text: String, needle: String) -> i32:
-    let n = strlen(text)
-    let m = strlen(needle)
-    if (m == 0):
-        return 0
-    let i = 0
-    while ((i + m) <= n):
-        if (__thg_str_substr(text, i, m) == needle):
-            return i
-        i = i + 1
-    return -1
-
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
-
-func _dq() -> String:
-    return __string_from_codepoint(34)
 
 func _bs() -> String:
     return __string_from_codepoint(92)
@@ -51,334 +73,84 @@ func _bs() -> String:
 func _nl() -> String:
     return __string_from_codepoint(10)
 
-func _cr() -> String:
-    return __string_from_codepoint(13)
-
-func _tab() -> String:
-    return __string_from_codepoint(9)
-
 func _decode_escaped_newlines(text: String) -> String:
     let n = strlen(text)
     let i = 0
     let out = ""
     while (i < n):
-        if ((i + 1) < n):
-            let c0 = _char_at(text, i)
-            let c1 = _char_at(text, i + 1)
-            if ((c0 == _bs()) and (c1 == "n")):
-                out = out + _nl()
-                i = i + 2
-            else:
-                if (((i + 3) < n) and (c0 == _bs()) and (c1 == "r")):
-                    if ((_char_at(text, i + 2) == _bs()) and (_char_at(text, i + 3) == "n")):
-                        out = out + _nl()
-                        i = i + 4
-                    else:
-                        out = out + c0
-                        i = i + 1
+        let ch = _char_at(text, i)
+        if (ch == _bs()):
+            if ((i + 1) < n):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                    i = i + 2
                 else:
-                    out = out + c0
+                    out = out + ch
                     i = i + 1
+            else:
+                out = out + ch
+                i = i + 1
         else:
-            out = out + _char_at(text, i)
+            out = out + ch
             i = i + 1
     return out
 
 func _normalize_source_newlines(source: String) -> String:
-    if (_contains(source, _nl()) == 1):
-        return source
-    let esc_n = _bs() + "n"
-    let esc_rn = _bs() + "r" + _bs() + "n"
-    if ((_contains(source, esc_n) == 1) or (_contains(source, esc_rn) == 1)):
+    if (_contains(source, "\\n") == 1):
         return _decode_escaped_newlines(source)
     return source
 
-func _is_ws(ch: String) -> i32:
-    if (ch == " "):
-        return 1
-    if (ch == _tab()):
-        return 1
-    if (ch == _nl()):
-        return 1
-    if (ch == _cr()):
-        return 1
-    return 0
-
-func _trim_edges(text: String) -> String:
-    let n = strlen(text)
-    if (n == 0):
-        return ""
-    let l = 0
-    let i = 0
-    let left_done = 0
-    while (i < n):
-        if (left_done == 0):
-            if (_is_ws(_char_at(text, i)) == 1):
-                i = i + 1
-                l = i
-            else:
-                left_done = 1
-                i = n
-        else:
-            i = n
-    let r = n - 1
-    let j = n - 1
-    let right_done = 0
-    while (j >= l):
-        if (right_done == 0):
-            if (_is_ws(_char_at(text, j)) == 1):
-                j = j - 1
-                r = j
-            else:
-                right_done = 1
-                j = l - 1
-        else:
-            j = l - 1
-    if (r < l):
-        return ""
-    return __thg_str_substr(text, l, r - l + 1)
-
-func _mask_string_literals(text: String) -> String:
-    let n = strlen(text)
-    let i = 0
-    let out = ""
-    let in_str = 0
-    let esc = 0
-    while (i < n):
-        let ch = _char_at(text, i)
-        if (in_str == 0):
-            if (ch == _dq()):
-                in_str = 1
-                esc = 0
-                out = out + _dq()
-            else:
-                out = out + ch
-        else:
-            if (esc == 1):
-                esc = 0
-                if (ch == _nl()):
-                    out = out + _nl()
-                else:
-                    out = out + " "
-            else:
-                if (ch == _bs()):
-                    esc = 1
-                    out = out + " "
-                else:
-                    if (ch == _dq()):
-                        in_str = 0
-                        out = out + _dq()
-                    else:
-                        if (ch == _nl()):
-                            out = out + _nl()
-                        else:
-                            out = out + " "
-        i = i + 1
-    return out
-
-func _is_ident_char(ch: String) -> i32:
-    if (ch == "_"):
-        return 1
-    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
-        return 1
-    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
-        return 1
-    if (_contains("0123456789", ch) == 1):
-        return 1
-    return 0
-
-func _is_supported_goal_local(goal: String) -> i32:
-    if (goal == "auto_plan"):
-        return 1
-    if (goal == "reduce_sum"):
-        return 1
-    if (goal == "map_filter_reduce"):
-        return 1
-    if (goal == "deduplicate_sorted"):
-        return 1
-    if (goal == "binary_search"):
-        return 1
-    if (goal == "string_contains"):
-        return 1
-    if (goal == "dot_product"):
-        return 1
-    if (goal == "polynomial_eval"):
-        return 1
-    if (goal == "fibonacci_dp"):
-        return 1
-    if (goal == "sort_ascending"):
-        return 1
-    if (goal == "search_element"):
-        return 1
-    if (goal == "sqrt_bounded_loop"):
-        return 1
-    return 0
-
-func _first_unsupported_goal_local(source: String) -> String:
-    let n = strlen(source)
-    let i = 0
-    let line = ""
-    while (i < n):
-        let ch = _char_at(source, i)
-        if (ch == _nl()):
-            let tline = _trim_edges(line)
-            if (_starts_with(tline, "goal:") == 1):
-                let g = _trim_edges(__thg_str_substr(tline, 5, strlen(tline) - 5))
-                if (g.length() > 0):
-                    if (_is_supported_goal_local(g) == 0):
-                        return g
-            line = ""
-        else:
-            if (ch != _cr()):
-                line = line + ch
-        i = i + 1
-    let last = _trim_edges(line)
-    if (_starts_with(last, "goal:") == 1):
-        let g2 = _trim_edges(__thg_str_substr(last, 5, strlen(last) - 5))
-        if (g2.length() > 0):
-            if (_is_supported_goal_local(g2) == 0):
-                return g2
-    return ""
-
-func _has_match_keyword(source: String) -> i32:
-    let n = strlen(source)
-    let i = 0
-    while ((i + 5) <= n):
-        if (__thg_str_substr(source, i, 5) == "match"):
-            let left_ok = 1
-            let right_ok = 1
-            if (i > 0):
-                if (_is_ident_char(_char_at(source, i - 1)) == 1):
-                    left_ok = 0
-            if ((i + 5) < n):
-                if (_is_ident_char(_char_at(source, i + 5)) == 1):
-                    right_ok = 0
-            if (left_ok == 1):
-                if (right_ok == 1):
-                    return 1
-        i = i + 1
-    return 0
-
-func _has_feature(feature_set: String, feature: String) -> i32:
-    if (_contains(feature_set, ";" + feature + ";") == 1):
-        return 1
-    return 0
-
-func _feature_count(feature_set: String, feature: String) -> i32:
-    if (_has_feature(feature_set, feature) == 1):
-        return 1
-    return 0
-
-func _has_range_keyword(source: String) -> i32:
-    if (_contains(source, "for ") == 1):
-        if (_contains(source, " in ") == 1):
-            if (_contains(source, "..") == 1):
-                return 1
-    return 0
-
-func _validate_header_contracts(source: String) -> i32:
-    if (_contains(source, "match :") == 1):
-        print("Typecheck error [E_TYPE_MATCH_HEADER]: malformed `match` header.")
-        return 1
-    if (_contains(source, "for in ") == 1):
-        print("Typecheck error [E_TYPE_RANGE_HEADER]: malformed `for .. in a..b:` header.")
-        return 1
-    if (_contains(source, "...") == 1):
-        if (_has_range_keyword(source) == 1):
-            print("Typecheck error [E_TYPE_RANGE_HEADER]: malformed `for .. in a..b:` header.")
-            return 1
-    if (_contains(source, " in ..") == 1):
-        if (_has_range_keyword(source) == 1):
-            print("Typecheck error [E_TYPE_RANGE_HEADER]: malformed `for .. in a..b:` header.")
-            return 1
-    if (_contains(source, "..:") == 1):
-        if (_has_range_keyword(source) == 1):
-            print("Typecheck error [E_TYPE_RANGE_HEADER]: malformed `for .. in a..b:` header.")
-            return 1
-    return 0
-
-func _validate_feature_contract(feature_set: String, source: String) -> i32:
-    if (parser.parse_match_count(source) > 0):
-        if (_has_feature(feature_set, "match") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_MATCH]: parser/type feature contract mismatch for `match`.")
-            return 1
-    if (parser.parse_range_loop_count(source) > 0):
-        if (_has_feature(feature_set, "range_loop") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_RANGE]: parser/type feature contract mismatch for `for .. in`.")
-            return 1
-    if (parser.parse_if_expr_count(source) > 0):
-        if (_has_feature(feature_set, "if_expr") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_IF_EXPR]: parser/type feature contract mismatch for `if expression`.")
-            return 1
-    if (parser.parse_closure_count(source) > 0):
-        if (_has_feature(feature_set, "closure") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_CLOSURE]: parser/type feature contract mismatch for `closure`.")
-            return 1
-    if (parser.parse_result_sugar_count(source) > 0):
-        if (_has_feature(feature_set, "result_sugar") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_RESULT]: parser/type feature contract mismatch for `Result/?`.")
-            return 1
-    if (parser.parse_defer_scope_count(source) > 0):
-        if (_has_feature(feature_set, "defer_scope") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_DEFER]: parser/type feature contract mismatch for `defer`.")
-            return 1
-    if (parser.parse_comptime_count(source) > 0):
-        if (_has_feature(feature_set, "comptime") == 0):
-            print("Typecheck error [E_TYPE_FEATURE_COMPTIME]: parser/type feature contract mismatch for `comptime`.")
-            return 1
-    return 0
-
-func _validate_match_usage(feature_set: String, enum_table: String, source: String) -> i32:
-    feature_set = feature_set
-    let has_match = 0
-    if (_contains(source, "match ") == 1):
-        has_match = 1
-    if (_contains(source, "match(") == 1):
-        has_match = 1
-    if (_contains(source, "match\t") == 1):
-        has_match = 1
-    if (has_match == 0):
-        return 0
-    if (enum_table == ";"):
-        print("Typecheck error: `match` requires at least one enum declaration.")
-        return 1
-    return 0
-
-func validate_source(source: String) -> i32:
+func _program_from_source(source: String) -> ProgramT:
     let source_norm = _normalize_source_newlines(source)
     let normalized = parser.parse_normalized(source_norm)
     let feature_set = parser.parse_feature_set(source_norm)
-    let enums = parser.parse_enums(source_norm)
-    let aliases = parser.parse_aliases(source_norm)
-    let funcs = parser.parse_funcs(source_norm)
-    let typed = tir.typed_new(source_norm, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
-    let analysis_source = _mask_string_literals(typed.normalized)
-    if (_validate_header_contracts(analysis_source) != 0):
-        return 1
-    if (_validate_feature_contract(typed.feature_set, analysis_source) != 0):
-        return 1
-    if (_validate_match_usage(typed.feature_set, typed.enums, analysis_source) != 0):
-        return 1
-    let unsupported_goal = _first_unsupported_goal_local(analysis_source)
-    if (unsupported_goal.length() > 0):
-        print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")
-        print(unsupported_goal)
-        return 1
-    if (im.validate_goals(analysis_source) == 0):
-        print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")
-        print(im.first_unsupported_goal(analysis_source))
-        return 1
-    if (pipe.validate(analysis_source) != 0):
-        print("Typecheck error [E_TYPE_PIPELINE_VALIDATE]: language validation failed.")
+    let interpolated_count = 0
+    if (_contains(feature_set, ";interpolated_string;") == 1):
+        interpolated_count = 1
+    return _program_new(source_norm, normalized, feature_set, parser.parse_enums(source_norm), parser.parse_aliases(source_norm), parser.parse_funcs(source_norm), parser.parse_enum_payload_count(source_norm), parser.parse_match_count(source_norm), parser.parse_range_loop_count(source_norm), parser.parse_if_expr_count(source_norm), parser.parse_closure_count(source_norm), parser.parse_unsafe_count(source_norm), parser.parse_extension_impl_count(source_norm), parser.parse_visibility_count(source_norm), parser.parse_tuple_destruct_count(source_norm), parser.parse_array_literal_count(source_norm), parser.parse_slice_expr_count(source_norm), parser.parse_loop_label_count(source_norm), parser.parse_raw_string_count(source_norm), interpolated_count, parser.parse_result_sugar_count(source_norm), parser.parse_defer_scope_count(source_norm), parser.parse_comptime_count(source_norm))
+
+func _validate_feature_edges(program: ProgramT) -> ProgramT:
+    let out = program
+    if (program.match_count > 0):
+        if (program.enums == ";"):
+            out = _program_set_error(out, "E_TYPE_MATCH_MISSING_ENUM", "match requires at least one enum declaration")
+    if (program.range_loop_count > 0):
+        if (_contains(program.feature_set, ";range_loop;") == 0):
+            out = _program_set_error(out, "E_TYPE_RANGE_HEADER", "malformed range header `for i in a..b:`")
+    if (program.if_expr_count > 0):
+        if (_contains(program.feature_set, ";if_expr;") == 0):
+            out = _program_set_error(out, "E_TYPE_IF_EXPR", "malformed if-expression")
+    if (program.closure_count > 0):
+        if (_contains(program.feature_set, ";closure;") == 0):
+            out = _program_set_error(out, "E_TYPE_CLOSURE", "malformed closure capture/expression")
+    return out
+
+func _validate_constraints(program: ProgramT) -> ProgramT:
+    let out = program
+    if (sempass.preflight(program.normalized) != 0):
+        out = _program_set_error(out, "E_TYPE_TRAIT_CONSTRAINT", "trait/impl/generic-bound semantic preflight failed")
+    if (im.validate_goals(program.normalized) == 0):
+        out = _program_set_error(out, "E_TYPE_INTENT_GOAL", "unsupported intent goal")
+    if (pipe.validate(program.normalized) != 0):
+        out = _program_set_error(out, "E_TYPE_PIPELINE_VALIDATE", "language validation failed")
+    return out
+
+func typecheck_to_typed(source: String) -> ProgramT:
+    let program = _program_from_source(source)
+    let program1 = _validate_feature_edges(program)
+    let program2 = _validate_constraints(program1)
+    return program2
+
+func validate_source(source: String) -> i32:
+    let typed = typecheck_to_typed(source)
+    if (_program_has_error(typed) == 1):
+        if (typed.error_code.length() > 0):
+            print("Typecheck error [" + typed.error_code + "]: " + typed.error_message)
+        else:
+            print("Typecheck error [E_TYPE_GENERIC]: unknown typecheck error")
         return 1
     return 0
 
 func typecheck_to_normalized(source: String) -> String:
-    let source_norm = _normalize_source_newlines(source)
-    let normalized = parser.parse_normalized(source_norm)
-    let feature_set = parser.parse_feature_set(source_norm)
-    let enums = parser.parse_enums(source_norm)
-    let aliases = parser.parse_aliases(source_norm)
-    let funcs = parser.parse_funcs(source_norm)
-    let typed = tir.typed_new(source_norm, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
-    return typed.normalized
+    return typecheck_to_typed(source).normalized
