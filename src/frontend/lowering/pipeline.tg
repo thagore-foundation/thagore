@@ -868,6 +868,21 @@ func _fold_all_comptime_calls(text: String, params_map: String, body_map: String
                 return out
     return out
 
+func _suggest_parenthesized_stmt_header(line: String, prefix: String) -> String:
+    let s = _trim_edges(line)
+    if (_starts_with(s, prefix) == 0):
+        return ""
+    let tail = _trim_edges(__thg_str_substr(s, strlen(prefix), strlen(s) - strlen(prefix)))
+    if (tail.length() == 0):
+        return ""
+    if (_char_at(tail, tail.length() - 1) == ":"):
+        tail = _trim_edges(__thg_str_substr(tail, 0, tail.length() - 1))
+    if (tail.length() == 0):
+        return ""
+    if ((_char_at(tail, 0) == "(") and (_char_at(tail, tail.length() - 1) == ")")):
+        return prefix + tail + ":"
+    return prefix + "(" + tail + "):"
+
 func _has_invalid_cond_stmt_headers(source: String) -> i32:
     let total = _line_count(source)
     let i = 0
@@ -974,11 +989,17 @@ func check_new_syntax_headers(source: String) -> i32:
                         fail = 1
         if (_starts_with(line, "if ") == 1):
             if (ph.is_if_stmt_header(line) == 0):
-                print("Semantic error: if header must be `if (condition):`.")
+                print("Semantic error [E_SYNTAX_IF_HEADER] line " + _to_string_i32(i + 1) + ": if header must be `if (condition):`.")
+                let fix_if = _suggest_parenthesized_stmt_header(line, "if ")
+                if (fix_if.length() > 0):
+                    print("Hint: rewrite as `" + fix_if + "`.")
                 fail = 1
         if (_starts_with(line, "while ") == 1):
             if (ph.is_while_stmt_header(line) == 0):
-                print("Semantic error: while header must be `while (condition):`.")
+                print("Semantic error [E_SYNTAX_WHILE_HEADER] line " + _to_string_i32(i + 1) + ": while header must be `while (condition):`.")
+                let fix_while = _suggest_parenthesized_stmt_header(line, "while ")
+                if (fix_while.length() > 0):
+                    print("Hint: rewrite as `" + fix_while + "`.")
                 fail = 1
         if (_contains(line, "= if ") == 1):
             if (_contains(line, " else:") == 0):
