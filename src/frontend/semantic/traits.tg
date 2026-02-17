@@ -35,15 +35,28 @@ func _is_space(ch: String) -> i32:
     return 0
 
 func trim(text: String) -> String:
-    let out = ""
-    let i = 0
     let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
     while (i < n):
-        let ch = _char_at(text, i)
-        if (_is_space(ch) == 0):
-            out = out + ch
-        i = i + 1
-    return out
+        if (_is_space(_char_at(text, i)) == 1):
+            i = i + 1
+            l = i
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    while (j >= l):
+        if (_is_space(_char_at(text, j)) == 1):
+            j = j - 1
+            r = j
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
 
 func _split_by_comma(spec: String, at: i32) -> String:
     let clean = trim(spec)
