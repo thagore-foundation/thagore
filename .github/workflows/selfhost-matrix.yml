@@ -653,7 +653,7 @@ jobs:
           done
           if [[ "$ok" -ne 1 ]]; then
             echo "status=compile_failed" >> "$REPORT"
-            echo "::warning::Canary compile failed for $TEST_SRC on Windows stage1 seed."
+            echo "WARN: canary compile failed for $TEST_SRC on Windows stage1 seed."
           else
             echo "compiler=$USED_CC" >> "$REPORT"
             echo "binary=$BUILT_BIN" >> "$REPORT"
@@ -662,7 +662,7 @@ jobs:
               echo "status=pass" >> "$REPORT"
             else
               echo "status=runtime_failed" >> "$REPORT"
-              echo "::warning::Canary runtime failed for $TEST_SRC on Windows stage1 seed."
+              echo "WARN: canary runtime failed for $TEST_SRC on Windows stage1 seed."
             fi
           fi
 
