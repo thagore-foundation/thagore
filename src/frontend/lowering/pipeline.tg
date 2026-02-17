@@ -956,6 +956,17 @@ func check_new_syntax_headers(source: String) -> i32:
                     if (_contains(line, " in ") == 1):
                         print("Semantic error: range loop must use 'for i in a..b:'.")
                         fail = 1
+        if (_contains(line, "= if ") == 1):
+            if (_contains(line, " else:") == 0):
+                print("Semantic error: if-expression must be `let x = if cond: a else: b`.")
+                fail = 1
+            if (_contains(line, ":") == 0):
+                print("Semantic error: if-expression must be `let x = if cond: a else: b`.")
+                fail = 1
+        if (_contains(line, " = |") == 1):
+            if (ph.has_closure(line) == 0):
+                print("Semantic error: closure must be `let f = |args| expr`.")
+                fail = 1
         if (_starts_with(line, "unsafe") == 1):
             if (ph.is_unsafe_block_header(line) == 0):
                 print("Semantic error: use unsafe block as 'unsafe:'.")

@@ -27,6 +27,9 @@ func main() -> i32:
     fails = fails + _expect_i32("validate malformed match", pipe.validate("func main() -> i32:\n    match :\n        return 1\n"), 1)
     fails = fails + _expect_i32("validate malformed range triple-dot", pipe.validate("func main() -> i32:\n    for i in 0...3:\n        return 0\n"), 1)
     fails = fails + _expect_i32("validate valid range", pipe.validate("func main() -> i32:\n    for i in 0..3:\n        return i\n"), 0)
+    fails = fails + _expect_i32("validate malformed if-expression", pipe.validate("func main() -> i32:\n    let x = if ok: 1 else 0\n    return x\n"), 1)
+    fails = fails + _expect_i32("validate malformed closure", pipe.validate("func main() -> i32:\n    let f = |x x + 1\n    return 0\n"), 1)
+    fails = fails + _expect_i32("validate valid closure", pipe.validate("func main() -> i32:\n    let f = |x| x + 1\n    return 0\n"), 0)
 
     if (fails == 0):
         print("PASS: syntax contract strict")
