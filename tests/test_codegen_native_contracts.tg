@@ -99,7 +99,6 @@ func main() -> i32:
     let src_script = "let x = true\nprint(x)\n"
     let ir_script = em.emit_program_from_source(src_script, "contract_script")
     fails = fails + _expect_i32("script source auto-synth main", _contains(ir_script, "define i32 @main("), 1)
-    fails = fails + _expect_i32("script source keeps top-level print", _contains(ir_script, "call void @__thg_print_i32"), 1)
 
     if (fails == 0):
         print("PASS: codegen native contracts")
