@@ -83,6 +83,15 @@ func _split_left(text: String, sep: String) -> String:
         return text
     return __thg_str_substr(text, 0, i)
 
+func _split_right(text: String, sep: String) -> String:
+    let i = _find_char(text, sep)
+    if (i < 0):
+        return ""
+    let n = strlen(text)
+    if ((i + 1) >= n):
+        return ""
+    return __thg_str_substr(text, i + 1, n - i - 1)
+
 func _set_contains(set_text: String, name: String) -> i32:
     if (name.length() == 0):
         return 0
@@ -179,12 +188,86 @@ func count_unknown_impl_traits(source: String) -> i32:
         i = i + 1
     return misses
 
+func count_unknown_generic_bounds(source: String) -> i32:
+    let trait_set = build_trait_set(source)
+    let total = _line_count(source)
+    let i = 0
+    let misses = 0
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "func") == 1):
+            let spec = ph.parse_func_generic_clause(line)
+            if (spec.length() > 0):
+                let total_params = gt.generic_param_count(spec)
+                let j = 0
+                while (j < total_params):
+                    let bound = gt.trim(gt.generic_param_bound_at(spec, j))
+                    if (bound.length() > 0):
+                        if (_set_contains(trait_set, bound) == 0):
+                            misses = misses + 1
+                    j = j + 1
+        i = i + 1
+    return misses
+
+func count_duplicate_trait_defs(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let seen = ";"
+    let duplicates = 0
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "trait") == 1):
+            let name = ph.parse_trait_name(line)
+            if (name.length() > 0):
+                if (_set_contains(seen, name) == 1):
+                    duplicates = duplicates + 1
+                else:
+                    seen = _set_add_unique(seen, name)
+        i = i + 1
+    return duplicates
+
+func count_duplicate_impl_defs(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let seen = ";"
+    let duplicates = 0
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "impl") == 1):
+            let pair = ph.parse_impl_pair(line)
+            if (pair.length() > 0):
+                if (_set_contains(seen, pair) == 1):
+                    duplicates = duplicates + 1
+                else:
+                    seen = _set_add_unique(seen, pair)
+        i = i + 1
+    return duplicates
+
+func count_malformed_impl_defs(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let malformed = 0
+    while (i < total):
+        let line = gt.trim(_line_at(source, i))
+        if (_starts_with(line, "impl") == 1):
+            let pair = ph.parse_impl_pair(line)
+            let trait_name = _split_left(pair, "|")
+            let target = _split_right(pair, "|")
+            if ((trait_name.length() == 0) or (target.length() == 0)):
+                malformed = malformed + 1
+        i = i + 1
+    return malformed
+
 func analyze_summary(source: String) -> String:
     let a = count_generic_funcs(source)
     let b = count_trait_defs(source)
     let c = count_impl_defs(source)
     let d = count_result_sugar(source)
     let e = count_unknown_impl_traits(source)
+    let f = count_unknown_generic_bounds(source)
+    let g = count_duplicate_trait_defs(source)
+    let h = count_duplicate_impl_defs(source)
+    let i = count_malformed_impl_defs(source)
     let ga = "0"
     if (a > 0):
         ga = "1"
@@ -200,14 +283,50 @@ func analyze_summary(source: String) -> String:
     let ge = "0"
     if (e > 0):
         ge = "1"
-    return "generic_funcs=" + ga + ";traits=" + gb + ";impls=" + gc + ";result_sugar=" + gd + ";unknown_impl_traits=" + ge
+    let gf = "0"
+    if (f > 0):
+        gf = "1"
+    let gg = "0"
+    if (g > 0):
+        gg = "1"
+    let gh = "0"
+    if (h > 0):
+        gh = "1"
+    let gi = "0"
+    if (i > 0):
+        gi = "1"
+    return "generic_funcs=" + ga + ";traits=" + gb + ";impls=" + gc + ";result_sugar=" + gd + ";unknown_impl_traits=" + ge + ";unknown_generic_bounds=" + gf + ";duplicate_traits=" + gg + ";duplicate_impls=" + gh + ";malformed_impls=" + gi
 
 func preflight(source: String) -> i32:
     analyze_summary(source)
     let unknown_impl_traits = count_unknown_impl_traits(source)
+    let unknown_generic_bounds = count_unknown_generic_bounds(source)
+    let duplicate_traits = count_duplicate_trait_defs(source)
+    let duplicate_impls = count_duplicate_impl_defs(source)
+    let malformed_impls = count_malformed_impl_defs(source)
     if (unknown_impl_traits > 0):
         print("Semantic error: impl references unknown trait.")
         print("Unknown trait impl count:")
         print(unknown_impl_traits)
+        return 1
+    if (unknown_generic_bounds > 0):
+        print("Semantic error: generic bound references unknown trait.")
+        print("Unknown generic bound count:")
+        print(unknown_generic_bounds)
+        return 1
+    if (duplicate_traits > 0):
+        print("Semantic error: duplicate trait definitions.")
+        print("Duplicate trait count:")
+        print(duplicate_traits)
+        return 1
+    if (duplicate_impls > 0):
+        print("Semantic error: duplicate impl definitions.")
+        print("Duplicate impl count:")
+        print(duplicate_impls)
+        return 1
+    if (malformed_impls > 0):
+        print("Semantic error: malformed impl definition.")
+        print("Malformed impl count:")
+        print(malformed_impls)
         return 1
     return 0

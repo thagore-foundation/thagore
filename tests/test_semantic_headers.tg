@@ -23,9 +23,15 @@ func main() -> i32:
     fails = fails + _expect_i32("count result sugar", sh.count_result_sugar("func read() -> Result[i32, String]?:"), 1)
     fails = fails + _expect_i32("unknown impl trait miss", sh.count_unknown_impl_traits("impl Missing for Vec[i32]:"), 1)
     fails = fails + _expect_i32("unknown impl trait ok", sh.count_unknown_impl_traits("trait Add:\nimpl Add for Vec[i32]:"), 0)
+    fails = fails + _expect_i32("unknown generic bound miss", sh.count_unknown_generic_bounds("func sum[T:Missing](a: T, b: T) -> T:"), 1)
+    fails = fails + _expect_i32("unknown generic bound ok", sh.count_unknown_generic_bounds("trait Add:\nfunc sum[T:Add](a: T, b: T) -> T:"), 0)
+    fails = fails + _expect_i32("duplicate trait defs", sh.count_duplicate_trait_defs("trait Add:\ntrait Add:"), 1)
+    fails = fails + _expect_i32("duplicate impl defs", sh.count_duplicate_impl_defs("trait Add:\nimpl Add for Vec[i32]:\nimpl Add for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("malformed impl defs", sh.count_malformed_impl_defs("impl Add:"), 1)
     fails = fails + _expect_i32("preflight fail", sh.preflight("impl Missing for Vec[i32]:"), 1)
+    fails = fails + _expect_i32("preflight fail generic bound", sh.preflight("func sum[T:Missing](a: T, b: T) -> T:"), 1)
     fails = fails + _expect_i32("preflight ok", sh.preflight("trait Add:\nimpl Add for Vec[i32]:"), 0)
-    fails = fails + _expect_str("summary", sh.analyze_summary("trait Add:"), "generic_funcs=0;traits=1;impls=0;result_sugar=0;unknown_impl_traits=0")
+    fails = fails + _expect_str("summary", sh.analyze_summary("trait Add:"), "generic_funcs=0;traits=1;impls=0;result_sugar=0;unknown_impl_traits=0;unknown_generic_bounds=0;duplicate_traits=0;duplicate_impls=0;malformed_impls=0")
 
     if (fails == 0):
         print("PASS: semantic headers preflight")
