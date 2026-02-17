@@ -240,8 +240,7 @@ func _collect_autofix_targets(entry_path: String) -> String:
     let targets = ";" + entry + ";"
     if (fs.exists(entry_path) == 0):
         return targets
-    let source_raw = fs.read_text(entry_path)
-    let source = _unescape_newlines(source_raw)
+    let source = fs.read_text(entry_path)
     let total = _line_count(source)
     let i = 0
     while (i < total):
@@ -470,12 +469,11 @@ func _looks_like_valid_llvm(ir: String) -> i32:
     return 1
 
 func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
-    let source_raw = fs.read_text(input_path)
-    let source = _unescape_newlines(source_raw)
+    let source = fs.read_text(input_path)
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 11
-    let lowered = _unescape_newlines(lowering.preprocess(source))
+    let lowered = lowering.preprocess(source)
     let tc_code = typechecker.validate_source(lowered)
     if (tc_code != 0):
         print("ERROR: typecheck failed.")
@@ -653,15 +651,23 @@ func main() -> i32:
     let input_path = ""
     let out_path = ""
     let i = 1
-    if ((cmd == "build") or (cmd == "--build")):
+    if (cmd == "--emit-llvm-internal"):
         if (argc <= 2):
             print("ERROR: missing input path.")
             return 1
         input_path = _trim(env.get(2))
+        emit_only = 1
         i = 3
     else:
-        input_path = cmd
-        i = 2
+        if ((cmd == "build") or (cmd == "--build")):
+            if (argc <= 2):
+                print("ERROR: missing input path.")
+                return 1
+            input_path = _trim(env.get(2))
+            i = 3
+        else:
+            input_path = cmd
+            i = 2
     while (i < argc):
         let arg = _trim(env.get(i))
         if (arg == "--emit-llvm"):

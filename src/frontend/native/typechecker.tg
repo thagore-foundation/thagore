@@ -5,6 +5,7 @@ import "src/frontend/intent/matcher.tg" as im
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)
@@ -16,6 +17,14 @@ func _contains(text: String, needle: String) -> i32:
         if (__thg_str_substr(text, i, m) == needle):
             return 1
         i = i + 1
+    return 0
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
     return 0
 
 func _find(text: String, needle: String) -> i32:
@@ -32,6 +41,95 @@ func _find(text: String, needle: String) -> i32:
 
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _bs() -> String:
+    return __string_from_codepoint(92)
+
+func _is_ws(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\n"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    return 0
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            if (_is_ws(_char_at(text, i)) == 1):
+                i = i + 1
+                l = i
+            else:
+                left_done = 1
+                i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            if (_is_ws(_char_at(text, j)) == 1):
+                j = j - 1
+                r = j
+            else:
+                right_done = 1
+                j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _mask_string_literals(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let in_str = 0
+    let esc = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (in_str == 0):
+            if (ch == _dq()):
+                in_str = 1
+                esc = 0
+                out = out + _dq()
+            else:
+                out = out + ch
+        else:
+            if (esc == 1):
+                esc = 0
+                if (ch == "\n"):
+                    out = out + "\n"
+                else:
+                    out = out + " "
+            else:
+                if (ch == _bs()):
+                    esc = 1
+                    out = out + " "
+                else:
+                    if (ch == _dq()):
+                        in_str = 0
+                        out = out + _dq()
+                    else:
+                        if (ch == "\n"):
+                            out = out + "\n"
+                        else:
+                            out = out + " "
+        i = i + 1
+    return out
 
 func _is_ident_char(ch: String) -> i32:
     if (ch == "_"):
@@ -74,40 +172,27 @@ func _is_supported_goal_local(goal: String) -> i32:
 func _first_unsupported_goal_local(source: String) -> String:
     let n = strlen(source)
     let i = 0
-    while ((i + 5) <= n):
-        if (__thg_str_substr(source, i, 5) == "goal:"):
-            let j = i + 5
-            while (j < n):
-                let ws = _char_at(source, j)
-                if ((ws == " ") or (ws == "\t")):
-                    j = j + 1
-                else:
-                    j = n
-            let k = i + 5
-            while (k < n):
-                let ws2 = _char_at(source, k)
-                if ((ws2 == " ") or (ws2 == "\t")):
-                    k = k + 1
-                else:
-                    k = n
-            let g = ""
-            let t = i + 5
-            while (t < n):
-                let c = _char_at(source, t)
-                if ((c == " ") or (c == "\t")):
-                    t = t + 1
-                else:
-                    if (_is_ident_char(c) == 1):
-                        g = g + c
-                        t = t + 1
-                    else:
-                        t = n
-            if (g.length() > 0):
-                if (_is_supported_goal_local(g) == 0):
-                    return g
-            i = i + 5
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == "\n"):
+            let tline = _trim_edges(line)
+            if (_starts_with(tline, "goal:") == 1):
+                let g = _trim_edges(__thg_str_substr(tline, 5, strlen(tline) - 5))
+                if (g.length() > 0):
+                    if (_is_supported_goal_local(g) == 0):
+                        return g
+            line = ""
         else:
-            i = i + 1
+            if (ch != "\r"):
+                line = line + ch
+        i = i + 1
+    let last = _trim_edges(line)
+    if (_starts_with(last, "goal:") == 1):
+        let g2 = _trim_edges(__thg_str_substr(last, 5, strlen(last) - 5))
+        if (g2.length() > 0):
+            if (_is_supported_goal_local(g2) == 0):
+                return g2
     return ""
 
 func _has_match_keyword(source: String) -> i32:
@@ -221,22 +306,23 @@ func validate_source(source: String) -> i32:
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
     let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
-    if (_validate_header_contracts(source) != 0):
+    let analysis_source = _mask_string_literals(typed.normalized)
+    if (_validate_header_contracts(analysis_source) != 0):
         return 1
-    if (_validate_feature_contract(typed.feature_set, source) != 0):
+    if (_validate_feature_contract(typed.feature_set, analysis_source) != 0):
         return 1
-    if (_validate_match_usage(typed.feature_set, typed.enums, source) != 0):
+    if (_validate_match_usage(typed.feature_set, typed.enums, analysis_source) != 0):
         return 1
-    let unsupported_goal = _first_unsupported_goal_local(source)
+    let unsupported_goal = _first_unsupported_goal_local(analysis_source)
     if (unsupported_goal.length() > 0):
         print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")
         print(unsupported_goal)
         return 1
-    if (im.validate_goals(source) == 0):
+    if (im.validate_goals(analysis_source) == 0):
         print("Typecheck error [E_TYPE_INTENT_GOAL]: unsupported intent goal.")
-        print(im.first_unsupported_goal(source))
+        print(im.first_unsupported_goal(analysis_source))
         return 1
-    if (pipe.validate(typed.normalized) != 0):
+    if (pipe.validate(analysis_source) != 0):
         print("Typecheck error [E_TYPE_PIPELINE_VALIDATE]: language validation failed.")
         return 1
     return 0
