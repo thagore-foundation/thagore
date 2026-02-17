@@ -61,6 +61,12 @@ func main() -> i32:
     fails = fails + _expect_i32("raw string count positive", pn.parse_raw_string_count("let p = r#C:/temp/a"), 1)
     fails = fails + _expect_i32("raw string count negative", pn.parse_raw_string_count("let p = path_plain"), 0)
     fails = fails + _expect_i32("raw string header positive", ph.has_raw_string("let p = r#C:/temp/a"), 1)
+    fails = fails + _expect_i32("result sugar count positive", pn.parse_result_sugar_count("func run() -> Result[i32, String]?:"), 1)
+    fails = fails + _expect_i32("result sugar count negative", pn.parse_result_sugar_count("func run() -> i32:"), 0)
+    fails = fails + _expect_i32("defer scope count positive", pn.parse_defer_scope_count("defer cleanup()"), 1)
+    fails = fails + _expect_i32("defer scope count negative", pn.parse_defer_scope_count("let x = 1"), 0)
+    fails = fails + _expect_i32("comptime count positive", pn.parse_comptime_count("let x = comptime add(1, 2)"), 1)
+    fails = fails + _expect_i32("comptime count negative", pn.parse_comptime_count("let x = add(1, 2)"), 0)
 
     # header helpers
     fails = fails + _expect_i32("generic clause parse", _contains(ph.parse_func_generic_clause("func id[T](x: T) -> T:"), "T"), 1)

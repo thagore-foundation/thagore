@@ -116,6 +116,18 @@ func _validate_feature_contract(feature_set: String, source: String) -> i32:
         if (_has_feature(feature_set, "closure") == 0):
             print("Typecheck error [E_TYPE_FEATURE_CLOSURE]: parser/type feature contract mismatch for `closure`.")
             return 1
+    if (parser.parse_result_sugar_count(source) > 0):
+        if (_has_feature(feature_set, "result_sugar") == 0):
+            print("Typecheck error [E_TYPE_FEATURE_RESULT]: parser/type feature contract mismatch for `Result/?`.")
+            return 1
+    if (parser.parse_defer_scope_count(source) > 0):
+        if (_has_feature(feature_set, "defer_scope") == 0):
+            print("Typecheck error [E_TYPE_FEATURE_DEFER]: parser/type feature contract mismatch for `defer`.")
+            return 1
+    if (parser.parse_comptime_count(source) > 0):
+        if (_has_feature(feature_set, "comptime") == 0):
+            print("Typecheck error [E_TYPE_FEATURE_COMPTIME]: parser/type feature contract mismatch for `comptime`.")
+            return 1
     return 0
 
 func _validate_match_usage(feature_set: String, enum_table: String, source: String) -> i32:
@@ -140,7 +152,7 @@ func validate_source(source: String) -> i32:
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
     if (_validate_main_decl(typed.funcs, source) != 0):
         return 1
     if (_validate_header_contracts(source) != 0):
@@ -164,5 +176,5 @@ func typecheck_to_normalized(source: String) -> String:
     let enums = parser.parse_enums(source)
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
-    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"))
+    let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
     return typed.normalized
