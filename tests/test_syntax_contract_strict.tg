@@ -19,6 +19,7 @@ func main() -> i32:
     fails = fails + _expect_i32("range valid", ph.is_range_loop_header("for i in 0..3:"), 1)
 
     fails = fails + _expect_i32("if expr requires assignment", ph.has_if_expression("if ok: 1 else: 0"), 0)
+    fails = fails + _expect_i32("if expr requires else colon", ph.has_if_expression("let x = if ok: 1 else 0"), 0)
     fails = fails + _expect_i32("if expr valid", ph.has_if_expression("let x = if ok: 1 else: 0"), 1)
 
     fails = fails + _expect_i32("closure requires rhs", ph.has_closure("let f ="), 0)

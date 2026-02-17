@@ -192,7 +192,7 @@ func has_if_expression(line: String) -> i32:
         return 0
     if (_contains(s, "if") == 0):
         return 0
-    if (_contains(s, "else") == 0):
+    if (_contains(s, "else:") == 0):
         return 0
     return 1
 
