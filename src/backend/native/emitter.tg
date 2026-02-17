@@ -602,6 +602,28 @@ func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
     let cond_norm1 = _replace_all(cond_text_raw, "&&", " and ")
     let cond_norm2 = _replace_all(cond_norm1, "||", " or ")
     let cond_text = _trim_edges(cond_norm2)
+    let n = strlen(cond_text)
+    if ((n >= 2) and (_char_at(cond_text, 0) == "(") and (_char_at(cond_text, n - 1) == ")")):
+        return _emit_cond_i1(__thg_str_substr(cond_text, 1, n - 2), slots, t)
+    if (_starts_with(cond_text, "not ") == 1):
+        let inner = _trim_edges(__thg_str_substr(cond_text, 4, n - 4))
+        let ipack = _emit_cond_i1(inner, slots, t)
+        let iir = _unpack_part(ipack, 0)
+        let ival = _unpack_part(ipack, 1)
+        let it = _parse_i32(_unpack_part(ipack, 2))
+        let outv = _new_temp("tmp", it)
+        let ir = iir + "  " + outv + " = xor i1 " + ival + ", true__NL__"
+        return _pack3(ir, outv, _to_string_i32(it + 1))
+    if ((n >= 1) and (_char_at(cond_text, 0) == "!")):
+        if (((n < 2) or (_char_at(cond_text, 1) != "="))):
+            let inner = _trim_edges(__thg_str_substr(cond_text, 1, n - 1))
+            let ipack = _emit_cond_i1(inner, slots, t)
+            let iir = _unpack_part(ipack, 0)
+            let ival = _unpack_part(ipack, 1)
+            let it = _parse_i32(_unpack_part(ipack, 2))
+            let outv = _new_temp("tmp", it)
+            let ir = iir + "  " + outv + " = xor i1 " + ival + ", true__NL__"
+            return _pack3(ir, outv, _to_string_i32(it + 1))
     let p_and = _find(cond_text, " and ")
     if (p_and >= 0):
         let left = _trim_edges(__thg_str_substr(cond_text, 0, p_and))
