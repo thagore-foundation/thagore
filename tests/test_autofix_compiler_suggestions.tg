@@ -1,0 +1,119 @@
+import "lib/fs.tg" as fs
+import "src/cli/autofix.tg" as autofix
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_not_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 0):
+        return 0
+    print("FAIL: " + label)
+    print("unexpected: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let dq = __string_from_codepoint(34)
+    let nl = __string_from_codepoint(10)
+    let sample = "tests/__autofix_compiler_span_case.tg"
+    let sug = ".thagore/fix/suggestions/tests___autofix_compiler_span_case.tg.jsonl"
+    let builtin = ".thagore/fix/suggestions/tests___autofix_compiler_span_case.tg.builtin.jsonl"
+    let latest = ".thagore/fix/suggestions/latest.jsonl"
+
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/fix")
+    fs.mkdir(".thagore/fix/suggestions")
+
+    fails = fails + _expect_i32("clear external suggestion", fs.write_text(sug, ""), 1)
+    let src_builtin = "func main():" + nl + "    retrun 1" + nl
+    fails = fails + _expect_i32("write builtin sample", fs.write_text(sample, src_builtin), 1)
+    fails = fails + _expect_i32("apply safe builtin suggestion", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
+    let after_builtin = fs.read_text(sample)
+    fails = fails + _expect_contains("builtin suggestion applied", after_builtin, "return 1")
+    fails = fails + _expect_not_contains("builtin typo removed", after_builtin, "retrun 1")
+    let builtin_payload = fs.read_text(builtin)
+    fails = fails + _expect_contains("builtin feed has machine applicability", builtin_payload, "MachineApplicable")
+    fails = fails + _expect_contains("builtin feed has return typo code", builtin_payload, "PARSE_TYPO_RETURN")
+
+    let src_struct = "pub pub fn main()" + nl + "    return 1" + nl
+    fails = fails + _expect_i32("write structural sample", fs.write_text(sample, src_struct), 1)
+    fails = fails + _expect_i32("apply safe structural suggestions", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
+    let after_struct = fs.read_text(sample)
+    fails = fails + _expect_contains("structural duplicate pub fixed", after_struct, "pub func main():")
+    fails = fails + _expect_not_contains("structural no double pub", after_struct, "pub pub")
+    fails = fails + _expect_not_contains("structural no deprecated fn", after_struct, " fn ")
+    let rep_struct = fs.read_text(autofix.latest_applied_report_path())
+    fails = fails + _expect_contains("structural compiler span rule", rep_struct, "compiler_suggestion_span_edit")
+    fails = fails + _expect_contains("structural duplicate modifier code", rep_struct, "PARSE_DUPLICATE_MODIFIER")
+    fails = fails + _expect_contains("structural deprecated fn code", rep_struct, "PARSE_DEPRECATED_FN_KEYWORD")
+    fails = fails + _expect_contains("structural missing colon code", rep_struct, "PARSE_MISSING_BLOCK_COLON")
+
+    let src_machine = "func main():" + nl + "    retrn 1" + nl
+    fails = fails + _expect_i32("write machine sample", fs.write_text(sample, src_machine), 1)
+    let sug_machine = "{" + dq + "file" + dq + ":" + dq + sample + dq + "," + dq + "start_byte" + dq + ":17," + dq + "end_byte" + dq + ":22," + dq + "replacement" + dq + ":" + dq + "return" + dq + "," + dq + "applicability" + dq + ":" + dq + "MachineApplicable" + dq + "," + dq + "code" + dq + ":" + dq + "PARSE_TYPO_RETURN" + dq + "}" + nl
+    fails = fails + _expect_i32("write machine suggestion", fs.write_text(sug, sug_machine), 1)
+    fails = fails + _expect_i32("apply safe machine suggestion", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
+    let after_machine = fs.read_text(sample)
+    fails = fails + _expect_contains("machine suggestion applied", after_machine, "return 1")
+    fails = fails + _expect_not_contains("machine typo removed", after_machine, "retrn 1")
+    let rep_machine = fs.read_text(autofix.latest_applied_report_path())
+    fails = fails + _expect_contains("machine rule in report", rep_machine, "compiler_suggestion_span_edit")
+    fails = fails + _expect_contains("machine code in report", rep_machine, "PARSE_TYPO_RETURN")
+    fails = fails + _expect_contains("tool version in report", rep_machine, dq + "tool_version" + dq)
+
+    let src_maybe = "func main():" + nl + "    return 1" + nl
+    fails = fails + _expect_i32("write maybe sample", fs.write_text(sample, src_maybe), 1)
+    let sug_maybe = "{" + dq + "file" + dq + ":" + dq + sample + dq + "," + dq + "start_byte" + dq + ":17," + dq + "end_byte" + dq + ":23," + dq + "replacement" + dq + ":" + dq + "yield" + dq + "," + dq + "applicability" + dq + ":" + dq + "MaybeIncorrect" + dq + "," + dq + "code" + dq + ":" + dq + "TYPE_REWRITE_EXPERIMENTAL" + dq + "}" + nl
+    fails = fails + _expect_i32("write maybe suggestion", fs.write_text(sug, sug_maybe), 1)
+    fails = fails + _expect_i32("safe ignores maybe suggestion", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
+    let after_safe_maybe = fs.read_text(sample)
+    fails = fails + _expect_contains("safe keeps return", after_safe_maybe, "return 1")
+    fails = fails + _expect_not_contains("safe no maybe rewrite", after_safe_maybe, "yield 1")
+
+    fails = fails + _expect_i32("aggressive accepts maybe suggestion", autofix.run_fix_apply(sample, "aggressive", "", 0, 0), 0)
+    let after_aggr_maybe = fs.read_text(sample)
+    fails = fails + _expect_contains("aggressive applies maybe rewrite", after_aggr_maybe, "yield 1")
+
+    let latest_guard_sample = "tests/__autofix_compiler_latest_guard.tg"
+    let latest_guard_src = "func main():" + nl + "    return 1" + nl
+    let latest_guard_sug = "{" + dq + "file" + dq + ":" + dq + latest_guard_sample + dq + "," + dq + "start_byte" + dq + ":17," + dq + "end_byte" + dq + ":23," + dq + "replacement" + dq + ":" + dq + "yield" + dq + "," + dq + "applicability" + dq + ":" + dq + "MachineApplicable" + dq + "," + dq + "code" + dq + ":" + dq + "TYPE_REWRITE_EXPERIMENTAL" + dq + "}" + nl
+    fails = fails + _expect_i32("write latest-guard sample", fs.write_text(latest_guard_sample, latest_guard_src), 1)
+    fails = fails + _expect_i32("write stale latest suggestion", fs.write_text(latest, latest_guard_sug), 1)
+    fails = fails + _expect_i32("apply safe ignores stale latest", autofix.run_fix_apply(latest_guard_sample, "safe", "", 0, 0), 0)
+    let latest_guard_after = fs.read_text(latest_guard_sample)
+    fails = fails + _expect_contains("latest fallback disabled keeps return", latest_guard_after, "return 1")
+    fails = fails + _expect_not_contains("latest fallback disabled blocks yield", latest_guard_after, "yield 1")
+
+    if (fails == 0):
+        print("PASS: autofix compiler suggestions")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

@@ -1,0 +1,89 @@
+import "lib/fs.tg" as fs
+import "src/cli/autofix.tg" as autofix
+import "src/cli/thagore.tg" as cli
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_not_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 0):
+        return 0
+    print("FAIL: " + label)
+    print("unexpected: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let nl = __string_from_codepoint(10)
+    let dq = __string_from_codepoint(34)
+    let entry = "tests/__fix_ws_entry.tg"
+    let dep = "tests/__fix_ws_dep.tg"
+    let none = ";"
+
+    let src_entry = "import " + dq + "tests/__fix_ws_dep.tg" + dq + " as dep" + nl + nl + "func main()" + nl + "    return dep.answer()" + nl
+    let src_dep = "pub pub fn answer()" + nl + "    return 42" + nl
+    fails = fails + _expect_i32("write entry", fs.write_text(entry, src_entry), 1)
+    fails = fails + _expect_i32("write dep", fs.write_text(dep, src_dep), 1)
+    fails = fails + _expect_i32("workspace dry-run json stream", cli._run_fix_multi("dry-run", entry, "safe", 0, "", 0, 0, 1, none, 10, 2, 1), 0)
+
+    fails = fails + _expect_i32("workspace apply success", cli._run_fix_multi("apply", entry, "safe", 0, "", 0, 0, 1, none, 10, 5, 0), 0)
+    let entry_after = fs.read_text(entry)
+    let dep_after = fs.read_text(dep)
+    fails = fails + _expect_contains("entry fixed colon", entry_after, "func main():")
+    fails = fails + _expect_contains("dep fixed fn and pub", dep_after, "pub func answer():")
+    let bundle = autofix.latest_session_id()
+    fails = fails + _expect_contains("bundle id captured", bundle, "BND-")
+    let bundle_text = fs.read_text(".thagore/fix/sessions/" + bundle + ".json")
+    fails = fails + _expect_contains("bundle session type", bundle_text, dq + "session_type" + dq + ":" + dq + "bundle" + dq)
+    fails = fails + _expect_contains("bundle has members", bundle_text, dq + "member_sessions_set" + dq + ":")
+    fails = fails + _expect_contains("bundle has summary", bundle_text, dq + "summary" + dq + ":")
+    fails = fails + _expect_contains("bundle has report file", bundle_text, dq + "report_file" + dq + ":")
+    fails = fails + _expect_i32("bundle rollback works", autofix.run_fix_rollback(bundle), 0)
+    let entry_rollback = fs.read_text(entry)
+    let dep_rollback = fs.read_text(dep)
+    fails = fails + _expect_contains("rollback restores entry", entry_rollback, "func main()")
+    fails = fails + _expect_not_contains("rollback removes entry colon", entry_rollback, "func main():")
+    fails = fails + _expect_contains("rollback restores dep", dep_rollback, "pub pub fn answer()")
+
+    fails = fails + _expect_i32("rewrite entry for max-files", fs.write_text(entry, src_entry), 1)
+    fails = fails + _expect_i32("rewrite dep for max-files", fs.write_text(dep, src_dep), 1)
+    fails = fails + _expect_i32("workspace apply max-files conflict", cli._run_fix_multi("apply", entry, "safe", 0, "", 0, 0, 1, none, 1, 5, 0), 1)
+
+    let lock_path = "tests/__fix_ws.lock"
+    let lock_json = "{" + nl + "  " + dq + "mode" + dq + ": " + dq + "safe" + dq + "," + nl + "  " + dq + "entries_set" + dq + ": " + dq + ";" + entry + ";" + dq + "," + nl + "  " + dq + "entries" + dq + ": [" + dq + entry + dq + "]" + nl + "}" + nl
+    fails = fails + _expect_i32("write workspace lock", fs.write_text(lock_path, lock_json), 1)
+    fails = fails + _expect_i32("locked workspace requires all entries in lock", cli._run_fix_multi("apply", entry, "safe", 0, lock_path, 0, 1, 1, none, 10, 3, 0), 1)
+
+    if (fails == 0):
+        print("PASS: cli fix workspace command")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

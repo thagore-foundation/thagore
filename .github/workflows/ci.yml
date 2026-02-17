@@ -504,17 +504,22 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             BIN1="autofix_cli_ci.exe"
             BIN2="autofix_report_golden_ci.exe"
+            BIN3="autofix_compiler_suggestions_ci.exe"
           else
             BIN1="autofix_cli_ci"
             BIN2="autofix_report_golden_ci"
+            BIN3="autofix_compiler_suggestions_ci"
           fi
           "./$STAGE1_BIN" build tests/test_autofix_cli.tg -o "$BIN1"
           "./$STAGE1_BIN" build tests/test_autofix_report_golden.tg -o "$BIN2"
+          "./$STAGE1_BIN" build tests/test_autofix_compiler_suggestions.tg -o "$BIN3"
           test -f "$BIN1"
           test -f "$BIN2"
-          chmod +x "$BIN1" "$BIN2" || true
+          test -f "$BIN3"
+          chmod +x "$BIN1" "$BIN2" "$BIN3" || true
           "./$BIN1"
           "./$BIN2"
+          "./$BIN3"
 
       - name: Run syntax matrix (15 features)
         shell: bash

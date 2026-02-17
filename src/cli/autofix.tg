@@ -257,6 +257,9 @@ func _cr() -> String:
 func _tab() -> String:
     return __string_from_codepoint(9)
 
+func _tool_version() -> String:
+    return "0.4.0-native-cli"
+
 func _json_quote(text: String) -> String:
     let dq = _dq()
     return dq + _json_escape(text) + dq
@@ -335,6 +338,24 @@ func _set_add_unique(set_text: String, name: String) -> String:
         return set_text
     return set_text + name + ";"
 
+func _set_union(left: String, right: String) -> String:
+    let out = left
+    let token = ""
+    let i = 0
+    let n = strlen(right)
+    while (i < n):
+        let ch = _char_at(right, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = _set_add_unique(out, token)
+    return out
+
 func _set_to_json_array(set_text: String) -> String:
     let out = ""
     let token = ""
@@ -352,6 +373,52 @@ func _set_to_json_array(set_text: String) -> String:
             token = token + ch
         i = i + 1
     return "[" + out + "]"
+
+func _set_difference(left: String, right: String) -> String:
+    let out = ";"
+    let token = ""
+    let i = 0
+    let n = strlen(left)
+    while (i < n):
+        let ch = _char_at(left, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(right, token) == 0):
+                    out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_set_contains(right, token) == 0):
+            out = _set_add_unique(out, token)
+    return out
+
+func _collect_fix_ids_from_fixes_json(fixes_json: String) -> String:
+    let out = ";"
+    let key = _json_quote("fix_id") + ":" + _dq()
+    let klen = strlen(key)
+    let i = 0
+    let n = strlen(fixes_json)
+    while (i < n):
+        let p = _find(__thg_str_substr(fixes_json, i, n - i), key)
+        if (p < 0):
+            i = n
+        else:
+            let start = i + p + klen
+            let j = start
+            let val = ""
+            while (j < n):
+                let ch = _char_at(fixes_json, j)
+                if (ch == _dq()):
+                    j = n
+                else:
+                    val = val + ch
+                    j = j + 1
+            if (strlen(val) > 0):
+                out = _set_add_unique(out, val)
+            i = start + 1
+    return out
 
 func _char_score(ch: String) -> i32:
     let table = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,' " + _dq() + " \\t\\n\\r"
@@ -374,6 +441,17 @@ func _hash_text(text: String) -> i32:
 
 func _is_digit(ch: String) -> i32:
     if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _is_ident_char(ch: String) -> i32:
+    if (ch == "_"):
+        return 1
+    if (_find_char("abcdefghijklmnopqrstuvwxyz", ch) >= 0):
+        return 1
+    if (_find_char("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0):
+        return 1
+    if (_is_digit(ch) == 1):
         return 1
     return 0
 
@@ -454,6 +532,8 @@ func _build_fix_json(fix_id: String, rule: String, risk: String, code: String, f
     return obj
 
 func _diagnostic_family(code: String) -> String:
+    if (_starts_with(code, "COMPILER_") == 1):
+        return "compiler-suggestion"
     if (_starts_with(code, "PARSE_") == 1):
         return "syntax"
     if (_starts_with(code, "SYM_") == 1):
@@ -656,6 +736,228 @@ func _sanitize_path(text: String) -> String:
     out = _replace_all(out, " ", "_")
     return out
 
+func _default_suggestions_path(entry_path: String) -> String:
+    return ".thagore/fix/suggestions/" + _sanitize_path(entry_path) + ".jsonl"
+
+func _builtin_suggestions_path(entry_path: String) -> String:
+    return ".thagore/fix/suggestions/" + _sanitize_path(entry_path) + ".builtin.jsonl"
+
+func _compiler_last_fix_json_path() -> String:
+    return ".thagore/fix/suggestions/.last_compiler_fix.json"
+
+func _read_suggestions_payload(entry_path: String) -> String:
+    let out = ""
+    let by_entry = _default_suggestions_path(entry_path)
+    if (fs.exists(by_entry) == 1):
+        out = fs.read_text(by_entry)
+    let builtin = _builtin_suggestions_path(entry_path)
+    if (fs.exists(builtin) == 1):
+        let builtin_text = fs.read_text(builtin)
+        if (strlen(builtin_text) > 0):
+            if (strlen(out) > 0):
+                if (_ends_with(out, _nl()) == 0):
+                    out = out + _nl()
+            out = out + builtin_text
+    return out
+
+func _ident_boundary_at(text: String, index: i32) -> i32:
+    if (index < 0):
+        return 1
+    if (index >= strlen(text)):
+        return 1
+    if (_is_ident_char(_char_at(text, index)) == 1):
+        return 0
+    return 1
+
+func _suggestion_json_line(file: String, start_byte: i32, end_byte: i32, replacement: String, applicability: String, code: String) -> String:
+    let line = "{"
+    line = line + _json_quote("file") + ":" + _json_quote(file) + ","
+    line = line + _json_quote("start_byte") + ":" + _to_string_i32(start_byte) + ","
+    line = line + _json_quote("end_byte") + ":" + _to_string_i32(end_byte) + ","
+    line = line + _json_quote("replacement") + ":" + _json_quote(replacement) + ","
+    line = line + _json_quote("applicability") + ":" + _json_quote(applicability) + ","
+    line = line + _json_quote("code") + ":" + _json_quote(code)
+    line = line + "}"
+    return line
+
+func _suggestion_json_line_expected(file: String, start_byte: i32, end_byte: i32, replacement: String, applicability: String, code: String, expected_old: String) -> String:
+    let line = "{"
+    line = line + _json_quote("file") + ":" + _json_quote(file) + ","
+    line = line + _json_quote("start_byte") + ":" + _to_string_i32(start_byte) + ","
+    line = line + _json_quote("end_byte") + ":" + _to_string_i32(end_byte) + ","
+    line = line + _json_quote("replacement") + ":" + _json_quote(replacement) + ","
+    line = line + _json_quote("applicability") + ":" + _json_quote(applicability) + ","
+    line = line + _json_quote("code") + ":" + _json_quote(code) + ","
+    line = line + _json_quote("expected_old") + ":" + _json_quote(expected_old)
+    line = line + "}"
+    return line
+
+func _merge_suggestion_lines(left: String, right: String) -> String:
+    let out = left
+    if (strlen(right) > 0):
+        if (strlen(out) == 0):
+            out = right
+        else:
+            out = out + _nl() + right
+    return out
+
+func _collect_token_suggestions(source: String, file: String, token: String, replacement: String, applicability: String, code: String) -> String:
+    if (strlen(token) == 0):
+        return ""
+    let out = ""
+    let n = strlen(source)
+    let k = strlen(token)
+    let i = 0
+    while ((i + k) <= n):
+        if (__thg_str_substr(source, i, k) == token):
+            if ((_ident_boundary_at(source, i - 1) == 1) and (_ident_boundary_at(source, i + k) == 1)):
+                let line = _suggestion_json_line_expected(file, i, i + k, replacement, applicability, code, token)
+                if (strlen(out) == 0):
+                    out = line
+                else:
+                    out = out + _nl() + line
+                i = i + k
+            else:
+                i = i + 1
+        else:
+            i = i + 1
+    return out
+
+func _line_start_offset(source: String, target_line: i32) -> i32:
+    if (target_line <= 0):
+        return 0
+    let total = _line_count(source)
+    if (target_line >= total):
+        return strlen(source)
+    let keep_nl = _ends_with_newline(source)
+    let offset = 0
+    let i = 0
+    while (i < target_line):
+        let line = _line_at(source, i)
+        offset = offset + strlen(line)
+        if ((i + 1) < total):
+            offset = offset + 1
+        else:
+            if (keep_nl == 1):
+                offset = offset + 1
+        i = i + 1
+    return offset
+
+func _collect_structural_suggestions(source: String, file: String) -> String:
+    let out = ""
+    let total = _line_count(source)
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let trimmed = _trim(line)
+        let line_start = _line_start_offset(source, i)
+        let indent = _leading_spaces(line)
+        let body = __thg_str_substr(line, indent, strlen(line) - indent)
+
+        if (_starts_with(body, "pub pub ") == 1):
+            let dup_line = _suggestion_json_line_expected(file, line_start + indent + 4, line_start + indent + 8, "", "MachineApplicable", "PARSE_DUPLICATE_MODIFIER", "pub ")
+            out = _merge_suggestion_lines(out, dup_line)
+
+        let vis_prefix = ""
+        let rest = body
+        let deprecated_fn_header = 0
+        while (_starts_with(rest, "pub ") == 1):
+            vis_prefix = vis_prefix + "pub "
+            rest = __thg_str_substr(rest, 4, strlen(rest) - 4)
+        let fn_start = line_start + indent + strlen(vis_prefix)
+        if (_starts_with(rest, "fn ") == 1):
+            deprecated_fn_header = 1
+            let dep_line = _suggestion_json_line_expected(file, fn_start, fn_start + 3, "func ", "MachineApplicable", "PARSE_DEPRECATED_FN_KEYWORD", "fn ")
+            out = _merge_suggestion_lines(out, dep_line)
+        else:
+            if (_starts_with(rest, "comptime fn ") == 1):
+                deprecated_fn_header = 1
+                let dep_line2 = _suggestion_json_line_expected(file, fn_start + 9, fn_start + 12, "func ", "MachineApplicable", "PARSE_DEPRECATED_FN_KEYWORD", "fn ")
+                out = _merge_suggestion_lines(out, dep_line2)
+
+        let colon_candidate = _is_header_candidate(trimmed)
+        if ((colon_candidate == 1) or ((deprecated_fn_header == 1) and (_contains(trimmed, "=") == 0))):
+            let clean = _sanitize_header_line(line)
+            if ((strlen(clean) > 0) and (_ends_with(clean, ":") == 0)):
+                let anchor = __thg_str_substr(clean, strlen(clean) - 1, 1)
+                let colon_start = line_start + strlen(clean) - 1
+                let colon_end = colon_start + 1
+                let colon_line = _suggestion_json_line_expected(file, colon_start, colon_end, anchor + ":", "MachineApplicable", "PARSE_MISSING_BLOCK_COLON", anchor)
+                out = _merge_suggestion_lines(out, colon_line)
+
+        i = i + 1
+    return out
+
+func _builtin_suggestion_payload(source: String, file: String) -> String:
+    let feed = ""
+    let f1 = _collect_token_suggestions(source, file, "retrn", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f2 = _collect_token_suggestions(source, file, "retun", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f3 = _collect_token_suggestions(source, file, "retrun", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f4 = _collect_token_suggestions(source, file, "reutrn", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f5 = _collect_structural_suggestions(source, file)
+    let merged = _merge_suggestion_lines(feed, f1)
+    merged = _merge_suggestion_lines(merged, f2)
+    merged = _merge_suggestion_lines(merged, f3)
+    merged = _merge_suggestion_lines(merged, f4)
+    merged = _merge_suggestion_lines(merged, f5)
+    return merged
+
+func _emit_builtin_suggestions(entry_path: String, source: String) -> void:
+    let normalized = _normalize_path(entry_path)
+    let builtin = _builtin_suggestion_payload(source, normalized)
+    let builtin_path = _builtin_suggestions_path(normalized)
+    if (fs.write_text(builtin_path, builtin) == 0):
+        print("[autofix] warning: failed to write built-in suggestion feed: " + builtin_path)
+    return
+
+func _suggestion_applicability_kind(value: String) -> i32:
+    if ((value == "MachineApplicable") or (value == "machine_applicable") or (value == "machine-applicable")):
+        return 2
+    if ((value == "MaybeIncorrect") or (value == "maybe_incorrect") or (value == "maybe-incorrect")):
+        return 1
+    if ((value == "HasPlaceholders") or (value == "has_placeholders") or (value == "has-placeholders")):
+        return -1
+    return 0
+
+func _suggestion_allowed(kind: i32, mode: String) -> i32:
+    if (mode == "off"):
+        return 0
+    if (kind == 2):
+        return 1
+    if ((mode == "aggressive") and (kind == 1)):
+        return 1
+    return 0
+
+func _line_from_offset(text: String, offset: i32) -> i32:
+    let n = strlen(text)
+    let end = offset
+    if (end < 0):
+        end = 0
+    if (end > n):
+        end = n
+    let line = 1
+    let i = 0
+    while (i < end):
+        if (_is_line_break_char(_char_at(text, i)) == 1):
+            line = line + 1
+        i = i + 1
+    return line
+
+func _col_from_offset(text: String, offset: i32) -> i32:
+    let n = strlen(text)
+    let end = offset
+    if (end < 0):
+        end = 0
+    if (end > n):
+        end = n
+    let last_break = -1
+    let i = 0
+    while (i < end):
+        if (_is_line_break_char(_char_at(text, i)) == 1):
+            last_break = i
+        i = i + 1
+    return end - last_break
+
 func _normalize_path(path: String) -> String:
     return _replace_all(path, "\\", "/")
 
@@ -705,6 +1007,151 @@ func _ensure_dirs() -> void:
     fs.mkdir(".thagore/fix/reports")
     fs.mkdir(".thagore/fix/sessions")
     fs.mkdir(".thagore/fix/backups")
+    fs.mkdir(".thagore/fix/suggestions")
+
+func _compiler_suggestion_candidate_count(source: String, file: String, count_mode: i32) -> i32:
+    let normalized_file = _normalize_path(file)
+    let payload = _read_suggestions_payload(normalized_file)
+    let total = _line_count(payload)
+    let count = 0
+    let i = 0
+    while (i < total):
+        let raw_line = _trim(_line_at(payload, i))
+        if (strlen(raw_line) > 0):
+            let raw_file = _json_get_string(raw_line, "file")
+            if (strlen(raw_file) == 0):
+                raw_file = normalized_file
+            let sug_file = _normalize_path(raw_file)
+            if (sug_file == normalized_file):
+                let kind = _suggestion_applicability_kind(_json_get_string(raw_line, "applicability"))
+                let start_b = _json_get_i32(raw_line, "start_byte", -1)
+                let end_b = _json_get_i32(raw_line, "end_byte", -1)
+                if ((start_b >= 0) and (end_b >= start_b) and (end_b <= strlen(source))):
+                    let current_range = __thg_str_substr(source, start_b, end_b - start_b)
+                    let expected_old = _json_get_string(raw_line, "expected_old")
+                    let include = 0
+                    if ((kind == 2) or (kind == 1) or (kind == -1)):
+                        include = 1
+                    if ((count_mode == 1) and (kind != 2)):
+                        include = 0
+                    if ((count_mode == 2) and (kind != 1)):
+                        include = 0
+                    if ((strlen(expected_old) > 0) and (current_range != expected_old)):
+                        include = 0
+                    if (include == 1):
+                        count = count + 1
+        i = i + 1
+    return count
+
+func _compiler_suggestion_diagnostics_set(source: String, file: String) -> String:
+    let normalized_file = _normalize_path(file)
+    let payload = _read_suggestions_payload(normalized_file)
+    let total = _line_count(payload)
+    let set_out = ";"
+    let i = 0
+    while (i < total):
+        let raw_line = _trim(_line_at(payload, i))
+        if (strlen(raw_line) > 0):
+            let raw_file = _json_get_string(raw_line, "file")
+            if (strlen(raw_file) == 0):
+                raw_file = normalized_file
+            let sug_file = _normalize_path(raw_file)
+            if (sug_file == normalized_file):
+                let kind = _suggestion_applicability_kind(_json_get_string(raw_line, "applicability"))
+                let start_b = _json_get_i32(raw_line, "start_byte", -1)
+                let end_b = _json_get_i32(raw_line, "end_byte", -1)
+                if ((start_b >= 0) and (end_b >= start_b) and (end_b <= strlen(source))):
+                    let current_range = __thg_str_substr(source, start_b, end_b - start_b)
+                    let expected_old = _json_get_string(raw_line, "expected_old")
+                    if (((kind == 2) or (kind == 1) or (kind == -1)) and ((strlen(expected_old) == 0) or (current_range == expected_old))):
+                        let code_scan = _json_get_string(raw_line, "code")
+                        if (strlen(code_scan) == 0):
+                            code_scan = "COMPILER_SUGGESTION"
+                        set_out = _set_add_unique(set_out, code_scan)
+        i = i + 1
+    return set_out
+
+func _rule_compiler_suggestions_span(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    fs.write_text(_compiler_last_fix_json_path(), "")
+    let normalized_file = _normalize_path(file)
+    let payload = _read_suggestions_payload(normalized_file)
+    let total = _line_count(payload)
+    if (total <= 0):
+        return _rule_result(source, "", 0, start_index)
+    let best_start = -1
+    let best_end = -1
+    let best_kind = 0
+    let best_line = ""
+    let li = 0
+    while (li < total):
+        let line = _trim(_line_at(payload, li))
+        let reject = 0
+        if (strlen(line) == 0):
+            reject = 1
+        else:
+            let raw_file = _json_get_string(line, "file")
+            if (strlen(raw_file) == 0):
+                raw_file = normalized_file
+            let sug_file = _normalize_path(raw_file)
+            if (sug_file != normalized_file):
+                reject = 1
+            else:
+                let app = _json_get_string(line, "applicability")
+                let kind = _suggestion_applicability_kind(app)
+                if (_suggestion_allowed(kind, mode) == 0):
+                    reject = 1
+                else:
+                    let start_b = _json_get_i32(line, "start_byte", -1)
+                    let end_b = _json_get_i32(line, "end_byte", -1)
+                    if ((start_b < 0) or (end_b < start_b) or (end_b > strlen(source))):
+                        reject = 1
+                    else:
+                        let replacement = _json_get_string(line, "replacement")
+                        let current_range = __thg_str_substr(source, start_b, end_b - start_b)
+                        let expected_old = _json_get_string(line, "expected_old")
+                        let no_change = 0
+                        if (current_range == replacement):
+                            no_change = 1
+                        if ((strlen(expected_old) > 0) and (current_range != expected_old)):
+                            no_change = 1
+                        if ((strlen(replacement) > 0) and ((start_b + strlen(replacement)) <= strlen(source))):
+                            if (__thg_str_substr(source, start_b, strlen(replacement)) == replacement):
+                                no_change = 1
+                        if (no_change == 1):
+                            reject = 1
+                        else:
+                            if (start_b > best_start):
+                                best_start = start_b
+                                best_end = end_b
+                                best_kind = kind
+                                best_line = line
+        li = li + 1
+
+    if (best_start < 0):
+        return _rule_result(source, "", 0, start_index)
+
+    let old_snippet = __thg_str_substr(source, best_start, best_end - best_start)
+    let replacement = _json_get_string(best_line, "replacement")
+    let prefix = __thg_str_substr(source, 0, best_start)
+    let suffix = __thg_str_substr(source, best_end, strlen(source) - best_end)
+    let fixed = prefix + replacement + suffix
+    let code = _json_get_string(best_line, "code")
+    if (strlen(code) == 0):
+        code = "COMPILER_SUGGESTION"
+    let risk = "safe"
+    if (best_kind == 1):
+        risk = "aggressive"
+    let fix_id = _fix_id("compiler-span", start_index)
+    let start_line = _line_from_offset(source, best_start)
+    let start_col = _col_from_offset(source, best_start)
+    let end_line = _line_from_offset(source, best_end)
+    let end_col = _col_from_offset(source, best_end)
+    let diff = "@@ byte " + _to_string_i32(best_start) + ":" + _to_string_i32(best_end) + " @@" + _nl() + "-" + old_snippet + _nl() + "+" + replacement
+    if (emit_detail == 1):
+        _print_fix_detail(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, session_id, applied_flag)
+    let fix_json = _build_fix_json(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, applied_flag)
+    fs.write_text(_compiler_last_fix_json_path(), fix_json)
+    return _rule_result(fixed, "", 1, start_index + 1)
 
 func _mode_or_safe(mode: String) -> String:
     let m = _trim(mode)
@@ -1100,6 +1547,7 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
 
     let report = "{"
     report = report + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    report = report + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
     report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
     report = report + _json_quote("entry") + ":" + _json_quote(entry) + ","
     report = report + _json_quote("build_target") + ":" + _json_quote("native") + ","
@@ -1122,6 +1570,7 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
     fs.write_text(report_path, report)
     let session = "{"
     session = session + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    session = session + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
     session = session + _json_quote("entry") + ":" + _json_quote(entry) + ","
     session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
     session = session + _json_quote("build_target") + ":" + _json_quote("native") + ","
@@ -1158,13 +1607,25 @@ func latest_session_id() -> String:
         return ""
     return _trim(fs.read_text(".thagore/fix/last_session.id"))
 
-func _write_lock_file(lock_path: String, mode: String, allowed_rules_set: String) -> i32:
+func _write_lock_file(lock_path: String, mode: String, allowed_rules_set: String, applied_fix_ids_set: String, entries_set: String, last_session_id: String, entry_hash_before: i32, entry_hash_after: i32, lock_readonly: i32) -> i32:
     if (strlen(lock_path) == 0):
         return 0
+    if (lock_readonly == 1):
+        return 0
     let lock_json = "{"
+    lock_json = lock_json + _json_quote("lock_format_version") + ":1,"
+    lock_json = lock_json + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
+    lock_json = lock_json + _json_quote("engine") + ":" + _json_quote("compiler-span+rules-fallback") + ","
     lock_json = lock_json + _json_quote("mode") + ":" + _json_quote(mode) + ","
     lock_json = lock_json + _json_quote("allowed_rules_set") + ":" + _json_quote(allowed_rules_set) + ","
     lock_json = lock_json + _json_quote("allowed_rules") + ":" + _set_to_json_array(allowed_rules_set) + ","
+    lock_json = lock_json + _json_quote("applied_fix_ids_set") + ":" + _json_quote(applied_fix_ids_set) + ","
+    lock_json = lock_json + _json_quote("applied_fix_ids") + ":" + _set_to_json_array(applied_fix_ids_set) + ","
+    lock_json = lock_json + _json_quote("entries_set") + ":" + _json_quote(entries_set) + ","
+    lock_json = lock_json + _json_quote("entries") + ":" + _set_to_json_array(entries_set) + ","
+    lock_json = lock_json + _json_quote("last_session_id") + ":" + _json_quote(last_session_id) + ","
+    lock_json = lock_json + _json_quote("last_entry_hash_before") + ":" + _json_quote(_to_string_i32(entry_hash_before)) + ","
+    lock_json = lock_json + _json_quote("last_entry_hash_after") + ":" + _json_quote(_to_string_i32(entry_hash_after)) + ","
     lock_json = lock_json + _json_quote("updated_ms") + ":" + _json_quote(_to_string_i32(time.now_ms()))
     lock_json = lock_json + "}" + _nl()
     if (fs.write_text(lock_path, lock_json) == 0):
@@ -1210,6 +1671,41 @@ func _json_get_string(text: String, key: String) -> String:
             i = i + 1
     return out
 
+func _json_get_i32(text: String, key: String, fallback: i32) -> i32:
+    let dq = _dq()
+    let needle = dq + key + dq + ":"
+    let p = _find(text, needle)
+    if (p < 0):
+        return fallback
+    let idx = p + strlen(needle)
+    let skipping = 1
+    while ((idx < strlen(text)) and (skipping == 1)):
+        let ch2 = _char_at(text, idx)
+        if ((ch2 == " ") or (ch2 == _tab()) or (ch2 == _cr()) or (ch2 == _nl())):
+            idx = idx + 1
+        else:
+            skipping = 0
+    let sign = 1
+    if (idx < strlen(text)):
+        if (_char_at(text, idx) == "-"):
+            sign = -1
+            idx = idx + 1
+    let value = 0
+    let digits = 0
+    while (idx < strlen(text)):
+        let d = _char_at(text, idx)
+        if (_is_digit(d) == 1):
+            value = (value * 10) + _find_char("0123456789", d)
+            digits = digits + 1
+            idx = idx + 1
+        else:
+            idx = strlen(text)
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
 func _unescape_newlines(text: String) -> String:
     let out = text
     out = _replace_all(out, "\\\\r\\\\n", _nl())
@@ -1220,10 +1716,13 @@ func _unescape_newlines(text: String) -> String:
     out = _replace_all(out, "\\r", _nl())
     return out
 
-func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dry_run_flag: i32, explain_flag: i32, explain_json_flag: i32, from_build: i32, lock_path: String, lock_strict: i32) -> i32:
+func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dry_run_flag: i32, explain_flag: i32, explain_json_flag: i32, from_build: i32, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
     let mode = _mode_or_safe(mode_input)
     if ((lock_strict == 1) and (strlen(lock_path) == 0)):
         print("[autofix] error: --lock-strict requires --lock <path>.")
+        return -1
+    if ((lock_locked == 1) and (strlen(lock_path) == 0)):
+        print("[autofix] error: --locked requires --lock <path>.")
         return -1
     let normalized_entry = _normalize_path(entry_path)
     if (_is_protected_path(normalized_entry) == 1):
@@ -1270,9 +1769,12 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
         if (apply_flag == 1):
             print("report: " + report_path_bin)
         return 0
+    _emit_builtin_suggestions(normalized_entry, source)
     let lock_used = 0
     let lock_exists = 0
     let lock_rules_set = ";"
+    let lock_fix_ids_set = ";"
+    let lock_entries_set = ";"
     if (strlen(lock_path) > 0):
         lock_used = 1
         if (fs.exists(lock_path) == 1):
@@ -1281,9 +1783,18 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
             lock_rules_set = _json_get_string(lock_text, "allowed_rules_set")
             if (strlen(lock_rules_set) == 0):
                 lock_rules_set = ";"
+            lock_fix_ids_set = _json_get_string(lock_text, "applied_fix_ids_set")
+            if (strlen(lock_fix_ids_set) == 0):
+                lock_fix_ids_set = ";"
+            lock_entries_set = _json_get_string(lock_text, "entries_set")
+            if (strlen(lock_entries_set) == 0):
+                lock_entries_set = ";"
         else:
             if (lock_strict == 1):
                 print("[autofix] error: lock file not found under strict mode: " + lock_path)
+                return -1
+            if (lock_locked == 1):
+                print("[autofix] error: lock file not found under --locked: " + lock_path)
                 return -1
 
     let current = source
@@ -1298,6 +1809,69 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
     let collect_previews = 0
     if ((explain_flag == 1) or (explain_json_flag == 1)):
         collect_previews = 1
+
+    let cand_compiler = 0
+    let sel_compiler = 0
+    let reason_compiler = "rejected:no-suggestions"
+    let preview_compiler_old = "(span)"
+    let preview_compiler_new = "(replacement)"
+    let compiler_machine_candidates = 0
+    let compiler_maybe_candidates = 0
+    let compiler_overlap_skipped = 0
+    let compiler_diag_set = _compiler_suggestion_diagnostics_set(current, entry_path)
+    cand_compiler = _compiler_suggestion_candidate_count(current, entry_path, 0)
+    compiler_machine_candidates = _compiler_suggestion_candidate_count(current, entry_path, 1)
+    compiler_maybe_candidates = _compiler_suggestion_candidate_count(current, entry_path, 2)
+    candidate_total = candidate_total + cand_compiler
+    if (cand_compiler > 0):
+        diagnostics_seen_set = _set_union(diagnostics_seen_set, compiler_diag_set)
+        candidate_rules_set = _set_add_unique(candidate_rules_set, "compiler_suggestion_span_edit")
+        let allow_compiler = 1
+        if (mode == "off"):
+            allow_compiler = 0
+            reason_compiler = "rejected:mode-off"
+        else:
+            if ((lock_used == 1) and (lock_exists == 1) and (_set_contains(lock_rules_set, "compiler_suggestion_span_edit") == 0)):
+                allow_compiler = 0
+                reason_compiler = "rejected:lock-deny"
+                lock_blocked_total = lock_blocked_total + cand_compiler
+            else:
+                reason_compiler = "selected"
+        if (allow_compiler == 1):
+            let guard = 0
+            while (guard < cand_compiler):
+                let run_compiler = _rule_compiler_suggestions_span(current, entry_path, mode, applied_view, session_id, next_idx, emit_detail)
+                if (run_compiler.fixes_found <= 0):
+                    guard = cand_compiler
+                else:
+                    current = run_compiler.source
+                    next_idx = run_compiler.next_index
+                    selected_total = selected_total + run_compiler.fixes_found
+                    sel_compiler = sel_compiler + run_compiler.fixes_found
+                    let compiler_fix_json = fs.read_text(_compiler_last_fix_json_path())
+                    if (strlen(compiler_fix_json) > 0):
+                        fixes_json = _append_json(fixes_json, compiler_fix_json)
+                    if ((collect_previews == 1) and (strlen(compiler_fix_json) > 0)):
+                        let old_prev_comp = _json_get_string(compiler_fix_json, "old_snippet")
+                        let new_prev_comp = _json_get_string(compiler_fix_json, "new_snippet")
+                        if (strlen(old_prev_comp) > 0):
+                            preview_compiler_old = old_prev_comp
+                        if (strlen(new_prev_comp) > 0):
+                            preview_compiler_new = new_prev_comp
+                    diagnostics_seen_set = _set_union(diagnostics_seen_set, compiler_diag_set)
+                    applied_rules_set = _set_add_unique(applied_rules_set, "compiler_suggestion_span_edit")
+                    guard = guard + 1
+        else:
+            if (collect_previews == 1):
+                let run_preview_compiler = _rule_compiler_suggestions_span(current, entry_path, mode, 0, session_id, next_idx, 0)
+                let preview_compiler_json = fs.read_text(_compiler_last_fix_json_path())
+                if (strlen(preview_compiler_json) > 0):
+                    let old_prev_comp2 = _json_get_string(preview_compiler_json, "old_snippet")
+                    let new_prev_comp2 = _json_get_string(preview_compiler_json, "new_snippet")
+                    if (strlen(old_prev_comp2) > 0):
+                        preview_compiler_old = old_prev_comp2
+                    if (strlen(new_prev_comp2) > 0):
+                        preview_compiler_new = new_prev_comp2
 
     let cand_tabs = 0
     let sel_tabs = 0
@@ -1664,6 +2238,21 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
 
     if (explain_flag == 1):
         if (explain_json_flag == 1):
+            let c0 = "{"
+            c0 = c0 + _json_quote("rule") + ":" + _json_quote("compiler_suggestion_span_edit") + ","
+            c0 = c0 + _json_quote("diagnostic_code") + ":" + _json_quote("COMPILER_SUGGESTION") + ","
+            c0 = c0 + _json_quote("confidence") + ":0.99,"
+            c0 = c0 + _json_quote("risk") + ":" + _json_quote("safe+aggressive") + ","
+            c0 = c0 + _json_quote("candidate_count") + ":" + _to_string_i32(cand_compiler) + ","
+            c0 = c0 + _json_quote("selected_count") + ":" + _to_string_i32(sel_compiler) + ","
+            c0 = c0 + _json_quote("machine_candidates") + ":" + _to_string_i32(compiler_machine_candidates) + ","
+            c0 = c0 + _json_quote("maybe_candidates") + ":" + _to_string_i32(compiler_maybe_candidates) + ","
+            c0 = c0 + _json_quote("overlap_skipped") + ":" + _to_string_i32(compiler_overlap_skipped) + ","
+            c0 = c0 + _json_quote("reason") + ":" + _json_quote(reason_compiler) + ","
+            c0 = c0 + _json_quote("preview_old") + ":" + _json_quote(preview_compiler_old) + ","
+            c0 = c0 + _json_quote("preview_new") + ":" + _json_quote(preview_compiler_new)
+            c0 = c0 + "}"
+
             let c1 = "{"
             c1 = c1 + _json_quote("rule") + ":" + _json_quote("canonical_whitespace_tabs_to_spaces") + ","
             c1 = c1 + _json_quote("diagnostic_code") + ":" + _json_quote("PARSE_INDENT_TAB") + ","
@@ -1764,10 +2353,11 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
             let explain_json = "{"
             explain_json = explain_json + _json_quote("mode") + ":" + _json_quote(mode) + ","
             explain_json = explain_json + _json_quote("entry") + ":" + _json_quote(entry_path) + ","
-            explain_json = explain_json + _json_quote("candidates") + ":[" + c1 + "," + c2 + "," + c3 + "," + c4 + "," + c5 + "," + c6 + "," + c7 + "," + c8 + "]"
+            explain_json = explain_json + _json_quote("candidates") + ":[" + c0 + "," + c1 + "," + c2 + "," + c3 + "," + c4 + "," + c5 + "," + c6 + "," + c7 + "," + c8 + "]"
             explain_json = explain_json + "}"
             print(explain_json)
         else:
+            print("[autofix][explain] rule=compiler_suggestion_span_edit diagnostic=COMPILER_SUGGESTION confidence=0.99 risk=safe+aggressive candidate=" + _to_string_i32(cand_compiler) + " selected=" + _to_string_i32(sel_compiler) + " machine_candidates=" + _to_string_i32(compiler_machine_candidates) + " maybe_candidates=" + _to_string_i32(compiler_maybe_candidates) + " overlap_skipped=" + _to_string_i32(compiler_overlap_skipped) + " reason=" + reason_compiler)
             print("[autofix][explain] rule=canonical_whitespace_tabs_to_spaces diagnostic=PARSE_INDENT_TAB confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_tabs) + " selected=" + _to_string_i32(sel_tabs) + " reason=" + reason_tabs)
             print("[autofix][explain] rule=canonical_whitespace_trim_trailing diagnostic=PARSE_TRAILING_WHITESPACE confidence=0.97 risk=safe candidate=" + _to_string_i32(cand_trim_ws) + " selected=" + _to_string_i32(sel_trim_ws) + " reason=" + reason_trim_ws)
             print("[autofix][explain] rule=canonical_newline_final_newline diagnostic=PARSE_MISSING_FINAL_NEWLINE confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_final_nl) + " selected=" + _to_string_i32(sel_final_nl) + " reason=" + reason_final_nl)
@@ -1785,6 +2375,47 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
     let rebuild = "no-change"
     let max_files_touched = 10
     let can_apply = 1
+    let applied_fix_ids_set = _collect_fix_ids_from_fixes_json(fixes_json)
+    let lock_out_rules_set = lock_rules_set
+    if (lock_exists == 0):
+        lock_out_rules_set = ";"
+    if (_set_contains(applied_rules_set, "compiler_suggestion_span_edit") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "compiler_suggestion_span_edit")
+    if (_set_contains(applied_rules_set, "canonical_whitespace_tabs_to_spaces") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "canonical_whitespace_tabs_to_spaces")
+    if (_set_contains(applied_rules_set, "canonical_whitespace_trim_trailing") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "canonical_whitespace_trim_trailing")
+    if (_set_contains(applied_rules_set, "canonical_newline_final_newline") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "canonical_newline_final_newline")
+    if (_set_contains(applied_rules_set, "normalize_deprecated_fn_keyword") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "normalize_deprecated_fn_keyword")
+    if (_set_contains(applied_rules_set, "remove_duplicate_trivial_modifiers") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "remove_duplicate_trivial_modifiers")
+    if (_set_contains(applied_rules_set, "add_missing_std_import") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "add_missing_std_import")
+    if (_set_contains(applied_rules_set, "missing_colon_block_header") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "missing_colon_block_header")
+    if (_set_contains(applied_rules_set, "infer_return_annotation_literal") == 1):
+        lock_out_rules_set = _set_add_unique(lock_out_rules_set, "infer_return_annotation_literal")
+    let lock_out_fix_ids_set = _set_union(lock_fix_ids_set, applied_fix_ids_set)
+    let lock_out_entries_set = _set_add_unique(lock_entries_set, normalized_entry)
+    let missing_locked_rules_set = _set_difference(applied_rules_set, lock_rules_set)
+    let missing_locked_fix_ids_set = _set_difference(applied_fix_ids_set, lock_fix_ids_set)
+
+    if ((lock_locked == 1) and ((selected_total > 0) or (candidate_total > 0))):
+        if ((strlen(missing_locked_rules_set) > 1) or (strlen(missing_locked_fix_ids_set) > 1)):
+            can_apply = 0
+            rebuild = "locked-out-of-date"
+            failure_reason = "locked-out-of-date"
+            failing_diagnostic = "LOCKED_OUT_OF_DATE"
+            conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
+            conflict_fix_ids_set = _set_union(conflict_fix_ids_set, missing_locked_fix_ids_set)
+            print("[autofix] locked violation: lock file is out of date.")
+            if (strlen(_set_to_json_array(missing_locked_rules_set)) > 2):
+                print("[autofix] lock_missing_rules=" + _set_to_json_array(missing_locked_rules_set))
+            if (strlen(_set_to_json_array(missing_locked_fix_ids_set)) > 2):
+                print("[autofix] lock_missing_fix_ids=" + _set_to_json_array(missing_locked_fix_ids_set))
+
     if ((apply_flag == 1) and (lock_strict == 1) and (lock_used == 1) and (lock_exists == 1) and (lock_blocked_total > 0)):
         can_apply = 0
         rebuild = "lock-blocked"
@@ -1837,26 +2468,7 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
                             files_changed = 1
                             rebuild = "pending"
                             if (strlen(lock_path) > 0):
-                                let lock_out = lock_rules_set
-                                if (lock_exists == 0):
-                                    lock_out = ";"
-                                if (_set_contains(applied_rules_set, "canonical_whitespace_tabs_to_spaces") == 1):
-                                    lock_out = _set_add_unique(lock_out, "canonical_whitespace_tabs_to_spaces")
-                                if (_set_contains(applied_rules_set, "canonical_whitespace_trim_trailing") == 1):
-                                    lock_out = _set_add_unique(lock_out, "canonical_whitespace_trim_trailing")
-                                if (_set_contains(applied_rules_set, "canonical_newline_final_newline") == 1):
-                                    lock_out = _set_add_unique(lock_out, "canonical_newline_final_newline")
-                                if (_set_contains(applied_rules_set, "normalize_deprecated_fn_keyword") == 1):
-                                    lock_out = _set_add_unique(lock_out, "normalize_deprecated_fn_keyword")
-                                if (_set_contains(applied_rules_set, "remove_duplicate_trivial_modifiers") == 1):
-                                    lock_out = _set_add_unique(lock_out, "remove_duplicate_trivial_modifiers")
-                                if (_set_contains(applied_rules_set, "add_missing_std_import") == 1):
-                                    lock_out = _set_add_unique(lock_out, "add_missing_std_import")
-                                if (_set_contains(applied_rules_set, "missing_colon_block_header") == 1):
-                                    lock_out = _set_add_unique(lock_out, "missing_colon_block_header")
-                                if (_set_contains(applied_rules_set, "infer_return_annotation_literal") == 1):
-                                    lock_out = _set_add_unique(lock_out, "infer_return_annotation_literal")
-                                if (_write_lock_file(lock_path, mode, lock_out) != 0):
+                                if (_write_lock_file(lock_path, mode, lock_out_rules_set, lock_out_fix_ids_set, lock_out_entries_set, session_id, _hash_text(source), _hash_text(current), lock_locked) != 0):
                                     can_apply = 0
                                     rebuild = "io-error"
                                     failure_reason = "failed-write-lock"
@@ -1881,14 +2493,16 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
     else:
         fixes_applied = 0
         fixes_skipped = candidate_total
-        if (dry_run_flag == 1):
-            rebuild = "dry-run"
-        else:
-            if (explain_flag == 1):
-                rebuild = "explain"
+        fixes_json = _mark_fixes_unapplied(fixes_json)
+        if (strlen(failing_diagnostic) == 0):
+            if (dry_run_flag == 1):
+                rebuild = "dry-run"
             else:
-                if (rebuild != "lock-blocked"):
-                    rebuild = "no-change"
+                if (explain_flag == 1):
+                    rebuild = "explain"
+                else:
+                    if (rebuild != "lock-blocked"):
+                        rebuild = "no-change"
 
     if ((from_build == 1) and (rebuild != "lock-blocked")):
         rebuild = "retrying"
@@ -1905,7 +2519,7 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
         print("rollback: thagore fix rollback " + session_id)
     if ((apply_flag == 1) and (fixes_applied > 0)):
         print("report: " + report_path)
-    if ((apply_flag == 1) and (can_apply == 0)):
+    if (((apply_flag == 1) and (can_apply == 0)) or ((lock_locked == 1) and (can_apply == 0))):
         print("[autofix] applied_fixes=0")
         print("[autofix] failing_diagnostic=" + failing_diagnostic)
         if (strlen(_set_to_json_array(conflict_fix_ids_set)) > 2):
@@ -1916,30 +2530,30 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
         return -2
     return selected_total
 
-func apply_for_build(entry_path: String, mode: String, lock_path: String, lock_strict: i32) -> i32:
-    return _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 1, lock_path, lock_strict)
+func apply_for_build(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    return _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 1, lock_path, lock_strict, lock_locked)
 
-func run_fix_dry_run(entry_path: String, mode: String, lock_path: String, lock_strict: i32) -> i32:
-    let rc = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict)
+func run_fix_dry_run(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict, lock_locked)
     if (rc < 0):
         return 1
     return 0
 
-func run_fix_apply(entry_path: String, mode: String, lock_path: String, lock_strict: i32) -> i32:
-    let rc = _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 0, lock_path, lock_strict)
+func run_fix_apply(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 0, lock_path, lock_strict, lock_locked)
     if (rc < 0):
         return 1
     return 0
 
-func run_fix_explain(entry_path: String, mode: String, as_json: i32, lock_path: String, lock_strict: i32) -> i32:
-    let rc = _run_fix_engine(entry_path, mode, 0, 0, 1, as_json, 0, lock_path, lock_strict)
+func run_fix_explain(entry_path: String, mode: String, as_json: i32, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 0, 0, 1, as_json, 0, lock_path, lock_strict, lock_locked)
     if (rc < 0):
         return 1
     return 0
 
-func run_fix_doctor(entry_path: String, mode: String, lock_path: String, lock_strict: i32) -> i32:
+func run_fix_doctor(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
     print("[autofix][doctor] scanning " + entry_path)
-    let found = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict)
+    let found = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict, lock_locked)
     if (found < 0):
         return 1
     if (found <= 0):
@@ -1957,6 +2571,41 @@ func run_fix_rollback(session_id: String) -> i32:
         print("[autofix] restore_error=session-not-found")
         return 1
     let session_text = fs.read_text(session_path)
+    let session_type = _json_get_string(session_text, "session_type")
+    if (session_type == "bundle"):
+        let members = _json_get_string(session_text, "member_sessions_set")
+        let restored = 0
+        let failed = 0
+        let token = ""
+        let i = 0
+        let n = strlen(members)
+        while (i < n):
+            let ch = _char_at(members, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (token != session_id):
+                        let rc = run_fix_rollback(token)
+                        if (rc == 0):
+                            restored = restored + 1
+                        else:
+                            failed = failed + 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (strlen(token) > 0):
+            if (token != session_id):
+                let rc2 = run_fix_rollback(token)
+                if (rc2 == 0):
+                    restored = restored + 1
+                else:
+                    failed = failed + 1
+        print("[autofix] rollback bundle=" + session_id)
+        print("[autofix] sessions_restored=" + _to_string_i32(restored))
+        print("[autofix] sessions_failed=" + _to_string_i32(failed))
+        if (failed > 0):
+            return 1
+        return 0
     let entry = _json_get_string(session_text, "entry")
     let backup = _json_get_string(session_text, "backup_file")
     if (strlen(entry) == 0):
