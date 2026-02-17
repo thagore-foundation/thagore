@@ -598,13 +598,98 @@ func _cond_ir_op(op: String) -> String:
         return "icmp sgt"
     return "icmp slt"
 
+func _is_outer_paren_pair(text: String) -> i32:
+    let n = strlen(text)
+    if (n < 2):
+        return 0
+    if (_char_at(text, 0) != "("):
+        return 0
+    if (_char_at(text, n - 1) != ")"):
+        return 0
+    let i = 0
+    let depth = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth < 0):
+                    return 0
+                if ((depth == 0) and (i < (n - 1))):
+                    return 0
+        i = i + 1
+    if (depth != 0):
+        return 0
+    return 1
+
+func _find_top_level_needle(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if ((n == 0) or (m == 0) or (m > n)):
+        return -1
+    let depth = 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                if (depth > 0):
+                    depth = depth - 1
+        if (depth == 0):
+            if ((i + m) <= n):
+                if (__thg_str_substr(text, i, m) == needle):
+                    return i
+        i = i + 1
+    return -1
+
+func _find_top_level_cond_op(cond_text: String) -> String:
+    if (_find_top_level_needle(cond_text, "<=") >= 0):
+        return "<="
+    if (_find_top_level_needle(cond_text, ">=") >= 0):
+        return ">="
+    if (_find_top_level_needle(cond_text, "==") >= 0):
+        return "=="
+    if (_find_top_level_needle(cond_text, "!=") >= 0):
+        return "!="
+    if (_find_top_level_needle(cond_text, "<") >= 0):
+        return "<"
+    if (_find_top_level_needle(cond_text, ">") >= 0):
+        return ">"
+    return ""
+
+func _find_matching_rparen(text: String, lpos: i32) -> i32:
+    let n = strlen(text)
+    if ((lpos < 0) or (lpos >= n)):
+        return -1
+    if (_char_at(text, lpos) != "("):
+        return -1
+    let i = lpos
+    let depth = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth == 0):
+                    return i
+                if (depth < 0):
+                    return -1
+        i = i + 1
+    return -1
+
 func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
     let cond_norm1 = _replace_all(cond_text_raw, "&&", " and ")
     let cond_norm2 = _replace_all(cond_norm1, "||", " or ")
     let cond_text = _trim_edges(cond_norm2)
+    while (_is_outer_paren_pair(cond_text) == 1):
+        cond_text = _trim_edges(__thg_str_substr(cond_text, 1, strlen(cond_text) - 2))
     let n = strlen(cond_text)
-    if ((n >= 2) and (_char_at(cond_text, 0) == "(") and (_char_at(cond_text, n - 1) == ")")):
-        return _emit_cond_i1(__thg_str_substr(cond_text, 1, n - 2), slots, t)
     if (_starts_with(cond_text, "not ") == 1):
         let inner = _trim_edges(__thg_str_substr(cond_text, 4, n - 4))
         let ipack = _emit_cond_i1(inner, slots, t)
@@ -624,22 +709,7 @@ func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
             let outv = _new_temp("tmp", it)
             let ir = iir + "  " + outv + " = xor i1 " + ival + ", true__NL__"
             return _pack3(ir, outv, _to_string_i32(it + 1))
-    let p_and = _find(cond_text, " and ")
-    if (p_and >= 0):
-        let left = _trim_edges(__thg_str_substr(cond_text, 0, p_and))
-        let right = _trim_edges(__thg_str_substr(cond_text, p_and + 5, strlen(cond_text) - p_and - 5))
-        let lpack = _emit_cond_i1(left, slots, t)
-        let lir = _unpack_part(lpack, 0)
-        let lval = _unpack_part(lpack, 1)
-        let lt = _parse_i32(_unpack_part(lpack, 2))
-        let rpack = _emit_cond_i1(right, slots, lt)
-        let rir = _unpack_part(rpack, 0)
-        let rval = _unpack_part(rpack, 1)
-        let rt = _parse_i32(_unpack_part(rpack, 2))
-        let outv = _new_temp("tmp", rt)
-        let ir = lir + rir + "  " + outv + " = and i1 " + lval + ", " + rval + "__NL__"
-        return _pack3(ir, outv, _to_string_i32(rt + 1))
-    let p_or = _find(cond_text, " or ")
+    let p_or = _find_top_level_needle(cond_text, " or ")
     if (p_or >= 0):
         let left = _trim_edges(__thg_str_substr(cond_text, 0, p_or))
         let right = _trim_edges(__thg_str_substr(cond_text, p_or + 4, strlen(cond_text) - p_or - 4))
@@ -654,9 +724,24 @@ func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
         let outv = _new_temp("tmp", rt)
         let ir = lir + rir + "  " + outv + " = or i1 " + lval + ", " + rval + "__NL__"
         return _pack3(ir, outv, _to_string_i32(rt + 1))
-    let op = _find_cond_op(cond_text)
+    let p_and = _find_top_level_needle(cond_text, " and ")
+    if (p_and >= 0):
+        let left = _trim_edges(__thg_str_substr(cond_text, 0, p_and))
+        let right = _trim_edges(__thg_str_substr(cond_text, p_and + 5, strlen(cond_text) - p_and - 5))
+        let lpack = _emit_cond_i1(left, slots, t)
+        let lir = _unpack_part(lpack, 0)
+        let lval = _unpack_part(lpack, 1)
+        let lt = _parse_i32(_unpack_part(lpack, 2))
+        let rpack = _emit_cond_i1(right, slots, lt)
+        let rir = _unpack_part(rpack, 0)
+        let rval = _unpack_part(rpack, 1)
+        let rt = _parse_i32(_unpack_part(rpack, 2))
+        let outv = _new_temp("tmp", rt)
+        let ir = lir + rir + "  " + outv + " = and i1 " + lval + ", " + rval + "__NL__"
+        return _pack3(ir, outv, _to_string_i32(rt + 1))
+    let op = _find_top_level_cond_op(cond_text)
     if (op.length() > 0):
-        let pos = _find(cond_text, op)
+        let pos = _find_top_level_needle(cond_text, op)
         let left_text = cond_text
         let right_text = "0"
         if (pos >= 0):
@@ -911,7 +996,7 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                 let base_indent = _leading_spaces(raw)
                 let cond_text = ""
                 let p1 = _find(line, "(")
-                let p2 = _find(line, ")")
+                let p2 = _find_matching_rparen(line, p1)
                 if ((p1 >= 0) and (p2 > p1)):
                     cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
                 else:
@@ -959,7 +1044,7 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                     let base_indent = _leading_spaces(raw)
                     let cond_text = ""
                     let p1 = _find(line, "(")
-                    let p2 = _find(line, ")")
+                    let p2 = _find_matching_rparen(line, p1)
                     if ((p1 >= 0) and (p2 > p1)):
                         cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
                     else:

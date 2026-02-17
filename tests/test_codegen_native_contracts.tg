@@ -55,6 +55,14 @@ func main() -> i32:
     let src_if_or_symbol = "func main() -> i32:\n    let n = 3\n    if (n == 0 || n == 3):\n        return n\n    return 0\n"
     let ir_if_or_symbol = em.emit_program_from_source(src_if_or_symbol, "contract_if_or_symbol")
     fails = fails + _expect_i32("emit if || uses or i1", _contains(ir_if_or_symbol, " = or i1 "), 1)
+    let src_if_precedence = "func main() -> i32:\n    let n = 3\n    if (n == 1 or n == 2 and n == 3):\n        return n\n    return 0\n"
+    let ir_if_precedence = em.emit_program_from_source(src_if_precedence, "contract_if_precedence")
+    fails = fails + _expect_i32("emit if precedence has and", _contains(ir_if_precedence, " = and i1 "), 1)
+    fails = fails + _expect_i32("emit if precedence has or", _contains(ir_if_precedence, " = or i1 "), 1)
+    let src_if_nested = "func main() -> i32:\n    let n = 3\n    if ((n == 1 or n == 2) and (n == 3 or n == 4)):\n        return n\n    return 0\n"
+    let ir_if_nested = em.emit_program_from_source(src_if_nested, "contract_if_nested")
+    fails = fails + _expect_i32("emit if nested has and", _contains(ir_if_nested, " = and i1 "), 1)
+    fails = fails + _expect_i32("emit if nested has or", _contains(ir_if_nested, " = or i1 "), 1)
     let src_if_not = "func main() -> i32:\n    let n = 3\n    if (not (n == 0)):\n        return n\n    return 0\n"
     let ir_if_not = em.emit_program_from_source(src_if_not, "contract_if_not")
     fails = fails + _expect_i32("emit if not uses xor i1", _contains(ir_if_not, " = xor i1 "), 1)
@@ -78,6 +86,10 @@ func main() -> i32:
     let src_while_not = "func main() -> i32:\n    let i = 0\n    while (not (i < 0)):\n        return i\n    return 0\n"
     let ir_while_not = em.emit_program_from_source(src_while_not, "contract_while_not")
     fails = fails + _expect_i32("emit while not uses xor i1", _contains(ir_while_not, " = xor i1 "), 1)
+    let src_while_nested = "func main() -> i32:\n    let i = 0\n    while ((i >= 0 and i <= 2) or i == 9):\n        return i\n    return 0\n"
+    let ir_while_nested = em.emit_program_from_source(src_while_nested, "contract_while_nested")
+    fails = fails + _expect_i32("emit while nested has and", _contains(ir_while_nested, " = and i1 "), 1)
+    fails = fails + _expect_i32("emit while nested has or", _contains(ir_while_nested, " = or i1 "), 1)
 
     if (fails == 0):
         print("PASS: codegen native contracts")
