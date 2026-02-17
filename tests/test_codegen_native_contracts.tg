@@ -36,6 +36,11 @@ func main() -> i32:
     fails = fails + _expect_i32("emit typed has ret i32", _contains(ir2, "ret i32"), 1)
     fails = fails + _expect_i32("emit typed no __NL__ marker", _contains(ir2, "__NL__"), 0)
 
+    let src_if = "func main() -> i32:\n    let n = 3\n    if (n < 5):\n        return n\n    return 0\n"
+    let ir_if = em.emit_program_from_source(src_if, "contract_if")
+    fails = fails + _expect_i32("emit if has compare", _contains(ir_if, "icmp"), 1)
+    fails = fails + _expect_i32("emit if has branch", _contains(ir_if, "br i1"), 1)
+
     if (fails == 0):
         print("PASS: codegen native contracts")
         return 0
