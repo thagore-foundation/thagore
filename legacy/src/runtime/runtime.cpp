@@ -2965,77 +2965,43 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   const std::filesystem::path selfPath = resolveSelfExecutablePath();
   std::filesystem::path helperPath {};
   std::size_t dynamicCount = 0;
-  std::vector<std::filesystem::path> dynamicCandidates {};
+  auto parseEnvInt = [](const char *key, int fallback) -> int {
+    const char *value = std::getenv(key);
+    if (value == nullptr || value[0] == '\0') {
+      return fallback;
+    }
+    int out = 0;
+    std::size_t i = 0;
+    while (value[i] != '\0') {
+      const char ch = value[i];
+      if (ch < '0' || ch > '9') {
+        return fallback;
+      }
+      out = (out * 10) + static_cast<int>(ch - '0');
+      if (out > 1000) {
+        return fallback;
+      }
+      i = i + 1;
+    }
+    return out;
+  };
+  const int helperDepth = parseEnvInt("THAG_HELPER_DEPTH", 0);
+
+  if (helperDepth >= 4) {
+    std::error_code rmErr {};
+    std::filesystem::remove(sourcePath, rmErr);
+    std::filesystem::remove(irPath, rmErr);
+    std::fprintf(
+      stderr,
+      "codegen helper recursion depth exceeded (THAG_HELPER_DEPTH=%d).\n",
+      helperDepth
+    );
+    return makeManagedCString("");
+  }
   if (const char *configured = std::getenv("THAG_STAGE0_HELPER"); configured != nullptr && *configured != '\0') {
     helperPath = std::filesystem::path(configured);
   } else {
 #if defined(_WIN32)
-    std::error_code scanErr {};
-    for (const auto &entry : std::filesystem::directory_iterator(std::filesystem::path {"."}, scanErr)) {
-      if (scanErr) {
-        break;
-      }
-      if (!entry.is_regular_file()) {
-        continue;
-      }
-      const auto name = entry.path().filename().string();
-      if (name.size() < 5) {
-        continue;
-      }
-      const bool isExe = name.substr(name.size() - 4) == ".exe";
-      if (!isExe) {
-        continue;
-      }
-      const bool looksStage2 = name.rfind("stage2", 0) == 0;
-      const bool looksThagore = name.rfind("thagore", 0) == 0;
-      if (looksStage2 || looksThagore) {
-        dynamicCandidates.push_back(entry.path());
-      }
-    }
-    auto lowerAscii = [](std::string value) -> std::string {
-      for (auto &ch : value) {
-        if (ch >= 'A' && ch <= 'Z') {
-          ch = static_cast<char>(ch - 'A' + 'a');
-        }
-      }
-      return value;
-    };
-    auto candidateScore = [&](const std::filesystem::path &candidate) -> int {
-      const auto name = lowerAscii(candidate.filename().string());
-      if (name == "stage2.exe") {
-        return 1000;
-      }
-      if (name == "thagore.exe") {
-        return 950;
-      }
-      if (name.rfind("stage2", 0) == 0) {
-        return 900;
-      }
-      if (name.rfind("thagore", 0) == 0) {
-        return 850;
-      }
-      return 0;
-    };
-    std::sort(
-      dynamicCandidates.begin(),
-      dynamicCandidates.end(),
-      [&](const std::filesystem::path &lhs, const std::filesystem::path &rhs) -> bool {
-        const int lhsScore = candidateScore(lhs);
-        const int rhsScore = candidateScore(rhs);
-        if (lhsScore != rhsScore) {
-          return lhsScore > rhsScore;
-        }
-        std::error_code lErr {};
-        std::error_code rErr {};
-        const auto lTime = std::filesystem::last_write_time(lhs, lErr);
-        const auto rTime = std::filesystem::last_write_time(rhs, rErr);
-        if (lErr || rErr) {
-          return lhs.string() < rhs.string();
-        }
-        return lTime > rTime;
-      }
-    );
-    dynamicCount = dynamicCandidates.size();
     const std::vector<std::filesystem::path> candidates {
       std::filesystem::path {".\\thagore.exe"},
       std::filesystem::path {".\\stage2.exe"},
@@ -3104,15 +3070,6 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     }
 
     if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
-      for (const auto &candidate : dynamicCandidates) {
-        if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
-          helperPath = candidate;
-          break;
-        }
-      }
-    }
-
-    if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
       for (const auto &candidate : candidates) {
         if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
           helperPath = candidate;
@@ -3148,14 +3105,17 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     const char *v = std::getenv("THAG_TRACE_HELPER");
     return v != nullptr && v[0] != '\0' && std::string(v) != "0";
   }();
+  const int nextHelperDepth = helperDepth + 1;
+  const std::string helperDepthValue = std::to_string(nextHelperDepth);
   if (traceHelper) {
     std::fprintf(
       stderr,
-      "[helper] self=%s selected=%s module=%s dynamic=%zu\n",
+      "[helper] self=%s selected=%s module=%s dynamic=%zu depth=%d\n",
       selfPath.string().c_str(),
       helperPath.string().c_str(),
       moduleNameText.c_str(),
-      dynamicCount
+      dynamicCount,
+      helperDepth
     );
   }
 
@@ -3169,11 +3129,11 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   }
   helperExecWin = quoteShellArg(helperExecWin);
   const std::vector<std::string> helperCommands {
-    "set \"THAGORE_INTERNAL_EMIT=1\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+    "set \"THAGORE_INTERNAL_EMIT=1\" && set \"THAG_HELPER_DEPTH=" + helperDepthValue + "\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
 #else
   const std::vector<std::string> helperCommands {
-    "THAGORE_INTERNAL_EMIT=1 " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
+    "THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=" + helperDepthValue + " " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
   };
 #endif
 
