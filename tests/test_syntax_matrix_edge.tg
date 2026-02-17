@@ -47,6 +47,7 @@ func main() -> i32:
 
     fails = fails + _expect_i32("closure count positive", pn.parse_closure_count("let sum = |a,b| a + b"), 1)
     fails = fails + _expect_i32("closure count negative", pn.parse_closure_count("let sum = a + b"), 0)
+    fails = fails + _expect_i32("closure count empty body negative", pn.parse_closure_count("let sum = |a,b|"), 0)
 
     fails = fails + _expect_i32("unsafe count positive", pn.parse_unsafe_count("unsafe:\n    raw_call()\n"), 1)
     fails = fails + _expect_i32("unsafe count negative", pn.parse_unsafe_count("safe:\n    raw_call()\n"), 0)

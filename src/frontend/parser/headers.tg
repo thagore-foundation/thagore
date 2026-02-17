@@ -242,15 +242,24 @@ func has_raw_string(line: String) -> i32:
 
 func has_closure(line: String) -> i32:
     let s = gt.trim(line)
-    if (_contains(s, "=") == 0):
+    let eq = _find_char(s, "=")
+    if (eq < 0):
         return 0
-    if (_find_char(s, "|") < 0):
+    if ((eq + 1) >= strlen(s)):
         return 0
-    let p1 = _find_char(s, "|")
-    if (p1 < 0):
+    let rhs = gt.trim(__thg_str_substr(s, eq + 1, strlen(s) - eq - 1))
+    if (strlen(rhs) < 3):
         return 0
-    let tail = __thg_str_substr(s, p1 + 1, strlen(s) - p1 - 1)
-    if (_find_char(tail, "|") < 0):
+    if (_char_at(rhs, 0) != "|"):
+        return 0
+    let tail = __thg_str_substr(rhs, 1, strlen(rhs) - 1)
+    let close = _find_char(tail, "|")
+    if (close < 0):
+        return 0
+    if ((close + 1) >= strlen(tail)):
+        return 0
+    let body = gt.trim(__thg_str_substr(tail, close + 1, strlen(tail) - close - 1))
+    if (strlen(body) == 0):
         return 0
     return 1
 

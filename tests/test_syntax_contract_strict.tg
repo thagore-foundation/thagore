@@ -22,6 +22,7 @@ func main() -> i32:
     fails = fails + _expect_i32("if expr valid", ph.has_if_expression("let x = if ok: 1 else: 0"), 1)
 
     fails = fails + _expect_i32("closure requires rhs", ph.has_closure("let f ="), 0)
+    fails = fails + _expect_i32("closure requires body expression", ph.has_closure("let f = |x|"), 0)
     fails = fails + _expect_i32("closure valid", ph.has_closure("let f = |x| x + 1"), 1)
 
     fails = fails + _expect_i32("validate malformed match", pipe.validate("func main() -> i32:\n    match :\n        return 1\n"), 1)
