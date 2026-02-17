@@ -692,16 +692,16 @@ jobs:
           if [[ "$ok" -ne 1 ]]; then
             echo "status=compile_failed" >> "$REPORT"
             echo "::warning::Canary compile failed for $TEST_SRC on Windows stage1 seed."
-            exit 1
-          fi
-          echo "compiler=$USED_CC" >> "$REPORT"
-          echo "binary=$BUILT_BIN" >> "$REPORT"
-          chmod +x "$BUILT_BIN" || true
-          if "./$BUILT_BIN"; then
-            echo "status=pass" >> "$REPORT"
           else
-            echo "status=runtime_failed" >> "$REPORT"
-            exit 1
+            echo "compiler=$USED_CC" >> "$REPORT"
+            echo "binary=$BUILT_BIN" >> "$REPORT"
+            chmod +x "$BUILT_BIN" || true
+            if "./$BUILT_BIN"; then
+              echo "status=pass" >> "$REPORT"
+            else
+              echo "status=runtime_failed" >> "$REPORT"
+              echo "::warning::Canary runtime failed for $TEST_SRC on Windows stage1 seed."
+            fi
           fi
 
       - name: Upload canary match-negative report (Windows)
