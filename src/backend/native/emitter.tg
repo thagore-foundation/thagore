@@ -568,6 +568,36 @@ func _emit_operand_simple(expr_raw: String, slots: String, t: i32) -> String:
         return _pack3(ir, v, _to_string_i32(t + 1))
     return _pack3("", expr, _to_string_i32(t))
 
+func _find_cond_op(cond_text: String) -> String:
+    if (_find(cond_text, "<=") >= 0):
+        return "<="
+    if (_find(cond_text, ">=") >= 0):
+        return ">="
+    if (_find(cond_text, "==") >= 0):
+        return "=="
+    if (_find(cond_text, "!=") >= 0):
+        return "!="
+    if (_find(cond_text, "<") >= 0):
+        return "<"
+    if (_find(cond_text, ">") >= 0):
+        return ">"
+    return ""
+
+func _cond_ir_op(op: String) -> String:
+    if (op == "<="):
+        return "icmp sle"
+    if (op == ">="):
+        return "icmp sge"
+    if (op == "=="):
+        return "icmp eq"
+    if (op == "!="):
+        return "icmp ne"
+    if (op == "<"):
+        return "icmp slt"
+    if (op == ">"):
+        return "icmp sgt"
+    return "icmp slt"
+
 func _collect_string_globals(source: String) -> String:
     let total = _line_count(source)
     let i = 0
@@ -807,13 +837,13 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                         if (_char_at(cond_text, cond_text.length() - 1) == ":"):
                             cond_text = _trim_edges(__thg_str_substr(cond_text, 0, cond_text.length() - 1))
                 if (cond_text.length() > 0):
-                    let op = "<"
-                    let pos = _find(cond_text, "<")
+                    let op = _find_cond_op(cond_text)
+                    let pos = _find(cond_text, op)
                     let left_text = cond_text
                     let right_text = "0"
                     if (pos >= 0):
                         left_text = _trim_edges(__thg_str_substr(cond_text, 0, pos))
-                        right_text = _trim_edges(__thg_str_substr(cond_text, pos + 1, strlen(cond_text) - pos - 1))
+                        right_text = _trim_edges(__thg_str_substr(cond_text, pos + strlen(op), strlen(cond_text) - pos - strlen(op)))
                     let cond_label = "while.cond." + _tag(l)
                     let body_label = "while.body." + _tag(l)
                     let end_label = "while.end." + _tag(l)
@@ -828,7 +858,7 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                     let right_val = _unpack_part(right_pack, 1)
                     let t_right = _parse_i32(_unpack_part(right_pack, 2))
                     let cond_var = _new_temp("tmp", t_right)
-                    ir = ir + left_ir + right_ir + "  " + cond_var + " = icmp slt i32 " + left_val + ", " + right_val + "__NL__"
+                    ir = ir + left_ir + right_ir + "  " + cond_var + " = " + _cond_ir_op(op) + " i32 " + left_val + ", " + right_val + "__NL__"
                     ir = ir + "  br i1 " + cond_var + ", label %" + body_label + ", label %" + end_label + "__NL__"
                     ir = ir + body_label + ":__NL__"
                     let j = i + 1
@@ -867,13 +897,13 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                             if (_char_at(cond_text, cond_text.length() - 1) == ":"):
                                 cond_text = _trim_edges(__thg_str_substr(cond_text, 0, cond_text.length() - 1))
                     if (cond_text.length() > 0):
-                        let op = "<"
-                        let pos = _find(cond_text, "<")
+                        let op = _find_cond_op(cond_text)
+                        let pos = _find(cond_text, op)
                         let left_text = cond_text
                         let right_text = "0"
                         if (pos >= 0):
                             left_text = _trim_edges(__thg_str_substr(cond_text, 0, pos))
-                            right_text = _trim_edges(__thg_str_substr(cond_text, pos + 1, strlen(cond_text) - pos - 1))
+                            right_text = _trim_edges(__thg_str_substr(cond_text, pos + strlen(op), strlen(cond_text) - pos - strlen(op)))
                         let left_pack = _emit_operand_simple(left_text, st, t)
                         let left_ir = _unpack_part(left_pack, 0)
                         let left_val = _unpack_part(left_pack, 1)
@@ -883,7 +913,7 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                         let right_val = _unpack_part(right_pack, 1)
                         let t_right = _parse_i32(_unpack_part(right_pack, 2))
                         let cond_var = _new_temp("tmp", t_right)
-                        let cond_ir = left_ir + right_ir + "  " + cond_var + " = icmp slt i32 " + left_val + ", " + right_val + "__NL__"
+                        let cond_ir = left_ir + right_ir + "  " + cond_var + " = " + _cond_ir_op(op) + " i32 " + left_val + ", " + right_val + "__NL__"
                         let then_label = "if.then." + _tag(l)
                         let else_label = "if.else." + _tag(l)
                         let end_label = "if.end." + _tag(l)

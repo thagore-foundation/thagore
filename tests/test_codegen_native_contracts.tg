@@ -40,11 +40,17 @@ func main() -> i32:
     let ir_if = em.emit_program_from_source(src_if, "contract_if")
     fails = fails + _expect_i32("emit if has compare", _contains(ir_if, "icmp"), 1)
     fails = fails + _expect_i32("emit if has branch", _contains(ir_if, "br i1"), 1)
+    let src_if_ne = "func main() -> i32:\n    let n = 3\n    if (n != 5):\n        return n\n    return 0\n"
+    let ir_if_ne = em.emit_program_from_source(src_if_ne, "contract_if_ne")
+    fails = fails + _expect_i32("emit if != uses icmp ne", _contains(ir_if_ne, "icmp ne"), 1)
 
     let src_while = "func main() -> i32:\n    let i = 0\n    while (i < 2):\n        return i\n    return 0\n"
     let ir_while = em.emit_program_from_source(src_while, "contract_while")
     fails = fails + _expect_i32("emit while has compare", _contains(ir_while, "icmp"), 1)
     fails = fails + _expect_i32("emit while has branch", _contains(ir_while, "br i1"), 1)
+    let src_while_le = "func main() -> i32:\n    let i = 0\n    while (i <= 2):\n        return i\n    return 0\n"
+    let ir_while_le = em.emit_program_from_source(src_while_le, "contract_while_le")
+    fails = fails + _expect_i32("emit while <= uses icmp sle", _contains(ir_while_le, "icmp sle"), 1)
 
     if (fails == 0):
         print("PASS: codegen native contracts")
