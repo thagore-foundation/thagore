@@ -1,0 +1,45 @@
+import "src/backend/llvm/emitter.tg" as em
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let src_if = "func main() -> i32:\n    let n = 3\n    if (not ((n == 1 or n == 2) and (n == 3 || n == 4))):\n        return n\n    return 0\n"
+    let ir_if = em.emit_program_from_source(src_if, "cond_prec_if")
+    fails = fails + _expect_i32("if has and i1", _contains(ir_if, " = and i1 "), 1)
+    fails = fails + _expect_i32("if has or i1", _contains(ir_if, " = or i1 "), 1)
+    fails = fails + _expect_i32("if has xor i1", _contains(ir_if, " = xor i1 "), 1)
+
+    let src_while = "func main() -> i32:\n    let i = 0\n    while ((i >= 0 and i <= 2) or !(i == 9)):\n        return i\n    return 0\n"
+    let ir_while = em.emit_program_from_source(src_while, "cond_prec_while")
+    fails = fails + _expect_i32("while has and i1", _contains(ir_while, " = and i1 "), 1)
+    fails = fails + _expect_i32("while has or i1", _contains(ir_while, " = or i1 "), 1)
+    fails = fails + _expect_i32("while has xor i1", _contains(ir_while, " = xor i1 "), 1)
+
+    if (fails == 0):
+        print("PASS: codegen condition precedence")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

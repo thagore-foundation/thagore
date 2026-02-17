@@ -321,7 +321,7 @@ jobs:
             echo "[WARN] $cc returned no syntax matrix artifact in longhaul for $test_src." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
-          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg tests/test_syntax_matrix_negative.tg tests/test_syntax_contract_strict.tg tests/test_typecheck_contracts.tg tests/test_codegen_native_contracts.tg tests/test_language_pipeline.tg tests/test_native_pipeline.tg; do
+          for TEST_SRC in tests/test_syntax_matrix.tg tests/test_syntax_matrix_edge.tg tests/test_syntax_matrix_negative.tg tests/test_syntax_contract_strict.tg tests/test_typecheck_contracts.tg tests/test_codegen_native_contracts.tg tests/test_codegen_condition_precedence.tg tests/test_language_pipeline.tg tests/test_native_pipeline.tg; do
             BASE="$(basename "$TEST_SRC" .tg)"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               TEST_BIN="${BASE}_longhaul.exe"
@@ -357,6 +357,7 @@ jobs:
             "tests/test_syntax_contract_strict.tg"
             "tests/test_typecheck_contracts.tg"
             "tests/test_codegen_native_contracts.tg"
+            "tests/test_codegen_condition_precedence.tg"
             "tests/test_language_pipeline.tg"
             "tests/test_native_pipeline.tg"
           )
