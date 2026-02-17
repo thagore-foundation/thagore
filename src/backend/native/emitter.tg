@@ -271,6 +271,16 @@ func _is_number(text: String) -> i32:
         i = i + 1
     return 1
 
+func _literal_i32_value(text: String) -> String:
+    let s = _trim_edges(text)
+    if (s == "true"):
+        return "1"
+    if (s == "false"):
+        return "0"
+    if (_is_number(s) == 1):
+        return s
+    return ""
+
 func _map_get(map_text: String, key: String) -> String:
     let needle = _s3(";", key, "=")
     let p = _find(map_text, needle)
@@ -476,8 +486,9 @@ func _emit_binary(expr: String, op: String, ir_op: String, slots: String, t: i32
 
 func _emit_expr(expr_raw: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
     let expr = _trim_edges(expr_raw)
-    if (_is_number(expr) == 1):
-        return EmitExprResult(t, sidx, expr, "", globals)
+    let lit_i32 = _literal_i32_value(expr)
+    if (lit_i32.length() > 0):
+        return EmitExprResult(t, sidx, lit_i32, "", globals)
     if (_contains(expr, "(") == 1):
         let call_try = _emit_call_expr(expr, slots, t, sidx, globals)
         if (call_try.ir.length() > 0):
@@ -559,8 +570,9 @@ func _unpack_part(pack: String, idx: i32) -> String:
 
 func _emit_operand_simple(expr_raw: String, slots: String, t: i32) -> String:
     let expr = _trim_edges(expr_raw)
-    if (_is_number(expr) == 1):
-        return _pack3("", expr, _to_string_i32(t))
+    let lit_i32 = _literal_i32_value(expr)
+    if (lit_i32.length() > 0):
+        return _pack3("", lit_i32, _to_string_i32(t))
     let slot = _map_get(slots, expr)
     if (slot.length() > 0):
         let v = _new_temp("ld", t)
@@ -1149,6 +1161,35 @@ func _extract_ret_i32(header_line: String) -> i32:
         return 1
     return 0
 
+func _is_declaration_header(line: String) -> i32:
+    if (_starts_with(line, "import ") == 1):
+        return 1
+    if (_starts_with(line, "extern func ") == 1):
+        return 1
+    if (_starts_with(line, "func ") == 1):
+        return 1
+    if (_starts_with(line, "struct ") == 1):
+        return 1
+    if (_starts_with(line, "impl ") == 1):
+        return 1
+    if (_starts_with(line, "trait ") == 1):
+        return 1
+    if (_starts_with(line, "enum ") == 1):
+        return 1
+    if (_starts_with(line, "type ") == 1):
+        return 1
+    if (_starts_with(line, "pub ") == 1):
+        return 1
+    return 0
+
+func _is_script_stmt_line(line: String) -> i32:
+    let s = _trim_edges(line)
+    if (s.length() == 0):
+        return 0
+    if (_is_declaration_header(s) == 1):
+        return 0
+    return 1
+
 func _is_runtime_wrapper_source(source: String) -> i32:
     if (_contains(source, "import ") == 0):
         return 0
@@ -1184,8 +1225,11 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
     out = _s2(out, _collect_string_globals(src))
     let total = _line_count(src)
     let i = 0
+    let has_main = 0
+    let script_body = ""
     while (i < total):
-        let line = _trim_edges(_line_at(src, i))
+        let raw = _line_at(src, i)
+        let line = _trim_edges(raw)
         if (_starts_with(line, "func ") == 1):
             let name = _extract_func_name(line)
             let param = _extract_param_name(line)
@@ -1195,12 +1239,33 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
             if (name == "main"):
                 is_main = 1
                 ret_i32 = 1
+                has_main = 1
             let fn_ir = _emit_function_ir(name, param, body, ret_i32, is_main)
             out = _s2(out, fn_ir)
             out = _s2(out, "__NL__")
             i = i + _line_count(body) + 1
         else:
-            i = i + 1
+            if (_leading_spaces(raw) == 0):
+                if ((_starts_with(line, "if (") == 1) or (_starts_with(line, "while (") == 1)):
+                    let block = _extract_body(src, i)
+                    script_body = script_body + raw
+                    if (block.length() > 0):
+                        script_body = script_body + "__NL__" + block
+                    script_body = script_body + "__NL__"
+                    i = i + _line_count(block) + 1
+                else:
+                    if (_is_script_stmt_line(line) == 1):
+                        script_body = script_body + raw + "__NL__"
+                    i = i + 1
+            else:
+                i = i + 1
+    if (has_main == 0):
+        let main_body = script_body
+        if (_trim_edges(main_body).length() == 0):
+            main_body = "    return 0"
+        let main_ir = _emit_function_ir("main", "", main_body, 1, 1)
+        out = _s2(out, main_ir)
+        out = _s2(out, "__NL__")
     return _finalize_ir(out)
 
 func emit_program_typed(typed_normalized: String, module_name: String) -> String:

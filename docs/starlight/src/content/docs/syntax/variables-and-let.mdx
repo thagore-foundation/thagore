@@ -20,7 +20,8 @@ func main() -> i32:
 
 1. `let` tạo binding mới.
 2. `name = expr` cập nhật binding hiện có.
-3. Trong lowering/typecheck hiện tại, validation tập trung vào header/scope patterns hơn là full static lifetime checker.
+3. Boolean literal hỗ trợ trực tiếp: `true`, `false`.
+4. Trong lowering/typecheck hiện tại, validation tập trung vào header/scope patterns hơn là full static lifetime checker.
 
 <Aside type="caution" title="Pitfall">
 `defer` chỉ hợp lệ trong function body; top-level `defer` bị reject ở validation pipeline.

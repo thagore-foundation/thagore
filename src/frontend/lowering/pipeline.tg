@@ -500,6 +500,10 @@ func _eval_expr_int(expr: String, env: String, params_map: String, body_map: Str
         return 0
     if (depth > 32):
         return 0
+    if (s == "true"):
+        return 1
+    if (s == "false"):
+        return 0
     if ((_char_at(s, 0) == "(") and (_char_at(s, strlen(s) - 1) == ")")):
         return _eval_expr_int(__thg_str_substr(s, 1, strlen(s) - 2), env, params_map, body_map, depth + 1)
     if (_is_int_literal(s) == 1):

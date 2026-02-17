@@ -22,6 +22,8 @@ func main() -> i32:
     fails = fails + _expect_str("kw in", lexer.keyword_kind("in"), "IN")
     fails = fails + _expect_str("kw defer", lexer.keyword_kind("defer"), "DEFER")
     fails = fails + _expect_str("kw comptime", lexer.keyword_kind("comptime"), "COMPTIME")
+    fails = fails + _expect_str("kw true", lexer.keyword_kind("true"), "TRUE")
+    fails = fails + _expect_str("kw false", lexer.keyword_kind("false"), "FALSE")
     fails = fails + _expect_str("kw normal", lexer.keyword_kind("hello"), "IDENTIFIER")
 
     fails = fails + _expect_str("sym [", lexer.classify_symbol("["), "LBRACKET")

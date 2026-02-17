@@ -21,6 +21,10 @@ func keyword_kind(word: String) -> String:
         return "DEFER"
     if (word == "comptime"):
         return "COMPTIME"
+    if (word == "true"):
+        return "TRUE"
+    if (word == "false"):
+        return "FALSE"
     return "IDENTIFIER"
 
 func classify_symbol(symbol: String) -> String:

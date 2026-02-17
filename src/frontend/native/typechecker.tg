@@ -129,16 +129,6 @@ func _has_match_keyword(source: String) -> i32:
         i = i + 1
     return 0
 
-func _validate_main_decl(func_table: String, source: String) -> i32:
-    if (_contains(func_table, ";main|") == 1):
-        return 0
-    if (_contains(source, "func main(") == 1):
-        return 0
-    if (_contains(source, "func main (") == 1):
-        return 0
-    print("Typecheck error: missing entry function `func main`.")
-    return 1
-
 func _has_feature(feature_set: String, feature: String) -> i32:
     if (_contains(feature_set, ";" + feature + ";") == 1):
         return 1
@@ -231,8 +221,6 @@ func validate_source(source: String) -> i32:
     let aliases = parser.parse_aliases(source)
     let funcs = parser.parse_funcs(source)
     let typed = tir.typed_new(source, normalized, feature_set, enums, aliases, funcs, _feature_count(feature_set, "enum_payload"), _feature_count(feature_set, "match"), _feature_count(feature_set, "range_loop"), _feature_count(feature_set, "if_expr"), _feature_count(feature_set, "closure"), _feature_count(feature_set, "unsafe"), _feature_count(feature_set, "extension_impl"), _feature_count(feature_set, "visibility"), _feature_count(feature_set, "tuple_destruct"), _feature_count(feature_set, "array_literal"), _feature_count(feature_set, "slice_expr"), _feature_count(feature_set, "loop_label"), _feature_count(feature_set, "raw_string"), _feature_count(feature_set, "result_sugar"), _feature_count(feature_set, "defer_scope"), _feature_count(feature_set, "comptime"))
-    if (_validate_main_decl(typed.funcs, source) != 0):
-        return 1
     if (_validate_header_contracts(source) != 0):
         return 1
     if (_validate_feature_contract(typed.feature_set, source) != 0):

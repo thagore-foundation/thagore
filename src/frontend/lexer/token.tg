@@ -55,6 +55,12 @@ func tok_defer() -> String:
 func tok_comptime() -> String:
     return "COMPTIME"
 
+func tok_true() -> String:
+    return "TRUE"
+
+func tok_false() -> String:
+    return "FALSE"
+
 func tok_enum() -> String:
     return "ENUM"
 

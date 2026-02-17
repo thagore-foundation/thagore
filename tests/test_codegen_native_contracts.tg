@@ -91,6 +91,16 @@ func main() -> i32:
     fails = fails + _expect_i32("emit while nested has and", _contains(ir_while_nested, " = and i1 "), 1)
     fails = fails + _expect_i32("emit while nested has or", _contains(ir_while_nested, " = or i1 "), 1)
 
+    let src_bool_if = "func main() -> i32:\n    if (true):\n        return 1\n    if (false):\n        return 2\n    return 0\n"
+    let ir_bool_if = em.emit_program_from_source(src_bool_if, "contract_bool_if")
+    fails = fails + _expect_i32("emit true literal mapped to i32 one", _contains(ir_bool_if, "icmp ne i32 1, 0"), 1)
+    fails = fails + _expect_i32("emit false literal mapped to i32 zero", _contains(ir_bool_if, "icmp ne i32 0, 0"), 1)
+
+    let src_script = "let x = true\nprint(x)\n"
+    let ir_script = em.emit_program_from_source(src_script, "contract_script")
+    fails = fails + _expect_i32("script source auto-synth main", _contains(ir_script, "define i32 @main("), 1)
+    fails = fails + _expect_i32("script source keeps top-level print", _contains(ir_script, "call void @__thg_print_i32"), 1)
+
     if (fails == 0):
         print("PASS: codegen native contracts")
         return 0

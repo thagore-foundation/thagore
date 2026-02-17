@@ -19,8 +19,8 @@ func main() -> i32:
 
 ## Notes
 
-1. Entry point kỳ vọng: `func main() -> i32`.
-2. Native typechecker hiện có check bắt buộc `main` xuất hiện trong function table.
+1. `func main() -> i32` vẫn là entrypoint tường minh khi bạn muốn kiểm soát rõ luồng chạy.
+2. Nếu source không có `main`, compiler sẽ tự sinh entrypoint `main` từ top-level script statements.
 
 <Aside type="note" title="Generic Signatures">
 Generic clause trong header có thể xuất hiện ở source (`func id[T](x: T)`), và được lowering strip/mangle theo pipeline hiện tại.
