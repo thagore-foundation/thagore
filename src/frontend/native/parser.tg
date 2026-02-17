@@ -131,6 +131,22 @@ func _line_at(source: String, index: i32) -> String:
         return out
     return ""
 
+func _line_end_at(source: String, start: i32) -> i32:
+    let n = strlen(source)
+    let i = start
+    while (i < n):
+        if (_char_at(source, i) == "\n"):
+            return i
+        i = i + 1
+    return n
+
+func _next_line_pos(source: String, line_end: i32) -> i32:
+    let n = strlen(source)
+    if (line_end < n):
+        if (_char_at(source, line_end) == "\n"):
+            return line_end + 1
+    return n + 1
+
 func _find(text: String, needle: String) -> i32:
     let n = strlen(text)
     let m = strlen(needle)
@@ -366,11 +382,20 @@ func parse_to_ast(source: String) -> ProgramAstNative:
     let raw = source
     let total = _line_count(clean)
     let i = 0
+    let clean_pos = 0
+    let raw_pos = 0
+    let clean_n = strlen(clean)
+    let raw_n = strlen(raw)
     let ast = ast_new(source, clean)
     ast = ast_set_tokens(ast, lx.tokenize_native(source))
     while (i < total):
-        let line = _trim_edges(_line_at(clean, i))
-        let raw_line = _trim_edges(_line_at(raw, i))
+        let clean_end = _line_end_at(clean, clean_pos)
+        let line = _trim_edges(__thg_str_substr(clean, clean_pos, clean_end - clean_pos))
+        let raw_line = ""
+        if (raw_pos <= raw_n):
+            let raw_end = _line_end_at(raw, raw_pos)
+            raw_line = _trim_edges(__thg_str_substr(raw, raw_pos, raw_end - raw_pos))
+            raw_pos = _next_line_pos(raw, raw_end)
         if (strlen(line) > 0):
             let enum_name = headers.parse_enum_name(line)
             if (enum_name.length() > 0):
@@ -426,6 +451,7 @@ func parse_to_ast(source: String) -> ProgramAstNative:
                 ast = ast_inc_defer_scope(ast)
             if (_contains(line, "comptime ") == 1):
                 ast = ast_inc_comptime(ast)
+        clean_pos = _next_line_pos(clean, clean_end)
         i = i + 1
     return ast
 
