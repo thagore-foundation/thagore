@@ -51,6 +51,20 @@ func main() -> i32:
         1
     )
 
+    # 7.5) if/while statement header (require parentheses)
+    fails = fails + _expect_i32("if stmt header negative", ph.is_if_stmt_header("if x > 0:"), 0)
+    fails = fails + _expect_i32("while stmt header negative", ph.is_while_stmt_header("while i < 3:"), 0)
+    fails = fails + _expect_i32(
+        "if validate malformed missing parentheses",
+        pipe.validate("func main() -> i32:\n    if x > 0:\n        return 1\n    return 0\n"),
+        1
+    )
+    fails = fails + _expect_i32(
+        "while validate malformed missing parentheses",
+        pipe.validate("func main() -> i32:\n    let i = 0\n    while i < 3:\n        i = i + 1\n    return i\n"),
+        1
+    )
+
     # 8) String interpolation
     fails = fails + _expect_i32(
         "interpolation validate malformed",
@@ -59,7 +73,7 @@ func main() -> i32:
     )
 
     # 9) Loop labels
-    fails = fails + _expect_i32("loop label negative", ph.has_loop_label("while i < 3:"), 0)
+    fails = fails + _expect_i32("loop label negative", ph.has_loop_label("while (i < 3):"), 0)
 
     # 10) If expression
     fails = fails + _expect_i32("if expression negative", ph.has_if_expression("if ok:\n    return 1"), 0)

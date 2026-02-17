@@ -992,18 +992,14 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
         if (line.length() == 0):
             i = i + 1
         else:
-            if ((_starts_with(line, "while (") == 1) or (_starts_with(line, "while ") == 1)):
+            if (_starts_with(line, "while (") == 1):
                 let base_indent = _leading_spaces(raw)
                 let cond_text = ""
                 let p1 = _find(line, "(")
                 let p2 = _find_matching_rparen(line, p1)
                 if ((p1 >= 0) and (p2 > p1)):
-                    cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
-                else:
-                    cond_text = _trim_edges(__thg_str_substr(line, 6, strlen(line) - 6))
-                    if (cond_text.length() > 0):
-                        if (_char_at(cond_text, cond_text.length() - 1) == ":"):
-                            cond_text = _trim_edges(__thg_str_substr(cond_text, 0, cond_text.length() - 1))
+                    if (p2 == (strlen(line) - 2)):
+                        cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
                 if (cond_text.length() > 0):
                     let cond_label = "while.cond." + _tag(l)
                     let body_label = "while.body." + _tag(l)
@@ -1040,18 +1036,14 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
                 else:
                     i = i + 1
             else:
-                if ((_starts_with(line, "if (") == 1) or (_starts_with(line, "if ") == 1)):
+                if (_starts_with(line, "if (") == 1):
                     let base_indent = _leading_spaces(raw)
                     let cond_text = ""
                     let p1 = _find(line, "(")
                     let p2 = _find_matching_rparen(line, p1)
                     if ((p1 >= 0) and (p2 > p1)):
-                        cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
-                    else:
-                        cond_text = _trim_edges(__thg_str_substr(line, 3, strlen(line) - 3))
-                        if (cond_text.length() > 0):
-                            if (_char_at(cond_text, cond_text.length() - 1) == ":"):
-                                cond_text = _trim_edges(__thg_str_substr(cond_text, 0, cond_text.length() - 1))
+                        if (p2 == (strlen(line) - 2)):
+                            cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
                     if (cond_text.length() > 0):
                         let cond_pack = _emit_cond_i1(cond_text, st, t)
                         let cond_ir = _unpack_part(cond_pack, 0)
