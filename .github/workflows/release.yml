@@ -224,9 +224,10 @@ jobs:
             fi
           fi
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-            sudo dpkg --add-architecture amd64 || true
             sudo apt-get update || true
-            sudo apt-get install -y qemu-user qemu-user-static qemu-user-binfmt libc6:amd64 libstdc++6:amd64 zlib1g:amd64
+            if ! sudo apt-get install -y qemu-user qemu-user-static qemu-user-binfmt; then
+              echo "[WARN] qemu packages were not installed via apt; fallback resolver in bootstrap step will be used."
+            fi
           fi
           clang --version
 
