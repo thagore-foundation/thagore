@@ -284,6 +284,20 @@ jobs:
             round=$((round + 1))
           done
 
+      - name: Runtime ABI bootstrap-critical gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write "runtime-abi-inventory-longhaul-${{ runner.os }}.txt"
+
       - name: Syntax matrix canary (longhaul)
         shell: bash
         run: |
@@ -400,3 +414,4 @@ jobs:
             ${{ env.STAGE_TRACE_FILE }}
             ${{ env.SOAK_REPORT_FILE }}
             runtime-abi-summary-longhaul-${{ runner.os }}.txt
+            runtime-abi-inventory-longhaul-${{ runner.os }}.txt

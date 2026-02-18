@@ -274,6 +274,20 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Fetch stage1 bootstrap asset
 
+      - name: Runtime ABI bootstrap-critical gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write "runtime-abi-inventory-selfhost-${{ matrix.os }}.txt"
+
       - name: Intent registry budget gate
         shell: bash
         run: |
@@ -709,6 +723,7 @@ jobs:
           path: |
             ${{ env.STAGE_TRACE_FILE }}
             runtime-abi-summary-selfhost-${{ matrix.os }}.txt
+            runtime-abi-inventory-selfhost-${{ matrix.os }}.txt
 
   discord-notify-finalize:
     name: discord-notify-finalize

@@ -273,6 +273,20 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Bootstrap Stage1 (asset only)
 
+      - name: Runtime ABI bootstrap-critical gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write "runtime-abi-inventory-ci-${{ matrix.os }}.txt"
+
       - name: Intent registry budget gate
         shell: bash
         run: |
@@ -756,6 +770,7 @@ jobs:
             stage1*
             stage2*
             runtime-abi-summary-ci-${{ matrix.os }}.txt
+            runtime-abi-inventory-ci-${{ matrix.os }}.txt
 
   native-cli-canary:
     name: native-cli-canary (ubuntu)
@@ -822,6 +837,15 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Bootstrap Stage1 (linux asset)
 
+      - name: Runtime ABI bootstrap-critical gate (canary)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write runtime-abi-inventory-canary-linux.txt
+
       - name: Canary build native CLI module
         shell: bash
         run: |
@@ -878,6 +902,7 @@ jobs:
             cli_canary.ll
             thagore_cli_canary
             runtime-abi-summary-canary-linux.txt
+            runtime-abi-inventory-canary-linux.txt
 
   discord-notify-finalize:
     name: discord-notify-finalize

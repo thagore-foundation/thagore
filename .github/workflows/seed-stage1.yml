@@ -173,6 +173,20 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Fetch bootstrap stage1 asset (strict tag)
 
+      - name: Runtime ABI bootstrap-critical gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write "runtime-abi-inventory-seed-${{ runner.os }}.txt"
+
       - name: Verify Stage1 -> Stage2 -> Stage2 -> samples
         shell: bash
         run: |
@@ -381,6 +395,7 @@ jobs:
             thagore-runtime-macos.a
             ${{ env.STAGE_TRACE_FILE }}
             runtime-abi-summary-seed-${{ runner.os }}.txt
+            runtime-abi-inventory-seed-${{ runner.os }}.txt
 
   publish-seed:
     name: publish-seed-release

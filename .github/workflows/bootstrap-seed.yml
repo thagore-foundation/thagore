@@ -99,6 +99,15 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Download stage1 seed asset
 
+      - name: Runtime ABI bootstrap-critical gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 scripts/runtime_abi_inventory.py \
+            --profile bootstrap-critical \
+            --fail-on-missing \
+            --write runtime-abi-inventory-bootstrap-seed-linux.txt
+
       - name: Verify Stage1 -> Stage2 -> Stage2
         shell: bash
         run: |
@@ -177,7 +186,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bootstrap-seed-runtime-summary
-          path: runtime-abi-summary-bootstrap-seed-linux.txt
+          path: |
+            runtime-abi-summary-bootstrap-seed-linux.txt
+            runtime-abi-inventory-bootstrap-seed-linux.txt
 
       - name: Discord update - Verify Stage1 -> Stage2 -> Stage2
         uses: ./.github/actions/discord-ci-status
