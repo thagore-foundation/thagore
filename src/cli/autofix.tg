@@ -1046,8 +1046,6 @@ func _is_protected_path(path: String) -> i32:
         return 1
     if (_starts_with(p, ".github/") == 1):
         return 1
-    if (_starts_with(p, "legacy/") == 1):
-        return 1
     if (_starts_with(p, ".thagore/") == 1):
         return 1
     return 0

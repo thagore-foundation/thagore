@@ -297,12 +297,7 @@ This suite runs:
 python scripts/benchmark_fib.py
 ```
 
-Emergency fallback via `legacy/stage0.exe` is disabled by default. If you must use it, set `ALLOW_STAGE0_BOOTSTRAP=1` explicitly:
-
-```bash
-set ALLOW_STAGE0_BOOTSTRAP=1
-python scripts/benchmark_fib.py --compiler legacy\stage0.exe
-```
+Stage0 fallback has been removed. Use `stage2(.exe)` (or `stage1(.exe)` as temporary bootstrap) as compiler input.
 
 This benchmark compares recursive `fib(35)` across:
 - Python (`examples/fib.py`)

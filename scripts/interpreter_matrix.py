@@ -209,8 +209,6 @@ def main() -> int:
         runtime_candidates = [
             os.path.join(os.path.dirname(compiler), "thag_runtime.lib"),
             os.path.join(os.getcwd(), "thag_runtime.lib"),
-            os.path.join(os.getcwd(), "legacy", "build", "Debug", "thag_runtime.lib"),
-            os.path.join(os.getcwd(), "legacy", "thag_runtime.lib"),
         ]
         runtime_src = next((p for p in runtime_candidates if os.path.exists(p)), None)
         if runtime_src is None:

@@ -44,16 +44,7 @@ def measure(cmd: list[str], label: str, expected: str, runs: int = RUNS) -> dict
 
 
 def emit_ir(compiler: str, ir_file: str) -> None:
-    allow_stage0 = os.environ.get("ALLOW_STAGE0_BOOTSTRAP", "").strip().lower() in {"1", "true", "yes"}
-    if "stage0" in compiler.lower():
-        if not allow_stage0:
-            raise SystemExit(
-                "FAIL: stage0 compiler is blocked by default. "
-                "Set ALLOW_STAGE0_BOOTSTRAP=1 if you need emergency fallback."
-            )
-        cmd = ["cmd", "/c", compiler, "examples/fib.tg", "--emit-ir", "-o", ir_file]
-    else:
-        cmd = ["cmd", "/c", compiler, "examples/fib.tg", "--emit-llvm", "-o", ir_file]
+    cmd = ["cmd", "/c", compiler, "examples/fib.tg", "--emit-llvm", "-o", ir_file]
     run_checked(cmd, f"emit IR via {compiler}")
 
 

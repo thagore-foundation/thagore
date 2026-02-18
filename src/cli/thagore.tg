@@ -636,8 +636,6 @@ func _is_protected_autofix_path(path: String) -> i32:
     let p = _normalize_path(path)
     if (_starts_with(p, ".github/") == 1):
         return 1
-    if (_starts_with(p, "legacy/") == 1):
-        return 1
     if (_starts_with(p, ".thagore/") == 1):
         return 1
     return 0

@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DRIVER = ROOT / "legacy" / "src" / "driver" / "driver.cpp"
+DEFAULT_DRIVER = ROOT / "runtime" / "src" / "runtime.cpp"
 DEFAULT_REGISTRY = ROOT / "docs" / "idea" / "intent_rule_registry.txt"
 
 
@@ -52,7 +52,7 @@ def family_of(rule_id: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Intent rule budget gate")
-    parser.add_argument("--driver", default=str(DEFAULT_DRIVER), help="Path to driver.cpp")
+    parser.add_argument("--driver", default=str(DEFAULT_DRIVER), help="Path to intent rule driver source")
     parser.add_argument("--registry", default=str(DEFAULT_REGISTRY), help="Path to registry file")
     args = parser.parse_args()
 

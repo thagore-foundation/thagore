@@ -535,7 +535,7 @@ jobs:
             local test_bin="$3"
             [[ -n "$cc" && -f "$cc" ]] || return 1
             echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
-            THAG_STAGE0_HELPER="./$cc" THAG_HELPER_BIN="./$cc" "./$cc" build "$test_src" -o "$test_bin" || return 1
+            "./$cc" build "$test_src" -o "$test_bin" || return 1
             local got
             got="$(resolve_bin "$test_bin" "$test_src" || true)"
             if [[ -z "$got" ]]; then
@@ -672,7 +672,7 @@ jobs:
             local test_bin="$3"
             [[ -n "$cc" && -f "$cc" ]] || return 1
             echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
-            THAG_STAGE0_HELPER="./$cc" THAG_HELPER_BIN="./$cc" "./$cc" build "$test_src" -o "$test_bin" || return 1
+            "./$cc" build "$test_src" -o "$test_bin" || return 1
             local got
             got="$(resolve_bin "$test_bin" "$test_src" || true)"
             if [[ -z "$got" ]]; then

@@ -11,27 +11,22 @@
 - `examples/`: runnable Thagore programs (`hello.tg`, `fib.tg`, etc.).
 - `scripts/`: automation utilities (`bootstrap.bat`, `benchmark_fib.py`).
 - `.github/workflows/`: CI, selfhost matrix, release, and bootstrap seed pipelines.
-- `legacy/`: C++ Stage0 launcher/toolchain. Treat as frozen except critical bootstrap/runtime fixes.
 
 ## Build, Test, and Development Commands
-- `cmd /c scripts\bootstrap.bat`: full bootstrap cycle (Stage0 -> Stage1 -> Stage2 -> hello_v2).
-- `cmake --build legacy/build --config Debug`: build legacy Stage0 binaries/libraries.
-- `legacy\stage0.exe build src/thagore.tg -o stage1.exe`: produce Stage1 compiler.
-- `stage1.exe build src/thagore.tg -o stage2.exe`: self-host Stage2 compiler.
+- `cmd /c scripts\bootstrap.bat`: full bootstrap cycle (Stage1 -> Stage2 -> Stage2b -> hello_v2).
+- `stage1.exe build src/thagore.tg -o stage2.exe`: produce Stage2 compiler from Stage1 seed.
+- `stage2.exe build src/thagore.tg -o stage2b.exe`: self-host Stage2 compiler.
 - `python scripts/benchmark_fib.py`: benchmark Python vs Thagore native on `fib(35)`.
-- `cmake -B legacy/build -DBUILD_TESTING=ON && ctest --test-dir legacy/build --output-on-failure`: run C++ tests.
 
 ## Bootstrap & Release Policy
 - CI/Release is **Stage1-only bootstrap** on all OS. Do not add Stage0 fallback branches.
-- Local scripts may use Stage0 only when `ALLOW_STAGE0_BOOTSTRAP=true` is explicitly set.
 - Seed tag for bootstrap assets: `v0.3.25-stage1-seed`.
 - Stage1 seed archives must support both binaries:
   - `bin/thagore`
-  - `bin/thag` (legacy-compatible path used by existing macOS seed tar).
+  - `bin/thag` (compatible path used by existing macOS seed tar).
 - Keep workflow traces explicit (`[CMD] ...`) so Stage1 -> Stage2 execution is auditable.
 
 ## Bootstrap Governance (Mandatory)
-- `legacy/` stays in repo only as emergency fallback inventory, not default bootstrap path.
 - Any change touching `.github/workflows/` that impacts bootstrap must pass all:
   - `Policy No Stage0`,
   - `Stability Policy`,
@@ -53,7 +48,7 @@
 - Use `snake_case` for variables/functions.
 - File names must be lowercase alnum only, no `_` or `-` (example: `semantic/pass.tg`, `backend/native/emitter.tg`).
 - Keep changes minimal and localized; avoid broad refactors in the same PR.
-- Prefer implementing language features in `src/frontend/` and `src/backend/`, not `legacy/`.
+- Prefer implementing language features in `src/frontend/` and `src/backend/`.
 
 ## Testing Guidelines
 - Add or update an example under `examples/` for every language/runtime change.
@@ -70,10 +65,9 @@
   - problem statement and scope,
   - files/modules touched,
   - verification commands + outputs,
-  - risk notes (especially if `legacy/` is touched).
+  - risk notes for bootstrap/runtime/workflow changes.
 
 ## Architecture Notes
-- Current direction: freeze `legacy/` as Stage0 launcher.
 - All new language features (e.g., new syntax/control flow) must be implemented in self-hosted Thagore under `src/`.
 - CI must pass both:
   - `Stability Policy` workflow,

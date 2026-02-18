@@ -49,7 +49,7 @@ jobs:
         with:
           version: "21"
 
-      - name: Smart Bootstrap (reuse release binary or fallback to stage0)
+      - name: Smart Bootstrap (stage1 seed only)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,44 +71,24 @@ jobs:
           mkdir -p bootstrap
           BOOTSTRAP_OK=0
 
-          if gh release download --repo "${{ github.repository }}" --pattern "thagore.exe" --pattern "thagore" -D bootstrap; then
-            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thagore.exe ]]; then
-              cp bootstrap/thagore.exe "$STAGE1_BIN"
+          if gh release download --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap; then
+            if [[ "${{ runner.os }}" == "Windows" && -f bootstrap/thagore-stage1.exe ]]; then
+              cp bootstrap/thagore-stage1.exe "$STAGE1_BIN"
               BOOTSTRAP_OK=1
-            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thagore ]]; then
-              cp bootstrap/thagore "$STAGE1_BIN"
+            elif [[ "${{ runner.os }}" != "Windows" && -f bootstrap/thagore-stage1-linux.tar.gz ]]; then
+              mkdir -p bootstrap/extract_stage1
+              tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
+              CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+              [[ -n "$CANDIDATE" ]] || (echo "ERROR: missing stage1 binary in seed archive"; exit 1)
+              cp "$CANDIDATE" "$STAGE1_BIN"
               chmod +x "$STAGE1_BIN"
               BOOTSTRAP_OK=1
             fi
           fi
 
           if [[ "$BOOTSTRAP_OK" -ne 1 ]]; then
-            cmake -S legacy -B legacy/build -DCMAKE_BUILD_TYPE=Release
-            cmake --build legacy/build --config Release
-
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              STAGE0_BIN=""
-              if [[ -f legacy/build/Release/thag.exe ]]; then
-                STAGE0_BIN="legacy/build/Release/thag.exe"
-              elif [[ -f legacy/build/thag.exe ]]; then
-                STAGE0_BIN="legacy/build/thag.exe"
-              fi
-            else
-              STAGE0_BIN=""
-              if [[ -f legacy/build/thag ]]; then
-                STAGE0_BIN="legacy/build/thag"
-              elif [[ -f legacy/build/Release/thag ]]; then
-                STAGE0_BIN="legacy/build/Release/thag"
-              fi
-            fi
-
-            if [[ -z "$STAGE0_BIN" ]]; then
-              echo "ERROR: Cannot locate stage0 binary after legacy build."
-              exit 1
-            fi
-
-            chmod +x "$STAGE0_BIN" || true
-            "$STAGE0_BIN" build src/thagore.tg -o "$STAGE1_BIN"
+            echo "ERROR: stage1 seed bootstrap asset not found."
+            exit 1
           fi
 
           chmod +x "$STAGE1_BIN" || true

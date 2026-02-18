@@ -3237,7 +3237,6 @@ static auto cliDetectLinker() -> std::string {
 static auto cliDetectRuntimeLib() -> std::string {
   const std::vector<std::string> candidates {
     "thag_runtime.lib",
-    "legacy/build/Release/thag_runtime.lib",
     "runtime/build/thag_runtime.lib",
     "runtime/build/Release/thag_runtime.lib",
     "build/thag_runtime.lib",
