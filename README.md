@@ -64,3 +64,12 @@ python scripts/benchmark_intent.py --cli stage2.exe --runs 7
 - Runtime linking is fail-hard when runtime ABI library is missing.
 - Merge gate requires 3 consecutive green runs: `CI` + `Selfhost Matrix` + `Release` (dry-run on `main`).
 - Stability audit also requires per-run artifact set across 3 OS for those workflows.
+
+Certification command:
+
+```bash
+python scripts/certify_bootstrap_100.py --window 3
+```
+
+This command validates local gates and checks the latest 3 completed `push/main` runs for `CI`, `Selfhost Matrix`, and `Release` with required artifact sets.
+For CI-side certification report, run workflow `Bootstrap Certify` (manual/scheduled).
