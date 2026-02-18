@@ -1,7 +1,5 @@
 import "src/frontend/semantic/traits.tg" as gt
 import "src/frontend/parser/headers.tg" as ph
-import "src/frontend/native/typedir.tg" as tir
-import "src/frontend/lowering/coreir.tg" as cir
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -1264,36 +1262,9 @@ func validate(source: String) -> i32:
         return 1
     return 0
 
-func _append_lower_rows(rows: String, key: String, count: i32, detail: String) -> String:
-    if (count <= 0):
-        return rows
-    return rows + key + "|" + _to_string_i32(count) + "|" + detail + ";"
-
-func _lower_rows_from_typed(typed: ProgramT) -> String:
-    let rows = ""
-    rows = _append_lower_rows(rows, "lower.match", typed.match_count, "switch_on_enum_tag")
-    rows = _append_lower_rows(rows, "lower.range_loop", typed.range_loop_count, "init_cmp_inc")
-    rows = _append_lower_rows(rows, "lower.if_expr", typed.if_expr_count, "phi_temp_assignment")
-    rows = _append_lower_rows(rows, "lower.closure", typed.closure_count, "env_struct_lifted_func_capture_by_value")
-    rows = _append_lower_rows(rows, "lower.enum_payload", typed.enum_payload_count, "tagged_layout_constructor_projection")
-    rows = _append_lower_rows(rows, "lower.array_literal", typed.array_literal_count, "canonical_array_literal")
-    rows = _append_lower_rows(rows, "lower.slice_expr", typed.slice_expr_count, "canonical_slice_view")
-    rows = _append_lower_rows(rows, "lower.struct_shorthand", typed.tuple_destruct_count, "canonical_binding")
-    rows = _append_lower_rows(rows, "lower.loop_label", typed.loop_label_count, "canonical_loop_blocks")
-    rows = _append_lower_rows(rows, "lower.unsafe", typed.unsafe_count, "unsafe_region_marker")
-    rows = _append_lower_rows(rows, "lower.visibility", typed.visibility_count, "visibility_marker")
-    rows = _append_lower_rows(rows, "lower.extension_impl", typed.extension_impl_count, "impl_extension_bind")
-    rows = _append_lower_rows(rows, "lower.raw_string", typed.raw_string_count, "raw_literal")
-    rows = _append_lower_rows(rows, "lower.interpolated_string", typed.interpolated_string_count, "interpolation_expand")
-    rows = _append_lower_rows(rows, "lower.result_sugar", typed.result_sugar_count, "result_try_desugar")
-    rows = _append_lower_rows(rows, "lower.defer_scope", typed.defer_scope_count, "defer_stack_desugar")
-    rows = _append_lower_rows(rows, "lower.comptime", typed.comptime_count, "comptime_folded")
-    return rows
-
-func lower_program(typed: ProgramT) -> CoreProgram:
-    let lowered_source = preprocess(typed.normalized)
-    let rows = _lower_rows_from_typed(typed)
-    let core = cir.core_new(typed, lowered_source, rows)
+func lower_program(source: String) -> String:
+    let source_norm = _normalize_validation_source(source)
+    let lowered_source = preprocess(source_norm)
     if (validate(lowered_source) != 0):
-        return cir.core_set_error(core, "E_LOWER_VALIDATE", "lowered source failed validation")
-    return core
+        return ""
+    return lowered_source

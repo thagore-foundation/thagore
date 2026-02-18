@@ -1,12 +1,11 @@
 import "src/backend/native/emitter.tg" as native_codegen
-import "src/frontend/lowering/coreir.tg" as cir
 
 func emit_program(root: ptr) -> String:
     root = root
     return ""
 
-func emit_program_core(core: CoreProgram, module_name: String) -> String:
-    return native_codegen.emit_program_core(core, module_name)
+func emit_program_core(core_source: String, module_name: String) -> String:
+    return native_codegen.emit_program_core(core_source, module_name)
 
 func emit_program_from_source(source: String, module_name: String) -> String:
     return native_codegen.emit_program_from_native(source, module_name)

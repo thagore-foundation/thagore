@@ -1,5 +1,3 @@
-import "src/frontend/lowering/coreir.tg" as cir
-
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __thg_str_add(a: String, b: String) -> String
@@ -1270,10 +1268,8 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
 func emit_program_typed(typed_normalized: String, module_name: String) -> String:
     return _emit_program_from_source(typed_normalized, module_name)
 
-func emit_program_core(core: CoreProgram, module_name: String) -> String:
-    if (cir.core_has_error(core) == 1):
-        return ""
-    return _emit_program_from_source(core.normalized_source, module_name)
+func emit_program_core(core_source: String, module_name: String) -> String:
+    return _emit_program_from_source(core_source, module_name)
 
 func emit_program_from_native(source: String, module_name: String) -> String:
     let normalized = _normalize_source_newlines(source)
