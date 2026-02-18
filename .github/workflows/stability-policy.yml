@@ -39,12 +39,32 @@ jobs:
             const isTag = (context.ref || "").startsWith("refs/tags/v");
             const enforceStrict = true;
             const targets = [
-              { name: "CI", branch: "main", events: ["push"] },
-              { name: "Selfhost Matrix", branch: "main", events: ["push"] },
-              { name: "Release", branch: "main", events: ["push"] },
+              {
+                name: "CI",
+                branch: "main",
+                events: ["push"],
+                artifactPrefixes: ["ci-selfhost-"],
+              },
+              {
+                name: "Selfhost Matrix",
+                branch: "main",
+                events: ["push"],
+                artifactPrefixes: ["selfhost-trace-"],
+              },
+              {
+                name: "Release",
+                branch: "main",
+                events: ["push"],
+                artifactPrefixes: ["release-"],
+              },
             ];
             if (isTag) {
-              targets.push({ name: "Release", branch: null, events: ["push"] });
+              targets.push({
+                name: "Release",
+                branch: null,
+                events: ["push"],
+                artifactPrefixes: ["release-"],
+              });
             }
 
             const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
@@ -103,6 +123,33 @@ jobs:
               }
               for (const row of inspected) {
                 report.push(`RUN|${target.name}|${row}`);
+              }
+
+              const successRuns = filtered.filter((r) => r.conclusion === "success").slice(0, windowSize);
+              if (successRuns.length < windowSize) {
+                failed = true;
+                report.push(`FAIL|${target.name}|artifact_audit=insufficient_success_runs|have=${successRuns.length}|need=${windowSize}`);
+                continue;
+              }
+
+              for (const r of successRuns) {
+                const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                  owner,
+                  repo,
+                  run_id: r.id,
+                  per_page: 100,
+                });
+                const names = artifacts.map((a) => a.name || "");
+                report.push(`ARTIFACTS|${target.name}|run=${r.id}|count=${names.length}`);
+                const missingPrefixes = (target.artifactPrefixes || []).filter((p) => !names.some((n) => n.startsWith(p)));
+                if (missingPrefixes.length > 0) {
+                  failed = true;
+                  report.push(
+                    `FAIL|${target.name}|artifact_audit=missing_prefix|run=${r.id}|missing=${missingPrefixes.join(",")}`
+                  );
+                } else {
+                  report.push(`PASS|${target.name}|artifact_audit=ok|run=${r.id}`);
+                }
               }
             }
 
