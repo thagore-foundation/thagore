@@ -1,0 +1,363 @@
+import "src/driver/autofix/common/core.tg"
+
+func _mode_or_safe(mode: String) -> String:
+    let m = _trim(mode)
+    if (m == "aggressive"):
+        return "aggressive"
+    if (m == "off"):
+        return "off"
+    return "safe"
+
+func normalize_mode(mode: String) -> String:
+    let m = _trim(mode)
+    if (m == "off"):
+        return "off"
+    if (m == "safe"):
+        return "safe"
+    if (m == "aggressive"):
+        return "aggressive"
+    return "off"
+
+func _abs_i32(value: i32) -> i32:
+    if (value < 0):
+        return 0 - value
+    return value
+
+func _session_id(entry_path: String, source: String) -> String:
+    _ensure_dirs()
+    let base_ms = time.now_ms()
+    let base_seed = base_ms
+    if (base_seed <= 0):
+        base_seed = _abs_i32(_hash_text(entry_path + "|" + source))
+    let prefix = _to_string_i32(base_seed)
+    let path_hash = _to_string_i32(_abs_i32(_hash_text(entry_path)))
+    let sid = prefix + "-" + path_hash + "-a1"
+    let seq = 1
+    while (fs.exists(".thagore/fix/sessions/" + sid + ".json") == 1):
+        sid = prefix + "-" + path_hash + "-" + _to_string_i32(seq) + "-a1"
+        seq = seq + 1
+    return sid
+
+func _rule_tabs(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    if (_contains(source, _tab()) == 0):
+        return _rule_result(source, "", 0, start_index)
+    let fixed = _replace_all(source, _tab(), "    ")
+    if (fixed == source):
+        return _rule_result(source, "", 0, start_index)
+    let fix_id = _fix_id("indent-tabs", start_index)
+    let old_snippet = "\\t"
+    let new_snippet = "    "
+    let diff = "@@ -1,1 +1,1 @@" + _nl() + "-" + _tab() + _nl() + "+    "
+    if (emit_detail == 1):
+        _print_fix_detail(fix_id, "canonical_whitespace_tabs_to_spaces", "safe", "PARSE_INDENT_TAB", file, 1, 1, 1, 1, old_snippet, new_snippet, diff, session_id, applied_flag)
+    let json_item = _build_fix_json(fix_id, "canonical_whitespace_tabs_to_spaces", "safe", "PARSE_INDENT_TAB", file, 1, 1, 1, 1, old_snippet, new_snippet, diff, applied_flag)
+    return _rule_result(fixed, json_item, 1, start_index + 1)
+
+func _rule_trim_trailing_whitespace(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let total = _line_count(source)
+    if (total == 0):
+        return _rule_result(source, "", 0, start_index)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let line_out = _trim_right(line)
+        if (line_out != line):
+            let fix_id = _fix_id("trim-trailing-ws", idx)
+            let old_snippet = line
+            let new_snippet = line_out
+            let diff = "@@ -" + _to_string_i32(i + 1) + ",1 +" + _to_string_i32(i + 1) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + new_snippet
+            let start_col = strlen(line_out) + 1
+            let end_col = strlen(line)
+            if (emit_detail == 1):
+                _print_fix_detail(fix_id, "canonical_whitespace_trim_trailing", "safe", "PARSE_TRAILING_WHITESPACE", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, session_id, applied_flag)
+            fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "canonical_whitespace_trim_trailing", "safe", "PARSE_TRAILING_WHITESPACE", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, applied_flag))
+            fixes = fixes + 1
+            idx = idx + 1
+        out = out + line_out
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    return _rule_result(out, fixes_json, fixes, idx)
+
+func _rule_add_final_newline(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    if (strlen(source) == 0):
+        return _rule_result(source, "", 0, start_index)
+    if (_ends_with_newline(source) == 1):
+        return _rule_result(source, "", 0, start_index)
+    let fixed = source + _nl()
+    let last_line = _line_count(source)
+    let old_snippet = _line_at(source, last_line - 1)
+    let new_snippet = old_snippet + _nl()
+    let diff = "@@ -" + _to_string_i32(last_line) + ",1 +" + _to_string_i32(last_line) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + old_snippet + "\\n"
+    let fix_id = _fix_id("final-newline", start_index)
+    if (emit_detail == 1):
+        _print_fix_detail(fix_id, "canonical_newline_final_newline", "safe", "PARSE_MISSING_FINAL_NEWLINE", file, last_line, strlen(old_snippet), last_line, strlen(old_snippet) + 1, old_snippet, new_snippet, diff, session_id, applied_flag)
+    let json_item = _build_fix_json(fix_id, "canonical_newline_final_newline", "safe", "PARSE_MISSING_FINAL_NEWLINE", file, last_line, strlen(old_snippet), last_line, strlen(old_snippet) + 1, old_snippet, new_snippet, diff, applied_flag)
+    return _rule_result(fixed, json_item, 1, start_index + 1)
+
+func _rule_normalize_deprecated_fn_keyword(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let total = _line_count(source)
+    if (total == 0):
+        return _rule_result(source, "", 0, start_index)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let line_out = line
+        let indent = _leading_spaces(line)
+        let prefix = __thg_str_substr(line, 0, indent)
+        let body = __thg_str_substr(line, indent, strlen(line) - indent)
+        let vis_prefix = ""
+        let rest = body
+        while (_starts_with(rest, "pub ") == 1):
+            vis_prefix = vis_prefix + "pub "
+            rest = __thg_str_substr(rest, 4, strlen(rest) - 4)
+        if (_starts_with(rest, "fn ") == 1):
+            line_out = prefix + vis_prefix + "func " + __thg_str_substr(rest, 3, strlen(rest) - 3)
+        else:
+            if (_starts_with(rest, "comptime fn ") == 1):
+                line_out = prefix + vis_prefix + "comptime func " + __thg_str_substr(rest, 12, strlen(rest) - 12)
+        if (line_out != line):
+            let fix_id = _fix_id("deprecated-fn", idx)
+            let old_snippet = _trim(line)
+            let new_snippet = _trim(line_out)
+            let diff = "@@ -" + _to_string_i32(i + 1) + ",1 +" + _to_string_i32(i + 1) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + new_snippet
+            let start_col = indent + 1
+            let end_col = strlen(line_out)
+            if (emit_detail == 1):
+                _print_fix_detail(fix_id, "normalize_deprecated_fn_keyword", "safe", "PARSE_DEPRECATED_FN_KEYWORD", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, session_id, applied_flag)
+            fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "normalize_deprecated_fn_keyword", "safe", "PARSE_DEPRECATED_FN_KEYWORD", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, applied_flag))
+            fixes = fixes + 1
+            idx = idx + 1
+        out = out + line_out
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    return _rule_result(out, fixes_json, fixes, idx)
+
+func _rule_remove_duplicate_modifiers(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let total = _line_count(source)
+    if (total == 0):
+        return _rule_result(source, "", 0, start_index)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let line_out = line
+        let indent = _leading_spaces(line)
+        let prefix = __thg_str_substr(line, 0, indent)
+        let body = __thg_str_substr(line, indent, strlen(line) - indent)
+        while (_starts_with(body, "pub pub ") == 1):
+            body = "pub " + __thg_str_substr(body, 8, strlen(body) - 8)
+        line_out = prefix + body
+        if (line_out != line):
+            let fix_id = _fix_id("dedupe-mod", idx)
+            let old_snippet = _trim(line)
+            let new_snippet = _trim(line_out)
+            let diff = "@@ -" + _to_string_i32(i + 1) + ",1 +" + _to_string_i32(i + 1) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + new_snippet
+            let start_col = indent + 1
+            let end_col = strlen(line_out)
+            if (emit_detail == 1):
+                _print_fix_detail(fix_id, "remove_duplicate_trivial_modifiers", "safe", "PARSE_DUPLICATE_MODIFIER", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, session_id, applied_flag)
+            fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "remove_duplicate_trivial_modifiers", "safe", "PARSE_DUPLICATE_MODIFIER", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, applied_flag))
+            fixes = fixes + 1
+            idx = idx + 1
+        out = out + line_out
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    return _rule_result(out, fixes_json, fixes, idx)
+
+func _rule_std_imports(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let current = source
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let imp_fs = _import_fs_line()
+    let imp_env = _import_env_line()
+    let imp_process = _import_process_line()
+    let imp_time = _import_time_line()
+    let imp_io = _import_io_line()
+    if ((_contains(current, "fs.") == 1) and (_contains(current, imp_fs) == 0)):
+        let at = _import_insert_at(current)
+        current = _insert_line(current, at, imp_fs)
+        let fix_id = _fix_id("missing-import", idx)
+        let old_snippet = "(missing import fs)"
+        let new_snippet = imp_fs
+        let diff = "@@ -" + _to_string_i32(at + 1) + ",0 +" + _to_string_i32(at + 1) + ",1 @@" + _nl() + "+" + _nl() + "+" + new_snippet
+        if (emit_detail == 1):
+            _print_fix_detail(fix_id, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at + 1, 1, at + 1, strlen(new_snippet), old_snippet, new_snippet, diff, session_id, applied_flag)
+        fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at + 1, 1, at + 1, strlen(new_snippet), old_snippet, new_snippet, diff, applied_flag))
+        fixes = fixes + 1
+        idx = idx + 1
+    if ((_contains(current, "env.") == 1) and (_contains(current, imp_env) == 0)):
+        let at2 = _import_insert_at(current)
+        current = _insert_line(current, at2, imp_env)
+        let fix_id2 = _fix_id("missing-import", idx)
+        let old_snippet2 = "(missing import env)"
+        let new_snippet2 = imp_env
+        let diff2 = "@@ -" + _to_string_i32(at2 + 1) + ",0 +" + _to_string_i32(at2 + 1) + ",1 @@" + _nl() + "+" + _nl() + "+" + new_snippet2
+        if (emit_detail == 1):
+            _print_fix_detail(fix_id2, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at2 + 1, 1, at2 + 1, strlen(new_snippet2), old_snippet2, new_snippet2, diff2, session_id, applied_flag)
+        fixes_json = _append_json(fixes_json, _build_fix_json(fix_id2, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at2 + 1, 1, at2 + 1, strlen(new_snippet2), old_snippet2, new_snippet2, diff2, applied_flag))
+        fixes = fixes + 1
+        idx = idx + 1
+    if ((_contains(current, "process.") == 1) and (_contains(current, imp_process) == 0)):
+        let at3 = _import_insert_at(current)
+        current = _insert_line(current, at3, imp_process)
+        let fix_id3 = _fix_id("missing-import", idx)
+        let old_snippet3 = "(missing import process)"
+        let new_snippet3 = imp_process
+        let diff3 = "@@ -" + _to_string_i32(at3 + 1) + ",0 +" + _to_string_i32(at3 + 1) + ",1 @@" + _nl() + "+" + _nl() + "+" + new_snippet3
+        if (emit_detail == 1):
+            _print_fix_detail(fix_id3, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at3 + 1, 1, at3 + 1, strlen(new_snippet3), old_snippet3, new_snippet3, diff3, session_id, applied_flag)
+        fixes_json = _append_json(fixes_json, _build_fix_json(fix_id3, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at3 + 1, 1, at3 + 1, strlen(new_snippet3), old_snippet3, new_snippet3, diff3, applied_flag))
+        fixes = fixes + 1
+        idx = idx + 1
+    if ((_contains(current, "time.") == 1) and (_contains(current, imp_time) == 0)):
+        let at4 = _import_insert_at(current)
+        current = _insert_line(current, at4, imp_time)
+        let fix_id4 = _fix_id("missing-import", idx)
+        let old_snippet4 = "(missing import time)"
+        let new_snippet4 = imp_time
+        let diff4 = "@@ -" + _to_string_i32(at4 + 1) + ",0 +" + _to_string_i32(at4 + 1) + ",1 @@" + _nl() + "+" + _nl() + "+" + new_snippet4
+        if (emit_detail == 1):
+            _print_fix_detail(fix_id4, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at4 + 1, 1, at4 + 1, strlen(new_snippet4), old_snippet4, new_snippet4, diff4, session_id, applied_flag)
+        fixes_json = _append_json(fixes_json, _build_fix_json(fix_id4, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at4 + 1, 1, at4 + 1, strlen(new_snippet4), old_snippet4, new_snippet4, diff4, applied_flag))
+        fixes = fixes + 1
+        idx = idx + 1
+    if ((_contains(current, "io.") == 1) and (_contains(current, imp_io) == 0)):
+        let at5 = _import_insert_at(current)
+        current = _insert_line(current, at5, imp_io)
+        let fix_id5 = _fix_id("missing-import", idx)
+        let old_snippet5 = "(missing import io)"
+        let new_snippet5 = imp_io
+        let diff5 = "@@ -" + _to_string_i32(at5 + 1) + ",0 +" + _to_string_i32(at5 + 1) + ",1 @@" + _nl() + "+" + _nl() + "+" + new_snippet5
+        if (emit_detail == 1):
+            _print_fix_detail(fix_id5, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at5 + 1, 1, at5 + 1, strlen(new_snippet5), old_snippet5, new_snippet5, diff5, session_id, applied_flag)
+        fixes_json = _append_json(fixes_json, _build_fix_json(fix_id5, "add_missing_std_import", "safe", "SYM_MISSING_STD_IMPORT", file, at5 + 1, 1, at5 + 1, strlen(new_snippet5), old_snippet5, new_snippet5, diff5, applied_flag))
+        fixes = fixes + 1
+        idx = idx + 1
+    return _rule_result(current, fixes_json, fixes, idx)
+
+func _rule_missing_colon(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let total = _line_count(source)
+    if (total == 0):
+        return _rule_result(source, "", 0, start_index)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let trimmed = _trim(line)
+        let line_out = line
+        if (_is_header_candidate(trimmed) == 1):
+            let clean = _sanitize_header_line(line)
+            line_out = clean + ":"
+            if (line_out != line):
+                let fix_id = _fix_id("missing-colon", idx)
+                let old_snippet = _trim(line)
+                let new_snippet = _trim(line_out)
+                let diff = "@@ -" + _to_string_i32(i + 1) + ",1 +" + _to_string_i32(i + 1) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + new_snippet
+                let start_col = _leading_spaces(line) + 1
+                let end_col = strlen(clean)
+                if (emit_detail == 1):
+                    _print_fix_detail(fix_id, "missing_colon_block_header", "safe", "PARSE_MISSING_BLOCK_COLON", file, i + 1, start_col, i + 1, end_col + 1, old_snippet, new_snippet, diff, session_id, applied_flag)
+                fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "missing_colon_block_header", "safe", "PARSE_MISSING_BLOCK_COLON", file, i + 1, start_col, i + 1, end_col + 1, old_snippet, new_snippet, diff, applied_flag))
+                fixes = fixes + 1
+                idx = idx + 1
+        out = out + line_out
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    return _rule_result(out, fixes_json, fixes, idx)
+
+func _rule_infer_return_annotation(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
+    let _mode = mode
+    let total = _line_count(source)
+    if (total == 0):
+        return _rule_result(source, "", 0, start_index)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let fixes_json = ""
+    let fixes = 0
+    let idx = start_index
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let trimmed = _trim(line)
+        let line_out = line
+        if (_starts_with(trimmed, "func ") == 1):
+            if ((_contains(trimmed, "->") == 0) and (_contains(trimmed, "=") == 0) and (_ends_with(trimmed, ":") == 1)):
+                let header_indent = _leading_spaces(line)
+                let j = i + 1
+                while ((j < total) and (strlen(_trim(_line_at(source, j))) == 0)):
+                    j = j + 1
+                if (j < total):
+                    let body_line = _line_at(source, j)
+                    let body_trim = _trim(body_line)
+                    if ((_leading_spaces(body_line) > header_indent) and (_starts_with(body_trim, "return ") == 1)):
+                        let ret_expr = _trim(__thg_str_substr(body_trim, 7, strlen(body_trim) - 7))
+                        let ret_ty = _infer_literal_type(ret_expr)
+                        if (strlen(ret_ty) > 0):
+                            let clean = _sanitize_header_line(line)
+                            let head = clean
+                            if (_ends_with(head, ":") == 1):
+                                head = __thg_str_substr(head, 0, strlen(head) - 1)
+                            line_out = head + " -> " + ret_ty + ":"
+                            if (line_out != line):
+                                let fix_id = _fix_id("infer-ret", idx)
+                                let old_snippet = _trim(line)
+                                let new_snippet = _trim(line_out)
+                                let diff = "@@ -" + _to_string_i32(i + 1) + ",1 +" + _to_string_i32(i + 1) + ",1 @@" + _nl() + "-" + old_snippet + _nl() + "+" + new_snippet
+                                let start_col = _leading_spaces(line) + 1
+                                let end_col = strlen(line_out)
+                                if (emit_detail == 1):
+                                    _print_fix_detail(fix_id, "infer_return_annotation_literal", "aggressive", "TYPE_MISSING_RETURN_ANNOTATION", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, session_id, applied_flag)
+                                fixes_json = _append_json(fixes_json, _build_fix_json(fix_id, "infer_return_annotation_literal", "aggressive", "TYPE_MISSING_RETURN_ANNOTATION", file, i + 1, start_col, i + 1, end_col, old_snippet, new_snippet, diff, applied_flag))
+                                fixes = fixes + 1
+                                idx = idx + 1
+        out = out + line_out
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    return _rule_result(out, fixes_json, fixes, idx)
+

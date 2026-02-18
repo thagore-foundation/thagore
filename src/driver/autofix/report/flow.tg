@@ -1,0 +1,204 @@
+import "src/driver/autofix/common/core.tg"
+
+func _emit_summary(session_id: String, mode: String, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32, rebuild: String) -> void:
+    print("[autofix] session=" + session_id)
+    print("[autofix] mode=" + mode + " files_scanned=" + _to_string_i32(files_scanned) + " files_changed=" + _to_string_i32(files_changed))
+    print("[autofix] fixes_applied=" + _to_string_i32(fixes_applied) + " fixes_skipped=" + _to_string_i32(fixes_skipped))
+    print("[autofix] rebuild=" + rebuild)
+
+func _write_report(session_id: String, mode: String, entry: String, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32, rebuild: String, fixes_json: String, backup_file: String, diagnostics_seen_set: String, applied_rules_set: String, candidate_rules_set: String, old_hash: i32, new_hash: i32, lock_path: String, failure_reason: String, failing_diagnostic: String, conflict_fix_ids_set: String, conflict_files_set: String) -> String:
+    _ensure_dirs()
+    let report_path = ".thagore/fix/reports/" + session_id + ".json"
+    let session_path = ".thagore/fix/sessions/" + session_id + ".json"
+    let summary_json = "{"
+    summary_json = summary_json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    summary_json = summary_json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    summary_json = summary_json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    summary_json = summary_json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped) + ","
+    summary_json = summary_json + _json_quote("rebuild") + ":" + _json_quote(rebuild)
+    summary_json = summary_json + "}"
+
+    let file_patch_applied = "false"
+    if (files_changed > 0):
+        file_patch_applied = "true"
+    let file_patch_json = "{"
+    file_patch_json = file_patch_json + _json_quote("file") + ":" + _json_quote(entry) + ","
+    file_patch_json = file_patch_json + _json_quote("old_hash") + ":" + _json_quote(_to_string_i32(old_hash)) + ","
+    file_patch_json = file_patch_json + _json_quote("new_hash") + ":" + _json_quote(_to_string_i32(new_hash)) + ","
+    file_patch_json = file_patch_json + _json_quote("applied") + ":" + file_patch_applied
+    file_patch_json = file_patch_json + "}"
+    let aggressive_review_required = "false"
+    if ((mode == "aggressive") and (fixes_applied > 0)):
+        aggressive_review_required = "true"
+
+    let report = "{"
+    report = report + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    report = report + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
+    report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    report = report + _json_quote("entry") + ":" + _json_quote(entry) + ","
+    report = report + _json_quote("build_target") + ":" + _json_quote("native") + ","
+    report = report + _json_quote("diagnostics_seen") + ":" + _set_to_json_array(diagnostics_seen_set) + ","
+    report = report + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
+    report = report + _json_quote("candidate_rules") + ":" + _set_to_json_array(candidate_rules_set) + ","
+    report = report + _json_quote("summary") + ":" + summary_json + ","
+    report = report + _json_quote("file_patches") + ":[" + file_patch_json + "],"
+    report = report + _json_quote("aggressive_review_required") + ":" + aggressive_review_required + ","
+    report = report + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    let failure_json = "{"
+    failure_json = failure_json + _json_quote("reason") + ":" + _json_quote(failure_reason) + ","
+    failure_json = failure_json + _json_quote("failing_diagnostic") + ":" + _json_quote(failing_diagnostic) + ","
+    failure_json = failure_json + _json_quote("conflict_fix_ids") + ":" + _set_to_json_array(conflict_fix_ids_set) + ","
+    failure_json = failure_json + _json_quote("conflict_files") + ":" + _set_to_json_array(conflict_files_set)
+    failure_json = failure_json + "}"
+    report = report + _json_quote("failure") + ":" + failure_json + ","
+    report = report + _json_quote("fixes") + ":[" + fixes_json + "]"
+    report = report + "}" + _nl()
+    fs.write_text(report_path, report)
+    let session = "{"
+    session = session + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    session = session + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
+    session = session + _json_quote("entry") + ":" + _json_quote(entry) + ","
+    session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    session = session + _json_quote("build_target") + ":" + _json_quote("native") + ","
+    session = session + _json_quote("diagnostics_seen") + ":" + _set_to_json_array(diagnostics_seen_set) + ","
+    session = session + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
+    session = session + _json_quote("summary") + ":" + summary_json + ","
+    session = session + _json_quote("file_patches") + ":[" + file_patch_json + "],"
+    session = session + _json_quote("aggressive_review_required") + ":" + aggressive_review_required + ","
+    session = session + _json_quote("failure") + ":" + failure_json + ","
+    session = session + _json_quote("rebuild_outcome") + ":" + _json_quote(rebuild) + ","
+    session = session + _json_quote("backup_file") + ":" + _json_quote(backup_file) + ","
+    session = session + _json_quote("report_file") + ":" + _json_quote(report_path) + ","
+    session = session + _json_quote("lock_path") + ":" + _json_quote(lock_path)
+    session = session + "}" + _nl()
+    fs.write_text(session_path, session)
+    fs.write_text(".thagore/fix/last_session.id", session_id)
+    fs.write_text(".thagore/fix/last_report.path", report_path)
+    if (fixes_applied > 0):
+        fs.write_text(".thagore/fix/last_applied_report.path", report_path)
+    return report_path
+
+func latest_report_path() -> String:
+    if (fs.exists(".thagore/fix/last_report.path") == 0):
+        return ""
+    return _trim(fs.read_text(".thagore/fix/last_report.path"))
+
+func latest_applied_report_path() -> String:
+    if (fs.exists(".thagore/fix/last_applied_report.path") == 0):
+        return ""
+    return _trim(fs.read_text(".thagore/fix/last_applied_report.path"))
+
+func latest_session_id() -> String:
+    if (fs.exists(".thagore/fix/last_session.id") == 0):
+        return ""
+    return _trim(fs.read_text(".thagore/fix/last_session.id"))
+
+func _write_lock_file(lock_path: String, mode: String, allowed_rules_set: String, applied_fix_ids_set: String, entries_set: String, last_session_id: String, entry_hash_before: i32, entry_hash_after: i32, lock_readonly: i32) -> i32:
+    if (strlen(lock_path) == 0):
+        return 0
+    if (lock_readonly == 1):
+        return 0
+    let lock_json = "{"
+    lock_json = lock_json + _json_quote("lock_format_version") + ":1,"
+    lock_json = lock_json + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
+    lock_json = lock_json + _json_quote("engine") + ":" + _json_quote("compiler-span+rules-fallback") + ","
+    lock_json = lock_json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    lock_json = lock_json + _json_quote("allowed_rules_set") + ":" + _json_quote(allowed_rules_set) + ","
+    lock_json = lock_json + _json_quote("allowed_rules") + ":" + _set_to_json_array(allowed_rules_set) + ","
+    lock_json = lock_json + _json_quote("applied_fix_ids_set") + ":" + _json_quote(applied_fix_ids_set) + ","
+    lock_json = lock_json + _json_quote("applied_fix_ids") + ":" + _set_to_json_array(applied_fix_ids_set) + ","
+    lock_json = lock_json + _json_quote("entries_set") + ":" + _json_quote(entries_set) + ","
+    lock_json = lock_json + _json_quote("entries") + ":" + _set_to_json_array(entries_set) + ","
+    lock_json = lock_json + _json_quote("last_session_id") + ":" + _json_quote(last_session_id) + ","
+    lock_json = lock_json + _json_quote("last_entry_hash_before") + ":" + _json_quote(_to_string_i32(entry_hash_before)) + ","
+    lock_json = lock_json + _json_quote("last_entry_hash_after") + ":" + _json_quote(_to_string_i32(entry_hash_after)) + ","
+    lock_json = lock_json + _json_quote("updated_ms") + ":" + _json_quote(_to_string_i32(time.now_ms()))
+    lock_json = lock_json + "}" + _nl()
+    if (fs.write_text(lock_path, lock_json) == 0):
+        print("[autofix] error: failed to write lock file: " + lock_path)
+        return 1
+    return 0
+
+func _json_get_string(text: String, key: String) -> String:
+    let dq = _dq()
+    let needle = dq + key + dq + ": " + dq
+    let p = _find(text, needle)
+    let used = needle
+    if (p < 0):
+        let compact = dq + key + dq + ":" + dq
+        p = _find(text, compact)
+        if (p >= 0):
+            used = compact
+    if (p < 0):
+        return ""
+    let i = p + strlen(used)
+    let out = ""
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == dq):
+            return out
+        if (ch == "\\"):
+            if ((i + 1) < strlen(text)):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                    i = i + 2
+                else:
+                    if (nx == "r"):
+                        out = out + _cr()
+                        i = i + 2
+                    else:
+                        out = out + nx
+                        i = i + 2
+            else:
+                i = i + 1
+        else:
+            out = out + ch
+            i = i + 1
+    return out
+
+func _json_get_i32(text: String, key: String, fallback: i32) -> i32:
+    let dq = _dq()
+    let needle = dq + key + dq + ":"
+    let p = _find(text, needle)
+    if (p < 0):
+        return fallback
+    let idx = p + strlen(needle)
+    let skipping = 1
+    while ((idx < strlen(text)) and (skipping == 1)):
+        let ch2 = _char_at(text, idx)
+        if ((ch2 == " ") or (ch2 == _tab()) or (ch2 == _cr()) or (ch2 == _nl())):
+            idx = idx + 1
+        else:
+            skipping = 0
+    let sign = 1
+    if (idx < strlen(text)):
+        if (_char_at(text, idx) == "-"):
+            sign = -1
+            idx = idx + 1
+    let value = 0
+    let digits = 0
+    while (idx < strlen(text)):
+        let d = _char_at(text, idx)
+        if (_is_digit(d) == 1):
+            value = (value * 10) + _find_char("0123456789", d)
+            digits = digits + 1
+            idx = idx + 1
+        else:
+            idx = strlen(text)
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
+func _unescape_newlines(text: String) -> String:
+    let out = text
+    out = _replace_all(out, "\\\\r\\\\n", _nl())
+    out = _replace_all(out, "\\r\\n", _nl())
+    out = _replace_all(out, "\\\\n", _nl())
+    out = _replace_all(out, "\\n", _nl())
+    out = _replace_all(out, "\\\\r", _nl())
+    out = _replace_all(out, "\\r", _nl())
+    return out
+

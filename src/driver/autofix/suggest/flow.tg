@@ -1,0 +1,4 @@
+import "src/driver/autofix/suggest/imports.tg"
+import "src/driver/autofix/suggest/payload.tg"
+import "src/driver/autofix/suggest/guards.tg"
+import "src/driver/autofix/suggest/rule.tg"

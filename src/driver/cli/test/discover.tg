@@ -1,0 +1,179 @@
+import "src/driver/cli/common/core.tg"
+
+func _sanitize_test_id(text: String) -> String:
+    let out = _replace_all(text, "\\", "_")
+    out = _replace_all(out, "/", "_")
+    out = _replace_all(out, ":", "_")
+    out = _replace_all(out, " ", "_")
+    out = _replace_all(out, ".", "_")
+    return out
+
+func _is_test_file_name(name: String) -> i32:
+    if ((_starts_with(name, "test_") == 1) and (_ends_with(name, ".tg") == 1)):
+        return 1
+    if (_ends_with(name, "_test.tg") == 1):
+        return 1
+    return 0
+
+func _test_name_matches(path: String, filter: String) -> i32:
+    let f = _trim(filter)
+    if (strlen(f) == 0):
+        return 1
+    let b = _base_name(path)
+    if (_contains(path, f) == 1):
+        return 1
+    if (_contains(b, f) == 1):
+        return 1
+    return 0
+
+func _path_matches_package_token(path: String, package_name: String) -> i32:
+    let pkg = _trim(package_name)
+    if (strlen(pkg) == 0):
+        return 0
+    let p = _normalize_path(path)
+    let b = _base_name(p)
+    if (_contains(p, "/" + pkg + "/") == 1):
+        return 1
+    if (b == ("test_" + pkg + ".tg")):
+        return 1
+    if (_starts_with(b, "test_" + pkg + "_") == 1):
+        return 1
+    if (_starts_with(b, pkg + "_test") == 1):
+        return 1
+    return 0
+
+func _path_matches_package(path: String, package_set: String) -> i32:
+    let n = strlen(package_set)
+    let i = 0
+    let token = ""
+    let has_any = 0
+    while (i < n):
+        let ch = _char_at(package_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                has_any = 1
+                if (_path_matches_package_token(path, token) == 1):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        has_any = 1
+        if (_path_matches_package_token(path, token) == 1):
+            return 1
+    if (has_any == 0):
+        return 1
+    return 0
+
+func _path_matches_excluded_package(path: String, exclude_package_set: String) -> i32:
+    let n = strlen(exclude_package_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(exclude_package_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_path_matches_package_token(path, token) == 1):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_path_matches_package_token(path, token) == 1):
+            return 1
+    return 0
+
+func _dir_children(dir: String) -> String:
+    let listing = fs.list_dir(dir)
+    let out = ""
+    let total = _line_count(listing)
+    let i = 0
+    while (i < total):
+        let name = _trim(_line_at(listing, i))
+        if (strlen(name) > 0):
+            let child = _normalize_path(dir + "/" + name)
+            out = _append_line(out, child)
+        i = i + 1
+    return out
+
+func _looks_like_directory(path: String) -> i32:
+    if (fs.exists(path) == 0):
+        return 0
+    if (_ends_with(path, ".tg") == 1):
+        return 0
+    let listing = fs.list_dir(path)
+    if (strlen(listing) > 0):
+        return 1
+    let b = _base_name(path)
+    if (_contains(b, ".") == 1):
+        return 0
+    return 1
+
+func _test_file_selected(path: String, filter: String, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
+    if (_path_excluded(path, exclude_set) == 1):
+        return 0
+    if (_test_name_matches(path, filter) == 0):
+        return 0
+    if (_path_matches_package(path, package_set) == 0):
+        return 0
+    if (_path_matches_excluded_package(path, exclude_package_set) == 1):
+        return 0
+    return 1
+
+func _discover_tests(filter: String, workspace: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> String:
+    let out = ""
+    if (fs.exists("tests") == 0):
+        return out
+    if (workspace == 0):
+        let top = _dir_children("tests")
+        let total_top = _line_count(top)
+        let i_top = 0
+        while (i_top < total_top):
+            let path = _trim(_line_at(top, i_top))
+            if (strlen(path) > 0):
+                if (_is_test_file_name(_base_name(path)) == 1):
+                    if (_test_file_selected(path, filter, exclude_set, package_set, exclude_package_set) == 1):
+                        out = _append_line(out, path)
+            i_top = i_top + 1
+        return out
+
+    let queue = ";tests;"
+    let seen = ";"
+    let progress = 1
+    while (progress == 1):
+        progress = 0
+        let next_queue = ";"
+        let i = 0
+        let n = strlen(queue)
+        let token = ""
+        while (i < n):
+            let ch = _char_at(queue, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (_set_contains(seen, token) == 0):
+                        seen = _set_add_unique(seen, token)
+                        progress = 1
+                        let children = _dir_children(token)
+                        let total_children = _line_count(children)
+                        let j = 0
+                        while (j < total_children):
+                            let child = _trim(_line_at(children, j))
+                            if (strlen(child) > 0):
+                                let child_name = _base_name(child)
+                                if (_is_test_file_name(child_name) == 1):
+                                    if (_test_file_selected(child, filter, exclude_set, package_set, exclude_package_set) == 1):
+                                        out = _append_line(out, child)
+                                else:
+                                    if (_path_excluded(child, exclude_set) == 0):
+                                        if (_looks_like_directory(child) == 1):
+                                            next_queue = _set_add_unique(next_queue, child)
+                            j = j + 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        queue = next_queue
+    return out
+

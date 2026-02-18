@@ -1,0 +1,635 @@
+import "lib/env.tg" as env
+import "lib/fs.tg" as fs
+import "lib/process.tg" as process
+import "lib/time.tg" as time
+import "src/driver/autofix/engine.tg" as autofix
+import "src/lowering/transform/program.tg" as lowering
+import "src/semantics/typecheck/program.tg" as typechecker
+import "src/semantics/typedir/nodes.tg" as typedir
+import "src/codegen/llvm/entry.tg" as emitter
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+struct AutofixApplyBatchResult:
+    changed: i32
+    files_touched: i32
+    sessions_set: String
+    error: i32
+
+
+func _batch_result(changed: i32, files_touched: i32, sessions_set: String, error: i32) -> AutofixApplyBatchResult:
+    return AutofixApplyBatchResult(changed, files_touched, sessions_set, error)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return text
+    let l = 0
+    while (l < n):
+        let ch = _char_at(text, l)
+        if ((ch == " ") or (ch == "\t") or (ch == "\r") or (ch == "\n")):
+            l = l + 1
+        else:
+            l = n
+    let left = 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if ((ch == " ") or (ch == "\t") or (ch == "\r") or (ch == "\n")):
+            i = i + 1
+            left = i
+        else:
+            i = n
+    let right = n - 1
+    let j = n - 1
+    while (j >= left):
+        let ch2 = _char_at(text, j)
+        if ((ch2 == " ") or (ch2 == "\t") or (ch2 == "\r") or (ch2 == "\n")):
+            j = j - 1
+            right = j
+        else:
+            j = left - 1
+    if (right < left):
+        return ""
+    return __thg_str_substr(text, left, right - left + 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let n = strlen(prefix)
+    if (strlen(text) < n):
+        return 0
+    if (__thg_str_substr(text, 0, n) == prefix):
+        return 1
+    return 0
+
+func _ends_with(text: String, suffix: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(suffix)
+    if (m > n):
+        return 0
+    if (__thg_str_substr(text, n - m, m) == suffix):
+        return 1
+    return 0
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_path(path: String) -> String:
+    return _replace_all(path, "\\", "/")
+
+func _dir_name(path: String) -> String:
+    let p = _normalize_path(path)
+    let n = strlen(p)
+    let i = 0
+    let last = -1
+    while (i < n):
+        if (_char_at(p, i) == "/"):
+            last = i
+        i = i + 1
+    if (last < 0):
+        return "."
+    if (last == 0):
+        return "/"
+    return __thg_str_substr(p, 0, last)
+
+func _line_count(text: String) -> i32:
+    let n = strlen(text)
+    if (n == 0):
+        return 0
+    let i = 0
+    let c = 1
+    while (i < n):
+        if (_char_at(text, i) == _nl()):
+            c = c + 1
+        i = i + 1
+    return c
+
+func _line_at(text: String, index: i32) -> String:
+    let n = strlen(text)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+            i = i + 1
+        else:
+            line = line + ch
+            i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _set_contains(set_text: String, value: String) -> i32:
+    return _contains(set_text, ";" + value + ";")
+
+func _set_add_unique(set_text: String, value: String) -> String:
+    if (strlen(value) == 0):
+        return set_text
+    if (_set_contains(set_text, value) == 1):
+        return set_text
+    return set_text + value + ";"
+
+func _set_union(left: String, right: String) -> String:
+    let out = left
+    let i = 0
+    let n = strlen(right)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(right, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = _set_add_unique(out, token)
+    return out
+
+func _set_difference(left: String, right: String) -> String:
+    let out = ";"
+    let n = strlen(left)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(left, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(right, token) == 0):
+                    out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_set_contains(right, token) == 0):
+            out = _set_add_unique(out, token)
+    return out
+
+func _set_count(set_text: String) -> i32:
+    let n = strlen(set_text)
+    let i = 0
+    let token = ""
+    let count = 0
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                count = count + 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        count = count + 1
+    return count
+
+func _set_to_json_array(set_text: String) -> String:
+    let out = "["
+    let first = 1
+    let n = strlen(set_text)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + _json_quote(token)
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (first == 0):
+            out = out + ","
+        out = out + _json_quote(token)
+    out = out + "]"
+    return out
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _char_score(ch: String) -> i32:
+    let table = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,' " + _dq() + " \\t\\n\\r"
+    let idx = _find_char(table, ch)
+    if (idx < 0):
+        return 97
+    return idx + 1
+
+func _hash_text(text: String) -> i32:
+    let h = 0
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        let ch = _char_at(text, i)
+        let raw = h * 131 + _char_score(ch) + i + 1
+        let q = raw / 2147483647
+        h = raw - (q * 2147483647)
+        i = i + 1
+    return h
+
+func _lock_digest(lock_path: String) -> String:
+    let p = _trim(lock_path)
+    if (strlen(p) == 0):
+        return ""
+    if (fs.exists(p) == 0):
+        return "missing"
+    return _to_string_i32(_hash_text(fs.read_text(p)))
+
+func _json_get_i32(text: String, key: String, fallback: i32) -> i32:
+    let needle = _json_quote(key) + ":"
+    let p = _find(text, needle)
+    if (p < 0):
+        return fallback
+    let j = p + strlen(needle)
+    while (j < strlen(text)):
+        let c = _char_at(text, j)
+        if ((c == " ") or (c == "\t") or (c == "\r") or (c == "\n")):
+            j = j + 1
+        else:
+            let sign = 1
+            if (c == "-"):
+                sign = -1
+                j = j + 1
+            let value = 0
+            let digits = 0
+            while (j < strlen(text)):
+                let d = _char_at(text, j)
+                let dv = _find_char("0123456789", d)
+                if (dv >= 0):
+                    value = (value * 10) + dv
+                    digits = digits + 1
+                    j = j + 1
+                else:
+                    j = strlen(text)
+            if (digits == 0):
+                return fallback
+            if (sign < 0):
+                return 0 - value
+            return value
+    return fallback
+
+func _json_get_string(text: String, key: String) -> String:
+    let dq = _dq()
+    let needle = dq + key + dq + ": " + dq
+    let p = _find(text, needle)
+    let used = needle
+    if (p < 0):
+        let compact = dq + key + dq + ":" + dq
+        p = _find(text, compact)
+        if (p >= 0):
+            used = compact
+    if (p < 0):
+        return ""
+    let i = p + strlen(used)
+    let out = ""
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == dq):
+            return out
+        if (ch == "\\"):
+            if ((i + 1) < strlen(text)):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                else:
+                    if (nx == "r"):
+                        out = out + "\r"
+                    else:
+                        out = out + nx
+                i = i + 2
+            else:
+                i = i + 1
+        else:
+            out = out + ch
+            i = i + 1
+    return out
+
+func _json_get_string_array_set(text: String, key: String) -> String:
+    let dq = _dq()
+    let p = _find(text, dq + key + dq + ":")
+    if (p < 0):
+        return ";"
+    let i = p + strlen(dq + key + dq + ":")
+    let n = strlen(text)
+    while (i < n):
+        let ch0 = _char_at(text, i)
+        if ((ch0 == " ") or (ch0 == "\t") or (ch0 == "\r") or (ch0 == "\n")):
+            i = i + 1
+        else:
+            if (ch0 != "["):
+                return ";"
+            i = i + 1
+            let out = ";"
+            let token = ""
+            let in_string = 0
+            let escaped = 0
+            while (i < n):
+                let ch = _char_at(text, i)
+                if (in_string == 0):
+                    if (ch == dq):
+                        in_string = 1
+                        token = ""
+                    else:
+                        if (ch == "]"):
+                            return out
+                else:
+                    if (escaped == 1):
+                        token = token + ch
+                        escaped = 0
+                    else:
+                        if (ch == "\\"):
+                            escaped = 1
+                        else:
+                            if (ch == dq):
+                                out = _set_add_unique(out, token)
+                                in_string = 0
+                            else:
+                                token = token + ch
+                i = i + 1
+            return out
+    return ";"
+
+func _bundle_member_union_string_array_set(member_sessions_set: String, key: String) -> String:
+    let out = ";"
+    let token = ""
+    let i = 0
+    let n = strlen(member_sessions_set)
+    while (i < n):
+        let ch = _char_at(member_sessions_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let session_path = ".thagore/fix/sessions/" + token + ".json"
+                if (fs.exists(session_path) == 1):
+                    out = _set_union(out, _json_get_string_array_set(fs.read_text(session_path), key))
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let session_path2 = ".thagore/fix/sessions/" + token + ".json"
+        if (fs.exists(session_path2) == 1):
+            out = _set_union(out, _json_get_string_array_set(fs.read_text(session_path2), key))
+    return out
+
+func _session_metric_i32(session_id: String, key: String) -> i32:
+    let sid = _trim(session_id)
+    if (strlen(sid) == 0):
+        return 0
+    let session_path = ".thagore/fix/sessions/" + sid + ".json"
+    if (fs.exists(session_path) == 0):
+        return 0
+    let session_text = fs.read_text(session_path)
+    return _json_get_i32(session_text, key, 0)
+
+func _session_files_changed(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "files_changed")
+
+func _session_fixes_applied(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "fixes_applied")
+
+func _session_fixes_skipped(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "fixes_skipped")
+
+func _session_files_scanned(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "files_scanned")
+
+func _session_entry(session_id: String) -> String:
+    let sid = _trim(session_id)
+    if (strlen(sid) == 0):
+        return ""
+    let session_path = ".thagore/fix/sessions/" + sid + ".json"
+    if (fs.exists(session_path) == 0):
+        return ""
+    let session_text = fs.read_text(session_path)
+    return _normalize_path(_json_get_string(session_text, "entry"))
+
+func _validate_locked_workspace_targets(lock_path: String, targets: String) -> i32:
+    if (strlen(lock_path) == 0):
+        print("[autofix] error: --locked requires --lock <path>.")
+        return 0
+    if (fs.exists(lock_path) == 0):
+        print("[autofix] error: lock file not found under --locked: " + lock_path)
+        return 0
+    let lock_text = fs.read_text(lock_path)
+    let entries_set = _json_get_string(lock_text, "entries_set")
+    if (strlen(entries_set) == 0):
+        entries_set = ";"
+    let missing = _set_difference(targets, entries_set)
+    if (strlen(missing) > 1):
+        print("[autofix] locked violation: workspace targets missing from lock entries_set.")
+        print("[autofix] lock_missing_entries=" + _set_to_json_array(missing))
+        return 0
+    return 1
+
+func _write_bundle_session(entry_path: String, mode: String, lock_path: String, member_sessions_set: String, passes: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32) -> String:
+    if (_set_count(member_sessions_set) <= 1):
+        return ""
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/fix")
+    fs.mkdir(".thagore/fix/reports")
+    fs.mkdir(".thagore/fix/sessions")
+    let bundle_id = "BND-" + _to_string_i32(time.now_ms()) + "-" + _sanitize_test_id(entry_path)
+    let session_path = ".thagore/fix/sessions/" + bundle_id + ".json"
+    let report_path = ".thagore/fix/reports/" + bundle_id + ".json"
+    let lock_digest = _lock_digest(lock_path)
+    let diagnostics_seen_set = _bundle_member_union_string_array_set(member_sessions_set, "diagnostics_seen")
+    let applied_rules_set = _bundle_member_union_string_array_set(member_sessions_set, "applied_rules")
+    let summary = "{"
+    summary = summary + _json_quote("passes") + ":" + _to_string_i32(passes) + ","
+    summary = summary + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    summary = summary + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    summary = summary + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    summary = summary + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped)
+    summary = summary + "}"
+    let report = "{"
+    report = report + _json_quote("schema_version") + ":1,"
+    report = report + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
+    report = report + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
+    report = report + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
+    report = report + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    report = report + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    report = report + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    report = report + _json_quote("lock_digest") + ":" + _json_quote(lock_digest) + ","
+    report = report + _json_quote("diagnostics_seen_set") + ":" + _json_quote(diagnostics_seen_set) + ","
+    report = report + _json_quote("diagnostics_seen") + ":" + _set_to_json_array(diagnostics_seen_set) + ","
+    report = report + _json_quote("applied_rules_set") + ":" + _json_quote(applied_rules_set) + ","
+    report = report + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
+    report = report + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
+    report = report + _json_quote("member_sessions") + ":" + _set_to_json_array(member_sessions_set) + ","
+    report = report + _json_quote("summary") + ":" + summary
+    report = report + "}" + _nl()
+    fs.write_text(report_path, report)
+    let session = "{"
+    session = session + _json_quote("schema_version") + ":1,"
+    session = session + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
+    session = session + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
+    session = session + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
+    session = session + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    session = session + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    session = session + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    session = session + _json_quote("lock_digest") + ":" + _json_quote(lock_digest) + ","
+    session = session + _json_quote("diagnostics_seen_set") + ":" + _json_quote(diagnostics_seen_set) + ","
+    session = session + _json_quote("diagnostics_seen") + ":" + _set_to_json_array(diagnostics_seen_set) + ","
+    session = session + _json_quote("applied_rules_set") + ":" + _json_quote(applied_rules_set) + ","
+    session = session + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
+    session = session + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
+    session = session + _json_quote("summary") + ":" + summary + ","
+    session = session + _json_quote("report_file") + ":" + _json_quote(report_path)
+    session = session + "}" + _nl()
+    if (fs.write_text(session_path, session) == 0):
+        return ""
+    fs.write_text(".thagore/fix/last_session.id", bundle_id)
+    fs.write_text(".thagore/fix/last_report.path", report_path)
+    if (fixes_applied > 0):
+        fs.write_text(".thagore/fix/last_applied_report.path", report_path)
+    return bundle_id
+
+func _emit_fix_begin_json(sub: String, mode: String, workspace: i32, discovered_total: i32, lock_path: String, lock_locked: i32) -> void:
+    let lock_digest = _lock_digest(lock_path)
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.v1") + ","
+    json = json + _json_quote("type") + ":" + _json_quote("fix") + ","
+    json = json + _json_quote("event") + ":" + _json_quote("started") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("locked") + ":" + _json_bool(lock_locked) + ","
+    json = json + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    json = json + _json_quote("lock_digest") + ":" + _json_quote(lock_digest) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(discovered_total)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_target_json(target: String, sub: String, rc: i32, session_id: String, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32, lock_path: String) -> void:
+    let status = "ok"
+    if (rc != 0):
+        status = "failed"
+    let lock_digest = _lock_digest(lock_path)
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.v1") + ","
+    json = json + _json_quote("type") + ":" + _json_quote("fix_target") + ","
+    json = json + _json_quote("target") + ":" + _json_quote(target) + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("code") + ":" + _to_string_i32(rc) + ","
+    json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped) + ","
+    json = json + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    json = json + _json_quote("lock_digest") + ":" + _json_quote(lock_digest)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_iteration_json(iteration: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32) -> void:
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.v1") + ","
+    json = json + _json_quote("type") + ":" + _json_quote("fix_iteration") + ","
+    json = json + _json_quote("iteration") + ":" + _to_string_i32(iteration) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_summary_json(sub: String, discovered_total: i32, attempts: i32, passes: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32, exit_code: i32, bundle_session_id: String, lock_path: String) -> void:
+    let status = "ok"
+    if (exit_code != 0):
+        status = "failed"
+    let lock_digest = _lock_digest(lock_path)
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.v1") + ","
+    json = json + _json_quote("type") + ":" + _json_quote("fix_summary") + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("exit_code") + ":" + _to_string_i32(exit_code) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(discovered_total) + ","
+    json = json + _json_quote("attempts") + ":" + _to_string_i32(attempts) + ","
+    json = json + _json_quote("passes") + ":" + _to_string_i32(passes) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped) + ","
+    json = json + _json_quote("bundle_session_id") + ":" + _json_quote(bundle_session_id) + ","
+    json = json + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    json = json + _json_quote("lock_digest") + ":" + _json_quote(lock_digest)
+    json = json + "}"
+    print(json)
+

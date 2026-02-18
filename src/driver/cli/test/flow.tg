@@ -1,0 +1,4 @@
+import "src/driver/cli/test/util.tg"
+import "src/driver/cli/test/discover.tg"
+import "src/driver/cli/test/report.tg"
+import "src/driver/cli/test/run.tg"

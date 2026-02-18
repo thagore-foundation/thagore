@@ -1,0 +1,185 @@
+import "src/driver/cli/common/core.tg"
+
+func _resolve_test_compiler() -> String:
+    if (fs.exists("stage1.exe") == 1):
+        return ".\\stage1.exe"
+    if (fs.exists("stage1") == 1):
+        return "./stage1"
+    if (fs.exists("stage2.exe") == 1):
+        return ".\\stage2.exe"
+    if (fs.exists("stage2") == 1):
+        return "./stage2"
+    return ""
+
+func _build_test_target(input_path: String, out_path: String, quiet: i32, build_log_path: String) -> i32:
+    let compiler = _resolve_test_compiler()
+    if (strlen(compiler) > 0):
+        let args = "build\n" + input_path + "\n-o\n" + out_path
+        if ((quiet == 1) and (strlen(build_log_path) > 0)):
+            return process.exec_redirect(compiler, args, build_log_path, build_log_path)
+        return process.exec(compiler, args)
+    return _build_once(input_path, out_path, 0)
+
+func _test_exec_path(path: String) -> String:
+    if ((_starts_with(path, ".\\") == 1) or (_starts_with(path, "./") == 1)):
+        return path
+    if (_starts_with(path, ".") == 1):
+        let tail = __thg_str_substr(path, 1, strlen(path) - 1)
+        if (_ends_with(path, ".exe") == 1):
+            return ".\\." + _replace_all(tail, "/", "\\")
+        return "./." + tail
+    return path
+
+func _run_test_binary(path: String, quiet: i32, run_log_path: String) -> i32:
+    let exec_path = _test_exec_path(path)
+    if (quiet == 0):
+        return process.exec(exec_path, "")
+    if (strlen(run_log_path) == 0):
+        return process.exec(exec_path, "")
+    return process.exec_redirect(exec_path, "", run_log_path, run_log_path)
+
+func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_json: i32, list_only: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
+    let tests = _discover_tests(filter, workspace, exclude_set, package_set, exclude_package_set)
+    let discovered_set = _lines_to_set(tests)
+    let total = _count_lines_nonempty(tests)
+    let started_ms = time.now_ms()
+    let run_id = "TST-" + _to_string_i32(started_ms) + "-" + _to_string_i32(total)
+    let build_failed_set = ";"
+    let run_failed_set = ";"
+
+    if (as_json == 1):
+        _emit_test_begin_json(total, no_run, list_only, workspace, fail_fast, filter, run_id)
+
+    if (list_only == 1):
+        let total_lines = _line_count(tests)
+        let i = 0
+        while (i < total_lines):
+            let path = _trim(_line_at(tests, i))
+            if (strlen(path) > 0):
+                if (as_json == 1):
+                    _emit_test_case_json(path, "discover", "found", 0, 0, "", 0, run_id)
+                else:
+                    print(path)
+            i = i + 1
+        if (as_json == 1):
+            let elapsed_list = time.now_ms() - started_ms
+            let elapsed_list_safe = elapsed_list
+            if (elapsed_list_safe < 0):
+                elapsed_list_safe = 0
+            let report_path_list = _write_test_report(run_id, no_run, list_only, workspace, fail_fast, filter, total, 0, 0, 0, 0, discovered_set, build_failed_set, run_failed_set, started_ms, elapsed_list_safe)
+            _emit_test_summary_json(total, 0, 0, 0, 0, no_run, list_only, workspace, fail_fast, filter, run_id, elapsed_list_safe, report_path_list)
+        else:
+            print("[test] discovered=" + _to_string_i32(total))
+            let report_path_list_h = _write_test_report(run_id, no_run, list_only, workspace, fail_fast, filter, total, 0, 0, 0, 0, discovered_set, build_failed_set, run_failed_set, started_ms, 0)
+            if (strlen(report_path_list_h) > 0):
+                print("[test] report: " + report_path_list_h)
+        return 0
+
+    if (total == 0):
+        let elapsed_empty = time.now_ms() - started_ms
+        let elapsed_empty_safe = elapsed_empty
+        if (elapsed_empty_safe < 0):
+            elapsed_empty_safe = 0
+        let report_path_empty = _write_test_report(run_id, no_run, list_only, workspace, fail_fast, filter, 0, 0, 0, 0, 0, discovered_set, build_failed_set, run_failed_set, started_ms, elapsed_empty_safe)
+        if (as_json == 1):
+            _emit_test_summary_json(0, 0, 0, 0, 0, no_run, list_only, workspace, fail_fast, filter, run_id, elapsed_empty_safe, report_path_empty)
+        else:
+            print("[test] no tests discovered")
+            if (strlen(report_path_empty) > 0):
+                print("[test] report: " + report_path_empty)
+        return 0
+
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/test")
+    fs.mkdir(".thagore/test/bin")
+    fs.mkdir(".thagore/test/log")
+
+    if (as_json == 0):
+        if (no_run == 1):
+            print("[test] building " + _to_string_i32(total) + " test targets")
+        else:
+            print("[test] running " + _to_string_i32(total) + " tests")
+
+    let built = 0
+    let build_failed = 0
+    let run_passed = 0
+    let run_failed = 0
+    let total_lines = _line_count(tests)
+    let i = 0
+    while (i < total_lines):
+        let path = _trim(_line_at(tests, i))
+        if (strlen(path) > 0):
+            let test_id = _sanitize_test_id(path)
+            let out_bin = ".thagore/test/bin/" + test_id + ".exe"
+            let build_log = ".thagore/test/log/" + test_id + ".build.log"
+            let run_log = ".thagore/test/log/" + test_id + ".run.log"
+            if (as_json == 0):
+                print("test " + path + " ... build")
+            else:
+                _emit_test_case_json(path, "build", "started", 0, 0, build_log, 1, run_id)
+            let build_rc = _build_test_target(path, out_bin, as_json, build_log)
+            if (build_rc != 0):
+                build_failed = build_failed + 1
+                build_failed_set = _set_add_unique(build_failed_set, path)
+                if (as_json == 1):
+                    _emit_test_case_json(path, "build", "failed", build_rc, 1, build_log, 1, run_id)
+                else:
+                    print("test " + path + " ... FAILED (build)")
+                if (fail_fast == 1):
+                    i = total_lines
+            else:
+                built = built + 1
+                if (no_run == 1):
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "build", "ok", 0, 0, build_log, 1, run_id)
+                    else:
+                        print("test " + path + " ... ok (built)")
+                else:
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "build", "ok", 0, 0, build_log, 1, run_id)
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "run", "started", 0, 0, run_log, 1, run_id)
+                    let run_rc = _run_test_binary(out_bin, as_json, run_log)
+                    if (run_rc == 0):
+                        run_passed = run_passed + 1
+                        if (as_json == 1):
+                            _emit_test_case_json(path, "run", "ok", 0, 0, run_log, 1, run_id)
+                        else:
+                            print("test " + path + " ... ok")
+                    else:
+                        run_failed = run_failed + 1
+                        run_failed_set = _set_add_unique(run_failed_set, path)
+                        if (as_json == 1):
+                            _emit_test_case_json(path, "run", "failed", run_rc, 1, run_log, 1, run_id)
+                        else:
+                            print("test " + path + " ... FAILED")
+                        if (fail_fast == 1):
+                            i = total_lines
+        i = i + 1
+
+    let failed_total = build_failed + run_failed
+    let elapsed = time.now_ms() - started_ms
+    let elapsed_safe = elapsed
+    if (elapsed_safe < 0):
+        elapsed_safe = 0
+    let report_path = _write_test_report(run_id, no_run, list_only, workspace, fail_fast, filter, total, built, build_failed, run_passed, run_failed, discovered_set, build_failed_set, run_failed_set, started_ms, elapsed_safe)
+    if (as_json == 1):
+        _emit_test_summary_json(total, built, build_failed, run_passed, run_failed, no_run, list_only, workspace, fail_fast, filter, run_id, elapsed_safe, report_path)
+    else:
+        if (no_run == 1):
+            if (failed_total == 0):
+                print("test result: ok. " + _to_string_i32(built) + " built; 0 failed; " + _to_string_i32(total) + " total")
+            else:
+                print("test result: FAILED. " + _to_string_i32(built) + " built; " + _to_string_i32(failed_total) + " failed; " + _to_string_i32(total) + " total")
+        else:
+            if (failed_total == 0):
+                print("test result: ok. " + _to_string_i32(run_passed) + " passed; 0 failed; " + _to_string_i32(total) + " total")
+            else:
+                print("test result: FAILED. " + _to_string_i32(run_passed) + " passed; " + _to_string_i32(failed_total) + " failed; " + _to_string_i32(total) + " total")
+        if (strlen(report_path) > 0):
+            print("[test] report: " + report_path)
+
+    if (failed_total == 0):
+        return 0
+    return 1
+

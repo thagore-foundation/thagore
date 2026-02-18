@@ -1,0 +1,161 @@
+import "src/driver/autofix/common/core.tg"
+
+func _suggestion_applicability_kind(value: String) -> i32:
+    if ((value == "MachineApplicable") or (value == "machine_applicable") or (value == "machine-applicable")):
+        return 2
+    if ((value == "MaybeIncorrect") or (value == "maybe_incorrect") or (value == "maybe-incorrect")):
+        return 1
+    if ((value == "HasPlaceholders") or (value == "has_placeholders") or (value == "has-placeholders")):
+        return -1
+    return 0
+
+func _suggestion_allowed(kind: i32, mode: String) -> i32:
+    if (mode == "off"):
+        return 0
+    if (kind == 2):
+        return 1
+    if ((mode == "aggressive") and (kind == 1)):
+        return 1
+    return 0
+
+func _line_from_offset(text: String, offset: i32) -> i32:
+    let n = strlen(text)
+    let end = offset
+    if (end < 0):
+        end = 0
+    if (end > n):
+        end = n
+    let line = 1
+    let i = 0
+    while (i < end):
+        if (_is_line_break_char(_char_at(text, i)) == 1):
+            line = line + 1
+        i = i + 1
+    return line
+
+func _col_from_offset(text: String, offset: i32) -> i32:
+    let n = strlen(text)
+    let end = offset
+    if (end < 0):
+        end = 0
+    if (end > n):
+        end = n
+    let last_break = -1
+    let i = 0
+    while (i < end):
+        if (_is_line_break_char(_char_at(text, i)) == 1):
+            last_break = i
+        i = i + 1
+    return end - last_break
+
+func _normalize_path(path: String) -> String:
+    return _replace_all(path, "\\", "/")
+
+func _sanitize_header_line(line: String) -> String:
+    let out = _trim_right(line)
+    out = _replace_all(out, _cr(), "")
+    out = _replace_all(out, _nl(), "")
+    out = _replace_all(out, "\\\\r", "")
+    out = _replace_all(out, "\\\\n", "")
+    out = _replace_all(out, "\\r", "")
+    out = _replace_all(out, "\\n", "")
+    let n = strlen(out)
+    if (n == 0):
+        return out
+    let keep = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,'`~@#$%^&| " + _dq()
+    let end = n - 1
+    while (end >= 0):
+        let ch = _char_at(out, end)
+        if (_find_char(keep, ch) >= 0):
+            return __thg_str_substr(out, 0, end + 1)
+        end = end - 1
+    return ""
+
+func _is_probably_binary_text(text: String) -> i32:
+    let nul = __string_from_codepoint(0)
+    if (strlen(nul) == 0):
+        return 0
+    if (_contains(text, nul) == 1):
+        return 1
+    return 0
+
+func _is_protected_path(path: String) -> i32:
+    let p = _normalize_path(path)
+    if (_starts_with(p, ".git/") == 1):
+        return 1
+    if (_starts_with(p, ".github/") == 1):
+        return 1
+    if (_starts_with(p, ".thagore/") == 1):
+        return 1
+    return 0
+
+func _ensure_dirs() -> void:
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/fix")
+    fs.mkdir(".thagore/fix/reports")
+    fs.mkdir(".thagore/fix/sessions")
+    fs.mkdir(".thagore/fix/backups")
+    fs.mkdir(".thagore/fix/suggestions")
+
+func _compiler_suggestion_candidate_count(source: String, file: String, count_mode: i32) -> i32:
+    let normalized_file = _normalize_path(file)
+    let payload = _read_suggestions_payload(normalized_file)
+    let total = _line_count(payload)
+    let count = 0
+    let i = 0
+    while (i < total):
+        let raw_line = _trim(_line_at(payload, i))
+        if (strlen(raw_line) > 0):
+            let raw_file = _json_get_string(raw_line, "file")
+            if (strlen(raw_file) == 0):
+                raw_file = normalized_file
+            let sug_file = _normalize_path(raw_file)
+            if (sug_file == normalized_file):
+                let kind = _suggestion_applicability_kind(_json_get_string(raw_line, "applicability"))
+                let start_b = _json_get_i32(raw_line, "start_byte", -1)
+                let end_b = _json_get_i32(raw_line, "end_byte", -1)
+                if ((start_b >= 0) and (end_b >= start_b) and (end_b <= strlen(source))):
+                    let current_range = __thg_str_substr(source, start_b, end_b - start_b)
+                    let expected_old = _json_get_string(raw_line, "expected_old")
+                    let include = 0
+                    if ((kind == 2) or (kind == 1) or (kind == -1)):
+                        include = 1
+                    if ((count_mode == 1) and (kind != 2)):
+                        include = 0
+                    if ((count_mode == 2) and (kind != 1)):
+                        include = 0
+                    if ((strlen(expected_old) > 0) and (current_range != expected_old)):
+                        include = 0
+                    if (include == 1):
+                        count = count + 1
+        i = i + 1
+    return count
+
+func _compiler_suggestion_diagnostics_set(source: String, file: String) -> String:
+    let normalized_file = _normalize_path(file)
+    let payload = _read_suggestions_payload(normalized_file)
+    let total = _line_count(payload)
+    let set_out = ";"
+    let i = 0
+    while (i < total):
+        let raw_line = _trim(_line_at(payload, i))
+        if (strlen(raw_line) > 0):
+            let raw_file = _json_get_string(raw_line, "file")
+            if (strlen(raw_file) == 0):
+                raw_file = normalized_file
+            let sug_file = _normalize_path(raw_file)
+            if (sug_file == normalized_file):
+                let kind = _suggestion_applicability_kind(_json_get_string(raw_line, "applicability"))
+                let start_b = _json_get_i32(raw_line, "start_byte", -1)
+                let end_b = _json_get_i32(raw_line, "end_byte", -1)
+                if ((start_b >= 0) and (end_b >= start_b) and (end_b <= strlen(source))):
+                    let current_range = __thg_str_substr(source, start_b, end_b - start_b)
+                    let expected_old = _json_get_string(raw_line, "expected_old")
+                    if (((kind == 2) or (kind == 1) or (kind == -1)) and ((strlen(expected_old) == 0) or (current_range == expected_old))):
+                        let code_scan = _json_get_string(raw_line, "code")
+                        if (strlen(code_scan) == 0):
+                            code_scan = "COMPILER_SUGGESTION"
+                        set_out = _set_add_unique(set_out, code_scan)
+        i = i + 1
+    return set_out
+

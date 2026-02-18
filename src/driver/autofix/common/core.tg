@@ -1,0 +1,618 @@
+import "lib/fs.tg" as fs
+import "lib/time.tg" as time
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+struct RuleResult:
+    source: String
+    fixes_json: String
+    fixes_found: i32
+    next_index: i32
+
+
+func _rule_result(source: String, fixes_json: String, fixes_found: i32, next_index: i32) -> RuleResult:
+    return RuleResult(source, fixes_json, fixes_found, next_index)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _ends_with(text: String, suffix: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(suffix)
+    if (m > n):
+        return 0
+    if (__thg_str_substr(text, n - m, m) == suffix):
+        return 1
+    return 0
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _is_ws(ch: String) -> i32:
+    if (ch == " "):
+        return 1
+    if (ch == _tab()):
+        return 1
+    if (ch == _cr()):
+        return 1
+    if (ch == _nl()):
+        return 1
+    return 0
+
+func _is_line_break_char(ch: String) -> i32:
+    if ((ch == _nl()) or (ch == _cr())):
+        return 1
+    let printable = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,'`~@#$%^&| \\" + _dq() + _tab()
+    if (_find_char(printable, ch) >= 0):
+        return 0
+    return 1
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    while ((l < n) and (_is_ws(_char_at(text, l)) == 1)):
+        l = l + 1
+    if (l >= n):
+        return ""
+    let r = n - 1
+    while ((r >= l) and (_is_ws(_char_at(text, r)) == 1)):
+        r = r - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _trim_right(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let r = n - 1
+    while ((r >= 0) and (_is_ws(_char_at(text, r)) == 1)):
+        r = r - 1
+    if (r < 0):
+        return ""
+    return __thg_str_substr(text, 0, r + 1)
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    while (i < n):
+        if (_char_at(line, i) != " "):
+            return i
+        i = i + 1
+    return n
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            count = count + 1
+            i = i + 1
+        else:
+            if (ch == _cr()):
+                count = count + 1
+                if (((i + 1) < n) and (_char_at(source, i + 1) == _nl())):
+                    i = i + 2
+                else:
+                    i = i + 1
+            else:
+                if ((ch == "\\") and ((i + 5) < n) and (_char_at(source, i + 1) == "\\") and (_char_at(source, i + 2) == "r") and (_char_at(source, i + 3) == "\\") and (_char_at(source, i + 4) == "\\") and (_char_at(source, i + 5) == "n")):
+                    count = count + 1
+                    i = i + 6
+                else:
+                    if ((ch == "\\") and ((i + 3) < n) and (_char_at(source, i + 1) == "r") and (_char_at(source, i + 2) == "\\") and (_char_at(source, i + 3) == "n")):
+                        count = count + 1
+                        i = i + 4
+                    else:
+                        if ((ch == "\\") and ((i + 2) < n) and (_char_at(source, i + 1) == "\\") and (_char_at(source, i + 2) == "n")):
+                            count = count + 1
+                            i = i + 3
+                        else:
+                            if ((ch == "\\") and ((i + 1) < n) and (_char_at(source, i + 1) == "n")):
+                                count = count + 1
+                                i = i + 2
+                            else:
+                                if (_is_line_break_char(ch) == 1):
+                                    count = count + 1
+                                i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (_is_line_break_char(ch) == 1):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+            if ((ch == _cr()) and ((i + 1) < n) and (_char_at(source, i + 1) == _nl())):
+                i = i + 2
+            else:
+                i = i + 1
+        else:
+            if ((ch == "\\") and ((i + 5) < n) and (_char_at(source, i + 1) == "\\") and (_char_at(source, i + 2) == "r") and (_char_at(source, i + 3) == "\\") and (_char_at(source, i + 4) == "\\") and (_char_at(source, i + 5) == "n")):
+                if (line_idx == index):
+                    return line
+                line_idx = line_idx + 1
+                line = ""
+                i = i + 6
+            else:
+                if ((ch == "\\") and ((i + 3) < n) and (_char_at(source, i + 1) == "r") and (_char_at(source, i + 2) == "\\") and (_char_at(source, i + 3) == "n")):
+                    if (line_idx == index):
+                        return line
+                    line_idx = line_idx + 1
+                    line = ""
+                    i = i + 4
+                else:
+                    if ((ch == "\\") and ((i + 2) < n) and (_char_at(source, i + 1) == "\\") and (_char_at(source, i + 2) == "n")):
+                        if (line_idx == index):
+                            return line
+                        line_idx = line_idx + 1
+                        line = ""
+                        i = i + 3
+                    else:
+                        if ((ch == "\\") and ((i + 1) < n) and (_char_at(source, i + 1) == "n")):
+                            if (line_idx == index):
+                                return line
+                            line_idx = line_idx + 1
+                            line = ""
+                            i = i + 2
+                        else:
+                            line = line + ch
+                            i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _ends_with_newline(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let tail = _char_at(source, n - 1)
+    if (_is_line_break_char(tail) == 1):
+        return 1
+    return 0
+
+func _digit_char(d: i32) -> String:
+    return __thg_str_substr("0123456789", d, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _tab() -> String:
+    return __string_from_codepoint(9)
+
+func _tool_version() -> String:
+    return "0.4.0-native-cli"
+
+func _json_quote(text: String) -> String:
+    let dq = _dq()
+    return dq + _json_escape(text) + dq
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + _digit_char(r)
+        n = q
+    let out = ""
+    let i = strlen(rev) - 1
+    while (i >= 0):
+        out = out + _char_at(rev, i)
+        i = i - 1
+    return sign + out
+
+func _pad4(value: i32) -> String:
+    let s = _to_string_i32(value)
+    if (strlen(s) >= 4):
+        return s
+    if (strlen(s) == 3):
+        return "0" + s
+    if (strlen(s) == 2):
+        return "00" + s
+    return "000" + s
+
+func _json_escape(text: String) -> String:
+    let out = _replace_all(text, "\\", "\\\\")
+    let dq = _dq()
+    out = _replace_all(out, dq, "\\" + dq)
+    out = _replace_all(out, _nl(), "\\n")
+    out = _replace_all(out, _cr(), "\\r")
+    return out
+
+func _fix_id(rule_slug: String, idx: i32) -> String:
+    return "AFX-" + rule_slug + "-" + _pad4(idx)
+
+func _append_json(items: String, obj: String) -> String:
+    let obj_copy = _clone_text(obj)
+    if (strlen(items) == 0):
+        return obj_copy
+    return _clone_text(items) + "," + obj_copy
+
+func _clone_text(text: String) -> String:
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        out = out + _char_at(text, i)
+        i = i + 1
+    return out
+
+func _set_contains(set_text: String, name: String) -> i32:
+    if (strlen(name) == 0):
+        return 0
+    let needle = ";" + name + ";"
+    if (_contains(set_text, needle) == 1):
+        return 1
+    return 0
+
+func _set_add_unique(set_text: String, name: String) -> String:
+    if (strlen(name) == 0):
+        return set_text
+    if (_set_contains(set_text, name) == 1):
+        return set_text
+    return set_text + name + ";"
+
+func _set_union(left: String, right: String) -> String:
+    let out = left
+    let token = ""
+    let i = 0
+    let n = strlen(right)
+    while (i < n):
+        let ch = _char_at(right, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = _set_add_unique(out, token)
+    return out
+
+func _set_to_json_array(set_text: String) -> String:
+    let out = ""
+    let token = ""
+    let i = 0
+    let n = strlen(set_text)
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (strlen(out) > 0):
+                    out = out + ","
+                out = out + _json_quote(token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return "[" + out + "]"
+
+func _set_difference(left: String, right: String) -> String:
+    let out = ";"
+    let token = ""
+    let i = 0
+    let n = strlen(left)
+    while (i < n):
+        let ch = _char_at(left, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(right, token) == 0):
+                    out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_set_contains(right, token) == 0):
+            out = _set_add_unique(out, token)
+    return out
+
+func _collect_fix_ids_from_fixes_json(fixes_json: String) -> String:
+    let out = ";"
+    let key = _json_quote("fix_id") + ":" + _dq()
+    let klen = strlen(key)
+    let i = 0
+    let n = strlen(fixes_json)
+    while (i < n):
+        let p = _find(__thg_str_substr(fixes_json, i, n - i), key)
+        if (p < 0):
+            i = n
+        else:
+            let start = i + p + klen
+            let j = start
+            let val = ""
+            while (j < n):
+                let ch = _char_at(fixes_json, j)
+                if (ch == _dq()):
+                    j = n
+                else:
+                    val = val + ch
+                    j = j + 1
+            if (strlen(val) > 0):
+                out = _set_add_unique(out, val)
+            i = start + 1
+    return out
+
+func _char_score(ch: String) -> i32:
+    let table = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,' " + _dq() + " \\t\\n\\r"
+    let idx = _find_char(table, ch)
+    if (idx < 0):
+        return 97
+    return idx + 1
+
+func _hash_text(text: String) -> i32:
+    let h = 0
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        let ch = _char_at(text, i)
+        let raw = h * 131 + _char_score(ch) + i + 1
+        let q = raw / 2147483647
+        h = raw - (q * 2147483647)
+        i = i + 1
+    return h
+
+func _is_digit(ch: String) -> i32:
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _is_ident_char(ch: String) -> i32:
+    if (ch == "_"):
+        return 1
+    if (_find_char("abcdefghijklmnopqrstuvwxyz", ch) >= 0):
+        return 1
+    if (_find_char("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0):
+        return 1
+    if (_is_digit(ch) == 1):
+        return 1
+    return 0
+
+func _is_int_literal(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return 0
+    let i = 0
+    if (_char_at(s, 0) == "-"):
+        if (strlen(s) == 1):
+            return 0
+        i = 1
+    while (i < strlen(s)):
+        if (_is_digit(_char_at(s, i)) == 0):
+            return 0
+        i = i + 1
+    return 1
+
+func _is_float_literal(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return 0
+    if (_contains(s, ".") == 0):
+        return 0
+    let i = 0
+    let dots = 0
+    if (_char_at(s, 0) == "-"):
+        i = 1
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (ch == "."):
+            dots = dots + 1
+            i = i + 1
+        else:
+            if (_is_digit(ch) == 0):
+                return 0
+            i = i + 1
+    if (dots == 1):
+        return 1
+    return 0
+
+func _infer_literal_type(expr: String) -> String:
+    let v = _trim(expr)
+    let dq = _dq()
+    if (_is_int_literal(v) == 1):
+        return "i32"
+    if (_is_float_literal(v) == 1):
+        return "f64"
+    if ((v == "true") or (v == "false")):
+        return "bool"
+    if ((strlen(v) >= 2) and (_char_at(v, 0) == dq) and (_char_at(v, strlen(v) - 1) == dq)):
+        return "String"
+    return ""
+
+func _build_fix_json(fix_id: String, rule: String, risk: String, code: String, file: String, start_line: i32, start_col: i32, end_line: i32, end_col: i32, old_snippet: String, new_snippet: String, diff: String, applied_flag: i32) -> String:
+    let applied = "false"
+    if (applied_flag == 1):
+        applied = "true"
+    let family = _diagnostic_family(code)
+    let obj = "{"
+    obj = obj + _json_quote("fix_id") + ":" + _json_quote(fix_id) + ","
+    obj = obj + _json_quote("rule") + ":" + _json_quote(rule) + ","
+    obj = obj + _json_quote("risk_class") + ":" + _json_quote(risk) + ","
+    obj = obj + _json_quote("diagnostic_code") + ":" + _json_quote(code) + ","
+    obj = obj + _json_quote("diagnostic_family") + ":" + _json_quote(family) + ","
+    obj = obj + _json_quote("file") + ":" + _json_quote(file) + ","
+    obj = obj + _json_quote("range") + ":{"
+    obj = obj + _json_quote("start_line") + ":" + _to_string_i32(start_line) + ","
+    obj = obj + _json_quote("start_col") + ":" + _to_string_i32(start_col) + ","
+    obj = obj + _json_quote("end_line") + ":" + _to_string_i32(end_line) + ","
+    obj = obj + _json_quote("end_col") + ":" + _to_string_i32(end_col)
+    obj = obj + "},"
+    obj = obj + _json_quote("old_snippet") + ":" + _json_quote(old_snippet) + ","
+    obj = obj + _json_quote("new_snippet") + ":" + _json_quote(new_snippet) + ","
+    obj = obj + _json_quote("diff_unified") + ":" + _json_quote(diff) + ","
+    obj = obj + _json_quote("applied") + ":" + applied
+    obj = obj + "}"
+    return obj
+
+func _diagnostic_family(code: String) -> String:
+    if (_starts_with(code, "COMPILER_") == 1):
+        return "compiler-suggestion"
+    if (_starts_with(code, "PARSE_") == 1):
+        return "syntax"
+    if (_starts_with(code, "SYM_") == 1):
+        return "name-resolution"
+    if (_starts_with(code, "TYPE_") == 1):
+        return "semantic"
+    if (_starts_with(code, "LOCK_") == 1):
+        return "policy"
+    if (_starts_with(code, "FILE_") == 1):
+        return "io"
+    if (_starts_with(code, "AUTOFIX_") == 1):
+        return "autofix-internal"
+    return "unknown"
+
+func _mark_fixes_unapplied(fixes_json: String) -> String:
+    return _replace_all(fixes_json, _json_quote("applied") + ":true", _json_quote("applied") + ":false")
+
+func _mask_secret_snippet(text: String) -> String:
+    let out = text
+    out = _replace_all(out, "password", "***")
+    out = _replace_all(out, "passwd", "***")
+    out = _replace_all(out, "secret", "***")
+    out = _replace_all(out, "token", "***")
+    out = _replace_all(out, "api_key", "***")
+    out = _replace_all(out, "apikey", "***")
+    out = _replace_all(out, "-----BEGIN", "***BEGIN")
+    return out
+
+func _clip_chars(text: String, max_len: i32) -> String:
+    if (strlen(text) <= max_len):
+        return text
+    if (max_len <= 3):
+        return "..."
+    return __thg_str_substr(text, 0, max_len - 3) + "..."
+
+func _clip_lines(text: String, max_lines: i32) -> String:
+    if (max_lines <= 0):
+        return ""
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let lines = 1
+    while (i < n):
+        let ch = _char_at(text, i)
+        if ((ch == _nl()) and (lines >= max_lines)):
+            return out + _nl() + "...(truncated)"
+        out = out + ch
+        if (ch == _nl()):
+            lines = lines + 1
+        i = i + 1
+    return out
+
+func _cli_preview(text: String, line_cap: i32, char_cap: i32) -> String:
+    let masked = _mask_secret_snippet(text)
+    let clipped_lines = _clip_lines(masked, line_cap)
+    return _clip_chars(clipped_lines, char_cap)
+
+func _print_fix_detail(fix_id: String, rule: String, risk: String, code: String, file: String, start_line: i32, start_col: i32, end_line: i32, end_col: i32, old_snippet: String, new_snippet: String, diff: String, session_id: String, applied_flag: i32) -> void:
+    let dq = _dq()
+    let shown_old = _cli_preview(old_snippet, 5, 180)
+    let shown_new = _cli_preview(new_snippet, 5, 180)
+    let shown_diff = _cli_preview(diff, 5, 260)
+    print("[autofix] " + fix_id + " (" + risk + ")")
+    print("  rule: " + rule)
+    print("  risk_class: " + risk)
+    print("  reason: " + code)
+    print("  file: " + file + ":" + _to_string_i32(start_line) + ":" + _to_string_i32(start_col))
+    print("  range: " + _to_string_i32(start_line) + ":" + _to_string_i32(start_col) + "-" + _to_string_i32(end_line) + ":" + _to_string_i32(end_col))
+    print("  old: " + dq + shown_old + dq)
+    print("  new: " + dq + shown_new + dq)
+    if (applied_flag == 1):
+        print("  applied: true")
+    else:
+        print("  applied: false")
+    print("  diff:")
+    print("    " + _replace_all(shown_diff, _nl(), _nl() + "    "))
+    if (applied_flag == 1):
+        print("  rollback: thagore fix rollback " + session_id)
+    else:
+        print("  rollback: (dry-run)")
+

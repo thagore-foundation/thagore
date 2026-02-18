@@ -1,0 +1,144 @@
+import "src/driver/cli/common/core.tg"
+
+func _quote(s: String) -> String:
+    return _dq() + s + _dq()
+
+func _value_after_prefix(text: String, prefix: String) -> String:
+    if (_starts_with(text, prefix) == 0):
+        return ""
+    return __thg_str_substr(text, strlen(prefix), strlen(text) - strlen(prefix))
+
+func _unescape_newlines(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let nl = __string_from_codepoint(10)
+    let cr = __string_from_codepoint(13)
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == "\\") and (c1 == "n")):
+                out = out + nl
+                i = i + 2
+            else:
+                if (((i + 3) < n) and (c0 == "\\") and (c1 == "r")):
+                    if ((_char_at(text, i + 2) == "\\") and (_char_at(text, i + 3) == "n")):
+                        out = out + cr + nl
+                        i = i + 4
+                    else:
+                        out = out + c0
+                        i = i + 1
+                else:
+                    out = out + c0
+                    i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _base_name(path: String) -> String:
+    let n = strlen(path)
+    let last_sep = -1
+    let i = 0
+    while (i < n):
+        let ch = _char_at(path, i)
+        if (ch == "/"):
+            last_sep = i
+        i = i + 1
+    if (last_sep < 0):
+        return path
+    return __thg_str_substr(path, last_sep + 1, n - last_sep - 1)
+
+func _strip_ext(name: String) -> String:
+    let n = strlen(name)
+    let last_dot = -1
+    let i = 0
+    while (i < n):
+        if (_char_at(name, i) == "."):
+            last_dot = i
+        i = i + 1
+    if (last_dot < 0):
+        return name
+    return __thg_str_substr(name, 0, last_dot)
+
+func _default_output(input_path: String) -> String:
+    return _strip_ext(_base_name(input_path))
+
+func _digit_char(d: i32) -> String:
+    return __thg_str_substr("0123456789", d, 1)
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + _digit_char(r)
+        n = q
+    let out = ""
+    let i2 = strlen(rev) - 1
+    while (i2 >= 0):
+        out = out + _char_at(rev, i2)
+        i2 = i2 - 1
+    return sign + out
+
+func _is_digit(ch: String) -> i32:
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _parse_i32_default(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let i = 0
+    let sign = 1
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        i = 1
+    let value = 0
+    let digits = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (_is_digit(ch) == 1):
+            value = (value * 10) + _find_char("0123456789", ch)
+            digits = digits + 1
+            i = i + 1
+        else:
+            i = strlen(s)
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
+func _append_line(listing: String, line: String) -> String:
+    if (strlen(line) == 0):
+        return listing
+    if (strlen(listing) == 0):
+        return line
+    return listing + _nl() + line
+
+func _json_escape(text: String) -> String:
+    let out = _replace_all(text, "\\", "\\\\")
+    out = _replace_all(out, _dq(), "\\" + _dq())
+    out = _replace_all(out, _nl(), "\\n")
+    return out
+
+func _json_quote(text: String) -> String:
+    return _dq() + _json_escape(text) + _dq()
+
+func _json_bool(v: i32) -> String:
+    if (v == 0):
+        return "false"
+    return "true"
+

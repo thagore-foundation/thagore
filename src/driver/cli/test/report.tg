@@ -1,0 +1,169 @@
+import "src/driver/cli/common/core.tg"
+
+func _count_lines_nonempty(text: String) -> i32:
+    let total = _line_count(text)
+    let count = 0
+    let i = 0
+    while (i < total):
+        if (strlen(_trim(_line_at(text, i))) > 0):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _lines_to_set(lines: String) -> String:
+    let out = ";"
+    let total = _line_count(lines)
+    let i = 0
+    while (i < total):
+        let item = _trim(_line_at(lines, i))
+        if (strlen(item) > 0):
+            out = _set_add_unique(out, item)
+        i = i + 1
+    return out
+
+func _test_event_schema() -> String:
+    return "thagore.test.v1"
+
+func _test_mode_name(no_run: i32, list_only: i32) -> String:
+    if (list_only == 1):
+        return "list"
+    if (no_run == 1):
+        return "no-run"
+    return "run"
+
+func _test_report_path(run_id: String) -> String:
+    return ".thagore/test/reports/" + _sanitize_test_id(run_id) + ".json"
+
+func _write_test_report(run_id: String, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String, total: i32, built: i32, build_failed: i32, run_passed: i32, run_failed: i32, discovered_set: String, build_failed_set: String, run_failed_set: String, started_ms: i32, duration_ms: i32) -> String:
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/test")
+    fs.mkdir(".thagore/test/reports")
+    let mode = _test_mode_name(no_run, list_only)
+    let failed_total = build_failed + run_failed
+    let status = "ok"
+    if (failed_total > 0):
+        status = "failed"
+    let exit_code = 0
+    if (failed_total > 0):
+        exit_code = 1
+    let ended_ms = started_ms + duration_ms
+    let report_path = _test_report_path(run_id)
+    let summary = "{"
+    summary = summary + _json_quote("total") + ":" + _to_string_i32(total) + ","
+    summary = summary + _json_quote("built") + ":" + _to_string_i32(built) + ","
+    summary = summary + _json_quote("build_failed") + ":" + _to_string_i32(build_failed) + ","
+    summary = summary + _json_quote("run_passed") + ":" + _to_string_i32(run_passed) + ","
+    summary = summary + _json_quote("run_failed") + ":" + _to_string_i32(run_failed) + ","
+    summary = summary + _json_quote("exit_code") + ":" + _to_string_i32(exit_code)
+    summary = summary + "}"
+    let report = "{"
+    report = report + _json_quote("schema_version") + ":1,"
+    report = report + _json_quote("report_schema") + ":" + _json_quote("thagore.test.report.v1") + ","
+    report = report + _json_quote("event_schema") + ":" + _json_quote(_test_event_schema()) + ","
+    report = report + _json_quote("run_id") + ":" + _json_quote(run_id) + ","
+    report = report + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    report = report + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    report = report + _json_quote("status") + ":" + _json_quote(status) + ","
+    report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    report = report + _json_quote("list_only") + ":" + _json_bool(list_only) + ","
+    report = report + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    report = report + _json_quote("fail_fast") + ":" + _json_bool(fail_fast) + ","
+    report = report + _json_quote("filter") + ":" + _json_quote(filter) + ","
+    report = report + _json_quote("started_ms") + ":" + _to_string_i32(started_ms) + ","
+    report = report + _json_quote("ended_ms") + ":" + _to_string_i32(ended_ms) + ","
+    report = report + _json_quote("duration_ms") + ":" + _to_string_i32(duration_ms) + ","
+    report = report + _json_quote("discovered_tests_set") + ":" + _json_quote(discovered_set) + ","
+    report = report + _json_quote("discovered_tests") + ":" + _set_to_json_array(discovered_set) + ","
+    report = report + _json_quote("build_failed_tests_set") + ":" + _json_quote(build_failed_set) + ","
+    report = report + _json_quote("build_failed_tests") + ":" + _set_to_json_array(build_failed_set) + ","
+    report = report + _json_quote("run_failed_tests_set") + ":" + _json_quote(run_failed_set) + ","
+    report = report + _json_quote("run_failed_tests") + ":" + _set_to_json_array(run_failed_set) + ","
+    report = report + _json_quote("summary") + ":" + summary
+    report = report + "}" + _nl()
+    if (fs.write_text(report_path, report) == 0):
+        return ""
+    fs.write_text(".thagore/test/last_report.path", report_path)
+    return report_path
+
+func _build_test_begin_json(total: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String, run_id: String) -> String:
+    let mode = "run"
+    if (no_run == 1):
+        mode = "no-run"
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote(_test_event_schema()) + ","
+    json = json + _json_quote("run_id") + ":" + _json_quote(run_id) + ","
+    json = json + _json_quote("type") + ":" + _json_quote("suite") + ","
+    json = json + _json_quote("event") + ":" + _json_quote("started") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("list_only") + ":" + _json_bool(list_only) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("fail_fast") + ":" + _json_bool(fail_fast) + ","
+    json = json + _json_quote("filter") + ":" + _json_quote(filter) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(total)
+    json = json + "}"
+    return json
+
+func _emit_test_begin_json(total: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String, run_id: String) -> void:
+    print(_build_test_begin_json(total, no_run, list_only, workspace, fail_fast, filter, run_id))
+
+func _build_test_case_json(name: String, stage: String, status: String, code: i32, has_code: i32, log_path: String, has_log: i32, run_id: String) -> String:
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote(_test_event_schema()) + ","
+    json = json + _json_quote("run_id") + ":" + _json_quote(run_id) + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    json = json + _json_quote("type") + ":" + _json_quote("test") + ","
+    json = json + _json_quote("name") + ":" + _json_quote(name) + ","
+    json = json + _json_quote("stage") + ":" + _json_quote(stage) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status)
+    if (has_code == 1):
+        json = json + "," + _json_quote("code") + ":" + _to_string_i32(code)
+    if ((has_log == 1) and (strlen(log_path) > 0)):
+        json = json + "," + _json_quote("log_path") + ":" + _json_quote(log_path)
+    json = json + "}"
+    return json
+
+func _emit_test_case_json(name: String, stage: String, status: String, code: i32, has_code: i32, log_path: String, has_log: i32, run_id: String) -> void:
+    print(_build_test_case_json(name, stage, status, code, has_code, log_path, has_log, run_id))
+
+func _build_test_summary_json(total: i32, built: i32, build_failed: i32, run_passed: i32, run_failed: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String, run_id: String, duration_ms: i32, report_path: String) -> String:
+    let failed_total = build_failed + run_failed
+    let mode = "run"
+    let status = "ok"
+    mode = _test_mode_name(no_run, list_only)
+    if (failed_total > 0):
+        status = "failed"
+    let exit_code = 0
+    if (failed_total > 0):
+        exit_code = 1
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":1,"
+    json = json + _json_quote("event_schema") + ":" + _json_quote(_test_event_schema()) + ","
+    json = json + _json_quote("run_id") + ":" + _json_quote(run_id) + ","
+    json = json + _json_quote("type") + ":" + _json_quote("suite") + ","
+    json = json + _json_quote("event") + ":" + _json_quote("completed") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("list_only") + ":" + _json_bool(list_only) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("fail_fast") + ":" + _json_bool(fail_fast) + ","
+    json = json + _json_quote("filter") + ":" + _json_quote(filter) + ","
+    json = json + _json_quote("duration_ms") + ":" + _to_string_i32(duration_ms) + ","
+    json = json + _json_quote("report_path") + ":" + _json_quote(report_path) + ","
+    json = json + _json_quote("total") + ":" + _to_string_i32(total) + ","
+    json = json + _json_quote("built") + ":" + _to_string_i32(built) + ","
+    json = json + _json_quote("build_failed") + ":" + _to_string_i32(build_failed) + ","
+    json = json + _json_quote("run_passed") + ":" + _to_string_i32(run_passed) + ","
+    json = json + _json_quote("run_failed") + ":" + _to_string_i32(run_failed) + ","
+    json = json + _json_quote("exit_code") + ":" + _to_string_i32(exit_code)
+    json = json + "}"
+    return json
+
+func _emit_test_summary_json(total: i32, built: i32, build_failed: i32, run_passed: i32, run_failed: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String, run_id: String, duration_ms: i32, report_path: String) -> void:
+    print(_build_test_summary_json(total, built, build_failed, run_passed, run_failed, no_run, list_only, workspace, fail_fast, filter, run_id, duration_ms, report_path))
+

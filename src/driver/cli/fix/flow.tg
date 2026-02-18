@@ -1,0 +1,375 @@
+import "src/driver/cli/common/core.tg"
+
+func _is_protected_autofix_path(path: String) -> i32:
+    let p = _normalize_path(path)
+    if (_starts_with(p, ".github/") == 1):
+        return 1
+    if (_starts_with(p, ".thagore/") == 1):
+        return 1
+    return 0
+
+func _extract_import_path(line: String) -> String:
+    let s = _trim(line)
+    if (_starts_with(s, "import ") == 0):
+        return ""
+    let q1 = _find_char(s, _dq())
+    if (q1 < 0):
+        return ""
+    let j = q1 + 1
+    let n = strlen(s)
+    while (j < n):
+        if (_char_at(s, j) == _dq()):
+            return __thg_str_substr(s, q1 + 1, j - q1 - 1)
+        j = j + 1
+    return ""
+
+func _resolve_import_path(entry_path: String, import_path: String) -> String:
+    let imp = _normalize_path(import_path)
+    if (_starts_with(imp, "/") == 1):
+        return imp
+    if (_contains(imp, ":") == 1):
+        return imp
+    if ((_starts_with(imp, "lib/") == 1) or (_starts_with(imp, "src/") == 1) or (_starts_with(imp, "tests/") == 1) or (_starts_with(imp, "examples/") == 1)):
+        return imp
+    let base = _dir_name(entry_path)
+    if (base == "."):
+        return imp
+    return _normalize_path(base + "/" + imp)
+
+func _path_excluded(path: String, exclude_set: String) -> i32:
+    let p = _normalize_path(path)
+    let n = strlen(exclude_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(exclude_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let t = _normalize_path(token)
+                if ((p == t) or (_starts_with(p, t + "/") == 1)):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let t2 = _normalize_path(token)
+        if ((p == t2) or (_starts_with(p, t2 + "/") == 1)):
+            return 1
+    return 0
+
+func _csv_to_set(csv: String) -> String:
+    let out = ";"
+    let i = 0
+    let n = strlen(csv)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(csv, i)
+        if (ch == ","):
+            let t = _trim(token)
+            if (strlen(t) > 0):
+                out = _set_add_unique(out, _normalize_path(t))
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let t2 = _trim(token)
+    if (strlen(t2) > 0):
+        out = _set_add_unique(out, _normalize_path(t2))
+    return out
+
+func _collect_direct_autofix_targets(entry_path: String, exclude_set: String) -> String:
+    let entry = _normalize_path(entry_path)
+    let targets = ";" + entry + ";"
+    if (fs.exists(entry_path) == 0):
+        return targets
+    let source = fs.read_text(entry_path)
+    let total = _line_count(source)
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let imp = _extract_import_path(line)
+        if ((strlen(imp) > 0) and (_ends_with(imp, ".tg") == 1) and (_starts_with(imp, "lib/") == 0)):
+            let resolved = _resolve_import_path(entry_path, imp)
+            if ((resolved != entry) and (fs.exists(resolved) == 1) and (_is_protected_autofix_path(resolved) == 0) and (_path_excluded(resolved, exclude_set) == 0)):
+                targets = _set_add_unique(targets, resolved)
+        i = i + 1
+    return targets
+
+func _collect_autofix_targets(entry_path: String, recursive_workspace: i32, exclude_set: String) -> String:
+    let seen = ";"
+    let queue = ";" + _normalize_path(entry_path) + ";"
+    let progress = 1
+    while (progress == 1):
+        progress = 0
+        let i = 0
+        let n = strlen(queue)
+        let token = ""
+        while (i < n):
+            let ch = _char_at(queue, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (_set_contains(seen, token) == 0):
+                        seen = _set_add_unique(seen, token)
+                        progress = 1
+                        if (recursive_workspace == 1):
+                            queue = _set_union(queue, _collect_direct_autofix_targets(token, exclude_set))
+                        else:
+                            if (token == _normalize_path(entry_path)):
+                                queue = _set_union(queue, _collect_direct_autofix_targets(token, exclude_set))
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+    if (_path_excluded(entry_path, exclude_set) == 1):
+        return ";"
+    return seen
+
+func _error_severity_rank(code: i32) -> i32:
+    if (code == 0):
+        return 0
+    if (code == 21):
+        return 1
+    if (code == 2):
+        return 2
+    if (code == 1):
+        return 3
+    if (code == 11):
+        return 4
+    return 5
+
+func _rollback_sessions(session_set: String) -> void:
+    let n = strlen(session_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(session_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let rc = autofix.run_fix_rollback(token)
+                if (rc != 0):
+                    print("[autofix] rollback warning: failed session=" + token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let rc2 = autofix.run_fix_rollback(token)
+        if (rc2 != 0):
+            print("[autofix] rollback warning: failed session=" + token)
+
+func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32, max_files_touched: i32, recursive_workspace: i32, exclude_set: String) -> AutofixApplyBatchResult:
+    let targets = _collect_autofix_targets(entry_path, recursive_workspace, exclude_set)
+    let changed_total = 0
+    let files_touched = 0
+    let sessions = ";"
+    let n = strlen(targets)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(targets, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (files_touched >= max_files_touched):
+                    print("[autofix] conflict: max files touched exceeded.")
+                    return _batch_result(changed_total, files_touched, sessions, 1)
+                let changed = autofix.apply_for_build(token, mode, lock_path, lock_strict, lock_locked)
+                if (changed < 0):
+                    return _batch_result(changed_total, files_touched, sessions, 1)
+                if (changed > 0):
+                    changed_total = changed_total + changed
+                    files_touched = files_touched + 1
+                    let sid = autofix.latest_session_id()
+                    if (strlen(sid) > 0):
+                        sessions = _set_add_unique(sessions, sid)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (files_touched >= max_files_touched):
+            print("[autofix] conflict: max files touched exceeded.")
+            return _batch_result(changed_total, files_touched, sessions, 1)
+        let changed_last = autofix.apply_for_build(token, mode, lock_path, lock_strict, lock_locked)
+        if (changed_last < 0):
+            return _batch_result(changed_total, files_touched, sessions, 1)
+        if (changed_last > 0):
+            changed_total = changed_total + changed_last
+            files_touched = files_touched + 1
+            let sid_last = autofix.latest_session_id()
+            if (strlen(sid_last) > 0):
+                sessions = _set_add_unique(sessions, sid_last)
+    return _batch_result(changed_total, files_touched, sessions, 0)
+
+func _run_fix_multi(sub: String, entry_path: String, mode: String, as_json: i32, lock_path: String, lock_strict: i32, lock_locked: i32, workspace: i32, exclude_set: String, max_files: i32, max_iterations: i32, message_json: i32) -> i32:
+    let targets = _collect_autofix_targets(entry_path, workspace, exclude_set)
+    let discovered_total = _set_count(targets)
+    if (discovered_total <= 0):
+        print("ERROR: no eligible .tg files found for fix.")
+        return 1
+    if (message_json == 1):
+        _emit_fix_begin_json(sub, mode, workspace, discovered_total, lock_path, lock_locked)
+    if (lock_locked == 1):
+        if (_validate_locked_workspace_targets(lock_path, targets) == 0):
+            if (message_json == 1):
+                _emit_fix_summary_json(sub, discovered_total, 0, 0, 0, 0, 0, 0, 1, "", lock_path)
+            return 1
+    if (max_files < 1):
+        max_files = 1
+    if (max_iterations < 1):
+        max_iterations = 1
+    if (max_iterations > 12):
+        max_iterations = 12
+    if (sub == "apply"):
+        let failed = 0
+        let sessions_changed = ";"
+        let files_touched_set = ";"
+        let files_touched = 0
+        let total_fixes_applied = 0
+        let total_fixes_skipped = 0
+        let total_files_scanned = 0
+        let pass_idx = 0
+        let passes_executed = 0
+        let attempts_total = 0
+        let bundle_id = ""
+        while (pass_idx < max_iterations):
+            let pass_fixes_applied = 0
+            let pass_fixes_skipped = 0
+            let pass_files_changed = 0
+            let pass_files_scanned = 0
+            let n_apply = strlen(targets)
+            let i_apply = 0
+            let token_apply = ""
+            while (i_apply < n_apply):
+                let ch_apply = _char_at(targets, i_apply)
+                if (ch_apply == ";"):
+                    if (strlen(token_apply) > 0):
+                        attempts_total = attempts_total + 1
+                        let token_norm = _normalize_path(token_apply)
+                        if ((files_touched >= max_files) and (_set_contains(files_touched_set, token_norm) == 0)):
+                            print("[autofix] conflict: max files touched exceeded.")
+                            failed = 1
+                            if (message_json == 1):
+                                _emit_fix_target_json(token_norm, sub, 1, "", 0, 0, 0, 0, lock_path)
+                            i_apply = n_apply
+                        else:
+                            let rc_apply = autofix.run_fix_apply(token_norm, mode, lock_path, lock_strict, lock_locked)
+                            let sid = ""
+                            let scanned = 0
+                            let changed = 0
+                            let applied = 0
+                            let skipped = 0
+                            if (rc_apply != 0):
+                                failed = 1
+                                if (message_json == 1):
+                                    _emit_fix_target_json(token_norm, sub, rc_apply, "", 0, 0, 0, 0, lock_path)
+                                i_apply = n_apply
+                            else:
+                                sid = autofix.latest_session_id()
+                                scanned = _session_files_scanned(sid)
+                                changed = _session_files_changed(sid)
+                                applied = _session_fixes_applied(sid)
+                                skipped = _session_fixes_skipped(sid)
+                                pass_files_scanned = pass_files_scanned + scanned
+                                pass_files_changed = pass_files_changed + changed
+                                pass_fixes_applied = pass_fixes_applied + applied
+                                pass_fixes_skipped = pass_fixes_skipped + skipped
+                                total_files_scanned = total_files_scanned + scanned
+                                total_fixes_applied = total_fixes_applied + applied
+                                total_fixes_skipped = total_fixes_skipped + skipped
+                                if (changed > 0):
+                                    let changed_entry = _session_entry(sid)
+                                    if (strlen(changed_entry) == 0):
+                                        changed_entry = token_norm
+                                    if (_set_contains(files_touched_set, changed_entry) == 0):
+                                        files_touched_set = _set_add_unique(files_touched_set, changed_entry)
+                                        files_touched = files_touched + 1
+                                    sessions_changed = _set_add_unique(sessions_changed, sid)
+                                if (message_json == 1):
+                                    _emit_fix_target_json(token_norm, sub, 0, sid, scanned, changed, applied, skipped, lock_path)
+                        token_apply = ""
+                else:
+                    token_apply = token_apply + ch_apply
+                i_apply = i_apply + 1
+            passes_executed = passes_executed + 1
+            if (message_json == 1):
+                _emit_fix_iteration_json(pass_idx + 1, pass_files_scanned, pass_files_changed, pass_fixes_applied, pass_fixes_skipped)
+            else:
+                print("[autofix] workspace iteration=" + _to_string_i32(pass_idx + 1) + " files_scanned=" + _to_string_i32(pass_files_scanned) + " files_changed=" + _to_string_i32(pass_files_changed) + " fixes_applied=" + _to_string_i32(pass_fixes_applied) + " fixes_skipped=" + _to_string_i32(pass_fixes_skipped))
+            if (failed == 1):
+                pass_idx = max_iterations
+            else:
+                if (pass_fixes_applied <= 0):
+                    pass_idx = max_iterations
+                else:
+                    pass_idx = pass_idx + 1
+        if (message_json == 0):
+            print("[autofix] workspace summary passes=" + _to_string_i32(passes_executed) + " files_scanned=" + _to_string_i32(total_files_scanned) + " files_changed=" + _to_string_i32(files_touched) + " fixes_applied=" + _to_string_i32(total_fixes_applied) + " fixes_skipped=" + _to_string_i32(total_fixes_skipped))
+        if (failed == 0):
+            bundle_id = _write_bundle_session(entry_path, mode, lock_path, sessions_changed, passes_executed, total_files_scanned, files_touched, total_fixes_applied, total_fixes_skipped)
+            if (strlen(bundle_id) > 0):
+                print("rollback: thagore fix rollback " + bundle_id)
+        if (message_json == 1):
+            let exit_code = 0
+            if (failed != 0):
+                exit_code = 1
+            _emit_fix_summary_json(sub, discovered_total, attempts_total, passes_executed, total_files_scanned, files_touched, total_fixes_applied, total_fixes_skipped, exit_code, bundle_id, lock_path)
+        if (failed != 0):
+            return 1
+        return 0
+    let failed = 0
+    let attempts = 0
+    let total_files_scanned = 0
+    let total_files_changed = 0
+    let total_fixes_applied = 0
+    let total_fixes_skipped = 0
+    let n = strlen(targets)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(targets, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                attempts = attempts + 1
+                let target = token
+                let rc = 1
+                if (sub == "doctor"):
+                    rc = autofix.run_fix_doctor(target, mode, lock_path, lock_strict, lock_locked)
+                else:
+                    if (sub == "dry-run"):
+                        rc = autofix.run_fix_dry_run(target, mode, lock_path, lock_strict, lock_locked)
+                    else:
+                        if (sub == "explain"):
+                            rc = autofix.run_fix_explain(target, mode, as_json, lock_path, lock_strict, lock_locked)
+                let sid = ""
+                let scanned = 0
+                let changed = 0
+                let applied = 0
+                let skipped = 0
+                if (rc == 0):
+                    sid = autofix.latest_session_id()
+                    scanned = _session_files_scanned(sid)
+                    changed = _session_files_changed(sid)
+                    applied = _session_fixes_applied(sid)
+                    skipped = _session_fixes_skipped(sid)
+                    total_files_scanned = total_files_scanned + scanned
+                    total_files_changed = total_files_changed + changed
+                    total_fixes_applied = total_fixes_applied + applied
+                    total_fixes_skipped = total_fixes_skipped + skipped
+                if (message_json == 1):
+                    _emit_fix_target_json(target, sub, rc, sid, scanned, changed, applied, skipped, lock_path)
+                if (rc != 0):
+                    failed = 1
+                    if ((sub == "dry-run") or (sub == "doctor")):
+                        i = n
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (message_json == 1):
+        let exit_code = 0
+        if (failed != 0):
+            exit_code = 1
+        _emit_fix_summary_json(sub, discovered_total, attempts, 1, total_files_scanned, total_files_changed, total_fixes_applied, total_fixes_skipped, exit_code, "", lock_path)
+    return failed
+

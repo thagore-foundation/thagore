@@ -1,0 +1,111 @@
+import "src/driver/autofix/common/core.tg"
+
+func apply_for_build(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    return _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 1, lock_path, lock_strict, lock_locked)
+
+func run_fix_dry_run(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict, lock_locked)
+    if (rc < 0):
+        return 1
+    return 0
+
+func run_fix_apply(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 1, 0, 0, 0, 0, lock_path, lock_strict, lock_locked)
+    if (rc < 0):
+        return 1
+    return 0
+
+func run_fix_explain(entry_path: String, mode: String, as_json: i32, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    let rc = _run_fix_engine(entry_path, mode, 0, 0, 1, as_json, 0, lock_path, lock_strict, lock_locked)
+    if (rc < 0):
+        return 1
+    return 0
+
+func run_fix_doctor(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
+    print("[autofix][doctor] scanning " + entry_path)
+    let found = _run_fix_engine(entry_path, mode, 0, 1, 0, 0, 0, lock_path, lock_strict, lock_locked)
+    if (found < 0):
+        return 1
+    if (found <= 0):
+        print("[autofix][doctor] no safe fixes suggested.")
+    else:
+        print("[autofix][doctor] suggested fixes: " + _to_string_i32(found))
+    return 0
+
+func run_fix_rollback(session_id: String) -> i32:
+    let session_path = ".thagore/fix/sessions/" + session_id + ".json"
+    if (fs.exists(session_path) == 0):
+        print("[autofix] rollback error: session not found: " + session_id)
+        print("[autofix] files_restored=0")
+        print("[autofix] files_failed=1")
+        print("[autofix] restore_error=session-not-found")
+        return 1
+    let session_text = fs.read_text(session_path)
+    let session_type = _json_get_string(session_text, "session_type")
+    if (session_type == "bundle"):
+        let members = _json_get_string(session_text, "member_sessions_set")
+        let restored = 0
+        let failed = 0
+        let token = ""
+        let i = 0
+        let n = strlen(members)
+        while (i < n):
+            let ch = _char_at(members, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (token != session_id):
+                        let rc = run_fix_rollback(token)
+                        if (rc == 0):
+                            restored = restored + 1
+                        else:
+                            failed = failed + 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (strlen(token) > 0):
+            if (token != session_id):
+                let rc2 = run_fix_rollback(token)
+                if (rc2 == 0):
+                    restored = restored + 1
+                else:
+                    failed = failed + 1
+        print("[autofix] rollback bundle=" + session_id)
+        print("[autofix] sessions_restored=" + _to_string_i32(restored))
+        print("[autofix] sessions_failed=" + _to_string_i32(failed))
+        if (failed > 0):
+            return 1
+        return 0
+    let entry = _json_get_string(session_text, "entry")
+    let backup = _json_get_string(session_text, "backup_file")
+    if (strlen(entry) == 0):
+        print("[autofix] rollback error: missing entry in session.")
+        print("[autofix] files_restored=0")
+        print("[autofix] files_failed=1")
+        print("[autofix] restore_error=missing-entry")
+        return 1
+    if (strlen(backup) == 0):
+        print("[autofix] rollback error: no backup for this session.")
+        print("[autofix] files_restored=0")
+        print("[autofix] files_failed=1")
+        print("[autofix] restore_error=missing-backup")
+        return 1
+    if (fs.exists(backup) == 0):
+        print("[autofix] rollback error: backup not found: " + backup)
+        print("[autofix] files_restored=0")
+        print("[autofix] files_failed=1")
+        print("[autofix] restore_error=backup-not-found")
+        return 1
+    let old_source = fs.read_text(backup)
+    if (fs.write_text(entry, old_source) == 0):
+        print("[autofix] rollback error: failed to restore file.")
+        print("[autofix] files_restored=0")
+        print("[autofix] files_failed=1")
+        print("[autofix] restore_failed_file=" + entry)
+        print("[autofix] restore_error=write-failed")
+        return 1
+    print("[autofix] rollback session=" + session_id)
+    print("[autofix] files_restored=1")
+    print("[autofix] files_failed=0")
+    print("[autofix] restored: " + entry)
+    return 0

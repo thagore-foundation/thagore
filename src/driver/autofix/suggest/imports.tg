@@ -1,0 +1,183 @@
+import "src/driver/autofix/common/core.tg"
+
+func _is_header_candidate(trimmed_line: String) -> i32:
+    if (strlen(trimmed_line) == 0):
+        return 0
+    if (_starts_with(trimmed_line, "//") == 1):
+        return 0
+    if (_starts_with(trimmed_line, "/*") == 1):
+        return 0
+    if (_ends_with(trimmed_line, ":") == 1):
+        return 0
+    if (_starts_with(trimmed_line, "pub ") == 1):
+        let rest = _trim(__thg_str_substr(trimmed_line, 4, strlen(trimmed_line) - 4))
+        return _is_header_candidate(rest)
+    if (_starts_with(trimmed_line, "if ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "elif ") == 1):
+        return 1
+    if ((trimmed_line == "else") or (_starts_with(trimmed_line, "else ") == 1)):
+        return 1
+    if (_starts_with(trimmed_line, "for ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "while ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "func ") == 1):
+        if (_contains(trimmed_line, "=") == 1):
+            return 0
+        return 1
+    if (_starts_with(trimmed_line, "comptime func ") == 1):
+        if (_contains(trimmed_line, "=") == 1):
+            return 0
+        return 1
+    if (_starts_with(trimmed_line, "struct ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "enum ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "trait ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "mixin ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "class ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "impl ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "match ") == 1):
+        return 1
+    if (_starts_with(trimmed_line, "case ") == 1):
+        return 1
+    if (trimmed_line == "default"):
+        return 1
+    if ((trimmed_line == "try") or (_starts_with(trimmed_line, "try ") == 1)):
+        return 1
+    if (_starts_with(trimmed_line, "catch ") == 1):
+        return 1
+    if (trimmed_line == "finally"):
+        return 1
+    if ((trimmed_line == "unsafe") or (_starts_with(trimmed_line, "unsafe ") == 1)):
+        return 1
+    if (_starts_with(trimmed_line, "intent ") == 1):
+        return 1
+    return 0
+
+func _insert_line(source: String, at_line: i32, line_to_insert: String) -> String:
+    let total = _line_count(source)
+    let keep_nl = _ends_with_newline(source)
+    let out = ""
+    let i = 0
+    while (i < total):
+        if (i == at_line):
+            out = out + line_to_insert
+            if ((i < total) or (keep_nl == 1)):
+                out = out + _nl()
+        let line = _line_at(source, i)
+        out = out + line
+        if (i + 1 < total):
+            out = out + _nl()
+        else:
+            if (keep_nl == 1):
+                out = out + _nl()
+        i = i + 1
+    if ((total == 0) and (at_line == 0)):
+        return line_to_insert + _nl()
+    if ((at_line >= total) and (total > 0)):
+        if (keep_nl == 0):
+            return out + _nl() + line_to_insert
+        return out + line_to_insert + _nl()
+    return out
+
+func _import_insert_at(source: String) -> i32:
+    let total = _line_count(source)
+    let i = 0
+    let at = 0
+    while (i < total):
+        let t = _trim(_line_at(source, i))
+        if (_starts_with(t, "import ") == 1):
+            at = i + 1
+            i = i + 1
+        else:
+            i = total
+    return at
+
+func _import_fs_line() -> String:
+    return "import " + _dq() + "lib/fs.tg" + _dq() + " as fs"
+
+func _import_env_line() -> String:
+    return "import " + _dq() + "lib/env.tg" + _dq() + " as env"
+
+func _import_process_line() -> String:
+    return "import " + _dq() + "lib/process.tg" + _dq() + " as process"
+
+func _import_time_line() -> String:
+    return "import " + _dq() + "lib/time.tg" + _dq() + " as time"
+
+func _import_io_line() -> String:
+    return "import " + _dq() + "lib/io.tg" + _dq() + " as io"
+
+func _sanitize_path(text: String) -> String:
+    let out = _replace_all(text, "\\", "_")
+    out = _replace_all(out, "/", "_")
+    out = _replace_all(out, ":", "_")
+    out = _replace_all(out, " ", "_")
+    return out
+
+func _default_suggestions_path(entry_path: String) -> String:
+    return ".thagore/fix/suggestions/" + _sanitize_path(entry_path) + ".jsonl"
+
+func _builtin_suggestions_path(entry_path: String) -> String:
+    return ".thagore/fix/suggestions/" + _sanitize_path(entry_path) + ".builtin.jsonl"
+
+func _compiler_last_fix_json_path() -> String:
+    return ".thagore/fix/suggestions/.last_compiler_fix.json"
+
+func _compiler_last_stats_json_path() -> String:
+    return ".thagore/fix/suggestions/.last_compiler_stats.json"
+
+func _parse_nonneg_i32(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return -1
+    let value = 0
+    let i = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        let dv = _find_char("0123456789", ch)
+        if (dv < 0):
+            return -1
+        value = (value * 10) + dv
+        i = i + 1
+    return value
+
+func _ranges_overlap_any(start_b: i32, end_b: i32, ranges_set: String) -> i32:
+    let token = ""
+    let i = 0
+    let n = strlen(ranges_set)
+    while (i < n):
+        let ch = _char_at(ranges_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let sep = _find(token, ":")
+                if (sep > 0):
+                    let s_txt = __thg_str_substr(token, 0, sep)
+                    let e_txt = __thg_str_substr(token, sep + 1, strlen(token) - sep - 1)
+                    let s = _parse_nonneg_i32(s_txt)
+                    let e = _parse_nonneg_i32(e_txt)
+                    if ((s >= 0) and (e >= s)):
+                        if ((start_b < e) and (s < end_b)):
+                            return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let sep2 = _find(token, ":")
+        if (sep2 > 0):
+            let s_txt2 = __thg_str_substr(token, 0, sep2)
+            let e_txt2 = __thg_str_substr(token, sep2 + 1, strlen(token) - sep2 - 1)
+            let s2 = _parse_nonneg_i32(s_txt2)
+            let e2 = _parse_nonneg_i32(e_txt2)
+            if ((s2 >= 0) and (e2 >= s2)):
+                if ((start_b < e2) and (s2 < end_b)):
+                    return 1
+    return 0
+

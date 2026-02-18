@@ -1,0 +1,167 @@
+import "src/driver/autofix/common/core.tg"
+
+func _read_suggestions_payload(entry_path: String) -> String:
+    let out = ""
+    let by_entry = _default_suggestions_path(entry_path)
+    if (fs.exists(by_entry) == 1):
+        out = fs.read_text(by_entry)
+    let builtin = _builtin_suggestions_path(entry_path)
+    if (fs.exists(builtin) == 1):
+        let builtin_text = fs.read_text(builtin)
+        if (strlen(builtin_text) > 0):
+            if (strlen(out) > 0):
+                if (_ends_with(out, _nl()) == 0):
+                    out = out + _nl()
+            out = out + builtin_text
+    return out
+
+func _ident_boundary_at(text: String, index: i32) -> i32:
+    if (index < 0):
+        return 1
+    if (index >= strlen(text)):
+        return 1
+    if (_is_ident_char(_char_at(text, index)) == 1):
+        return 0
+    return 1
+
+func _suggestion_json_line(file: String, start_byte: i32, end_byte: i32, replacement: String, applicability: String, code: String) -> String:
+    let line = "{"
+    line = line + _json_quote("file") + ":" + _json_quote(file) + ","
+    line = line + _json_quote("start_byte") + ":" + _to_string_i32(start_byte) + ","
+    line = line + _json_quote("end_byte") + ":" + _to_string_i32(end_byte) + ","
+    line = line + _json_quote("replacement") + ":" + _json_quote(replacement) + ","
+    line = line + _json_quote("applicability") + ":" + _json_quote(applicability) + ","
+    line = line + _json_quote("code") + ":" + _json_quote(code)
+    line = line + "}"
+    return line
+
+func _suggestion_json_line_expected(file: String, start_byte: i32, end_byte: i32, replacement: String, applicability: String, code: String, expected_old: String) -> String:
+    let line = "{"
+    line = line + _json_quote("file") + ":" + _json_quote(file) + ","
+    line = line + _json_quote("start_byte") + ":" + _to_string_i32(start_byte) + ","
+    line = line + _json_quote("end_byte") + ":" + _to_string_i32(end_byte) + ","
+    line = line + _json_quote("replacement") + ":" + _json_quote(replacement) + ","
+    line = line + _json_quote("applicability") + ":" + _json_quote(applicability) + ","
+    line = line + _json_quote("code") + ":" + _json_quote(code) + ","
+    line = line + _json_quote("expected_old") + ":" + _json_quote(expected_old)
+    line = line + "}"
+    return line
+
+func _merge_suggestion_lines(left: String, right: String) -> String:
+    let out = left
+    if (strlen(right) > 0):
+        if (strlen(out) == 0):
+            out = right
+        else:
+            out = out + _nl() + right
+    return out
+
+func _collect_token_suggestions(source: String, file: String, token: String, replacement: String, applicability: String, code: String) -> String:
+    if (strlen(token) == 0):
+        return ""
+    let out = ""
+    let n = strlen(source)
+    let k = strlen(token)
+    let i = 0
+    while ((i + k) <= n):
+        if (__thg_str_substr(source, i, k) == token):
+            if ((_ident_boundary_at(source, i - 1) == 1) and (_ident_boundary_at(source, i + k) == 1)):
+                let line = _suggestion_json_line_expected(file, i, i + k, replacement, applicability, code, token)
+                if (strlen(out) == 0):
+                    out = line
+                else:
+                    out = out + _nl() + line
+                i = i + k
+            else:
+                i = i + 1
+        else:
+            i = i + 1
+    return out
+
+func _line_start_offset(source: String, target_line: i32) -> i32:
+    if (target_line <= 0):
+        return 0
+    let total = _line_count(source)
+    if (target_line >= total):
+        return strlen(source)
+    let keep_nl = _ends_with_newline(source)
+    let offset = 0
+    let i = 0
+    while (i < target_line):
+        let line = _line_at(source, i)
+        offset = offset + strlen(line)
+        if ((i + 1) < total):
+            offset = offset + 1
+        else:
+            if (keep_nl == 1):
+                offset = offset + 1
+        i = i + 1
+    return offset
+
+func _collect_structural_suggestions(source: String, file: String) -> String:
+    let out = ""
+    let total = _line_count(source)
+    let i = 0
+    while (i < total):
+        let line = _line_at(source, i)
+        let trimmed = _trim(line)
+        let line_start = _line_start_offset(source, i)
+        let indent = _leading_spaces(line)
+        let body = __thg_str_substr(line, indent, strlen(line) - indent)
+
+        if (_starts_with(body, "pub pub ") == 1):
+            let dup_line = _suggestion_json_line_expected(file, line_start + indent + 4, line_start + indent + 8, "", "MachineApplicable", "PARSE_DUPLICATE_MODIFIER", "pub ")
+            out = _merge_suggestion_lines(out, dup_line)
+
+        let vis_prefix = ""
+        let rest = body
+        let deprecated_fn_header = 0
+        while (_starts_with(rest, "pub ") == 1):
+            vis_prefix = vis_prefix + "pub "
+            rest = __thg_str_substr(rest, 4, strlen(rest) - 4)
+        let fn_start = line_start + indent + strlen(vis_prefix)
+        if (_starts_with(rest, "fn ") == 1):
+            deprecated_fn_header = 1
+            let dep_line = _suggestion_json_line_expected(file, fn_start, fn_start + 3, "func ", "MachineApplicable", "PARSE_DEPRECATED_FN_KEYWORD", "fn ")
+            out = _merge_suggestion_lines(out, dep_line)
+        else:
+            if (_starts_with(rest, "comptime fn ") == 1):
+                deprecated_fn_header = 1
+                let dep_line2 = _suggestion_json_line_expected(file, fn_start + 9, fn_start + 12, "func ", "MachineApplicable", "PARSE_DEPRECATED_FN_KEYWORD", "fn ")
+                out = _merge_suggestion_lines(out, dep_line2)
+
+        let colon_candidate = _is_header_candidate(trimmed)
+        if ((colon_candidate == 1) or ((deprecated_fn_header == 1) and (_contains(trimmed, "=") == 0))):
+            let clean = _sanitize_header_line(line)
+            if ((strlen(clean) > 0) and (_ends_with(clean, ":") == 0)):
+                let anchor = __thg_str_substr(clean, strlen(clean) - 1, 1)
+                let colon_start = line_start + strlen(clean) - 1
+                let colon_end = colon_start + 1
+                let colon_line = _suggestion_json_line_expected(file, colon_start, colon_end, anchor + ":", "MachineApplicable", "PARSE_MISSING_BLOCK_COLON", anchor)
+                out = _merge_suggestion_lines(out, colon_line)
+
+        i = i + 1
+    return out
+
+func _builtin_suggestion_payload(source: String, file: String) -> String:
+    let feed = ""
+    let f1 = _collect_token_suggestions(source, file, "retrn", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f2 = _collect_token_suggestions(source, file, "retun", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f3 = _collect_token_suggestions(source, file, "retrun", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f4 = _collect_token_suggestions(source, file, "reutrn", "return", "MachineApplicable", "PARSE_TYPO_RETURN")
+    let f5 = _collect_structural_suggestions(source, file)
+    let merged = _merge_suggestion_lines(feed, f1)
+    merged = _merge_suggestion_lines(merged, f2)
+    merged = _merge_suggestion_lines(merged, f3)
+    merged = _merge_suggestion_lines(merged, f4)
+    merged = _merge_suggestion_lines(merged, f5)
+    return merged
+
+func _emit_builtin_suggestions(entry_path: String, source: String) -> void:
+    let normalized = _normalize_path(entry_path)
+    let builtin = _builtin_suggestion_payload(source, normalized)
+    let builtin_path = _builtin_suggestions_path(normalized)
+    if (fs.write_text(builtin_path, builtin) == 0):
+        print("[autofix] warning: failed to write built-in suggestion feed: " + builtin_path)
+    return
+
