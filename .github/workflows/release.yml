@@ -226,7 +226,7 @@ jobs:
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo dpkg --add-architecture amd64 || true
             sudo apt-get update || true
-            sudo apt-get install -y qemu-user libc6:amd64 libstdc++6:amd64 zlib1g:amd64
+            sudo apt-get install -y qemu-user qemu-user-static libc6:amd64 libstdc++6:amd64 zlib1g:amd64
           fi
           clang --version
 
@@ -396,7 +396,17 @@ jobs:
                 if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}.x86_64"
                   chmod +x "${{ matrix.stage1_bin }}.x86_64" || true
-                  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' 'exec qemu-x86_64 -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' > "${{ matrix.stage1_bin }}"
+                  printf '%s\n' \
+                    '#!/usr/bin/env bash' \
+                    'set -euo pipefail' \
+                    'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' \
+                    'EMU_BIN="$(command -v qemu-x86_64 || command -v qemu-x86_64-static || true)"' \
+                    'if [[ -z "$EMU_BIN" ]]; then' \
+                    '  echo "CRITICAL: missing qemu-x86_64 or qemu-x86_64-static in PATH" >&2' \
+                    '  exit 1' \
+                    'fi' \
+                    'exec "$EMU_BIN" -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' \
+                    > "${{ matrix.stage1_bin }}"
                 else
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                 fi
