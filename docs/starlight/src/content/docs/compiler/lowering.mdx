@@ -1,32 +1,85 @@
 ---
-title: Lowering Pipeline
-description: preprocess, comptime evaluation, generic/trait header rewrites và validation.
+title: Lowering & IR
+description: How Thagore transforms Typed-IR into Core-IR through the lowering pipeline.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-# Lowering Pipeline
+# Lowering & IR
 
-Module chính: `src/frontend/lowering/pipeline.tg`.
+## Overview
 
-## Responsibilities
+The **lowering** stage transforms the typechecker's `ProgramT` (Typed-IR) into `CoreProgram` (Core-IR), which is the final intermediate representation before LLVM code emission.
 
-1. Thu thập `comptime func`, fold `comptime(...)` và `comptime call`.
-2. Rewrite một số header (`impl Trait for Type`, `pub`, `unsafe`).
-3. Validate syntax contracts (`defer` scope, `match` header, range loop, `?` usage).
-
-```python title="src/frontend/lowering/pipeline.tg" mark={156,171,221}
-func preprocess(source: String) -> String:
-    let catalog = _collect_comptime_catalog(source)
-    let folded = _fold_all_comptime_calls(catalog.source_wo_comptime_funcs, catalog.params_map, catalog.body_map)
+```
+ProgramT (Typed-IR)
+    │
+    ├── Comptime evaluation
+    ├── Source preprocessing
+    ├── IR node construction
+    │
+    ▼
+CoreProgram (Core-IR)
 ```
 
-```python title="src/frontend/lowering/pipeline.tg" mark={248,257}
-func validate(source: String) -> i32:
-    if (check_result_try_sugar(source) != 0):
-        return 1
+## CoreProgram Structure
+
+The Core-IR is defined in `src/lowering/coreir/nodes.tg`:
+
+```python
+struct CoreProgram:
+    normalized_source: String    # Final normalized source
+    feature_set: String          # Active features
+    enum_rows: String            # Enum declarations
+    alias_rows: String           # Type aliases
+    func_rows: String            # Function declarations
+    lower_rows: String           # Lowered IR nodes
+    error_count: i32             # Error counter
+    error_code: String           # Last error code
+    error_message: String        # Last error message
+    # 17 feature counters inherited from ProgramT
 ```
 
-<Aside type="caution" title="Behavioral Scope">
-Đây là pipeline compatibility-focused cho current compiler shape, không nên hiểu là full optimizer pass framework.
+## Lowering Sub-Stages
+
+### 1. Compile-Time Evaluation (`lowering/transform/comptime/`)
+
+Files:
+- `eval.tg` — Evaluates `comptime` blocks
+- `flow.tg` — Control flow for comptime execution
+- `rewrite.tg` — AST rewriting after comptime evaluation
+
+### 2. Source Preprocessing (`lowering/transform/preprocess/`)
+
+Files:
+- `helpers.tg` — Utility functions for preprocessing
+- `parse.tg` — Re-parse normalized source
+- `text.tg` — Text transformation utilities
+- `value.tg` — Value extraction and normalization
+
+### 3. Program Transformation (`lowering/transform/program.tg`)
+
+The main lowering entry point. It:
+1. Takes the `ProgramT` from the typechecker
+2. Applies preprocessing transforms
+3. Evaluates comptime blocks
+4. Produces the `CoreProgram`
+
+## Validation
+
+The lowering pipeline includes a `validate()` function that checks for semantic errors in the normalized source. If validation fails, error `E_TYPE_PIPELINE_VALIDATE` is set on the program.
+
+## Error Handling
+
+Core-IR errors are tracked through:
+
+```python
+func core_set_error(core: CoreProgram, code: String, message: String) -> CoreProgram
+func core_has_error(core: CoreProgram) -> i32
+```
+
+If any error occurs during lowering, the error count is incremented and the emitter stage will produce empty output.
+
+<Aside type="note" title="Functional Style">
+All IR transformations return new structs rather than mutating in place. This functional style ensures the pipeline remains composable and debuggable.
 </Aside>

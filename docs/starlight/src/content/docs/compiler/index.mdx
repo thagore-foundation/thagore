@@ -1,14 +1,153 @@
 ---
-title: Compiler Index
-description: Tổng quan pipeline compiler và runtime bridge của Thagore.
+title: Compiler Overview
+description: Architecture and pipeline of the Thagore self-hosted compiler.
 ---
 
-import { CardGrid, Card } from "@astrojs/starlight/components";
+import { Aside } from "@astrojs/starlight/components";
 
-# Compiler Index
+# Compiler Overview
 
-<CardGrid>
-  <Card title="lexer-parser" href="/compiler/lexer-parser">Tokenization, AST bridge, header parsing helpers.</Card>
-  <Card title="lowering" href="/compiler/lowering">Preprocess, comptime folding, syntax validation.</Card>
-  <Card title="backend-runtime" href="/compiler/backend-runtime">Native emitter, LLVM adapter, runtime ABI và CLI.</Card>
-</CardGrid>
+The Thagore compiler is **entirely self-hosted** — it is written in Thagore (`.tg` files) and compiles itself. The compiler lives in the `src/` directory and follows a classic multi-stage pipeline.
+
+## Compiler Pipeline
+
+```
+Source (.tg file)
+    │
+    ▼
+┌──────────────────────────────────────────┐
+│  1. Lexer (tokenize_native)              │
+│     Source text → Token stream            │
+│                                          │
+│  2. Parser (parse_to_ast)                │
+│     Token stream → AST (ProgramAstNative)│
+│                                          │
+│  3. Typechecker (typecheck_to_typed)     │
+│     AST → Typed-IR (ProgramT)           │
+│                                          │
+│  4. Lowering (transform)                 │
+│     Typed-IR → Core-IR (CoreProgram)     │
+│                                          │
+│  5. LLVM Emitter (emit_program_core)     │
+│     Core-IR → LLVM IR (.ll file)         │
+│                                          │
+│  6. Clang/LLVM (external)                │
+│     LLVM IR → Native binary              │
+└──────────────────────────────────────────┘
+    │
+    ▼
+Native Executable (.exe / ELF binary)
+```
+
+## Source Organization
+
+```
+src/
+├── syntax/                  # Stage 1-2: Lexer & Parser
+│   ├── lexer/               # Token definitions
+│   ├── parser/              # Header parsing utilities
+│   ├── native/
+│   │   ├── lexer.tg         # Main lexer (tokenizer)
+│   │   └── parser.tg        # Main parser (AST builder)
+│   └── ast/                 # AST node definitions
+│
+├── semantics/               # Stage 3: Type checking & validation
+│   ├── typecheck/
+│   │   └── program.tg       # Main typecheck entry point
+│   ├── typedir/
+│   │   └── nodes.tg         # ProgramT type definition
+│   ├── intent/
+│   │   └── matcher.tg       # Intent goal validation
+│   ├── pass/
+│   │   └── program.tg       # Semantic preflight checks
+│   └── traits/              # Trait resolution
+│
+├── lowering/                # Stage 4: IR transformation
+│   ├── coreir/
+│   │   └── nodes.tg         # CoreProgram definition
+│   └── transform/
+│       ├── program.tg       # Main lowering entry
+│       ├── comptime/        # Compile-time evaluation
+│       └── preprocess/      # Source preprocessing
+│
+├── codegen/                 # Stage 5: Code generation
+│   ├── native/
+│   │   ├── emitter.tg       # Main emitter entry point
+│   │   └── emit/            # Emission sub-modules
+│   │       ├── source.tg    # Source-level emission
+│   │       ├── expr.tg      # Expression emission
+│   │       ├── stmt.tg      # Statement emission
+│   │       ├── flow.tg      # Control flow emission
+│   │       ├── string.tg    # String handling
+│   │       ├── helpers.tg   # Utility functions
+│   │       └── text.tg      # Text processing
+│   ├── llvm/                # LLVM API bindings
+│   │   ├── entry.tg
+│   │   └── api/
+│   │       ├── core.tg
+│   │       └── target.tg
+│   └── interpreter/
+│       └── eval.tg          # Interpreter mode
+│
+├── driver/                  # Stage 6: CLI & tooling
+│   ├── cli/
+│   │   ├── main.tg          # CLI entry point
+│   │   ├── compat.tg        # Compatibility shim
+│   │   ├── common/core.tg   # Shared utilities
+│   │   ├── build/flow.tg    # Build command
+│   │   ├── test/            # Test runner
+│   │   ├── fix/flow.tg      # Autofix command
+│   │   └── install/         # Toolchain installer
+│   └── autofix/             # Autofix engine
+│       ├── engine.tg
+│       ├── run/
+│       ├── suggest/
+│       ├── rules/
+│       ├── report/
+│       └── common/
+│
+├── thagore.tg               # Compiler entry point
+└── thg.tg                   # Compat entry point
+```
+
+## Entry Point
+
+The compiler's entry point is `src/thagore.tg`:
+
+```python title="src/thagore.tg"
+import "src/driver/cli/main.tg" as cli
+
+func main() -> i32:
+    return cli.main()
+```
+
+This delegates to the CLI driver which parses command-line arguments and orchestrates the build pipeline.
+
+## Key Data Structures
+
+| Structure | File | Purpose |
+|-----------|------|---------|
+| `ProgramAstNative` | `src/syntax/native/parser.tg` | Parser output — AST with feature counters |
+| `ProgramT` | `src/semantics/typedir/nodes.tg` | Typed IR after type checking |
+| `CoreProgram` | `src/lowering/coreir/nodes.tg` | Core IR after lowering, ready for emission |
+
+## Build Process
+
+When you run `thagore build input.tg -o output.exe`, the compiler:
+
+1. **Reads** the source file
+2. **Strips comments** (`#` and `//`)
+3. **Tokenizes** using indentation-aware lexer
+4. **Parses** to AST, extracting functions, structs, enums, imports
+5. **Type-checks** against feature edges and semantic constraints
+6. **Lowers** Typed-IR to Core-IR
+7. **Emits** LLVM IR (`.ll` file)
+8. **Invokes Clang** to compile LLVM IR → native binary, linking against the runtime ABI
+
+<Aside type="tip" title="Inspect LLVM IR">
+Use `--emit-llvm` to see the generated LLVM IR without linking:
+```bash
+thagore build program.tg --emit-llvm
+# Produces: program.ll
+```
+</Aside>

@@ -1,37 +1,99 @@
 ---
 title: Windows Bootstrap
-description: Bootstrap compiler tren Windows voi Stage1 -> Stage2 -> Stage2b.
+description: Step-by-step guide to bootstrap the Thagore compiler on Windows.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Aside, Steps } from "@astrojs/starlight/components";
 
-# Windows Bootstrap
+# Windows Bootstrap Guide
 
-<Steps>
-1. Chuan bi Stage1 seed binary (`stage1.exe`).
+This guide walks you through bootstrapping the Thagore compiler on Windows from the Stage1 seed to a fully self-hosted Stage2 compiler.
 
-2. Build chain Stage1 -> Stage2 -> Stage2b:
+## Bootstrap Overview
 
-   ```bat title="scripts/bootstrap.bat"
-   stage1.exe build src/thagore.tg -o stage2.exe
-   stage2.exe build src/thagore.tg -o stage2b.exe
-   stage2b.exe build examples/hello.tg -o hello_v2.exe
-   hello_v2.exe
-   ```
+The Thagore bootstrap process follows a strict chain:
 
-3. Hoac chay script tu dong:
+```
+Stage1 Seed (pre-built binary)
+    ↓ compiles src/thagore.tg
+Stage2 compiler (stage2.exe)
+    ↓ compiles src/thagore.tg again
+Stage2b compiler (stage2b.exe) — proves self-hosting
+    ↓ validates
+Sample outputs: hello_v2.exe, fib.exe
+```
 
-   ```bat
-   cmd /c scripts\bootstrap.bat
-   ```
+## Quick Bootstrap (Recommended)
 
-4. Verify build output:
+Run the full bootstrap cycle with a single command:
 
-   ```bat
-   stage2.exe --version
-   ```
-</Steps>
+```powershell
+cmd /c scripts\bootstrap.bat
+```
 
-<Aside type="tip" title="Guard Timeout">
-Ban co the dung `scripts/bootstrap_stage.bat` de chay qua `stage_guard.py`, tranh treo tien trinh khi stage build loi/hang.
+This will:
+1. Compile `src/thagore.tg` using the Stage1 seed → produces `stage2.exe`
+2. Self-host Stage2 to produce `stage2b.exe`
+3. Validate sample outputs (`hello_v2`, `fib`)
+4. Materialize runtime ABI libraries via `scripts/build_runtime_abi.py`
+
+## Manual Bootstrap
+
+If you need more control, follow these steps:
+
+### Step 1: Compile Stage2 from the Seed
+
+```powershell
+# Use the Stage1 seed to compile the compiler source
+stage1.exe build src/thagore.tg -o stage2.exe
+```
+
+### Step 2: Self-Host (Stage2 → Stage2b)
+
+```powershell
+# Use Stage2 to compile itself — this proves self-hosting
+stage2.exe build src/thagore.tg -o stage2b.exe
+```
+
+### Step 3: Verify with Sample Programs
+
+```powershell
+# Compile and run Hello World
+stage2.exe build examples/hello.tg -o hello.exe
+.\hello.exe
+# Output: Hello Self-Hosted World!
+
+# Compile and run Fibonacci
+stage2.exe build examples/fib.tg -o fib.exe
+.\fib.exe
+# Output: 9227465
+```
+
+## Building Your First Program
+
+Once you have `stage2.exe`, you can compile any Thagore source file:
+
+```powershell
+# Basic compilation
+stage2.exe build myprogram.tg -o myprogram.exe
+.\myprogram.exe
+
+# Emit LLVM IR only (for debugging/inspection)
+stage2.exe build myprogram.tg --emit-llvm
+
+# Build with autofix (automatic error correction)
+stage2.exe build myprogram.tg -o myprogram.exe --autofix=safe
+```
+
+<Aside type="tip" title="Default Output">
+If you omit `-o`, the compiler generates a default output name based on the input file name.
 </Aside>
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `clang` not found | Add LLVM 21 `bin/` directory to your `PATH` |
+| Runtime link error | Ensure `thag_runtime.lib` is in the working directory or a known path |
+| Stage1 seed crash | Re-download the seed binary from the latest release tag |
+| Line ending issues | Ensure `.tg` files use Unix-style line endings (LF, not CRLF) |

@@ -1,13 +1,73 @@
 ---
-title: Structs and impl
-description: Struct declarations, methods, và operator overloading.
+title: Structs & impl
+description: Defining structs, implementing methods, and operator overloading in Thagore.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-# Structs and `impl`
+# Structs & `impl`
 
-```python title="struct-method.tg" mark={1,5,10}
+## Defining a Struct
+
+Structs are user-defined composite types with named fields:
+
+```python title="struct.tg"
+struct Vector2:
+    x: i32
+    y: i32
+```
+
+## Creating Struct Instances
+
+Call the struct name as a constructor, passing values in field order:
+
+```python title="create_struct.tg"
+struct Vector2:
+    x: i32
+    y: i32
+
+let v = Vector2(10, 5)
+print(v.x)    # Output: 10
+print(v.y)    # Output: 5
+```
+
+## Accessing Fields
+
+Use dot notation to access struct fields:
+
+```python title="field_access.tg"
+struct Config:
+    width: i32
+    height: i32
+    name: String
+
+let cfg = Config(1920, 1080, "Display")
+print(cfg.width)     # Output: 1920
+print(cfg.name)      # Output: Display
+```
+
+## Passing Structs to Functions
+
+Structs can be passed as function parameters:
+
+```python title="struct_param.tg"
+struct Vector2:
+    x: i32
+    y: i32
+
+func dot_product(v: Vector2) -> i32:
+    return v.x * v.y
+
+let v = Vector2(10, 5)
+let result = dot_product(v)
+print(result)    # Output: 50
+```
+
+## Implementing Methods with `impl`
+
+Use `impl` blocks to attach methods to a struct. Methods receive `self` as the first parameter:
+
+```python title="methods.tg"
 struct Rect:
     width: i32
     height: i32
@@ -16,15 +76,35 @@ impl Rect:
     func area(self) -> i32:
         return self.width * self.height
 
+    func is_square(self) -> i32:
+        if (self.width == self.height):
+            return 1
+        else:
+            return 0
+
 func main() -> i32:
     let r = Rect(10, 20)
-    print(r.area())
+    print(r.area())          # Output: 200
+
+    let sq = Rect(5, 5)
+    print(sq.is_square())    # Output: 1
     return 0
+```
+
+### Method Call Syntax
+
+Methods are called using dot notation on the instance:
+
+```python title="method_call.tg"
+let r = Rect(10, 20)
+let a = r.area()        # Calls Rect.area(self=r)
 ```
 
 ## Operator Overloading
 
-```python title="ops.tg" mark={6}
+Implement special methods to overload operators:
+
+```python title="operators.tg"
 struct Vec2:
     x: i32
     y: i32
@@ -32,8 +112,90 @@ struct Vec2:
 impl Vec2:
     func __add__(self, other: Vec2) -> Vec2:
         return Vec2(self.x + other.x, self.y + other.y)
+
+    func __mul__(self, other: Vec2) -> i32:
+        return self.x * other.x + self.y * other.y
+
+func main() -> i32:
+    let v1 = Vec2(1, 2)
+    let v2 = Vec2(3, 4)
+
+    # Uses __add__
+    let v3 = v1 + v2
+    print(v3.x)    # Output: 4
+    print(v3.y)    # Output: 6
+
+    # Uses __mul__
+    let dot = v1 * v2
+    print(dot)      # Output: 11
+    return 0
 ```
 
-<Aside type="tip" title="Extension Impl">
-Parser header helpers hỗ trợ detect `impl Trait for Type:`; lowering có rewrite về dạng impl theo type name cho phase downstream hiện tại.
+### Supported Operator Methods
+
+| Method | Operator | Example |
+|--------|----------|---------|
+| `__add__` | `+` | `a + b` |
+| `__mul__` | `*` | `a * b` |
+
+<Aside type="note" title="Additional Operators">
+More operator overloads (subtraction, comparison, etc.) may be supported or in development. Check the test suite for the latest supported operators.
+</Aside>
+
+## Structs with String Fields
+
+```python title="string_struct.tg"
+struct Person:
+    name: String
+    age: i32
+
+let p = Person("Alice", 30)
+print(p.name)    # Output: Alice
+print(p.age)     # Output: 30
+```
+
+## Returning Structs from Functions
+
+Functions can return struct instances:
+
+```python title="return_struct.tg"
+struct Point:
+    x: i32
+    y: i32
+
+func origin() -> Point:
+    return Point(0, 0)
+
+func offset(p: Point, dx: i32, dy: i32) -> Point:
+    return Point(p.x + dx, p.y + dy)
+
+func main() -> i32:
+    let o = origin()
+    let moved = offset(o, 5, 10)
+    print(moved.x)    # Output: 5
+    print(moved.y)    # Output: 10
+    return 0
+```
+
+## Builder Pattern
+
+A common pattern in Thagore (used extensively in the standard library) is to return a modified struct from methods:
+
+```python title="builder.tg"
+struct StringBuilder:
+    total_len: i32
+    cache: String
+
+func builder_new() -> StringBuilder:
+    return StringBuilder(0, "")
+
+func append(self: StringBuilder, part: String) -> StringBuilder:
+    return StringBuilder(self.total_len + strlen(part), self.cache + part)
+
+func to_string(self: StringBuilder) -> String:
+    return self.cache
+```
+
+<Aside type="tip" title="Immutable Update Pattern">
+Since Thagore uses value semantics for struct method returns, methods typically return a new struct instance rather than mutating in place. This is the standard pattern throughout the compiler and standard library.
 </Aside>

@@ -1,21 +1,110 @@
 ---
 title: Compatibility Matrix
-description: Bảng trạng thái tính năng và module theo maturity level.
+description: Feature compatibility, platform support, and LLVM version requirements for Thagore.
 ---
+
+import { Aside } from "@astrojs/starlight/components";
 
 # Compatibility Matrix
 
-| Area | Status | Notes |
-|---|---|---|
-| Core CLI build/emission | Stable | `__thg_cli_main_native` path hoạt động |
-| Stage1 -> Stage2 selfhost chain | Stable | enforced qua CI/selfhost/release workflows |
-| Lexer/parser core (`let`, `func`, `if`, `while`) | Stable | runtime-backed parser hooks |
-| Advanced headers (`match`, `unsafe`, `pub`, extension impl) | Compat | validated bởi lowering/header helpers |
-| `comptime` fold | Compat | arithmetic/control subset thực thi |
-| LLVM emitter adapter | Compat | delegate vào native emitter |
-| Native emitter (`src/backend/native/emitter.tg`) | Compat | i32-centric emission path |
-| `lib/rthagore/std/*` nhiều module | Compat shim | wrapper/stub mix tùy module |
-| `lib/rthagore/tools/lsp.tg` | Stub/Compat | completion/filter diagnostics đơn giản |
-| `lib/rthagore/tools/debugger.tg` | Stub | trả về placeholder |
-| Python bridge examples | Compat | runtime bridge callable, cần env phù hợp |
-| Vyro/OpenAnycast adapter | Planned (Playbook) | chưa có native adapter trong repo |
+## Platform Support
+
+| Platform | Architecture | Status | Runtime |
+|----------|-------------|--------|---------|
+| Windows | x86-64 | ✅ Full support | `thag_runtime.lib` |
+| Linux | x86-64 | ✅ Full support | `libthag_runtime.a` |
+| Linux | ARM64 (AArch64) | ✅ Full support | `libthag_runtime.a` |
+| macOS | ARM64 (Apple Silicon) | ✅ Full support | `libthag_runtime.a` |
+| macOS | x86-64 | ⚠️ Untested | — |
+
+## LLVM Compatibility
+
+| LLVM Version | Status |
+|-------------|--------|
+| **21.x** | ✅ Supported (required) |
+| 20.x | ⚠️ May work (not officially tested) |
+| 19.x and below | ❌ Not supported |
+
+## Language Feature Status
+
+### Core Features (Stable)
+
+| Feature | Status | Since |
+|---------|--------|-------|
+| `func` declarations | ✅ Stable | v0.1 |
+| `let` variables | ✅ Stable | v0.1 |
+| `if`/`else` | ✅ Stable | v0.1 |
+| `while` loops | ✅ Stable | v0.1 |
+| `struct` definitions | ✅ Stable | v0.1 |
+| `impl` blocks + methods | ✅ Stable | v0.2 |
+| Operator overloading | ✅ Stable | v0.2 |
+| `extern func` (C FFI) | ✅ Stable | v0.1 |
+| `import` module system | ✅ Stable | v0.2 |
+| String operations | ✅ Stable | v0.1 |
+| `print()` built-in | ✅ Stable | v0.1 |
+| Arrays `[T; N]` | ✅ Stable | v0.2 |
+| `for..in` range loops | ✅ Stable | v0.3 |
+| Comments (`#`, `//`) | ✅ Stable | v0.1 |
+
+### Advanced Features (Parsed)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `enum` declarations | 🔨 Parsed | AST-level support |
+| `match` expressions | 🔨 Parsed + validated | Requires enum |
+| Type aliases (`type`) | 🔨 Parsed | Header extraction |
+| `trait` / `impl for` | 🔨 Parsed | Semantic preflight |
+| `pub` visibility | 🔨 Parsed | Feature counter tracked |
+| `unsafe` blocks | 🔨 Parsed | Feature counter tracked |
+| `defer` | 🔨 Parsed | Function-scope only |
+| `comptime` | 🔨 Parsed | Compile-time evaluation |
+| Closures | 🔨 Parsed | Feature counter tracked |
+| Tuple destructuring | 🔨 Parsed | Feature counter tracked |
+| Array literals | 🔨 Parsed | Feature counter tracked |
+| Slice expressions | 🔨 Parsed | Feature counter tracked |
+| Loop labels | 🔨 Parsed | Feature counter tracked |
+| Raw strings | 🔨 Parsed | Feature counter tracked |
+| Interpolated strings | 🔨 Parsed | Feature counter tracked |
+| Result sugar (`?`) | 🔨 Parsed | Feature counter tracked |
+
+### Intent System
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `intent func` | 🔨 Active | Goal validation active |
+| `intent loop` | 🔨 Active | Declarative loop pattern |
+| Goal: `auto_plan` | ✅ Validated | Compiler-selected strategy |
+| Goal: `reduce_sum` | ✅ Validated | Sum reduction pattern |
+| Goal: `off` | ✅ Validated | Disable optimization |
+
+## Standard Library Maturity
+
+| Module | Maturity | Notes |
+|--------|----------|-------|
+| `lib/fs.tg` | ✅ Production | Full file I/O |
+| `lib/string.tg` | ✅ Production | All string ops |
+| `lib/env.tg` | ✅ Production | Args, env vars, cwd |
+| `lib/process.tg` | ✅ Production | Shell exec, download, unzip |
+| `lib/io.tg` | ✅ Production | stdin/stdout |
+| `lib/path.tg` | ✅ Production | Path manipulation |
+| `lib/http.tg` | ⚠️ Basic | GET/POST only |
+| `lib/time.tg` | ⚠️ Basic | now_ms, sleep_ms only |
+| `lib/map.tg` | 🔨 Stub | Placeholder implementation |
+| `std/core.tg` | ✅ Production | Core primitives |
+| `std/string.tg` | ✅ Production | StringBuilder, char ops |
+| `std/list.tg` | ✅ Production | Dynamic list |
+
+## CI/CD Requirements
+
+| Requirement | Value |
+|-------------|-------|
+| Consecutive green runs for merge | 3 |
+| Required pipelines | CI, Selfhost Matrix, Release (dry-run) |
+| Bootstrap policy | Stage1-only (no C++ fallback) |
+| Self-host verification | Stage2 must compile itself to Stage2b |
+
+<Aside type="note" title="Feature Status Legend">
+- ✅ **Stable** — fully implemented and tested
+- 🔨 **Parsed** — recognized by parser/typechecker, may have limited code generation
+- ⚠️ **Basic** — functional but limited
+</Aside>

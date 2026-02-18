@@ -1,78 +1,132 @@
 ---
 title: CLI Reference
-description: Lệnh CLI chính của compiler runtime entrypoint.
+description: Complete reference for the Thagore compiler CLI commands, flags, and options.
 ---
+
+import { Aside } from "@astrojs/starlight/components";
 
 # CLI Reference
 
-Các command chính (runtime `__thg_cli_main_native`):
+The Thagore compiler (`stage2.exe` / `thagore`) provides a rich command-line interface for building, testing, fixing, and managing Thagore projects.
 
-```text
-thagore build <file.tg> [-o output]
-             [--autofix off|safe|aggressive] [--autofix-lock <path>]
-             [--autofix-lock-strict] [--autofix-locked] [--autofix-workspace]
-             [--autofix-max-iterations N] [--autofix-max-files N] [--autofix-exclude a,b,c]
-thagore test [filter] [--workspace] [--package <name>|a,b] [--exclude <a,b,c>]
-             [--exclude-package <a,b,c>] [--no-run] [--fail-fast] [--json]
-             [--message-format json|human] [--list]
-thagore fix doctor <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
-                        [--message-format json|human]
-thagore fix dry-run <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
-                         [--message-format json|human]
-thagore fix apply <entry.tg> [--level safe|aggressive] [--workspace] [--exclude a,b,c]
-                 [--max-files N] [--max-iterations N] [--lock <path>] [--lock-strict] [--locked]
-                 [--message-format json|human]
-thagore fix explain <entry.tg> [--json] [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
-                   [--message-format json|human]
-thagore fix rollback <session-id>
-thagore --emit-llvm <file.tg> [-o output.ll]
-thagore --emit-llvm-internal <file.tg> [-o output.ll]
-thagore install toolchain [--yes] [--dry-run]
-                         [--llvm-version 21.1.8]
-                         [--target-os auto|windows|ubuntu|macos|linux|portable]
-                         [--arch auto|amd64|x86_64|arm64|aarch64]
-thagore --version
-thagore --help
+## Usage
+
+```
+thagore <command> [options]
+thagore <file.tg> [options]        # shorthand for 'build'
 ```
 
-## Examples
+## Commands
 
-```bash title="build-hello.sh" mark={1}
+### `build` — Compile a Thagore source file
+
+```bash
+thagore build <input.tg> -o <output> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-o <path>` | Output file path (default: derived from input name) |
+| `--emit-llvm` | Emit LLVM IR (`.ll`) instead of linking a binary |
+| `--autofix=<mode>` | Enable autofix (`safe`, `aggressive`, or `off`) |
+| `--autofix-lock=<path>` | Lock file for autofix session (default: `thagore.fix.lock`) |
+| `--autofix-lock-strict` | Strict lock enforcement |
+| `--autofix-locked` | Only apply fixes from existing lock |
+| `--autofix-max-iterations=<n>` | Max autofix iterations (default: 3) |
+| `--autofix-max-files=<n>` | Max files to process (default: 10) |
+| `--autofix-workspace` | Run autofix across entire workspace |
+| `--autofix-exclude=<pattern>` | Exclude files matching pattern |
+
+**Examples:**
+
+```bash
+# Basic build
 thagore build examples/hello.tg -o hello.exe
+
+# Shorthand (omit 'build' keyword)
+thagore examples/hello.tg -o hello.exe
+
+# Emit LLVM IR for inspection
+thagore build examples/fib.tg --emit-llvm
+
+# Build with safe autofix
+thagore build src/app.tg -o app.exe --autofix=safe
 ```
 
-```bash title="emit-llvm.sh" mark={1}
-thagore --emit-llvm examples/fib.tg -o fib.ll
+### `test` — Run test suites
+
+```bash
+thagore test [filter] [options]
 ```
 
-```bash title="test-no-run.sh" mark={1}
-thagore test autofix --no-run --fail-fast
+| Flag | Description |
+|------|-------------|
+| `--workspace` / `--all` | Discover and run all tests in workspace |
+| `--no-run` | Compile tests but don't execute |
+| `--fail-fast` | Stop on first failure |
+| `--json` | Output results as JSON |
+| `--list` | List discovered tests without running |
+| `--package=<name>` / `-p <name>` | Filter by package name |
+| `--exclude=<pattern>` | Exclude tests matching pattern |
+| `--exclude-package=<name>` | Exclude entire packages |
+| `--message-format=<fmt>` | Output format: `json` or `human` |
+
+**Examples:**
+
+```bash
+# Run all workspace tests
+thagore test --workspace
+
+# Run tests matching a filter
+thagore test test_syntax
+
+# List available tests
+thagore test --list --workspace
 ```
 
-```bash title="test-workspace-packages.sh" mark={1}
-thagore test --workspace --package autofix --package std --exclude-package std --no-run
+### `fix` — Autofix code issues
+
+```bash
+thagore fix <subcommand> <entry.tg> [options]
 ```
 
-```bash title="test-json-stream.sh" mark={1}
-thagore test --workspace --message-format json --fail-fast
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `doctor` | Diagnose issues without applying fixes |
+| `dry-run` | Show what fixes would be applied |
+| `apply` | Apply fixes to source files |
+| `explain` | Show detailed explanations for each fix |
+| `rollback <session-id>` | Undo a previous fix session |
+
+| Flag | Description |
+|------|-------------|
+| `--level=<level>` | Fix aggressiveness (default: `safe`) |
+| `--workspace` / `--all` | Fix across entire workspace |
+| `--lock=<path>` | Lock file path |
+| `--lock-strict` | Strict lock enforcement |
+| `--locked` | Only apply locked fixes |
+| `--exclude=<pattern>` | Exclude files |
+| `--max-files=<n>` | Max files to fix (default: 25) |
+| `--max-iterations=<n>` | Max fix iterations (default: 3) |
+| `--json` | JSON output |
+
+### `install` — Toolchain management
+
+```bash
+thagore install toolchain [options]
 ```
 
-```bash title="fix-workspace-locked.sh" mark={1}
-thagore fix apply src/main.tg --workspace --lock thagore.fix.lock --locked
-```
+Installs or updates the Thagore toolchain (LLVM, runtime ABI, etc.).
 
-```bash title="fix-json-stream.sh" mark={1}
-thagore fix apply src/main.tg --workspace --message-format json
-```
+### Global Options
 
-JSON mode emits one object per line (`suite started`, per-test `build/run`, final `suite` summary).
-Each event includes `schema_version=1`, `event_schema="thagore.test.v1"`, and a per-run `run_id`.
-Final summary includes `duration_ms` and `report_path`.
-Structured run reports are written to `.thagore/test/reports/<run_id>.json`.
-When available, per-test events include `log_path` for build/run logs under `.thagore/test/log/`.
+| Flag | Description |
+|------|-------------|
+| `--help` / `help` | Show help message |
+| `--version` / `version` | Show compiler version |
 
-## Exit Codes
-
-1. `0`: success.
-2. `2`: invalid usage (missing file/output).
-3. non-zero linker/codegen: build/link failure.
+<Aside type="note" title="Internal Flag">
+`--emit-llvm-internal` is used internally by the compiler during the bootstrap process. It emits raw LLVM IR without linking.
+</Aside>

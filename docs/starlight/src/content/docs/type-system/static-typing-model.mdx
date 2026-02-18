@@ -1,24 +1,177 @@
 ---
-title: Static Typing Model
-description: Mô hình kiểu dữ liệu trong Thagore ở trạng thái hiện tại.
+title: Type System
+description: Thagore's static typing model, type inference, and type validation.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-# Static Typing Model
+# Type System
 
-## Practical Model Today
+Thagore is a **statically typed** language. Types are checked at compile time through the typechecker stage (`src/semantics/typecheck/program.tg`).
 
-1. Syntax chính theo typed function signatures (`a: i32`, `-> i32`).
-2. Typechecker native hiện tại tập trung vào structural checks + language validation contracts.
-3. Một số module compat dùng `any` (`Option`, `Result`) để giữ portability trong transition phase.
+## Primitive Types
 
-## Inference Boundaries
+| Type | Size | Description | Example |
+|------|------|-------------|---------|
+| `i32` | 32-bit | Signed integer | `42`, `-1`, `0` |
+| `f32` | 32-bit | Single-precision float | `3.14`, `2.0` |
+| `f64` | 64-bit | Double-precision float | `3.14159265358979` |
+| `bool` | 1-bit | Boolean | `true`, `false` |
+| `String` | pointer | UTF-8 string (heap-allocated) | `"hello"` |
+| `ptr` | pointer | Raw pointer | `__thg_ptr_null()` |
+| `void` | 0-bit | No value | Used in `extern func` return types |
 
-1. Có các điểm suy diễn đơn giản ở parser/lowering flows.
-2. Chưa là full Hindley-Milner style inference engine.
-3. Generic/trait hỗ trợ ở mức header parsing + rewrite/mangle pipeline.
+## Type Inference
 
-<Aside type="note" title="Code-Truth">
-Nếu cần semantics sâu cho từng case, ưu tiên đọc test files `tests/test_parser_headers.tg`, `tests/test_semantic_headers.tg`, `tests/test_language_pipeline.tg`.
+Thagore infers types from initializer expressions:
+
+```python title="inference.tg"
+let x = 42           # i32 (integer literal)
+let y = 3.14         # f32 (float literal)
+let name = "Alice"   # String
+let flag = true      # bool
+```
+
+## Explicit Type Annotations
+
+Types are explicitly annotated in:
+
+### Function Parameters
+
+```python
+func add(a: i32, b: i32) -> i32:
+    return a + b
+```
+
+### Function Return Types
+
+```python
+func greet(name: String) -> String:
+    return "Hello, " + name
+```
+
+### Struct Fields
+
+```python
+struct Point:
+    x: f32
+    y: f32
+```
+
+### Extern Function Declarations
+
+```python
+extern func strlen(s: String) -> i32
+extern func sqrtf(x: f32) -> f32
+```
+
+## Composite Types
+
+### Structs
+
+User-defined composite types with named fields:
+
+```python
+struct Rect:
+    width: i32
+    height: i32
+
+# Constructor call
+let r = Rect(10, 20)
+```
+
+### Fixed-Size Arrays
+
+```python
+func process(arr: [i32; 4]) -> i32:
+    return arr[0] + arr[1]
+
+let data = [1, 2, 3, 4]
+```
+
+### Enums
+
+Algebraic data types:
+
+```python
+enum Option:
+    Some(i32)
+    None
+```
+
+## Type Checking Pipeline
+
+The typechecker runs in three phases:
+
+### Phase 1: Program Construction
+
+Parse the source and extract all declarations:
+- Functions, enums, type aliases
+- Feature counters (match, range loop, closures, etc.)
+
+### Phase 2: Feature Edge Validation
+
+Check for semantic consistency:
+
+| Error Code | Condition |
+|-----------|-----------|
+| `E_TYPE_MATCH_MISSING_ENUM` | `match` used without any `enum` declaration |
+| `E_TYPE_RANGE_HEADER` | Malformed `for i in a..b:` syntax |
+| `E_TYPE_IF_EXPR` | Malformed if-expression |
+| `E_TYPE_CLOSURE` | Malformed closure expression |
+
+### Phase 3: Constraint Validation
+
+Run semantic passes and intent validation:
+
+| Error Code | Condition |
+|-----------|-----------|
+| `E_TYPE_TRAIT_CONSTRAINT` | Trait/impl/generic-bound semantic check failed |
+| `E_TYPE_INTENT_GOAL` | Unsupported intent goal |
+| `E_TYPE_PIPELINE_VALIDATE` | General lowering validation failure |
+
+## ProgramT Type
+
+The typechecker produces a `ProgramT` struct:
+
+```python
+struct ProgramT:
+    source: String
+    normalized: String
+    feature_set: String
+    enums: String
+    aliases: String
+    funcs: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    # 17 feature counters...
+```
+
+## Type Aliases
+
+Create type synonyms:
+
+```python
+type Distance = f32
+type Name = String
+type Callback = ptr
+```
+
+<Aside type="note" title="Type System Status">
+The current type system focuses on **header-level and scope-pattern validation** rather than full static lifetime checking. The feature counter system allows the compiler to incrementally add type checking rules for new language features.
 </Aside>
+
+## Return Type Validation
+
+Functions must have an explicit return type annotation (after `->`):
+
+```python
+# Explicit return type
+func compute(x: i32) -> i32:
+    return x * 2
+
+# Void return (for extern functions only)
+extern func puts(text: String) -> i32
+extern func free(p: ptr) -> void
+```

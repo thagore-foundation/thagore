@@ -1,24 +1,48 @@
 ---
-title: Release Installers
-description: Installer phát hành đầu tiên cho Thagore trên đa hệ điều hành.
+title: Release & Installers
+description: How Thagore releases are built, published, and how to use pre-built installers.
 ---
 
-# Release Installers
+import { Aside } from "@astrojs/starlight/components";
 
-## LLVM Toolchain Version
+# Release & Installers
 
-Bản phát hành này khóa LLVM `21.1.8`.
+## Release Artifacts
 
-## Lệnh nhanh
+Each Thagore release publishes the following artifacts:
 
-```bash
-thagore install toolchain --yes
-```
+| Artifact | Platform | Description |
+|----------|----------|-------------|
+| `thagore-windows-x64.zip` | Windows x86-64 | Pre-built compiler + runtime |
+| `thagore-linux-x64.tar.gz` | Linux x86-64 | Pre-built compiler + runtime |
+| `thagore-linux-arm64.tar.gz` | Linux ARM64 | Pre-built compiler + runtime |
+| `thagore-macos-arm64.tar.gz` | macOS ARM64 | Pre-built compiler + runtime |
 
-## Theo nền tảng
+## Using Pre-built Releases
 
-1. Windows: dùng `thagore-setup-windows-x86_64.exe` hoặc `thagore install toolchain`.
-2. Ubuntu: `bash scripts/install/ubuntu.sh --llvm-version 21.1.8 --yes`.
-3. macOS: `bash scripts/install/macos.sh --llvm-version 21.1.8 --yes`.
-4. Another Linux: `bash scripts/install/linux.sh --llvm-version 21.1.8 --yes`.
-5. BSD/Android/khác: `bash scripts/install/portable.sh --llvm-version 21.1.8 --yes`.
+1. Download the release archive for your platform from [GitHub Releases](https://github.com/thagore/thagore/releases)
+2. Extract to a directory of your choice
+3. Add the directory to your system `PATH`
+4. Verify: `thagore --version`
+
+## CI/CD Pipelines
+
+Thagore uses multiple CI pipelines to ensure correctness:
+
+| Workflow | Purpose |
+|----------|---------|
+| **CI** | Build + test on push/PR |
+| **Selfhost Matrix** | Verify self-hosting across all target platforms |
+| **Release** | Build release artifacts and publish |
+| **Bootstrap Seed** | Generate and promote new Stage1 seed binaries |
+
+## Merge Requirements
+
+A merge to `main` requires **3 consecutive green runs**:
+- ✅ CI pipeline
+- ✅ Selfhost Matrix
+- ✅ Release (dry-run)
+
+<Aside type="caution" title="Strict Policy">
+There is no automatic fallback. If any pipeline fails, the merge is blocked until all three pass consecutively.
+</Aside>

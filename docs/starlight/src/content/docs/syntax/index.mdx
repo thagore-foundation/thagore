@@ -1,18 +1,103 @@
 ---
-title: Syntax Index
-description: Danh mục cú pháp Thagore theo từng file nhỏ.
+title: Syntax Overview
+description: Complete guide to Thagore language syntax — the starting point for learning the language.
 ---
 
-import { CardGrid, Card } from "@astrojs/starlight/components";
+import { CardGrid, Card, Aside } from "@astrojs/starlight/components";
 
-# Syntax Index
+# Syntax Overview
+
+Thagore uses **Python-like syntax** with indentation-based scoping. Every block is opened by a `:` and indented. Source files use the `.tg` extension.
+
+<Aside type="tip" title="Key Syntax Rules">
+- **Indentation defines blocks** — use 4 spaces (or consistent indentation)
+- **No semicolons** — each statement is one line
+- **Parentheses required** in `if` and `while` conditions: `if (x > 0):`
+- **Comments** use `#` (line comment) or `//` (also supported)
+- **File extension** is `.tg`
+</Aside>
+
+## Quick Reference
+
+```python title="complete_example.tg"
+# Import a standard library module
+import fs
+
+# Define a struct
+struct Point:
+    x: i32
+    y: i32
+
+# Implement methods on the struct
+impl Point:
+    func magnitude(self) -> i32:
+        return self.x * self.x + self.y * self.y
+
+# Define a function
+func greet(name: String) -> String:
+    return "Hello, " + name + "!"
+
+# Entry point
+func main() -> i32:
+    let p = Point(3, 4)
+    let mag = p.magnitude()
+    print(mag)
+
+    let msg = greet("Developer")
+    print(msg)
+
+    let i = 0
+    while (i < 5):
+        print(i)
+        i = i + 1
+
+    return 0
+```
+
+## Syntax Topics
 
 <CardGrid>
-  <Card title="print" href="/syntax/print">In output và side-effects cơ bản.</Card>
-  <Card title="variables-and-let" href="/syntax/variables-and-let">Biến, binding, assign, scope.</Card>
-  <Card title="functions" href="/syntax/functions">Khai báo hàm, tham số, return type.</Card>
-  <Card title="control-flow" href="/syntax/control-flow">if/else, while, loop, for-range.</Card>
-  <Card title="structs-and-impl" href="/syntax/structs-and-impl">Struct, method, operator overloading.</Card>
-  <Card title="ffi-and-import" href="/syntax/ffi-and-import">import/use, extern func, module interop.</Card>
-  <Card title="advanced-features" href="/syntax/advanced-features">trait/impl for, generics, match, comptime, defer, unsafe.</Card>
+  <Card title="Print & Output" href="/syntax/print">
+    The `print()` function, outputting values, and side effects.
+  </Card>
+  <Card title="Variables & let" href="/syntax/variables-and-let">
+    Variable declarations with `let`, type inference, reassignment, and scope rules.
+  </Card>
+  <Card title="Functions" href="/syntax/functions">
+    Function declarations, parameters, return types, and the `main` entry point.
+  </Card>
+  <Card title="Control Flow" href="/syntax/control-flow">
+    `if`/`else`, `while` loops, `for..in` range loops, and `match` expressions.
+  </Card>
+  <Card title="Structs & impl" href="/syntax/structs-and-impl">
+    Struct definitions, method implementations, and operator overloading.
+  </Card>
+  <Card title="FFI & Import" href="/syntax/ffi-and-import">
+    Module imports, `extern func` for C FFI, and the module system.
+  </Card>
+  <Card title="Advanced Features" href="/syntax/advanced-features">
+    Enums, match, traits, comptime, defer, unsafe, and closures.
+  </Card>
 </CardGrid>
+
+## Minimal Program
+
+The simplest valid Thagore program:
+
+```python title="minimal.tg"
+print("Hello!")
+```
+
+Thagore supports **top-level statements** — if your source has no `func main()`, the compiler wraps top-level code in an auto-generated `main` function.
+
+## Program with Explicit Entry Point
+
+```python title="explicit_main.tg"
+func main() -> i32:
+    print("Hello from main!")
+    return 0
+```
+
+<Aside type="note" title="Return Code Convention">
+`func main() -> i32` is the standard entry point. Return `0` for success, non-zero for errors. This matches C/Unix conventions.
+</Aside>

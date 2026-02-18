@@ -1,69 +1,225 @@
 ---
 title: Control Flow
-description: if/else, while, loop, for-range trong Thagore.
+description: Complete guide to if/else, while, for-range, match, and loop control structures in Thagore.
 ---
 
-import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Control Flow
 
-## if/else + while
+## `if` / `else`
 
-```python title="if-while.tg" mark={3,6}
+Conditional branching uses `if (condition):` with **mandatory parentheses** around the condition:
+
+```python title="if_else.tg"
+let a = 40
+let b = 2
+if (a + b == 42):
+    print("The answer!")
+else:
+    print("Not the answer")
+```
+
+### Nested `if/else`
+
+```python title="nested_if.tg"
+func classify(n: i32) -> String:
+    if (n > 0):
+        return "positive"
+    else:
+        if (n < 0):
+            return "negative"
+        else:
+            return "zero"
+```
+
+<Aside type="caution" title="Parentheses Required">
+Unlike Python, Thagore **requires** parentheses around `if` and `while` conditions:
+- ✅ `if (x > 0):`
+- ❌ `if x > 0:` — this will be rejected by the compiler
+</Aside>
+
+### Chained Conditions
+
+Use `and` and `or` for compound conditions:
+
+```python title="compound.tg"
+func check(x: i32, y: i32) -> i32:
+    if ((x > 0) and (y > 0)):
+        return 1
+    if ((x == 0) or (y == 0)):
+        return 0
+    return -1
+```
+
+### Comparison Operators
+
+| Operator | Meaning |
+|----------|---------|
+| `==` | Equal to |
+| `!=` | Not equal to |
+| `<` | Less than |
+| `>` | Greater than |
+| `<=` | Less than or equal to |
+| `>=` | Greater than or equal to |
+| `and` | Logical AND |
+| `or` | Logical OR |
+
+## `while` Loop
+
+```python title="while_loop.tg"
 func main() -> i32:
     let i = 0
     while (i < 5):
-        if (i == 3):
-            print(100)
-        else:
-            print(i)
+        print(i)
         i = i + 1
     return 0
 ```
 
-## loop keyword
+```
+Output:
+0
+1
+2
+3
+4
+```
 
-```python title="loop.tg"
-loop:
-    # explicit break/return pattern in body
+### Common Pattern: Counter Loop
+
+```python title="counter.tg"
+func sum_to(n: i32) -> i32:
+    let i = 0
+    let total = 0
+    while (i <= n):
+        total = total + i
+        i = i + 1
+    return total
+
+func main() -> i32:
+    let result = sum_to(100)
+    print(result)    # Output: 5050
     return 0
 ```
 
-## for range header
+### Common Pattern: Search Loop
 
-```python title="for-range.tg" ins={1}
+```python title="search.tg"
+func find_index(arr: [i32; 4], target: i32) -> i32:
+    let i = 0
+    while (i < 4):
+        if (arr[i] == target):
+            return i
+        i = i + 1
+    return -1
+```
+
+## `for..in` Range Loop
+
+Iterate over a numeric range using `for i in start..end:` syntax:
+
+```python title="for_range.tg"
 for i in 0..10:
     print(i)
 ```
 
-<Aside type="caution" title="Header Validation">
-Validation sẽ reject range-loop không đúng dạng `for i in a..b:` nếu line mang hình thức range loop nhưng sai header.
-`if`/`while` statement bắt buộc dạng có ngoặc: `if (cond):`, `while (cond):`.
-Khi thiếu ngoặc, compiler in gợi ý rewrite trực tiếp theo dạng chuẩn.
+This prints numbers 0 through 9 (the end is exclusive).
+
+<Aside type="note" title="Range Validation">
+The compiler validates range loop headers strictly. The pattern must be exactly `for <var> in <start>..<end>:`.
 </Aside>
+
+## `match` Expression
+
+Pattern matching on enum variants:
+
+```python title="match.tg"
+enum Color:
+    Red
+    Green
+    Blue
+
+func describe(c: Color) -> String:
+    match c:
+        Red:
+            return "warm"
+        Green:
+            return "natural"
+        Blue:
+            return "cool"
+```
+
+`match` requires at least one enum declaration and is validated by the compiler's feature-edge checks.
+
+## `loop` Keyword
+
+An explicit infinite loop construct:
+
+```python title="loop.tg"
+func find_answer() -> i32:
+    let n = 0
+    loop:
+        n = n + 1
+        if (n == 42):
+            return n
+```
+
+## Syntax Comparison
 
 <Tabs>
   <TabItem label="Thagore">
 
-```python title="thagore-if.tg"
+```python title="thagore.tg"
 if (x > 0):
     print(x)
+
+while (i < 10):
+    i = i + 1
+
+for j in 0..5:
+    print(j)
 ```
 
   </TabItem>
   <TabItem label="Python">
 
-```python title="python-if.py"
+```python title="python.py"
 if x > 0:
     print(x)
+
+while i < 10:
+    i += 1
+
+for j in range(5):
+    print(j)
 ```
 
   </TabItem>
-  <TabItem label="C++">
+  <TabItem label="C">
 
-```cpp title="cpp-if.cpp"
-if (x > 0) { std::cout << x; }
+```c title="c_example.c"
+if (x > 0) { printf("%d", x); }
+
+while (i < 10) { i++; }
+
+for (int j = 0; j < 5; j++) {
+    printf("%d", j);
+}
 ```
 
   </TabItem>
 </Tabs>
+
+## Arithmetic Operators
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `+` | Addition | `a + b` |
+| `-` | Subtraction | `a - b` |
+| `*` | Multiplication | `a * b` |
+| `/` | Division | `a / b` |
+| `%` | Modulo | `a % b` (if supported) |
+
+<Aside type="note" title="No Increment/Decrement">
+Thagore does not have `++` or `--` operators. Use `i = i + 1` instead.
+</Aside>

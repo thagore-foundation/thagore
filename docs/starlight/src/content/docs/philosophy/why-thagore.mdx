@@ -1,63 +1,70 @@
 ---
-title: Why Thagore
-description: Philosophy, design goals, và bài toán Thagore giải quyết.
+title: Why Thagore?
+description: Design philosophy, goals, and trade-offs behind the Thagore programming language.
 ---
 
-import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import { Aside } from "@astrojs/starlight/components";
 
-# Why Thagore
+# Why Thagore?
 
-Thagore theo đuổi mô hình: **Python-like authoring experience** + **native executable output**.
+## Design Philosophy
 
-## Core Problem
+Thagore was created with a clear mission: **build a modern, statically-typed compiled language that combines the readability of Python with the performance of C, while being entirely self-hosted**.
 
-Nhiều team gặp khoảng cách giữa:
+### Core Principles
 
-1. Tốc độ viết code với cú pháp dễ đọc.
-2. Hiệu năng khi deploy production binary.
-3. Khả năng interop với C/Python ecosystem.
+1. **Readability First** — Python-like indentation syntax makes code easy to read and write. No curly braces, no semicolons — just clean, expressive code.
 
-Thagore giải quyết bằng pipeline compile native và runtime bridge rõ ràng.
+2. **Self-Hosted from Day One** — The Thagore compiler is written in Thagore itself. This is both a technical achievement and a design constraint that keeps the language practical and dogfooded.
 
-## Syntax Philosophy
+3. **Native Performance** — Every Thagore program compiles to native machine code through LLVM IR. No interpreter, no VM, no garbage collector overhead at runtime.
 
-<Tabs>
-  <TabItem label="Thagore">
+4. **Zero C++ Fallback** — The bootstrap chain is Stage1 → Stage2 → Stage2b with no C++ compiler stage. The runtime ABI is delivered as pre-built artifacts, not built from C++ source.
 
-```python title="hello.tg" mark={1,2}
-func main() -> i32:
-    print("Hello Self-Hosted World!")
-    return 0
-```
+5. **Practical Interoperability** — Direct C FFI via `extern func` and a Python bridge let you leverage existing ecosystems without compromise.
 
-  </TabItem>
-  <TabItem label="Python">
+## What Makes Thagore Different?
 
-```python title="hello.py"
-def main():
-    print("Hello")
-```
+### vs. Python
+- Thagore is **compiled to native code** — programs run 10-100x faster
+- Thagore is **statically typed** — type errors are caught at compile time
+- Thagore keeps Python's **indentation-based syntax** for readability
+- No runtime interpreter or GIL
 
-  </TabItem>
-  <TabItem label="C++">
+### vs. C/C++
+- **Simpler syntax** — no header files, no preprocessor, no complex build systems
+- **Type inference** — `let x = 42` just works
+- **Module system** — `import fs` instead of `#include`
+- **Safer defaults** — managed strings, no manual null termination
 
-```cpp title="hello.cpp"
-int main() {
-  std::cout << "Hello\n";
-  return 0;
-}
-```
+### vs. Rust
+- **Gentler learning curve** — no borrow checker, no lifetime annotations
+- **Faster iteration** — simpler type system, faster compile times
+- **Practical focus** — designed for real-world systems programming, not academic correctness
 
-  </TabItem>
-</Tabs>
+### vs. Go
+- **Richer type system** — structs with methods, operator overloading, traits/impl
+- **No garbage collector** — deterministic memory behavior
+- **LLVM backend** — full optimization pipeline from LLVM 21
 
-<Aside type="tip" title="Reality Check">
-Repo hiện có cả đường đi production và compat. Một số module tooling/std được giữ ở mức shim để phục vụ bootstrap/stability.
+## Trade-offs
+
+<Aside type="caution" title="Current Limitations">
+Thagore is actively evolving. These are known trade-offs in the current version:
 </Aside>
 
-## What Thagore Is Good At Today
+| Trade-off | Detail |
+|-----------|--------|
+| **No generics yet** | Generic signatures are parsed but lowered via mangling — full parametric polymorphism is in progress |
+| **Limited error types** | Error handling uses return codes (`i32`); `Result<T, E>` sugar is parsed but not fully lowered |
+| **String-heavy IR** | Internal representations (token streams, AST nodes) use string-encoded data structures |
+| **Bootstrap dependency** | You need a Stage1 seed binary to build the compiler from source |
 
-1. Build native binary từ source `.tg`.
-2. Self-host flow Stage1 -> Stage2 trong CI/release.
-3. C FFI và Python bridge ở mức runtime function bridge.
-4. Lowering features như `comptime` folding, header validation.
+## Target Audience
+
+Thagore is ideal for developers who:
+- Want **native performance** without C/C++ complexity
+- Prefer **Python-like syntax** but need compiled-language speed
+- Need **C FFI** to integrate with existing native libraries
+- Want to understand how a **self-hosted compiler** works from the inside
+- Are building **systems tools, CLI applications, or performance-critical software**

@@ -1,22 +1,74 @@
 ---
-title: Unix Stage1 Seed Flow
-description: Bootstrap trên Linux/macOS theo policy Stage1 seed.
+title: Unix Stage1 Seed
+description: Bootstrap guide for Linux and macOS using the Stage1 seed.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
-# Unix Stage1 Seed Flow
+# Unix (Linux / macOS) Bootstrap
 
-Repo policy hiện tại yêu cầu Unix CI/release bootstrap từ Stage1 seed asset.
+## Quick Start
 
-<Steps>
-1. Lấy đúng seed tag (`BOOTSTRAP_STAGE1_TAG`) từ workflow.
-2. Download asset `thagore-stage1-linux.tar.gz` hoặc `thagore-stage1-macos.tar.gz`.
-3. Extract binary `thagore`/`thag`.
-4. Build `src/thagore.tg` ra Stage2.
-5. Rebuild Stage2 và compile `examples/hello.tg`, `examples/fib.tg`.
-</Steps>
+```bash
+bash scripts/bootstrap.sh
+```
 
-<Aside type="caution" title="No Stage0 Markers">
-Policy workflow cấm marker fallback Stage0 trong luồng Unix release/CI (`policy-no-stage0.yml`).
+This script performs the full Stage1 → Stage2 → Stage2b bootstrap cycle and validates sample outputs.
+
+## Manual Bootstrap
+
+<Tabs>
+  <TabItem label="Linux">
+
+```bash
+# Step 1: Use the seed to compile Stage2
+./stage1 build src/thagore.tg -o stage2
+
+# Step 2: Self-host
+./stage2 build src/thagore.tg -o stage2b
+
+# Step 3: Verify
+./stage2 build examples/hello.tg -o hello
+./hello
+# Output: Hello Self-Hosted World!
+```
+
+  </TabItem>
+  <TabItem label="macOS">
+
+```bash
+# Step 1: Compile with seed (ensure LLVM 21 is on PATH)
+./stage1 build src/thagore.tg -o stage2
+
+# Step 2: Self-host
+./stage2 build src/thagore.tg -o stage2b
+
+# Step 3: Verify
+./stage2 build examples/hello.tg -o hello
+./hello
+```
+
+  </TabItem>
+</Tabs>
+
+## Runtime ABI
+
+On Unix systems, the runtime library is `libthag_runtime.a`. Ensure it is in the working directory or a standard library path when linking.
+
+| Platform | Runtime File |
+|----------|-------------|
+| Linux (x86-64) | `thagore-runtime-linux.a` |
+| Linux (ARM64) | `thagore-runtime-linux-arm64.a` |
+| macOS (ARM64) | `thagore-runtime-macos.a` |
+
+## Seed Rotation Policy
+
+Seeds are promoted through the `Seed Stage1 Assets` CI workflow. After promotion, the `BOOTSTRAP_STAGE1_TAG` variable must be updated in:
+- `.github/workflows/ci.yml`
+- `.github/workflows/selfhost-matrix.yml`
+- `.github/workflows/release.yml`
+- `.github/workflows/bootstrap-seed.yml`
+
+<Aside type="note" title="No C++ Fallback">
+Thagore enforces a strict bootstrap policy: there is no Stage0 fallback, no C++ runtime build path, and no implicit fallback in any workflow.
 </Aside>

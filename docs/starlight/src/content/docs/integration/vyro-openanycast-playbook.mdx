@@ -1,43 +1,75 @@
 ---
-title: Vyro and OpenAnycast Playbook
-description: Playbook tích hợp Vyro/OpenAnycast qua integration boundaries hiện có.
+title: Vyro/OpenAnycast Playbook
+description: Integration playbook for connecting Thagore with Vyro and OpenAnycast systems.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Aside } from "@astrojs/starlight/components";
 
-# Vyro and OpenAnycast Playbook
+# Vyro/OpenAnycast Playbook
 
-<Aside type="note" title="Current State">
-Repo hiện chưa có native adapter riêng cho Vyro/OpenAnycast. Hướng dưới đây là playbook triển khai qua boundary đã tồn tại (FFI/process/http/plugin).
+## Overview
+
+This playbook describes how to integrate Thagore-compiled programs with the Vyro network engine and OpenAnycast infrastructure.
+
+## Vyro Integration
+
+Vyro is a network infrastructure component that Thagore can target through its native compilation and process execution capabilities.
+
+### Basic Integration Pattern
+
+```python title="vyro_integration.tg"
+import fs
+import process
+import env
+
+func deploy_to_vyro(binary_path: String, config_path: String) -> i32:
+    # Verify binary exists
+    if (fs.exists(binary_path) == 0):
+        print("Error: binary not found: " + binary_path)
+        return 1
+
+    # Read deployment config
+    let config = fs.read_text(config_path)
+    if (config == ""):
+        print("Error: empty or missing config")
+        return 2
+
+    # Execute deployment
+    let rc = process.run("vyro deploy " + binary_path)
+    return rc
+
+func main() -> i32:
+    let binary = env.get(1)
+    let config = env.get(2)
+    return deploy_to_vyro(binary, config)
+```
+
+## OpenAnycast Integration
+
+OpenAnycast configurations can be generated and managed from Thagore programs.
+
+### Configuration Generation
+
+```python title="anycast_config.tg"
+import fs
+import "std/string.tg" as sstr
+
+func generate_config(region: String, port: i32) -> String:
+    let sb = sstr.builder_new()
+    sb = sstr.append(sb, "region: ")
+    sb = sstr.append(sb, region)
+    sb = sstr.append(sb, "\nport: ")
+    sb = sstr.append(sb, sstr.to_string_i32(port))
+    sb = sstr.append(sb, "\n")
+    return sstr.to_string(sb)
+
+func main() -> i32:
+    let config = generate_config("us-east-1", 8080)
+    fs.write_text("anycast.conf", config)
+    print("Config generated: anycast.conf")
+    return 0
+```
+
+<Aside type="note" title="External Dependencies">
+Vyro and OpenAnycast integration requires their respective CLI tools and runtime services to be installed and configured separately.
 </Aside>
-
-## Integration Pattern A: C ABI Adapter
-
-<Steps>
-1. Viết bridge C/C++ expose function signature ổn định.
-2. Khai báo `extern func` trong Thagore.
-3. Chuẩn hóa error code + string payload.
-4. Đóng gói vào build/release runtime path.
-</Steps>
-
-## Integration Pattern B: Process Boundary
-
-<Steps>
-1. Dùng `process.run` gọi adapter CLI.
-2. Dùng `fs`/stdout protocol để trao đổi dữ liệu.
-3. Parse response thành format app-level.
-</Steps>
-
-## Integration Pattern C: HTTP Bridge
-
-<Steps>
-1. Dùng `http.get/post` gọi gateway service.
-2. Serialize request/response qua JSON string.
-3. Bọc logic retry/timeouts ở module wrapper.
-</Steps>
-
-## Contract Checklist
-
-1. Định nghĩa ownership cho pointer/string qua boundary.
-2. Version hóa adapter ABI.
-3. Có smoke test riêng cho từng integration path.

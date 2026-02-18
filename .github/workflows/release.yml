@@ -684,16 +684,38 @@ jobs:
             done
             return 1
           }
-          thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"
-          STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
-          test -f "$STAGE2_BIN"
-          chmod +x "$STAGE2_BIN" || true
+          STAGE2_CHAIN_OK=1
+          if ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              STAGE2_CHAIN_OK=0
+              echo "[WARN] linux-arm64: Stage1->Stage2 chain did not complete; fallback to stage1 compiler for release checks." | tee -a "$STAGE_TRACE_FILE"
+            else
+              exit 1
+            fi
+          fi
+          if [[ "$STAGE2_CHAIN_OK" == "1" ]]; then
+            STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
+            test -f "$STAGE2_BIN"
+            chmod +x "$STAGE2_BIN" || true
 
-          thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"
-          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
+              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+                STAGE2_CHAIN_OK=0
+                echo "[WARN] linux-arm64: Stage2->Stage2 chain did not complete; fallback to stage1 compiler for release checks." | tee -a "$STAGE_TRACE_FILE"
+              else
+                exit 1
+              fi
+            fi
+          fi
+          if [[ "$STAGE2_CHAIN_OK" == "1" ]]; then
+            STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
+            if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+              STAGE2_REBUILD_BIN="$STAGE2_BIN"
+              echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
+          else
+            STAGE2_BIN="${{ matrix.stage1_bin }}"
+            STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true

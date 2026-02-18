@@ -1,33 +1,151 @@
 ---
-title: First PR Guide
-description: Huong dan dong gop thay doi dau tien cho Thagore.
+title: Contributing — First PR
+description: How to contribute to Thagore — from setting up your development environment to submitting your first pull request.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Aside, Steps } from "@astrojs/starlight/components";
 
-# First PR Guide
+# Contributing — Your First PR
 
-<Steps>
-1. Sync branch moi tu `main`.
-2. Chon mot thay doi nho, co lap.
-3. Them example hoac test lien quan.
-4. Build va chay test trong tam.
-5. Ghi ro verification commands trong PR description.
-</Steps>
+## Getting Started
 
-## Recommended Verification
+### 1. Fork and Clone
 
 ```bash
-cmd /c scripts\bootstrap.bat
-python scripts/benchmark_fib.py
+git clone https://github.com/YOUR_USERNAME/thagore.git
+cd thagore
 ```
 
-## PR Checklist
+### 2. Set Up Prerequisites
 
-1. Mot logical change per commit.
-2. Khong tron refactor unrelated.
-3. Co risk notes neu dung workflows bootstrap/runtime.
+Ensure you have:
+- **LLVM 21.x** — installed and on PATH
+- **Stage1 seed** — downloaded from the latest release
+- **Python 3.x** — for build scripts (optional)
 
-<Aside type="caution" title="Bootstrap Governance">
-Khong reintroduce implicit Stage0 fallback trong CI/Release workflows.
+See [Prerequisites](/install/prerequisites) for detailed installation instructions.
+
+### 3. Bootstrap the Compiler
+
+```bash
+# Windows
+cmd /c scripts\bootstrap.bat
+
+# Linux/macOS
+bash scripts/bootstrap.sh
+```
+
+### 4. Verify Your Setup
+
+```bash
+stage2.exe build examples/hello.tg -o hello.exe
+.\hello.exe
+# Should output: Hello Self-Hosted World!
+```
+
+## Making Changes
+
+### Source Code Structure
+
+| Directory | Contains |
+|-----------|----------|
+| `src/` | Compiler source code (Thagore `.tg` files) |
+| `lib/` | Standard library modules |
+| `std/` | Core primitives and data structures |
+| `examples/` | Example programs |
+| `tests/` | Test suite |
+| `scripts/` | Build and automation scripts |
+| `docs/` | Documentation |
+
+### Development Workflow
+
+1. **Create a feature branch:**
+   ```bash
+   git checkout -b feature/my-change
+   ```
+
+2. **Make your changes** to the `.tg` source files
+
+3. **Self-host test** — verify the compiler can still compile itself:
+   ```bash
+   stage2.exe build src/thagore.tg -o stage2b.exe
+   ```
+
+4. **Run tests:**
+   ```bash
+   stage2.exe test --workspace
+   ```
+
+5. **Build sample programs** to verify nothing is broken:
+   ```bash
+   stage2.exe build examples/hello.tg -o hello.exe
+   stage2.exe build examples/fib.tg -o fib.exe
+   ```
+
+## Code Style Guidelines
+
+1. **Indentation**: Use 4 spaces (no tabs)
+2. **Line endings**: Unix-style LF (not CRLF)
+3. **File encoding**: UTF-8
+4. **Naming conventions**:
+   - Functions: `snake_case` — `parse_enum_name`, `validate_source`
+   - Structs: `PascalCase` — `ProgramAstNative`, `CoreProgram`
+   - Constants: `UPPER_SNAKE_CASE` (when applicable)
+   - Private/internal functions: prefix with `_` — `_trim`, `_next_line_pos`
+5. **Comments**: Use `#` for comments, `//` is also supported
+6. **Function signatures**: Always include explicit return type
+
+### Example
+
+```python title="good_style.tg"
+# Calculate the dot product of two 2D vectors
+func dot_product(ax: i32, ay: i32, bx: i32, by: i32) -> i32:
+    return ax * bx + ay * by
+
+func _validate_input(n: i32) -> i32:
+    if (n < 0):
+        return 1
+    return 0
+```
+
+## Submitting a PR
+
+### PR Checklist
+
+Before submitting:
+- [ ] Code compiles successfully
+- [ ] Self-host test passes (`stage2 → stage2b`)
+- [ ] Existing tests still pass
+- [ ] New tests added for new functionality
+- [ ] No C++ fallback introduced
+- [ ] Code follows style guidelines
+
+### CI Requirements
+
+Your PR must pass all three CI pipelines with **3 consecutive green runs**:
+1. ✅ **CI** — build and test
+2. ✅ **Selfhost Matrix** — self-hosting on all platforms
+3. ✅ **Release (dry-run)** — release artifact generation
+
+<Aside type="caution" title="Bootstrap Policy">
+**Never** introduce a C++ fallback, Stage0 path, or any implicit fallback mechanism. The Thagore compiler must remain strictly self-hosted through the Stage1 seed chain.
 </Aside>
+
+## Where to Contribute
+
+### Good First Issues
+- Add new examples to `examples/`
+- Improve documentation in `docs/starlight/`
+- Add test cases to `tests/`
+- Improve error messages in the compiler
+
+### Intermediate
+- Add new standard library functions to `lib/`
+- Improve the autofix engine rules
+- Enhance the CLI with new commands
+
+### Advanced
+- Work on the lowering pipeline
+- Implement new language features (tracked by feature counters)
+- Optimize the LLVM IR emission
+- Port to new platforms

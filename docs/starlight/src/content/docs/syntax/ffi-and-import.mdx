@@ -1,29 +1,158 @@
 ---
-title: FFI and import
-description: Module import và extern function bridge.
+title: FFI & Import
+description: Module system, import statements, extern func for C FFI, and library interop in Thagore.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-# `import` / `use` / `extern func`
+# FFI & Import
 
-```python title="ffi.tg" mark={1,4}
-extern func sqrtf(x: f32) -> f32
+## Module System
 
-func calc_hypotenuse(a: f32, b: f32) -> f32:
-    return sqrtf(a * a + b * b)
-```
+Thagore has a straightforward module system based on `import` statements. There are three import styles:
 
-```python title="module-import.tg"
+### 1. Import a Standard Library Module
+
+```python title="import_stdlib.tg"
 import fs
+import env
 import process
 ```
 
-## Interop Notes
+This imports modules from the `lib/` directory. You access functions via the module name:
 
-1. C ABI interop đi qua `extern func`.
-2. Runtime bridge expose nhiều symbol (`__fs_*`, `__env_*`, `__http_*`, `__time_*`).
+```python title="use_module.tg"
+import fs
 
-<Aside type="note" title="Python Bridge">
-Các example `python_bridge.tg`, `clean_python.tg`, `pytorch_tensor.tg` dùng nhóm `__thg_py_*` API để gọi Python runtime.
+func main() -> i32:
+    let content = fs.read_text("data.txt")
+    print(content)
+    return 0
+```
+
+### 2. Import a File by Path
+
+```python title="import_path.tg"
+import "src/driver/cli/main.tg" as cli
+import "lib/string.tg" as str
+import "std/core.tg" as core
+```
+
+The `as` keyword creates a namespace alias:
+
+```python title="namespaced.tg"
+import "lib/string.tg" as str
+
+func main() -> i32:
+    let trimmed = str.trim("  hello  ")
+    print(trimmed)
+    return 0
+```
+
+### 3. Import a File Without Alias
+
+```python title="import_direct.tg"
+import "src/semantics/typedir/nodes.tg"
+```
+
+This makes all exported symbols from the file available in the current scope.
+
+## `extern func` — C Foreign Function Interface
+
+The `extern func` keyword declares an external C function that can be called from Thagore:
+
+```python title="ffi_basic.tg"
+extern func strlen(s: String) -> i32
+extern func printf(fmt: String, value: i32) -> i32
+extern func exit(code: i32) -> void
+```
+
+### Calling C Math Functions
+
+```python title="ffi_math.tg"
+extern func sqrtf(x: f32) -> f32
+extern func powf(base: f32, exp: f32) -> f32
+
+func hypotenuse(a: f32, b: f32) -> f32:
+    return sqrtf(powf(a, 2.0) + powf(b, 2.0))
+
+func main() -> i32:
+    let c = hypotenuse(3.0, 4.0)
+    print(c)    # Output: 5.0
+    return 0
+```
+
+### Calling C Standard Library Functions
+
+```python title="ffi_stdlib.tg"
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
+extern func puts(text: String) -> i32
+```
+
+### FFI Type Mapping
+
+| Thagore Type | C Equivalent |
+|-------------|--------------|
+| `i32` | `int` / `int32_t` |
+| `f32` | `float` |
+| `f64` | `double` |
+| `String` | `const char*` |
+| `ptr` | `void*` |
+| `void` | `void` |
+
+<Aside type="caution" title="Name Matching">
+The function name in `extern func` must **exactly match** the C symbol name. The linker resolves these symbols at link time via the LLVM/Clang toolchain.
 </Aside>
+
+## Runtime Intrinsics
+
+The Thagore runtime provides built-in intrinsic functions prefixed with `__thg_`:
+
+```python title="intrinsics.tg"
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_ptr_null() -> ptr
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+extern func __string_from_codepoint(cp: i32) -> String
+extern func __thg_str_contains(text: String, needle: String) -> i32
+extern func __thg_str_starts_with(text: String, prefix: String) -> i32
+extern func __thg_str_ends_with(text: String, suffix: String) -> i32
+extern func __thg_str_trim(text: String) -> String
+extern func __thg_str_replace(text: String, old: String, new: String) -> String
+extern func __thg_str_lower(text: String) -> String
+extern func __thg_str_upper(text: String) -> String
+```
+
+<Aside type="tip" title="Use the Standard Library">
+You rarely need to call intrinsics directly. Use the standard library modules (`import string`, `import fs`, etc.) which wrap these intrinsics with safer, higher-level APIs.
+</Aside>
+
+## Python Bridge
+
+Thagore provides FFI functions for Python interop:
+
+```python title="python_bridge.tg"
+extern func __thg_py_initialize() -> void
+extern func __thg_py_finalize() -> void
+extern func __thg_py_import(name: String) -> ptr
+extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
+extern func __thg_py_call0(callable: ptr) -> ptr
+extern func __thg_py_print_obj(obj: ptr) -> void
+
+func main() -> i32:
+    __thg_py_initialize()
+    let math_mod = __thg_py_import("math")
+    __thg_py_print_obj(math_mod)
+    __thg_py_finalize()
+    return 0
+```
+
+See [Integration: C FFI & Python](/integration/c-ffi-python) for a complete guide.
+
+## Import Resolution Order
+
+1. **Quoted path imports** (`import "path/to/file.tg"`) — resolved relative to the project root
+2. **Bare module imports** (`import fs`) — resolved from the `lib/` directory
+3. **Standard library** (`import "std/core.tg"`) — resolved from the `std/` directory

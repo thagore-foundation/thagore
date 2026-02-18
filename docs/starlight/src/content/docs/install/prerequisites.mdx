@@ -1,40 +1,113 @@
 ---
 title: Prerequisites
-description: Môi trường cần có để build và chạy Thagore compiler.
+description: Everything you need installed before building or using the Thagore compiler.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Prerequisites
 
-## Required
+Before you can build and run Thagore programs, you need the following tools installed on your system.
 
-1. LLVM/Clang toolchain.
-2. Python 3 (cho một số script bootstrap/test).
-3. Runtime lib `thag_runtime.lib` (Windows) hoặc `libthag_runtime.a` (Unix).
+## Required Tools
 
-<Aside type="caution" title="Bootstrap Policy">
-Theo workflow hiện tại, Unix CI/release bootstrap từ Stage1 seed asset; Stage0 fallback chỉ là inventory khẩn cấp, không phải mặc định.
+| Tool | Version | Purpose |
+|------|---------|---------|
+| **LLVM / Clang** | 21.x | Compiler backend & linker — generates native code from LLVM IR |
+| **Stage1 Seed** | `v0.3.25-stage1-seed` | Bootstrap seed binary to compile the Thagore compiler |
+| **Runtime ABI** | — | `thag_runtime.lib` (Windows) / `libthag_runtime.a` (Linux/macOS) |
+
+## Optional Tools
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| **Python** | 3.x | Required only for Python bridge, benchmark scripts, and toolchain automation |
+| **Git** | Any | For cloning the repository and contributing |
+
+## Installing LLVM 21
+
+<Tabs>
+  <TabItem label="Windows">
+
+1. Download the LLVM 21 release from the [LLVM Releases page](https://github.com/llvm/llvm-project/releases)
+2. Extract the archive (e.g., `clang+llvm-21.x-x86_64-pc-windows-msvc.tar.xz`)
+3. Add the `bin/` directory to your system `PATH`
+4. Verify installation:
+
+```powershell
+clang --version
+# Expected: clang version 21.x.x ...
+```
+
+  </TabItem>
+  <TabItem label="Linux (Ubuntu/Debian)">
+
+```bash
+# Install from LLVM apt repository
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 21
+
+# Verify
+clang-21 --version
+```
+
+Alternatively, download pre-built binaries from the LLVM GitHub releases.
+
+  </TabItem>
+  <TabItem label="macOS">
+
+```bash
+# Using Homebrew
+brew install llvm@21
+
+# Add to PATH  
+export PATH="/opt/homebrew/opt/llvm@21/bin:$PATH"
+
+# Verify
+clang --version
+```
+
+  </TabItem>
+</Tabs>
+
+## Getting the Stage1 Seed
+
+The Stage1 seed is a pre-compiled Thagore compiler binary used to bootstrap the full compiler. It is distributed as a GitHub release asset.
+
+```bash
+# Download from the latest seed tag
+# Check: https://github.com/thagore/thagore/releases/tag/v0.3.25-stage1-seed
+```
+
+<Aside type="note" title="Why a Seed?">
+Since Thagore is self-hosted (the compiler is written in Thagore), you need an existing compiler binary to compile the compiler source code. This is the "chicken-and-egg" problem that all self-hosted languages face. The seed is the initial binary that breaks this cycle.
 </Aside>
 
-## Verify Environment
+## Runtime ABI Library
 
-<Steps>
-1. Kiểm tra compiler binary:
+The runtime ABI library provides core functions that compiled Thagore programs link against (string operations, I/O, memory management, etc.).
 
-   ```bash
-   thagore --version
-   ```
+| Platform | Artifact File |
+|----------|---------------|
+| Windows  | `thagore-runtime-windows.lib` (or `thag_runtime.lib`) |
+| Linux    | `thagore-runtime-linux.a` (or `libthag_runtime.a`) |
+| macOS    | `thagore-runtime-macos.a` |
 
-2. Kiểm tra linker path (LLVM clang):
+These are distributed alongside the Stage1 seed or generated during the bootstrap process via `scripts/build_runtime_abi.py`.
 
-   ```bash
-   clang --version
-   ```
+## Verifying Your Setup
 
-3. Kiểm tra runtime lib ở root repo:
+After installing everything, verify your environment:
 
-   ```bash
-   ls thag_runtime.lib
-   ```
-</Steps>
+```bash
+# Check Clang is available
+clang --version
+
+# Check the seed compiler works
+stage1.exe --version
+# or on Linux/macOS:
+./stage1 --version
+```
+
+You're now ready to proceed to the [Bootstrap Guide](/install/windows-bootstrap).

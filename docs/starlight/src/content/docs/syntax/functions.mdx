@@ -1,27 +1,150 @@
 ---
 title: Functions
-description: Khai báo hàm, return type, parameter patterns.
+description: Function declarations, parameters, return types, entry points, and function patterns in Thagore.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
 # Functions
 
-```python title="functions.tg" mark={1,4}
+## Basic Function Declaration
+
+Functions are declared with the `func` keyword, followed by the name, parameters in parentheses, return type after `->`, and a `:` to open the body:
+
+```python title="functions.tg"
 func add(a: i32, b: i32) -> i32:
     return a + b
 
+func greet(name: String) -> String:
+    return "Hello " + name
+
 func main() -> i32:
-    let v = add(10, 32)
-    print(v)
+    let result = add(10, 32)
+    print(result)       # Output: 42
+
+    let msg = greet("Thagore")
+    print(msg)          # Output: Hello Thagore
     return 0
 ```
 
-## Notes
+## Function Syntax
 
-1. `func main() -> i32` vẫn là entrypoint tường minh khi bạn muốn kiểm soát rõ luồng chạy.
-2. Nếu source không có `main`, compiler sẽ tự sinh entrypoint `main` từ top-level script statements.
+```
+func <name>(<param1>: <type1>, <param2>: <type2>, ...) -> <return_type>:
+    <body>
+```
 
-<Aside type="note" title="Generic Signatures">
-Generic clause trong header có thể xuất hiện ở source (`func id[T](x: T)`), và được lowering strip/mangle theo pipeline hiện tại.
+### Rules
+
+1. **Parameters** must have explicit type annotations: `name: Type`
+2. **Return type** is specified after `->` and before `:`
+3. **`return`** statement is required to return a value
+4. **Indentation** defines the function body
+
+## Entry Point: `main`
+
+`func main() -> i32` is the standard entry point for Thagore programs:
+
+```python title="entry_point.tg"
+func main() -> i32:
+    print("Program started")
+    return 0    # 0 = success
+```
+
+<Aside type="tip" title="Auto-Generated main">
+If your source file has no `func main()`, the compiler wraps all top-level statements in an auto-generated `main` function. This lets you write scripts without boilerplate:
+
+```python title="script.tg"
+let x = 10
+print(x)
+```
 </Aside>
+
+## Multiple Functions
+
+Functions can call each other:
+
+```python title="multi_func.tg"
+func square(n: i32) -> i32:
+    return n * n
+
+func sum_of_squares(a: i32, b: i32) -> i32:
+    return square(a) + square(b)
+
+func main() -> i32:
+    let result = sum_of_squares(3, 4)
+    print(result)    # Output: 25
+    return 0
+```
+
+## Recursive Functions
+
+Thagore supports recursion natively:
+
+```python title="fib.tg"
+func fib(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+    let result = fib(35)
+    print(result)    # Output: 9227465
+    return 0
+```
+
+## Functions with String Parameters
+
+```python title="string_funcs.tg"
+func make_greeting(first: String, last: String) -> String:
+    return "Hello, " + first + " " + last + "!"
+
+func main() -> i32:
+    let greeting = make_greeting("John", "Doe")
+    print(greeting)
+    return 0
+```
+
+## Functions with Float Parameters
+
+```python title="float_func.tg"
+func calc_circle(radius: f32) -> f32:
+    let pi = 3.14159
+    return 2.0 * pi * radius
+
+func main() -> i32:
+    let circumference = calc_circle(5.0)
+    print(circumference)
+    return 0
+```
+
+## Functions with Default Parameters
+
+Some standard library functions support default parameters:
+
+```python title="default_params.tg"
+# In the standard library (lib/io.tg):
+# func input_prompt(prompt: String = "") -> String:
+#     ...
+
+import io
+
+func main() -> i32:
+    let name = io.input_prompt("Enter your name: ")
+    print("Hello, " + name)
+    return 0
+```
+
+## `extern func` — Foreign Function Declarations
+
+Use `extern func` to declare external C functions (see [FFI & Import](/syntax/ffi-and-import) for details):
+
+```python title="extern_func.tg"
+extern func sqrtf(x: f32) -> f32
+extern func pow(base: f64, exp: f64) -> f64
+
+func main() -> i32:
+    let h = sqrtf(9.0 + 16.0)
+    print(h)    # Output: 5.0
+    return 0
+```
