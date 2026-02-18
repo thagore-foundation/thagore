@@ -18,6 +18,12 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
 struct ManagedString {
@@ -127,6 +133,48 @@ auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
     raw = "./" + raw;
   }
   return quoteShellArg(raw);
+#endif
+}
+
+auto runCommandMaybeTimed(const std::string &command, int timeoutMs) -> int {
+#if defined(_WIN32)
+  STARTUPINFOA startup {};
+  PROCESS_INFORMATION processInfo {};
+  startup.cb = sizeof(startup);
+  std::string cmdLine = "cmd /C " + command;
+  std::vector<char> mutableCmd(cmdLine.begin(), cmdLine.end());
+  mutableCmd.push_back('\0');
+  const BOOL created = CreateProcessA(
+    nullptr,
+    mutableCmd.data(),
+    nullptr,
+    nullptr,
+    FALSE,
+    CREATE_NO_WINDOW,
+    nullptr,
+    nullptr,
+    &startup,
+    &processInfo
+  );
+  if (!created) {
+    return -1;
+  }
+  const DWORD waitMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : INFINITE;
+  const DWORD waitCode = WaitForSingleObject(processInfo.hProcess, waitMs);
+  if (waitCode == WAIT_TIMEOUT) {
+    TerminateProcess(processInfo.hProcess, 124);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return 124;
+  }
+  DWORD exitCode = 1;
+  GetExitCodeProcess(processInfo.hProcess, &exitCode);
+  CloseHandle(processInfo.hThread);
+  CloseHandle(processInfo.hProcess);
+  return static_cast<int>(exitCode);
+#else
+  (void)timeoutMs;
+  return std::system(command.c_str());
 #endif
 }
 
@@ -2989,6 +3037,10 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     return out;
   };
   const int helperDepth = parseEnvInt("THAG_HELPER_DEPTH", 0);
+  int helperTimeoutMs = parseEnvInt("THAG_HELPER_TIMEOUT_MS", 45000);
+  if (helperTimeoutMs < 1000) {
+    helperTimeoutMs = 1000;
+  }
 
   if (helperDepth >= 4) {
     std::error_code rmErr {};
@@ -3147,7 +3199,10 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
       std::fprintf(stderr, "[helper-cmd] %s\n", command.c_str());
     }
     lastCommand = command;
-    const int code = std::system(command.c_str());
+    const int code = runCommandMaybeTimed(command, helperTimeoutMs);
+    if (code == 124) {
+      std::fprintf(stderr, "codegen helper timeout (%d ms): %s\n", helperTimeoutMs, command.c_str());
+    }
     if (code == 0 && std::filesystem::exists(irPath)) {
       commandOk = true;
       break;
