@@ -1,2 +1,0 @@
-import "src/lowering/transform/comptimeeval.tg"
-import "src/lowering/transform/comptimerewrite.tg"

@@ -1,6 +1,6 @@
 import "src/lowering/coreir/nodes.tg"
-import "src/codegen/native/emithelpers.tg"
-import "src/codegen/native/emitexpr.tg"
+import "src/codegen/native/emit/helpers.tg"
+import "src/codegen/native/emit/expr.tg"
 
 struct EmitExprResult:
     next_temp: i32

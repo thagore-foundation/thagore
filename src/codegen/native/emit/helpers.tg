@@ -1,0 +1,2 @@
+import "src/codegen/native/emit/text.tg"
+import "src/codegen/native/emit/string.tg"

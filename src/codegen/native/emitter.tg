@@ -1,14 +1,12 @@
 import "src/lowering/coreir/nodes.tg"
-import "src/codegen/native/emitsource.tg" as emitsource
-import "src/codegen/native/emittext.tg" as emittext
-import "src/codegen/native/emitstring.tg" as emitstring
-import "src/codegen/native/emitsource.tg" as emitsource
+import "src/codegen/native/emit/source.tg" as emitsource
+import "src/codegen/native/emit/text.tg" as emittext
 
 
 func emit_program_core(core: CoreProgram, module_name: String) -> String:
     if (core.error_count > 0):
         return ""
-    let normalized = _normalize_source_newlines(core.normalized_source)
+    let normalized = emittext._normalize_source_newlines(core.normalized_source)
     if (normalized.length() == 0):
         return ""
-    return _emit_program_from_core_source(normalized, module_name)
+    return emitsource._emit_program_from_core_source(normalized, module_name)

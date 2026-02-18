@@ -1,2 +1,0 @@
-import "src/codegen/native/emitstmtcore.tg"
-import "src/codegen/native/emitstmtfn.tg"

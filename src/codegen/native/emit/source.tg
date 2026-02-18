@@ -1,9 +1,9 @@
-import "src/codegen/native/emittext.tg"
-import "src/codegen/native/emitstring.tg"
-import "src/codegen/native/emitexprcore.tg"
-import "src/codegen/native/emitexprcond.tg"
-import "src/codegen/native/emitstmtcore.tg"
-import "src/codegen/native/emitstmtfn.tg"
+import "src/codegen/native/emit/text.tg"
+import "src/codegen/native/emit/string.tg"
+import "src/codegen/native/emit/exprcore.tg"
+import "src/codegen/native/emit/exprcond.tg"
+import "src/codegen/native/emit/stmtcore.tg"
+import "src/codegen/native/emit/stmtfn.tg"
 
 
 

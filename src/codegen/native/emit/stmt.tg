@@ -1,0 +1,2 @@
+import "src/codegen/native/emit/stmtcore.tg"
+import "src/codegen/native/emit/stmtfn.tg"

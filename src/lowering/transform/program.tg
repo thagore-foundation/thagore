@@ -1,9 +1,9 @@
 import "src/semantics/typedir/nodes.tg"
 import "src/lowering/coreir/nodes.tg"
-import "src/lowering/transform/validationflow.tg" as validationflow
-import "src/lowering/transform/preprocesstext.tg"
-import "src/lowering/transform/preprocessvalue.tg"
-import "src/lowering/transform/preprocessparse.tg"
+import "src/lowering/transform/validate/flow.tg" as validationflow
+import "src/lowering/transform/preprocess/text.tg"
+import "src/lowering/transform/preprocess/value.tg"
+import "src/lowering/transform/preprocess/parse.tg"
 
 
 func preprocess(source: String) -> String:
