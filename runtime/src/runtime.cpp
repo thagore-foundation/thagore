@@ -169,6 +169,9 @@ auto quoteShellArg(const std::string &arg) -> std::string {
 auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
   std::string raw = path.string();
 #if defined(_WIN32)
+  if (raw.rfind("./", 0) == 0 || raw.rfind(".\\", 0) == 0) {
+    raw = raw.substr(2);
+  }
   std::replace(raw.begin(), raw.end(), '/', '\\');
   if (raw.find(' ') != std::string::npos) {
     return "\"" + raw + "\"";
