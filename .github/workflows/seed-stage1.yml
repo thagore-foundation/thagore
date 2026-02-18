@@ -10,7 +10,7 @@ on:
       base_seed_tag:
         description: "Existing stage1 seed tag used for bootstrap"
         required: true
-        default: "v0.3.21-stage1-seed"
+        default: "v0.3.25-stage1-seed"
 
 permissions:
   actions: read
