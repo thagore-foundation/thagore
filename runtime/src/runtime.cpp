@@ -235,6 +235,16 @@ auto runCommandMaybeTimed(const std::string &command, int timeoutMs) -> int {
 }
 
 auto resolveSelfExecutablePath() -> std::filesystem::path {
+#if defined(_WIN32)
+  std::array<char, 4096> moduleBuf {};
+  const DWORD moduleLen = GetModuleFileNameA(nullptr, moduleBuf.data(), static_cast<DWORD>(moduleBuf.size()));
+  if (moduleLen > 0 && moduleLen < moduleBuf.size()) {
+    const auto modulePath = std::filesystem::path(std::string(moduleBuf.data(), moduleLen));
+    if (std::filesystem::exists(modulePath)) {
+      return modulePath;
+    }
+  }
+#endif
   if (g_argv == nullptr || g_argc <= 0 || g_argv[0] == nullptr || g_argv[0][0] == '\0') {
     return {};
   }
