@@ -129,8 +129,15 @@ jobs:
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D bootstrap
             cp bootstrap/thagore-stage1.exe stage1.exe
             chmod +x stage1.exe || true
+            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-windows.lib" -D bootstrap; then
+              cp bootstrap/thagore-runtime-windows.lib thag_runtime.lib
+            fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
+            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap; then
+              cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
+              cp libthag_runtime.a thag_runtime.lib
+            fi
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -139,6 +146,10 @@ jobs:
             chmod +x stage1 || true
           else
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-macos.tar.gz" -D bootstrap
+            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-macos.a" -D bootstrap; then
+              cp bootstrap/thagore-runtime-macos.a libthag_runtime.a
+              cp libthag_runtime.a thag_runtime.lib
+            fi
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-macos.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -314,6 +325,8 @@ jobs:
               echo "CRITICAL: thagore-stage1.exe too small ($bytes bytes), abort publish."
               exit 1
             fi
+            [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing thag_runtime.lib for seed runtime asset"; exit 1)
+            cp thag_runtime.lib thagore-runtime-windows.lib
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf thagore-stage1-linux.tar.gz -C seed dist
@@ -323,6 +336,12 @@ jobs:
               echo "CRITICAL: thagore-stage1-linux.tar.gz too small ($bytes bytes), abort publish."
               exit 1
             fi
+            if [[ -f libthag_runtime.a ]]; then
+              cp libthag_runtime.a thagore-runtime-linux.a
+            else
+              [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing runtime static lib for linux seed asset"; exit 1)
+              cp thag_runtime.lib thagore-runtime-linux.a
+            fi
           else
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf thagore-stage1-macos.tar.gz -C seed dist
@@ -331,6 +350,12 @@ jobs:
             if [[ "$bytes" -lt 20000 ]]; then
               echo "CRITICAL: thagore-stage1-macos.tar.gz too small ($bytes bytes), abort publish."
               exit 1
+            fi
+            if [[ -f libthag_runtime.a ]]; then
+              cp libthag_runtime.a thagore-runtime-macos.a
+            else
+              [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing runtime static lib for macos seed asset"; exit 1)
+              cp thag_runtime.lib thagore-runtime-macos.a
             fi
           fi
 
@@ -351,6 +376,9 @@ jobs:
             thagore-stage1.exe
             thagore-stage1-linux.tar.gz
             thagore-stage1-macos.tar.gz
+            thagore-runtime-windows.lib
+            thagore-runtime-linux.a
+            thagore-runtime-macos.a
             ${{ env.STAGE_TRACE_FILE }}
             runtime-abi-summary-seed-${{ runner.os }}.txt
 
@@ -376,6 +404,9 @@ jobs:
             seed-artifacts/**/thagore-stage1.exe
             seed-artifacts/**/thagore-stage1-linux.tar.gz
             seed-artifacts/**/thagore-stage1-macos.tar.gz
+            seed-artifacts/**/thagore-runtime-windows.lib
+            seed-artifacts/**/thagore-runtime-linux.a
+            seed-artifacts/**/thagore-runtime-macos.a
           make_latest: false
           prerelease: true
           overwrite_files: true

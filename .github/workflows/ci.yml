@@ -144,6 +144,15 @@ jobs:
             [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
+          download_runtime_asset() {
+            local pattern="$1"
+            local dest="$2"
+            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
+              cp "bootstrap/$pattern" "$dest"
+              return 0
+            fi
+            return 1
+          }
           probe_stage1_chain() {
             local bin="$1"
             thg_build() {
@@ -235,6 +244,17 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
           fi
           chmod +x "$STAGE1_BIN" || true
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            download_runtime_asset "thagore-runtime-windows.lib" "thag_runtime.lib" || true
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            if download_runtime_asset "thagore-runtime-linux.a" "libthag_runtime.a"; then
+              cp libthag_runtime.a thag_runtime.lib
+            fi
+          else
+            if download_runtime_asset "thagore-runtime-macos.a" "libthag_runtime.a"; then
+              cp libthag_runtime.a thag_runtime.lib
+            fi
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
@@ -783,6 +803,13 @@ jobs:
           [[ -n "$CANDIDATE" && -f "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in linux seed asset"; exit 1)
           cp "$CANDIDATE" stage1
           chmod +x stage1
+          if gh release download "$BOOTSTRAP_STAGE1_TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "thagore-runtime-linux.a" \
+            -D bootstrap; then
+            cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
+          fi
           python3 scripts/build_runtime_abi.py --target-os "Linux" --summary "runtime-abi-summary-canary-linux.txt"
 
       - name: Discord update - Bootstrap Stage1 (linux asset)
