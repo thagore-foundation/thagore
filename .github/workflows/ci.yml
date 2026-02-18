@@ -308,7 +308,14 @@ jobs:
           fi
           CLI_BIN="./$STAGE1_BIN"
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN"
+            INTENT_CLI="$CLI_BIN"
+            if "./$STAGE1_BIN" build src/thagore.tg -o stage_intent >/dev/null 2>&1; then
+              if [[ -f stage_intent ]]; then
+                chmod +x stage_intent || true
+                INTENT_CLI="./stage_intent"
+              fi
+            fi
+            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$INTENT_CLI"
           else
             if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN"; then
               echo "WARN: intent suite failed on ${{ runner.os }}; continuing CI while keeping Linux strict gate."
