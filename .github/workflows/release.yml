@@ -556,7 +556,16 @@ jobs:
         run: |
           set -euxo pipefail
           choco install nsis --no-progress -y --execution-timeout=1800
-          makensis /DVERSION="${{ github.ref_name }}" installer/windows/thagore.nsi
+          NSIS_BIN=""
+          if command -v makensis >/dev/null 2>&1; then
+            NSIS_BIN="makensis"
+          elif [[ -x "/c/Program Files (x86)/NSIS/makensis.exe" ]]; then
+            NSIS_BIN="/c/Program Files (x86)/NSIS/makensis.exe"
+          elif [[ -x "/c/ProgramData/chocolatey/bin/makensis.exe" ]]; then
+            NSIS_BIN="/c/ProgramData/chocolatey/bin/makensis.exe"
+          fi
+          [[ -n "$NSIS_BIN" ]] || (echo "CRITICAL: NSIS makensis not found after installation."; exit 1)
+          "$NSIS_BIN" /DVERSION="${{ github.ref_name }}" installer/windows/thagore.nsi
           cp thagore-windows-setup.exe "thagore-setup-windows-x86_64.exe"
 
       - name: Discord update - Package release payload
