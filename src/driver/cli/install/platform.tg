@@ -1,0 +1,66 @@
+import "src/driver/cli/common/core.tg"
+
+func _install_probe_file(cmd: String, log_path: String) -> String:
+    if (process.run(cmd + " > " + log_path + " 2>&1") != 0):
+        return ""
+    if (fs.exists(log_path) == 0):
+        return ""
+    return _trim(fs.read_text(log_path))
+
+func _install_detect_os() -> String:
+    let p = _trim(env.get("THAGORE_PLATFORM"))
+    if (strlen(p) > 0):
+        return p
+    let uname = _install_probe_file("uname -s", "thagore_install_uname_s.log")
+    if (_contains(uname, "Darwin") == 1):
+        return "macos"
+    if (_contains(uname, "Linux") == 1):
+        if (fs.exists("/etc/os-release") == 1):
+            let osr = fs.read_text("/etc/os-release")
+            if ((_contains(osr, "ID=ubuntu") == 1) or (_contains(osr, "ID_LIKE=ubuntu") == 1)):
+                return "ubuntu"
+        return "linux"
+    if ((_contains(uname, "FreeBSD") == 1) or (_contains(uname, "OpenBSD") == 1) or (_contains(uname, "NetBSD") == 1)):
+        return "portable"
+    let osenv = _trim(env.get("OS"))
+    if (_contains(osenv, "Windows") == 1):
+        return "windows"
+    return "portable"
+
+func _install_detect_arch() -> String:
+    let raw = _install_probe_file("uname -m", "thagore_install_uname_m.log")
+    let env_arch = _trim(env.get("PROCESSOR_ARCHITECTURE"))
+    if (strlen(raw) == 0):
+        raw = env_arch
+    if ((raw == "x86_64") or (raw == "amd64") or (raw == "AMD64")):
+        return "x86_64"
+    if ((raw == "arm64") or (raw == "aarch64") or (raw == "ARM64")):
+        return "arm64"
+    return "unknown"
+
+func _install_normalize_os(raw: String, detected: String) -> String:
+    let v = _trim(raw)
+    if ((strlen(v) == 0) or (v == "auto")):
+        return detected
+    if ((v == "windows") or (v == "win")):
+        return "windows"
+    if ((v == "ubuntu") or (v == "debian-ubuntu")):
+        return "ubuntu"
+    if ((v == "macos") or (v == "darwin") or (v == "mac")):
+        return "macos"
+    if ((v == "linux") or (v == "another-linux")):
+        return "linux"
+    if ((v == "portable") or (v == "bsd") or (v == "android")):
+        return "portable"
+    return ""
+
+func _install_normalize_arch(raw: String, detected: String) -> String:
+    let v = _trim(raw)
+    if ((strlen(v) == 0) or (v == "auto")):
+        return detected
+    if ((v == "amd64") or (v == "x86_64")):
+        return "x86_64"
+    if ((v == "arm64") or (v == "aarch64")):
+        return "arm64"
+    return ""
+

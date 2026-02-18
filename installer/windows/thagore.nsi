@@ -35,6 +35,34 @@ Section "Thagore Compiler" SecMain
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
+Section "Install LLVM 21.1.8" SecLLVM
+  MessageBox MB_YESNO "Do you want to install LLVM 21.1.8 automatically?" IDYES llvm_begin IDNO llvm_done
+llvm_begin:
+  DetailPrint "Checking clang..."
+  nsExec::ExecToLog 'cmd /C clang --version'
+  Pop $0
+  ${If} $0 == 0
+    DetailPrint "LLVM already available."
+    Goto llvm_done
+  ${EndIf}
+
+  DetailPrint "Installing LLVM 21.1.8 via winget..."
+  nsExec::ExecToLog 'cmd /C winget --version'
+  Pop $1
+  ${If} $1 != 0
+    MessageBox MB_ICONSTOP "winget not found. Please install LLVM 21.1.8 manually."
+    Abort
+  ${EndIf}
+  nsExec::ExecToLog 'cmd /C winget install --id LLVM.LLVM --version 21.1.8 --silent --accept-package-agreements --accept-source-agreements'
+  Pop $2
+  ${If} $2 != 0
+    MessageBox MB_ICONSTOP "LLVM auto-install failed. Please install LLVM 21.1.8 manually."
+    Abort
+  ${EndIf}
+
+llvm_done:
+SectionEnd
+
 Section "Add to PATH" SecPath
   ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
   ${If} $0 == ""

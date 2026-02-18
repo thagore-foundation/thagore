@@ -1,0 +1,72 @@
+import "src/driver/cli/common/core.tg"
+import "src/driver/cli/install/args.tg"
+import "src/driver/cli/install/platform.tg"
+import "src/driver/cli/install/prompt.tg"
+
+func _install_has_llvm(expected_version: String) -> i32:
+    if (process.run("clang --version > thagore_install_clang.log 2>&1") != 0):
+        return 0
+    if (strlen(_trim(expected_version)) == 0):
+        return 1
+    let text = fs.read_text("thagore_install_clang.log")
+    if (_contains(text, expected_version) == 1):
+        return 1
+    if (_starts_with(expected_version, "21.") == 1):
+        if (_contains(text, "version 21") == 1):
+            return 1
+    return 0
+
+func _install_build_command(os_name: String, arch: String, llvm_version: String, yes: i32) -> String:
+    let yes_flag = ""
+    if (yes == 1):
+        yes_flag = " --yes"
+    if (os_name == "windows"):
+        return "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/windows.ps1 --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "ubuntu"):
+        return "bash scripts/install/ubuntu.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "macos"):
+        return "bash scripts/install/macos.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "linux"):
+        return "bash scripts/install/linux.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    return "bash scripts/install/portable.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+
+func _install_toolchain(argc: i32, start: i32) -> i32:
+    let parsed = _install_parse_toolchain_args(argc, start)
+    if (parsed.ok == 0):
+        return 1
+    if (parsed.show_help == 1):
+        _install_print_help()
+        return 0
+    if (parsed.llvm_version != "21.1.8"):
+        print("ERROR: release installer only supports --llvm-version=21.1.8")
+        return 1
+    let detected_os = _install_detect_os()
+    let detected_arch = _install_detect_arch()
+    let target_os = _install_normalize_os(parsed.target_os, detected_os)
+    if (strlen(target_os) == 0):
+        print("ERROR: unsupported --target-os: " + parsed.target_os)
+        return 1
+    let target_arch = _install_normalize_arch(parsed.arch, detected_arch)
+    if (strlen(target_arch) == 0):
+        print("ERROR: unsupported --arch: " + parsed.arch)
+        return 1
+    if (_install_has_llvm(parsed.llvm_version) == 1):
+        print("LLVM " + parsed.llvm_version + " already available.")
+        return 0
+    if (_install_confirm_install(parsed.yes, target_os, target_arch, parsed.llvm_version) == 0):
+        print("Install aborted.")
+        return 1
+    let cmd = _install_build_command(target_os, target_arch, parsed.llvm_version, parsed.yes)
+    print("[install] target_os=" + target_os + " arch=" + target_arch + " llvm=" + parsed.llvm_version)
+    print("[install] cmd=" + cmd)
+    if (parsed.dry_run == 1):
+        return 0
+    let rc = process.run(cmd)
+    if (rc != 0):
+        print("ERROR: install command failed with code=" + _to_string_i32(rc))
+        return rc
+    if (_install_has_llvm(parsed.llvm_version) == 0):
+        print("ERROR: LLVM verification failed after install.")
+        return 1
+    print("LLVM toolchain ready.")
+    return 0

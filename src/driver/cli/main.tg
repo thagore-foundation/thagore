@@ -2,6 +2,7 @@ import "src/driver/cli/common/core.tg"
 import "src/driver/cli/fix/flow.tg"
 import "src/driver/cli/test/flow.tg"
 import "src/driver/cli/build/flow.tg"
+import "src/driver/cli/install/flow.tg"
 
 func main() -> i32:
     let argc = env.count()
@@ -282,9 +283,14 @@ func main() -> i32:
         let package_set = _csv_to_set(package_csv)
         let exclude_package_set = _csv_to_set(exclude_package_csv)
         return _run_tests(filter, workspace, no_run, fail_fast, as_json, list_only, exclude_set, package_set, exclude_package_set)
-    if ((cmd == "install") and (argc > 2)):
+    if (cmd == "install"):
+        if (argc <= 2):
+            print("ERROR: missing install subcommand.")
+            return 1
         if (_trim(env.get(2)) == "toolchain"):
-            return _install_toolchain()
+            return _install_toolchain(argc, 3)
+        print("ERROR: unknown install subcommand: " + _trim(env.get(2)))
+        return 1
     let emit_only = 0
     let autofix_mode = "off"
     let autofix_lock = ""

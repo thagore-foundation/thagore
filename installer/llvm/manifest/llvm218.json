@@ -1,0 +1,52 @@
+{
+  "llvm_version": "21.1.8",
+  "architectures": {
+    "amd64": "x86_64",
+    "x86_64": "x86_64",
+    "arm64": "arm64",
+    "aarch64": "arm64"
+  },
+  "targets": {
+    "windows": {
+      "x86_64": {
+        "install_hint": "winget install --id LLVM.LLVM --version 21.1.8"
+      },
+      "arm64": {
+        "install_hint": "winget install --id LLVM.LLVM --version 21.1.8"
+      }
+    },
+    "ubuntu": {
+      "x86_64": {
+        "install_hint": "curl -fsSL https://apt.llvm.org/llvm.sh | sudo bash -s -- 21 all"
+      },
+      "arm64": {
+        "install_hint": "curl -fsSL https://apt.llvm.org/llvm.sh | sudo bash -s -- 21 all"
+      }
+    },
+    "macos": {
+      "x86_64": {
+        "install_hint": "brew tap thagore-foundation/llvm && brew install llvm@21"
+      },
+      "arm64": {
+        "install_hint": "brew tap thagore-foundation/llvm && brew install llvm@21"
+      }
+    },
+    "linux": {
+      "x86_64": {
+        "install_hint": "use distro package manager, fallback to source build"
+      },
+      "arm64": {
+        "install_hint": "use distro package manager, fallback to source build"
+      }
+    },
+    "portable": {
+      "x86_64": {
+        "install_hint": "build from source if no package manager available"
+      },
+      "arm64": {
+        "install_hint": "build from source if no package manager available"
+      }
+    }
+  }
+}
+

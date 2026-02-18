@@ -522,6 +522,9 @@ jobs:
             cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
           fi
           cp -R std "dist/lib/std"
+          mkdir -p dist/installer
+          cp scripts/install/*.sh dist/installer/ || true
+          cp scripts/install/*.ps1 dist/installer/ || true
           [[ -f "bootstrap/${{ matrix.stage1_seed_name }}" ]] || (echo "CRITICAL: missing bootstrap seed asset bootstrap/${{ matrix.stage1_seed_name }}"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
@@ -546,6 +549,15 @@ jobs:
             echo "CRITICAL: ${{ matrix.package_name }} too small ($bytes_pkg bytes)."
             exit 1
           fi
+
+      - name: Build Windows EXE installer (NSIS)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          choco install nsis --no-progress -y --execution-timeout=1800
+          makensis /DVERSION="${{ github.ref_name }}" installer/windows/thagore.nsi
+          cp thagore-windows-setup.exe "thagore-setup-windows-x86_64.exe"
 
       - name: Discord update - Package release payload
         uses: ./.github/actions/discord-ci-status
@@ -572,6 +584,7 @@ jobs:
             core-ir-release-${{ matrix.os }}.txt
             spec-summary-release-${{ matrix.os }}.txt
             seed-tag-sync-release.txt
+            thagore-setup-windows-x86_64.exe
 
       - name: Upload typed-ir audit artifact
         if: always()
@@ -615,6 +628,7 @@ jobs:
             artifacts/**/thagore-linux.tar.gz
             artifacts/**/thagore-macos.tar.gz
             artifacts/**/thagore-windows.tar.gz
+            artifacts/**/thagore-setup-windows-*.exe
             artifacts/**/thagore-stage1-linux.tar.gz
             artifacts/**/thagore-stage1-macos.tar.gz
             artifacts/**/thagore-stage1.exe

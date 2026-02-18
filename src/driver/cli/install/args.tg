@@ -1,0 +1,82 @@
+import "src/driver/cli/common/core.tg"
+
+struct InstallToolchainArgs:
+    ok: i32
+    show_help: i32
+    yes: i32
+    dry_run: i32
+    llvm_version: String
+    target_os: String
+    arch: String
+
+func _install_default_args() -> InstallToolchainArgs:
+    return InstallToolchainArgs(1, 0, 0, 0, "21.1.8", "auto", "auto")
+
+func _install_value_after_prefix(text: String, prefix: String) -> String:
+    let n = strlen(prefix)
+    if (strlen(text) < n):
+        return ""
+    return __thg_str_substr(text, n, strlen(text) - n)
+
+func _install_parse_toolchain_args(argc: i32, start: i32) -> InstallToolchainArgs:
+    let out = _install_default_args()
+    let i = start
+    while (i < argc):
+        let arg = _trim(env.get(i))
+        if ((arg == "--help") or (arg == "-h")):
+            return InstallToolchainArgs(1, 1, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+        if ((arg == "--yes") or (arg == "-y")):
+            out.yes = 1
+        else:
+            if (arg == "--dry-run"):
+                out.dry_run = 1
+            else:
+                if (_starts_with(arg, "--llvm-version=") == 1):
+                    let v = _trim(_install_value_after_prefix(arg, "--llvm-version="))
+                    if (strlen(v) == 0):
+                        print("ERROR: --llvm-version requires a value.")
+                        return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                    out.llvm_version = v
+                else:
+                    if (_starts_with(arg, "--target-os=") == 1):
+                        let v = _trim(_install_value_after_prefix(arg, "--target-os="))
+                        if (strlen(v) == 0):
+                            print("ERROR: --target-os requires a value.")
+                            return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                        out.target_os = v
+                    else:
+                        if (_starts_with(arg, "--arch=") == 1):
+                            let v = _trim(_install_value_after_prefix(arg, "--arch="))
+                            if (strlen(v) == 0):
+                                print("ERROR: --arch requires a value.")
+                                return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                            out.arch = v
+                        else:
+                            if (arg == "--llvm-version"):
+                                if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                    out.llvm_version = _trim(env.get(i + 1))
+                                    i = i + 1
+                                else:
+                                    print("ERROR: --llvm-version requires a value.")
+                                    return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                            else:
+                                if (arg == "--target-os"):
+                                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                        out.target_os = _trim(env.get(i + 1))
+                                        i = i + 1
+                                    else:
+                                        print("ERROR: --target-os requires a value.")
+                                        return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                                else:
+                                    if (arg == "--arch"):
+                                        if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                            out.arch = _trim(env.get(i + 1))
+                                            i = i + 1
+                                        else:
+                                            print("ERROR: --arch requires a value.")
+                                            return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+                                    else:
+                                        print("ERROR: unknown install toolchain flag: " + arg)
+                                        return InstallToolchainArgs(0, 0, out.yes, out.dry_run, out.llvm_version, out.target_os, out.arch)
+        i = i + 1
+    return out

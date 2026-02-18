@@ -27,6 +27,10 @@ thagore fix explain <entry.tg> [--json] [--workspace] [--exclude a,b,c] [--lock 
 thagore fix rollback <session-id>
 thagore --emit-llvm <file.tg> [-o output.ll]
 thagore --emit-llvm-internal <file.tg> [-o output.ll]
+thagore install toolchain [--yes] [--dry-run]
+                         [--llvm-version 21.1.8]
+                         [--target-os auto|windows|ubuntu|macos|linux|portable]
+                         [--arch auto|amd64|x86_64|arm64|aarch64]
 thagore --version
 thagore --help
 ```

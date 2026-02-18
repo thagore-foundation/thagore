@@ -1,0 +1,24 @@
+---
+title: Release Installers
+description: Installer phát hành đầu tiên cho Thagore trên đa hệ điều hành.
+---
+
+# Release Installers
+
+## LLVM Toolchain Version
+
+Bản phát hành này khóa LLVM `21.1.8`.
+
+## Lệnh nhanh
+
+```bash
+thagore install toolchain --yes
+```
+
+## Theo nền tảng
+
+1. Windows: dùng `thagore-setup-windows-x86_64.exe` hoặc `thagore install toolchain`.
+2. Ubuntu: `bash scripts/install/ubuntu.sh --llvm-version 21.1.8 --yes`.
+3. macOS: `bash scripts/install/macos.sh --llvm-version 21.1.8 --yes`.
+4. Another Linux: `bash scripts/install/linux.sh --llvm-version 21.1.8 --yes`.
+5. BSD/Android/khác: `bash scripts/install/portable.sh --llvm-version 21.1.8 --yes`.
