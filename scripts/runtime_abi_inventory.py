@@ -19,7 +19,10 @@ def find_required_symbols(paths: list[Path]) -> set[str]:
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, capture_output=True, text=True)
+    try:
+        return subprocess.run(args, capture_output=True, text=True)
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(args=args, returncode=127, stdout="", stderr="tool_not_found")
 
 
 def find_provided_symbols(runtime_lib: Path) -> set[str]:
