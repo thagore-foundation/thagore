@@ -256,10 +256,12 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Unix stage1 asset found in releases."; exit 1)
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
-            exit 1
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
           fi
+          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.os }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
         uses: ./.github/actions/discord-ci-status
@@ -475,6 +477,7 @@ jobs:
             ${{ matrix.package_name }}
             ${{ matrix.stage1_seed_name }}
             ${{ env.STAGE_TRACE_FILE }}
+            runtime-abi-summary-release-${{ matrix.os }}.txt
 
   publish:
     name: publish-release

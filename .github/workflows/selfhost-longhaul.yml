@@ -132,10 +132,12 @@ jobs:
             chmod +x stage1 || true
             echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
           fi
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
-            exit 1
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
           fi
+          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-longhaul-${{ runner.os }}.txt"
 
       - name: Longhaul 10 rounds (Stage1 -> Stage2 -> Stage2)
         shell: bash
@@ -382,3 +384,4 @@ jobs:
           path: |
             ${{ env.STAGE_TRACE_FILE }}
             ${{ env.SOAK_REPORT_FILE }}
+            runtime-abi-summary-longhaul-${{ runner.os }}.txt

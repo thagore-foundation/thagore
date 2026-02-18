@@ -18,6 +18,7 @@ cmd /c scripts\bootstrap.bat
 ```
 
 This runs Stage1 -> Stage2 -> Stage2b and validates sample output.
+`scripts/build_runtime_abi.py` is executed to validate/materialize runtime ABI libraries before link.
 
 ## Architecture
 

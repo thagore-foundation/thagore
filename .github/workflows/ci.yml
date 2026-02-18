@@ -235,10 +235,12 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
           fi
           chmod +x "$STAGE1_BIN" || true
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
-            exit 1
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
           fi
+          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-ci-${{ matrix.os }}.txt"
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
 
       - name: Discord update - Bootstrap Stage1 (asset only)
@@ -733,6 +735,7 @@ jobs:
             stage-trace.log
             stage1*
             stage2*
+            runtime-abi-summary-ci-${{ matrix.os }}.txt
 
   native-cli-canary:
     name: native-cli-canary (ubuntu)
@@ -780,6 +783,7 @@ jobs:
           [[ -n "$CANDIDATE" && -f "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in linux seed asset"; exit 1)
           cp "$CANDIDATE" stage1
           chmod +x stage1
+          python3 scripts/build_runtime_abi.py --target-os "Linux" --summary "runtime-abi-summary-canary-linux.txt"
 
       - name: Discord update - Bootstrap Stage1 (linux asset)
         uses: ./.github/actions/discord-ci-status
@@ -846,6 +850,7 @@ jobs:
             canary-stage-trace.log
             cli_canary.ll
             thagore_cli_canary
+            runtime-abi-summary-canary-linux.txt
 
   discord-notify-finalize:
     name: discord-notify-finalize

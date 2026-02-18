@@ -236,10 +236,12 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
           fi
           chmod +x "$STAGE1_BIN" || true
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
-            exit 1
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
           fi
+          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-selfhost-${{ matrix.os }}.txt"
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
 
       - name: Discord update - Fetch stage1 bootstrap asset
@@ -684,7 +686,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: selfhost-trace-${{ runner.os }}
-          path: ${{ env.STAGE_TRACE_FILE }}
+          path: |
+            ${{ env.STAGE_TRACE_FILE }}
+            runtime-abi-summary-selfhost-${{ matrix.os }}.txt
 
   discord-notify-finalize:
     name: discord-notify-finalize
