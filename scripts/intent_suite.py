@@ -95,26 +95,32 @@ def run_cmd(
 
 
 def parse_json_from_proc(proc: subprocess.CompletedProcess[str], label: str) -> dict:
-    for raw in (proc.stdout, proc.stderr):
-        text = raw.strip()
-        if not text:
-            continue
-        text = text.lstrip("\ufeff")
+    decoder = json.JSONDecoder()
+
+    def try_decode_text(text: str) -> dict | None:
+        normalized = text.lstrip("\ufeff").strip()
+        if not normalized:
+            return None
         try:
-            payload = json.loads(text)
+            payload = json.loads(normalized)
+            return payload if isinstance(payload, dict) else None
+        except json.JSONDecodeError:
+            pass
+        for idx, ch in enumerate(normalized):
+            if ch not in "{[":
+                continue
+            try:
+                payload, _end = decoder.raw_decode(normalized[idx:])
+            except json.JSONDecodeError:
+                continue
             if isinstance(payload, dict):
                 return payload
-        except json.JSONDecodeError:
-            for line in reversed(text.splitlines()):
-                candidate = line.strip().lstrip("\ufeff")
-                if not candidate or candidate[0] not in "{[":
-                    continue
-                try:
-                    payload = json.loads(candidate)
-                    if isinstance(payload, dict):
-                        return payload
-                except json.JSONDecodeError:
-                    continue
+        return None
+
+    for raw in (proc.stdout, proc.stderr):
+        payload = try_decode_text(raw)
+        if payload is not None:
+            return payload
     sys.stderr.write(f"FAIL: {label} did not produce valid JSON output\n")
     if proc.stdout:
         sys.stderr.write("--- stdout ---\n" + proc.stdout + "\n")
