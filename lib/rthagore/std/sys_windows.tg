@@ -3,6 +3,8 @@
 use fs as fs
 use sys as sys
 
+extern func __io_read_line(prompt: String) -> String
+
 func create_file(path: String, mode: String = "r") -> ptr
     return fs.open_binary(path, mode)
 
@@ -39,7 +41,10 @@ func console_write(text: String) -> i32
     return 0
 
 func console_read(prompt: String = "") -> String
-    return ""
+    let line = __io_read_line(prompt)
+    if line == null
+        return ""
+    return line
 
 func stat(path: String) -> i32
     if fs.exists(path) == 0

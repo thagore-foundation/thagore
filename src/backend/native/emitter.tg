@@ -435,6 +435,10 @@ func _emit_call_expr(expr: String, slots: String, t: i32, sidx: i32, globals: St
         return EmitExprResult(t, sidx, "0", "", globals)
     let name = _trim_edges(__thg_str_substr(expr, 0, lp))
     let args = _trim_edges(__thg_str_substr(expr, lp + 1, rp - lp - 1))
+    if (name == "input"):
+        let v_in = _new_temp("call", t)
+        let ir_in = "  " + v_in + " = call i32 @__thg_input_i32()__NL__"
+        return EmitExprResult(t + 1, sidx, v_in, ir_in, globals)
     if ((name == "cli.main") and (args.length() == 0)):
         let v_cli = _new_temp("call", t)
         let ir_cli = "  " + v_cli + " = call i32 @__thg_cli_main_native()__NL__"
@@ -1222,6 +1226,7 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
     let out = _s3("; ModuleID = '", module_name, "'__NL__")
     out = _s2(out, "declare void @__thg_init_env(i32, ptr)__NL__")
     out = _s2(out, "declare i32 @__thg_cli_main_native()__NL__")
+    out = _s2(out, "declare i32 @__thg_input_i32()__NL__")
     out = _s2(out, "declare void @__thg_print_i32(i32)__NL__")
     out = _s2(out, "declare void @__thg_print_str(ptr, i32)__NL____NL__")
     out = _s2(out, _collect_string_globals(src))

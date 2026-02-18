@@ -4,6 +4,7 @@ use fs as fs
 use env as env
 use time as time
 use process as process
+use io as io
 
 func file_read_text(path: String) -> String = fs.read_text(path)
 
@@ -30,7 +31,7 @@ func console_print(value: String) -> i32
     return 0
 
 func console_input(prompt: String = "") -> String
-    return ""
+    return io.stdin_read_line(prompt)
 
 func process_run(cmd: String, args: String = "") -> i32
     return process.run(cmd)

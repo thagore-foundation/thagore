@@ -3,6 +3,29 @@
 use fs as fs
 use sys_platform as sys_platform
 
+extern func __io_read_line(prompt: String) -> String
+extern func __io_read_all() -> String
+extern func __thg_input_i32() -> i32
+
+func _is_stdin_selector(path: String) -> bool
+    if path == null
+        return true
+    if path == ""
+        return true
+    if path == "-"
+        return true
+    if path == "stdin"
+        return true
+    if path == "STDIN"
+        return true
+    if path == "con"
+        return true
+    if path == "CON"
+        return true
+    if path == "/dev/stdin"
+        return true
+    return false
+
 func read_text(path: String) -> String
     let text = fs.read_text(path)
     if text == null
@@ -36,7 +59,27 @@ func write_bytes(path: String, buffer: String) -> i32
     return written
 
 func stdin_read_line(prompt: String = "") -> String
-    return ""
+    let line = __io_read_line(prompt)
+    if line == null
+        return ""
+    return line
+
+func input(prompt: String = "") -> String
+    return stdin_read_line(prompt)
+
+func input_i32() -> i32
+    return __thg_input_i32()
+
+func stdin_read_all() -> String
+    let text = __io_read_all()
+    if text == null
+        return ""
+    return text
+
+func stdread(path: String = "") -> String
+    if _is_stdin_selector(path)
+        return stdin_read_all()
+    return read_text(path)
 
 func stdout_write(text: String) -> i32
     print(text)

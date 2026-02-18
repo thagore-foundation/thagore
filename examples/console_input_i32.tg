@@ -1,0 +1,5 @@
+func main() -> i32:
+    print("Nhap so nguyen:")
+    let n = input()
+    print(n)
+    return 0

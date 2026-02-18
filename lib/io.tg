@@ -1,0 +1,56 @@
+import "lib/fs.tg" as fs
+
+extern func __io_read_line(prompt: String) -> String
+extern func __io_read_all() -> String
+extern func __thg_input_i32() -> i32
+
+func _is_stdin_selector(path: String) -> i32:
+    if (path == null):
+        return 1
+    if (path == ""):
+        return 1
+    if (path == "-"):
+        return 1
+    if (path == "stdin"):
+        return 1
+    if (path == "STDIN"):
+        return 1
+    if (path == "con"):
+        return 1
+    if (path == "CON"):
+        return 1
+    if (path == "/dev/stdin"):
+        return 1
+    return 0
+
+func input() -> String:
+    let line = __io_read_line("")
+    if (line == null):
+        return ""
+    return line
+
+func input_i32() -> i32:
+    return __thg_input_i32()
+
+func input_prompt(prompt: String = "") -> String:
+    let line = __io_read_line(prompt)
+    if (line == null):
+        return ""
+    return line
+
+func stdin_read_line(prompt: String = "") -> String:
+    return input_prompt(prompt)
+
+func stdin_read_all() -> String:
+    let text = __io_read_all()
+    if (text == null):
+        return ""
+    return text
+
+func stdread(path: String = "") -> String:
+    if (_is_stdin_selector(path) == 1):
+        return stdin_read_all()
+    let text = fs.read_text(path)
+    if (text == null):
+        return ""
+    return text
