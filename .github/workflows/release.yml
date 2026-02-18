@@ -638,6 +638,17 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          BUILD_TIMEOUT_SECS=900
+          run_build_cmd() {
+            local cc="$1"
+            shift
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              echo "[TIMEOUT] linux-arm64 build timeout=${BUILD_TIMEOUT_SECS}s :: ./$cc $*" | tee -a "$STAGE_TRACE_FILE"
+              timeout --signal=KILL "${BUILD_TIMEOUT_SECS}s" "./$cc" "$@"
+            else
+              "./$cc" "$@"
+            fi
+          }
           thg_build() {
             local cc="$1"
             local src="$2"
@@ -654,14 +665,14 @@ jobs:
               return 1
             }
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            if "./$cc" build "$src" -o "$out"; then
+            if run_build_cmd "$cc" build "$src" -o "$out"; then
               got="$(resolve_local "$out" || true)"
               if [[ -n "$got" ]]; then
                 return 0
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out" || return 1
+            run_build_cmd "$cc" --build "$src" -o "$out" || return 1
             got="$(resolve_local "$out" || true)"
             if [[ -n "$got" ]]; then
               return 0
