@@ -569,7 +569,7 @@ jobs:
           [[ -n "$NSIS_BIN" ]] || (echo "CRITICAL: NSIS makensis not found after installation."; exit 1)
           NSIS_WIN="$(cygpath -w "$NSIS_BIN")"
           powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$NSIS_WIN' /DVERSION=${{ github.ref_name }} installer/windows/thagore.nsi"
-          cp thagore-windows-setup.exe "thagore-setup-windows-x86_64.exe"
+          cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-x86_64.exe"
 
       - name: Discord update - Package release payload
         uses: ./.github/actions/discord-ci-status
