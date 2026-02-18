@@ -277,6 +277,12 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
+          [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
+          gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" \
+            --pattern "thagore-stage1*" \
+            --pattern "thagore-runtime*" \
+            --pattern "seed-promotion-manifest-*" \
+            -D bootstrap || true
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -290,13 +296,12 @@ jobs:
           }
           download_asset() {
             local pattern="$1"
-            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            [[ -f "bootstrap/$pattern" ]]
           }
           download_runtime_asset() {
             local pattern="$1"
             local dest="$2"
-            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
+            if [[ -f "bootstrap/$pattern" ]]; then
               cp "bootstrap/$pattern" "$dest"
               return 0
             fi
