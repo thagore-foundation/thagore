@@ -638,7 +638,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          BUILD_TIMEOUT_SECS=900
+          BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
             local cc="$1"
             shift
