@@ -204,20 +204,24 @@ func is_range_loop_header(line: String) -> i32:
         return 0
     return 1
 
-func _is_parenthesized_stmt_header(line: String, head: String) -> i32:
+func _is_parenthesized_stmt_header(line: String, keyword: String) -> i32:
     let s = gt.trim(line)
-    if (_starts_with(s, head) == 0):
-        return 0
     let n = strlen(s)
-    if (n <= (strlen(head) + 1)):
+    if (n <= 4):
         return 0
     if (_char_at(s, n - 1) != ":"):
         return 0
-    let lp = strlen(head) - 1
+    let lp = _find_char(s, "(")
+    if (lp < 0):
+        return 0
+    let head = gt.trim(__thg_str_substr(s, 0, lp))
+    if (head != keyword):
+        return 0
     let rp = _matching_rparen(s, lp)
     if (rp < 0):
         return 0
-    if (rp != (n - 2)):
+    let tail = gt.trim(__thg_str_substr(s, rp + 1, n - rp - 1))
+    if (tail != ":"):
         return 0
     let cond = gt.trim(__thg_str_substr(s, lp + 1, rp - lp - 1))
     if (strlen(cond) == 0):
@@ -225,10 +229,10 @@ func _is_parenthesized_stmt_header(line: String, head: String) -> i32:
     return 1
 
 func is_if_stmt_header(line: String) -> i32:
-    return _is_parenthesized_stmt_header(line, "if (")
+    return _is_parenthesized_stmt_header(line, "if")
 
 func is_while_stmt_header(line: String) -> i32:
-    return _is_parenthesized_stmt_header(line, "while (")
+    return _is_parenthesized_stmt_header(line, "while")
 
 func has_if_expression(line: String) -> i32:
     let s = gt.trim(line)
