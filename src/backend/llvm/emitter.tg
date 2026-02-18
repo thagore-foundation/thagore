@@ -8,14 +8,5 @@ func emit_program(root: ptr) -> String:
 func emit_program_core(core: CoreProgram, module_name: String) -> String:
     return native_codegen.emit_program_core(core, module_name)
 
-func emit_program_from_source(source: String, module_name: String) -> String:
-    return native_codegen.emit_program_from_native(source, module_name)
-
-func emit_program_typed(typed_normalized: String, module_name: String) -> String:
-    let ir = native_codegen.emit_program_typed(typed_normalized, module_name)
-    if (ir.length() > 0):
-        return ir
-    return ""
-
 func system_decls() -> String:
     return ""

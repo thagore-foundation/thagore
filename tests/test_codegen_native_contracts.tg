@@ -1,4 +1,7 @@
 import "src/backend/llvm/emitter.tg" as em
+import "src/frontend/native/typechecker.tg" as tc
+import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/frontend/lowering/coreir.tg" as cir
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -22,82 +25,91 @@ func _expect_i32(label: String, got: i32, want: i32) -> i32:
     print(got)
     return 1
 
+func _emit_core(source: String, module_name: String) -> String:
+    let typed = tc.typecheck_to_typed(source)
+    if (typed.error_count > 0):
+        return ""
+    let core = pipe.lower_program(typed)
+    if (cir.core_has_error(core) == 1):
+        return ""
+    return em.emit_program_core(core, module_name)
+
 func main() -> i32:
     let fails = 0
     let src = "func main() -> i32:\n    let x = 1\n    return x\n"
 
-    let ir1 = em.emit_program_from_source(src, "contract_mod")
+    let ir1 = _emit_core(src, "contract_mod")
     fails = fails + _expect_i32("emit from source has @main", _contains(ir1, "define i32 @main("), 1)
     fails = fails + _expect_i32("emit from source has ret i32", _contains(ir1, "ret i32"), 1)
     fails = fails + _expect_i32("emit from source no __NL__ marker", _contains(ir1, "__NL__"), 0)
 
-    let ir2 = em.emit_program_typed(src, "contract_mod_typed")
+    let ir2 = _emit_core(src, "contract_mod_typed")
     fails = fails + _expect_i32("emit typed has @main", _contains(ir2, "define i32 @main("), 1)
     fails = fails + _expect_i32("emit typed has ret i32", _contains(ir2, "ret i32"), 1)
     fails = fails + _expect_i32("emit typed no __NL__ marker", _contains(ir2, "__NL__"), 0)
 
     let src_if = "func main() -> i32:\n    let n = 3\n    if (n < 5):\n        return n\n    return 0\n"
-    let ir_if = em.emit_program_from_source(src_if, "contract_if")
+    let ir_if = _emit_core(src_if, "contract_if")
     fails = fails + _expect_i32("emit if has compare", _contains(ir_if, "icmp"), 1)
     fails = fails + _expect_i32("emit if has branch", _contains(ir_if, "br i1"), 1)
     let src_if_ne = "func main() -> i32:\n    let n = 3\n    if (n != 5):\n        return n\n    return 0\n"
-    let ir_if_ne = em.emit_program_from_source(src_if_ne, "contract_if_ne")
+    let ir_if_ne = _emit_core(src_if_ne, "contract_if_ne")
     fails = fails + _expect_i32("emit if != uses icmp ne", _contains(ir_if_ne, "icmp ne"), 1)
     let src_if_and = "func main() -> i32:\n    let n = 3\n    if (n > 0 and n < 5):\n        return n\n    return 0\n"
-    let ir_if_and = em.emit_program_from_source(src_if_and, "contract_if_and")
+    let ir_if_and = _emit_core(src_if_and, "contract_if_and")
     fails = fails + _expect_i32("emit if and uses and i1", _contains(ir_if_and, " = and i1 "), 1)
     let src_if_or = "func main() -> i32:\n    let n = 3\n    if (n == 0 or n == 3):\n        return n\n    return 0\n"
-    let ir_if_or = em.emit_program_from_source(src_if_or, "contract_if_or")
+    let ir_if_or = _emit_core(src_if_or, "contract_if_or")
     fails = fails + _expect_i32("emit if or uses or i1", _contains(ir_if_or, " = or i1 "), 1)
     let src_if_and_symbol = "func main() -> i32:\n    let n = 3\n    if (n > 0 && n < 5):\n        return n\n    return 0\n"
-    let ir_if_and_symbol = em.emit_program_from_source(src_if_and_symbol, "contract_if_and_symbol")
+    let ir_if_and_symbol = _emit_core(src_if_and_symbol, "contract_if_and_symbol")
     fails = fails + _expect_i32("emit if && uses and i1", _contains(ir_if_and_symbol, " = and i1 "), 1)
     let src_if_or_symbol = "func main() -> i32:\n    let n = 3\n    if (n == 0 || n == 3):\n        return n\n    return 0\n"
-    let ir_if_or_symbol = em.emit_program_from_source(src_if_or_symbol, "contract_if_or_symbol")
+    let ir_if_or_symbol = _emit_core(src_if_or_symbol, "contract_if_or_symbol")
     fails = fails + _expect_i32("emit if || uses or i1", _contains(ir_if_or_symbol, " = or i1 "), 1)
     let src_if_precedence = "func main() -> i32:\n    let n = 3\n    if (n == 1 or n == 2 and n == 3):\n        return n\n    return 0\n"
-    let ir_if_precedence = em.emit_program_from_source(src_if_precedence, "contract_if_precedence")
+    let ir_if_precedence = _emit_core(src_if_precedence, "contract_if_precedence")
     fails = fails + _expect_i32("emit if precedence has and", _contains(ir_if_precedence, " = and i1 "), 1)
     fails = fails + _expect_i32("emit if precedence has or", _contains(ir_if_precedence, " = or i1 "), 1)
     let src_if_nested = "func main() -> i32:\n    let n = 3\n    if ((n == 1 or n == 2) and (n == 3 or n == 4)):\n        return n\n    return 0\n"
-    let ir_if_nested = em.emit_program_from_source(src_if_nested, "contract_if_nested")
+    let ir_if_nested = _emit_core(src_if_nested, "contract_if_nested")
     fails = fails + _expect_i32("emit if nested has and", _contains(ir_if_nested, " = and i1 "), 1)
     fails = fails + _expect_i32("emit if nested has or", _contains(ir_if_nested, " = or i1 "), 1)
     let src_if_not = "func main() -> i32:\n    let n = 3\n    if (not (n == 0)):\n        return n\n    return 0\n"
-    let ir_if_not = em.emit_program_from_source(src_if_not, "contract_if_not")
+    let ir_if_not = _emit_core(src_if_not, "contract_if_not")
     fails = fails + _expect_i32("emit if not uses xor i1", _contains(ir_if_not, " = xor i1 "), 1)
     let src_if_bang = "func main() -> i32:\n    let n = 3\n    if (!(n == 0)):\n        return n\n    return 0\n"
-    let ir_if_bang = em.emit_program_from_source(src_if_bang, "contract_if_bang")
+    let ir_if_bang = _emit_core(src_if_bang, "contract_if_bang")
     fails = fails + _expect_i32("emit if ! uses xor i1", _contains(ir_if_bang, " = xor i1 "), 1)
 
     let src_while = "func main() -> i32:\n    let i = 0\n    while (i < 2):\n        return i\n    return 0\n"
-    let ir_while = em.emit_program_from_source(src_while, "contract_while")
+    let ir_while = _emit_core(src_while, "contract_while")
     fails = fails + _expect_i32("emit while has compare", _contains(ir_while, "icmp"), 1)
     fails = fails + _expect_i32("emit while has branch", _contains(ir_while, "br i1"), 1)
     let src_while_le = "func main() -> i32:\n    let i = 0\n    while (i <= 2):\n        return i\n    return 0\n"
-    let ir_while_le = em.emit_program_from_source(src_while_le, "contract_while_le")
+    let ir_while_le = _emit_core(src_while_le, "contract_while_le")
     fails = fails + _expect_i32("emit while <= uses icmp sle", _contains(ir_while_le, "icmp sle"), 1)
     let src_while_and = "func main() -> i32:\n    let i = 0\n    while (i >= 0 and i <= 2):\n        return i\n    return 0\n"
-    let ir_while_and = em.emit_program_from_source(src_while_and, "contract_while_and")
+    let ir_while_and = _emit_core(src_while_and, "contract_while_and")
     fails = fails + _expect_i32("emit while and uses and i1", _contains(ir_while_and, " = and i1 "), 1)
     let src_while_and_symbol = "func main() -> i32:\n    let i = 0\n    while (i >= 0 && i <= 2):\n        return i\n    return 0\n"
-    let ir_while_and_symbol = em.emit_program_from_source(src_while_and_symbol, "contract_while_and_symbol")
+    let ir_while_and_symbol = _emit_core(src_while_and_symbol, "contract_while_and_symbol")
     fails = fails + _expect_i32("emit while && uses and i1", _contains(ir_while_and_symbol, " = and i1 "), 1)
     let src_while_not = "func main() -> i32:\n    let i = 0\n    while (not (i < 0)):\n        return i\n    return 0\n"
-    let ir_while_not = em.emit_program_from_source(src_while_not, "contract_while_not")
+    let ir_while_not = _emit_core(src_while_not, "contract_while_not")
     fails = fails + _expect_i32("emit while not uses xor i1", _contains(ir_while_not, " = xor i1 "), 1)
     let src_while_nested = "func main() -> i32:\n    let i = 0\n    while ((i >= 0 and i <= 2) or i == 9):\n        return i\n    return 0\n"
-    let ir_while_nested = em.emit_program_from_source(src_while_nested, "contract_while_nested")
+    let ir_while_nested = _emit_core(src_while_nested, "contract_while_nested")
     fails = fails + _expect_i32("emit while nested has and", _contains(ir_while_nested, " = and i1 "), 1)
     fails = fails + _expect_i32("emit while nested has or", _contains(ir_while_nested, " = or i1 "), 1)
 
     let src_bool_if = "func main() -> i32:\n    if (true):\n        return 1\n    if (false):\n        return 2\n    return 0\n"
-    let ir_bool_if = em.emit_program_from_source(src_bool_if, "contract_bool_if")
+    let ir_bool_if = _emit_core(src_bool_if, "contract_bool_if")
     fails = fails + _expect_i32("emit true literal mapped to i32 one", _contains(ir_bool_if, "icmp ne i32 1, 0"), 1)
     fails = fails + _expect_i32("emit false literal mapped to i32 zero", _contains(ir_bool_if, "icmp ne i32 0, 0"), 1)
 
     let src_script = "let x = true\nprint(x)\n"
-    let ir_script = em.emit_program_from_source(src_script, "contract_script")
+    let ir_script = _emit_core(src_script, "contract_script")
     fails = fails + _expect_i32("script source auto-synth main", _contains(ir_script, "define i32 @main("), 1)
 
     if (fails == 0):

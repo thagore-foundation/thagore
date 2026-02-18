@@ -1221,7 +1221,7 @@ func _emit_runtime_wrapper_ir(module_name: String) -> String:
     out = _s2(out, "}__NL__")
     return _finalize_ir(out)
 
-func _emit_program_from_source(source: String, module_name: String) -> String:
+func _emit_program_from_core_source(source: String, module_name: String) -> String:
     let src = _normalize_source_newlines(source)
     if (_is_runtime_wrapper_source(src) == 1):
         return _emit_runtime_wrapper_ir(module_name)
@@ -1277,17 +1277,10 @@ func _emit_program_from_source(source: String, module_name: String) -> String:
         out = _s2(out, "__NL__")
     return _finalize_ir(out)
 
-func emit_program_typed(typed_normalized: String, module_name: String) -> String:
-    return _emit_program_from_source(typed_normalized, module_name)
-
 func emit_program_core(core: CoreProgram, module_name: String) -> String:
     if (core.error_count > 0):
         return ""
     let normalized = _normalize_source_newlines(core.normalized_source)
     if (normalized.length() == 0):
         return ""
-    return _emit_program_from_source(normalized, module_name)
-
-func emit_program_from_native(source: String, module_name: String) -> String:
-    let normalized = _normalize_source_newlines(source)
-    return _emit_program_from_source(normalized, module_name)
+    return _emit_program_from_core_source(normalized, module_name)
