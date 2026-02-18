@@ -33,12 +33,12 @@ Pipeline:
 
 Key modules:
 
-- `src/frontend/native/lexer.tg`
-- `src/frontend/native/parser.tg`
-- `src/frontend/native/typechecker.tg`
-- `src/frontend/lowering/pipeline.tg`
-- `src/backend/native/emitter.tg`
-- `src/cli/thagore.tg`
+- `src/syntax/native/lexer.tg`
+- `src/syntax/native/parser.tg`
+- `src/semantics/typecheck/program.tg`
+- `src/lowering/transform/program.tg`
+- `src/codegen/native/emitter.tg`
+- `src/driver/cli/main.tg`
 
 ## Tests
 

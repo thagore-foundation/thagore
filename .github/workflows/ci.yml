@@ -948,15 +948,15 @@ jobs:
         run: |
           set -euxo pipefail
           rm -f thagore_cli_canary thagore_cli_canary.ll cli_canary.ll || true
-          echo "[CMD] ./stage1 build src/cli/thagore.tg -o thagore_cli_canary" | tee -a "$STAGE_TRACE_FILE"
-          ./stage1 build src/cli/thagore.tg -o thagore_cli_canary || true
+          echo "[CMD] ./stage1 build src/driver/cli/main.tg -o thagore_cli_canary" | tee -a "$STAGE_TRACE_FILE"
+          ./stage1 build src/driver/cli/main.tg -o thagore_cli_canary || true
           if [[ -f thagore_cli_canary ]]; then
             chmod +x thagore_cli_canary || true
             ./thagore_cli_canary --version || true
           fi
           if [[ ! -f thagore_cli_canary.ll ]]; then
-            echo "[CMD] ./stage1 src/cli/thagore.tg --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
-            ./stage1 src/cli/thagore.tg --emit-llvm || true
+            echo "[CMD] ./stage1 src/driver/cli/main.tg --emit-llvm" | tee -a "$STAGE_TRACE_FILE"
+            ./stage1 src/driver/cli/main.tg --emit-llvm || true
           fi
           if [[ -f thagore.ll ]]; then
             cp thagore.ll cli_canary.ll

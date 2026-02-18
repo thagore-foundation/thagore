@@ -1,7 +1,7 @@
-import "src/backend/native/emitter.tg" as native_codegen
-import "src/frontend/lowering/coreir.tg"
-import "src/backend/llvm/llvmtier1.tg" as llvmtier1
-import "src/backend/llvm/llvmtier2.tg" as llvmtier2
+import "src/codegen/native/emitter.tg" as native_codegen
+import "src/lowering/coreir/nodes.tg"
+import "src/codegen/llvm/api/core.tg" as llvmtier1
+import "src/codegen/llvm/api/target.tg" as llvmtier2
 
 func emit_program(root: ptr) -> String:
     root = root

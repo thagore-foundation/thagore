@@ -2,11 +2,11 @@ import "lib/env.tg" as env
 import "lib/fs.tg" as fs
 import "lib/process.tg" as process
 import "lib/time.tg" as time
-import "src/cli/autofix.tg" as autofix
-import "src/frontend/lowering/pipeline.tg" as lowering
-import "src/frontend/native/typechecker.tg" as typechecker
-import "src/frontend/native/typedir.tg" as typedir
-import "src/backend/llvm/emitter.tg" as emitter
+import "src/driver/autofix/engine.tg" as autofix
+import "src/lowering/transform/program.tg" as lowering
+import "src/semantics/typecheck/program.tg" as typechecker
+import "src/semantics/typedir/nodes.tg" as typedir
+import "src/codegen/llvm/entry.tg" as emitter
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

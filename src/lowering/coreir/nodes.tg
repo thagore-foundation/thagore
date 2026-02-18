@@ -1,4 +1,4 @@
-import "src/frontend/native/typedir.tg"
+import "src/semantics/typedir/nodes.tg"
 
 struct CoreProgram:
     normalized_source: String

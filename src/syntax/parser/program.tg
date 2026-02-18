@@ -1,4 +1,4 @@
-import "src/frontend/lexer/lexer.tg" as lexer
+import "src/syntax/lexer/tokenize.tg" as lexer
 
 extern func __thg_parse_expr_from_tokens(stream: ptr) -> ptr
 extern func __thg_parse_stmt_from_source(source: String) -> ptr

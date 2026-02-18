@@ -1,4 +1,4 @@
-import "src/frontend/lowering/coreir.tg"
+import "src/lowering/coreir/nodes.tg"
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

@@ -1,7 +1,7 @@
-import "src/frontend/native/parser.tg" as pn
-import "src/frontend/parser/headers.tg" as ph
-import "src/frontend/lowering/pipeline.tg" as pipe
-import "src/frontend/native/typechecker.tg" as tc
+import "src/syntax/native/parser.tg" as pn
+import "src/syntax/parser/header.tg" as ph
+import "src/lowering/transform/program.tg" as pipe
+import "src/semantics/typecheck/program.tg" as tc
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

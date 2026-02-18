@@ -1,4 +1,4 @@
-import "src/frontend/native/typechecker.tg" as tc
+import "src/semantics/typecheck/program.tg" as tc
 
 func _expect_i32(label: String, got: i32, want: i32) -> i32:
     if (got == want):

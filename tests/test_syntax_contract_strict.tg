@@ -1,5 +1,5 @@
-import "src/frontend/parser/headers.tg" as ph
-import "src/frontend/lowering/pipeline.tg" as pipe
+import "src/syntax/parser/header.tg" as ph
+import "src/lowering/transform/program.tg" as pipe
 
 func _expect_i32(label: String, got: i32, want: i32) -> i32:
     if (got == want):

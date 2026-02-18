@@ -1,4 +1,4 @@
-import "src/frontend/lexer/keywords.tg" as kw
+import "src/syntax/lexer/keywords.tg" as kw
 
 extern func __thg_lex_tokenize(source: String) -> ptr
 extern func __thg_tok_count(stream: ptr) -> i32

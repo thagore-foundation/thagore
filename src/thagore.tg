@@ -1,4 +1,4 @@
-import "src/cli/thagore.tg" as cli
+import "src/driver/cli/main.tg" as cli
 
 func main() -> i32:
     return cli.main()

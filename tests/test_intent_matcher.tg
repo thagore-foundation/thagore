@@ -1,4 +1,4 @@
-import "src/frontend/intent/matcher.tg" as im
+import "src/semantics/intent/matcher.tg" as im
 
 func _expect_i32(label: String, got: i32, want: i32) -> i32:
     if (got == want):

@@ -1,4 +1,4 @@
-import "src/cli/thagore.tg" as cli
+import "src/driver/cli/main.tg" as cli
 import "lib/fs.tg" as fs
 
 extern func strlen(s: String) -> i32

@@ -1,6 +1,6 @@
 import "lib/fs.tg" as fs
-import "src/cli/autofix.tg" as autofix
-import "src/cli/thagore.tg" as cli
+import "src/driver/autofix/engine.tg" as autofix
+import "src/driver/cli/main.tg" as cli
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String

@@ -1,4 +1,4 @@
-import "src/cli/compat.tg" as compat
+import "src/driver/cli/compat.tg" as compat
 
 func main() -> i32:
     return compat.main()

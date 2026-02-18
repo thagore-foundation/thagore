@@ -1,8 +1,8 @@
-import "src/frontend/native/parser.tg" as parser
-import "src/frontend/native/typedir.tg"
-import "src/frontend/lowering/pipeline.tg" as pipe
-import "src/frontend/intent/matcher.tg" as im
-import "src/frontend/semantic/pass.tg" as sempass
+import "src/syntax/native/parser.tg" as parser
+import "src/semantics/typedir/nodes.tg"
+import "src/lowering/transform/program.tg" as pipe
+import "src/semantics/intent/matcher.tg" as im
+import "src/semantics/pass/program.tg" as sempass
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
