@@ -65,9 +65,60 @@ jobs:
           poll_seconds: "20"
           max_minutes: "240"
 
+  seed-asset-probe:
+    name: seed-asset-probe
+    needs: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      available_tags: ${{ steps.probe.outputs.available_tags }}
+    env:
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
+    steps:
+      - name: Probe stage1/runtime seed assets
+        id: probe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          json="$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets)"
+          asset_names="$(printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(\";\"+\";\".join(a[\"name\"] for a in d.get(\"assets\",[]))+\";\")')"
+          has_asset() {
+            local name="$1"
+            [[ "$asset_names" == *";${name};"* ]]
+          }
+          available=";"
+          if has_asset "thagore-stage1-linux-x86_64.tar.gz" && has_asset "thagore-runtime-linux-x86_64.a"; then
+            available="${available}linux-x86_64;"
+          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
+            available="${available}linux-x86_64;"
+          fi
+          if has_asset "thagore-stage1-linux-arm64.tar.gz" && has_asset "thagore-runtime-linux-arm64.a"; then
+            available="${available}linux-arm64;"
+          fi
+          if has_asset "thagore-stage1-macos-x86_64.tar.gz" && has_asset "thagore-runtime-macos-x86_64.a"; then
+            available="${available}macos-x86_64;"
+          fi
+          if has_asset "thagore-stage1-macos-arm64.tar.gz" && has_asset "thagore-runtime-macos-arm64.a"; then
+            available="${available}macos-arm64;"
+          elif has_asset "thagore-stage1-macos.tar.gz" && has_asset "thagore-runtime-macos.a"; then
+            available="${available}macos-arm64;"
+          fi
+          if has_asset "thagore-stage1-windows-x86_64.exe" && has_asset "thagore-runtime-windows-x86_64.lib"; then
+            available="${available}windows-x86_64;"
+          elif has_asset "thagore-stage1.exe" && has_asset "thagore-runtime-windows.lib"; then
+            available="${available}windows-x86_64;"
+          fi
+          if has_asset "thagore-stage1-windows-arm64.exe" && has_asset "thagore-runtime-windows-arm64.lib"; then
+            available="${available}windows-arm64;"
+          fi
+          echo "available_tags=$available" >> "$GITHUB_OUTPUT"
+          echo "available_tags=$available"
+
   build-release:
     name: release (${{ matrix.asset_tag }})
-    needs: discord-notify-init
+    needs: [discord-notify-init, seed-asset-probe]
+    if: matrix.enabled && contains(needs.seed-asset-probe.outputs.available_tags, format(';{0};', matrix.asset_tag))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -78,6 +129,7 @@ jobs:
             os_name: Linux
             arch: x86_64
             asset_tag: linux-x86_64
+            enabled: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -92,6 +144,7 @@ jobs:
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
+            enabled: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -106,6 +159,7 @@ jobs:
             os_name: macOS
             arch: x86_64
             asset_tag: macos-x86_64
+            enabled: false
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -120,6 +174,7 @@ jobs:
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
+            enabled: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -134,6 +189,7 @@ jobs:
             os_name: Windows
             arch: x86_64
             asset_tag: windows-x86_64
+            enabled: true
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -148,6 +204,7 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
+            enabled: true
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe

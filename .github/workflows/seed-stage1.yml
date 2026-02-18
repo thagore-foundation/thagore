@@ -54,9 +54,60 @@ jobs:
           poll_seconds: "20"
           max_minutes: "240"
 
+  seed-base-probe:
+    name: seed-base-probe
+    needs: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      available_tags: ${{ steps.probe.outputs.available_tags }}
+    env:
+      BOOTSTRAP_STAGE1_TAG: ${{ github.event.inputs.base_seed_tag }}
+    steps:
+      - name: Probe base seed assets
+        id: probe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          json="$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets)"
+          asset_names="$(printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(\";\"+\";\".join(a[\"name\"] for a in d.get(\"assets\",[]))+\";\")')"
+          has_asset() {
+            local name="$1"
+            [[ "$asset_names" == *";${name};"* ]]
+          }
+          available=";"
+          if has_asset "thagore-stage1-linux-x86_64.tar.gz"; then
+            available="${available}linux-x86_64;"
+          elif has_asset "thagore-stage1-linux.tar.gz"; then
+            available="${available}linux-x86_64;"
+          fi
+          if has_asset "thagore-stage1-linux-arm64.tar.gz"; then
+            available="${available}linux-arm64;"
+          fi
+          if has_asset "thagore-stage1-macos-x86_64.tar.gz"; then
+            available="${available}macos-x86_64;"
+          fi
+          if has_asset "thagore-stage1-macos-arm64.tar.gz"; then
+            available="${available}macos-arm64;"
+          elif has_asset "thagore-stage1-macos.tar.gz"; then
+            available="${available}macos-arm64;"
+          fi
+          if has_asset "thagore-stage1-windows-x86_64.exe"; then
+            available="${available}windows-x86_64;"
+          elif has_asset "thagore-stage1.exe"; then
+            available="${available}windows-x86_64;"
+          fi
+          if has_asset "thagore-stage1-windows-arm64.exe"; then
+            available="${available}windows-arm64;"
+          fi
+          echo "available_tags=$available" >> "$GITHUB_OUTPUT"
+          echo "available_tags=$available"
+
   build-seed:
     name: seed (${{ matrix.asset_tag }})
-    needs: discord-notify-init
+    needs: [discord-notify-init, seed-base-probe]
+    if: matrix.enabled && contains(needs.seed-base-probe.outputs.available_tags, format(';{0};', matrix.asset_tag))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -67,36 +118,42 @@ jobs:
             os_name: Linux
             arch: x86_64
             asset_tag: linux-x86_64
+            enabled: true
             stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
             runtime_seed_name: thagore-runtime-linux-x86_64.a
           - runner: ubuntu-24.04-arm
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
+            enabled: true
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
             runtime_seed_name: thagore-runtime-linux-arm64.a
           - runner: macos-13
             os_name: macOS
             arch: x86_64
             asset_tag: macos-x86_64
+            enabled: false
             stage1_seed_name: thagore-stage1-macos-x86_64.tar.gz
             runtime_seed_name: thagore-runtime-macos-x86_64.a
           - runner: macos-latest
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
+            enabled: true
             stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
             runtime_seed_name: thagore-runtime-macos-arm64.a
           - runner: windows-latest
             os_name: Windows
             arch: x86_64
             asset_tag: windows-x86_64
+            enabled: true
             stage1_seed_name: thagore-stage1-windows-x86_64.exe
             runtime_seed_name: thagore-runtime-windows-x86_64.lib
           - runner: windows-11-arm
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
+            enabled: true
             stage1_seed_name: thagore-stage1-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
