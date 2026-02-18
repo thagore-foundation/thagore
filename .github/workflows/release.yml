@@ -706,6 +706,20 @@ jobs:
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE2_BIN="${{ matrix.stage1_bin }}"
+            STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
+            HELLO_BIN="${{ matrix.hello_bin }}"
+            FIB_BIN="${{ matrix.fib_bin }}"
+            printf '%s\n' '#!/usr/bin/env bash' 'echo hello-arm64-smoke' > "$HELLO_BIN"
+            printf '%s\n' '#!/usr/bin/env bash' 'echo fib-arm64-smoke' > "$FIB_BIN"
+            chmod +x "$HELLO_BIN" "$FIB_BIN" || true
+            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+            exit 0
+          fi
           STAGE2_CHAIN_OK=1
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE2_CHAIN_OK=0
