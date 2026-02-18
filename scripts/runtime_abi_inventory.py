@@ -37,11 +37,16 @@ def find_provided_symbols(runtime_lib: Path) -> set[str]:
         if proc.returncode == 0 and proc.stdout.strip():
             output = proc.stdout
             break
-    if not output:
+    symbols = set(re.findall(r"(__thg_[A-Za-z0-9_]+)", output))
+    if not symbols:
+        # Fallback for archives/platforms where nm/dumpbin cannot enumerate ARM symbols reliably.
+        raw = runtime_lib.read_bytes()
+        symbols = set(m.decode("ascii") for m in re.findall(rb"(__thg_[A-Za-z0-9_]+)", raw))
+    if not output and not symbols:
         raise SystemExit(
             "FAIL: unable to inspect runtime library symbols (need llvm-nm, nm, or dumpbin in PATH)."
         )
-    return set(re.findall(r"(__thg_[A-Za-z0-9_]+)", output))
+    return symbols
 
 
 def collect_tg_files() -> list[Path]:

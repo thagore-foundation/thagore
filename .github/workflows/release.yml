@@ -286,11 +286,18 @@ jobs:
           }
           download_asset() {
             local pattern="$1"
+            if [[ -f "bootstrap/$pattern" ]]; then
+              return 0
+            fi
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
             [[ -f "bootstrap/$pattern" ]]
           }
           download_runtime_asset() {
             local pattern="$1"
             local dest="$2"
+            if [[ ! -f "bootstrap/$pattern" ]]; then
+              gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            fi
             if [[ -f "bootstrap/$pattern" ]]; then
               cp "bootstrap/$pattern" "$dest"
               return 0
@@ -345,10 +352,12 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1.exe")
           elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-windows-x86_64.exe")
             STAGE1_CANDIDATES+=("thagore-stage1.exe")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-linux-x86_64.tar.gz")
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
@@ -384,7 +393,7 @@ jobs:
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
                 CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
                 [[ -n "$CANDIDATE" ]] || continue
-                if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" == "thagore-stage1-linux.tar.gz" ]]; then
+                if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}.x86_64"
                   chmod +x "${{ matrix.stage1_bin }}.x86_64" || true
                   printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' 'exec qemu-x86_64 -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' > "${{ matrix.stage1_bin }}"
@@ -420,7 +429,11 @@ jobs:
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+          elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+            RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
