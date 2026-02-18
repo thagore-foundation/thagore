@@ -503,7 +503,10 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+            # linux-arm64 must not consume generic linux (x86_64) runtime asset
+            # because it produces linker "Relocations in generic ELF (EM: 62)".
+            # If arm64 seed runtime is unavailable, fallback builder creates a native arm64 archive.
+            :
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
           fi
