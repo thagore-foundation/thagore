@@ -84,6 +84,10 @@ jobs:
           [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in seed asset"; exit 1)
           cp "$CANDIDATE" stage1
           chmod +x stage1
+          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
+            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
+            exit 1
+          fi
 
       - name: Discord update - Download stage1 seed asset
         uses: ./.github/actions/discord-ci-status
@@ -93,14 +97,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Download stage1 seed asset
-
-      - name: Build runtime artifact
-        shell: bash
-        run: |
-          set -euxo pipefail
-          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o thag_runtime.o
-          ar rcs libthag_runtime.a thag_runtime.o
-          cp libthag_runtime.a thag_runtime.lib
 
       - name: Verify Stage1 -> Stage2 -> Stage2
         shell: bash

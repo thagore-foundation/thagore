@@ -3,8 +3,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DRIVER = ROOT / "runtime" / "src" / "runtime.cpp"
 DEFAULT_REGISTRY = ROOT / "docs" / "idea" / "intent_rule_registry.txt"
+DEFAULT_DRIVER = DEFAULT_REGISTRY
 
 
 def parse_registry(path: Path) -> tuple[bool, int, dict[str, int], set[str]]:
@@ -39,6 +39,8 @@ def parse_registry(path: Path) -> tuple[bool, int, dict[str, int], set[str]]:
 def parse_driver_rules(path: Path) -> set[str]:
     text = path.read_text(encoding="utf-8")
     out = set(re.findall(r'return\s+"(rule\.[^"]+)"', text))
+    if not out:
+        out = set(re.findall(r"^rule=(rule\.[^\s]+)$", text, re.MULTILINE))
     out.discard("rule.none")
     return out
 

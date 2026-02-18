@@ -1,6 +1,6 @@
 ---
 title: First PR Guide
-description: Hướng dẫn đóng góp thay đổi đầu tiên cho Thagore.
+description: Huong dan dong gop thay doi dau tien cho Thagore.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
@@ -8,11 +8,11 @@ import { Steps, Aside } from "@astrojs/starlight/components";
 # First PR Guide
 
 <Steps>
-1. Sync branch mới từ `main`.
-2. Chọn một thay đổi nhỏ, cô lập.
-3. Thêm example hoặc test liên quan.
-4. Build và chạy test trọng tâm.
-5. Ghi rõ verification commands trong PR description.
+1. Sync branch moi tu `main`.
+2. Chon mot thay doi nho, co lap.
+3. Them example hoac test lien quan.
+4. Build va chay test trong tam.
+5. Ghi ro verification commands trong PR description.
 </Steps>
 
 ## Recommended Verification
@@ -24,10 +24,10 @@ python scripts/benchmark_fib.py
 
 ## PR Checklist
 
-1. Một logical change per commit.
-2. Không trộn refactor unrelated.
-3. Có risk notes nếu đụng `legacy/` hoặc workflows bootstrap.
+1. Mot logical change per commit.
+2. Khong tron refactor unrelated.
+3. Co risk notes neu dung workflows bootstrap/runtime.
 
 <Aside type="caution" title="Bootstrap Governance">
-Không reintroduce implicit Stage0 fallback trong CI/Release workflows.
+Khong reintroduce implicit Stage0 fallback trong CI/Release workflows.
 </Aside>

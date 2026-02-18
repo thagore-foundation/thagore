@@ -35,7 +35,7 @@ Use this checklist before cutting a release that includes `intent`.
 - [ ] CI lane runs `intent doctor` and strict-lock gate.
 - [ ] Linux CI lane blocks merge on intent suite failures (other OS may warn only).
 - [ ] Runtime registry gate path (`THAG_INTENT_REGISTRY`) is covered by suite.
-- [ ] Workflow runtime build uses C++23 (`-std=c++23`).
+- [ ] Workflow enforces no C++ runtime build path (`clang++`, `cmake -S runtime` absent).
 
 ## E) Docs and migration readiness
 

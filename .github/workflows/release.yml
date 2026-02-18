@@ -152,18 +152,6 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            mkdir -p runtime/build
-            clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-              cp runtime/build/thag_runtime.lib thag_runtime.lib
-            else
-              ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-              cp runtime/build/libthag_runtime.a libthag_runtime.a
-              cp runtime/build/libthag_runtime.a thag_runtime.lib
-            fi
-          fi
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -268,6 +256,10 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Unix stage1 asset found in releases."; exit 1)
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
+          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
+            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
+            exit 1
+          fi
 
       - name: Discord update - Download stage1 bootstrap asset
         uses: ./.github/actions/discord-ci-status
@@ -277,21 +269,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Download stage1 bootstrap asset
-
-      - name: Build runtime artifact from runtime module
-        shell: bash
-        run: |
-          set -euxo pipefail
-          mkdir -p runtime/build
-          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-            cp runtime/build/thag_runtime.lib thag_runtime.lib
-          else
-            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-            cp runtime/build/libthag_runtime.a libthag_runtime.a
-            cp runtime/build/libthag_runtime.a thag_runtime.lib
-          fi
 
       - name: Build Stage2 -> Stage2 (mandatory)
         shell: bash

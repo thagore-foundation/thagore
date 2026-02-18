@@ -127,18 +127,6 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
-            mkdir -p runtime/build
-            clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-              cp runtime/build/thag_runtime.lib thag_runtime.lib
-            else
-              ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-              cp runtime/build/libthag_runtime.a libthag_runtime.a
-              cp runtime/build/libthag_runtime.a thag_runtime.lib
-            fi
-          fi
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -248,6 +236,10 @@ jobs:
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no macOS stage1 asset found in releases."; exit 1)
           fi
           chmod +x "$STAGE1_BIN" || true
+          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
+            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
+            exit 1
+          fi
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
 
       - name: Discord update - Fetch stage1 bootstrap asset
@@ -259,43 +251,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Fetch stage1 bootstrap asset
-
-      - name: Build runtime artifact
-        shell: bash
-        run: |
-          set -euxo pipefail
-          mkdir -p runtime/build
-          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-            cp runtime/build/thag_runtime.lib thag_runtime.lib
-          else
-            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-            cp runtime/build/libthag_runtime.a libthag_runtime.a
-            cp runtime/build/libthag_runtime.a thag_runtime.lib
-          fi
-
-      - name: Discord update - Build runtime artifact
-        uses: ./.github/actions/discord-ci-status
-        continue-on-error: true
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Build runtime artifact
-
-      - name: Build runtime intent CLI
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cmake -S runtime -B runtime/build-intent-ci
-          cmake --build runtime/build-intent-ci --config Release --target thagore_runtime_cli
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/Release/thagore_runtime_cli.exe" >> "$GITHUB_ENV"
-          else
-            echo "THAGORE_INTENT_CLI=runtime/build-intent-ci/thagore_runtime_cli" >> "$GITHUB_ENV"
-          fi
 
       - name: Intent registry budget gate
         shell: bash
@@ -317,10 +272,11 @@ jobs:
           else
             PY=python3
           fi
+          CLI_BIN="./$STAGE1_BIN"
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"
+            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN"
           else
-            if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$THAGORE_INTENT_CLI"; then
+            if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN"; then
               echo "WARN: intent suite failed on ${{ runner.os }}; continuing selfhost while Linux strict gate remains."
             fi
           fi

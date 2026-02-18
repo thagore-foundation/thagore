@@ -58,16 +58,19 @@ SUPPORTED_GOALS = [
 
 def detect_cli() -> Path:
     candidates = [
-        ROOT / "runtime" / "build" / "Release" / "thagore_runtime_cli.exe",
-        ROOT / "runtime" / "build" / "Debug" / "thagore_runtime_cli.exe",
-        ROOT / "runtime" / "build" / "thagore_runtime_cli",
-        ROOT / "thagore_runtime_cli.exe",
-        ROOT / "thagore_runtime_cli",
+        ROOT / "stage2.exe",
+        ROOT / "stage2",
+        ROOT / "stage1.exe",
+        ROOT / "stage1",
+        ROOT / "thagore.exe",
+        ROOT / "thagore",
+        ROOT / "thag.exe",
+        ROOT / "thag",
     ]
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise SystemExit("FAIL: unable to find thagore_runtime_cli binary. Pass --cli explicitly.")
+    raise SystemExit("FAIL: unable to find thagore CLI binary (stage2/stage1/thagore). Pass --cli explicitly.")
 
 
 def run_cmd(
@@ -700,7 +703,7 @@ def doctor_smoke(cli: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Intent end-to-end validation suite")
-    parser.add_argument("--cli", default="", help="Path to thagore_runtime_cli binary")
+    parser.add_argument("--cli", default="", help="Path to thagore CLI binary")
     parser.add_argument("--rounds", type=int, default=5, help="Determinism rounds per goal")
     parser.add_argument("--keep-workdir", action="store_true", help="Keep temporary workdir")
     return parser.parse_args()

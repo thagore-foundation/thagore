@@ -1708,9 +1708,7 @@ func _link_exe(ir_path: String, out_path: String) -> i32:
     let cmd2 = clang_bin + " " + _quote(ir_path) + " -o " + _quote(out_path) + " -Wno-override-module libthag_runtime.a"
     if (process.run(cmd2) == 0):
         return 0
-    let cmd3 = clang_bin + " " + _quote(ir_path) + " -o " + _quote(out_path) + " -Wno-override-module"
-    if (process.run(cmd3) == 0):
-        return 0
+    print("CRITICAL: runtime library not found (expected thag_runtime.lib or libthag_runtime.a).")
     return 1
 
 func _looks_like_valid_llvm(ir: String) -> i32:

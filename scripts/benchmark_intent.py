@@ -14,16 +14,19 @@ FIXTURE = ROOT / "tests" / "intent" / "fixtures" / "intent_demo_golden.tg"
 
 def detect_cli() -> Path:
     candidates = [
-        ROOT / "runtime" / "build" / "Release" / "thagore_runtime_cli.exe",
-        ROOT / "runtime" / "build" / "Debug" / "thagore_runtime_cli.exe",
-        ROOT / "runtime" / "build" / "thagore_runtime_cli",
-        ROOT / "thagore_runtime_cli.exe",
-        ROOT / "thagore_runtime_cli",
+        ROOT / "stage2.exe",
+        ROOT / "stage2",
+        ROOT / "stage1.exe",
+        ROOT / "stage1",
+        ROOT / "thagore.exe",
+        ROOT / "thagore",
+        ROOT / "thag.exe",
+        ROOT / "thag",
     ]
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise SystemExit("FAIL: unable to find thagore_runtime_cli binary. Pass --cli explicitly.")
+    raise SystemExit("FAIL: unable to find thagore CLI binary (stage2/stage1/thagore). Pass --cli explicitly.")
 
 
 def run_checked(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -61,7 +64,7 @@ def measure(label: str, cmd: list[str], cwd: Path, runs: int) -> dict[str, float
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark intent build overhead")
-    parser.add_argument("--cli", default="", help="Path to thagore_runtime_cli")
+    parser.add_argument("--cli", default="", help="Path to thagore CLI binary")
     parser.add_argument("--runs", type=int, default=7, help="Runs per mode")
     parser.add_argument("--json-out", default="", help="Optional path to write JSON results")
     return parser.parse_args()

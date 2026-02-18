@@ -11,7 +11,7 @@ import { Aside, Steps } from "@astrojs/starlight/components";
 
 1. `src/backend/native/emitter.tg`: emit LLVM IR text từ source normalized.
 2. `src/backend/llvm/emitter.tg`: adapter gọi native emitter.
-3. `runtime/src/runtime.cpp`: runtime builtins + CLI + parse/codegen hooks.
+3. Runtime ABI library (`thag_runtime.lib` / `libthag_runtime.a`): runtime builtins + CLI hooks.
 
 ```python title="src/backend/llvm/emitter.tg" mark={7}
 func emit_program_from_source(source: String, module_name: String) -> String:

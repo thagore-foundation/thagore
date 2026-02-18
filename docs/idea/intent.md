@@ -47,7 +47,7 @@ intent func dedup_sorted(xs: [i32]) -> [i32]:
         deterministic == true
 ```
 
-Control extensions (implemented in Stage0 intent preprocessor path):
+Control extensions (implemented in runtime intent preprocessor path):
 
 ```tg
 intent func cover_plants(...) -> i32:
@@ -323,7 +323,7 @@ Automatic detection mode:
 - `THAG_INTENT_EXPLAIN=1`: emit human-readable per-function explain lines for explicit `intent func` blocks (applied/skipped, selected/candidate rule, reason).
 - `THAG_INTENT_TRACE=1`: full trace mode (directive parsing + applied/skipped diagnostics).
 
-Strategy pinning examples currently recognized in Stage0 intent preprocessor:
+Strategy pinning examples currently recognized in runtime intent preprocessor:
 
 - `dp.fib.v1`
 - `dp.trib.v1`
@@ -356,7 +356,7 @@ Strategy pinning examples currently recognized in Stage0 intent preprocessor:
 
 ### 11.0 Adaptive Matching Layer (new)
 
-To scale beyond strict MVP templates, Stage0 now includes a deterministic matcher-normalization layer:
+To scale beyond strict MVP templates, runtime now includes a deterministic matcher-normalization layer:
 
 - condition normalization for `if (...)` / `while (...)` (strip redundant outer parentheses),
 - comparator equivalence matching (e.g. `arr[i] >= x` and `x <= arr[i]` are treated as same intent shape),
@@ -369,7 +369,7 @@ Reference smoke:
 
 - source: `examples/intent_adaptive_style_auto_plan.tg`
 - checker: `scripts/intent_adaptive_smoke.py`
-- command: `py -3 scripts/intent_adaptive_smoke.py --compiler legacy/build/Release/thag.exe`
+- command: `py -3 scripts/intent_adaptive_smoke.py --compiler stage2.exe`
 
 Runtime auto-plan addition:
 
@@ -382,7 +382,7 @@ Runtime auto-plan addition:
 
 ### 11.0.1 Rule Budget And Registry Gate (new)
 
-To prevent unbounded rule growth, Stage0 now supports a deterministic rule registry gate:
+To prevent unbounded rule growth, runtime now supports a deterministic rule registry gate:
 
 - registry file: `docs/idea/intent_rule_registry.txt`
 - controls:
@@ -464,7 +464,7 @@ Compiler-selected rewrite uses two-pointer greedy sweep:
 
 Measured benchmark in this repo:
 
-- command: `py -3 scripts/benchmark_sprinkler_intent.py --compiler legacy/stage0.exe --runs 3`
+- command: `py -3 scripts/benchmark_sprinkler_intent.py --compiler stage2.exe --runs 3`
 - native median: `1.422901s`
 - intent median: `0.076150s`
 - speedup: `18.69x` (median)
@@ -489,7 +489,7 @@ Intent variant pins:
 
 Benchmark command:
 
-- `py -3 scripts/benchmark_bounds_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+- `py -3 scripts/benchmark_bounds_intent.py --compiler stage2.exe --runs 3`
 
 Measured benchmark in this repo (same machine/session):
 
@@ -516,7 +516,7 @@ Intent variant pins:
 
 Benchmark command:
 
-- `py -3 scripts/benchmark_advanced_pack_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+- `py -3 scripts/benchmark_advanced_pack_intent.py --compiler stage2.exe --runs 3`
 
 Measured benchmark in this repo (same machine/session):
 
@@ -542,7 +542,7 @@ Intent variant pins:
 
 Benchmark command:
 
-- `py -3 scripts/benchmark_ultra_pack_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+- `py -3 scripts/benchmark_ultra_pack_intent.py --compiler stage2.exe --runs 3`
 
 Measured benchmark in this repo (same machine/session):
 
@@ -565,7 +565,7 @@ Intent variant pin:
 
 Benchmark command:
 
-- `python scripts/benchmark_twosum_intent.py --compiler legacy/build/Release/thag.exe --runs 3`
+- `python scripts/benchmark_twosum_intent.py --compiler stage2.exe --runs 3`
 
 Measured benchmark in this repo (same machine/session):
 

@@ -132,20 +132,9 @@ jobs:
             chmod +x stage1 || true
             echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
           fi
-
-      - name: Build runtime artifact (self-owned)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          mkdir -p runtime/build
-          clang++ -std=c++23 -O2 -c runtime/src/runtime.cpp -o runtime/build/thag_runtime.o
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            llvm-ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o || ar rcs runtime/build/thag_runtime.lib runtime/build/thag_runtime.o
-            cp runtime/build/thag_runtime.lib thag_runtime.lib
-          else
-            ar rcs runtime/build/libthag_runtime.a runtime/build/thag_runtime.o
-            cp runtime/build/libthag_runtime.a libthag_runtime.a
-            cp runtime/build/libthag_runtime.a thag_runtime.lib
+          if [[ ! -f thag_runtime.lib && ! -f libthag_runtime.a ]]; then
+            echo "CRITICAL: missing runtime library artifact (thag_runtime.lib/libthag_runtime.a)."
+            exit 1
           fi
 
       - name: Longhaul 10 rounds (Stage1 -> Stage2 -> Stage2)

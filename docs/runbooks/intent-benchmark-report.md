@@ -16,7 +16,7 @@ This report measures build-time overhead of the intent pipeline using:
 
 ```bash
 py -3 scripts/benchmark_intent.py \
-  --cli runtime/build/Release/thagore_runtime_cli.exe \
+  --cli stage2.exe \
   --runs 5 \
   --json-out docs/runbooks/intent-benchmark-local.json
 ```

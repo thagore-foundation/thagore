@@ -71,6 +71,20 @@ jobs:
             echo "$FALLBACK_HITS"
             exit 1
           fi
+          SCRIPT_HITS="$(grep -REn "ALLOW_STAGE0_BOOTSTRAP|legacy[/\\]stage0|legacy[/\\]build[/\\].*thag" scripts \
+            | grep -Ev "intent_budget_gate.py|policy-no-stage0.yml" || true)"
+          if [[ -n "$SCRIPT_HITS" ]]; then
+            echo "CRITICAL: Stage0/legacy bootstrap markers are forbidden in scripts."
+            echo "$SCRIPT_HITS"
+            exit 1
+          fi
+          CXX_HITS="$(grep -REn "runtime/src/.*\\.cpp|clang\\+\\+|cmake -S runtime" .github/workflows scripts \
+            | grep -Ev "policy-no-stage0.yml" || true)"
+          if [[ -n "$CXX_HITS" ]]; then
+            echo "CRITICAL: C++ runtime build markers are forbidden in workflows/scripts."
+            echo "$CXX_HITS"
+            exit 1
+          fi
           echo "Policy OK: no Stage0 markers in workflows."
 
       - name: Discord update - Enforce workflow policy

@@ -1,6 +1,6 @@
 ---
 title: Windows Bootstrap
-description: Bootstrap compiler trên Windows với Stage0 -> Stage1 -> Stage2.
+description: Bootstrap compiler tren Windows voi Stage1 -> Stage2 -> Stage2b.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
@@ -8,25 +8,24 @@ import { Steps, Aside } from "@astrojs/starlight/components";
 # Windows Bootstrap
 
 <Steps>
-1. Build legacy stage0 + runtime:
+1. Chuan bi Stage1 seed binary (`stage1.exe`).
 
-   ```bat title="scripts/bootstrap.bat" mark={4,22,31}
-   cmake --build legacy\build --config Debug
-   copy /Y legacy\build\Debug\thag.exe legacy\stage0.exe
-   copy /Y legacy\build\Debug\thag_runtime.lib thag_runtime.lib
-   legacy\stage0.exe build src/thagore.tg -o stage1.exe
+2. Build chain Stage1 -> Stage2 -> Stage2b:
+
+   ```bat title="scripts/bootstrap.bat"
    stage1.exe build src/thagore.tg -o stage2.exe
-   stage2.exe build examples/hello.tg -o hello_v2.exe
+   stage2.exe build src/thagore.tg -o stage2b.exe
+   stage2b.exe build examples/hello.tg -o hello_v2.exe
    hello_v2.exe
    ```
 
-2. Hoặc chạy script tự động:
+3. Hoac chay script tu dong:
 
    ```bat
    cmd /c scripts\bootstrap.bat
    ```
 
-3. Verify build output:
+4. Verify build output:
 
    ```bat
    stage2.exe --version
@@ -34,5 +33,5 @@ import { Steps, Aside } from "@astrojs/starlight/components";
 </Steps>
 
 <Aside type="tip" title="Guard Timeout">
-Bạn có thể dùng `scripts/bootstrap_stage.bat` để chạy qua `stage_guard.py`, tránh treo tiến trình khi stage build lỗi/hang.
+Ban co the dung `scripts/bootstrap_stage.bat` de chay qua `stage_guard.py`, tranh treo tien trinh khi stage build loi/hang.
 </Aside>
