@@ -7,9 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_REPORT = ROOT / "no-cpp-dependency-report.txt"
 
-ALLOWLIST_REGEX = [
-    re.compile(r"^examples/.+\.cpp$"),
-]
+ALLOWLIST_REGEX: list[re.Pattern[str]] = []
 
 BANNED_PATH_REGEX = [
     re.compile(r"^legacy/"),
