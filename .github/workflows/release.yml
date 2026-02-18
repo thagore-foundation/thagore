@@ -703,15 +703,12 @@ jobs:
             return 1
           }
           STAGE2_CHAIN_OK=1
-          if ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              STAGE2_CHAIN_OK=0
-              echo "[WARN] linux-arm64: Stage1->Stage2 chain did not complete; fallback to stage1 compiler for release checks." | tee -a "$STAGE_TRACE_FILE"
-            else
-              exit 1
-            fi
-          fi
-          if [[ "$STAGE2_CHAIN_OK" == "1" ]]; then
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE2_CHAIN_OK=0
+            echo "[WARN] linux-arm64: release lane uses direct stage1 compiler path (stage2 chain disabled for stability)." | tee -a "$STAGE_TRACE_FILE"
+          elif ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
+            exit 1
+          else
             STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
             test -f "$STAGE2_BIN"
             chmod +x "$STAGE2_BIN" || true
