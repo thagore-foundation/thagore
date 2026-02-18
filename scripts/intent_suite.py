@@ -711,7 +711,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    cli = Path(args.cli) if args.cli else detect_cli()
+    cli = (Path(args.cli).resolve() if args.cli else detect_cli())
     if not cli.exists():
         raise SystemExit(f"FAIL: cli not found: {cli}")
 
