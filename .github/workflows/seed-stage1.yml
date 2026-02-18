@@ -129,15 +129,13 @@ jobs:
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1.exe" -D bootstrap
             cp bootstrap/thagore-stage1.exe stage1.exe
             chmod +x stage1.exe || true
-            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-windows.lib" -D bootstrap; then
-              cp bootstrap/thagore-runtime-windows.lib thag_runtime.lib
-            fi
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-windows.lib" -D bootstrap
+            cp bootstrap/thagore-runtime-windows.lib thag_runtime.lib
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
-            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap; then
-              cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap
+            cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -146,10 +144,9 @@ jobs:
             chmod +x stage1 || true
           else
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-macos.tar.gz" -D bootstrap
-            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-macos.a" -D bootstrap; then
-              cp bootstrap/thagore-runtime-macos.a libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-macos.a" -D bootstrap
+            cp bootstrap/thagore-runtime-macos.a libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-macos.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -350,12 +347,8 @@ jobs:
               echo "CRITICAL: thagore-stage1-linux.tar.gz too small ($bytes bytes), abort publish."
               exit 1
             fi
-            if [[ -f libthag_runtime.a ]]; then
-              cp libthag_runtime.a thagore-runtime-linux.a
-            else
-              [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing runtime static lib for linux seed asset"; exit 1)
-              cp thag_runtime.lib thagore-runtime-linux.a
-            fi
+            [[ -f libthag_runtime.a ]] || (echo "CRITICAL: missing libthag_runtime.a for linux seed runtime asset"; exit 1)
+            cp libthag_runtime.a thagore-runtime-linux.a
           else
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf thagore-stage1-macos.tar.gz -C seed dist
@@ -365,12 +358,8 @@ jobs:
               echo "CRITICAL: thagore-stage1-macos.tar.gz too small ($bytes bytes), abort publish."
               exit 1
             fi
-            if [[ -f libthag_runtime.a ]]; then
-              cp libthag_runtime.a thagore-runtime-macos.a
-            else
-              [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing runtime static lib for macos seed asset"; exit 1)
-              cp thag_runtime.lib thagore-runtime-macos.a
-            fi
+            [[ -f libthag_runtime.a ]] || (echo "CRITICAL: missing libthag_runtime.a for macos seed runtime asset"; exit 1)
+            cp libthag_runtime.a thagore-runtime-macos.a
           fi
 
       - name: Discord update - Package stage1 seed artifact from stage2_rebuild

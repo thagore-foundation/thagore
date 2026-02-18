@@ -273,15 +273,13 @@ jobs:
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            download_runtime_asset "thagore-runtime-windows.lib" "thag_runtime.lib" || true
+            download_runtime_asset "thagore-runtime-windows.lib" "thag_runtime.lib"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            if download_runtime_asset "thagore-runtime-linux.a" "libthag_runtime.a"; then
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            download_runtime_asset "thagore-runtime-linux.a" "libthag_runtime.a"
+            cp libthag_runtime.a thag_runtime.lib
           else
-            if download_runtime_asset "thagore-runtime-macos.a" "libthag_runtime.a"; then
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            download_runtime_asset "thagore-runtime-macos.a" "libthag_runtime.a"
+            cp libthag_runtime.a thag_runtime.lib
           fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python

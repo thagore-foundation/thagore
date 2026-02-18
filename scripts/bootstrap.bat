@@ -9,6 +9,7 @@ if not exist stage1.exe (
 if not exist thag_runtime.lib (
   if not exist libthag_runtime.a (
     echo [FAIL] Missing runtime ABI library: thag_runtime.lib or libthag_runtime.a
+    echo [HINT] Download runtime seed asset: thagore-runtime-windows.lib or thagore-runtime-*.a from BOOTSTRAP_STAGE1_TAG.
     exit /b 1
   )
 )

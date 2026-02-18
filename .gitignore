@@ -7,3 +7,5 @@ build/
 LLVM-*.exe
 *.log
 *.ll
+thag_runtime.lib
+libthag_runtime.a

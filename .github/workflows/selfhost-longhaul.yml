@@ -133,19 +133,16 @@ jobs:
             echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
           fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            if ghdl "thagore-runtime-windows.lib"; then
-              cp bootstrap/thagore-runtime-windows.lib thag_runtime.lib
-            fi
+            ghdl "thagore-runtime-windows.lib"
+            cp bootstrap/thagore-runtime-windows.lib thag_runtime.lib
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            if ghdl "thagore-runtime-linux.a"; then
-              cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            ghdl "thagore-runtime-linux.a"
+            cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
           else
-            if ghdl "thagore-runtime-macos.a"; then
-              cp bootstrap/thagore-runtime-macos.a libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
+            ghdl "thagore-runtime-macos.a"
+            cp bootstrap/thagore-runtime-macos.a libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
           fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python

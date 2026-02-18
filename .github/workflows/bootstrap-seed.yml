@@ -80,10 +80,9 @@ jobs:
           mkdir -p bootstrap
           gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
           tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap
-          if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap; then
-            cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
-            cp libthag_runtime.a thag_runtime.lib
-          fi
+          gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap
+          cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
+          cp libthag_runtime.a thag_runtime.lib
           CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
           [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in seed asset"; exit 1)
           cp "$CANDIDATE" stage1

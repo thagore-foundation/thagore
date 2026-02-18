@@ -23,6 +23,7 @@ In CI/Seed workflows, runtime ABI artifacts are published/consumed as:
 - `thagore-runtime-windows.lib`
 - `thagore-runtime-linux.a`
 - `thagore-runtime-macos.a`
+Runtime ABI libraries are consumed from seed assets (not built from C++).
 
 ## Architecture
 
