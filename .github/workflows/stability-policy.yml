@@ -43,19 +43,32 @@ jobs:
                 name: "CI",
                 branch: "main",
                 events: ["push"],
-                artifactPrefixes: ["ci-selfhost-"],
+                artifactRegexes: [
+                  "^ci-selfhost-ubuntu-latest$",
+                  "^ci-selfhost-macos-latest$",
+                  "^ci-selfhost-windows-latest$",
+                  "^native-cli-canary-ubuntu$",
+                ],
               },
               {
                 name: "Selfhost Matrix",
                 branch: "main",
                 events: ["push"],
-                artifactPrefixes: ["selfhost-trace-"],
+                artifactRegexes: [
+                  "^selfhost-trace-Linux$",
+                  "^selfhost-trace-macOS$",
+                  "^selfhost-trace-Windows$",
+                ],
               },
               {
                 name: "Release",
                 branch: "main",
                 events: ["push"],
-                artifactPrefixes: ["release-"],
+                artifactRegexes: [
+                  "^release-Linux$",
+                  "^release-macOS$",
+                  "^release-Windows$",
+                ],
               },
             ];
             if (isTag) {
@@ -63,7 +76,11 @@ jobs:
                 name: "Release",
                 branch: null,
                 events: ["push"],
-                artifactPrefixes: ["release-"],
+                artifactRegexes: [
+                  "^release-Linux$",
+                  "^release-macOS$",
+                  "^release-Windows$",
+                ],
               });
             }
 
@@ -141,11 +158,14 @@ jobs:
                 });
                 const names = artifacts.map((a) => a.name || "");
                 report.push(`ARTIFACTS|${target.name}|run=${r.id}|count=${names.length}`);
-                const missingPrefixes = (target.artifactPrefixes || []).filter((p) => !names.some((n) => n.startsWith(p)));
-                if (missingPrefixes.length > 0) {
+                const missingRegexes = (target.artifactRegexes || []).filter((pat) => {
+                  const re = new RegExp(pat);
+                  return !names.some((n) => re.test(n));
+                });
+                if (missingRegexes.length > 0) {
                   failed = true;
                   report.push(
-                    `FAIL|${target.name}|artifact_audit=missing_prefix|run=${r.id}|missing=${missingPrefixes.join(",")}`
+                    `FAIL|${target.name}|artifact_audit=missing_artifact|run=${r.id}|missing=${missingRegexes.join(",")}`
                   );
                 } else {
                   report.push(`PASS|${target.name}|artifact_audit=ok|run=${r.id}`);

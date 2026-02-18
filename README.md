@@ -63,3 +63,4 @@ python scripts/benchmark_intent.py --cli stage2.exe --runs 7
 - Repository policy: no tracked C/C++ source files in compiler/bootstrap paths.
 - Runtime linking is fail-hard when runtime ABI library is missing.
 - Merge gate requires 3 consecutive green runs: `CI` + `Selfhost Matrix` + `Release` (dry-run on `main`).
+- Stability audit also requires per-run artifact set across 3 OS for those workflows.
