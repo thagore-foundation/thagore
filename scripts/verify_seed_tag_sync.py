@@ -9,12 +9,26 @@ WORKFLOWS = [
     ".github/workflows/selfhost-matrix.yml",
     ".github/workflows/release.yml",
     ".github/workflows/bootstrap-seed.yml",
+    ".github/workflows/selfhost-longhaul.yml",
+    ".github/workflows/selfhost-soak-nightly.yml",
+    ".github/workflows/seed-stage1.yml",
+    ".github/workflows/seed-runtime-assets.yml",
 ]
 
 
 def _extract_tags(text: str) -> list[str]:
     tags = re.findall(r'BOOTSTRAP_STAGE1_TAG:\s*"([^"]+)"', text)
     tags += re.findall(r"BOOTSTRAP_STAGE1_TAG:\s*([vV][0-9A-Za-z._-]+)", text)
+    tags += re.findall(r'([vV][0-9]+\.[0-9]+\.[0-9]+-stage1-seed[0-9A-Za-z._-]*)', text)
+    # Preserve order and remove duplicates
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for t in tags:
+        if t in seen:
+            continue
+        seen.add(t)
+        uniq.append(t)
+    tags = uniq
     return tags
 
 

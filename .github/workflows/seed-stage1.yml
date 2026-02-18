@@ -1,4 +1,5 @@
 name: Seed Stage1 Assets
+run-name: Seed Stage1 Assets (${{ github.event.inputs.seed_tag }})
 
 on:
   workflow_dispatch:
