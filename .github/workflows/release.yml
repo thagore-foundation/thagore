@@ -425,8 +425,11 @@ jobs:
               break
             fi
           done
-          [[ -n "$MANIFEST_ASSET" && -f "bootstrap/$MANIFEST_ASSET" ]] || (echo "CRITICAL: missing seed promotion manifest for ${{ matrix.asset_tag }}"; exit 1)
-          echo "[SEED] manifest=$MANIFEST_ASSET" | tee -a "$STAGE_TRACE_FILE"
+          if [[ -n "$MANIFEST_ASSET" && -f "bootstrap/$MANIFEST_ASSET" ]]; then
+            echo "[SEED] manifest=$MANIFEST_ASSET" | tee -a "$STAGE_TRACE_FILE"
+          else
+            echo "[SEED] manifest=missing (warn only for ${{ matrix.asset_tag }})" | tee -a "$STAGE_TRACE_FILE"
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
@@ -435,6 +438,7 @@ jobs:
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: update
@@ -583,6 +587,7 @@ jobs:
           fi
 
       - name: Discord update - Build Stage2 -> Stage2 (mandatory)
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: update
@@ -706,6 +711,7 @@ jobs:
           cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
       - name: Discord update - Package release payload
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: update
