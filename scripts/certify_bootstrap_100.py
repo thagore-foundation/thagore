@@ -135,7 +135,7 @@ def _artifact_names(owner: str, repo: str, run_id: int) -> list[str]:
     return [str(a.get("name") or "") for a in data.get("artifacts", [])]
 
 
-def _check_remote(window: int, lines: list[str]) -> bool:
+def _check_remote(window: int, branch: str, event: str, lines: list[str]) -> bool:
     ok = True
     owner, repo = _parse_origin_repo()
     lines.append(f"INFO|remote|repo={owner}/{repo}")
@@ -150,7 +150,7 @@ def _check_remote(window: int, lines: list[str]) -> bool:
         runs = _gh_api(
             owner,
             repo,
-            f"actions/workflows/{wf_id}/runs?per_page=30&branch=main&event=push&status=completed",
+            f"actions/workflows/{wf_id}/runs?per_page=30&branch={branch}&event={event}&status=completed",
         ).get("workflow_runs", [])
         if len(runs) < window:
             ok = False
@@ -187,6 +187,8 @@ def _check_remote(window: int, lines: list[str]) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Certify Thagore bootstrap 100% gates (local + 3-run remote).")
     parser.add_argument("--window", type=int, default=3, help="Consecutive green run window per workflow")
+    parser.add_argument("--branch", default="main", help="Branch for remote workflow run checks")
+    parser.add_argument("--event", default="push", help="Workflow event for remote checks (push/workflow_dispatch)")
     parser.add_argument("--skip-local", action="store_true", help="Skip local gate checks")
     parser.add_argument("--skip-remote", action="store_true", help="Skip remote GitHub run checks")
     parser.add_argument("--report", default=str(DEFAULT_REPORT), help="Report output path")
@@ -208,7 +210,7 @@ def main() -> int:
 
     if not args.skip_remote:
         try:
-            remote_ok = _check_remote(args.window, lines)
+            remote_ok = _check_remote(args.window, args.branch, args.event, lines)
             overall_ok = overall_ok and remote_ok
         except Exception as exc:
             overall_ok = False

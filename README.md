@@ -73,3 +73,9 @@ python scripts/certify_bootstrap_100.py --window 3
 
 This command validates local gates and checks the latest 3 completed `push/main` runs for `CI`, `Selfhost Matrix`, and `Release` with required artifact sets.
 For CI-side certification report, run workflow `Bootstrap Certify` (manual/scheduled).
+
+One-shot orchestration (dispatch 3 rounds + certification on current branch):
+
+```bash
+python scripts/run_bootstrap_rounds.py --rounds 3
+```
