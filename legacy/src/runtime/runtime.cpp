@@ -18,6 +18,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <iostream>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -2700,6 +2701,71 @@ const char *__env_args() {
     out.append(arg == nullptr ? "" : arg);
   }
   return makeManagedString(out);
+}
+
+const char *__io_read_line(const char *prompt) {
+  if (prompt != nullptr && *prompt != '\0') {
+    std::fputs(prompt, stdout);
+    std::fflush(stdout);
+  }
+  std::string line {};
+  if (!std::getline(std::cin, line)) {
+    std::cin.clear();
+    return makeManagedCString("");
+  }
+  if (!line.empty() && line.back() == '\r') {
+    line.pop_back();
+  }
+  return makeManagedString(line);
+}
+
+const char *__io_read_all() {
+  std::string data {};
+  data.assign(
+    std::istreambuf_iterator<char>(std::cin),
+    std::istreambuf_iterator<char>()
+  );
+  if (std::cin.bad()) {
+    std::cin.clear();
+    return makeManagedCString("");
+  }
+  std::cin.clear();
+  return makeManagedString(data);
+}
+
+int __thg_input_i32() {
+  const char *line = __io_read_line("");
+  if (line == nullptr) {
+    return 0;
+  }
+  const std::string raw = line;
+  std::size_t start = 0;
+  while (start < raw.size() && std::isspace(static_cast<unsigned char>(raw[start])) != 0) {
+    ++start;
+  }
+  if (start >= raw.size()) {
+    return 0;
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const long long parsed = std::strtoll(raw.c_str() + start, &end, 10);
+  if (end == raw.c_str() + start) {
+    return 0;
+  }
+  while (end != nullptr && *end != '\0' && std::isspace(static_cast<unsigned char>(*end)) != 0) {
+    ++end;
+  }
+  if (end != nullptr && *end != '\0') {
+    return 0;
+  }
+  if (errno == ERANGE || parsed > static_cast<long long>(std::numeric_limits<int>::max())) {
+    return std::numeric_limits<int>::max();
+  }
+  if (parsed < static_cast<long long>(std::numeric_limits<int>::min())) {
+    return std::numeric_limits<int>::min();
+  }
+  return static_cast<int>(parsed);
 }
 
 const char *__fs_read_text(const char *path) {
