@@ -1735,12 +1735,14 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
             print("Typecheck error [" + typed.error_code + "]: " + typed.error_message)
         print("ERROR: typecheck failed.")
         return 21
-    let lowered_source = lowering.preprocess(typed.normalized)
-    if (lowering.validate(lowered_source) != 0):
+    let core = lowering.lower_program(typed.normalized)
+    if (core.error_count > 0):
+        if (core.error_code.length() > 0):
+            print("Lowering error [" + core.error_code + "]: " + core.error_message)
         print("ERROR: lowering failed.")
         return 22
     let module_name = _strip_ext(_base_name(input_path))
-    let ir = emitter.emit_program_from_source(lowered_source, module_name)
+    let ir = emitter.emit_program_core(core.normalized_source, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
         fs.write_text(out_path + ".raw.ll", ir)
         print("ERROR: native emitter produced invalid LLVM IR.")

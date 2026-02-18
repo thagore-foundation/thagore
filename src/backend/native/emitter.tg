@@ -1,7 +1,37 @@
+import "src/frontend/lowering/coreir.tg"
+
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __thg_str_add(a: String, b: String) -> String
 extern func __string_from_codepoint(cp: i32) -> String
+
+struct CoreProgram:
+    normalized_source: String
+    feature_set: String
+    enum_rows: String
+    alias_rows: String
+    func_rows: String
+    lower_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
 
 struct EmitExprResult:
     next_temp: i32
@@ -1279,7 +1309,10 @@ func emit_program_typed(typed_normalized: String, module_name: String) -> String
     return _emit_program_from_source(typed_normalized, module_name)
 
 func emit_program_core(core_source: String, module_name: String) -> String:
-    return _emit_program_from_source(core_source, module_name)
+    let normalized = _normalize_source_newlines(core_source)
+    if (normalized.length() == 0):
+        return ""
+    return _emit_program_from_source(normalized, module_name)
 
 func emit_program_from_native(source: String, module_name: String) -> String:
     let normalized = _normalize_source_newlines(source)

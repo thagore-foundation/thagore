@@ -115,6 +115,10 @@ func _validate_feature_edges(program: ProgramT) -> ProgramT:
     if (program.match_count > 0):
         if (program.enums == ";"):
             out = _program_set_error(out, "E_TYPE_MATCH_MISSING_ENUM", "match requires at least one enum declaration")
+    if (_contains(program.normalized, "...") == 1):
+        if (_contains(program.normalized, "for ") == 1):
+            if (_contains(program.normalized, " in ") == 1):
+                out = _program_set_error(out, "E_TYPE_RANGE_HEADER", "malformed range header `for i in a..b:`")
     if (program.range_loop_count > 0):
         if (_contains(program.feature_set, ";range_loop;") == 0):
             out = _program_set_error(out, "E_TYPE_RANGE_HEADER", "malformed range header `for i in a..b:`")

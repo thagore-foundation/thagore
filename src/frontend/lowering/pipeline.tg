@@ -1,5 +1,6 @@
 import "src/frontend/semantic/traits.tg" as gt
 import "src/frontend/parser/headers.tg" as ph
+import "src/frontend/native/parser.tg" as nparser
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -15,6 +16,74 @@ struct EvalBlockResult:
     return_value: i32
     env: String
     next_idx: i32
+
+struct ProgramT:
+    source: String
+    normalized: String
+    feature_set: String
+    enums: String
+    aliases: String
+    funcs: String
+    symbols: String
+    exprs: String
+    stmts: String
+    blocks: String
+    trait_rows: String
+    impl_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+
+struct CoreProgram:
+    normalized_source: String
+    feature_set: String
+    enum_rows: String
+    alias_rows: String
+    func_rows: String
+    lower_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+
+func core_new(typed: ProgramT, normalized_source: String, lower_rows: String) -> CoreProgram:
+    return CoreProgram(normalized_source, typed.feature_set, typed.enums, typed.aliases, typed.funcs, lower_rows, 0, "", "", typed.enum_payload_count, typed.match_count, typed.range_loop_count, typed.if_expr_count, typed.closure_count, typed.unsafe_count, typed.extension_impl_count, typed.visibility_count, typed.tuple_destruct_count, typed.array_literal_count, typed.slice_expr_count, typed.loop_label_count, typed.raw_string_count, typed.interpolated_string_count, typed.result_sugar_count, typed.defer_scope_count, typed.comptime_count)
+
+func core_set_error(core: CoreProgram, code: String, message: String) -> CoreProgram:
+    return CoreProgram(core.normalized_source, core.feature_set, core.enum_rows, core.alias_rows, core.func_rows, core.lower_rows, core.error_count + 1, code, message, core.enum_payload_count, core.match_count, core.range_loop_count, core.if_expr_count, core.closure_count, core.unsafe_count, core.extension_impl_count, core.visibility_count, core.tuple_destruct_count, core.array_literal_count, core.slice_expr_count, core.loop_label_count, core.raw_string_count, core.interpolated_string_count, core.result_sugar_count, core.defer_scope_count, core.comptime_count)
 
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
@@ -1262,9 +1331,37 @@ func validate(source: String) -> i32:
         return 1
     return 0
 
-func lower_program(source: String) -> String:
+func _build_lower_rows(typed: ProgramT) -> String:
+    let rows = ";"
+    if (typed.enum_payload_count > 0):
+        rows = rows + "lower.enum_payload|dispatch_payload;"
+    if (typed.match_count > 0):
+        rows = rows + "lower.match|tag_dispatch;"
+    if (typed.range_loop_count > 0):
+        rows = rows + "lower.range_loop|init_cond_inc;"
+    if (typed.if_expr_count > 0):
+        rows = rows + "lower.if_expr|temp_merge;"
+    if (typed.closure_count > 0):
+        rows = rows + "lower.closure|env_lifted_fn;"
+    if (typed.tuple_destruct_count > 0):
+        rows = rows + "lower.tuple_destruct|bind_components;"
+    if (typed.result_sugar_count > 0):
+        rows = rows + "lower.result_sugar|question_propagation;"
+    if (typed.defer_scope_count > 0):
+        rows = rows + "lower.defer_scope|scope_cleanup;"
+    if (typed.comptime_count > 0):
+        rows = rows + "lower.comptime|folded_expr;"
+    return rows
+
+func _typed_from_source(source: String) -> ProgramT:
     let source_norm = _normalize_validation_source(source)
+    return ProgramT(source_norm, source_norm, nparser.parse_feature_set(source_norm), nparser.parse_enums(source_norm), nparser.parse_aliases(source_norm), nparser.parse_funcs(source_norm), ";", ";", ";", ";", ";", ";", 0, "", "", nparser.parse_enum_payload_count(source_norm), nparser.parse_match_count(source_norm), nparser.parse_range_loop_count(source_norm), nparser.parse_if_expr_count(source_norm), nparser.parse_closure_count(source_norm), nparser.parse_unsafe_count(source_norm), nparser.parse_extension_impl_count(source_norm), nparser.parse_visibility_count(source_norm), nparser.parse_tuple_destruct_count(source_norm), nparser.parse_array_literal_count(source_norm), nparser.parse_slice_expr_count(source_norm), nparser.parse_loop_label_count(source_norm), nparser.parse_raw_string_count(source_norm), 0, nparser.parse_result_sugar_count(source_norm), nparser.parse_defer_scope_count(source_norm), nparser.parse_comptime_count(source_norm))
+
+func lower_program(source: String) -> CoreProgram:
+    let source_norm = _normalize_validation_source(source)
+    let typed = _typed_from_source(source_norm)
     let lowered_source = preprocess(source_norm)
+    let core = core_new(typed, lowered_source, _build_lower_rows(typed))
     if (validate(lowered_source) != 0):
-        return ""
-    return lowered_source
+        return core_set_error(core, "E_LOWER_VALIDATE", "lowering validation failed")
+    return core

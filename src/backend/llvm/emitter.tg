@@ -1,4 +1,33 @@
 import "src/backend/native/emitter.tg" as native_codegen
+import "src/frontend/lowering/coreir.tg"
+
+struct CoreProgram:
+    normalized_source: String
+    feature_set: String
+    enum_rows: String
+    alias_rows: String
+    func_rows: String
+    lower_rows: String
+    error_count: i32
+    error_code: String
+    error_message: String
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
 
 func emit_program(root: ptr) -> String:
     root = root
