@@ -353,6 +353,22 @@ jobs:
             [[ -n "$probe_fib" && -f "$probe_fib" ]] || return 1
             return 0
           }
+          build_stage1_blob_native() {
+            mkdir -p _s1/blobseed/dist/bin
+            git cat-file blob 7f9ed799c71ceff8da657316012dc5e4d01d34d4 > _s1/runtime.cc
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              PY=python
+            else
+              PY=python3
+            fi
+            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
+            clang++ -std=c++17 -O2 _s1/runtime.cc -o "${{ matrix.stage1_bin }}"
+            chmod +x "${{ matrix.stage1_bin }}" || true
+            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thagore
+            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thag
+            tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C _s1/blobseed dist
+            STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
+          }
           STAGE1_ASSET=""
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
@@ -449,6 +465,9 @@ jobs:
                 break
               fi
             done
+            if [[ -z "$STAGE1_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              build_stage1_blob_native || true
+            fi
             if [[ -z "$STAGE1_ASSET" ]]; then
               if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
                 echo "[SKIP] optional lane missing Unix stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
