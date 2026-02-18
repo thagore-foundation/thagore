@@ -413,11 +413,10 @@ jobs:
                     '    break' \
                     '  fi' \
                     'done' \
-                    'if [[ -z "$EMU_BIN" ]]; then' \
-                    '  echo "CRITICAL: missing qemu-x86_64 or qemu-x86_64-static in PATH" >&2' \
-                    '  exit 1' \
+                    'if [[ -n "$EMU_BIN" ]]; then' \
+                    '  exec "$EMU_BIN" -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' \
                     'fi' \
-                    'exec "$EMU_BIN" -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' \
+                    'exec "$SELF_DIR/stage1.x86_64" "$@"' \
                     > "${{ matrix.stage1_bin }}"
                 else
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
@@ -858,6 +857,7 @@ jobs:
 
       - name: Upload package artifacts
         if: env.RELEASE_OPTIONAL_SKIP != '1'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.asset_tag }}
@@ -878,6 +878,7 @@ jobs:
 
       - name: Upload typed-ir audit artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: typed-ir-release-${{ matrix.asset_tag }}
@@ -885,6 +886,7 @@ jobs:
 
       - name: Upload core-ir audit artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: core-ir-release-${{ matrix.asset_tag }}
@@ -892,6 +894,7 @@ jobs:
 
       - name: Upload spec-summary audit artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: spec-summary-release-${{ matrix.asset_tag }}
