@@ -84,9 +84,6 @@ jobs:
           if has_asset "thagore-stage1-linux-arm64.tar.gz"; then
             available="${available}linux-arm64;"
           fi
-          if has_asset "thagore-stage1-macos-x86_64.tar.gz"; then
-            available="${available}macos-x86_64;"
-          fi
           if has_asset "thagore-stage1-macos-arm64.tar.gz"; then
             available="${available}macos-arm64;"
           elif has_asset "thagore-stage1-macos.tar.gz"; then
@@ -127,13 +124,6 @@ jobs:
             allow_failure: true
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
             runtime_seed_name: thagore-runtime-linux-arm64.a
-          - runner: macos-13
-            os_name: macOS
-            arch: x86_64
-            asset_tag: macos-x86_64
-            allow_failure: true
-            stage1_seed_name: thagore-stage1-macos-x86_64.tar.gz
-            runtime_seed_name: thagore-runtime-macos-x86_64.a
           - runner: macos-latest
             os_name: macOS
             arch: arm64

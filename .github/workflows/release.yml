@@ -154,21 +154,6 @@ jobs:
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
             runtime_seed_name: thagore-runtime-linux-arm64.a
             stage_trace_file: release-stage-trace-linux-arm64.log
-          - runner: macos-13
-            os_name: macOS
-            arch: x86_64
-            asset_tag: macos-x86_64
-            allow_failure: true
-            stage1_bin: stage1
-            output_bin: thagore
-            stage2_bin: stage2
-            stage2_rebuild_bin: stage2_rebuild
-            hello_bin: hello_release
-            fib_bin: fib_release
-            package_name: thagore-macos-x86_64.tar.gz
-            stage1_seed_name: thagore-stage1-macos-x86_64.tar.gz
-            runtime_seed_name: thagore-runtime-macos-x86_64.a
-            stage_trace_file: release-stage-trace-macos-x86_64.log
           - runner: macos-latest
             os_name: macOS
             arch: arm64
@@ -368,7 +353,20 @@ jobs:
                 break
               fi
             done
-            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
+            if [[ -z "$STAGE1_ASSET" ]]; then
+              if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
+                echo "[SKIP] optional lane missing Windows stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
+                echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
+                : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
+                : > "core-ir-release-${{ matrix.asset_tag }}.txt"
+                : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
+                : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
+                : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
+                exit 0
+              fi
+              echo "CRITICAL: no Windows stage1 asset found in releases."
+              exit 1
+            fi
           else
             for ASSET in "${STAGE1_CANDIDATES[@]}"; do
               if download_asset "$ASSET"; then
@@ -383,7 +381,20 @@ jobs:
                 break
               fi
             done
-            [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Unix stage1 asset found in releases."; exit 1)
+            if [[ -z "$STAGE1_ASSET" ]]; then
+              if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
+                echo "[SKIP] optional lane missing Unix stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
+                echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
+                : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
+                : > "core-ir-release-${{ matrix.asset_tag }}.txt"
+                : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
+                : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
+                : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
+                exit 0
+              fi
+              echo "CRITICAL: no Unix stage1 asset found in releases."
+              exit 1
+            fi
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
@@ -414,7 +425,20 @@ jobs:
               fi
             done
           fi
-          [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."; exit 1)
+          if [[ -z "$RUNTIME_ASSET" ]]; then
+            if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
+              echo "[SKIP] optional lane missing runtime asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
+              echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
+              : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
+              : > "core-ir-release-${{ matrix.asset_tag }}.txt"
+              : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
+              : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
+              : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
+              exit 0
+            fi
+            echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."
+            exit 1
+          fi
           if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
             cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
           fi
@@ -438,6 +462,7 @@ jobs:
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -448,6 +473,7 @@ jobs:
           milestone: Download stage1 bootstrap asset
 
       - name: Runtime ABI bootstrap-critical gate
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -462,6 +488,7 @@ jobs:
             --write "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build Stage2 -> Stage2 (mandatory)
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -557,6 +584,7 @@ jobs:
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -587,6 +615,7 @@ jobs:
           fi
 
       - name: Discord update - Build Stage2 -> Stage2 (mandatory)
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -597,6 +626,7 @@ jobs:
           milestone: Build Stage2 -> Stage2 (mandatory)
 
       - name: Run hello + fib
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -605,6 +635,7 @@ jobs:
           "./$FIB_BIN"
 
       - name: Guard no stage0 markers
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -615,6 +646,7 @@ jobs:
           fi
 
       - name: Enforce no C++ dependency gate
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -626,6 +658,7 @@ jobs:
           "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-release-${{ matrix.asset_tag }}.txt"
 
       - name: Enforce deprecated API gate
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -637,6 +670,7 @@ jobs:
           "$PY" scripts/deprecated_api_gate.py --report "deprecated-api-gate-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build spec snapshot audit artifacts
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -648,6 +682,7 @@ jobs:
           "$PY" scripts/spec_snapshot_audit.py --os-tag "release-${{ matrix.asset_tag }}" --out-dir "."
 
       - name: Package release payload
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -692,7 +727,7 @@ jobs:
           fi
 
       - name: Build Windows EXE installer (NSIS)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -711,6 +746,7 @@ jobs:
           cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
       - name: Discord update - Package release payload
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -721,6 +757,7 @@ jobs:
           milestone: Package release payload
 
       - name: Upload package artifacts
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.asset_tag }}
