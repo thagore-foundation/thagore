@@ -799,6 +799,17 @@ jobs:
           fi
           "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-ci-${{ matrix.os }}.txt"
 
+      - name: Enforce deprecated API gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/deprecated_api_gate.py --report "deprecated-api-gate-ci-${{ matrix.os }}.txt"
+
       - name: Build spec snapshot audit artifacts
         shell: bash
         run: |
@@ -822,6 +833,7 @@ jobs:
             runtime-abi-summary-ci-${{ matrix.os }}.txt
             runtime-abi-inventory-ci-${{ matrix.os }}.txt
             no-cpp-dependency-ci-${{ matrix.os }}.txt
+            deprecated-api-gate-ci-${{ matrix.os }}.txt
             typed-ir-ci-${{ matrix.os }}.txt
             core-ir-ci-${{ matrix.os }}.txt
             spec-summary-ci-${{ matrix.os }}.txt

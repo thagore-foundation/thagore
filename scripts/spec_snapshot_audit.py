@@ -5,6 +5,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _spec_path(stage: str, feature: str, case: str) -> Path:
+    return ROOT / "tests" / "spec" / stage / f"{feature}_{case}.tg"
+
+
 def _read_features(summary_path: Path) -> list[str]:
     features: list[str] = []
     for raw in summary_path.read_text(encoding="utf-8").splitlines():
@@ -31,6 +35,13 @@ def main() -> int:
     if not features:
         raise SystemExit("CRITICAL: tests/snapshots/spec-summary.txt has no feature rows")
 
+    required_stages = ["parser", "typecheck", "lowering"]
+    required_cases = ["positive", "negative", "edge"]
+    for feature in features:
+        for stage in required_stages:
+            for case in required_cases:
+                _require_file(_spec_path(stage, feature, case))
+
     typedir = ROOT / "tests" / "snapshots" / "typedir"
     coreir = ROOT / "tests" / "snapshots" / "coreir"
     for feature in features:
@@ -52,7 +63,11 @@ def main() -> int:
 
     typed_out.write_text("\n".join(typed_lines) + "\n", encoding="utf-8")
     core_out.write_text("\n".join(core_lines) + "\n", encoding="utf-8")
-    spec_out.write_text(summary.read_text(encoding="utf-8"), encoding="utf-8")
+    spec_lines = summary.read_text(encoding="utf-8").splitlines()
+    spec_lines.append(f"spec_stage_count={len(required_stages)}")
+    spec_lines.append(f"spec_case_count={len(required_cases)}")
+    spec_lines.append(f"spec_file_count={len(features) * len(required_stages) * len(required_cases)}")
+    spec_out.write_text("\n".join(spec_lines) + "\n", encoding="utf-8")
 
     print(f"typed_ir={typed_out}")
     print(f"core_ir={core_out}")
