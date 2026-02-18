@@ -340,14 +340,14 @@ jobs:
               PY=python3
             fi
             "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            cat > _s1/main.cc <<'EOF'
-            void __thg_init_env(int argc, void *argv_ptr);
-            int __thg_cli_main_native();
-            int main(int argc, char **argv) {
-              __thg_init_env(argc, static_cast<void *>(argv));
-              return __thg_cli_main_native();
-            }
-            EOF
+            printf '%s\n' \
+              'void __thg_init_env(int argc, void *argv_ptr);' \
+              'int __thg_cli_main_native();' \
+              'int main(int argc, char **argv) {' \
+              '  __thg_init_env(argc, static_cast<void *>(argv));' \
+              '  return __thg_cli_main_native();' \
+              '}' \
+              > _s1/main.cc
             CXX_ARGS=(-std=c++17 -O2 _s1/runtime.cc _s1/main.cc -o "${{ matrix.stage1_bin }}")
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               CXX_ARGS=(-target aarch64-unknown-linux-gnu -std=c++17 -O2 _s1/runtime.cc _s1/main.cc -o "${{ matrix.stage1_bin }}")
