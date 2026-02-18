@@ -1,4 +1,5 @@
 import "src/frontend/native/parser.tg" as parser
+import "src/frontend/native/typedir.tg"
 import "src/frontend/lowering/pipeline.tg" as pipe
 import "src/frontend/intent/matcher.tg" as im
 import "src/frontend/semantic/pass.tg" as sempass
@@ -7,50 +8,14 @@ extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __string_from_codepoint(cp: i32) -> String
 
-struct ProgramT:
-    source: String
-    normalized: String
-    feature_set: String
-    enums: String
-    aliases: String
-    funcs: String
-    symbols: String
-    exprs: String
-    stmts: String
-    blocks: String
-    trait_rows: String
-    impl_rows: String
-    error_count: i32
-    error_code: String
-    error_message: String
-    enum_payload_count: i32
-    match_count: i32
-    range_loop_count: i32
-    if_expr_count: i32
-    closure_count: i32
-    unsafe_count: i32
-    extension_impl_count: i32
-    visibility_count: i32
-    tuple_destruct_count: i32
-    array_literal_count: i32
-    slice_expr_count: i32
-    loop_label_count: i32
-    raw_string_count: i32
-    interpolated_string_count: i32
-    result_sugar_count: i32
-    defer_scope_count: i32
-    comptime_count: i32
-
 func _program_new(source: String, normalized: String, feature_set: String, enums: String, aliases: String, funcs: String, enum_payload_count: i32, match_count: i32, range_loop_count: i32, if_expr_count: i32, closure_count: i32, unsafe_count: i32, extension_impl_count: i32, visibility_count: i32, tuple_destruct_count: i32, array_literal_count: i32, slice_expr_count: i32, loop_label_count: i32, raw_string_count: i32, interpolated_string_count: i32, result_sugar_count: i32, defer_scope_count: i32, comptime_count: i32) -> ProgramT:
-    return ProgramT(source, normalized, feature_set, enums, aliases, funcs, ";", ";", ";", ";", ";", ";", 0, "", "", enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
+    return program_new(source, normalized, feature_set, enums, aliases, funcs, enum_payload_count, match_count, range_loop_count, if_expr_count, closure_count, unsafe_count, extension_impl_count, visibility_count, tuple_destruct_count, array_literal_count, slice_expr_count, loop_label_count, raw_string_count, interpolated_string_count, result_sugar_count, defer_scope_count, comptime_count)
 
 func _program_set_error(program: ProgramT, code: String, message: String) -> ProgramT:
-    return ProgramT(program.source, program.normalized, program.feature_set, program.enums, program.aliases, program.funcs, program.symbols, program.exprs, program.stmts, program.blocks, program.trait_rows, program.impl_rows, program.error_count + 1, code, message, program.enum_payload_count, program.match_count, program.range_loop_count, program.if_expr_count, program.closure_count, program.unsafe_count, program.extension_impl_count, program.visibility_count, program.tuple_destruct_count, program.array_literal_count, program.slice_expr_count, program.loop_label_count, program.raw_string_count, program.interpolated_string_count, program.result_sugar_count, program.defer_scope_count, program.comptime_count)
+    return program_set_error(program, code, message)
 
 func _program_has_error(program: ProgramT) -> i32:
-    if (program.error_count > 0):
-        return 1
-    return 0
+    return program_has_error(program)
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)

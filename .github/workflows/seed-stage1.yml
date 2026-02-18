@@ -201,6 +201,31 @@ jobs:
             done
             return 1
           }
+          resolve_ir() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.ll" "${preferred%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
+          link_ir_to_bin() {
+            local ir="$1"
+            local out="$2"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
+              clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
+              return 1
+            fi
+            clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
+            clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
+            return 1
+          }
           thg_build() {
             local cc="$1"
             local src="$2"
@@ -279,6 +304,8 @@ jobs:
             local src="$1"
             local out="$2"
             local found=""
+            local ir_out="${out}.ll"
+            local found_ir=""
             purge_outputs "$src" "$out"
             for cc in "${COMPILER_CANDIDATES[@]}"; do
               [[ -n "$cc" && -f "$cc" ]] || continue
@@ -287,6 +314,20 @@ jobs:
                 if [[ -n "$found" ]]; then
                   echo "$found"
                   return 0
+                fi
+              fi
+              echo "[CMD] ./$cc --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
+              if "./$cc" --emit-llvm-internal "$src" -o "$ir_out"; then
+                found_ir="$(resolve_ir "$ir_out" "$src" || true)"
+                if [[ -n "$found_ir" ]] && grep -q "@main(" "$found_ir"; then
+                  echo "[CMD] clang $found_ir -> $out" | tee -a "$STAGE_TRACE_FILE"
+                  if link_ir_to_bin "$found_ir" "$out"; then
+                    found="$(resolve_bin "$out" "$src" || true)"
+                    if [[ -n "$found" ]]; then
+                      echo "$found"
+                      return 0
+                    fi
+                  fi
                 fi
               fi
             done

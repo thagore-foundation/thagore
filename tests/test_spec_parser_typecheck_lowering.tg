@@ -45,7 +45,7 @@ func _expect_valid(label: String, source: String) -> i32:
         print(typed.error_code)
         print(typed.error_message)
         return 1
-    let core = pipe.lower_program(typed.normalized)
+    let core = pipe.lower_program(typed)
     if (cir.core_has_error(core) == 1):
         print("FAIL: " + label + " lower")
         print(core.error_code)
@@ -133,7 +133,7 @@ func main() -> i32:
     fails = fails + _expect_valid("closure", src_closure)
     fails = fails + _expect_gt0("closure count", t_closure.closure_count)
 
-    let core = pipe.lower_program(t_enum.normalized)
+    let core = pipe.lower_program(t_enum)
     fails = fails + _expect_contains("lower match rule", core.lower_rows, "lower.match|")
     fails = fails + _expect_contains("lower enum rule", core.lower_rows, "lower.enum_payload|")
 
