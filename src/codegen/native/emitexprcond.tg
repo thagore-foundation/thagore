@@ -1,0 +1,257 @@
+import "src/lowering/coreir/nodes.tg"
+import "src/codegen/native/emithelpers.tg"
+
+struct EmitExprResult:
+    next_temp: i32
+    next_str: i32
+    value: String
+    ir: String
+    globals: String
+
+struct EmitStmtResult:
+    next_temp: i32
+    next_label: i32
+    next_str: i32
+    ir: String
+    slots: String
+    globals: String
+
+struct EmitPrintResult:
+    next_temp: i32
+    next_str: i32
+    ir: String
+    globals: String
+
+func _pack3(a: String, b: String, c: String) -> String:
+    return a + "__OPSEP__" + b + "__OPSEP__" + c
+
+func _unpack_part(pack: String, idx: i32) -> String:
+    let p1 = _find(pack, "__OPSEP__")
+    if (p1 < 0):
+        if (idx == 0):
+            return pack
+        return ""
+    let p2 = _find(__thg_str_substr(pack, p1 + 9, strlen(pack) - p1 - 9), "__OPSEP__")
+    if (p2 < 0):
+        if (idx == 0):
+            return __thg_str_substr(pack, 0, p1)
+        if (idx == 1):
+            return __thg_str_substr(pack, p1 + 9, strlen(pack) - p1 - 9)
+        return ""
+    let p2_abs = p1 + 9 + p2
+    if (idx == 0):
+        return __thg_str_substr(pack, 0, p1)
+    if (idx == 1):
+        return __thg_str_substr(pack, p1 + 9, p2_abs - p1 - 9)
+    return __thg_str_substr(pack, p2_abs + 9, strlen(pack) - p2_abs - 9)
+
+func _emit_operand_simple(expr_raw: String, slots: String, t: i32) -> String:
+    let expr = _trim_edges(expr_raw)
+    let lit_i32 = _literal_i32_value(expr)
+    if (lit_i32.length() > 0):
+        return _pack3("", lit_i32, _to_string_i32(t))
+    let slot = _map_get(slots, expr)
+    if (slot.length() > 0):
+        let v = _new_temp("ld", t)
+        let ir = "  " + v + " = load i32, ptr " + slot + "__NL__"
+        return _pack3(ir, v, _to_string_i32(t + 1))
+    return _pack3("", expr, _to_string_i32(t))
+
+func _find_cond_op(cond_text: String) -> String:
+    if (_find(cond_text, "<=") >= 0):
+        return "<="
+    if (_find(cond_text, ">=") >= 0):
+        return ">="
+    if (_find(cond_text, "==") >= 0):
+        return "=="
+    if (_find(cond_text, "!=") >= 0):
+        return "!="
+    if (_find(cond_text, "<") >= 0):
+        return "<"
+    if (_find(cond_text, ">") >= 0):
+        return ">"
+    return ""
+
+func _cond_ir_op(op: String) -> String:
+    if (op == "<="):
+        return "icmp sle"
+    if (op == ">="):
+        return "icmp sge"
+    if (op == "=="):
+        return "icmp eq"
+    if (op == "!="):
+        return "icmp ne"
+    if (op == "<"):
+        return "icmp slt"
+    if (op == ">"):
+        return "icmp sgt"
+    return "icmp slt"
+
+func _is_outer_paren_pair(text: String) -> i32:
+    let n = strlen(text)
+    if (n < 2):
+        return 0
+    if (_char_at(text, 0) != "("):
+        return 0
+    if (_char_at(text, n - 1) != ")"):
+        return 0
+    let i = 0
+    let depth = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth < 0):
+                    return 0
+                if ((depth == 0) and (i < (n - 1))):
+                    return 0
+        i = i + 1
+    if (depth != 0):
+        return 0
+    return 1
+
+func _find_top_level_needle(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if ((n == 0) or (m == 0) or (m > n)):
+        return -1
+    let depth = 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                if (depth > 0):
+                    depth = depth - 1
+        if (depth == 0):
+            if ((i + m) <= n):
+                if (__thg_str_substr(text, i, m) == needle):
+                    return i
+        i = i + 1
+    return -1
+
+func _find_top_level_cond_op(cond_text: String) -> String:
+    if (_find_top_level_needle(cond_text, "<=") >= 0):
+        return "<="
+    if (_find_top_level_needle(cond_text, ">=") >= 0):
+        return ">="
+    if (_find_top_level_needle(cond_text, "==") >= 0):
+        return "=="
+    if (_find_top_level_needle(cond_text, "!=") >= 0):
+        return "!="
+    if (_find_top_level_needle(cond_text, "<") >= 0):
+        return "<"
+    if (_find_top_level_needle(cond_text, ">") >= 0):
+        return ">"
+    return ""
+
+func _find_matching_rparen(text: String, lpos: i32) -> i32:
+    let n = strlen(text)
+    if ((lpos < 0) or (lpos >= n)):
+        return -1
+    if (_char_at(text, lpos) != "("):
+        return -1
+    let i = lpos
+    let depth = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth == 0):
+                    return i
+                if (depth < 0):
+                    return -1
+        i = i + 1
+    return -1
+
+func _emit_cond_i1(cond_text_raw: String, slots: String, t: i32) -> String:
+    let cond_norm1 = _replace_all(cond_text_raw, "&&", " and ")
+    let cond_norm2 = _replace_all(cond_norm1, "||", " or ")
+    let cond_text = _trim_edges(cond_norm2)
+    while (_is_outer_paren_pair(cond_text) == 1):
+        cond_text = _trim_edges(__thg_str_substr(cond_text, 1, strlen(cond_text) - 2))
+    let n = strlen(cond_text)
+    if (_starts_with(cond_text, "not ") == 1):
+        let inner = _trim_edges(__thg_str_substr(cond_text, 4, n - 4))
+        let ipack = _emit_cond_i1(inner, slots, t)
+        let iir = _unpack_part(ipack, 0)
+        let ival = _unpack_part(ipack, 1)
+        let it = _parse_i32(_unpack_part(ipack, 2))
+        let outv = _new_temp("tmp", it)
+        let ir = iir + "  " + outv + " = xor i1 " + ival + ", true__NL__"
+        return _pack3(ir, outv, _to_string_i32(it + 1))
+    if ((n >= 1) and (_char_at(cond_text, 0) == "!")):
+        if (((n < 2) or (_char_at(cond_text, 1) != "="))):
+            let inner = _trim_edges(__thg_str_substr(cond_text, 1, n - 1))
+            let ipack = _emit_cond_i1(inner, slots, t)
+            let iir = _unpack_part(ipack, 0)
+            let ival = _unpack_part(ipack, 1)
+            let it = _parse_i32(_unpack_part(ipack, 2))
+            let outv = _new_temp("tmp", it)
+            let ir = iir + "  " + outv + " = xor i1 " + ival + ", true__NL__"
+            return _pack3(ir, outv, _to_string_i32(it + 1))
+    let p_or = _find_top_level_needle(cond_text, " or ")
+    if (p_or >= 0):
+        let left = _trim_edges(__thg_str_substr(cond_text, 0, p_or))
+        let right = _trim_edges(__thg_str_substr(cond_text, p_or + 4, strlen(cond_text) - p_or - 4))
+        let lpack = _emit_cond_i1(left, slots, t)
+        let lir = _unpack_part(lpack, 0)
+        let lval = _unpack_part(lpack, 1)
+        let lt = _parse_i32(_unpack_part(lpack, 2))
+        let rpack = _emit_cond_i1(right, slots, lt)
+        let rir = _unpack_part(rpack, 0)
+        let rval = _unpack_part(rpack, 1)
+        let rt = _parse_i32(_unpack_part(rpack, 2))
+        let outv = _new_temp("tmp", rt)
+        let ir = lir + rir + "  " + outv + " = or i1 " + lval + ", " + rval + "__NL__"
+        return _pack3(ir, outv, _to_string_i32(rt + 1))
+    let p_and = _find_top_level_needle(cond_text, " and ")
+    if (p_and >= 0):
+        let left = _trim_edges(__thg_str_substr(cond_text, 0, p_and))
+        let right = _trim_edges(__thg_str_substr(cond_text, p_and + 5, strlen(cond_text) - p_and - 5))
+        let lpack = _emit_cond_i1(left, slots, t)
+        let lir = _unpack_part(lpack, 0)
+        let lval = _unpack_part(lpack, 1)
+        let lt = _parse_i32(_unpack_part(lpack, 2))
+        let rpack = _emit_cond_i1(right, slots, lt)
+        let rir = _unpack_part(rpack, 0)
+        let rval = _unpack_part(rpack, 1)
+        let rt = _parse_i32(_unpack_part(rpack, 2))
+        let outv = _new_temp("tmp", rt)
+        let ir = lir + rir + "  " + outv + " = and i1 " + lval + ", " + rval + "__NL__"
+        return _pack3(ir, outv, _to_string_i32(rt + 1))
+    let op = _find_top_level_cond_op(cond_text)
+    if (op.length() > 0):
+        let pos = _find_top_level_needle(cond_text, op)
+        let left_text = cond_text
+        let right_text = "0"
+        if (pos >= 0):
+            left_text = _trim_edges(__thg_str_substr(cond_text, 0, pos))
+            right_text = _trim_edges(__thg_str_substr(cond_text, pos + strlen(op), strlen(cond_text) - pos - strlen(op)))
+        let left_pack = _emit_operand_simple(left_text, slots, t)
+        let left_ir = _unpack_part(left_pack, 0)
+        let left_val = _unpack_part(left_pack, 1)
+        let t_left = _parse_i32(_unpack_part(left_pack, 2))
+        let right_pack = _emit_operand_simple(right_text, slots, t_left)
+        let right_ir = _unpack_part(right_pack, 0)
+        let right_val = _unpack_part(right_pack, 1)
+        let t_right = _parse_i32(_unpack_part(right_pack, 2))
+        let cond_var = _new_temp("tmp", t_right)
+        let cond_ir = left_ir + right_ir + "  " + cond_var + " = " + _cond_ir_op(op) + " i32 " + left_val + ", " + right_val + "__NL__"
+        return _pack3(cond_ir, cond_var, _to_string_i32(t_right + 1))
+    let value_pack = _emit_operand_simple(cond_text, slots, t)
+    let value_ir = _unpack_part(value_pack, 0)
+    let value_val = _unpack_part(value_pack, 1)
+    let t_value = _parse_i32(_unpack_part(value_pack, 2))
+    let cond_var = _new_temp("tmp", t_value)
+    let cond_ir = value_ir + "  " + cond_var + " = icmp ne i32 " + value_val + ", 0__NL__"
+    return _pack3(cond_ir, cond_var, _to_string_i32(t_value + 1))
+

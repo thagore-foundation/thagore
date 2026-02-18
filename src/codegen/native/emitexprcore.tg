@@ -1,0 +1,134 @@
+import "src/lowering/coreir/nodes.tg"
+import "src/codegen/native/emithelpers.tg"
+
+struct EmitExprResult:
+    next_temp: i32
+    next_str: i32
+    value: String
+    ir: String
+    globals: String
+
+struct EmitStmtResult:
+    next_temp: i32
+    next_label: i32
+    next_str: i32
+    ir: String
+    slots: String
+    globals: String
+
+struct EmitPrintResult:
+    next_temp: i32
+    next_str: i32
+    ir: String
+    globals: String
+
+func _tag(idx: i32) -> String:
+    return _to_string_i32(idx)
+
+func _new_temp(prefix: String, idx: i32) -> String:
+    return _s3("%", prefix, _tag(idx))
+
+func _emit_call_expr(expr: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let lp = _find(expr, "(")
+    let rp = _find(expr, ")")
+    if (lp < 0):
+        return EmitExprResult(t, sidx, "0", "", globals)
+    if (rp < lp):
+        return EmitExprResult(t, sidx, "0", "", globals)
+    let name = _trim_edges(__thg_str_substr(expr, 0, lp))
+    let args = _trim_edges(__thg_str_substr(expr, lp + 1, rp - lp - 1))
+    if (name == "input"):
+        let v_in = _new_temp("call", t)
+        let ir_in = "  " + v_in + " = call i32 @__thg_input_i32()__NL__"
+        return EmitExprResult(t + 1, sidx, v_in, ir_in, globals)
+    if ((name == "cli.main") and (args.length() == 0)):
+        let v_cli = _new_temp("call", t)
+        let ir_cli = "  " + v_cli + " = call i32 @__thg_cli_main_native()__NL__"
+        return EmitExprResult(t + 1, sidx, v_cli, ir_cli, globals)
+    if (args.length() == 0):
+        let v0 = _new_temp("call", t)
+        let ir0 = "  " + v0 + " = call i32 @" + name + "()__NL__"
+        return EmitExprResult(t + 1, sidx, v0, ir0, globals)
+    if (name == "print"):
+        let arg_res = _emit_expr(args, slots, t, sidx, globals)
+        let call_ir = arg_res.ir + "  call void @__thg_print_i32(i32 " + arg_res.value + ")__NL__"
+        return EmitExprResult(arg_res.next_temp, arg_res.next_str, "0", call_ir, arg_res.globals)
+    let arg_emit = _emit_expr(args, slots, t, sidx, globals)
+    let v = _new_temp("call", arg_emit.next_temp)
+    let ir = arg_emit.ir + "  " + v + " = call i32 @" + name + "(i32 " + arg_emit.value + ")__NL__"
+    return EmitExprResult(arg_emit.next_temp + 1, arg_emit.next_str, v, ir, arg_emit.globals)
+
+func _emit_binary(expr: String, op: String, ir_op: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let p = _find(expr, op)
+    if (p < 0):
+        return EmitExprResult(t, sidx, "", "", globals)
+    let left = _trim_edges(__thg_str_substr(expr, 0, p))
+    let right = _trim_edges(__thg_str_substr(expr, p + strlen(op), strlen(expr) - p - strlen(op)))
+    let l = _emit_expr(left, slots, t, sidx, globals)
+    let r = _emit_expr(right, slots, l.next_temp, l.next_str, l.globals)
+    let v = _new_temp("tmp", r.next_temp)
+    let ir_tail = "  " + v + " = " + ir_op + " i32 " + l.value + ", " + r.value + "__NL__"
+    let ir = l.ir + r.ir + ir_tail
+    return EmitExprResult(r.next_temp + 1, r.next_str, v, ir, r.globals)
+
+func _emit_expr(expr_raw: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitExprResult:
+    let expr = _trim_edges(expr_raw)
+    let lit_i32 = _literal_i32_value(expr)
+    if (lit_i32.length() > 0):
+        return EmitExprResult(t, sidx, lit_i32, "", globals)
+    if (_contains(expr, "(") == 1):
+        let call_try = _emit_call_expr(expr, slots, t, sidx, globals)
+        if (call_try.ir.length() > 0):
+            return call_try
+    let cmp1 = _emit_binary(expr, "<=", "icmp sle", slots, t, sidx, globals)
+    if (cmp1.value.length() > 0):
+        return cmp1
+    let cmp2 = _emit_binary(expr, ">=", "icmp sge", slots, cmp1.next_temp, cmp1.next_str, cmp1.globals)
+    if (cmp2.value.length() > 0):
+        return cmp2
+    let cmp3 = _emit_binary(expr, "==", "icmp eq", slots, cmp2.next_temp, cmp2.next_str, cmp2.globals)
+    if (cmp3.value.length() > 0):
+        return cmp3
+    let cmp4 = _emit_binary(expr, "!=", "icmp ne", slots, cmp3.next_temp, cmp3.next_str, cmp3.globals)
+    if (cmp4.value.length() > 0):
+        return cmp4
+    let cmp5 = _emit_binary(expr, "<", "icmp slt", slots, cmp4.next_temp, cmp4.next_str, cmp4.globals)
+    if (cmp5.value.length() > 0):
+        return cmp5
+    let cmp6 = _emit_binary(expr, ">", "icmp sgt", slots, cmp5.next_temp, cmp5.next_str, cmp5.globals)
+    if (cmp6.value.length() > 0):
+        return cmp6
+    let add = _emit_binary(expr, "+", "add", slots, cmp6.next_temp, cmp6.next_str, cmp6.globals)
+    if (add.value.length() > 0):
+        return add
+    let sub = _emit_binary(expr, "-", "sub", slots, add.next_temp, add.next_str, add.globals)
+    if (sub.value.length() > 0):
+        return sub
+    let mul = _emit_binary(expr, "*", "mul", slots, sub.next_temp, sub.next_str, sub.globals)
+    if (mul.value.length() > 0):
+        return mul
+    let div = _emit_binary(expr, "/", "sdiv", slots, mul.next_temp, mul.next_str, mul.globals)
+    if (div.value.length() > 0):
+        return div
+    let slot = _map_get(slots, expr)
+    if (slot.length() > 0):
+        let v = _new_temp("ld", div.next_temp)
+        let ir = "  " + v + " = load i32, ptr " + slot + "__NL__"
+        return EmitExprResult(div.next_temp + 1, div.next_str, v, ir, div.globals)
+    return EmitExprResult(div.next_temp, div.next_str, "0", "", div.globals)
+
+func _emit_print_stmt(line: String, slots: String, t: i32, sidx: i32, globals: String) -> EmitPrintResult:
+    let lp = _find(line, "(")
+    let rp = _find(line, ")")
+    if ((lp < 0) or (rp <= lp)):
+        return EmitPrintResult(t, sidx, "", globals)
+    let arg = _trim_edges(__thg_str_substr(line, lp + 1, rp - lp - 1))
+    let lit = _unwrap_string_literal(arg)
+    if (lit.length() > 0):
+        let gid = _string_gid(lit)
+        let ir = _s5("  call void @__thg_print_str(ptr ", gid, ", i32 ", _to_string_i32(strlen(lit)), ")__NL__")
+        return EmitPrintResult(t, sidx, ir, globals)
+    let e = _emit_expr(arg, slots, t, sidx, globals)
+    let ir_num = _s2(e.ir, _s3("  call void @__thg_print_i32(i32 ", e.value, ")__NL__"))
+    return EmitPrintResult(e.next_temp, e.next_str, ir_num, e.globals)
+

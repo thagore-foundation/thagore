@@ -1,0 +1,144 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_add(a: String, b: String) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _ascii_code(ch: String) -> i32:
+    if (ch == " "):
+        return 32
+    if (ch == "!"):
+        return 33
+    if (ch == ","):
+        return 44
+    if (ch == "-"):
+        return 45
+    if (ch == "."):
+        return 46
+    if (ch == "/"):
+        return 47
+    if (_contains("0123456789", ch) == 1):
+        return 48 + _find("0123456789", ch)
+    if (ch == ":"):
+        return 58
+    if (ch == ";"):
+        return 59
+    if (_contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) == 1):
+        return 65 + _find("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch)
+    if (_contains("abcdefghijklmnopqrstuvwxyz", ch) == 1):
+        return 97 + _find("abcdefghijklmnopqrstuvwxyz", ch)
+    if (ch == "_"):
+        return 95
+    if (ch == "("):
+        return 40
+    if (ch == ")"):
+        return 41
+    if (ch == "["):
+        return 91
+    if (ch == "]"):
+        return 93
+    if (ch == "{"):
+        return 123
+    if (ch == "}"):
+        return 125
+    if (ch == "<"):
+        return 60
+    if (ch == ">"):
+        return 62
+    if (ch == "?"):
+        return 63
+    if (ch == "+"):
+        return 43
+    if (ch == "="):
+        return 61
+    if (ch == "*"):
+        return 42
+    return 63
+
+func _emit_i8_array(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    while (i < n):
+        let code = _ascii_code(_char_at(text, i))
+        if (i > 0):
+            out = out + ", "
+        out = out + "i8 " + _to_string_i32(code)
+        i = i + 1
+    return out
+
+func _unwrap_string_literal(text: String) -> String:
+    let s = _trim_edges(text)
+    let n = strlen(s)
+    let dq = __string_from_codepoint(34)
+    if (n < 2):
+        return ""
+    if ((_char_at(s, 0) == "v") and (n >= 4)):
+        if (_char_at(s, 1) == dq):
+            if (_char_at(s, n - 1) == dq):
+                return __thg_str_substr(s, 2, n - 3)
+        return ""
+    if (_char_at(s, 0) == dq):
+        if (_char_at(s, n - 1) == dq):
+            return __thg_str_substr(s, 1, n - 2)
+    return ""
+
+func _digit_char(digit: i32) -> String:
+    return __thg_str_substr("0123456789", digit, 1)
+
+func _hash_text(text: String) -> i32:
+    let n = strlen(text)
+    let i = 0
+    let h = 216613626
+    while (i < n):
+        h = (h * 16777619) + _ascii_code(_char_at(text, i))
+        if (h < 0):
+            h = 0 - h
+        i = i + 1
+    return h
+
+func _string_gid(lit: String) -> String:
+    return "@.str." + _to_string_i32(_hash_text(lit))
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let reversed = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        reversed = reversed + _digit_char(r)
+        n = q
+    let out = ""
+    let i = strlen(reversed) - 1
+    while (i >= 0):
+        out = out + __thg_str_substr(reversed, i, 1)
+        i = i - 1
+    return sign + out
+
+func _parse_i32(text: String) -> i32:
+    let s = _trim_edges(text)
+    let n = strlen(s)
+    if (n == 0):
+        return 0
+    let i = 0
+    let sign = 1
+    let start = 0
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        start = 1
+    let out = 0
+    i = start
+    while (i < n):
+        let ch = _char_at(s, i)
+        if (_contains("0123456789", ch) == 1):
+            out = (out * 10) + _find("0123456789", ch)
+        i = i + 1
+    return out * sign
+

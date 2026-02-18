@@ -1,0 +1,262 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_add(a: String, b: String) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _s2(a: String, b: String) -> String:
+    return __thg_str_add(a, b)
+
+func _s3(a: String, b: String, c: String) -> String:
+    return _s2(_s2(a, b), c)
+
+func _s4(a: String, b: String, c: String, d: String) -> String:
+    return _s2(_s3(a, b, c), d)
+
+func _s5(a: String, b: String, c: String, d: String, e: String) -> String:
+    return _s2(_s4(a, b, c, d), e)
+
+func _s6(a: String, b: String, c: String, d: String, e: String, f: String) -> String:
+    return _s2(_s5(a, b, c, d, e), f)
+
+func _backslash_char() -> String:
+    return __thg_str_substr("a\\b", 1, 1)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let n = strlen(prefix)
+    if (strlen(text) < n):
+        return 0
+    if (__thg_str_substr(text, 0, n) == prefix):
+        return 1
+    return 0
+
+func _replace_all(text: String, needle: String, replacement: String) -> String:
+    let out = ""
+    let rest = text
+    let n = strlen(needle)
+    if (n == 0):
+        return text
+    while (1 == 1):
+        let p = _find(rest, needle)
+        if (p < 0):
+            return _s2(out, rest)
+        let left = __thg_str_substr(rest, 0, p)
+        out = _s3(out, left, replacement)
+        rest = __thg_str_substr(rest, p + n, strlen(rest) - p - n)
+    return out
+
+func _newline_char() -> String:
+    let raw = __string_from_codepoint(10)
+    let n = strlen(raw)
+    if (n <= 0):
+        return "\n"
+    return __thg_str_substr(raw, n - 1, 1)
+
+func _finalize_ir(raw: String) -> String:
+    let nl = _newline_char()
+    let step1 = _replace_all(raw, "__NL__", nl)
+    return _replace_all(step1, "PGy", "")
+
+func _is_space(ch: String) -> i32:
+    let nl = _newline_char()
+    if (ch == " "):
+        return 1
+    if (ch == "\t"):
+        return 1
+    if (ch == "\r"):
+        return 1
+    if (ch == nl):
+        return 1
+    return 0
+
+func _decode_escaped_newlines(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let bs = _backslash_char()
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == bs) and (c1 == "n")):
+                out = out + _newline_char()
+                i = i + 2
+            else:
+                if (((i + 3) < n) and (c0 == bs) and (c1 == "r")):
+                    if ((_char_at(text, i + 2) == bs) and (_char_at(text, i + 3) == "n")):
+                        out = out + _newline_char()
+                        i = i + 4
+                    else:
+                        out = out + c0
+                        i = i + 1
+                else:
+                    out = out + c0
+                    i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_source_newlines(source: String) -> String:
+    let nl = _newline_char()
+    if (_contains(source, nl) == 1):
+        return source
+    let bs = _backslash_char()
+    let esc_n = _s2(bs, "n")
+    let esc_rn = _s4(bs, "r", bs, "n")
+    if ((_contains(source, esc_n) == 1) or (_contains(source, esc_rn) == 1)):
+        return _decode_escaped_newlines(source)
+    return source
+
+func _trim_edges(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    let i = 0
+    let left_done = 0
+    while (i < n):
+        if (left_done == 0):
+            if (_is_space(_char_at(text, i)) == 1):
+                i = i + 1
+                l = i
+            else:
+                left_done = 1
+                i = n
+        else:
+            i = n
+    let r = n - 1
+    let j = n - 1
+    let right_done = 0
+    while (j >= l):
+        if (right_done == 0):
+            if (_is_space(_char_at(text, j)) == 1):
+                j = j - 1
+                r = j
+            else:
+                right_done = 1
+                j = l - 1
+        else:
+            j = l - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let c = 1
+    let nl = _newline_char()
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == nl):
+            c = c + 1
+        i = i + 1
+    return c
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let out = ""
+    let nl = _newline_char()
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == nl):
+            if (line_idx == index):
+                return out
+            line_idx = line_idx + 1
+            out = ""
+        else:
+            if (ch != "\r"):
+                out = out + ch
+        i = i + 1
+    if (line_idx == index):
+        return out
+    return ""
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    while (i < n):
+        if (_char_at(line, i) != " "):
+            return i
+        i = i + 1
+    return n
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    let i = 0
+    if (m == 0):
+        return 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _is_number(text: String) -> i32:
+    let n = strlen(text)
+    if (n == 0):
+        return 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (_contains("0123456789", ch) == 0):
+            return 0
+        i = i + 1
+    return 1
+
+func _literal_i32_value(text: String) -> String:
+    let s = _trim_edges(text)
+    if (s == "true"):
+        return "1"
+    if (s == "false"):
+        return "0"
+    if (_is_number(s) == 1):
+        return s
+    return ""
+
+func _map_get(map_text: String, key: String) -> String:
+    let needle = _s3(";", key, "=")
+    let p = _find(map_text, needle)
+    if (p < 0):
+        return ""
+    let start = p + strlen(needle)
+    let i = start
+    let n = strlen(map_text)
+    while (i < n):
+        if (_char_at(map_text, i) == ";"):
+            return __thg_str_substr(map_text, start, i - start)
+        i = i + 1
+    return ""
+
+func _map_set(map_text: String, key: String, value: String) -> String:
+    let old = _map_get(map_text, key)
+    if (old.length() == 0):
+        return _s5(map_text, key, "=", value, ";")
+    let needle = _s5(";", key, "=", old, ";")
+    let p = _find(map_text, needle)
+    if (p < 0):
+        return _s5(map_text, key, "=", value, ";")
+    let left = __thg_str_substr(map_text, 0, p + 1)
+    let right = __thg_str_substr(map_text, p + strlen(needle), strlen(map_text) - p - strlen(needle))
+    return _s6(left, key, "=", value, ";", right)
+

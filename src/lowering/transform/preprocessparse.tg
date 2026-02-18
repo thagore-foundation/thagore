@@ -1,0 +1,130 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _parse_param_names(header_line: String) -> String:
+    let lp = _find_char(header_line, "(")
+    let rp = _find_char(header_line, ")")
+    if (lp < 0):
+        return ""
+    if (rp <= lp):
+        return ""
+    let inside = _trim_edges(__thg_str_substr(header_line, lp + 1, rp - lp - 1))
+    let total = _csv_count(inside)
+    let i = 0
+    let out = ""
+    while (i < total):
+        let token = _csv_item(inside, i)
+        let p = _find_char(token, ":")
+        let name = token
+        if (p >= 0):
+            name = _trim_edges(__thg_str_substr(token, 0, p))
+        if (name.length() > 0):
+            if (out.length() == 0):
+                out = name
+            else:
+                out = out + "," + name
+        i = i + 1
+    return out
+
+func _parse_comptime_func_name(line: String) -> String:
+    let t = _trim_edges(line)
+    if (_starts_with(t, "comptime func ") == 0):
+        return ""
+    let body = __thg_str_substr(t, 13, strlen(t) - 13)
+    let lp = _find_char(body, "(")
+    if (lp < 0):
+        return _trim_edges(body)
+    return _trim_edges(__thg_str_substr(body, 0, lp))
+
+func _extract_indented_block(source: String, header_idx: i32) -> String:
+    let total = _line_count(source)
+    let header = _line_at(source, header_idx)
+    let base_indent = _leading_spaces(header)
+    let i = header_idx + 1
+    let out = ""
+    while (i < total):
+        let raw = _line_at(source, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            if (i < (total - 1)):
+                out = out + "\n"
+            i = i + 1
+        else:
+            let indent = _leading_spaces(raw)
+            if (indent <= base_indent):
+                i = total
+            else:
+                out = out + raw
+                if (i < (total - 1)):
+                    out = out + "\n"
+                i = i + 1
+    return out
+
+func _find_top_op(expr: String, op: String) -> i32:
+    let n = strlen(expr)
+    let m = strlen(op)
+    let i = n - m
+    let depth = 0
+    while (i >= 0):
+        let ch = _char_at(expr, i)
+        if (ch == ")"):
+            depth = depth + 1
+        else:
+            if (ch == "("):
+                depth = depth - 1
+        if (depth == 0):
+            if (__thg_str_substr(expr, i, m) == op):
+                if ((op == "-") or (op == "+")):
+                    if (i == 0):
+                        i = i - 1
+                    else:
+                        let prev = _char_at(expr, i - 1)
+                        if ((prev == "(") or (prev == "+") or (prev == "-") or (prev == "*") or (prev == "/")):
+                            i = i - 1
+                        else:
+                            return i
+                else:
+                    return i
+        i = i - 1
+    return -1
+
+func _matching_rparen(text: String, lp: i32) -> i32:
+    let i = lp
+    let depth = 0
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth == 0):
+                    return i
+        i = i + 1
+    return -1
+
+func _header_expr(line: String, prefix: String) -> String:
+    if (_starts_with(line, prefix) == 0):
+        return ""
+    let s = _trim_edges(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+    if (s.length() == 0):
+        return ""
+    if (_char_at(s, s.length() - 1) == ":"):
+        return _trim_edges(__thg_str_substr(s, 0, s.length() - 1))
+    return s
+
+func _skip_block_end(lines: String, start_idx: i32, base_indent: i32) -> i32:
+    let total = _line_count(lines)
+    let i = start_idx
+    while (i < total):
+        let raw = _line_at(lines, i)
+        let t = _trim_edges(raw)
+        if (t.length() == 0):
+            i = i + 1
+        else:
+            if (_leading_spaces(raw) <= base_indent):
+                return i
+            i = i + 1
+    return total
+

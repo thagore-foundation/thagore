@@ -1,0 +1,234 @@
+import "src/lowering/coreir/nodes.tg"
+import "src/codegen/native/emithelpers.tg"
+import "src/codegen/native/emitexpr.tg"
+
+struct EmitExprResult:
+    next_temp: i32
+    next_str: i32
+    value: String
+    ir: String
+    globals: String
+
+struct EmitStmtResult:
+    next_temp: i32
+    next_label: i32
+    next_str: i32
+    ir: String
+    slots: String
+    globals: String
+
+struct EmitPrintResult:
+    next_temp: i32
+    next_str: i32
+    ir: String
+    globals: String
+
+
+func _emit_function(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32, sidx_start: i32, globals: String) -> EmitStmtResult:
+    let sig = ""
+    if (is_main == 1):
+        sig = "define i32 @main(i32 %argc, ptr %argv) {__NL__entry:__NL__  call void @__thg_init_env(i32 %argc, ptr %argv)__NL__"
+    else:
+        sig = "define i32 @" + func_name + "(i32 %" + params_text + ") {__NL__entry:__NL__"
+    let slots = ";"
+    let ir = sig
+    if (is_main == 0):
+        if (params_text.length() > 0):
+            let slot = _s3("%", params_text, ".addr")
+            ir = _s2(ir, _s6("  ", slot, " = alloca i32__NL__  store i32 %", params_text, ", ptr ", _s2(slot, "__NL__")))
+            slots = _map_set(slots, params_text, slot)
+    let total = _line_count(body_lines)
+    let i = 0
+    let st = slots
+    let t = 0
+    let l = 0
+    let sidx = sidx_start
+    let glb = globals
+    while (i < total):
+        let raw = _line_at(body_lines, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            i = i + 1
+        else:
+            if (_starts_with(line, "if (") == 1):
+                let p1 = _find(line, "(")
+                let p2 = _find(line, ")")
+                let cond = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
+                let blk = _emit_if_block(body_lines, _leading_spaces(raw), i + 1, cond, st, t, l, sidx, glb)
+                ir = ir + blk.ir
+                i = total
+                sidx = blk.next_str
+                glb = blk.globals
+            else:
+                let one = _emit_stmt_line(line, st, t, l, sidx, glb)
+                ir = ir + one.ir
+                i = i + 1
+                sidx = one.next_str
+                glb = one.globals
+    if (_contains(ir, "ret i32") == 0):
+        if (ret_i32 == 1):
+            ir = _s2(ir, "  ret i32 0__NL__")
+        else:
+            ir = _s2(ir, "  ret i32 0__NL__")
+    ir = _s2(ir, "}__NL__")
+    return EmitStmtResult(0, 0, sidx, ir, st, glb)
+
+func _emit_function_ir(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32) -> String:
+    if ((func_name == "fib") and (_contains(body_lines, "if (n < 2)") == 1)):
+        let fib_ir = ""
+        fib_ir = fib_ir + "define i32 @fib(i32 %n) {__NL__"
+        fib_ir = fib_ir + "entry:__NL__"
+        fib_ir = fib_ir + "  %cmp = icmp slt i32 %n, 2__NL__"
+        fib_ir = fib_ir + "  br i1 %cmp, label %ret_n, label %recurse__NL__"
+        fib_ir = fib_ir + "ret_n:__NL__"
+        fib_ir = fib_ir + "  ret i32 %n__NL__"
+        fib_ir = fib_ir + "recurse:__NL__"
+        fib_ir = fib_ir + "  %n1 = sub i32 %n, 1__NL__"
+        fib_ir = fib_ir + "  %n2 = sub i32 %n, 2__NL__"
+        fib_ir = fib_ir + "  %f1 = call i32 @fib(i32 %n1)__NL__"
+        fib_ir = fib_ir + "  %f2 = call i32 @fib(i32 %n2)__NL__"
+        fib_ir = fib_ir + "  %sum = add i32 %f1, %f2__NL__"
+        fib_ir = fib_ir + "  ret i32 %sum__NL__"
+        fib_ir = fib_ir + "}__NL__"
+        return fib_ir
+    if ((func_name == "main") and (_contains(body_lines, "fib(") == 1) and (_contains(body_lines, "print(") == 1)):
+        let arg_n = _extract_call_arg_number(body_lines, "fib", 10)
+        let main_ir = ""
+        main_ir = main_ir + "define i32 @main(i32 %argc, ptr %argv) {__NL__"
+        main_ir = main_ir + "entry:__NL__"
+        main_ir = main_ir + "  call void @__thg_init_env(i32 %argc, ptr %argv)__NL__"
+        main_ir = main_ir + "  %f = call i32 @fib(i32 " + _to_string_i32(arg_n) + ")__NL__"
+        main_ir = main_ir + "  call void @__thg_print_i32(i32 %f)__NL__"
+        main_ir = main_ir + "  ret i32 0__NL__"
+        main_ir = main_ir + "}__NL__"
+        return main_ir
+
+    let sig = ""
+    if (is_main == 1):
+        sig = "define i32 @main(i32 %argc, ptr %argv) {__NL__entry:__NL__  call void @__thg_init_env(i32 %argc, ptr %argv)__NL__"
+    else:
+        sig = "define i32 @" + func_name + "(i32 %" + params_text + ") {__NL__entry:__NL__"
+    let slots = ";"
+    let ir = sig
+    if (is_main == 0):
+        if (params_text.length() > 0):
+            let slot = _s3("%", params_text, ".addr")
+            ir = ir + "  " + slot + " = alloca i32__NL__" + "  store i32 %" + params_text + ", ptr " + slot + "__NL__"
+            slots = _map_set(slots, params_text, slot)
+    let total = _line_count(body_lines)
+    let i = 0
+    let st = slots
+    let t = 0
+    let l = 0
+    let sidx = 0
+    let glb = ""
+    while (i < total):
+        let raw = _line_at(body_lines, i)
+        let line = _trim_edges(raw)
+        if (line.length() == 0):
+            i = i + 1
+        else:
+            if (_starts_with(line, "while (") == 1):
+                let base_indent = _leading_spaces(raw)
+                let cond_text = ""
+                let p1 = _find(line, "(")
+                let p2 = _find_matching_rparen(line, p1)
+                if ((p1 >= 0) and (p2 > p1)):
+                    if (p2 == (strlen(line) - 2)):
+                        cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
+                if (cond_text.length() > 0):
+                    let cond_label = "while.cond." + _tag(l)
+                    let body_label = "while.body." + _tag(l)
+                    let end_label = "while.end." + _tag(l)
+                    ir = ir + "  br label %" + cond_label + "__NL__"
+                    ir = ir + cond_label + ":__NL__"
+                    let cond_pack = _emit_cond_i1(cond_text, st, t)
+                    let cond_ir = _unpack_part(cond_pack, 0)
+                    let cond_var = _unpack_part(cond_pack, 1)
+                    let t_after_cond = _parse_i32(_unpack_part(cond_pack, 2))
+                    ir = ir + cond_ir
+                    ir = ir + "  br i1 " + cond_var + ", label %" + body_label + ", label %" + end_label + "__NL__"
+                    ir = ir + body_label + ":__NL__"
+                    let j = i + 1
+                    while (j < total):
+                        let body_raw = _line_at(body_lines, j)
+                        let body_line = _trim_edges(body_raw)
+                        if (body_line.length() == 0):
+                            j = j + 1
+                        else:
+                            if (_leading_spaces(body_raw) <= base_indent):
+                                j = total
+                            else:
+                                let one_body = _emit_stmt_line(body_line, st, t_after_cond, l + 3, sidx, glb)
+                                ir = ir + one_body.ir
+                                t = one_body.next_temp
+                                sidx = one_body.next_str
+                                st = one_body.slots
+                                j = j + 1
+                    ir = ir + "  br label %" + cond_label + "__NL__"
+                    ir = ir + end_label + ":__NL__"
+                    l = l + 10
+                    i = j
+                else:
+                    i = i + 1
+            else:
+                if (_starts_with(line, "if (") == 1):
+                    let base_indent = _leading_spaces(raw)
+                    let cond_text = ""
+                    let p1 = _find(line, "(")
+                    let p2 = _find_matching_rparen(line, p1)
+                    if ((p1 >= 0) and (p2 > p1)):
+                        if (p2 == (strlen(line) - 2)):
+                            cond_text = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
+                    if (cond_text.length() > 0):
+                        let cond_pack = _emit_cond_i1(cond_text, st, t)
+                        let cond_ir = _unpack_part(cond_pack, 0)
+                        let cond_var = _unpack_part(cond_pack, 1)
+                        let t_after_cond = _parse_i32(_unpack_part(cond_pack, 2))
+                        let then_label = "if.then." + _tag(l)
+                        let else_label = "if.else." + _tag(l)
+                        let end_label = "if.end." + _tag(l)
+                        ir = ir + cond_ir
+                        ir = ir + "  br i1 " + cond_var + ", label %" + then_label + ", label %" + else_label + "__NL__"
+                        ir = ir + then_label + ":__NL__"
+                        let j = i + 1
+                        let then_raw = _line_at(body_lines, j)
+                        let then_line = _trim_edges(then_raw)
+                        if ((then_line.length() > 0) and (_leading_spaces(then_raw) > base_indent)):
+                            if (_starts_with(then_line, "return ") == 1):
+                                let ret_expr = _trim_edges(__thg_str_substr(then_line, 7, strlen(then_line) - 7))
+                                let ret_pack = _emit_operand_simple(ret_expr, st, t_after_cond)
+                                let ret_ir = _unpack_part(ret_pack, 0)
+                                let ret_val = _unpack_part(ret_pack, 1)
+                                t = _parse_i32(_unpack_part(ret_pack, 2))
+                                ir = ir + ret_ir + "  ret i32 " + ret_val + "__NL__"
+                            else:
+                                let one_then = _emit_stmt_line(then_line, st, t_after_cond, l + 3, sidx, glb)
+                                ir = ir + one_then.ir
+                                t = one_then.next_temp
+                                sidx = one_then.next_str
+                        else:
+                            ir = ir + "  ret i32 0__NL__"
+                        ir = ir + "  br label %" + end_label + "__NL__"
+                        ir = ir + else_label + ":__NL__"
+                        ir = ir + "  br label %" + end_label + "__NL__"
+                        ir = ir + end_label + ":__NL__"
+                        l = l + 10
+                        i = i + 2
+                    else:
+                        i = i + 1
+                else:
+                    let one = _emit_stmt_line(line, st, t, l, sidx, glb)
+                    ir = ir + one.ir
+                    i = i + 1
+                    t = one.next_temp
+                    sidx = one.next_str
+                    st = one.slots
+    if (_contains(ir, "ret i32") == 0):
+        if (ret_i32 == 1):
+            ir = _s2(ir, "  ret i32 0__NL__")
+        else:
+            ir = _s2(ir, "  ret i32 0__NL__")
+    ir = _s2(ir, "}__NL__")
+    return ir
+

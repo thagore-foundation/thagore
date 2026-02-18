@@ -1,0 +1,213 @@
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _bs() -> String:
+    return __string_from_codepoint(92)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _tab() -> String:
+    return __string_from_codepoint(9)
+
+func _mask_string_literals(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    let in_str = 0
+    let esc = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if (in_str == 0):
+            if (ch == _dq()):
+                in_str = 1
+                esc = 0
+                out = out + _dq()
+            else:
+                out = out + ch
+        else:
+            if (esc == 1):
+                esc = 0
+                if (ch == _nl()):
+                    out = out + _nl()
+                else:
+                    out = out + " "
+            else:
+                if (ch == _bs()):
+                    esc = 1
+                    out = out + " "
+                else:
+                    if (ch == _dq()):
+                        in_str = 0
+                        out = out + _dq()
+                    else:
+                        if (ch == _nl()):
+                            out = out + _nl()
+                        else:
+                            out = out + " "
+        i = i + 1
+    return out
+
+func _decode_escaped_newlines(text: String) -> String:
+    let n = strlen(text)
+    let i = 0
+    let out = ""
+    while (i < n):
+        if ((i + 1) < n):
+            let c0 = _char_at(text, i)
+            let c1 = _char_at(text, i + 1)
+            if ((c0 == _bs()) and (c1 == "n")):
+                out = out + _nl()
+                i = i + 2
+            else:
+                if (((i + 3) < n) and (c0 == _bs()) and (c1 == "r")):
+                    if ((_char_at(text, i + 2) == _bs()) and (_char_at(text, i + 3) == "n")):
+                        out = out + _nl()
+                        i = i + 4
+                    else:
+                        out = out + c0
+                        i = i + 1
+                else:
+                    out = out + c0
+                    i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_validation_source(source: String) -> String:
+    return _decode_escaped_newlines(source)
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    let i = 0
+    if (m == 0):
+        return 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            count = count + 1
+        else:
+            if ((i + 1) < n):
+                if (__thg_str_substr(source, i, 2) == "\n"):
+                    count = count + 1
+                    i = i + 1
+        i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        let escaped_newline = 0
+        if ((i + 1) < n):
+            if (__thg_str_substr(source, i, 2) == "\n"):
+                escaped_newline = 1
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+        else:
+            if (escaped_newline == 1):
+                if (line_idx == index):
+                    return line
+                line_idx = line_idx + 1
+                line = ""
+                i = i + 1
+            else:
+                if (ch != _cr()):
+                    line = line + ch
+        i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _line_count_raw(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _line_at_raw(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line_idx = line_idx + 1
+            line = ""
+        else:
+            if (ch != _cr()):
+                line = line + ch
+        i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+

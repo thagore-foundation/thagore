@@ -1,0 +1,284 @@
+import "src/semantics/traits/traits.tg" as gt
+import "src/syntax/parser/header.tg" as ph
+import "src/semantics/typedir/nodes.tg"
+import "src/lowering/coreir/nodes.tg"
+import "src/lowering/transform/preprocesstext.tg"
+import "src/lowering/transform/preprocessvalue.tg"
+import "src/lowering/transform/preprocessparse.tg"
+import "src/lowering/transform/comptimeeval.tg"
+import "src/lowering/transform/comptimerewrite.tg"
+
+
+
+func _suggest_parenthesized_stmt_header(line: String, prefix: String) -> String:
+    let s = _trim_edges(line)
+    if (_starts_with(s, prefix) == 0):
+        return ""
+    let tail = _trim_edges(__thg_str_substr(s, strlen(prefix), strlen(s) - strlen(prefix)))
+    if (tail.length() == 0):
+        return ""
+    if (_char_at(tail, tail.length() - 1) == ":"):
+        tail = _trim_edges(__thg_str_substr(tail, 0, tail.length() - 1))
+    if (tail.length() == 0):
+        return ""
+    if ((_char_at(tail, 0) == "(") and (_char_at(tail, tail.length() - 1) == ")")):
+        return prefix + tail + ":"
+    return prefix + "(" + tail + "):"
+
+func _is_if_header_candidate(line: String) -> i32:
+    if (_starts_with(line, "if ") == 1):
+        return 1
+    if (_starts_with(line, "if(") == 1):
+        return 1
+    return 0
+
+func _is_while_header_candidate(line: String) -> i32:
+    if (_starts_with(line, "while ") == 1):
+        return 1
+    if (_starts_with(line, "while(") == 1):
+        return 1
+    return 0
+
+func _has_invalid_cond_stmt_headers(source: String) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    while (i < total):
+        let line = _trim_edges(_line_at_raw(source, i))
+        if (_is_if_header_candidate(line) == 1):
+            if (ph.is_if_stmt_header(line) == 0):
+                return 1
+        if (_is_while_header_candidate(line) == 1):
+            if (ph.is_while_stmt_header(line) == 0):
+                return 1
+        i = i + 1
+    return 0
+
+func preprocess(source: String) -> String:
+    if (_has_invalid_cond_stmt_headers(source) == 1):
+        return source
+    let catalog = _collect_comptime_catalog(source)
+    let folded = _fold_all_comptime_calls(catalog.source_wo_comptime_funcs, catalog.params_map, catalog.body_map)
+    let total = _line_count_raw(folded)
+    let i = 0
+    let out = ""
+    while (i < total):
+        let line = _line_at_raw(folded, i)
+        let t = _trim_edges(line)
+        let keep = 1
+        if (_starts_with(t, "trait ") == 1):
+            keep = 0
+        if (keep == 1):
+            line = _rewrite_trait_impl_header(line)
+            line = _rewrite_visibility_header(line)
+            line = _rewrite_unsafe_header(line)
+            line = _strip_generic_clause(line)
+            out = out + line
+            if (i < (total - 1)):
+                out = out + "\n"
+        i = i + 1
+    return out
+
+func check_result_try_sugar(source: String) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    let fail = 0
+    let in_result_func = 0
+    while (i < total):
+        let line = _trim_edges(_line_at_raw(source, i))
+        if (_find_char(line, _dq()) >= 0):
+            i = i + 1
+        else:
+            if (_starts_with(line, "func ") == 1):
+                if (_find_char(line, "?") >= 0):
+                    in_result_func = 1
+                else:
+                    in_result_func = 0
+            if (_find_char(line, "?") >= 0):
+                if (in_result_func == 0):
+                    fail = 1
+            i = i + 1
+    if (fail == 1):
+        print("Semantic error: '?' is only allowed inside function returning Result...?.")
+        return 1
+    return 0
+
+func check_defer_scope(source: String) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    let fail = 0
+    let current_func_indent = -1
+    while (i < total):
+        let raw = _line_at_raw(source, i)
+        let line = _trim_edges(raw)
+        let indent = _leading_spaces(raw)
+        if (_starts_with(line, "func ") == 1):
+            current_func_indent = indent
+        if (_is_blank(raw) == 0):
+            if (indent <= current_func_indent):
+                if (_starts_with(line, "func ") == 0):
+                    current_func_indent = -1
+        if (_starts_with(line, "defer ") == 1):
+            if (current_func_indent < 0):
+                fail = 1
+        i = i + 1
+    if (fail == 1):
+        print("Semantic error: defer is only allowed inside function body.")
+        return 1
+    return 0
+
+func check_new_syntax_headers(source: String) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    let fail = 0
+    while (i < total):
+        let line = _trim_edges(_line_at_raw(source, i))
+        if (_starts_with(line, "pub ") == 1):
+            if (ph.parse_visibility_decl(line).length() == 0):
+                print("Semantic error: pub can only be used with func/struct/enum/type/impl/trait.")
+                fail = 1
+        if (_starts_with(line, "match ") == 1):
+            if (ph.is_match_header(line) == 0):
+                print("Semantic error: match header must end with ':'.")
+                fail = 1
+        if (_starts_with(line, "for ") == 1):
+            if (_find_char(line, ":") >= 0):
+                if (ph.is_range_loop_header(line) == 0):
+                    if (_contains(line, " in ") == 1):
+                        print("Semantic error: range loop must use 'for i in a..b:'.")
+                        fail = 1
+        if (_is_if_header_candidate(line) == 1):
+            if (ph.is_if_stmt_header(line) == 0):
+                print("Semantic error [E_SYNTAX_IF_HEADER] line " + _to_string_i32(i + 1) + ": if header must be `if (condition):`.")
+                let fix_if = _suggest_parenthesized_stmt_header(line, "if ")
+                if (fix_if.length() > 0):
+                    print("Hint: rewrite as `" + fix_if + "`.")
+                fail = 1
+        if (_is_while_header_candidate(line) == 1):
+            if (ph.is_while_stmt_header(line) == 0):
+                print("Semantic error [E_SYNTAX_WHILE_HEADER] line " + _to_string_i32(i + 1) + ": while header must be `while (condition):`.")
+                let fix_while = _suggest_parenthesized_stmt_header(line, "while ")
+                if (fix_while.length() > 0):
+                    print("Hint: rewrite as `" + fix_while + "`.")
+                fail = 1
+        if (_contains(line, "= if ") == 1):
+            if (_contains(line, " else:") == 0):
+                print("Semantic error: if-expression must be `let x = if cond: a else: b`.")
+                fail = 1
+            if (_contains(line, ":") == 0):
+                print("Semantic error: if-expression must be `let x = if cond: a else: b`.")
+                fail = 1
+        if (_contains(line, " = |") == 1):
+            if (ph.has_closure(line) == 0):
+                print("Semantic error: closure must be `let f = |args| expr`.")
+                fail = 1
+        if (_starts_with(line, "unsafe") == 1):
+            if (ph.is_unsafe_block_header(line) == 0):
+                print("Semantic error: use unsafe block as 'unsafe:'.")
+                fail = 1
+        if (_starts_with(line, "impl ") == 1):
+            if (_contains(line, " for ") == 1):
+                if (ph.is_extension_impl_header(line) == 0):
+                    print("Semantic error: extension impl must be 'impl Trait for Type:'.")
+                    fail = 1
+        i = i + 1
+    return fail
+
+func check_intent_headers(source: String) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    let fail = 0
+    while (i < total):
+        let raw = _line_at_raw(source, i)
+        let line = _trim_edges(raw)
+        let indent = _leading_spaces(raw)
+        if (_starts_with(line, "intent ") == 1):
+            let intent_kind = ph.parse_intent_kind(line)
+            if (intent_kind.length() == 0):
+                print("Semantic error: invalid intent header. Use intent func/loop/calc/block with ':'.")
+                fail = 1
+            else:
+                let has_goal = 0
+                let has_constraints = 0
+                let has_constraint_item = 0
+                let has_examples = 0
+                let has_example_item = 0
+                let body_seen = 0
+                let in_constraints = 0
+                let in_examples = 0
+                let constraints_indent = -1
+                let examples_indent = -1
+                let j = i + 1
+                while (j < total):
+                    let body_raw = _line_at_raw(source, j)
+                    let body_line = _trim_edges(body_raw)
+                    let body_indent = _leading_spaces(body_raw)
+                    if (body_line.length() == 0):
+                        j = j + 1
+                    else:
+                        if (body_indent <= indent):
+                            j = total
+                        else:
+                            body_seen = 1
+                            if (ph.is_intent_goal_line(body_line) == 1):
+                                has_goal = 1
+                                in_constraints = 0
+                                in_examples = 0
+                            else:
+                                if (ph.is_intent_constraints_header(body_line) == 1):
+                                    has_constraints = 1
+                                    in_constraints = 1
+                                    in_examples = 0
+                                    constraints_indent = body_indent
+                                else:
+                                    if (ph.is_intent_examples_header(body_line) == 1):
+                                        has_examples = 1
+                                        in_constraints = 0
+                                        in_examples = 1
+                                        examples_indent = body_indent
+                                    else:
+                                        if (in_constraints == 1):
+                                            if (body_indent > constraints_indent):
+                                                has_constraint_item = 1
+                                            else:
+                                                in_constraints = 0
+                                        if (in_examples == 1):
+                                            if (body_indent > examples_indent):
+                                                has_example_item = 1
+                                                if (_contains(body_line, "==") == 0):
+                                                    print("Semantic error: example assertion must use '=='.")
+                                                    fail = 1
+                                            else:
+                                                in_examples = 0
+                            j = j + 1
+                if (body_seen == 0):
+                    print("Semantic error: intent block must contain goal and constraints sections.")
+                    fail = 1
+                if (has_goal == 0):
+                    print("Semantic error: intent requires 'goal: <name>'.")
+                    fail = 1
+                if (has_constraints == 0):
+                    print("Semantic error: intent requires 'constraints:' section.")
+                    fail = 1
+                if (has_constraints == 1):
+                    if (has_constraint_item == 0):
+                        print("Semantic error: constraints section must include at least one constraint line.")
+                        fail = 1
+                if (has_examples == 1):
+                    if (has_example_item == 0):
+                        print("Semantic error: examples section must include at least one assertion line.")
+                        fail = 1
+        i = i + 1
+    return fail
+
+func validate(source: String) -> i32:
+    let normalized = _normalize_validation_source(source)
+    let analyzed = _mask_string_literals(normalized)
+    if (check_result_try_sugar(analyzed) != 0):
+        return 1
+    if (check_defer_scope(analyzed) != 0):
+        return 1
+    if (check_new_syntax_headers(analyzed) != 0):
+        return 1
+    if (check_intent_headers(analyzed) != 0):
+        return 1
+    return 0

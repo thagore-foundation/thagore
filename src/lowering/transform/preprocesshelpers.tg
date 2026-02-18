@@ -1,0 +1,3 @@
+import "src/lowering/transform/preprocesstext.tg"
+import "src/lowering/transform/preprocessvalue.tg"
+import "src/lowering/transform/preprocessparse.tg"
