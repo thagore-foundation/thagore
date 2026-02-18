@@ -407,7 +407,7 @@ jobs:
                     'set -euo pipefail' \
                     'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' \
                     'EMU_BIN=""' \
-                    'for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P"; do' \
+                    'for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P" $(find /usr -maxdepth 6 -type f -name "qemu*x86_64*" 2>/dev/null | head -n 16); do' \
                     '  if [[ -n "$cand" && -x "$cand" ]]; then' \
                     '    EMU_BIN="$cand"' \
                     '    break' \
