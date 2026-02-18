@@ -62,6 +62,9 @@ thagore fix apply src/main.tg --workspace --message-format json
 ```
 
 JSON mode emits one object per line (`suite started`, per-test `build/run`, final `suite` summary).
+Each event includes `schema_version=1`, `event_schema="thagore.test.v1"`, and a per-run `run_id`.
+Final summary includes `duration_ms` and `report_path`.
+Structured run reports are written to `.thagore/test/reports/<run_id>.json`.
 When available, per-test events include `log_path` for build/run logs under `.thagore/test/log/`.
 
 ## Exit Codes

@@ -745,6 +745,57 @@ func _builtin_suggestions_path(entry_path: String) -> String:
 func _compiler_last_fix_json_path() -> String:
     return ".thagore/fix/suggestions/.last_compiler_fix.json"
 
+func _compiler_last_stats_json_path() -> String:
+    return ".thagore/fix/suggestions/.last_compiler_stats.json"
+
+func _parse_nonneg_i32(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return -1
+    let value = 0
+    let i = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        let dv = _find_char("0123456789", ch)
+        if (dv < 0):
+            return -1
+        value = (value * 10) + dv
+        i = i + 1
+    return value
+
+func _ranges_overlap_any(start_b: i32, end_b: i32, ranges_set: String) -> i32:
+    let token = ""
+    let i = 0
+    let n = strlen(ranges_set)
+    while (i < n):
+        let ch = _char_at(ranges_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let sep = _find(token, ":")
+                if (sep > 0):
+                    let s_txt = __thg_str_substr(token, 0, sep)
+                    let e_txt = __thg_str_substr(token, sep + 1, strlen(token) - sep - 1)
+                    let s = _parse_nonneg_i32(s_txt)
+                    let e = _parse_nonneg_i32(e_txt)
+                    if ((s >= 0) and (e >= s)):
+                        if ((start_b < e) and (s < end_b)):
+                            return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let sep2 = _find(token, ":")
+        if (sep2 > 0):
+            let s_txt2 = __thg_str_substr(token, 0, sep2)
+            let e_txt2 = __thg_str_substr(token, sep2 + 1, strlen(token) - sep2 - 1)
+            let s2 = _parse_nonneg_i32(s_txt2)
+            let e2 = _parse_nonneg_i32(e_txt2)
+            if ((s2 >= 0) and (e2 >= s2)):
+                if ((start_b < e2) and (s2 < end_b)):
+                    return 1
+    return 0
+
 func _read_suggestions_payload(entry_path: String) -> String:
     let out = ""
     let by_entry = _default_suggestions_path(entry_path)
@@ -1073,85 +1124,142 @@ func _compiler_suggestion_diagnostics_set(source: String, file: String) -> Strin
 
 func _rule_compiler_suggestions_span(source: String, file: String, mode: String, applied_flag: i32, session_id: String, start_index: i32, emit_detail: i32) -> RuleResult:
     fs.write_text(_compiler_last_fix_json_path(), "")
+    fs.write_text(_compiler_last_stats_json_path(), "")
     let normalized_file = _normalize_path(file)
     let payload = _read_suggestions_payload(normalized_file)
     let total = _line_count(payload)
     if (total <= 0):
         return _rule_result(source, "", 0, start_index)
-    let best_start = -1
-    let best_end = -1
-    let best_kind = 0
-    let best_line = ""
-    let li = 0
-    while (li < total):
-        let line = _trim(_line_at(payload, li))
-        let reject = 0
-        if (strlen(line) == 0):
-            reject = 1
-        else:
-            let raw_file = _json_get_string(line, "file")
-            if (strlen(raw_file) == 0):
-                raw_file = normalized_file
-            let sug_file = _normalize_path(raw_file)
-            if (sug_file != normalized_file):
+    let eligible_total = 0
+    let ci = 0
+    while (ci < total):
+        let line_c = _trim(_line_at(payload, ci))
+        if (strlen(line_c) > 0):
+            let raw_file_c = _json_get_string(line_c, "file")
+            if (strlen(raw_file_c) == 0):
+                raw_file_c = normalized_file
+            let sug_file_c = _normalize_path(raw_file_c)
+            if (sug_file_c == normalized_file):
+                let app_c = _json_get_string(line_c, "applicability")
+                let kind_c = _suggestion_applicability_kind(app_c)
+                if (_suggestion_allowed(kind_c, mode) == 1):
+                    let start_c = _json_get_i32(line_c, "start_byte", -1)
+                    let end_c = _json_get_i32(line_c, "end_byte", -1)
+                    if ((start_c >= 0) and (end_c >= start_c) and (end_c <= strlen(source))):
+                        let replacement_c = _json_get_string(line_c, "replacement")
+                        let current_c = __thg_str_substr(source, start_c, end_c - start_c)
+                        let expected_c = _json_get_string(line_c, "expected_old")
+                        let no_change_c = 0
+                        if (current_c == replacement_c):
+                            no_change_c = 1
+                        if ((strlen(expected_c) > 0) and (current_c != expected_c)):
+                            no_change_c = 1
+                        if ((strlen(replacement_c) > 0) and ((start_c + strlen(replacement_c)) <= strlen(source))):
+                            if (__thg_str_substr(source, start_c, strlen(replacement_c)) == replacement_c):
+                                no_change_c = 1
+                        if (no_change_c == 0):
+                            eligible_total = eligible_total + 1
+        ci = ci + 1
+
+    let fixed = source
+    let out_fixes_json = ""
+    let applied_count = 0
+    let selected_ranges = ";"
+    let next_idx = start_index
+    let scan_more = 1
+    while (scan_more == 1):
+        let best_start = -1
+        let best_end = -1
+        let best_kind = 0
+        let best_line = ""
+        let li = 0
+        while (li < total):
+            let line = _trim(_line_at(payload, li))
+            let reject = 0
+            if (strlen(line) == 0):
                 reject = 1
             else:
-                let app = _json_get_string(line, "applicability")
-                let kind = _suggestion_applicability_kind(app)
-                if (_suggestion_allowed(kind, mode) == 0):
+                let raw_file = _json_get_string(line, "file")
+                if (strlen(raw_file) == 0):
+                    raw_file = normalized_file
+                let sug_file = _normalize_path(raw_file)
+                if (sug_file != normalized_file):
                     reject = 1
                 else:
-                    let start_b = _json_get_i32(line, "start_byte", -1)
-                    let end_b = _json_get_i32(line, "end_byte", -1)
-                    if ((start_b < 0) or (end_b < start_b) or (end_b > strlen(source))):
+                    let app = _json_get_string(line, "applicability")
+                    let kind = _suggestion_applicability_kind(app)
+                    if (_suggestion_allowed(kind, mode) == 0):
                         reject = 1
                     else:
-                        let replacement = _json_get_string(line, "replacement")
-                        let current_range = __thg_str_substr(source, start_b, end_b - start_b)
-                        let expected_old = _json_get_string(line, "expected_old")
-                        let no_change = 0
-                        if (current_range == replacement):
-                            no_change = 1
-                        if ((strlen(expected_old) > 0) and (current_range != expected_old)):
-                            no_change = 1
-                        if ((strlen(replacement) > 0) and ((start_b + strlen(replacement)) <= strlen(source))):
-                            if (__thg_str_substr(source, start_b, strlen(replacement)) == replacement):
-                                no_change = 1
-                        if (no_change == 1):
+                        let start_b = _json_get_i32(line, "start_byte", -1)
+                        let end_b = _json_get_i32(line, "end_byte", -1)
+                        if ((start_b < 0) or (end_b < start_b) or (end_b > strlen(fixed))):
                             reject = 1
                         else:
-                            if (start_b > best_start):
-                                best_start = start_b
-                                best_end = end_b
-                                best_kind = kind
-                                best_line = line
-        li = li + 1
+                            if (_ranges_overlap_any(start_b, end_b, selected_ranges) == 1):
+                                reject = 1
+                            else:
+                                let replacement = _json_get_string(line, "replacement")
+                                let current_range = __thg_str_substr(fixed, start_b, end_b - start_b)
+                                let expected_old = _json_get_string(line, "expected_old")
+                                let no_change = 0
+                                if (current_range == replacement):
+                                    no_change = 1
+                                if ((strlen(expected_old) > 0) and (current_range != expected_old)):
+                                    no_change = 1
+                                if ((strlen(replacement) > 0) and ((start_b + strlen(replacement)) <= strlen(fixed))):
+                                    if (__thg_str_substr(fixed, start_b, strlen(replacement)) == replacement):
+                                        no_change = 1
+                                if (no_change == 1):
+                                    reject = 1
+                                else:
+                                    if (start_b > best_start):
+                                        best_start = start_b
+                                        best_end = end_b
+                                        best_kind = kind
+                                        best_line = line
+            li = li + 1
 
-    if (best_start < 0):
-        return _rule_result(source, "", 0, start_index)
+        if (best_start < 0):
+            scan_more = 0
+        else:
+            let old_snippet = __thg_str_substr(fixed, best_start, best_end - best_start)
+            let replacement = _json_get_string(best_line, "replacement")
+            let prefix = __thg_str_substr(fixed, 0, best_start)
+            let suffix = __thg_str_substr(fixed, best_end, strlen(fixed) - best_end)
+            fixed = prefix + replacement + suffix
+            selected_ranges = _set_add_unique(selected_ranges, _to_string_i32(best_start) + ":" + _to_string_i32(best_end))
+            let code = _json_get_string(best_line, "code")
+            if (strlen(code) == 0):
+                code = "COMPILER_SUGGESTION"
+            let risk = "safe"
+            if (best_kind == 1):
+                risk = "aggressive"
+            let fix_id = _fix_id("compiler-span", next_idx)
+            let start_line = _line_from_offset(source, best_start)
+            let start_col = _col_from_offset(source, best_start)
+            let end_line = _line_from_offset(source, best_end)
+            let end_col = _col_from_offset(source, best_end)
+            let diff = "@@ byte " + _to_string_i32(best_start) + ":" + _to_string_i32(best_end) + " @@" + _nl() + "-" + old_snippet + _nl() + "+" + replacement
+            if (emit_detail == 1):
+                _print_fix_detail(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, session_id, applied_flag)
+            let fix_json = _build_fix_json(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, applied_flag)
+            out_fixes_json = _append_json(out_fixes_json, fix_json)
+            applied_count = applied_count + 1
+            next_idx = next_idx + 1
 
-    let old_snippet = __thg_str_substr(source, best_start, best_end - best_start)
-    let replacement = _json_get_string(best_line, "replacement")
-    let prefix = __thg_str_substr(source, 0, best_start)
-    let suffix = __thg_str_substr(source, best_end, strlen(source) - best_end)
-    let fixed = prefix + replacement + suffix
-    let code = _json_get_string(best_line, "code")
-    if (strlen(code) == 0):
-        code = "COMPILER_SUGGESTION"
-    let risk = "safe"
-    if (best_kind == 1):
-        risk = "aggressive"
-    let fix_id = _fix_id("compiler-span", start_index)
-    let start_line = _line_from_offset(source, best_start)
-    let start_col = _col_from_offset(source, best_start)
-    let end_line = _line_from_offset(source, best_end)
-    let end_col = _col_from_offset(source, best_end)
-    let diff = "@@ byte " + _to_string_i32(best_start) + ":" + _to_string_i32(best_end) + " @@" + _nl() + "-" + old_snippet + _nl() + "+" + replacement
-    if (emit_detail == 1):
-        _print_fix_detail(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, session_id, applied_flag)
-    let fix_json = _build_fix_json(fix_id, "compiler_suggestion_span_edit", risk, code, file, start_line, start_col, end_line, end_col, old_snippet, replacement, diff, applied_flag)
-    fs.write_text(_compiler_last_fix_json_path(), fix_json)
-    return _rule_result(fixed, "", 1, start_index + 1)
+    let overlap_skipped = eligible_total - applied_count
+    let overlap_out = overlap_skipped
+    if (overlap_out < 0):
+        overlap_out = 0
+    let stats_json = "{"
+    stats_json = stats_json + _json_quote("eligible") + ":" + _to_string_i32(eligible_total) + ","
+    stats_json = stats_json + _json_quote("applied") + ":" + _to_string_i32(applied_count) + ","
+    stats_json = stats_json + _json_quote("overlap_skipped") + ":" + _to_string_i32(overlap_out)
+    stats_json = stats_json + "}"
+    fs.write_text(_compiler_last_fix_json_path(), out_fixes_json)
+    fs.write_text(_compiler_last_stats_json_path(), stats_json)
+    return _rule_result(fixed, "", applied_count, next_idx)
 
 func _mode_or_safe(mode: String) -> String:
     let m = _trim(mode)
@@ -1838,29 +1946,27 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
             else:
                 reason_compiler = "selected"
         if (allow_compiler == 1):
-            let guard = 0
-            while (guard < cand_compiler):
-                let run_compiler = _rule_compiler_suggestions_span(current, entry_path, mode, applied_view, session_id, next_idx, emit_detail)
-                if (run_compiler.fixes_found <= 0):
-                    guard = cand_compiler
-                else:
-                    current = run_compiler.source
-                    next_idx = run_compiler.next_index
-                    selected_total = selected_total + run_compiler.fixes_found
-                    sel_compiler = sel_compiler + run_compiler.fixes_found
-                    let compiler_fix_json = fs.read_text(_compiler_last_fix_json_path())
-                    if (strlen(compiler_fix_json) > 0):
-                        fixes_json = _append_json(fixes_json, compiler_fix_json)
-                    if ((collect_previews == 1) and (strlen(compiler_fix_json) > 0)):
-                        let old_prev_comp = _json_get_string(compiler_fix_json, "old_snippet")
-                        let new_prev_comp = _json_get_string(compiler_fix_json, "new_snippet")
-                        if (strlen(old_prev_comp) > 0):
-                            preview_compiler_old = old_prev_comp
-                        if (strlen(new_prev_comp) > 0):
-                            preview_compiler_new = new_prev_comp
-                    diagnostics_seen_set = _set_union(diagnostics_seen_set, compiler_diag_set)
-                    applied_rules_set = _set_add_unique(applied_rules_set, "compiler_suggestion_span_edit")
-                    guard = guard + 1
+            let run_compiler = _rule_compiler_suggestions_span(current, entry_path, mode, applied_view, session_id, next_idx, emit_detail)
+            if (run_compiler.fixes_found > 0):
+                current = run_compiler.source
+                next_idx = run_compiler.next_index
+                selected_total = selected_total + run_compiler.fixes_found
+                sel_compiler = sel_compiler + run_compiler.fixes_found
+                let compiler_fix_json = fs.read_text(_compiler_last_fix_json_path())
+                if (strlen(compiler_fix_json) > 0):
+                    fixes_json = _append_json(fixes_json, compiler_fix_json)
+                if ((collect_previews == 1) and (strlen(compiler_fix_json) > 0)):
+                    let old_prev_comp = _json_get_string(compiler_fix_json, "old_snippet")
+                    let new_prev_comp = _json_get_string(compiler_fix_json, "new_snippet")
+                    if (strlen(old_prev_comp) > 0):
+                        preview_compiler_old = old_prev_comp
+                    if (strlen(new_prev_comp) > 0):
+                        preview_compiler_new = new_prev_comp
+                diagnostics_seen_set = _set_union(diagnostics_seen_set, compiler_diag_set)
+                applied_rules_set = _set_add_unique(applied_rules_set, "compiler_suggestion_span_edit")
+            if (fs.exists(_compiler_last_stats_json_path()) == 1):
+                let compiler_stats = fs.read_text(_compiler_last_stats_json_path())
+                compiler_overlap_skipped = _json_get_i32(compiler_stats, "overlap_skipped", compiler_overlap_skipped)
         else:
             if (collect_previews == 1):
                 let run_preview_compiler = _rule_compiler_suggestions_span(current, entry_path, mode, 0, session_id, next_idx, 0)

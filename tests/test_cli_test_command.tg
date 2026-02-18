@@ -1,7 +1,9 @@
 import "src/cli/thagore.tg" as cli
+import "lib/fs.tg" as fs
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
 
 func _contains(text: String, needle: String) -> i32:
     let n = strlen(text)
@@ -39,6 +41,7 @@ func _expect_not_contains(label: String, text: String, needle: String) -> i32:
 func main() -> i32:
     let fails = 0
     let none = ";"
+    let dq = __string_from_codepoint(34)
 
     let listed = cli._discover_tests("", 0, none, none, none)
     fails = fails + _expect_contains("discover baseline includes autofix cli", listed, "tests/test_autofix_cli.tg")
@@ -62,6 +65,30 @@ func main() -> i32:
     fails = fails + _expect_i32("message-format json", cli._test_message_format_mode("json"), 1)
     fails = fails + _expect_i32("message-format human", cli._test_message_format_mode("human"), 0)
     fails = fails + _expect_i32("message-format invalid", cli._test_message_format_mode("yaml"), -1)
+
+    let begin_json = cli._build_test_begin_json(3, 1, 1, 1, 0, "autofix", "TST-1")
+    fails = fails + _expect_contains("test begin schema version", begin_json, dq + "schema_version" + dq + ":1")
+    fails = fails + _expect_contains("test begin event schema", begin_json, dq + "event_schema" + dq + ":" + dq + "thagore.test.v1" + dq)
+    fails = fails + _expect_contains("test begin run id", begin_json, dq + "run_id" + dq + ":" + dq + "TST-1" + dq)
+
+    let case_json = cli._build_test_case_json("tests/test_autofix_cli.tg", "build", "ok", 0, 0, "", 0, "TST-1")
+    fails = fails + _expect_contains("test case schema version", case_json, dq + "schema_version" + dq + ":1")
+    fails = fails + _expect_contains("test case event schema", case_json, dq + "event_schema" + dq + ":" + dq + "thagore.test.v1" + dq)
+    fails = fails + _expect_contains("test case run id", case_json, dq + "run_id" + dq + ":" + dq + "TST-1" + dq)
+
+    let summary_json = cli._build_test_summary_json(3, 3, 0, 0, 0, 1, 0, 1, 0, "autofix", "TST-1", 42, ".thagore/test/reports/TST-1.json")
+    fails = fails + _expect_contains("test summary schema version", summary_json, dq + "schema_version" + dq + ":1")
+    fails = fails + _expect_contains("test summary event schema", summary_json, dq + "event_schema" + dq + ":" + dq + "thagore.test.v1" + dq)
+    fails = fails + _expect_contains("test summary run id", summary_json, dq + "run_id" + dq + ":" + dq + "TST-1" + dq)
+    fails = fails + _expect_contains("test summary duration", summary_json, dq + "duration_ms" + dq + ":42")
+    fails = fails + _expect_contains("test summary report path", summary_json, dq + "report_path" + dq + ":" + dq + ".thagore/test/reports/TST-1.json" + dq)
+
+    let report_path = cli._write_test_report("TST-UNIT", 1, 1, 0, 1, "autofix", 1, 0, 0, 0, 0, ";tests/test_cli_test_command.tg;", ";", ";", 10, 5)
+    fails = fails + _expect_contains("write test report path", report_path, ".thagore/test/reports/")
+    let report_text = fs.read_text(report_path)
+    fails = fails + _expect_contains("test report schema", report_text, dq + "schema_version" + dq + ":1")
+    fails = fails + _expect_contains("test report run id", report_text, dq + "run_id" + dq + ":" + dq + "TST-UNIT" + dq)
+    fails = fails + _expect_contains("test report discovered tests", report_text, dq + "discovered_tests" + dq + ":")
 
     fails = fails + _expect_i32("list mode returns success", cli._run_tests("test_autofix_cli", 0, 1, 0, 1, 1, none, none, none), 0)
     fails = fails + _expect_i32("no-run mode builds selected test", cli._run_tests("test_autofix_report_golden", 0, 1, 1, 0, 0, none, none, none), 0)

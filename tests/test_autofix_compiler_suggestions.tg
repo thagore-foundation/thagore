@@ -88,6 +88,15 @@ func main() -> i32:
     fails = fails + _expect_contains("machine code in report", rep_machine, "PARSE_TYPO_RETURN")
     fails = fails + _expect_contains("tool version in report", rep_machine, dq + "tool_version" + dq)
 
+    let src_overlap = "func main():" + nl + "    return 1" + nl
+    fails = fails + _expect_i32("write overlap sample", fs.write_text(sample, src_overlap), 1)
+    let sug_overlap = "{" + dq + "file" + dq + ":" + dq + sample + dq + "," + dq + "start_byte" + dq + ":17," + dq + "end_byte" + dq + ":23," + dq + "replacement" + dq + ":" + dq + "yield" + dq + "," + dq + "applicability" + dq + ":" + dq + "MachineApplicable" + dq + "," + dq + "code" + dq + ":" + dq + "TEST_OVERLAP_A" + dq + "}" + nl + "{" + dq + "file" + dq + ":" + dq + sample + dq + "," + dq + "start_byte" + dq + ":18," + dq + "end_byte" + dq + ":23," + dq + "replacement" + dq + ":" + dq + "send" + dq + "," + dq + "applicability" + dq + ":" + dq + "MachineApplicable" + dq + "," + dq + "code" + dq + ":" + dq + "TEST_OVERLAP_B" + dq + "}" + nl
+    fails = fails + _expect_i32("write overlap suggestions", fs.write_text(sug, sug_overlap), 1)
+    fails = fails + _expect_i32("apply overlap suggestions", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
+    let overlap_stats = fs.read_text(".thagore/fix/suggestions/.last_compiler_stats.json")
+    fails = fails + _expect_contains("overlap stats include applied", overlap_stats, dq + "applied" + dq + ":1")
+    fails = fails + _expect_contains("overlap stats include skipped", overlap_stats, dq + "overlap_skipped" + dq + ":1")
+
     let src_maybe = "func main():" + nl + "    return 1" + nl
     fails = fails + _expect_i32("write maybe sample", fs.write_text(sample, src_maybe), 1)
     let sug_maybe = "{" + dq + "file" + dq + ":" + dq + sample + dq + "," + dq + "start_byte" + dq + ":17," + dq + "end_byte" + dq + ":23," + dq + "replacement" + dq + ":" + dq + "yield" + dq + "," + dq + "applicability" + dq + ":" + dq + "MaybeIncorrect" + dq + "," + dq + "code" + dq + ":" + dq + "TYPE_REWRITE_EXPERIMENTAL" + dq + "}" + nl
