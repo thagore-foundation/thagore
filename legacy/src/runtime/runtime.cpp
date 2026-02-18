@@ -629,6 +629,23 @@ auto parseProgramSource(const char *source) -> AstNode * {
   return node;
 }
 
+auto isFallbackProgramSupported(const AstNode *program) -> bool {
+  if (program == nullptr || !program->hasMain || program->hasUnsupportedTopLevel) {
+    return false;
+  }
+  std::size_t printableLineCount = 0;
+  for (const auto &line : program->lines) {
+    if (line.indent != 0) {
+      return false;
+    }
+    if (!parsePrintStringArg(line.text).has_value()) {
+      return false;
+    }
+    printableLineCount += 1;
+  }
+  return printableLineCount == program->items.size();
+}
+
 auto escapeCStringForC(std::string_view text) -> std::string {
   std::string out {};
   for (unsigned char ch : text) {
@@ -2986,6 +3003,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   // In internal emit mode, never recurse into helper again.
   if (internalEmitMode) {
     auto *fallback = parseProgramSource(source);
+    if (!isFallbackProgramSupported(fallback)) {
+      std::fprintf(
+        stderr,
+        "internal emitter fallback only supports simple print-only main(). Provide stage1/stage2 helper binary.\n"
+      );
+      return makeManagedCString("");
+    }
     return __thg_codegen_emit_llvm(fallback);
   }
 
@@ -3008,6 +3032,13 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   }
   if (loweredDepth >= 3) {
     auto *fallback = parseProgramSource(source);
+    if (!isFallbackProgramSupported(fallback)) {
+      std::fprintf(
+        stderr,
+        "codegen helper recursion guard hit unsupported source. Provide stage1/stage2 helper binary.\n"
+      );
+      return makeManagedCString("");
+    }
     return __thg_codegen_emit_llvm(fallback);
   }
 
@@ -3068,12 +3099,17 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   } else {
 #if defined(_WIN32)
     const std::vector<std::filesystem::path> candidates {
-      std::filesystem::path {".\\thagore.exe"},
       std::filesystem::path {".\\stage2.exe"},
-      std::filesystem::path {".\\stage1.exe"},
-      std::filesystem::path {"thagore.exe"},
+      std::filesystem::path {".\\thagore.exe"},
       std::filesystem::path {"stage2.exe"},
+      std::filesystem::path {"thagore.exe"},
       std::filesystem::path {"stage1.exe"},
+      std::filesystem::path {"bin/stage2.exe"},
+      std::filesystem::path {"bin/thagore.exe"},
+      std::filesystem::path {"bin/stage1.exe"},
+      std::filesystem::path {"build/stage2.exe"},
+      std::filesystem::path {"build/thagore.exe"},
+      std::filesystem::path {"build/stage1.exe"},
       std::filesystem::path {"stage0.exe"},
       std::filesystem::path {"legacy/stage0.exe"},
       std::filesystem::path {"legacy/build/stage0.exe"},
@@ -3082,19 +3118,28 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     };
 #else
     const std::vector<std::filesystem::path> candidates {
-      std::filesystem::path {"./thagore"},
       std::filesystem::path {"./stage2"},
-      std::filesystem::path {"./stage1"},
-      std::filesystem::path {"thagore"},
+      std::filesystem::path {"./thagore"},
       std::filesystem::path {"stage2"},
+      std::filesystem::path {"thagore"},
       std::filesystem::path {"stage1"},
+      std::filesystem::path {"bin/stage2"},
+      std::filesystem::path {"bin/thagore"},
+      std::filesystem::path {"build/stage2"},
+      std::filesystem::path {"build/thagore"},
+      std::filesystem::path {"build/stage1"},
+      std::filesystem::path {"bin/stage1"},
+      std::filesystem::path {"stage1.exe"},
+      std::filesystem::path {"stage2.exe"},
+      std::filesystem::path {"thagore.exe"},
+      std::filesystem::path {"legacy/build/stage2"},
+      std::filesystem::path {"legacy/build/stage1"},
+      std::filesystem::path {"build/stage2"},
       std::filesystem::path {"stage0"},
       std::filesystem::path {"legacy/stage0"},
       std::filesystem::path {"legacy/build/thag"},
       std::filesystem::path {"legacy/build/Release/thag"},
       std::filesystem::path {"build/stage0"},
-      std::filesystem::path {"build/thagore"},
-      std::filesystem::path {"bin/thagore"},
     };
 #endif
     auto samePath = [&](const std::filesystem::path &a, const std::filesystem::path &b) -> bool {
@@ -3115,6 +3160,26 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
       const char *v = std::getenv("THAGORE_INTERNAL_EMIT");
       return v != nullptr && v[0] != '\0' && std::string(v) != "0";
     }();
+    const bool allowSelfHelper = []() {
+      const char *v = std::getenv("THAG_ALLOW_SELF_HELPER");
+      return v != nullptr && v[0] != '\0' && std::string(v) != "0";
+    }();
+    std::vector<std::filesystem::path> dynamicCandidates {};
+    if (!selfPath.empty()) {
+      const auto selfDir = selfPath.parent_path();
+      if (!selfDir.empty()) {
+#if defined(_WIN32)
+        dynamicCandidates.push_back(selfDir / "stage2.exe");
+        dynamicCandidates.push_back(selfDir / "thagore.exe");
+        dynamicCandidates.push_back(selfDir / "stage1.exe");
+#else
+        dynamicCandidates.push_back(selfDir / "stage2");
+        dynamicCandidates.push_back(selfDir / "thagore");
+        dynamicCandidates.push_back(selfDir / "stage1");
+#endif
+        dynamicCount = dynamicCandidates.size();
+      }
+    }
 
     if ((helperPath.empty() || !std::filesystem::exists(helperPath)) && !selfPath.empty()) {
       const auto selfFile = selfPath.filename().string();
@@ -3127,20 +3192,31 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
       }
     }
 
+    if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
+      auto pickFrom = [&](const std::vector<std::filesystem::path> &pool) {
+        for (const auto &candidate : pool) {
+          if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
+            helperPath = candidate;
+            return true;
+          }
+        }
+        return false;
+      };
+      if (!pickFrom(dynamicCandidates)) {
+        (void)pickFrom(candidates);
+      }
+    }
+
     if ((helperPath.empty() || !std::filesystem::exists(helperPath))
+        && allowSelfHelper
         && !internalEmit
         && !selfPath.empty()
         && std::filesystem::exists(selfPath)) {
       helperPath = selfPath;
     }
 
-    if (helperPath.empty() || !std::filesystem::exists(helperPath)) {
-      for (const auto &candidate : candidates) {
-        if (std::filesystem::exists(candidate) && !samePath(candidate, selfPath)) {
-          helperPath = candidate;
-          break;
-        }
-      }
+    if (!allowSelfHelper && !helperPath.empty() && samePath(helperPath, selfPath)) {
+      helperPath.clear();
     }
 
     if (internalEmit && !helperPath.empty() && samePath(helperPath, selfPath)) {
@@ -3161,7 +3237,7 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
     std::filesystem::remove(irPath, rmErr);
     std::fprintf(
       stderr,
-      "codegen helper missing for import/use source. Set THAG_STAGE0_HELPER or provide stage1/stage0 helper binary.\n"
+      "codegen helper missing for import/use source. Set THAG_STAGE0_HELPER/THAG_HELPER_BIN to stage1/stage2 binary (or THAG_ALLOW_SELF_HELPER=1 for debug fallback).\n"
     );
     return makeManagedCString("");
   }
@@ -3187,19 +3263,49 @@ const char *__thg_codegen_emit_llvm_from_source(const char *source, const char *
   auto helperExec = formatExecPathForShell(helperPath);
   const auto sourceArg = quoteShellArg(sourcePath.string());
   const auto irArg = quoteShellArg(irPath.string());
+  const auto sourceArgCompat = sourcePath.string();
+  const auto irArgCompat = irPath.string();
+  const bool helperIsSelf = [&]() {
+    if (helperPath.empty() || selfPath.empty()) {
+      return false;
+    }
+    std::error_code ecA {};
+    std::error_code ecB {};
+    const auto ca = std::filesystem::weakly_canonical(helperPath, ecA);
+    const auto cb = std::filesystem::weakly_canonical(selfPath, ecB);
+    return !ecA && !ecB && ca == cb;
+  }();
 #if defined(_WIN32)
   std::string helperExecWin = helperPath.string();
   if (helperExecWin.rfind("./", 0) == 0 || helperExecWin.rfind(".\\", 0) == 0) {
     helperExecWin = helperExecWin.substr(2);
   }
   helperExecWin = quoteShellArg(helperExecWin);
-  const std::vector<std::string> helperCommands {
-    "set \"THAGORE_INTERNAL_EMIT=1\" && set \"THAG_HELPER_DEPTH=" + helperDepthValue + "\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
-  };
+  std::vector<std::string> helperCommands {};
+  if (helperIsSelf) {
+    helperCommands.push_back(
+      "set \"THAGORE_INTERNAL_EMIT=1\" && set \"THAG_HELPER_DEPTH=" + helperDepthValue + "\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg
+    );
+  } else {
+    helperCommands.push_back(helperExecWin + " " + sourceArgCompat + " --emit-llvm -o " + irArgCompat);
+    helperCommands.push_back(helperExecWin + " build " + sourceArgCompat + " --emit-llvm -o " + irArgCompat);
+    helperCommands.push_back(
+      "set \"THAGORE_INTERNAL_EMIT=1\" && set \"THAG_HELPER_DEPTH=" + helperDepthValue + "\" && " + helperExecWin + " --emit-llvm-internal " + sourceArg + " -o " + irArg
+    );
+  }
 #else
-  const std::vector<std::string> helperCommands {
-    "THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=" + helperDepthValue + " " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg,
-  };
+  std::vector<std::string> helperCommands {};
+  if (helperIsSelf) {
+    helperCommands.push_back(
+      "THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=" + helperDepthValue + " " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg
+    );
+  } else {
+    helperCommands.push_back(helperExec + " " + sourceArgCompat + " --emit-llvm -o " + irArgCompat);
+    helperCommands.push_back(helperExec + " build " + sourceArgCompat + " --emit-llvm -o " + irArgCompat);
+    helperCommands.push_back(
+      "THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=" + helperDepthValue + " " + helperExec + " --emit-llvm-internal " + sourceArg + " -o " + irArg
+    );
+  }
 #endif
 
   bool commandOk = false;
