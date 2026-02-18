@@ -465,6 +465,9 @@ jobs:
                 break
               fi
             done
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
+              build_stage1_blob_native || true
+            fi
             if [[ -z "$STAGE1_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               build_stage1_blob_native || true
             fi
