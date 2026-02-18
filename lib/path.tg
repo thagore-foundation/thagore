@@ -1,0 +1,40 @@
+import "lib/string.tg" as str
+
+extern func __thg_path_strip_trailing(path: String) -> String
+extern func __thg_path_strip_leading(path: String) -> String
+extern func __thg_path_basename(path: String) -> String
+extern func __thg_path_dirname(path: String) -> String
+extern func __thg_path_ext(path: String) -> String
+extern func __thg_path_join2(left: String, right: String) -> String
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func join(left: String, right: String) -> String:
+    return __thg_path_join2(left, right)
+
+func basename(path: String) -> String:
+    return __thg_path_basename(path)
+
+func dirname(path: String) -> String:
+    return __thg_path_dirname(path)
+
+func ext(path: String) -> String:
+    return __thg_path_ext(path)
+
+func strip_trailing(path: String) -> String:
+    return __thg_path_strip_trailing(path)
+
+func strip_leading(path: String) -> String:
+    return __thg_path_strip_leading(path)
+
+func stem(path: String) -> String:
+    let base = basename(path)
+    let extn = ext(path)
+    if (str.len(extn) == 0):
+        return base
+    let n = str.len(base)
+    let m = str.len(extn)
+    if (n <= (m + 1)):
+        return base
+    if (str.char_at(base, n - m - 1) != "."):
+        return base
+    return __thg_str_substr(base, 0, n - m - 1)

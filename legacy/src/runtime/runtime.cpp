@@ -116,6 +116,19 @@ auto quoteShellArg(const std::string &arg) -> std::string {
   return out;
 }
 
+auto quotePowerShellLiteral(const std::string &value) -> std::string {
+  std::string out {"'"};
+  for (char ch : value) {
+    if (ch == '\'') {
+      out.append("''");
+      continue;
+    }
+    out.push_back(ch);
+  }
+  out.push_back('\'');
+  return out;
+}
+
 auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
   std::string raw = path.string();
 #if defined(_WIN32)
@@ -133,6 +146,328 @@ auto formatExecPathForShell(const std::filesystem::path &path) -> std::string {
     raw = "./" + raw;
   }
   return quoteShellArg(raw);
+#endif
+}
+
+auto runDirectCommandMaybeTimed(const std::string &commandLine, int timeoutMs) -> int {
+#if defined(_WIN32)
+  STARTUPINFOA startup {};
+  PROCESS_INFORMATION processInfo {};
+  startup.cb = sizeof(startup);
+  std::vector<char> mutableCmd(commandLine.begin(), commandLine.end());
+  mutableCmd.push_back('\0');
+  const BOOL created = CreateProcessA(
+    nullptr,
+    mutableCmd.data(),
+    nullptr,
+    nullptr,
+    FALSE,
+    CREATE_NO_WINDOW,
+    nullptr,
+    nullptr,
+    &startup,
+    &processInfo
+  );
+  if (!created) {
+    return -1;
+  }
+  const DWORD waitMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : INFINITE;
+  const DWORD waitCode = WaitForSingleObject(processInfo.hProcess, waitMs);
+  if (waitCode == WAIT_TIMEOUT) {
+    TerminateProcess(processInfo.hProcess, 124);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return 124;
+  }
+  DWORD exitCode = 1;
+  GetExitCodeProcess(processInfo.hProcess, &exitCode);
+  CloseHandle(processInfo.hThread);
+  CloseHandle(processInfo.hProcess);
+  return static_cast<int>(exitCode);
+#else
+  (void)timeoutMs;
+  return std::system(commandLine.c_str());
+#endif
+}
+
+auto isCmdBuiltinToken(std::string token) -> bool {
+  if (token.empty()) {
+    return false;
+  }
+  const std::size_t sep = token.find_last_of("/\\");
+  if (sep != std::string::npos) {
+    token = token.substr(sep + 1);
+  }
+  const std::size_t dot = token.find('.');
+  if (dot != std::string::npos) {
+    token = token.substr(0, dot);
+  }
+  std::transform(
+    token.begin(),
+    token.end(),
+    token.begin(),
+    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); }
+  );
+  static const std::unordered_set<std::string> builtins {
+    "assoc", "break", "call", "cd", "chdir", "cls", "color", "copy",
+    "date", "del", "dir", "echo", "endlocal", "erase", "exit", "for",
+    "ftype", "if", "md", "mkdir", "mklink", "move", "path", "pause",
+    "popd", "prompt", "pushd", "rd", "ren", "rename", "rmdir", "set",
+    "setlocal", "shift", "start", "time", "title", "type", "ver",
+    "verify", "vol"
+  };
+  return builtins.find(token) != builtins.end();
+}
+
+auto needsWindowsShell(const std::string &command) -> bool {
+#if defined(_WIN32)
+  bool inDouble = false;
+  for (char ch : command) {
+    if (ch == '"') {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (!inDouble) {
+      if (ch == '|' || ch == '&' || ch == '<' || ch == '>' || ch == ';' || ch == '%' || ch == '^') {
+        return true;
+      }
+    }
+  }
+
+  std::size_t i = 0;
+  while (i < command.size() && (command[i] == ' ' || command[i] == '\t')) {
+    i += 1;
+  }
+  if (i >= command.size()) {
+    return false;
+  }
+
+  std::string token {};
+  if (command[i] == '"') {
+    i += 1;
+    while (i < command.size() && command[i] != '"') {
+      token.push_back(command[i]);
+      i += 1;
+    }
+  } else {
+    while (i < command.size() && command[i] != ' ' && command[i] != '\t') {
+      token.push_back(command[i]);
+      i += 1;
+    }
+  }
+  return isCmdBuiltinToken(token);
+#else
+  (void)command;
+  return false;
+#endif
+}
+
+auto splitArgsText(const char *argsText) -> std::vector<std::string> {
+  std::vector<std::string> out {};
+  if (argsText == nullptr || *argsText == '\0') {
+    return out;
+  }
+  std::string current {};
+  bool sawAny = false;
+  bool lastWasNewline = false;
+  for (char ch : std::string_view(argsText)) {
+    if (ch == '\r') {
+      continue;
+    }
+    sawAny = true;
+    if (ch == '\n') {
+      out.push_back(current);
+      current.clear();
+      lastWasNewline = true;
+      continue;
+    }
+    current.push_back(ch);
+    lastWasNewline = false;
+  }
+  if (!current.empty() || (sawAny && !lastWasNewline)) {
+    out.push_back(current);
+  }
+  return out;
+}
+
+#if defined(_WIN32)
+auto quoteWindowsProcessArg(const std::string &arg) -> std::string {
+  if (arg.empty()) {
+    return "\"\"";
+  }
+  bool needsQuotes = false;
+  for (char ch : arg) {
+    if (ch == ' ' || ch == '\t' || ch == '"') {
+      needsQuotes = true;
+      break;
+    }
+  }
+  if (!needsQuotes) {
+    return arg;
+  }
+  std::string out {"\""};
+  int backslashes = 0;
+  for (char ch : arg) {
+    if (ch == '\\') {
+      backslashes += 1;
+      continue;
+    }
+    if (ch == '"') {
+      out.append(static_cast<std::size_t>(backslashes * 2 + 1), '\\');
+      out.push_back('"');
+      backslashes = 0;
+      continue;
+    }
+    if (backslashes > 0) {
+      out.append(static_cast<std::size_t>(backslashes), '\\');
+      backslashes = 0;
+    }
+    out.push_back(ch);
+  }
+  if (backslashes > 0) {
+    out.append(static_cast<std::size_t>(backslashes * 2), '\\');
+  }
+  out.push_back('"');
+  return out;
+}
+#endif
+
+auto runProcessArgvMaybeTimed(
+  const std::string &program,
+  const std::vector<std::string> &args,
+  const std::string &stdoutPath,
+  const std::string &stderrPath,
+  int timeoutMs
+) -> int {
+  if (program.empty()) {
+    return -1;
+  }
+#if defined(_WIN32)
+  std::string cmdLine = quoteWindowsProcessArg(program);
+  for (const auto &arg : args) {
+    cmdLine.push_back(' ');
+    cmdLine.append(quoteWindowsProcessArg(arg));
+  }
+
+  SECURITY_ATTRIBUTES sa {};
+  sa.nLength = sizeof(sa);
+  sa.lpSecurityDescriptor = nullptr;
+  sa.bInheritHandle = TRUE;
+
+  HANDLE outHandle = INVALID_HANDLE_VALUE;
+  HANDLE errHandle = INVALID_HANDLE_VALUE;
+  bool closeOut = false;
+  bool closeErr = false;
+
+  if (!stdoutPath.empty()) {
+    outHandle = CreateFileA(
+      stdoutPath.c_str(),
+      GENERIC_WRITE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE,
+      &sa,
+      CREATE_ALWAYS,
+      FILE_ATTRIBUTE_NORMAL,
+      nullptr
+    );
+    if (outHandle == INVALID_HANDLE_VALUE) {
+      return -1;
+    }
+    closeOut = true;
+  }
+
+  if (!stderrPath.empty()) {
+    if (!stdoutPath.empty() && stderrPath == stdoutPath) {
+      errHandle = outHandle;
+      closeErr = false;
+    } else {
+      errHandle = CreateFileA(
+        stderrPath.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        &sa,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+      );
+      if (errHandle == INVALID_HANDLE_VALUE) {
+        if (closeOut && outHandle != INVALID_HANDLE_VALUE) {
+          CloseHandle(outHandle);
+        }
+        return -1;
+      }
+      closeErr = true;
+    }
+  }
+
+  STARTUPINFOA startup {};
+  PROCESS_INFORMATION processInfo {};
+  startup.cb = sizeof(startup);
+  const bool hasRedirect = (!stdoutPath.empty() || !stderrPath.empty());
+  if (hasRedirect) {
+    startup.dwFlags |= STARTF_USESTDHANDLES;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = !stdoutPath.empty() ? outHandle : GetStdHandle(STD_OUTPUT_HANDLE);
+    startup.hStdError = !stderrPath.empty() ? errHandle : GetStdHandle(STD_ERROR_HANDLE);
+  }
+
+  std::vector<char> mutableCmd(cmdLine.begin(), cmdLine.end());
+  mutableCmd.push_back('\0');
+  const BOOL created = CreateProcessA(
+    nullptr,
+    mutableCmd.data(),
+    nullptr,
+    nullptr,
+    hasRedirect ? TRUE : FALSE,
+    CREATE_NO_WINDOW,
+    nullptr,
+    nullptr,
+    &startup,
+    &processInfo
+  );
+
+  if (closeOut && outHandle != INVALID_HANDLE_VALUE) {
+    CloseHandle(outHandle);
+  }
+  if (closeErr && errHandle != INVALID_HANDLE_VALUE) {
+    CloseHandle(errHandle);
+  }
+
+  if (!created) {
+    return -1;
+  }
+
+  const DWORD waitMs = timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : INFINITE;
+  const DWORD waitCode = WaitForSingleObject(processInfo.hProcess, waitMs);
+  if (waitCode == WAIT_TIMEOUT) {
+    TerminateProcess(processInfo.hProcess, 124);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return 124;
+  }
+  DWORD exitCode = 1;
+  GetExitCodeProcess(processInfo.hProcess, &exitCode);
+  CloseHandle(processInfo.hThread);
+  CloseHandle(processInfo.hProcess);
+  return static_cast<int>(exitCode);
+#else
+  std::string cmd = quoteShellArg(program);
+  for (const auto &arg : args) {
+    cmd.push_back(' ');
+    cmd.append(quoteShellArg(arg));
+  }
+  if (!stdoutPath.empty()) {
+    cmd.append(" > ");
+    cmd.append(quoteShellArg(stdoutPath));
+  }
+  if (!stderrPath.empty()) {
+    if (!stdoutPath.empty() && stderrPath == stdoutPath) {
+      cmd.append(" 2>&1");
+    } else {
+      cmd.append(" 2> ");
+      cmd.append(quoteShellArg(stderrPath));
+    }
+  }
+  return runDirectCommandMaybeTimed(cmd, timeoutMs);
 #endif
 }
 
@@ -2485,6 +2820,33 @@ int __fs_close(void *handle) {
   return std::fclose(static_cast<FILE *>(handle));
 }
 
+int __fs_move(const char *src, const char *dst) {
+  if (src == nullptr || *src == '\0' || dst == nullptr || *dst == '\0') {
+    return 0;
+  }
+  std::error_code ec {};
+  const std::filesystem::path dstPath {dst};
+  const auto parent = dstPath.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      return 0;
+    }
+  }
+  std::filesystem::rename(src, dst, ec);
+  if (!ec) {
+    return 1;
+  }
+  ec.clear();
+  std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
+  if (ec) {
+    return 0;
+  }
+  ec.clear();
+  std::filesystem::remove(src, ec);
+  return ec ? 0 : 1;
+}
+
 const char *__thg_fs_read_text(const char *path) {
   return __fs_read_text(path);
 }
@@ -2506,6 +2868,129 @@ int __thg_fs_remove(const char *path) {
     return ec ? 0 : 1;
   }
   return 0;
+}
+
+int __process_exec_argv(const char *program, const char *argsText, const char *stdoutPath, const char *stderrPath, int timeoutMs) {
+  const std::string exe = cstrOrEmpty(program);
+  if (exe.empty()) {
+    return -1;
+  }
+  const auto args = splitArgsText(argsText);
+  return runProcessArgvMaybeTimed(exe, args, cstrOrEmpty(stdoutPath), cstrOrEmpty(stderrPath), timeoutMs);
+}
+
+int __process_run(const char *command) {
+  if (command == nullptr) {
+    return 0;
+  }
+  const std::string text = command;
+  if (text.empty()) {
+    return 0;
+  }
+#if defined(_WIN32)
+  if (needsWindowsShell(text)) {
+    return runCommandMaybeTimed(text, 0);
+  }
+  const int directRc = runDirectCommandMaybeTimed(text, 0);
+  if (directRc == -1) {
+    return runCommandMaybeTimed(text, 0);
+  }
+  return directRc;
+#else
+  return std::system(text.c_str());
+#endif
+}
+
+int __process_open_path(const char *path) {
+  if (path == nullptr || *path == '\0') {
+    return 1;
+  }
+#if defined(_WIN32)
+  const std::string script = std::string("Start-Process -LiteralPath ")
+    + quotePowerShellLiteral(path);
+  const std::string cmd = std::string("powershell -NoProfile -ExecutionPolicy Bypass -Command ")
+    + quoteShellArg(script);
+  return runDirectCommandMaybeTimed(cmd, 15000);
+#elif defined(__APPLE__)
+  const std::string cmd = std::string("open ") + quoteShellArg(path);
+  return std::system(cmd.c_str());
+#else
+  const std::string cmd = std::string("xdg-open ") + quoteShellArg(path) + " >/dev/null 2>&1";
+  return std::system(cmd.c_str());
+#endif
+}
+
+int __http_download_file(const char *url, const char *outPath) {
+  if (url == nullptr || *url == '\0' || outPath == nullptr || *outPath == '\0') {
+    return 1;
+  }
+  std::error_code ec {};
+  const std::filesystem::path outPathObj {outPath};
+  const auto parent = outPathObj.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      return 1;
+    }
+  }
+#if defined(_WIN32)
+  std::string script = "$ProgressPreference='SilentlyContinue';";
+  script += "Invoke-WebRequest -UseBasicParsing -Uri ";
+  script += quotePowerShellLiteral(url);
+  script += " -OutFile ";
+  script += quotePowerShellLiteral(outPath);
+  const std::string cmd = std::string("powershell -NoProfile -ExecutionPolicy Bypass -Command ")
+    + quoteShellArg(script);
+  return runDirectCommandMaybeTimed(cmd, 0);
+#else
+  const std::string cmd = std::string("curl -fL --retry 2 -o ")
+    + quoteShellArg(outPath)
+    + " "
+    + quoteShellArg(url);
+  return std::system(cmd.c_str());
+#endif
+}
+
+int __archive_unzip(const char *zipPath, const char *outDir) {
+  if (zipPath == nullptr || *zipPath == '\0' || outDir == nullptr || *outDir == '\0') {
+    return 1;
+  }
+  std::error_code ec {};
+  std::filesystem::create_directories(outDir, ec);
+  if (ec) {
+    return 1;
+  }
+#if defined(_WIN32)
+  std::string script = "Expand-Archive -Force -LiteralPath ";
+  script += quotePowerShellLiteral(zipPath);
+  script += " -DestinationPath ";
+  script += quotePowerShellLiteral(outDir);
+  const std::string powershellCmd = std::string("powershell -NoProfile -ExecutionPolicy Bypass -Command ")
+    + quoteShellArg(script);
+  const int powershellRc = runDirectCommandMaybeTimed(powershellCmd, 0);
+  if (powershellRc == 0) {
+    return 0;
+  }
+  const std::string tarCmd = std::string("tar -xf ")
+    + quoteShellArg(zipPath)
+    + " -C "
+    + quoteShellArg(outDir);
+  return runDirectCommandMaybeTimed(tarCmd, 0);
+#else
+  const std::string unzipCmd = std::string("unzip -o ")
+    + quoteShellArg(zipPath)
+    + " -d "
+    + quoteShellArg(outDir);
+  const int unzipRc = std::system(unzipCmd.c_str());
+  if (unzipRc == 0) {
+    return 0;
+  }
+  const std::string tarCmd = std::string("tar -xf ")
+    + quoteShellArg(zipPath)
+    + " -C "
+    + quoteShellArg(outDir);
+  return std::system(tarCmd.c_str());
+#endif
 }
 
 const char *__http_get(const char *url) {

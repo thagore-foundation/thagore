@@ -1,6 +1,7 @@
 extern func __thg_fs_read_text(path: String) -> String
 extern func __thg_fs_write_text(path: String, text: String) -> i32
 extern func __thg_fs_remove(path: String) -> i32
+extern func __fs_move(src: String, dst: String) -> i32
 extern func __thg_ptr_null() -> ptr
 extern func __fs_exists(path: String) -> i32
 extern func __fs_mkdir(path: String) -> i32
@@ -12,7 +13,10 @@ extern func __fs_seek(handle: ptr, offset: i32, whence: i32) -> i32
 extern func __fs_close(handle: ptr) -> i32
 
 func read_text(path: String) -> String:
-    return __thg_fs_read_text(path)
+    let text = __thg_fs_read_text(path)
+    if (text == null):
+        return ""
+    return text
 
 func write_text(path: String, text: String) -> i32:
     return __thg_fs_write_text(path, text)
@@ -23,8 +27,16 @@ func exists(path: String) -> i32:
 func mkdir(path: String) -> i32:
     return __fs_mkdir(path)
 
+func ensure_dir(path: String) -> i32:
+    if (__fs_exists(path) == 1):
+        return 1
+    return __fs_mkdir(path)
+
 func list_dir(path: String) -> String:
-    return __fs_list_dir(path)
+    let listing = __fs_list_dir(path)
+    if (listing == null):
+        return ""
+    return listing
 
 func open_binary(path: String, mode: String) -> ptr:
     return __fs_open_binary(path, mode)
@@ -33,7 +45,10 @@ func write_bytes(handle: ptr, buffer: String) -> i32:
     return __fs_write_bytes(handle, buffer)
 
 func read_bytes(handle: ptr, size: i32) -> String:
-    return __fs_read_bytes(handle, size)
+    let data = __fs_read_bytes(handle, size)
+    if (data == null):
+        return ""
+    return data
 
 func seek(handle: ptr, offset: i32, whence: i32) -> i32:
     return __fs_seek(handle, offset, whence)
@@ -42,7 +57,10 @@ func close(handle: ptr) -> i32:
     return __fs_close(handle)
 
 func open_write(path: String) -> ptr:
-    return __thg_ptr_null()
+    return __fs_open_binary(path, "w")
 
 func open_read(path: String) -> ptr:
-    return __thg_ptr_null()
+    return __fs_open_binary(path, "r")
+
+func move(src: String, dst: String) -> i32:
+    return __fs_move(src, dst)

@@ -6,6 +6,12 @@ use process as process
 func run(cmd: String, args: String = "") -> i32
     return process.run(cmd)
 
+func exec(program: String, args_text: String = "") -> i32
+    return process.exec(program, args_text)
+
+func exec_redirect(program: String, args_text: String = "", stdout_path: String = "", stderr_path: String = "") -> i32
+    return process.exec_redirect(program, args_text, stdout_path, stderr_path)
+
 func args() -> String = env.args()
 
 func cwd() -> String = env.cwd()

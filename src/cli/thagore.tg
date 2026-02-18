@@ -1507,10 +1507,10 @@ func _resolve_test_compiler() -> String:
 func _build_test_target(input_path: String, out_path: String, quiet: i32, build_log_path: String) -> i32:
     let compiler = _resolve_test_compiler()
     if (strlen(compiler) > 0):
-        let cmd = compiler + " build " + _quote(input_path) + " -o " + _quote(out_path)
+        let args = "build\n" + input_path + "\n-o\n" + out_path
         if ((quiet == 1) and (strlen(build_log_path) > 0)):
-            cmd = cmd + " > " + _quote(build_log_path) + " 2>&1"
-        return process.run(cmd)
+            return process.exec_redirect(compiler, args, build_log_path, build_log_path)
+        return process.exec(compiler, args)
     return _build_once(input_path, out_path, 0)
 
 func _test_exec_path(path: String) -> String:
@@ -1524,15 +1524,12 @@ func _test_exec_path(path: String) -> String:
     return path
 
 func _run_test_binary(path: String, quiet: i32, run_log_path: String) -> i32:
-    let exec_cmd = _quote(_test_exec_path(path))
+    let exec_path = _test_exec_path(path)
     if (quiet == 0):
-        return process.run(exec_cmd)
+        return process.exec(exec_path, "")
     if (strlen(run_log_path) == 0):
-        return process.run(exec_cmd)
-    let cmd = exec_cmd + " > " + _quote(run_log_path) + " 2>&1"
-    if (_ends_with(_normalize_path(path), ".exe") == 1):
-        return process.run("cmd /c " + _quote(cmd))
-    return process.run(cmd)
+        return process.exec(exec_path, "")
+    return process.exec_redirect(exec_path, "", run_log_path, run_log_path)
 
 func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_json: i32, list_only: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
     let tests = _discover_tests(filter, workspace, exclude_set, package_set, exclude_package_set)

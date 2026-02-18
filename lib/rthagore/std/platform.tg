@@ -36,6 +36,12 @@ func console_input(prompt: String = "") -> String
 func process_run(cmd: String, args: String = "") -> i32
     return process.run(cmd)
 
+func process_exec(program: String, args_text: String = "") -> i32
+    return process.exec(program, args_text)
+
+func process_exec_redirect(program: String, args_text: String = "", stdout_path: String = "", stderr_path: String = "") -> i32
+    return process.exec_redirect(program, args_text, stdout_path, stderr_path)
+
 func process_args() -> String = env.args()
 
 func process_cwd() -> String = env.cwd()

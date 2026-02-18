@@ -1,6 +1,19 @@
 // process (thagore-compatible shim)
 
-extern func system(cmd: String) -> i32
+extern func __process_run(cmd: String) -> i32
+extern func __process_exec_argv(program: String, args_text: String, stdout_path: String, stderr_path: String, timeout_ms: i32) -> i32
 
 func run(cmd: String, args: String = "") -> i32
-    return system(cmd)
+    return __process_run(cmd)
+
+func exec(program: String, args_text: String = "") -> i32
+    return __process_exec_argv(program, args_text, "", "", 0)
+
+func exec_timeout(program: String, args_text: String = "", timeout_ms: i32 = 0) -> i32
+    return __process_exec_argv(program, args_text, "", "", timeout_ms)
+
+func exec_redirect(program: String, args_text: String = "", stdout_path: String = "", stderr_path: String = "") -> i32
+    return __process_exec_argv(program, args_text, stdout_path, stderr_path, 0)
+
+func exec_redirect_timeout(program: String, args_text: String = "", stdout_path: String = "", stderr_path: String = "", timeout_ms: i32 = 0) -> i32
+    return __process_exec_argv(program, args_text, stdout_path, stderr_path, timeout_ms)

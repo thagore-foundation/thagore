@@ -1,0 +1,21 @@
+extern func __http_get(url: String) -> String
+extern func __http_post(url: String, body: String) -> String
+
+func request(method: String, url: String, body: String) -> String:
+    if (method == "GET"):
+        let out = __http_get(url)
+        if (out == null):
+            return ""
+        return out
+    if (method == "POST"):
+        let out2 = __http_post(url, body)
+        if (out2 == null):
+            return ""
+        return out2
+    return ""
+
+func get(url: String) -> String:
+    return request("GET", url, "")
+
+func post(url: String, body: String) -> String:
+    return request("POST", url, body)
