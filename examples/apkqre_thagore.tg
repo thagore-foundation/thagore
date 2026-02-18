@@ -45,12 +45,18 @@ func _decode_apk(java_bin: String, apktool_jar: String) -> String:
         return ""
     let name = path.stem(apk)
     let out_dir = path.join("decoded", name)
-    let args = "-jar\n" + apktool_jar + "\nd\n" + apk + "\n-o\n" + out_dir + "\n-f"
+    let nl = process.argv_sep()
+    let args = "-jar" + nl + apktool_jar + nl + "d" + nl + apk + nl + "-o" + nl + out_dir + nl + "-f"
+    let log_path = "tools/last_decode.log"
     print("Decoding APK...")
-    if (process.exec(java_bin, args) != 0):
+    if (process.exec_redirect(java_bin, args, log_path, log_path) != 0):
         print("Decode failed.")
+        io.print_file_if_non_empty(log_path, "----- error log -----", "----- end log -----")
         return ""
-    process.open_path(out_dir)
+    if (fs.exists(out_dir) == 1):
+        process.open_path(out_dir)
+    else:
+        print("Decode finished but output folder not found: " + out_dir)
     return name
 
 func _build_apk(java_bin: String, apktool_jar: String, folder: String) -> i32:
@@ -59,10 +65,13 @@ func _build_apk(java_bin: String, apktool_jar: String, folder: String) -> i32:
         print("Folder not found.")
         return 1
     let out_apk = path.join(target_dir, "unsigned.apk")
-    let args = "-jar\n" + apktool_jar + "\nb\n" + target_dir + "\n-o\n" + out_apk
+    let nl = process.argv_sep()
+    let args = "-jar" + nl + apktool_jar + nl + "b" + nl + target_dir + nl + "-o" + nl + out_apk
+    let log_path = "tools/last_build.log"
     print("Building APK...")
-    if (process.exec(java_bin, args) != 0):
+    if (process.exec_redirect(java_bin, args, log_path, log_path) != 0):
         print("Build failed.")
+        io.print_file_if_non_empty(log_path, "----- error log -----", "----- end log -----")
         return 1
     print("Build done: " + out_apk)
     return 0
@@ -76,10 +85,13 @@ func _sign_apk(java_bin: String, signer_jar: String, folder: String) -> i32:
     if (str.len(output_path) == 0):
         output_path = "apksigned"
     fs.ensure_dir(output_path)
-    let args = "-jar\n" + signer_jar + "\n--apks\n" + apk_to_sign + "\n--out\n" + output_path + "\n--allowResign"
+    let nl = process.argv_sep()
+    let args = "-jar" + nl + signer_jar + nl + "--apks" + nl + apk_to_sign + nl + "--out" + nl + output_path + nl + "--allowResign"
+    let log_path = "tools/last_sign.log"
     print("Signing APK...")
-    if (process.exec(java_bin, args) != 0):
+    if (process.exec_redirect(java_bin, args, log_path, log_path) != 0):
         print("Signing failed.")
+        io.print_file_if_non_empty(log_path, "----- error log -----", "----- end log -----")
         return 1
     let signed_apk = path.join(output_path, "unsigned-aligned-debugSigned.apk")
     let final_apk = path.join(output_path, folder + "-signed.apk")
@@ -100,7 +112,11 @@ func _tools_menu(java_bin: String, apktool_jar: String, signer_jar: String, jadx
         print("5. Back")
         let op = str.trim(io.input_prompt("Choice: "))
         if (op == "1"):
-            process.open_path(path.join("decoded", folder))
+            let work_dir = path.join("decoded", folder)
+            if (fs.exists(work_dir) == 1):
+                process.open_path(work_dir)
+            else:
+                print("Folder not found.")
         if (op == "2"):
             _build_apk(java_bin, apktool_jar, folder)
         if (op == "3"):
@@ -159,8 +175,9 @@ func main() -> i32:
                 _tools_menu(java_bin, apktool_jar, signer_jar, jadx_gui, folder)
         if (ch == "2"):
             print("=== Decoded APKs ===")
-            print(fs.list_dir("decoded"))
-            let folder2 = str.trim(io.input_prompt("Folder: "))
+            let listing = fs.list_dir("decoded")
+            print(listing)
+            let folder2 = str.trim(io.input_prompt("Folder name (exact): "))
             if (fs.exists(path.join("decoded", folder2)) == 1):
                 _tools_menu(java_bin, apktool_jar, signer_jar, jadx_gui, folder2)
             else:

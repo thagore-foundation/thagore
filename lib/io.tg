@@ -1,4 +1,5 @@
 import "lib/fs.tg" as fs
+import "lib/string.tg" as str
 
 extern func __io_read_line(prompt: String) -> String
 extern func __io_read_all() -> String
@@ -54,3 +55,18 @@ func stdread(path: String = "") -> String:
     if (text == null):
         return ""
     return text
+
+func print_file_if_non_empty(path: String, header: String = "", footer: String = "") -> i32:
+    if (fs.exists(path) == 0):
+        return 0
+    let text = fs.read_text(path)
+    if (text == null):
+        return 0
+    if (str.len(str.trim(text)) == 0):
+        return 0
+    if (str.len(header) > 0):
+        print(header)
+    print(text)
+    if (str.len(footer) > 0):
+        print(footer)
+    return 1

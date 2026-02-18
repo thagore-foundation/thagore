@@ -1,3 +1,5 @@
+import "lib/string.tg" as str
+
 extern func __process_run(cmd: String) -> i32
 extern func __process_exec_argv(program: String, args_text: String, stdout_path: String, stderr_path: String, timeout_ms: i32) -> i32
 extern func __string_from_codepoint(cp: i32) -> String
@@ -24,14 +26,18 @@ func exec_redirect_timeout(program: String, args_text: String, stdout_path: Stri
 func _dq() -> String:
     return __string_from_codepoint(34)
 
+func argv_sep() -> String:
+    return __string_from_codepoint(10)
+
 func quote(text: String) -> String:
     return _dq() + text + _dq()
 
 func open_path(path: String) -> i32:
-    let rc = __process_open_path(path)
+    let p = str.replace(path, "/", "\\")
+    let rc = __process_open_path(p)
     if (rc == 0):
         return 0
-    return run("start " + _dq() + _dq() + " " + quote(path))
+    return run("start " + _dq() + _dq() + " " + quote(p))
 
 func download(url: String, out_path: String) -> i32:
     let rc = __http_download_file(url, out_path)
