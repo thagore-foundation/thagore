@@ -143,7 +143,7 @@ jobs:
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
-            allow_failure: true
+            allow_failure: false
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -188,7 +188,7 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            allow_failure: true
+            allow_failure: false
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -222,6 +222,11 @@ jobs:
           sudo /tmp/llvm.sh 21 all || true
           if [[ -d /usr/lib/llvm-21/bin ]]; then
             echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          fi
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            sudo dpkg --add-architecture amd64 || true
+            sudo apt-get update || true
+            sudo apt-get install -y qemu-user libc6:amd64 libstdc++6:amd64 zlib1g:amd64
           fi
           clang --version
 
@@ -339,7 +344,11 @@ jobs:
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1.exe")
+          elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1.exe")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
@@ -375,7 +384,13 @@ jobs:
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
                 CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
                 [[ -n "$CANDIDATE" ]] || continue
-                cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
+                if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" == "thagore-stage1-linux.tar.gz" ]]; then
+                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}.x86_64"
+                  chmod +x "${{ matrix.stage1_bin }}.x86_64" || true
+                  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' 'exec qemu-x86_64 -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' > "${{ matrix.stage1_bin }}"
+                else
+                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
+                fi
                 chmod +x "${{ matrix.stage1_bin }}" || true
                 STAGE1_ASSET="$ASSET"
                 break
@@ -397,7 +412,9 @@ jobs:
             fi
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
-            cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
+            if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
+              cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
+            fi
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
@@ -409,6 +426,23 @@ jobs:
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
           fi
           RUNTIME_ASSET=""
+          build_runtime_fallback() {
+            mkdir -p _rt
+            git cat-file blob 7f9ed799c71ceff8da657316012dc5e4d01d34d4 > _rt/runtime.cc
+            AR_BIN="llvm-ar"
+            if ! command -v "$AR_BIN" >/dev/null 2>&1; then
+              AR_BIN="ar"
+            fi
+            clang -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
+            "$AR_BIN" rcs "bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
+            else
+              cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
+              cp libthag_runtime.a thag_runtime.lib
+            fi
+            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
               if download_runtime_asset "$ASSET" "thag_runtime.lib"; then
@@ -424,6 +458,9 @@ jobs:
                 break
               fi
             done
+          fi
+          if [[ -z "$RUNTIME_ASSET" ]]; then
+            build_runtime_fallback || true
           fi
           if [[ -z "$RUNTIME_ASSET" ]]; then
             if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
