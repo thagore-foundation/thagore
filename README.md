@@ -58,5 +58,6 @@ python scripts/benchmark_intent.py --cli stage2.exe --runs 7
 
 - No Stage0 fallback in CI/Selfhost/Release.
 - No C++ runtime build path in workflows/scripts.
+- Tracked-file gate blocks reintroducing `legacy/`, runtime C++ sources, CMake/vcxproj artifacts.
 - Runtime linking is fail-hard when runtime ABI library is missing.
 - Merge gate requires 3 consecutive green runs: `CI` + `Selfhost Matrix` + `Release` (dry-run on `main`).

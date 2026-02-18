@@ -87,6 +87,20 @@ jobs:
           fi
           echo "Policy OK: no Stage0 markers in workflows."
 
+      - name: Enforce no C++ dependency in tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/no_cpp_dependency_gate.py --report no-cpp-dependency-report.txt
+
+      - name: Upload policy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-no-stage0-report
+          path: |
+            no-cpp-dependency-report.txt
+
       - name: Discord update - Enforce workflow policy
         if: always()
         uses: ./.github/actions/discord-ci-status
