@@ -1,0 +1,3 @@
+feature=extensionimpl
+kind=coreir
+status=baseline

@@ -1,0 +1,18 @@
+extern func LLVMCreatePassManager() -> ptr
+extern func LLVMDisposePassManager(pm: ptr) -> void
+extern func LLVMRunPassManager(pm: ptr, module_ref: ptr) -> i32
+
+extern func LLVMAddInstructionCombiningPass(pm: ptr) -> void
+extern func LLVMAddReassociatePass(pm: ptr) -> void
+extern func LLVMAddGVNPass(pm: ptr) -> void
+extern func LLVMAddCFGSimplificationPass(pm: ptr) -> void
+
+extern func LLVMLinkModules2(dest: ptr, src: ptr) -> i32
+
+extern func LLVMCreateMemoryBufferWithMemoryRangeCopy(data: String, data_len: i32, buffer_name: String) -> ptr
+extern func LLVMDisposeMemoryBuffer(mem_buf: ptr) -> void
+
+extern func LLVMOrcCreateNewThreadSafeContext() -> ptr
+extern func LLVMOrcDisposeThreadSafeContext(ctx: ptr) -> void
+extern func LLVMOrcCreateLLJIT(out_jit: ptr, options: ptr) -> i32
+extern func LLVMOrcDisposeLLJIT(jit: ptr) -> i32

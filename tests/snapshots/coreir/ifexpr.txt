@@ -1,0 +1,3 @@
+feature=ifexpr
+kind=coreir
+status=baseline

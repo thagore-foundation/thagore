@@ -25,6 +25,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify seed tag sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/verify_seed_tag_sync.py --report seed-tag-sync-ci.txt
+
       - name: Init Discord message
         id: init
         uses: ./.github/actions/discord-ci-status
@@ -777,6 +788,28 @@ jobs:
           echo "Stage trace is clean:"
           cat "$STAGE_TRACE_FILE"
 
+      - name: Enforce no C++ dependency gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-ci-${{ matrix.os }}.txt"
+
+      - name: Build spec snapshot audit artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/spec_snapshot_audit.py --os-tag "ci-${{ matrix.os }}" --out-dir "."
+
       - name: Upload selfhost artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -788,6 +821,32 @@ jobs:
             stage2*
             runtime-abi-summary-ci-${{ matrix.os }}.txt
             runtime-abi-inventory-ci-${{ matrix.os }}.txt
+            no-cpp-dependency-ci-${{ matrix.os }}.txt
+            typed-ir-ci-${{ matrix.os }}.txt
+            core-ir-ci-${{ matrix.os }}.txt
+            spec-summary-ci-${{ matrix.os }}.txt
+            seed-tag-sync-ci.txt
+
+      - name: Upload typed-ir audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typed-ir-ci-${{ matrix.os }}
+          path: typed-ir-ci-${{ matrix.os }}.txt
+
+      - name: Upload core-ir audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-ir-ci-${{ matrix.os }}
+          path: core-ir-ci-${{ matrix.os }}.txt
+
+      - name: Upload spec-summary audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec-summary-ci-${{ matrix.os }}
+          path: spec-summary-ci-${{ matrix.os }}.txt
 
   native-cli-canary:
     name: native-cli-canary (ubuntu)

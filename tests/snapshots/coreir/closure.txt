@@ -1,0 +1,3 @@
+feature=closure
+kind=coreir
+status=baseline

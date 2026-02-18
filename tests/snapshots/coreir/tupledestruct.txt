@@ -1,0 +1,3 @@
+feature=tupledestruct
+kind=coreir
+status=baseline

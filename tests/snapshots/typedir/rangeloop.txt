@@ -1,0 +1,3 @@
+feature=rangeloop
+kind=typedir
+status=baseline

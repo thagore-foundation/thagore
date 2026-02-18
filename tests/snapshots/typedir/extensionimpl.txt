@@ -1,0 +1,3 @@
+feature=extensionimpl
+kind=typedir
+status=baseline

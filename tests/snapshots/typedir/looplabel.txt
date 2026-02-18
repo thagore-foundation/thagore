@@ -1,0 +1,3 @@
+feature=looplabel
+kind=typedir
+status=baseline

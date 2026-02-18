@@ -1,0 +1,3 @@
+feature=resultsugar
+kind=typedir
+status=baseline

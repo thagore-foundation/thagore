@@ -1,0 +1,3 @@
+feature=stringinterpolation
+kind=coreir
+status=baseline

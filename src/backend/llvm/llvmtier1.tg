@@ -1,0 +1,60 @@
+struct LLVMModuleRef:
+    raw: ptr
+
+struct LLVMContextRef:
+    raw: ptr
+
+struct LLVMTypeRef:
+    raw: ptr
+
+struct LLVMValueRef:
+    raw: ptr
+
+struct LLVMBuilderRef:
+    raw: ptr
+
+struct LLVMBasicBlockRef:
+    raw: ptr
+
+struct LLVMTargetMachineRef:
+    raw: ptr
+
+extern func LLVMContextCreate() -> ptr
+extern func LLVMContextDispose(ctx: ptr) -> void
+
+extern func LLVMModuleCreateWithNameInContext(name: String, ctx: ptr) -> ptr
+extern func LLVMDisposeModule(module_ref: ptr) -> void
+extern func LLVMSetTarget(module_ref: ptr, triple: String) -> void
+
+extern func LLVMInt1TypeInContext(ctx: ptr) -> ptr
+extern func LLVMInt8TypeInContext(ctx: ptr) -> ptr
+extern func LLVMInt32TypeInContext(ctx: ptr) -> ptr
+extern func LLVMVoidTypeInContext(ctx: ptr) -> ptr
+extern func LLVMPointerType(ty: ptr, address_space: i32) -> ptr
+extern func LLVMFunctionType(ret_ty: ptr, param_types: ptr, param_count: i32, is_var_arg: i32) -> ptr
+
+extern func LLVMAddFunction(module_ref: ptr, name: String, fn_ty: ptr) -> ptr
+extern func LLVMAppendBasicBlockInContext(ctx: ptr, fn_value: ptr, name: String) -> ptr
+extern func LLVMCreateBuilderInContext(ctx: ptr) -> ptr
+extern func LLVMDisposeBuilder(builder: ptr) -> void
+extern func LLVMPositionBuilderAtEnd(builder: ptr, block: ptr) -> void
+extern func LLVMBuildRet(builder: ptr, value: ptr) -> ptr
+extern func LLVMBuildRetVoid(builder: ptr) -> ptr
+extern func LLVMBuildAdd(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func LLVMBuildSub(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func LLVMBuildMul(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func LLVMBuildSDiv(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func LLVMBuildICmp(builder: ptr, pred: i32, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func LLVMBuildBr(builder: ptr, dest: ptr) -> ptr
+extern func LLVMBuildCondBr(builder: ptr, cond: ptr, then_block: ptr, else_block: ptr) -> ptr
+
+extern func LLVMConstInt(ty: ptr, value: i32, sign_extend: i32) -> ptr
+
+extern func LLVMVerifyModule(module_ref: ptr, action: i32, out_message: ptr) -> i32
+extern func LLVMDisposeMessage(message: ptr) -> void
+
+extern func LLVMInitializeNativeTarget() -> i32
+extern func LLVMInitializeNativeAsmPrinter() -> i32
+extern func LLVMGetDefaultTargetTriple() -> ptr
+extern func LLVMDisposeTargetMachine(machine: ptr) -> void
+extern func LLVMTargetMachineEmitToFile(machine: ptr, module_ref: ptr, filename: String, codegen: i32, out_message: ptr) -> i32

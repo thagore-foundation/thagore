@@ -1,0 +1,3 @@
+feature=visibilitypub
+kind=typedir
+status=baseline

@@ -1,0 +1,3 @@
+feature=closure
+kind=typedir
+status=baseline

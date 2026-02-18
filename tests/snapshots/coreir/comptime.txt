@@ -1,0 +1,3 @@
+feature=comptime
+kind=coreir
+status=baseline

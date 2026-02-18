@@ -1,0 +1,3 @@
+feature=typealias
+kind=typedir
+status=baseline

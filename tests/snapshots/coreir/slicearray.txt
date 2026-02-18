@@ -1,0 +1,3 @@
+feature=slicearray
+kind=coreir
+status=baseline

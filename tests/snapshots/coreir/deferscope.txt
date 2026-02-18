@@ -1,0 +1,3 @@
+feature=deferscope
+kind=coreir
+status=baseline

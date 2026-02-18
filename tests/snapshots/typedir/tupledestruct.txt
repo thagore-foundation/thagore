@@ -1,0 +1,3 @@
+feature=tupledestruct
+kind=typedir
+status=baseline

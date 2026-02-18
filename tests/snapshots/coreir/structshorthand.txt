@@ -1,0 +1,3 @@
+feature=structshorthand
+kind=coreir
+status=baseline

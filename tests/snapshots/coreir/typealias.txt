@@ -1,0 +1,3 @@
+feature=typealias
+kind=coreir
+status=baseline

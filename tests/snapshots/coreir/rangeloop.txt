@@ -1,0 +1,3 @@
+feature=rangeloop
+kind=coreir
+status=baseline
