@@ -94,6 +94,35 @@ def run_cmd(
     return proc
 
 
+def parse_json_from_proc(proc: subprocess.CompletedProcess[str], label: str) -> dict:
+    for raw in (proc.stdout, proc.stderr):
+        text = raw.strip()
+        if not text:
+            continue
+        text = text.lstrip("\ufeff")
+        try:
+            payload = json.loads(text)
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError:
+            for line in reversed(text.splitlines()):
+                candidate = line.strip().lstrip("\ufeff")
+                if not candidate or candidate[0] not in "{[":
+                    continue
+                try:
+                    payload = json.loads(candidate)
+                    if isinstance(payload, dict):
+                        return payload
+                except json.JSONDecodeError:
+                    continue
+    sys.stderr.write(f"FAIL: {label} did not produce valid JSON output\n")
+    if proc.stdout:
+        sys.stderr.write("--- stdout ---\n" + proc.stdout + "\n")
+    if proc.stderr:
+        sys.stderr.write("--- stderr ---\n" + proc.stderr + "\n")
+    raise SystemExit(1)
+
+
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -136,7 +165,7 @@ def assert_json_equal(actual: dict, expected_path: Path, label: str) -> None:
 
 def golden_tests(cli: Path, workdir: Path) -> None:
     proc = run_cmd([str(cli), "intent", "explain", str(FIXTURE), "--json", "--mode=max"])
-    explain = json.loads(proc.stdout)
+    explain = parse_json_from_proc(proc, "intent explain --json")
     assert_json_equal(normalize_explain(explain), GOLDEN_EXPLAIN, "intent explain --json")
 
     lock_path = workdir / "intent_demo.lock"
@@ -214,7 +243,7 @@ def property_tests(cli: Path, workdir: Path, rounds: int) -> None:
         chosen: str | None = None
         for _ in range(rounds):
             proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-            payload = json.loads(proc.stdout)
+            payload = parse_json_from_proc(proc, f"property_tests goal={goal}")
             entries = payload.get("entries", [])
             if len(entries) != 1:
                 raise SystemExit(f"FAIL: expected one entry for goal {goal}")
@@ -432,7 +461,7 @@ def strategy_pinning_test(cli: Path, workdir: Path) -> None:
         encoding="utf-8",
     )
     proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-    payload = json.loads(proc.stdout)
+    payload = parse_json_from_proc(proc, "strategy_pinning_test")
     entries = payload.get("entries", [])
     if len(entries) != 1:
         raise SystemExit("FAIL: expected one intent entry for strategy pin test")
@@ -524,7 +553,7 @@ def strategy_matrix_pinning_test(cli: Path, workdir: Path) -> None:
             encoding="utf-8",
         )
         proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-        payload = json.loads(proc.stdout)
+        payload = parse_json_from_proc(proc, f"strategy_matrix_pinning_test strategy={strategy}")
         entries = payload.get("entries", [])
         if len(entries) != 1:
             raise SystemExit(f"FAIL: expected one entry for strategy matrix case {strategy}")
@@ -678,7 +707,7 @@ def auto_plan_name_heuristic_test(cli: Path, workdir: Path) -> None:
             encoding="utf-8",
         )
         proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-        payload = json.loads(proc.stdout)
+        payload = parse_json_from_proc(proc, f"auto_plan_name_heuristic_test fn={fn_name}")
         entries = payload.get("entries", [])
         if len(entries) != 1:
             raise SystemExit(f"FAIL: expected one entry for auto-plan name case {fn_name}")
