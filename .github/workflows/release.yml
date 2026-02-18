@@ -372,8 +372,7 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1-linux-x86_64.tar.gz")
-            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+            :
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
           fi
@@ -458,11 +457,8 @@ jobs:
                 break
               fi
             done
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
-              build_stage1_blob_native || true
-            fi
             if [[ -z "$STAGE1_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              build_stage1_blob_native || true
+              build_stage1_blob_native
             fi
             if [[ -z "$STAGE1_ASSET" ]]; then
               if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
