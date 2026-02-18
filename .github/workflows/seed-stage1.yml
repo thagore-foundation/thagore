@@ -107,7 +107,7 @@ jobs:
   build-seed:
     name: seed (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-base-probe]
-    if: matrix.enabled && contains(needs.seed-base-probe.outputs.available_tags, format(';{0};', matrix.asset_tag))
+    continue-on-error: ${{ matrix.allow_failure }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -118,42 +118,42 @@ jobs:
             os_name: Linux
             arch: x86_64
             asset_tag: linux-x86_64
-            enabled: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
             runtime_seed_name: thagore-runtime-linux-x86_64.a
           - runner: ubuntu-24.04-arm
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
-            enabled: true
+            allow_failure: true
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
             runtime_seed_name: thagore-runtime-linux-arm64.a
           - runner: macos-13
             os_name: macOS
             arch: x86_64
             asset_tag: macos-x86_64
-            enabled: false
+            allow_failure: true
             stage1_seed_name: thagore-stage1-macos-x86_64.tar.gz
             runtime_seed_name: thagore-runtime-macos-x86_64.a
           - runner: macos-latest
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
-            enabled: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
             runtime_seed_name: thagore-runtime-macos-arm64.a
           - runner: windows-latest
             os_name: Windows
             arch: x86_64
             asset_tag: windows-x86_64
-            enabled: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-windows-x86_64.exe
             runtime_seed_name: thagore-runtime-windows-x86_64.lib
           - runner: windows-11-arm
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            enabled: true
+            allow_failure: true
             stage1_seed_name: thagore-stage1-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
