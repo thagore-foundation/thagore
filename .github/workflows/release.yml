@@ -66,47 +66,98 @@ jobs:
           max_minutes: "240"
 
   build-release:
-    name: release (${{ matrix.os }})
+    name: release (${{ matrix.asset_tag }})
     needs: discord-notify-init
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            stage1_asset: thagore-linux.tar.gz
+          - runner: ubuntu-latest
+            os_name: Linux
+            arch: x86_64
+            asset_tag: linux-x86_64
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
             stage2_rebuild_bin: stage2_rebuild
             hello_bin: hello_release
             fib_bin: fib_release
-            package_name: thagore-linux.tar.gz
-            stage1_seed_name: thagore-stage1-linux.tar.gz
-            stage_trace_file: release-stage-trace-linux.log
-          - os: macos-latest
-            stage1_asset: thagore-macos.tar.gz
+            package_name: thagore-linux-x86_64.tar.gz
+            stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-x86_64.a
+            stage_trace_file: release-stage-trace-linux-x86_64.log
+          - runner: ubuntu-24.04-arm
+            os_name: Linux
+            arch: arm64
+            asset_tag: linux-arm64
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
             stage2_rebuild_bin: stage2_rebuild
             hello_bin: hello_release
             fib_bin: fib_release
-            package_name: thagore-macos.tar.gz
-            stage1_seed_name: thagore-stage1-macos.tar.gz
-            stage_trace_file: release-stage-trace-macos.log
-          - os: windows-latest
-            stage1_asset: thagore-stage1.exe
+            package_name: thagore-linux-arm64.tar.gz
+            stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-arm64.a
+            stage_trace_file: release-stage-trace-linux-arm64.log
+          - runner: macos-13
+            os_name: macOS
+            arch: x86_64
+            asset_tag: macos-x86_64
+            stage1_bin: stage1
+            output_bin: thagore
+            stage2_bin: stage2
+            stage2_rebuild_bin: stage2_rebuild
+            hello_bin: hello_release
+            fib_bin: fib_release
+            package_name: thagore-macos-x86_64.tar.gz
+            stage1_seed_name: thagore-stage1-macos-x86_64.tar.gz
+            runtime_seed_name: thagore-runtime-macos-x86_64.a
+            stage_trace_file: release-stage-trace-macos-x86_64.log
+          - runner: macos-latest
+            os_name: macOS
+            arch: arm64
+            asset_tag: macos-arm64
+            stage1_bin: stage1
+            output_bin: thagore
+            stage2_bin: stage2
+            stage2_rebuild_bin: stage2_rebuild
+            hello_bin: hello_release
+            fib_bin: fib_release
+            package_name: thagore-macos-arm64.tar.gz
+            stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-macos-arm64.a
+            stage_trace_file: release-stage-trace-macos-arm64.log
+          - runner: windows-latest
+            os_name: Windows
+            arch: x86_64
+            asset_tag: windows-x86_64
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
             stage2_rebuild_bin: stage2_rebuild.exe
             hello_bin: hello_release.exe
             fib_bin: fib_release.exe
-            package_name: thagore-windows.tar.gz
-            stage1_seed_name: thagore-stage1.exe
-            stage_trace_file: release-stage-trace-windows.log
+            package_name: thagore-windows-x86_64.tar.gz
+            stage1_seed_name: thagore-stage1-windows-x86_64.exe
+            runtime_seed_name: thagore-runtime-windows-x86_64.lib
+            stage_trace_file: release-stage-trace-windows-x86_64.log
+          - runner: windows-11-arm
+            os_name: Windows
+            arch: arm64
+            asset_tag: windows-arm64
+            stage1_bin: stage1.exe
+            output_bin: thagore.exe
+            stage2_bin: stage2.exe
+            stage2_rebuild_bin: stage2_rebuild.exe
+            hello_bin: hello_release.exe
+            fib_bin: fib_release.exe
+            package_name: thagore-windows-arm64.tar.gz
+            stage1_seed_name: thagore-stage1-windows-arm64.exe
+            runtime_seed_name: thagore-runtime-windows-arm64.lib
+            stage_trace_file: release-stage-trace-windows-arm64.log
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
@@ -238,9 +289,17 @@ jobs:
             [[ -n "$probe_fib" && -f "$probe_fib" ]] || return 1
             return 0
           }
+          STAGE1_ASSET=""
+          STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1.exe")
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+          elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            STAGE1_ASSET=""
-            for ASSET in thagore-stage1.exe; do
+            for ASSET in "${STAGE1_CANDIDATES[@]}"; do
               if download_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
@@ -250,58 +309,69 @@ jobs:
             done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Windows stage1 asset found in releases."; exit 1)
           else
-            STAGE1_ASSET=""
-            if [[ "${{ runner.os }}" == "Linux" ]]; then
-              for ASSET in thagore-stage1-linux.tar.gz; do
-                if download_asset "$ASSET"; then
-                  rm -rf bootstrap/extract_stage1 || true
-                  mkdir -p bootstrap/extract_stage1
-                  tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
-                  CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
-                  [[ -n "$CANDIDATE" ]] || continue
-                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
-                  chmod +x "${{ matrix.stage1_bin }}" || true
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
-              done
-            else
-              for ASSET in thagore-stage1-macos.tar.gz; do
-                if download_asset "$ASSET"; then
-                  rm -rf bootstrap/extract_stage1 || true
-                  mkdir -p bootstrap/extract_stage1
-                  tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
-                  CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
-                  [[ -n "$CANDIDATE" ]] || continue
-                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
-                  chmod +x "${{ matrix.stage1_bin }}" || true
-                  STAGE1_ASSET="$ASSET"
-                  break
-                fi
-              done
-            fi
+            for ASSET in "${STAGE1_CANDIDATES[@]}"; do
+              if download_asset "$ASSET"; then
+                rm -rf bootstrap/extract_stage1 || true
+                mkdir -p bootstrap/extract_stage1
+                tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
+                CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+                [[ -n "$CANDIDATE" ]] || continue
+                cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
+                chmod +x "${{ matrix.stage1_bin }}" || true
+                STAGE1_ASSET="$ASSET"
+                break
+              fi
+            done
             [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: no Unix stage1 asset found in releases."; exit 1)
           fi
-          chmod +x "${{ matrix.stage1_bin }}" || true
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            download_runtime_asset "thagore-runtime-windows.lib" "thag_runtime.lib"
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            download_runtime_asset "thagore-runtime-linux.a" "libthag_runtime.a"
-            cp libthag_runtime.a thag_runtime.lib
-          else
-            download_runtime_asset "thagore-runtime-macos.a" "libthag_runtime.a"
-            cp libthag_runtime.a thag_runtime.lib
+          if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
+            cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
           fi
-          MANIFEST_ASSET="seed-promotion-manifest-${{ runner.os }}.txt"
-          download_asset "$MANIFEST_ASSET"
-          [[ -f "bootstrap/$MANIFEST_ASSET" ]] || (echo "CRITICAL: missing seed promotion manifest $MANIFEST_ASSET"; exit 1)
+          chmod +x "${{ matrix.stage1_bin }}" || true
+          RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+          elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
+            RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
+          fi
+          RUNTIME_ASSET=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
+              if download_runtime_asset "$ASSET" "thag_runtime.lib"; then
+                RUNTIME_ASSET="$ASSET"
+                break
+              fi
+            done
+          else
+            for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
+              if download_runtime_asset "$ASSET" "libthag_runtime.a"; then
+                cp libthag_runtime.a thag_runtime.lib
+                RUNTIME_ASSET="$ASSET"
+                break
+              fi
+            done
+          fi
+          [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."; exit 1)
+          if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
+            cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
+          fi
+          MANIFEST_ASSET=""
+          for CANDIDATE in "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" "seed-promotion-manifest-${{ runner.os }}.txt"; do
+            if download_asset "$CANDIDATE"; then
+              MANIFEST_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$MANIFEST_ASSET" && -f "bootstrap/$MANIFEST_ASSET" ]] || (echo "CRITICAL: missing seed promotion manifest for ${{ matrix.asset_tag }}"; exit 1)
           echo "[SEED] manifest=$MANIFEST_ASSET" | tee -a "$STAGE_TRACE_FILE"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
             PY=python3
           fi
-          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.os }}.txt"
+          "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
         uses: ./.github/actions/discord-ci-status
@@ -324,7 +394,7 @@ jobs:
           "$PY" scripts/runtime_abi_inventory.py \
             --profile bootstrap-critical \
             --fail-on-missing \
-            --write "runtime-abi-inventory-release-${{ matrix.os }}.txt"
+            --write "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build Stage2 -> Stage2 (mandatory)
         shell: bash
@@ -487,7 +557,7 @@ jobs:
           else
             PY=python3
           fi
-          "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-release-${{ matrix.os }}.txt"
+          "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-release-${{ matrix.asset_tag }}.txt"
 
       - name: Enforce deprecated API gate
         shell: bash
@@ -498,7 +568,7 @@ jobs:
           else
             PY=python3
           fi
-          "$PY" scripts/deprecated_api_gate.py --report "deprecated-api-gate-release-${{ matrix.os }}.txt"
+          "$PY" scripts/deprecated_api_gate.py --report "deprecated-api-gate-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build spec snapshot audit artifacts
         shell: bash
@@ -509,7 +579,7 @@ jobs:
           else
             PY=python3
           fi
-          "$PY" scripts/spec_snapshot_audit.py --os-tag "release-${{ matrix.os }}" --out-dir "."
+          "$PY" scripts/spec_snapshot_audit.py --os-tag "release-${{ matrix.asset_tag }}" --out-dir "."
 
       - name: Package release payload
         shell: bash
@@ -528,8 +598,10 @@ jobs:
           cp scripts/install/*.sh dist/installer/ || true
           cp scripts/install/*.ps1 dist/installer/ || true
           [[ -f "bootstrap/${{ matrix.stage1_seed_name }}" ]] || (echo "CRITICAL: missing bootstrap seed asset bootstrap/${{ matrix.stage1_seed_name }}"; exit 1)
+          [[ -f "bootstrap/${{ matrix.runtime_seed_name }}" ]] || (echo "CRITICAL: missing bootstrap runtime asset bootstrap/${{ matrix.runtime_seed_name }}"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
+            cp "bootstrap/${{ matrix.runtime_seed_name }}" "${{ matrix.runtime_seed_name }}"
             bytes_stage1="$(wc -c < "${{ matrix.stage1_seed_name }}")"
             if [[ "$bytes_stage1" -lt 200000 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes_stage1 bytes)."
@@ -538,6 +610,7 @@ jobs:
             tar -czf "${{ matrix.package_name }}" -C dist .
           else
             cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
+            cp "bootstrap/${{ matrix.runtime_seed_name }}" "${{ matrix.runtime_seed_name }}"
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -Eq "thagore|thag"
             bytes_stage1="$(wc -c < "${{ matrix.stage1_seed_name }}")"
             if [[ "$bytes_stage1" -lt 20000 ]]; then
@@ -569,7 +642,7 @@ jobs:
           [[ -n "$NSIS_BIN" ]] || (echo "CRITICAL: NSIS makensis not found after installation."; exit 1)
           NSIS_WIN="$(cygpath -w "$NSIS_BIN")"
           powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$NSIS_WIN' /DVERSION=${{ github.ref_name }} installer/windows/thagore.nsi"
-          cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-x86_64.exe"
+          cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
       - name: Discord update - Package release payload
         uses: ./.github/actions/discord-ci-status
@@ -583,41 +656,42 @@ jobs:
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ runner.os }}
+          name: release-${{ matrix.asset_tag }}
           path: |
             ${{ matrix.package_name }}
             ${{ matrix.stage1_seed_name }}
+            ${{ matrix.runtime_seed_name }}
             ${{ env.STAGE_TRACE_FILE }}
-            runtime-abi-summary-release-${{ matrix.os }}.txt
-            runtime-abi-inventory-release-${{ matrix.os }}.txt
-            no-cpp-dependency-release-${{ matrix.os }}.txt
-            deprecated-api-gate-release-${{ matrix.os }}.txt
-            typed-ir-release-${{ matrix.os }}.txt
-            core-ir-release-${{ matrix.os }}.txt
-            spec-summary-release-${{ matrix.os }}.txt
+            runtime-abi-summary-release-${{ matrix.asset_tag }}.txt
+            runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt
+            no-cpp-dependency-release-${{ matrix.asset_tag }}.txt
+            deprecated-api-gate-release-${{ matrix.asset_tag }}.txt
+            typed-ir-release-${{ matrix.asset_tag }}.txt
+            core-ir-release-${{ matrix.asset_tag }}.txt
+            spec-summary-release-${{ matrix.asset_tag }}.txt
             seed-tag-sync-release.txt
-            thagore-setup-windows-x86_64.exe
+            thagore-setup-windows-${{ matrix.arch }}.exe
 
       - name: Upload typed-ir audit artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: typed-ir-release-${{ matrix.os }}
-          path: typed-ir-release-${{ matrix.os }}.txt
+          name: typed-ir-release-${{ matrix.asset_tag }}
+          path: typed-ir-release-${{ matrix.asset_tag }}.txt
 
       - name: Upload core-ir audit artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: core-ir-release-${{ matrix.os }}
-          path: core-ir-release-${{ matrix.os }}.txt
+          name: core-ir-release-${{ matrix.asset_tag }}
+          path: core-ir-release-${{ matrix.asset_tag }}.txt
 
       - name: Upload spec-summary audit artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spec-summary-release-${{ matrix.os }}
-          path: spec-summary-release-${{ matrix.os }}.txt
+          name: spec-summary-release-${{ matrix.asset_tag }}
+          path: spec-summary-release-${{ matrix.asset_tag }}.txt
 
   publish:
     name: publish-release
@@ -637,13 +711,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/**/thagore-linux.tar.gz
-            artifacts/**/thagore-macos.tar.gz
-            artifacts/**/thagore-windows.tar.gz
+            artifacts/**/thagore-linux-*.tar.gz
+            artifacts/**/thagore-macos-*.tar.gz
+            artifacts/**/thagore-windows-*.tar.gz
             artifacts/**/thagore-setup-windows-*.exe
-            artifacts/**/thagore-stage1-linux.tar.gz
-            artifacts/**/thagore-stage1-macos.tar.gz
-            artifacts/**/thagore-stage1.exe
+            artifacts/**/thagore-stage1-linux-*.tar.gz
+            artifacts/**/thagore-stage1-macos-*.tar.gz
+            artifacts/**/thagore-stage1-windows-*.exe
+            artifacts/**/thagore-runtime-linux-*.a
+            artifacts/**/thagore-runtime-macos-*.a
+            artifacts/**/thagore-runtime-windows-*.lib
             artifacts/**/release-stage-trace-*.log
 
       - name: Discord update - Publish GitHub Release Assets

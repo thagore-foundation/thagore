@@ -14,12 +14,42 @@ permissions:
 
 jobs:
   build-runtime:
-    name: runtime (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: runtime (${{ matrix.asset_tag }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - runner: ubuntu-latest
+            os_name: Linux
+            arch: x86_64
+            asset_tag: linux-x86_64
+            runtime_name: thagore-runtime-linux-x86_64.a
+          - runner: ubuntu-24.04-arm
+            os_name: Linux
+            arch: arm64
+            asset_tag: linux-arm64
+            runtime_name: thagore-runtime-linux-arm64.a
+          - runner: macos-13
+            os_name: macOS
+            arch: x86_64
+            asset_tag: macos-x86_64
+            runtime_name: thagore-runtime-macos-x86_64.a
+          - runner: macos-latest
+            os_name: macOS
+            arch: arm64
+            asset_tag: macos-arm64
+            runtime_name: thagore-runtime-macos-arm64.a
+          - runner: windows-latest
+            os_name: Windows
+            arch: x86_64
+            asset_tag: windows-x86_64
+            runtime_name: thagore-runtime-windows-x86_64.lib
+          - runner: windows-11-arm
+            os_name: Windows
+            arch: arm64
+            asset_tag: windows-arm64
+            runtime_name: thagore-runtime-windows-arm64.lib
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,21 +120,29 @@ jobs:
           fi
           clang -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            "$AR_BIN" rcs thagore-runtime-windows.lib _rt/runtime.o
+            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            "$AR_BIN" rcs thagore-runtime-linux.a _rt/runtime.o
+            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
           else
-            "$AR_BIN" rcs thagore-runtime-macos.a _rt/runtime.o
+            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
             if command -v ranlib >/dev/null 2>&1; then
-              ranlib thagore-runtime-macos.a || true
+              ranlib "${{ matrix.runtime_name }}" || true
             fi
+          fi
+          if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" ]]; then
+            cp "${{ matrix.runtime_name }}" thagore-runtime-windows.lib
+          elif [[ "${{ matrix.asset_tag }}" == "linux-x86_64" ]]; then
+            cp "${{ matrix.runtime_name }}" thagore-runtime-linux.a
+          elif [[ "${{ matrix.asset_tag }}" == "macos-arm64" ]]; then
+            cp "${{ matrix.runtime_name }}" thagore-runtime-macos.a
           fi
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-${{ runner.os }}
+          name: runtime-${{ matrix.asset_tag }}
           path: |
+            ${{ matrix.runtime_name }}
             thagore-runtime-windows.lib
             thagore-runtime-linux.a
             thagore-runtime-macos.a
@@ -127,6 +165,9 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$SEED_TAG" \
+            runtime-artifacts/**/thagore-runtime-windows-*.lib \
+            runtime-artifacts/**/thagore-runtime-linux-*.a \
+            runtime-artifacts/**/thagore-runtime-macos-*.a \
             runtime-artifacts/**/thagore-runtime-windows.lib \
             runtime-artifacts/**/thagore-runtime-linux.a \
             runtime-artifacts/**/thagore-runtime-macos.a \
