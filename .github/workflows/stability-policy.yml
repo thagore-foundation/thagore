@@ -31,7 +31,6 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const windowSize = Number(process.env.STABILITY_WINDOW || "3");
-            const artifactWindowSize = 1;
             if (!Number.isInteger(windowSize) || windowSize <= 0) {
               core.setFailed(`Invalid STABILITY_WINDOW=${process.env.STABILITY_WINDOW}`);
               return;
@@ -170,10 +169,10 @@ jobs:
                 report.push(`RUN|${target.name}|${row}`);
               }
 
-              const successRuns = filtered.filter((r) => r.conclusion === "success").slice(0, artifactWindowSize);
-              if (successRuns.length < artifactWindowSize) {
+              const successRuns = filtered.filter((r) => r.conclusion === "success").slice(0, windowSize);
+              if (successRuns.length < windowSize) {
                 failed = true;
-                report.push(`FAIL|${target.name}|artifact_audit=insufficient_success_runs|have=${successRuns.length}|need=${artifactWindowSize}`);
+                report.push(`FAIL|${target.name}|artifact_audit=insufficient_success_runs|have=${successRuns.length}|need=${windowSize}`);
                 continue;
               }
 

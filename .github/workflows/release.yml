@@ -292,6 +292,10 @@ jobs:
             download_runtime_asset "thagore-runtime-macos.a" "libthag_runtime.a"
             cp libthag_runtime.a thag_runtime.lib
           fi
+          MANIFEST_ASSET="seed-promotion-manifest-${{ runner.os }}.txt"
+          download_asset "$MANIFEST_ASSET"
+          [[ -f "bootstrap/$MANIFEST_ASSET" ]] || (echo "CRITICAL: missing seed promotion manifest $MANIFEST_ASSET"; exit 1)
+          echo "[SEED] manifest=$MANIFEST_ASSET" | tee -a "$STAGE_TRACE_FILE"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
