@@ -445,7 +445,7 @@ jobs:
                     '  fi' \
                     'done' \
                     'if [[ -n "$EMU_BIN" ]]; then' \
-                    '  exec "$EMU_BIN" -L /usr/x86_64-linux-gnu "$SELF_DIR/stage1.x86_64" "$@"' \
+                    '  exec "$EMU_BIN" "$SELF_DIR/stage1.x86_64" "$@"' \
                     'fi' \
                     'exec "$SELF_DIR/stage1.x86_64" "$@"' \
                     > "${{ matrix.stage1_bin }}"
