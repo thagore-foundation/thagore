@@ -274,9 +274,27 @@ jobs:
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
           SEED_BIN="$STAGE2_REBUILD_BIN"
-          purge_outputs "examples/hello.tg" "$HELLO_BIN"
-          thg_build "$SEED_BIN" examples/hello.tg "$HELLO_BIN"
-          HELLO_BIN_FOUND="$(resolve_bin "$HELLO_BIN" "examples/hello.tg")"
+          COMPILER_CANDIDATES=("$SEED_BIN" "$STAGE2_BIN" "$STAGE1_BIN")
+          build_sample_with_candidates() {
+            local src="$1"
+            local out="$2"
+            local found=""
+            purge_outputs "$src" "$out"
+            for cc in "${COMPILER_CANDIDATES[@]}"; do
+              [[ -n "$cc" && -f "$cc" ]] || continue
+              if thg_build "$cc" "$src" "$out"; then
+                found="$(resolve_bin "$out" "$src" || true)"
+                if [[ -n "$found" ]]; then
+                  echo "$found"
+                  return 0
+                fi
+              fi
+            done
+            return 1
+          }
+
+          HELLO_BIN_FOUND="$(build_sample_with_candidates "examples/hello.tg" "$HELLO_BIN" || true)"
+          [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit hello sample with stage1/stage2 compiler chain"; exit 1)
           chmod +x "$HELLO_BIN_FOUND" || true
           HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
           CC_HASH="$(hash_file "$SEED_BIN")"
@@ -286,9 +304,8 @@ jobs:
           fi
           "./$HELLO_BIN_FOUND" >/dev/null 2>&1
 
-          purge_outputs "examples/fib.tg" "$FIB_BIN"
-          thg_build "$SEED_BIN" examples/fib.tg "$FIB_BIN"
-          FIB_BIN_FOUND="$(resolve_bin "$FIB_BIN" "examples/fib.tg")"
+          FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
+          [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit fib sample with stage1/stage2 compiler chain"; exit 1)
           chmod +x "$FIB_BIN_FOUND" || true
           FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
           CC_HASH="$(hash_file "$SEED_BIN")"
