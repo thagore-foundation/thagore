@@ -81,8 +81,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          json="$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets)"
-          asset_names="$(printf '%s' "$json" | python3 -c \"import json,sys; d=json.load(sys.stdin); print(';' + ';'.join(a['name'] for a in d.get('assets', [])) + ';')\")"
+          asset_names=";$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | tr '\n' ';')"
           has_asset() {
             local name="$1"
             [[ "$asset_names" == *";${name};"* ]]
