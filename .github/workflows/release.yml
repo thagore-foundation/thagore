@@ -654,6 +654,7 @@ jobs:
             local src="$2"
             local out="$3"
             local got=""
+            local rc=0
             resolve_local() {
               local preferred="$1"
               for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
@@ -669,6 +670,12 @@ jobs:
               got="$(resolve_local "$out" || true)"
               if [[ -n "$got" ]]; then
                 return 0
+              fi
+            else
+              rc=$?
+              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && ( "$rc" == "124" || "$rc" == "137" ) ]]; then
+                echo "[WARN] linux-arm64 build timeout for '$cc build $src -o $out' (rc=$rc), aborting alternate --build attempt." | tee -a "$STAGE_TRACE_FILE"
+                return "$rc"
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
