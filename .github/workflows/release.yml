@@ -520,6 +520,8 @@ jobs:
           cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
+          else
+            cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag.exe
           fi
           cp -R std "dist/lib/std"
           mkdir -p dist/installer
