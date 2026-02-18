@@ -702,8 +702,8 @@ jobs:
             done
             return 1
           }
-          if [[ "${{ runner.os }}" == "Linux" && -f "${{ matrix.stage1_bin }}" && ! -f "${{ matrix.stage1_bin }}.exe" ]]; then
-            cp "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
+          if [[ "${{ runner.os }}" == "Linux" && -f "${{ matrix.stage1_bin }}" ]]; then
+            cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
           STAGE2_CHAIN_OK=1
