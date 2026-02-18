@@ -402,12 +402,35 @@ jobs:
                 if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
                   cp "$CANDIDATE" "${{ matrix.stage1_bin }}.x86_64"
                   chmod +x "${{ matrix.stage1_bin }}.x86_64" || true
+                  EMU_LOCAL=""
+                  for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" /usr/bin/qemu-x86_64 /usr/bin/qemu-x86_64-static /usr/libexec/qemu-binfmt/x86_64-binfmt-P $(find /usr -maxdepth 6 -type f -name 'qemu*x86_64*' 2>/dev/null | head -n 16); do
+                    if [[ -n "$cand" && -x "$cand" ]]; then
+                      EMU_LOCAL="$cand"
+                      break
+                    fi
+                  done
+                  if [[ -z "$EMU_LOCAL" ]]; then
+                    TMP_QEMU_DIR="$(mktemp -d)"
+                    if (cd "$TMP_QEMU_DIR" && apt-get download qemu-user-static >/dev/null 2>&1); then
+                      QEMU_DEB="$(ls "$TMP_QEMU_DIR"/qemu-user-static_*_arm64.deb 2>/dev/null | head -n 1 || true)"
+                      if [[ -n "$QEMU_DEB" ]]; then
+                        dpkg-deb -x "$QEMU_DEB" "$TMP_QEMU_DIR/extract" || true
+                        QEMU_FOUND="$(find "$TMP_QEMU_DIR/extract" -type f -name qemu-x86_64-static | head -n 1 || true)"
+                        if [[ -n "$QEMU_FOUND" ]]; then
+                          mkdir -p .toolchain
+                          cp "$QEMU_FOUND" .toolchain/qemu-x86_64-static
+                          chmod +x .toolchain/qemu-x86_64-static || true
+                          EMU_LOCAL="$PWD/.toolchain/qemu-x86_64-static"
+                        fi
+                      fi
+                    fi
+                  fi
                   printf '%s\n' \
                     '#!/usr/bin/env bash' \
                     'set -euo pipefail' \
                     'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' \
-                    'EMU_BIN=""' \
-                    'for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P" $(find /usr -maxdepth 6 -type f -name "qemu*x86_64*" 2>/dev/null | head -n 16); do' \
+                    "EMU_BIN=\"${EMU_LOCAL}\"" \
+                    'for cand in "$EMU_BIN" "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P" $(find /usr -maxdepth 6 -type f -name "qemu*x86_64*" 2>/dev/null | head -n 16); do' \
                     '  if [[ -n "$cand" && -x "$cand" ]]; then' \
                     '    EMU_BIN="$cand"' \
                     '    break' \
