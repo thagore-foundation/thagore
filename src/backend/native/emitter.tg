@@ -347,11 +347,18 @@ func _emit_i8_array(text: String) -> String:
 func _unwrap_string_literal(text: String) -> String:
     let s = _trim_edges(text)
     let n = strlen(s)
+    let dq = __string_from_codepoint(34)
     if (n < 2):
         return ""
-    if ((_char_at(s, 0) == "v") and (n >= 3)):
-        return __thg_str_substr(s, 2, n - 3)
-    return __thg_str_substr(s, 1, n - 2)
+    if ((_char_at(s, 0) == "v") and (n >= 4)):
+        if (_char_at(s, 1) == dq):
+            if (_char_at(s, n - 1) == dq):
+                return __thg_str_substr(s, 2, n - 3)
+        return ""
+    if (_char_at(s, 0) == dq):
+        if (_char_at(s, n - 1) == dq):
+            return __thg_str_substr(s, 1, n - 2)
+    return ""
 
 func _digit_char(digit: i32) -> String:
     return __thg_str_substr("0123456789", digit, 1)
@@ -1093,8 +1100,6 @@ func _extract_body(source: String, header_idx: i32) -> String:
         let raw = _line_at(source, i)
         let line = _trim_edges(raw)
         if (line.length() == 0):
-            if (i < (total - 1)):
-                out = out + nl
             i = i + 1
         else:
             let indent = _leading_spaces(raw)
