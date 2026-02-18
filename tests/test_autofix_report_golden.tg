@@ -38,7 +38,7 @@ func main() -> i32:
     let sample = "tests/__autofix_report_golden_case.tg"
     let src = "pub pub fn main()" + nl + "    return 1" + nl
     fails = fails + _expect_i32("write sample", fs.write_text(sample, src), 1)
-    fails = fails + _expect_i32("apply safe", autofix.run_fix_apply(sample, "safe", "", 0), 0)
+    fails = fails + _expect_i32("apply safe", autofix.run_fix_apply(sample, "safe", "", 0, 0), 0)
     let report_path = autofix.latest_applied_report_path()
     fails = fails + _expect_contains("report path json", report_path, ".json")
     let report = fs.read_text(report_path)
@@ -46,12 +46,11 @@ func main() -> i32:
     fails = fails + _expect_contains("golden has fixes array", report, dq + "fixes" + dq + ":[")
     fails = fails + _expect_contains("golden has diff unified", report, dq + "diff_unified" + dq + ":")
     fails = fails + _expect_contains("golden has diagnostic family", report, dq + "diagnostic_family" + dq + ":")
-    fails = fails + _expect_contains("golden has missing colon rule", report, dq + "missing_colon_block_header" + dq)
-    fails = fails + _expect_contains("golden has deprecated fn rule", report, dq + "normalize_deprecated_fn_keyword" + dq)
-    fails = fails + _expect_contains("golden has duplicate modifier rule", report, dq + "remove_duplicate_trivial_modifiers" + dq)
-    fails = fails + _expect_contains("golden has expected diff hunk", report, "@@ -1,1 +1,1 @@")
-    fails = fails + _expect_contains("golden has expected header rewrite", report, "pub pub fn main()")
-    fails = fails + _expect_contains("golden has rewritten header", report, "pub func main():")
+    fails = fails + _expect_contains("golden has compiler span rule", report, dq + "rule" + dq + ":" + dq + "compiler_suggestion_span_edit" + dq)
+    fails = fails + _expect_contains("golden has parse missing colon code", report, "PARSE_MISSING_BLOCK_COLON")
+    fails = fails + _expect_contains("golden has parse deprecated fn code", report, "PARSE_DEPRECATED_FN_KEYWORD")
+    fails = fails + _expect_contains("golden has parse duplicate modifier code", report, "PARSE_DUPLICATE_MODIFIER")
+    fails = fails + _expect_contains("golden has byte diff hunk", report, "@@ byte ")
 
     if (fails == 0):
         print("PASS: autofix report golden")

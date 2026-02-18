@@ -9,6 +9,22 @@ Các command chính (runtime `__thg_cli_main_native`):
 
 ```text
 thagore build <file.tg> [-o output]
+             [--autofix off|safe|aggressive] [--autofix-lock <path>]
+             [--autofix-lock-strict] [--autofix-locked] [--autofix-workspace]
+             [--autofix-max-iterations N] [--autofix-max-files N] [--autofix-exclude a,b,c]
+thagore test [filter] [--workspace] [--package <name>|a,b] [--exclude <a,b,c>]
+             [--exclude-package <a,b,c>] [--no-run] [--fail-fast] [--json]
+             [--message-format json|human] [--list]
+thagore fix doctor <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
+                        [--message-format json|human]
+thagore fix dry-run <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
+                         [--message-format json|human]
+thagore fix apply <entry.tg> [--level safe|aggressive] [--workspace] [--exclude a,b,c]
+                 [--max-files N] [--max-iterations N] [--lock <path>] [--lock-strict] [--locked]
+                 [--message-format json|human]
+thagore fix explain <entry.tg> [--json] [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]
+                   [--message-format json|human]
+thagore fix rollback <session-id>
 thagore --emit-llvm <file.tg> [-o output.ll]
 thagore --emit-llvm-internal <file.tg> [-o output.ll]
 thagore --version
@@ -24,6 +40,29 @@ thagore build examples/hello.tg -o hello.exe
 ```bash title="emit-llvm.sh" mark={1}
 thagore --emit-llvm examples/fib.tg -o fib.ll
 ```
+
+```bash title="test-no-run.sh" mark={1}
+thagore test autofix --no-run --fail-fast
+```
+
+```bash title="test-workspace-packages.sh" mark={1}
+thagore test --workspace --package autofix --package std --exclude-package std --no-run
+```
+
+```bash title="test-json-stream.sh" mark={1}
+thagore test --workspace --message-format json --fail-fast
+```
+
+```bash title="fix-workspace-locked.sh" mark={1}
+thagore fix apply src/main.tg --workspace --lock thagore.fix.lock --locked
+```
+
+```bash title="fix-json-stream.sh" mark={1}
+thagore fix apply src/main.tg --workspace --message-format json
+```
+
+JSON mode emits one object per line (`suite started`, per-test `build/run`, final `suite` summary).
+When available, per-test events include `log_path` for build/run logs under `.thagore/test/log/`.
 
 ## Exit Codes
 

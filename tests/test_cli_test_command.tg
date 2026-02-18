@@ -1,0 +1,74 @@
+import "src/cli/thagore.tg" as cli
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func _expect_not_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 0):
+        return 0
+    print("FAIL: " + label)
+    print("unexpected: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let none = ";"
+
+    let listed = cli._discover_tests("", 0, none, none, none)
+    fails = fails + _expect_contains("discover baseline includes autofix cli", listed, "tests/test_autofix_cli.tg")
+
+    let excluded_one = cli._discover_tests("", 0, cli._csv_to_set("tests/test_std.tg"), none, none)
+    fails = fails + _expect_not_contains("exclude path removes std test", excluded_one, "tests/test_std.tg")
+
+    let pkg_autofix = cli._discover_tests("", 1, none, cli._csv_to_set("autofix"), none)
+    fails = fails + _expect_contains("package filter keeps autofix", pkg_autofix, "tests/test_autofix_cli.tg")
+    fails = fails + _expect_not_contains("package filter removes non-autofix", pkg_autofix, "tests/test_std.tg")
+
+    let pkg_multi = cli._discover_tests("", 1, none, cli._csv_to_set("autofix,std"), none)
+    fails = fails + _expect_contains("multi package keeps autofix", pkg_multi, "tests/test_autofix_cli.tg")
+    fails = fails + _expect_contains("multi package keeps std", pkg_multi, "tests/test_std.tg")
+    fails = fails + _expect_i32("package token exact name", cli._path_matches_package_token("tests/test_std.tg", "std"), 1)
+    fails = fails + _expect_i32("package token mismatch", cli._path_matches_package_token("tests/test_std.tg", "autofix"), 0)
+
+    let no_autofix = cli._discover_tests("", 1, none, none, cli._csv_to_set("autofix"))
+    fails = fails + _expect_not_contains("exclude-package removes autofix tests", no_autofix, "tests/test_autofix_cli.tg")
+
+    fails = fails + _expect_i32("message-format json", cli._test_message_format_mode("json"), 1)
+    fails = fails + _expect_i32("message-format human", cli._test_message_format_mode("human"), 0)
+    fails = fails + _expect_i32("message-format invalid", cli._test_message_format_mode("yaml"), -1)
+
+    fails = fails + _expect_i32("list mode returns success", cli._run_tests("test_autofix_cli", 0, 1, 0, 1, 1, none, none, none), 0)
+    fails = fails + _expect_i32("no-run mode builds selected test", cli._run_tests("test_autofix_report_golden", 0, 1, 1, 0, 0, none, none, none), 0)
+
+    if (fails == 0):
+        print("PASS: cli test command")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

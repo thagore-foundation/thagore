@@ -58,13 +58,13 @@ func main() -> i32:
     fails = fails + _expect_i32("normalize unknown -> off", _contains(autofix.normalize_mode("weird"), "off"), 1)
 
     let missing_path = "tests/__autofix_missing_case.tg"
-    fails = fails + _expect_i32("dry-run missing file", autofix.run_fix_dry_run(missing_path, "safe", "", 0), 1)
+    fails = fails + _expect_i32("dry-run missing file", autofix.run_fix_dry_run(missing_path, "safe", "", 0, 0), 1)
 
     let sample_path = "tests/__autofix_tmp_case.tg"
     let src0 = "func main()" + nl + "    return 1" + nl
     fails = fails + _expect_i32("write sample", fs.write_text(sample_path, src0), 1)
 
-    fails = fails + _expect_i32("apply safe", autofix.run_fix_apply(sample_path, "safe", "", 0), 0)
+    fails = fails + _expect_i32("apply safe", autofix.run_fix_apply(sample_path, "safe", "", 0, 0), 0)
     let after_safe = fs.read_text(sample_path)
     fails = fails + _expect_contains("safe adds colon", after_safe, "func main():")
     fails = fails + _expect_not_contains("safe no return infer", after_safe, "-> i32:")
@@ -73,6 +73,7 @@ func main() -> i32:
     let safe_session_path = ".thagore/fix/sessions/" + safe_session + ".json"
     fails = fails + _expect_i32("safe session file exists", fs.exists(safe_session_path), 1)
     let safe_session_text = fs.read_text(safe_session_path)
+    fails = fails + _expect_contains("safe session has tool version", safe_session_text, dq + "tool_version" + dq)
     fails = fails + _expect_contains("safe session has summary", safe_session_text, dq + "summary" + dq)
     fails = fails + _expect_contains("safe session has file_patches", safe_session_text, dq + "file_patches" + dq)
     fails = fails + _expect_contains("safe session has failure object", safe_session_text, dq + "failure" + dq)
@@ -85,7 +86,7 @@ func main() -> i32:
 
     let src1 = "func main():" + nl + "    return 1" + nl
     fails = fails + _expect_i32("rewrite sample for aggressive", fs.write_text(sample_path, src1), 1)
-    fails = fails + _expect_i32("apply aggressive", autofix.run_fix_apply(sample_path, "aggressive", "", 0), 0)
+    fails = fails + _expect_i32("apply aggressive", autofix.run_fix_apply(sample_path, "aggressive", "", 0, 0), 0)
     let after_aggressive = fs.read_text(sample_path)
     fails = fails + _expect_contains("aggressive infers return", after_aggressive, "func main() -> i32:")
     let last_applied_report = autofix.latest_applied_report_path()
@@ -96,7 +97,7 @@ func main() -> i32:
 
     let src_rules = "pub pub fn main()   " + nl + "    return 1    " + nl
     fails = fails + _expect_i32("rewrite sample for safe rule pack", fs.write_text(sample_path, src_rules), 1)
-    fails = fails + _expect_i32("apply safe with new rules", autofix.run_fix_apply(sample_path, "safe", "", 0), 0)
+    fails = fails + _expect_i32("apply safe with new rules", autofix.run_fix_apply(sample_path, "safe", "", 0, 0), 0)
     let after_rules = fs.read_text(sample_path)
     fails = fails + _expect_contains("safe normalizes fn keyword", after_rules, "func main():")
     fails = fails + _expect_not_contains("safe removes deprecated fn", after_rules, "fn main")
@@ -104,7 +105,7 @@ func main() -> i32:
     fails = fails + _expect_not_contains("safe trims trailing ws", after_rules, "return 1    ")
     fails = fails + _expect_contains("safe keeps single pub", after_rules, "pub func main():")
 
-    fails = fails + _expect_i32("idempotent apply safe", autofix.run_fix_apply(sample_path, "safe", "", 0), 0)
+    fails = fails + _expect_i32("idempotent apply safe", autofix.run_fix_apply(sample_path, "safe", "", 0, 0), 0)
     let after_rules_second = fs.read_text(sample_path)
     fails = fails + _expect_text_eq("idempotent source stable", after_rules_second, after_rules)
     let safe_rules_report = autofix.latest_applied_report_path()
@@ -114,7 +115,7 @@ func main() -> i32:
 
     let src_no_nl = "fn eof()"
     fails = fails + _expect_i32("rewrite sample no final newline", fs.write_text(sample_path, src_no_nl), 1)
-    fails = fails + _expect_i32("apply safe final newline", autofix.run_fix_apply(sample_path, "safe", "", 0), 0)
+    fails = fails + _expect_i32("apply safe final newline", autofix.run_fix_apply(sample_path, "safe", "", 0, 0), 0)
     let after_no_nl = fs.read_text(sample_path)
     fails = fails + _expect_contains("safe final newline case normalized func", after_no_nl, "func eof():")
     fails = fails + _expect_not_contains("safe final newline removes deprecated fn", after_no_nl, "fn eof()")
@@ -125,7 +126,7 @@ func main() -> i32:
     let bad_lock_path = sample_path + "/lock.json"
     let src_bad_lock = "func main()" + nl + "    return 1" + nl
     fails = fails + _expect_i32("rewrite sample for lock-write-fail", fs.write_text(sample_path, src_bad_lock), 1)
-    fails = fails + _expect_i32("apply fails when lock path invalid", autofix.run_fix_apply(sample_path, "safe", bad_lock_path, 0), 1)
+    fails = fails + _expect_i32("apply fails when lock path invalid", autofix.run_fix_apply(sample_path, "safe", bad_lock_path, 0, 0), 1)
     let after_bad_lock = fs.read_text(sample_path)
     fails = fails + _expect_contains("lock write fail restores source", after_bad_lock, "func main()")
     fails = fails + _expect_not_contains("lock write fail keeps no colon", after_bad_lock, "func main():")
@@ -140,13 +141,16 @@ func main() -> i32:
     fails = fails + _expect_i32("write lock", fs.write_text(lock_path, lock_json), 1)
     let src2 = "func main()" + nl + "    return 1" + nl
     fails = fails + _expect_i32("rewrite sample for lock test", fs.write_text(sample_path, src2), 1)
-    fails = fails + _expect_i32("apply lock strict blocked", autofix.run_fix_apply(sample_path, "safe", lock_path, 1), 1)
+    fails = fails + _expect_i32("apply lock strict blocked", autofix.run_fix_apply(sample_path, "safe", lock_path, 1, 0), 1)
     let after_lock = fs.read_text(sample_path)
     fails = fails + _expect_contains("lock strict keeps source", after_lock, "func main()")
     fails = fails + _expect_not_contains("lock strict blocks colon fix", after_lock, "func main():")
 
-    fails = fails + _expect_i32("lock strict requires lock path", autofix.run_fix_apply(sample_path, "safe", "", 1), 1)
-    fails = fails + _expect_i32("protected path denied", autofix.run_fix_dry_run(".github/workflows/ci.tg", "safe", "", 0), 1)
+    fails = fails + _expect_i32("lock strict requires lock path", autofix.run_fix_apply(sample_path, "safe", "", 1, 0), 1)
+    fails = fails + _expect_i32("locked requires lock path", autofix.run_fix_apply(sample_path, "safe", "", 0, 1), 1)
+    let missing_lock = "tests/__autofix_missing.lock"
+    fails = fails + _expect_i32("locked requires existing lock file", autofix.run_fix_apply(sample_path, "safe", missing_lock, 0, 1), 1)
+    fails = fails + _expect_i32("protected path denied", autofix.run_fix_dry_run(".github/workflows/ci.tg", "safe", "", 0, 0), 1)
 
     if (fails == 0):
         print("PASS: autofix cli")

@@ -1,6 +1,7 @@
 import "lib/env.tg" as env
 import "lib/fs.tg" as fs
 import "lib/process.tg" as process
+import "lib/time.tg" as time
 import "src/cli/autofix.tg" as autofix
 import "src/frontend/lowering/pipeline.tg" as lowering
 import "src/frontend/native/typechecker.tg" as typechecker
@@ -199,6 +200,312 @@ func _set_union(left: String, right: String) -> String:
         out = _set_add_unique(out, token)
     return out
 
+func _set_difference(left: String, right: String) -> String:
+    let out = ";"
+    let n = strlen(left)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(left, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(right, token) == 0):
+                    out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_set_contains(right, token) == 0):
+            out = _set_add_unique(out, token)
+    return out
+
+func _set_count(set_text: String) -> i32:
+    let n = strlen(set_text)
+    let i = 0
+    let token = ""
+    let count = 0
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                count = count + 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        count = count + 1
+    return count
+
+func _set_to_json_array(set_text: String) -> String:
+    let out = "["
+    let first = 1
+    let n = strlen(set_text)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + _json_quote(token)
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (first == 0):
+            out = out + ","
+        out = out + _json_quote(token)
+    out = out + "]"
+    return out
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _json_get_i32(text: String, key: String, fallback: i32) -> i32:
+    let needle = _json_quote(key) + ":"
+    let p = _find(text, needle)
+    if (p < 0):
+        return fallback
+    let j = p + strlen(needle)
+    while (j < strlen(text)):
+        let c = _char_at(text, j)
+        if ((c == " ") or (c == "\t") or (c == "\r") or (c == "\n")):
+            j = j + 1
+        else:
+            let sign = 1
+            if (c == "-"):
+                sign = -1
+                j = j + 1
+            let value = 0
+            let digits = 0
+            while (j < strlen(text)):
+                let d = _char_at(text, j)
+                let dv = _find_char("0123456789", d)
+                if (dv >= 0):
+                    value = (value * 10) + dv
+                    digits = digits + 1
+                    j = j + 1
+                else:
+                    j = strlen(text)
+            if (digits == 0):
+                return fallback
+            if (sign < 0):
+                return 0 - value
+            return value
+    return fallback
+
+func _json_get_string(text: String, key: String) -> String:
+    let dq = _dq()
+    let needle = dq + key + dq + ": " + dq
+    let p = _find(text, needle)
+    let used = needle
+    if (p < 0):
+        let compact = dq + key + dq + ":" + dq
+        p = _find(text, compact)
+        if (p >= 0):
+            used = compact
+    if (p < 0):
+        return ""
+    let i = p + strlen(used)
+    let out = ""
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == dq):
+            return out
+        if (ch == "\\"):
+            if ((i + 1) < strlen(text)):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                else:
+                    if (nx == "r"):
+                        out = out + "\r"
+                    else:
+                        out = out + nx
+                i = i + 2
+            else:
+                i = i + 1
+        else:
+            out = out + ch
+            i = i + 1
+    return out
+
+func _session_metric_i32(session_id: String, key: String) -> i32:
+    let sid = _trim(session_id)
+    if (strlen(sid) == 0):
+        return 0
+    let session_path = ".thagore/fix/sessions/" + sid + ".json"
+    if (fs.exists(session_path) == 0):
+        return 0
+    let session_text = fs.read_text(session_path)
+    return _json_get_i32(session_text, key, 0)
+
+func _session_files_changed(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "files_changed")
+
+func _session_fixes_applied(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "fixes_applied")
+
+func _session_fixes_skipped(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "fixes_skipped")
+
+func _session_files_scanned(session_id: String) -> i32:
+    return _session_metric_i32(session_id, "files_scanned")
+
+func _session_entry(session_id: String) -> String:
+    let sid = _trim(session_id)
+    if (strlen(sid) == 0):
+        return ""
+    let session_path = ".thagore/fix/sessions/" + sid + ".json"
+    if (fs.exists(session_path) == 0):
+        return ""
+    let session_text = fs.read_text(session_path)
+    return _normalize_path(_json_get_string(session_text, "entry"))
+
+func _validate_locked_workspace_targets(lock_path: String, targets: String) -> i32:
+    if (strlen(lock_path) == 0):
+        print("[autofix] error: --locked requires --lock <path>.")
+        return 0
+    if (fs.exists(lock_path) == 0):
+        print("[autofix] error: lock file not found under --locked: " + lock_path)
+        return 0
+    let lock_text = fs.read_text(lock_path)
+    let entries_set = _json_get_string(lock_text, "entries_set")
+    if (strlen(entries_set) == 0):
+        entries_set = ";"
+    let missing = _set_difference(targets, entries_set)
+    if (strlen(missing) > 1):
+        print("[autofix] locked violation: workspace targets missing from lock entries_set.")
+        print("[autofix] lock_missing_entries=" + _set_to_json_array(missing))
+        return 0
+    return 1
+
+func _write_bundle_session(entry_path: String, mode: String, lock_path: String, member_sessions_set: String, passes: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32) -> String:
+    if (_set_count(member_sessions_set) <= 1):
+        return ""
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/fix")
+    fs.mkdir(".thagore/fix/reports")
+    fs.mkdir(".thagore/fix/sessions")
+    let bundle_id = "BND-" + _to_string_i32(time.now_ms()) + "-" + _sanitize_test_id(entry_path)
+    let session_path = ".thagore/fix/sessions/" + bundle_id + ".json"
+    let report_path = ".thagore/fix/reports/" + bundle_id + ".json"
+    let summary = "{"
+    summary = summary + _json_quote("passes") + ":" + _to_string_i32(passes) + ","
+    summary = summary + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    summary = summary + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    summary = summary + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    summary = summary + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped)
+    summary = summary + "}"
+    let report = "{"
+    report = report + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
+    report = report + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
+    report = report + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    report = report + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    report = report + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    report = report + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
+    report = report + _json_quote("member_sessions") + ":" + _set_to_json_array(member_sessions_set) + ","
+    report = report + _json_quote("summary") + ":" + summary
+    report = report + "}" + _nl()
+    fs.write_text(report_path, report)
+    let session = "{"
+    session = session + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
+    session = session + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
+    session = session + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    session = session + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    session = session + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    session = session + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
+    session = session + _json_quote("summary") + ":" + summary + ","
+    session = session + _json_quote("report_file") + ":" + _json_quote(report_path)
+    session = session + "}" + _nl()
+    if (fs.write_text(session_path, session) == 0):
+        return ""
+    fs.write_text(".thagore/fix/last_session.id", bundle_id)
+    fs.write_text(".thagore/fix/last_report.path", report_path)
+    if (fixes_applied > 0):
+        fs.write_text(".thagore/fix/last_applied_report.path", report_path)
+    return bundle_id
+
+func _emit_fix_begin_json(sub: String, mode: String, workspace: i32, discovered_total: i32, lock_path: String, lock_locked: i32) -> void:
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("fix") + ","
+    json = json + _json_quote("event") + ":" + _json_quote("started") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("locked") + ":" + _json_bool(lock_locked) + ","
+    json = json + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(discovered_total)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_target_json(target: String, sub: String, rc: i32, session_id: String, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32) -> void:
+    let status = "ok"
+    if (rc != 0):
+        status = "failed"
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("fix_target") + ","
+    json = json + _json_quote("target") + ":" + _json_quote(target) + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("code") + ":" + _to_string_i32(rc) + ","
+    json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_iteration_json(iteration: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32) -> void:
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("fix_iteration") + ","
+    json = json + _json_quote("iteration") + ":" + _to_string_i32(iteration) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped)
+    json = json + "}"
+    print(json)
+
+func _emit_fix_summary_json(sub: String, discovered_total: i32, attempts: i32, passes: i32, files_scanned: i32, files_changed: i32, fixes_applied: i32, fixes_skipped: i32, exit_code: i32, bundle_session_id: String) -> void:
+    let status = "ok"
+    if (exit_code != 0):
+        status = "failed"
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("fix_summary") + ","
+    json = json + _json_quote("subcommand") + ":" + _json_quote(sub) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("exit_code") + ":" + _to_string_i32(exit_code) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(discovered_total) + ","
+    json = json + _json_quote("attempts") + ":" + _to_string_i32(attempts) + ","
+    json = json + _json_quote("passes") + ":" + _to_string_i32(passes) + ","
+    json = json + _json_quote("files_scanned") + ":" + _to_string_i32(files_scanned) + ","
+    json = json + _json_quote("files_changed") + ":" + _to_string_i32(files_changed) + ","
+    json = json + _json_quote("fixes_applied") + ":" + _to_string_i32(fixes_applied) + ","
+    json = json + _json_quote("fixes_skipped") + ":" + _to_string_i32(fixes_skipped) + ","
+    json = json + _json_quote("bundle_session_id") + ":" + _json_quote(bundle_session_id)
+    json = json + "}"
+    print(json)
+
 func _is_protected_autofix_path(path: String) -> i32:
     let p = _normalize_path(path)
     if (_starts_with(p, ".github/") == 1):
@@ -237,7 +544,49 @@ func _resolve_import_path(entry_path: String, import_path: String) -> String:
         return imp
     return _normalize_path(base + "/" + imp)
 
-func _collect_autofix_targets(entry_path: String) -> String:
+func _path_excluded(path: String, exclude_set: String) -> i32:
+    let p = _normalize_path(path)
+    let n = strlen(exclude_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(exclude_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let t = _normalize_path(token)
+                if ((p == t) or (_starts_with(p, t + "/") == 1)):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        let t2 = _normalize_path(token)
+        if ((p == t2) or (_starts_with(p, t2 + "/") == 1)):
+            return 1
+    return 0
+
+func _csv_to_set(csv: String) -> String:
+    let out = ";"
+    let i = 0
+    let n = strlen(csv)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(csv, i)
+        if (ch == ","):
+            let t = _trim(token)
+            if (strlen(t) > 0):
+                out = _set_add_unique(out, _normalize_path(t))
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let t2 = _trim(token)
+    if (strlen(t2) > 0):
+        out = _set_add_unique(out, _normalize_path(t2))
+    return out
+
+func _collect_direct_autofix_targets(entry_path: String, exclude_set: String) -> String:
     let entry = _normalize_path(entry_path)
     let targets = ";" + entry + ";"
     if (fs.exists(entry_path) == 0):
@@ -250,10 +599,39 @@ func _collect_autofix_targets(entry_path: String) -> String:
         let imp = _extract_import_path(line)
         if ((strlen(imp) > 0) and (_ends_with(imp, ".tg") == 1) and (_starts_with(imp, "lib/") == 0)):
             let resolved = _resolve_import_path(entry_path, imp)
-            if ((resolved != entry) and (fs.exists(resolved) == 1) and (_is_protected_autofix_path(resolved) == 0)):
+            if ((resolved != entry) and (fs.exists(resolved) == 1) and (_is_protected_autofix_path(resolved) == 0) and (_path_excluded(resolved, exclude_set) == 0)):
                 targets = _set_add_unique(targets, resolved)
         i = i + 1
     return targets
+
+func _collect_autofix_targets(entry_path: String, recursive_workspace: i32, exclude_set: String) -> String:
+    let seen = ";"
+    let queue = ";" + _normalize_path(entry_path) + ";"
+    let progress = 1
+    while (progress == 1):
+        progress = 0
+        let i = 0
+        let n = strlen(queue)
+        let token = ""
+        while (i < n):
+            let ch = _char_at(queue, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (_set_contains(seen, token) == 0):
+                        seen = _set_add_unique(seen, token)
+                        progress = 1
+                        if (recursive_workspace == 1):
+                            queue = _set_union(queue, _collect_direct_autofix_targets(token, exclude_set))
+                        else:
+                            if (token == _normalize_path(entry_path)):
+                                queue = _set_union(queue, _collect_direct_autofix_targets(token, exclude_set))
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+    if (_path_excluded(entry_path, exclude_set) == 1):
+        return ";"
+    return seen
 
 func _error_severity_rank(code: i32) -> i32:
     if (code == 0):
@@ -288,8 +666,8 @@ func _rollback_sessions(session_set: String) -> void:
         if (rc2 != 0):
             print("[autofix] rollback warning: failed session=" + token)
 
-func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, lock_strict: i32, max_files_touched: i32) -> AutofixApplyBatchResult:
-    let targets = _collect_autofix_targets(entry_path)
+func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, lock_strict: i32, lock_locked: i32, max_files_touched: i32, recursive_workspace: i32, exclude_set: String) -> AutofixApplyBatchResult:
+    let targets = _collect_autofix_targets(entry_path, recursive_workspace, exclude_set)
     let changed_total = 0
     let files_touched = 0
     let sessions = ";"
@@ -303,7 +681,7 @@ func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, l
                 if (files_touched >= max_files_touched):
                     print("[autofix] conflict: max files touched exceeded.")
                     return _batch_result(changed_total, files_touched, sessions, 1)
-                let changed = autofix.apply_for_build(token, mode, lock_path, lock_strict)
+                let changed = autofix.apply_for_build(token, mode, lock_path, lock_strict, lock_locked)
                 if (changed < 0):
                     return _batch_result(changed_total, files_touched, sessions, 1)
                 if (changed > 0):
@@ -320,7 +698,7 @@ func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, l
         if (files_touched >= max_files_touched):
             print("[autofix] conflict: max files touched exceeded.")
             return _batch_result(changed_total, files_touched, sessions, 1)
-        let changed_last = autofix.apply_for_build(token, mode, lock_path, lock_strict)
+        let changed_last = autofix.apply_for_build(token, mode, lock_path, lock_strict, lock_locked)
         if (changed_last < 0):
             return _batch_result(changed_total, files_touched, sessions, 1)
         if (changed_last > 0):
@@ -331,8 +709,180 @@ func _apply_autofix_batch(entry_path: String, mode: String, lock_path: String, l
                 sessions = _set_add_unique(sessions, sid_last)
     return _batch_result(changed_total, files_touched, sessions, 0)
 
+func _run_fix_multi(sub: String, entry_path: String, mode: String, as_json: i32, lock_path: String, lock_strict: i32, lock_locked: i32, workspace: i32, exclude_set: String, max_files: i32, max_iterations: i32, message_json: i32) -> i32:
+    let targets = _collect_autofix_targets(entry_path, workspace, exclude_set)
+    let discovered_total = _set_count(targets)
+    if (discovered_total <= 0):
+        print("ERROR: no eligible .tg files found for fix.")
+        return 1
+    if (message_json == 1):
+        _emit_fix_begin_json(sub, mode, workspace, discovered_total, lock_path, lock_locked)
+    if (lock_locked == 1):
+        if (_validate_locked_workspace_targets(lock_path, targets) == 0):
+            if (message_json == 1):
+                _emit_fix_summary_json(sub, discovered_total, 0, 0, 0, 0, 0, 0, 1, "")
+            return 1
+    if (max_files < 1):
+        max_files = 1
+    if (max_iterations < 1):
+        max_iterations = 1
+    if (max_iterations > 12):
+        max_iterations = 12
+    if (sub == "apply"):
+        let failed = 0
+        let sessions_changed = ";"
+        let files_touched_set = ";"
+        let files_touched = 0
+        let total_fixes_applied = 0
+        let total_fixes_skipped = 0
+        let total_files_scanned = 0
+        let pass_idx = 0
+        let passes_executed = 0
+        let attempts_total = 0
+        let bundle_id = ""
+        while (pass_idx < max_iterations):
+            let pass_fixes_applied = 0
+            let pass_fixes_skipped = 0
+            let pass_files_changed = 0
+            let pass_files_scanned = 0
+            let n_apply = strlen(targets)
+            let i_apply = 0
+            let token_apply = ""
+            while (i_apply < n_apply):
+                let ch_apply = _char_at(targets, i_apply)
+                if (ch_apply == ";"):
+                    if (strlen(token_apply) > 0):
+                        attempts_total = attempts_total + 1
+                        let token_norm = _normalize_path(token_apply)
+                        if ((files_touched >= max_files) and (_set_contains(files_touched_set, token_norm) == 0)):
+                            print("[autofix] conflict: max files touched exceeded.")
+                            failed = 1
+                            if (message_json == 1):
+                                _emit_fix_target_json(token_norm, sub, 1, "", 0, 0, 0, 0)
+                            i_apply = n_apply
+                        else:
+                            let rc_apply = autofix.run_fix_apply(token_norm, mode, lock_path, lock_strict, lock_locked)
+                            let sid = ""
+                            let scanned = 0
+                            let changed = 0
+                            let applied = 0
+                            let skipped = 0
+                            if (rc_apply != 0):
+                                failed = 1
+                                if (message_json == 1):
+                                    _emit_fix_target_json(token_norm, sub, rc_apply, "", 0, 0, 0, 0)
+                                i_apply = n_apply
+                            else:
+                                sid = autofix.latest_session_id()
+                                scanned = _session_files_scanned(sid)
+                                changed = _session_files_changed(sid)
+                                applied = _session_fixes_applied(sid)
+                                skipped = _session_fixes_skipped(sid)
+                                pass_files_scanned = pass_files_scanned + scanned
+                                pass_files_changed = pass_files_changed + changed
+                                pass_fixes_applied = pass_fixes_applied + applied
+                                pass_fixes_skipped = pass_fixes_skipped + skipped
+                                total_files_scanned = total_files_scanned + scanned
+                                total_fixes_applied = total_fixes_applied + applied
+                                total_fixes_skipped = total_fixes_skipped + skipped
+                                if (changed > 0):
+                                    let changed_entry = _session_entry(sid)
+                                    if (strlen(changed_entry) == 0):
+                                        changed_entry = token_norm
+                                    if (_set_contains(files_touched_set, changed_entry) == 0):
+                                        files_touched_set = _set_add_unique(files_touched_set, changed_entry)
+                                        files_touched = files_touched + 1
+                                    sessions_changed = _set_add_unique(sessions_changed, sid)
+                                if (message_json == 1):
+                                    _emit_fix_target_json(token_norm, sub, 0, sid, scanned, changed, applied, skipped)
+                        token_apply = ""
+                else:
+                    token_apply = token_apply + ch_apply
+                i_apply = i_apply + 1
+            passes_executed = passes_executed + 1
+            if (message_json == 1):
+                _emit_fix_iteration_json(pass_idx + 1, pass_files_scanned, pass_files_changed, pass_fixes_applied, pass_fixes_skipped)
+            else:
+                print("[autofix] workspace iteration=" + _to_string_i32(pass_idx + 1) + " files_scanned=" + _to_string_i32(pass_files_scanned) + " files_changed=" + _to_string_i32(pass_files_changed) + " fixes_applied=" + _to_string_i32(pass_fixes_applied) + " fixes_skipped=" + _to_string_i32(pass_fixes_skipped))
+            if (failed == 1):
+                pass_idx = max_iterations
+            else:
+                if (pass_fixes_applied <= 0):
+                    pass_idx = max_iterations
+                else:
+                    pass_idx = pass_idx + 1
+        if (message_json == 0):
+            print("[autofix] workspace summary passes=" + _to_string_i32(passes_executed) + " files_scanned=" + _to_string_i32(total_files_scanned) + " files_changed=" + _to_string_i32(files_touched) + " fixes_applied=" + _to_string_i32(total_fixes_applied) + " fixes_skipped=" + _to_string_i32(total_fixes_skipped))
+        if (failed == 0):
+            bundle_id = _write_bundle_session(entry_path, mode, lock_path, sessions_changed, passes_executed, total_files_scanned, files_touched, total_fixes_applied, total_fixes_skipped)
+            if (strlen(bundle_id) > 0):
+                print("rollback: thagore fix rollback " + bundle_id)
+        if (message_json == 1):
+            let exit_code = 0
+            if (failed != 0):
+                exit_code = 1
+            _emit_fix_summary_json(sub, discovered_total, attempts_total, passes_executed, total_files_scanned, files_touched, total_fixes_applied, total_fixes_skipped, exit_code, bundle_id)
+        if (failed != 0):
+            return 1
+        return 0
+    let failed = 0
+    let attempts = 0
+    let total_files_scanned = 0
+    let total_files_changed = 0
+    let total_fixes_applied = 0
+    let total_fixes_skipped = 0
+    let n = strlen(targets)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(targets, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                attempts = attempts + 1
+                let target = token
+                let rc = 1
+                if (sub == "doctor"):
+                    rc = autofix.run_fix_doctor(target, mode, lock_path, lock_strict, lock_locked)
+                else:
+                    if (sub == "dry-run"):
+                        rc = autofix.run_fix_dry_run(target, mode, lock_path, lock_strict, lock_locked)
+                    else:
+                        if (sub == "explain"):
+                            rc = autofix.run_fix_explain(target, mode, as_json, lock_path, lock_strict, lock_locked)
+                let sid = ""
+                let scanned = 0
+                let changed = 0
+                let applied = 0
+                let skipped = 0
+                if (rc == 0):
+                    sid = autofix.latest_session_id()
+                    scanned = _session_files_scanned(sid)
+                    changed = _session_files_changed(sid)
+                    applied = _session_fixes_applied(sid)
+                    skipped = _session_fixes_skipped(sid)
+                    total_files_scanned = total_files_scanned + scanned
+                    total_files_changed = total_files_changed + changed
+                    total_fixes_applied = total_fixes_applied + applied
+                    total_fixes_skipped = total_fixes_skipped + skipped
+                if (message_json == 1):
+                    _emit_fix_target_json(target, sub, rc, sid, scanned, changed, applied, skipped)
+                if (rc != 0):
+                    failed = 1
+                    if ((sub == "dry-run") or (sub == "doctor")):
+                        i = n
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (message_json == 1):
+        let exit_code = 0
+        if (failed != 0):
+            exit_code = 1
+        _emit_fix_summary_json(sub, discovered_total, attempts, 1, total_files_scanned, total_files_changed, total_fixes_applied, total_fixes_skipped, exit_code, "")
+    return failed
+
 func _quote(s: String) -> String:
-    return s
+    return _dq() + s + _dq()
 
 func _value_after_prefix(text: String, prefix: String) -> String:
     if (_starts_with(text, prefix) == 0):
@@ -422,6 +972,462 @@ func _to_string_i32(value: i32) -> String:
         i2 = i2 - 1
     return sign + out
 
+func _is_digit(ch: String) -> i32:
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _parse_i32_default(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let i = 0
+    let sign = 1
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        i = 1
+    let value = 0
+    let digits = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (_is_digit(ch) == 1):
+            value = (value * 10) + _find_char("0123456789", ch)
+            digits = digits + 1
+            i = i + 1
+        else:
+            i = strlen(s)
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
+func _append_line(listing: String, line: String) -> String:
+    if (strlen(line) == 0):
+        return listing
+    if (strlen(listing) == 0):
+        return line
+    return listing + _nl() + line
+
+func _json_escape(text: String) -> String:
+    let out = _replace_all(text, "\\", "\\\\")
+    out = _replace_all(out, _dq(), "\\" + _dq())
+    out = _replace_all(out, _nl(), "\\n")
+    return out
+
+func _json_quote(text: String) -> String:
+    return _dq() + _json_escape(text) + _dq()
+
+func _json_bool(v: i32) -> String:
+    if (v == 0):
+        return "false"
+    return "true"
+
+func _sanitize_test_id(text: String) -> String:
+    let out = _replace_all(text, "\\", "_")
+    out = _replace_all(out, "/", "_")
+    out = _replace_all(out, ":", "_")
+    out = _replace_all(out, " ", "_")
+    out = _replace_all(out, ".", "_")
+    return out
+
+func _is_test_file_name(name: String) -> i32:
+    if ((_starts_with(name, "test_") == 1) and (_ends_with(name, ".tg") == 1)):
+        return 1
+    if (_ends_with(name, "_test.tg") == 1):
+        return 1
+    return 0
+
+func _test_name_matches(path: String, filter: String) -> i32:
+    let f = _trim(filter)
+    if (strlen(f) == 0):
+        return 1
+    let b = _base_name(path)
+    if (_contains(path, f) == 1):
+        return 1
+    if (_contains(b, f) == 1):
+        return 1
+    return 0
+
+func _path_matches_package_token(path: String, package_name: String) -> i32:
+    let pkg = _trim(package_name)
+    if (strlen(pkg) == 0):
+        return 0
+    let p = _normalize_path(path)
+    let b = _base_name(p)
+    if (_contains(p, "/" + pkg + "/") == 1):
+        return 1
+    if (b == ("test_" + pkg + ".tg")):
+        return 1
+    if (_starts_with(b, "test_" + pkg + "_") == 1):
+        return 1
+    if (_starts_with(b, pkg + "_test") == 1):
+        return 1
+    return 0
+
+func _path_matches_package(path: String, package_set: String) -> i32:
+    let n = strlen(package_set)
+    let i = 0
+    let token = ""
+    let has_any = 0
+    while (i < n):
+        let ch = _char_at(package_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                has_any = 1
+                if (_path_matches_package_token(path, token) == 1):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        has_any = 1
+        if (_path_matches_package_token(path, token) == 1):
+            return 1
+    if (has_any == 0):
+        return 1
+    return 0
+
+func _path_matches_excluded_package(path: String, exclude_package_set: String) -> i32:
+    let n = strlen(exclude_package_set)
+    let i = 0
+    let token = ""
+    while (i < n):
+        let ch = _char_at(exclude_package_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_path_matches_package_token(path, token) == 1):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if (_path_matches_package_token(path, token) == 1):
+            return 1
+    return 0
+
+func _dir_children(dir: String) -> String:
+    let listing = fs.list_dir(dir)
+    let out = ""
+    let total = _line_count(listing)
+    let i = 0
+    while (i < total):
+        let name = _trim(_line_at(listing, i))
+        if (strlen(name) > 0):
+            let child = _normalize_path(dir + "/" + name)
+            out = _append_line(out, child)
+        i = i + 1
+    return out
+
+func _looks_like_directory(path: String) -> i32:
+    if (fs.exists(path) == 0):
+        return 0
+    if (_ends_with(path, ".tg") == 1):
+        return 0
+    let listing = fs.list_dir(path)
+    if (strlen(listing) > 0):
+        return 1
+    let b = _base_name(path)
+    if (_contains(b, ".") == 1):
+        return 0
+    return 1
+
+func _test_file_selected(path: String, filter: String, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
+    if (_path_excluded(path, exclude_set) == 1):
+        return 0
+    if (_test_name_matches(path, filter) == 0):
+        return 0
+    if (_path_matches_package(path, package_set) == 0):
+        return 0
+    if (_path_matches_excluded_package(path, exclude_package_set) == 1):
+        return 0
+    return 1
+
+func _discover_tests(filter: String, workspace: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> String:
+    let out = ""
+    if (fs.exists("tests") == 0):
+        return out
+    if (workspace == 0):
+        let top = _dir_children("tests")
+        let total_top = _line_count(top)
+        let i_top = 0
+        while (i_top < total_top):
+            let path = _trim(_line_at(top, i_top))
+            if (strlen(path) > 0):
+                if (_is_test_file_name(_base_name(path)) == 1):
+                    if (_test_file_selected(path, filter, exclude_set, package_set, exclude_package_set) == 1):
+                        out = _append_line(out, path)
+            i_top = i_top + 1
+        return out
+
+    let queue = ";tests;"
+    let seen = ";"
+    let progress = 1
+    while (progress == 1):
+        progress = 0
+        let next_queue = ";"
+        let i = 0
+        let n = strlen(queue)
+        let token = ""
+        while (i < n):
+            let ch = _char_at(queue, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (_set_contains(seen, token) == 0):
+                        seen = _set_add_unique(seen, token)
+                        progress = 1
+                        let children = _dir_children(token)
+                        let total_children = _line_count(children)
+                        let j = 0
+                        while (j < total_children):
+                            let child = _trim(_line_at(children, j))
+                            if (strlen(child) > 0):
+                                let child_name = _base_name(child)
+                                if (_is_test_file_name(child_name) == 1):
+                                    if (_test_file_selected(child, filter, exclude_set, package_set, exclude_package_set) == 1):
+                                        out = _append_line(out, child)
+                                else:
+                                    if (_path_excluded(child, exclude_set) == 0):
+                                        if (_looks_like_directory(child) == 1):
+                                            next_queue = _set_add_unique(next_queue, child)
+                            j = j + 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        queue = next_queue
+    return out
+
+func _count_lines_nonempty(text: String) -> i32:
+    let total = _line_count(text)
+    let count = 0
+    let i = 0
+    while (i < total):
+        if (strlen(_trim(_line_at(text, i))) > 0):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _emit_test_begin_json(total: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String) -> void:
+    let mode = "run"
+    if (no_run == 1):
+        mode = "no-run"
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("suite") + ","
+    json = json + _json_quote("event") + ":" + _json_quote("started") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("list_only") + ":" + _json_bool(list_only) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("fail_fast") + ":" + _json_bool(fail_fast) + ","
+    json = json + _json_quote("filter") + ":" + _json_quote(filter) + ","
+    json = json + _json_quote("discovered_total") + ":" + _to_string_i32(total)
+    json = json + "}"
+    print(json)
+
+func _emit_test_case_json(name: String, stage: String, status: String, code: i32, has_code: i32, log_path: String, has_log: i32) -> void:
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("test") + ","
+    json = json + _json_quote("name") + ":" + _json_quote(name) + ","
+    json = json + _json_quote("stage") + ":" + _json_quote(stage) + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status)
+    if (has_code == 1):
+        json = json + "," + _json_quote("code") + ":" + _to_string_i32(code)
+    if ((has_log == 1) and (strlen(log_path) > 0)):
+        json = json + "," + _json_quote("log_path") + ":" + _json_quote(log_path)
+    json = json + "}"
+    print(json)
+
+func _emit_test_summary_json(total: i32, built: i32, build_failed: i32, run_passed: i32, run_failed: i32, no_run: i32, list_only: i32, workspace: i32, fail_fast: i32, filter: String) -> void:
+    let failed_total = build_failed + run_failed
+    let mode = "run"
+    let status = "ok"
+    if (no_run == 1):
+        mode = "no-run"
+    if (failed_total > 0):
+        status = "failed"
+    let exit_code = 0
+    if (failed_total > 0):
+        exit_code = 1
+    let json = "{"
+    json = json + _json_quote("type") + ":" + _json_quote("suite") + ","
+    json = json + _json_quote("tool") + ":" + _json_quote("thagore test") + ","
+    json = json + _json_quote("tool_version") + ":" + _json_quote("0.4.0-native-cli") + ","
+    json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("list_only") + ":" + _json_bool(list_only) + ","
+    json = json + _json_quote("workspace") + ":" + _json_bool(workspace) + ","
+    json = json + _json_quote("fail_fast") + ":" + _json_bool(fail_fast) + ","
+    json = json + _json_quote("filter") + ":" + _json_quote(filter) + ","
+    json = json + _json_quote("total") + ":" + _to_string_i32(total) + ","
+    json = json + _json_quote("built") + ":" + _to_string_i32(built) + ","
+    json = json + _json_quote("build_failed") + ":" + _to_string_i32(build_failed) + ","
+    json = json + _json_quote("run_passed") + ":" + _to_string_i32(run_passed) + ","
+    json = json + _json_quote("run_failed") + ":" + _to_string_i32(run_failed) + ","
+    json = json + _json_quote("exit_code") + ":" + _to_string_i32(exit_code)
+    json = json + "}"
+    print(json)
+
+func _resolve_test_compiler() -> String:
+    if (fs.exists("stage1.exe") == 1):
+        return ".\\stage1.exe"
+    if (fs.exists("stage1") == 1):
+        return "./stage1"
+    if (fs.exists("stage2.exe") == 1):
+        return ".\\stage2.exe"
+    if (fs.exists("stage2") == 1):
+        return "./stage2"
+    return ""
+
+func _build_test_target(input_path: String, out_path: String, quiet: i32, build_log_path: String) -> i32:
+    let compiler = _resolve_test_compiler()
+    if (strlen(compiler) > 0):
+        let cmd = compiler + " build " + _quote(input_path) + " -o " + _quote(out_path)
+        if ((quiet == 1) and (strlen(build_log_path) > 0)):
+            cmd = cmd + " > " + _quote(build_log_path) + " 2>&1"
+        return process.run(cmd)
+    return _build_once(input_path, out_path, 0)
+
+func _test_exec_path(path: String) -> String:
+    if ((_starts_with(path, ".\\") == 1) or (_starts_with(path, "./") == 1)):
+        return path
+    if (_starts_with(path, ".") == 1):
+        let tail = __thg_str_substr(path, 1, strlen(path) - 1)
+        if (_ends_with(path, ".exe") == 1):
+            return ".\\." + _replace_all(tail, "/", "\\")
+        return "./." + tail
+    return path
+
+func _run_test_binary(path: String, quiet: i32, run_log_path: String) -> i32:
+    let exec_cmd = _quote(_test_exec_path(path))
+    if (quiet == 0):
+        return process.run(exec_cmd)
+    if (strlen(run_log_path) == 0):
+        return process.run(exec_cmd)
+    let cmd = exec_cmd + " > " + _quote(run_log_path) + " 2>&1"
+    if (_ends_with(_normalize_path(path), ".exe") == 1):
+        return process.run("cmd /c " + _quote(cmd))
+    return process.run(cmd)
+
+func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_json: i32, list_only: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
+    let tests = _discover_tests(filter, workspace, exclude_set, package_set, exclude_package_set)
+    let total = _count_lines_nonempty(tests)
+
+    if (as_json == 1):
+        _emit_test_begin_json(total, no_run, list_only, workspace, fail_fast, filter)
+
+    if (list_only == 1):
+        let total_lines = _line_count(tests)
+        let i = 0
+        while (i < total_lines):
+            let path = _trim(_line_at(tests, i))
+            if (strlen(path) > 0):
+                if (as_json == 1):
+                    _emit_test_case_json(path, "discover", "found", 0, 0, "", 0)
+                else:
+                    print(path)
+            i = i + 1
+        if (as_json == 1):
+            _emit_test_summary_json(total, 0, 0, 0, 0, no_run, list_only, workspace, fail_fast, filter)
+        else:
+            print("[test] discovered=" + _to_string_i32(total))
+        return 0
+
+    if (total == 0):
+        if (as_json == 1):
+            _emit_test_summary_json(0, 0, 0, 0, 0, no_run, list_only, workspace, fail_fast, filter)
+        else:
+            print("[test] no tests discovered")
+        return 0
+
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/test")
+    fs.mkdir(".thagore/test/bin")
+    fs.mkdir(".thagore/test/log")
+
+    if (as_json == 0):
+        if (no_run == 1):
+            print("[test] building " + _to_string_i32(total) + " test targets")
+        else:
+            print("[test] running " + _to_string_i32(total) + " tests")
+
+    let built = 0
+    let build_failed = 0
+    let run_passed = 0
+    let run_failed = 0
+    let total_lines = _line_count(tests)
+    let i = 0
+    while (i < total_lines):
+        let path = _trim(_line_at(tests, i))
+        if (strlen(path) > 0):
+            let test_id = _sanitize_test_id(path)
+            let out_bin = ".thagore/test/bin/" + test_id + ".exe"
+            let build_log = ".thagore/test/log/" + test_id + ".build.log"
+            let run_log = ".thagore/test/log/" + test_id + ".run.log"
+            if (as_json == 0):
+                print("test " + path + " ... build")
+            else:
+                _emit_test_case_json(path, "build", "started", 0, 0, build_log, 1)
+            let build_rc = _build_test_target(path, out_bin, as_json, build_log)
+            if (build_rc != 0):
+                build_failed = build_failed + 1
+                if (as_json == 1):
+                    _emit_test_case_json(path, "build", "failed", build_rc, 1, build_log, 1)
+                else:
+                    print("test " + path + " ... FAILED (build)")
+                if (fail_fast == 1):
+                    i = total_lines
+            else:
+                built = built + 1
+                if (no_run == 1):
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "build", "ok", 0, 0, build_log, 1)
+                    else:
+                        print("test " + path + " ... ok (built)")
+                else:
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "build", "ok", 0, 0, build_log, 1)
+                    if (as_json == 1):
+                        _emit_test_case_json(path, "run", "started", 0, 0, run_log, 1)
+                    let run_rc = _run_test_binary(out_bin, as_json, run_log)
+                    if (run_rc == 0):
+                        run_passed = run_passed + 1
+                        if (as_json == 1):
+                            _emit_test_case_json(path, "run", "ok", 0, 0, run_log, 1)
+                        else:
+                            print("test " + path + " ... ok")
+                    else:
+                        run_failed = run_failed + 1
+                        if (as_json == 1):
+                            _emit_test_case_json(path, "run", "failed", run_rc, 1, run_log, 1)
+                        else:
+                            print("test " + path + " ... FAILED")
+                        if (fail_fast == 1):
+                            i = total_lines
+        i = i + 1
+
+    let failed_total = build_failed + run_failed
+    if (as_json == 1):
+        _emit_test_summary_json(total, built, build_failed, run_passed, run_failed, no_run, list_only, workspace, fail_fast, filter)
+    else:
+        if (no_run == 1):
+            if (failed_total == 0):
+                print("test result: ok. " + _to_string_i32(built) + " built; 0 failed; " + _to_string_i32(total) + " total")
+            else:
+                print("test result: FAILED. " + _to_string_i32(built) + " built; " + _to_string_i32(failed_total) + " failed; " + _to_string_i32(total) + " total")
+        else:
+            if (failed_total == 0):
+                print("test result: ok. " + _to_string_i32(run_passed) + " passed; 0 failed; " + _to_string_i32(total) + " total")
+            else:
+                print("test result: FAILED. " + _to_string_i32(run_passed) + " passed; " + _to_string_i32(failed_total) + " failed; " + _to_string_i32(total) + " total")
+
+    if (failed_total == 0):
+        return 0
+    return 1
+
 func _detect_clang() -> String:
     if (process.run("clang --version > thagore_clang_probe.log 2>&1") == 0):
         return "clang"
@@ -510,15 +1516,23 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
     print("Build success.")
     return 0
 
-func _build(input_path: String, out_path: String, emit_only: i32, autofix_mode_raw: String, autofix_lock: String, autofix_lock_strict: i32) -> i32:
+func _build(input_path: String, out_path: String, emit_only: i32, autofix_mode_raw: String, autofix_lock: String, autofix_lock_strict: i32, autofix_lock_locked: i32, autofix_max_iterations: i32, autofix_max_files_touched: i32, autofix_workspace: i32, autofix_exclude_set: String) -> i32:
     let mode = autofix.normalize_mode(autofix_mode_raw)
     if (mode == "off"):
         return _build_once(input_path, out_path, emit_only)
+    let max_iters = autofix_max_iterations
+    if (max_iters < 1):
+        max_iters = 1
+    if (max_iters > 12):
+        max_iters = 12
+    let max_files = autofix_max_files_touched
+    if (max_files < 1):
+        max_files = 1
     let pass_idx = 0
     let total_fixed = 0
     let applied_sessions = ";"
     let baseline_rank = _error_severity_rank(21)
-    while (pass_idx < 3):
+    while (pass_idx < max_iters):
         let code = _build_once(input_path, out_path, emit_only)
         if (code == 0):
             if (pass_idx > 0):
@@ -534,15 +1548,16 @@ func _build(input_path: String, out_path: String, emit_only: i32, autofix_mode_r
         if (code != 21):
             _print_autofix_build_failure(total_fixed, code)
             return code
-        if (pass_idx >= 2):
-            print("[autofix] max_passes_reached=3")
+        if (pass_idx >= (max_iters - 1)):
+            print("[autofix] max_passes_reached=" + _to_string_i32(max_iters))
             _print_autofix_build_failure(total_fixed, code)
             return code
-        let batch = _apply_autofix_batch(input_path, mode, autofix_lock, autofix_lock_strict, 10)
+        let batch = _apply_autofix_batch(input_path, mode, autofix_lock, autofix_lock_strict, autofix_lock_locked, max_files, autofix_workspace, autofix_exclude_set)
         if ((batch.error == 1) or (batch.changed <= 0)):
             print("[autofix] rebuild=failed")
             _print_autofix_build_failure(total_fixed, code)
             return code
+        print("[autofix] iteration=" + _to_string_i32(pass_idx + 1) + " errors_before=1 warnings_before=0 fixes_applied=" + _to_string_i32(batch.changed))
         total_fixed = total_fixed + batch.changed
         applied_sessions = _set_union(applied_sessions, batch.sessions_set)
         pass_idx = pass_idx + 1
@@ -553,13 +1568,21 @@ func _print_help() -> void:
     print("Thagore Compiler CLI")
     print("Usage:")
     print("  thagore build <input.tg> -o <output> [--autofix=<off|safe|aggressive>]")
-    print("       [--autofix-lock <path>] [--autofix-lock-strict]")
+    print("       [--autofix-lock <path>] [--autofix-lock-strict] [--autofix-locked] [--autofix-workspace]")
+    print("       [--autofix-max-iterations N] [--autofix-max-files N] [--autofix-exclude a,b,c]")
     print("  thagore build <input.tg> --emit-llvm")
     print("  thagore <input.tg> --emit-llvm")
-    print("  thagore fix doctor <entry.tg> [--lock <path>] [--lock-strict]")
-    print("  thagore fix dry-run <entry.tg> [--lock <path>] [--lock-strict]")
-    print("  thagore fix apply <entry.tg> [--level safe|aggressive] [--lock <path>] [--lock-strict]")
-    print("  thagore fix explain <entry.tg> [--json] [--lock <path>] [--lock-strict]")
+    print("  thagore test [filter] [--workspace] [--package <name>|a,b] [--exclude <a,b,c>]")
+    print("       [--exclude-package <a,b,c>] [--no-run] [--fail-fast] [--json]")
+    print("       [--message-format json|human] [--list]")
+    print("  thagore fix doctor <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
+    print("  thagore fix dry-run <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
+    print("  thagore fix apply <entry.tg> [--level safe|aggressive] [--workspace] [--exclude a,b,c] [--max-files N] [--max-iterations N]")
+    print("       [--lock <path>] [--lock-strict] [--locked] [--message-format json|human]")
+    print("  thagore fix explain <entry.tg> [--json] [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
     print("  thagore fix rollback <session-id>")
     print("  thagore install toolchain")
     print("  thagore --version")
@@ -584,6 +1607,14 @@ func _fix_level(raw: String) -> String:
         return "aggressive"
     return "safe"
 
+func _test_message_format_mode(raw: String) -> i32:
+    let m = _trim(raw)
+    if (m == "json"):
+        return 1
+    if ((m == "human") or (m == "pretty") or (m == "text")):
+        return 0
+    return -1
+
 func main() -> i32:
     let argc = env.count()
     if (argc <= 1):
@@ -606,15 +1637,18 @@ func main() -> i32:
                 print("ERROR: missing fix session id.")
                 return 1
             return autofix.run_fix_rollback(_trim(env.get(3)))
-        if (argc <= 3):
-            print("ERROR: missing entry path for fix command.")
-            return 1
-        let entry = _trim(env.get(3))
+        let entry = ""
         let level = "safe"
         let as_json = 0
         let lock_path = ""
         let lock_strict = 0
-        let i_fix = 4
+        let lock_locked = 0
+        let workspace = 0
+        let exclude_csv = ""
+        let max_files = 25
+        let max_iterations = 3
+        let fix_message_json = 0
+        let i_fix = 3
         while (i_fix < argc):
             let arg_fix = _trim(env.get(i_fix))
             if (_starts_with(arg_fix, "--level=") == 1):
@@ -637,19 +1671,229 @@ func main() -> i32:
                                 if (arg_fix == "--lock-strict"):
                                     lock_strict = 1
                                 else:
-                                    if (arg_fix == "--json"):
-                                        as_json = 1
+                                    if (arg_fix == "--locked"):
+                                        lock_locked = 1
+                                    else:
+                                        if ((arg_fix == "--workspace") or (arg_fix == "--all")):
+                                            workspace = 1
+                                        else:
+                                            if (_starts_with(arg_fix, "--exclude=") == 1):
+                                                let ex = _trim(_value_after_prefix(arg_fix, "--exclude="))
+                                                if (strlen(exclude_csv) == 0):
+                                                    exclude_csv = ex
+                                                else:
+                                                    exclude_csv = exclude_csv + "," + ex
+                                            else:
+                                                if (arg_fix == "--exclude"):
+                                                    if (((i_fix + 1) < argc) and (_starts_with(_trim(env.get(i_fix + 1)), "--") == 0)):
+                                                        let ex2 = _trim(env.get(i_fix + 1))
+                                                        if (strlen(exclude_csv) == 0):
+                                                            exclude_csv = ex2
+                                                        else:
+                                                            exclude_csv = exclude_csv + "," + ex2
+                                                        i_fix = i_fix + 1
+                                                    else:
+                                                        print("ERROR: --exclude requires a value.")
+                                                        return 1
+                                                else:
+                                                    if (_starts_with(arg_fix, "--max-files=") == 1):
+                                                        max_files = _parse_i32_default(_value_after_prefix(arg_fix, "--max-files="), max_files)
+                                                    else:
+                                                        if (arg_fix == "--max-files"):
+                                                            if (((i_fix + 1) < argc) and (_starts_with(_trim(env.get(i_fix + 1)), "--") == 0)):
+                                                                max_files = _parse_i32_default(_trim(env.get(i_fix + 1)), max_files)
+                                                                i_fix = i_fix + 1
+                                                            else:
+                                                                print("ERROR: --max-files requires a value.")
+                                                                return 1
+                                                        else:
+                                                            if (_starts_with(arg_fix, "--max-iterations=") == 1):
+                                                                max_iterations = _parse_i32_default(_value_after_prefix(arg_fix, "--max-iterations="), max_iterations)
+                                                            else:
+                                                                if (arg_fix == "--max-iterations"):
+                                                                    if (((i_fix + 1) < argc) and (_starts_with(_trim(env.get(i_fix + 1)), "--") == 0)):
+                                                                        max_iterations = _parse_i32_default(_trim(env.get(i_fix + 1)), max_iterations)
+                                                                        i_fix = i_fix + 1
+                                                                    else:
+                                                                        print("ERROR: --max-iterations requires a value.")
+                                                                        return 1
+                                                                else:
+                                                                    if (arg_fix == "--json"):
+                                                                        as_json = 1
+                                                                    else:
+                                                                        if (_starts_with(arg_fix, "--message-format=") == 1):
+                                                                            let fmt_fix = _trim(_value_after_prefix(arg_fix, "--message-format="))
+                                                                            let mode_fix = _test_message_format_mode(fmt_fix)
+                                                                            if (mode_fix < 0):
+                                                                                print("ERROR: unsupported --message-format: " + fmt_fix)
+                                                                                return 1
+                                                                            fix_message_json = mode_fix
+                                                                        else:
+                                                                            if (arg_fix == "--message-format"):
+                                                                                if (((i_fix + 1) < argc) and (_starts_with(_trim(env.get(i_fix + 1)), "--") == 0)):
+                                                                                    let fmt_fix2 = _trim(env.get(i_fix + 1))
+                                                                                    let mode_fix2 = _test_message_format_mode(fmt_fix2)
+                                                                                    if (mode_fix2 < 0):
+                                                                                        print("ERROR: unsupported --message-format: " + fmt_fix2)
+                                                                                        return 1
+                                                                                    fix_message_json = mode_fix2
+                                                                                    i_fix = i_fix + 1
+                                                                                else:
+                                                                                    print("ERROR: --message-format requires a value (json|human).")
+                                                                                    return 1
+                                                                            else:
+                                                                                if (_starts_with(arg_fix, "--") == 1):
+                                                                                    print("ERROR: unknown fix flag: " + arg_fix)
+                                                                                    return 1
+                                                                                else:
+                                                                                    if (strlen(entry) == 0):
+                                                                                        entry = arg_fix
+                                                                                    else:
+                                                                                        print("ERROR: multiple fix entry paths are not supported: " + arg_fix)
+                                                                                        return 1
             i_fix = i_fix + 1
-        if (sub == "doctor"):
-            return autofix.run_fix_doctor(entry, level, lock_path, lock_strict)
-        if (sub == "dry-run"):
-            return autofix.run_fix_dry_run(entry, level, lock_path, lock_strict)
-        if (sub == "apply"):
-            return autofix.run_fix_apply(entry, level, lock_path, lock_strict)
-        if (sub == "explain"):
-            return autofix.run_fix_explain(entry, level, as_json, lock_path, lock_strict)
+        if (strlen(entry) == 0):
+            print("ERROR: missing entry path for fix command.")
+            return 1
+        if (max_files < 1):
+            max_files = 1
+        if (max_iterations < 1):
+            max_iterations = 1
+        let exclude_set = _csv_to_set(exclude_csv)
+        if ((sub == "doctor") or (sub == "dry-run") or (sub == "apply") or (sub == "explain")):
+            return _run_fix_multi(sub, entry, level, as_json, lock_path, lock_strict, lock_locked, workspace, exclude_set, max_files, max_iterations, fix_message_json)
         print("ERROR: unknown fix subcommand: " + sub)
         return 1
+    if (cmd == "test"):
+        let filter = ""
+        let workspace = 0
+        let no_run = 0
+        let fail_fast = 0
+        let as_json = 0
+        let list_only = 0
+        let exclude_csv = ""
+        let package_csv = ""
+        let exclude_package_csv = ""
+        let i_test = 2
+        while (i_test < argc):
+            let arg_test = _trim(env.get(i_test))
+            if ((arg_test == "--help") or (arg_test == "-h")):
+                _print_help()
+                return 0
+            else:
+                if ((arg_test == "--workspace") or (arg_test == "--all")):
+                    workspace = 1
+                else:
+                    if (arg_test == "--no-run"):
+                        no_run = 1
+                    else:
+                        if (arg_test == "--fail-fast"):
+                            fail_fast = 1
+                        else:
+                            if (arg_test == "--json"):
+                                as_json = 1
+                            else:
+                                if (_starts_with(arg_test, "--message-format=") == 1):
+                                    let fmt = _trim(_value_after_prefix(arg_test, "--message-format="))
+                                    let mode = _test_message_format_mode(fmt)
+                                    if (mode < 0):
+                                        print("ERROR: unsupported --message-format: " + fmt)
+                                        return 1
+                                    as_json = mode
+                                else:
+                                    if (arg_test == "--message-format"):
+                                        if (((i_test + 1) < argc) and (_starts_with(_trim(env.get(i_test + 1)), "--") == 0)):
+                                            let fmt2 = _trim(env.get(i_test + 1))
+                                            let mode2 = _test_message_format_mode(fmt2)
+                                            if (mode2 < 0):
+                                                print("ERROR: unsupported --message-format: " + fmt2)
+                                                return 1
+                                            as_json = mode2
+                                            i_test = i_test + 1
+                                        else:
+                                            print("ERROR: --message-format requires a value (json|human).")
+                                            return 1
+                                    else:
+                                        if (arg_test == "--list"):
+                                            list_only = 1
+                                        else:
+                                            if (_starts_with(arg_test, "--package=") == 1):
+                                                let pkg_eq = _trim(_value_after_prefix(arg_test, "--package="))
+                                                if (strlen(pkg_eq) == 0):
+                                                    print("ERROR: --package requires a package name.")
+                                                    return 1
+                                                if (strlen(package_csv) == 0):
+                                                    package_csv = pkg_eq
+                                                else:
+                                                    package_csv = package_csv + "," + pkg_eq
+                                            else:
+                                                if ((arg_test == "--package") or (arg_test == "-p")):
+                                                    if (((i_test + 1) < argc) and (_starts_with(_trim(env.get(i_test + 1)), "--") == 0)):
+                                                        let pkg_next = _trim(env.get(i_test + 1))
+                                                        if (strlen(pkg_next) == 0):
+                                                            print("ERROR: --package requires a package name.")
+                                                            return 1
+                                                        if (strlen(package_csv) == 0):
+                                                            package_csv = pkg_next
+                                                        else:
+                                                            package_csv = package_csv + "," + pkg_next
+                                                        i_test = i_test + 1
+                                                    else:
+                                                        print("ERROR: --package requires a package name.")
+                                                        return 1
+                                                else:
+                                                    if (_starts_with(arg_test, "--exclude=") == 1):
+                                                        let ex = _trim(_value_after_prefix(arg_test, "--exclude="))
+                                                        if (strlen(exclude_csv) == 0):
+                                                            exclude_csv = ex
+                                                        else:
+                                                            exclude_csv = exclude_csv + "," + ex
+                                                    else:
+                                                        if (arg_test == "--exclude"):
+                                                            if (((i_test + 1) < argc) and (_starts_with(_trim(env.get(i_test + 1)), "--") == 0)):
+                                                                let ex2 = _trim(env.get(i_test + 1))
+                                                                if (strlen(exclude_csv) == 0):
+                                                                    exclude_csv = ex2
+                                                                else:
+                                                                    exclude_csv = exclude_csv + "," + ex2
+                                                                i_test = i_test + 1
+                                                            else:
+                                                                print("ERROR: --exclude requires a value.")
+                                                                return 1
+                                                        else:
+                                                            if (_starts_with(arg_test, "--exclude-package=") == 1):
+                                                                let ex_pkg = _trim(_value_after_prefix(arg_test, "--exclude-package="))
+                                                                if (strlen(exclude_package_csv) == 0):
+                                                                    exclude_package_csv = ex_pkg
+                                                                else:
+                                                                    exclude_package_csv = exclude_package_csv + "," + ex_pkg
+                                                            else:
+                                                                if (arg_test == "--exclude-package"):
+                                                                    if (((i_test + 1) < argc) and (_starts_with(_trim(env.get(i_test + 1)), "--") == 0)):
+                                                                        let ex_pkg2 = _trim(env.get(i_test + 1))
+                                                                        if (strlen(exclude_package_csv) == 0):
+                                                                            exclude_package_csv = ex_pkg2
+                                                                        else:
+                                                                            exclude_package_csv = exclude_package_csv + "," + ex_pkg2
+                                                                        i_test = i_test + 1
+                                                                    else:
+                                                                        print("ERROR: --exclude-package requires a value.")
+                                                                        return 1
+                                                                else:
+                                                                    if (_starts_with(arg_test, "--") == 1):
+                                                                        print("ERROR: unknown test flag: " + arg_test)
+                                                                        return 1
+                                                                    else:
+                                                                        if (strlen(filter) == 0):
+                                                                            filter = arg_test
+                                                                        else:
+                                                                            print("ERROR: multiple test filters are not supported: " + arg_test)
+                                                                            return 1
+            i_test = i_test + 1
+        let exclude_set = _csv_to_set(exclude_csv)
+        let package_set = _csv_to_set(package_csv)
+        let exclude_package_set = _csv_to_set(exclude_package_csv)
+        return _run_tests(filter, workspace, no_run, fail_fast, as_json, list_only, exclude_set, package_set, exclude_package_set)
     if ((cmd == "install") and (argc > 2)):
         if (_trim(env.get(2)) == "toolchain"):
             return _install_toolchain()
@@ -657,6 +1901,11 @@ func main() -> i32:
     let autofix_mode = "off"
     let autofix_lock = ""
     let autofix_lock_strict = 0
+    let autofix_lock_locked = 0
+    let autofix_max_iterations = 3
+    let autofix_max_files = 10
+    let autofix_workspace = 0
+    let autofix_exclude_csv = ""
     let input_path = ""
     let out_path = ""
     let i = 1
@@ -705,10 +1954,38 @@ func main() -> i32:
                                 if (arg == "--autofix-lock-strict"):
                                     autofix_lock_strict = 1
                                 else:
-                                    if ((arg == "-o") and ((i + 1) < argc)):
-                                        out_path = _trim(env.get(i + 1))
-                                        i = i + 1
+                                    if (arg == "--autofix-locked"):
+                                        autofix_lock_locked = 1
+                                    else:
+                                        if (_starts_with(arg, "--autofix-max-iterations=") == 1):
+                                            autofix_max_iterations = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-iterations="), autofix_max_iterations)
+                                        else:
+                                            if ((arg == "--autofix-max-iterations") and ((i + 1) < argc)):
+                                                autofix_max_iterations = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_iterations)
+                                                i = i + 1
+                                            else:
+                                                if (_starts_with(arg, "--autofix-max-files=") == 1):
+                                                    autofix_max_files = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-files="), autofix_max_files)
+                                                else:
+                                                    if ((arg == "--autofix-max-files") and ((i + 1) < argc)):
+                                                        autofix_max_files = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_files)
+                                                        i = i + 1
+                                                    else:
+                                                        if (_starts_with(arg, "--autofix-exclude=") == 1):
+                                                            autofix_exclude_csv = _trim(_value_after_prefix(arg, "--autofix-exclude="))
+                                                        else:
+                                                            if ((arg == "--autofix-exclude") and ((i + 1) < argc)):
+                                                                autofix_exclude_csv = _trim(env.get(i + 1))
+                                                                i = i + 1
+                                                            else:
+                                                                if (arg == "--autofix-workspace"):
+                                                                    autofix_workspace = 1
+                                                                else:
+                                                                    if ((arg == "-o") and ((i + 1) < argc)):
+                                                                        out_path = _trim(env.get(i + 1))
+                                                                        i = i + 1
         i = i + 1
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
-    return _build(input_path, out_path, emit_only, autofix_mode, autofix_lock, autofix_lock_strict)
+    let autofix_exclude_set = _csv_to_set(autofix_exclude_csv)
+    return _build(input_path, out_path, emit_only, autofix_mode, autofix_lock, autofix_lock_strict, autofix_lock_locked, autofix_max_iterations, autofix_max_files, autofix_workspace, autofix_exclude_set)

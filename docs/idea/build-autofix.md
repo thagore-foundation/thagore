@@ -42,6 +42,10 @@ Primary entry:
 
 ```bash
 thagore build <entry.tg> --autofix=<off|safe|aggressive>
+  [--autofix-workspace]
+  [--autofix-max-iterations N]
+  [--autofix-max-files N]
+  [--autofix-exclude a,b,c]
 ```
 
 Companion commands:
@@ -90,12 +94,21 @@ CI can require zero suggested fixes or require a pre-committed fix lock.
 Pipeline integration:
 
 1. Parse/semantic/typecheck fails.
-2. Diagnostic normalizer maps raw errors to canonical error codes.
-3. Rule matcher selects applicable fix rules.
-4. Patch planner resolves ordering and conflict.
-5. Patch applier edits source.
-6. Rebuild and re-verify.
-7. Persist fix session log + patch metadata.
+2. Compiler diagnostics may provide machine-applicable span suggestions.
+3. If compiler suggestion API is unavailable, AutoFix emits a built-in per-entry suggestion feed (`.thagore/fix/suggestions/<entry>.builtin.jsonl`) for deterministic typo fixes.
+4. Suggestion loader consumes per-entry feeds only (no global `latest.jsonl` fallback) to avoid cross-file contamination.
+5. Diagnostic normalizer maps raw errors to canonical error codes.
+6. Rule matcher selects applicable fix rules (fallback after compiler suggestions).
+7. Span/patch planner resolves ordering and conflict (overlap-safe, descending span apply).
+8. Patch applier edits source.
+9. Rebuild and re-verify.
+10. Persist fix session log + patch metadata.
+
+Current built-in span suggestions include:
+- `PARSE_TYPO_RETURN` for common `return` typos,
+- `PARSE_DEPRECATED_FN_KEYWORD` (`fn` -> `func`),
+- `PARSE_DUPLICATE_MODIFIER` (duplicate `pub` cleanup),
+- `PARSE_MISSING_BLOCK_COLON` (header colon insertion).
 
 Guard rails:
 
