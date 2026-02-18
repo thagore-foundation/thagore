@@ -918,7 +918,8 @@ jobs:
           else
             cp "bootstrap/${{ matrix.stage1_seed_name }}" "${{ matrix.stage1_seed_name }}"
             cp "bootstrap/${{ matrix.runtime_seed_name }}" "${{ matrix.runtime_seed_name }}"
-            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -Eq "thagore|thag"
+            tar -tzf "${{ matrix.stage1_seed_name }}" > _stage1_archive_list.txt
+            grep -Eq "thagore|thag" _stage1_archive_list.txt
             bytes_stage1="$(wc -c < "${{ matrix.stage1_seed_name }}")"
             if [[ "$bytes_stage1" -lt 20000 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes_stage1 bytes)."
