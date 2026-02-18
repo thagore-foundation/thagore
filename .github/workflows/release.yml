@@ -290,6 +290,9 @@ jobs:
               return 0
             fi
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            if [[ ! -f "bootstrap/$pattern" ]]; then
+              curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_STAGE1_TAG/$pattern" || true
+            fi
             [[ -f "bootstrap/$pattern" ]]
           }
           download_runtime_asset() {
@@ -297,6 +300,9 @@ jobs:
             local dest="$2"
             if [[ ! -f "bootstrap/$pattern" ]]; then
               gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+              if [[ ! -f "bootstrap/$pattern" ]]; then
+                curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_STAGE1_TAG/$pattern" || true
+              fi
             fi
             if [[ -f "bootstrap/$pattern" ]]; then
               cp "bootstrap/$pattern" "$dest"
