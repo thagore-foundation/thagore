@@ -226,7 +226,7 @@ jobs:
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo dpkg --add-architecture amd64 || true
             sudo apt-get update || true
-            sudo apt-get install -y qemu-user qemu-user-static libc6:amd64 libstdc++6:amd64 zlib1g:amd64
+            sudo apt-get install -y qemu-user qemu-user-static qemu-user-binfmt libc6:amd64 libstdc++6:amd64 zlib1g:amd64
           fi
           clang --version
 
@@ -400,7 +400,13 @@ jobs:
                     '#!/usr/bin/env bash' \
                     'set -euo pipefail' \
                     'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' \
-                    'EMU_BIN="$(command -v qemu-x86_64 || command -v qemu-x86_64-static || true)"' \
+                    'EMU_BIN=""' \
+                    'for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P"; do' \
+                    '  if [[ -n "$cand" && -x "$cand" ]]; then' \
+                    '    EMU_BIN="$cand"' \
+                    '    break' \
+                    '  fi' \
+                    'done' \
                     'if [[ -z "$EMU_BIN" ]]; then' \
                     '  echo "CRITICAL: missing qemu-x86_64 or qemu-x86_64-static in PATH" >&2' \
                     '  exit 1' \
