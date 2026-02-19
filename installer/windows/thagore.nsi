@@ -28,6 +28,9 @@ Section "Thagore Compiler" SecMain
   File "..\..\dist\bin\thagore.cmd"
   File "..\..\dist\bin\thag.exe"
 
+  SetOutPath "$INSTDIR\installer"
+  File /r "..\..\dist\installer\*.*"
+
   SetOutPath "$INSTDIR\lib\std"
   File /r "..\..\dist\lib\std\*.*"
 
@@ -78,6 +81,7 @@ Section "Uninstall"
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; foreach ($scope in @(''Machine'',''User'')) { try { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { continue }; $parts = @(); foreach ($p in ($cur -split '';'')) { if ($p) { $trimmed = $p.Trim(); if ($trimmed -and ($trimmed -ne $target)) { $parts += $trimmed } } }; [Environment]::SetEnvironmentVariable(''Path'', ($parts -join '';''), $scope) } catch { } }"'
   Delete "$INSTDIR\bin\thagore.cmd"
   Delete "$INSTDIR\bin\thag.exe"
+  RMDir /r "$INSTDIR\installer"
   RMDir /r "$INSTDIR\lib\std"
   RMDir "$INSTDIR\bin"
   RMDir "$INSTDIR\lib"
