@@ -885,10 +885,16 @@ jobs:
 
           BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${{ matrix.stage1_bin }}")
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}")
-          fi
-          if [[ "${#BUILD_COMPILERS[@]}" -ge 2 && "${BUILD_COMPILERS[0]}" == "${BUILD_COMPILERS[1]}" ]]; then
-            BUILD_COMPILERS=("${BUILD_COMPILERS[0]}")
+            BUILD_COMPILERS=()
+            if [[ -n "${STAGE2_REBUILD_BIN:-}" ]]; then
+              BUILD_COMPILERS+=("$STAGE2_REBUILD_BIN")
+            fi
+            if [[ -n "${STAGE2_BIN:-}" && "${STAGE2_BIN:-}" != "${STAGE2_REBUILD_BIN:-}" ]]; then
+              BUILD_COMPILERS+=("$STAGE2_BIN")
+            fi
+            if [[ "${#BUILD_COMPILERS[@]}" -eq 0 ]]; then
+              BUILD_COMPILERS=("${{ matrix.stage1_bin }}")
+            fi
           fi
 
           HELLO_BIN=""
