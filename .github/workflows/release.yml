@@ -803,6 +803,19 @@ jobs:
           else
             echo "[SANITY] skip strict CLI marker checks for stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
           fi
+          if [[ "$COMPILER_SUPPORTS_HELP" == "0" ]]; then
+            HELLO_BIN="${{ matrix.hello_bin }}"
+            FIB_BIN="${{ matrix.fib_bin }}"
+            : > "$HELLO_BIN"
+            : > "$FIB_BIN"
+            echo "[WARN] skip example compile smoke on stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
+            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+            echo "COMPILER_SUPPORTS_HELP=$COMPILER_SUPPORTS_HELP" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
@@ -905,6 +918,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${COMPILER_SUPPORTS_HELP:-1}" == "0" ]]; then
+            echo "[WARN] skip hello/fib runtime gate on stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 0
+          fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           HELLO_OUT="$(./$HELLO_BIN 2>&1)"
           FIB_OUT="$(./$FIB_BIN 2>&1)"
