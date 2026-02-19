@@ -160,6 +160,8 @@ func goal_count(goals_text: String) -> i32:
 func is_supported_goal(goal: String) -> i32:
     if (goal == "auto_plan"):
         return 1
+    if (goal == "off"):
+        return 1
     if (goal == "reduce_sum"):
         return 1
     if (goal == "map_filter_reduce"):
@@ -168,6 +170,30 @@ func is_supported_goal(goal: String) -> i32:
         return 1
     if (goal == "binary_search"):
         return 1
+    if (goal == "binary_search_sorted"):
+        return 1
+    if (goal == "lower_bound_sorted"):
+        return 1
+    if (goal == "upper_bound_sorted"):
+        return 1
+    if (goal == "count_less_sorted"):
+        return 1
+    if (goal == "count_less_equal_sorted"):
+        return 1
+    if (goal == "count_greater_sorted"):
+        return 1
+    if (goal == "count_greater_equal_sorted"):
+        return 1
+    if (goal == "count_equal_sorted"):
+        return 1
+    if (goal == "count_not_equal_sorted"):
+        return 1
+    if (goal == "count_range_sorted"):
+        return 1
+    if (goal == "count_outside_range_sorted"):
+        return 1
+    if (goal == "two_sum_sorted_exists"):
+        return 1
     if (goal == "string_contains"):
         return 1
     if (goal == "dot_product"):
@@ -175,6 +201,40 @@ func is_supported_goal(goal: String) -> i32:
     if (goal == "polynomial_eval"):
         return 1
     if (goal == "fibonacci_dp"):
+        return 1
+    if (goal == "tribonacci_dp"):
+        return 1
+    if (goal == "factorial_iterative"):
+        return 1
+    if (goal == "power_fast"):
+        return 1
+    if (goal == "gcd_euclid"):
+        return 1
+    if (goal == "is_prime_fast"):
+        return 1
+    if (goal == "count_divisors_sqrt"):
+        return 1
+    if (goal == "interval_cover_greedy"):
+        return 1
+    if (goal == "bit_peel_iterative"):
+        return 1
+    if (goal == "sum_formula"):
+        return 1
+    if (goal == "sum_squares_formula"):
+        return 1
+    if (goal == "sum_cubes_formula"):
+        return 1
+    if (goal == "sum_even_squares_formula"):
+        return 1
+    if (goal == "sum_odd_squares_formula"):
+        return 1
+    if (goal == "sum_even_cubes_formula"):
+        return 1
+    if (goal == "sum_odd_cubes_formula"):
+        return 1
+    if (goal == "sum_even_formula"):
+        return 1
+    if (goal == "sum_odd_formula"):
         return 1
     if (goal == "sort_ascending"):
         return 1
@@ -203,6 +263,8 @@ func validate_goals(source: String) -> i32:
 func select_rule(goal: String, mode: String) -> String:
     if (goal == "auto_plan"):
         return "rule.auto_plan.resolve.v1"
+    if (goal == "off"):
+        return "rule.intent.off"
     if (goal == "reduce_sum"):
         if (mode == "max"):
             return "rule.reduce_sum.simd.v2"
@@ -219,6 +281,30 @@ func select_rule(goal: String, mode: String) -> String:
         if (mode == "max"):
             return "rule.binary_search.branchless.v2"
         return "rule.binary_search.classic.v1"
+    if (goal == "binary_search_sorted"):
+        return "rule.search.binary.sorted.v1"
+    if (goal == "lower_bound_sorted"):
+        return "rule.search.lower_bound.sorted.v1"
+    if (goal == "upper_bound_sorted"):
+        return "rule.search.upper_bound.sorted.v1"
+    if (goal == "count_less_sorted"):
+        return "rule.search.count_less.sorted.v1"
+    if (goal == "count_less_equal_sorted"):
+        return "rule.search.count_less_equal.sorted.v1"
+    if (goal == "count_greater_sorted"):
+        return "rule.search.count_greater.sorted.v1"
+    if (goal == "count_greater_equal_sorted"):
+        return "rule.search.count_greater_equal.sorted.v1"
+    if (goal == "count_equal_sorted"):
+        return "rule.search.count_equal.sorted.v1"
+    if (goal == "count_not_equal_sorted"):
+        return "rule.search.count_not_equal.sorted.v1"
+    if (goal == "count_range_sorted"):
+        return "rule.search.count_range.sorted.v1"
+    if (goal == "count_outside_range_sorted"):
+        return "rule.search.count_outside_range.sorted.v1"
+    if (goal == "two_sum_sorted_exists"):
+        return "rule.search.two_sum.sorted.v1"
     if (goal == "string_contains"):
         if (mode == "max"):
             return "rule.string_contains.twoway.v2"
@@ -235,6 +321,40 @@ func select_rule(goal: String, mode: String) -> String:
         if (mode == "max"):
             return "rule.fibonacci_dp.iterative.v2"
         return "rule.fibonacci_dp.iterative.v1"
+    if (goal == "tribonacci_dp"):
+        return "rule.dp.trib.iterative.v1"
+    if (goal == "factorial_iterative"):
+        return "rule.math.factorial.loop.v1"
+    if (goal == "power_fast"):
+        return "rule.math.pow.binary_exp.v1"
+    if (goal == "gcd_euclid"):
+        return "rule.math.gcd.euclid.v1"
+    if (goal == "is_prime_fast"):
+        return "rule.number.prime.sqrt.v1"
+    if (goal == "count_divisors_sqrt"):
+        return "rule.number.divisors.sqrt.v1"
+    if (goal == "interval_cover_greedy"):
+        return "rule.greedy.interval_cover.v1"
+    if (goal == "bit_peel_iterative"):
+        return "rule.number.bit_peel.iterative.v1"
+    if (goal == "sum_formula"):
+        return "rule.math.sum.formula.v1"
+    if (goal == "sum_squares_formula"):
+        return "rule.math.sum_squares.formula.v1"
+    if (goal == "sum_cubes_formula"):
+        return "rule.math.sum_cubes.formula.v1"
+    if (goal == "sum_even_squares_formula"):
+        return "rule.math.sum_even_squares.formula.v1"
+    if (goal == "sum_odd_squares_formula"):
+        return "rule.math.sum_odd_squares.formula.v1"
+    if (goal == "sum_even_cubes_formula"):
+        return "rule.math.sum_even_cubes.formula.v1"
+    if (goal == "sum_odd_cubes_formula"):
+        return "rule.math.sum_odd_cubes.formula.v1"
+    if (goal == "sum_even_formula"):
+        return "rule.math.sum_even.formula.v1"
+    if (goal == "sum_odd_formula"):
+        return "rule.math.sum_odd.formula.v1"
     if (goal == "sort_ascending"):
         if (mode == "max"):
             return "rule.sort_ascending.introsort.v2"

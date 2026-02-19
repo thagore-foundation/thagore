@@ -6,6 +6,7 @@ import "src/driver/cli/install/flow.tg"
 import "src/driver/cli/update/flow.tg"
 import "src/driver/cli/update/version.tg"
 import "src/driver/flow/engine.tg" as flowctl
+import "src/driver/intent/engine.tg" as intentctl
 
 func _print_help() -> void:
     print("thagore " + _update_current_version_text())
@@ -16,6 +17,7 @@ func _print_help() -> void:
     print("  thagore <input.tg> [-o output]")
     print("  thagore test [filter] [--workspace|--all] [--json]")
     print("  thagore fix <doctor|dry-run|apply|explain|rollback> ...")
+    print("  thagore intent <doctor|explain|lock> <entry.tg> [flags]")
     print("  thagore install toolchain [--yes]")
     print("  thagore update <check|apply|rollback> [flags]")
 
@@ -124,6 +126,59 @@ func main() -> i32:
         if (sub_flow == "simulate"):
             return flowctl.run_flow_simulate_with_policy_full(entry_flow, flow_mode, flow_fail_at, flow_fail_once_at, flow_timeout_at, flow_json, flow_crash_after_fail, flow_durability, flow_journal_format)
         print("ERROR: unknown flow subcommand: " + sub_flow)
+        return 1
+    if (cmd == "intent"):
+        if (argc <= 2):
+            print("ERROR: missing intent subcommand.")
+            return 1
+        let sub_intent = _trim(env.get(2))
+        let entry_intent = ""
+        let intent_mode = "min"
+        let intent_json = 0
+        let intent_lock_out = "thagore.intent.lock"
+        let i_intent = 3
+        while (i_intent < argc):
+            let arg_intent = _trim(env.get(i_intent))
+            if (_starts_with(arg_intent, "--mode=") == 1):
+                intent_mode = intentctl.normalize_intent_mode(_value_after_prefix(arg_intent, "--mode="))
+            else:
+                if ((arg_intent == "--mode") and ((i_intent + 1) < argc) and (_starts_with(_trim(env.get(i_intent + 1)), "--") == 0)):
+                    intent_mode = intentctl.normalize_intent_mode(_trim(env.get(i_intent + 1)))
+                    i_intent = i_intent + 1
+                else:
+                    if (arg_intent == "--json"):
+                        intent_json = 1
+                    else:
+                        if (_starts_with(arg_intent, "-o=") == 1):
+                            intent_lock_out = _trim(_value_after_prefix(arg_intent, "-o="))
+                        else:
+                            if (_starts_with(arg_intent, "--output=") == 1):
+                                intent_lock_out = _trim(_value_after_prefix(arg_intent, "--output="))
+                            else:
+                                if (((arg_intent == "-o") or (arg_intent == "--output")) and ((i_intent + 1) < argc) and (_starts_with(_trim(env.get(i_intent + 1)), "--") == 0)):
+                                    intent_lock_out = _trim(env.get(i_intent + 1))
+                                    i_intent = i_intent + 1
+                                else:
+                                    if (_starts_with(arg_intent, "--") == 1):
+                                        print("ERROR: unknown intent flag: " + arg_intent)
+                                        return 1
+                                    else:
+                                        if (strlen(entry_intent) == 0):
+                                            entry_intent = arg_intent
+                                        else:
+                                            print("ERROR: multiple intent entry paths are not supported: " + arg_intent)
+                                            return 1
+            i_intent = i_intent + 1
+        if (strlen(entry_intent) == 0):
+            print("ERROR: missing entry path for intent command.")
+            return 1
+        if (sub_intent == "doctor"):
+            return intentctl.run_intent_doctor(entry_intent, intent_mode, intent_json)
+        if (sub_intent == "explain"):
+            return intentctl.run_intent_explain(entry_intent, intent_mode, intent_json)
+        if (sub_intent == "lock"):
+            return intentctl.run_intent_lock(entry_intent, intent_lock_out, intent_mode)
+        print("ERROR: unknown intent subcommand: " + sub_intent)
         return 1
     if (cmd == "fix"):
         if (argc <= 2):
@@ -413,6 +468,11 @@ func main() -> i32:
     let autofix_exclude_csv = ""
     let flow_mode_build = "off"
     let flow_strip_debug = 0
+    let intent_mode_build = ""
+    let intent_policy_build = ""
+    let intent_fallback_build = ""
+    let intent_lock_path_build = ""
+    let intent_strict_lock_build = -1
     let input_path = ""
     let out_path = ""
     let i = 1
@@ -488,25 +548,86 @@ func main() -> i32:
                                                                 if (arg == "--autofix-workspace"):
                                                                     autofix_workspace = 1
                                                                 else:
-                                                                    if (_starts_with(arg, "--flow=") == 1):
-                                                                        flow_mode_build = flowctl.normalize_flow_mode(_value_after_prefix(arg, "--flow="))
+                                                                    if (_starts_with(arg, "--intent=") == 1):
+                                                                        intent_mode_build = intentctl.normalize_intent_mode(_trim(_value_after_prefix(arg, "--intent=")))
                                                                     else:
-                                                                        if (arg == "--flow"):
+                                                                        if (arg == "--intent"):
                                                                             if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                flow_mode_build = flowctl.normalize_flow_mode(_trim(env.get(i + 1)))
+                                                                                intent_mode_build = intentctl.normalize_intent_mode(_trim(env.get(i + 1)))
                                                                                 i = i + 1
                                                                             else:
-                                                                                flow_mode_build = "on"
+                                                                                intent_mode_build = "max"
                                                                         else:
-                                                                            if (arg == "--flow-strip-debug"):
-                                                                                flow_strip_debug = 1
+                                                                            if (_starts_with(arg, "--intent-policy=") == 1):
+                                                                                intent_policy_build = intentctl.normalize_intent_policy(_trim(_value_after_prefix(arg, "--intent-policy=")))
                                                                             else:
-                                                                                if ((arg == "-o") and ((i + 1) < argc)):
-                                                                                    out_path = _trim(env.get(i + 1))
+                                                                                if ((arg == "--intent-policy") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                    intent_policy_build = intentctl.normalize_intent_policy(_trim(env.get(i + 1)))
                                                                                     i = i + 1
+                                                                                else:
+                                                                                    if (_starts_with(arg, "--intent-fallback=") == 1):
+                                                                                        intent_fallback_build = intentctl.normalize_intent_fallback(_trim(_value_after_prefix(arg, "--intent-fallback=")))
+                                                                                    else:
+                                                                                        if ((arg == "--intent-fallback") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                            intent_fallback_build = intentctl.normalize_intent_fallback(_trim(env.get(i + 1)))
+                                                                                            i = i + 1
+                                                                                        else:
+                                                                                            if (_starts_with(arg, "--intent-lock=") == 1):
+                                                                                                intent_lock_path_build = _trim(_value_after_prefix(arg, "--intent-lock="))
+                                                                                            else:
+                                                                                                if ((arg == "--intent-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                    intent_lock_path_build = _trim(env.get(i + 1))
+                                                                                                    i = i + 1
+                                                                                                else:
+                                                                                                    if (arg == "--strict-lock"):
+                                                                                                        intent_strict_lock_build = 1
+                                                                                                    else:
+                                                                                                        if (arg == "--no-strict-lock"):
+                                                                                                            intent_strict_lock_build = 0
+                                                                                                        else:
+                                                                                                            if (_starts_with(arg, "--flow=") == 1):
+                                                                                                                flow_mode_build = flowctl.normalize_flow_mode(_value_after_prefix(arg, "--flow="))
+                                                                                                            else:
+                                                                                                                if (arg == "--flow"):
+                                                                                                                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                                        flow_mode_build = flowctl.normalize_flow_mode(_trim(env.get(i + 1)))
+                                                                                                                        i = i + 1
+                                                                                                                    else:
+                                                                                                                        flow_mode_build = "on"
+                                                                                                                else:
+                                                                                                                    if (arg == "--flow-strip-debug"):
+                                                                                                                        flow_strip_debug = 1
+                                                                                                                    else:
+                                                                                                                        if ((arg == "-o") and ((i + 1) < argc)):
+                                                                                                                            out_path = _trim(env.get(i + 1))
+                                                                                                                            i = i + 1
         i = i + 1
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
+    let intent_policy_effective = intentctl.normalize_intent_policy(intent_policy_build)
+    if (strlen(intent_policy_effective) == 0):
+        intent_policy_effective = intentctl.normalize_intent_policy(_trim(env.get("THAG_INTENT_POLICY")))
+    if (strlen(intent_policy_effective) > 0):
+        if (strlen(intent_mode_build) == 0):
+            intent_mode_build = intentctl.policy_default_mode(intent_policy_effective)
+        if (strlen(intent_fallback_build) == 0):
+            intent_fallback_build = intentctl.policy_default_fallback(intent_policy_effective)
+        if (intent_strict_lock_build < 0):
+            intent_strict_lock_build = intentctl.policy_default_strict_lock(intent_policy_effective)
+    if (strlen(intent_mode_build) == 0):
+        intent_mode_build = "off"
+    intent_mode_build = intentctl.normalize_intent_mode(intent_mode_build)
+    if (strlen(intent_fallback_build) == 0):
+        intent_fallback_build = "deny"
+    intent_fallback_build = intentctl.normalize_intent_fallback(intent_fallback_build)
+    if (intent_strict_lock_build < 0):
+        intent_strict_lock_build = 0
+    if ((intent_strict_lock_build == 1) and (intent_mode_build != "max")):
+        print("[intent] error: --strict-lock requires --intent=max.")
+        return 1
+    if (intent_mode_build != "off"):
+        if (intentctl.run_intent_gate(input_path, intent_mode_build, intent_fallback_build, intent_strict_lock_build, intent_lock_path_build) != 0):
+            return 1
     if (flow_mode_build != "off"):
         if (flowctl.run_flow_gate(input_path, flow_mode_build, 0) != 0):
             return 1

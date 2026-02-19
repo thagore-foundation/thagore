@@ -1,0 +1,123 @@
+import "lib/fs.tg" as fs
+import "src/driver/intent/engine.tg" as intent
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + __thg_str_substr(text, i, 1)
+                i = i + 1
+        else:
+            out = out + __thg_str_substr(text, i, 1)
+            i = i + 1
+    return out
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let nl = __string_from_codepoint(10)
+    let ok_path = "tests/__intent_cli_ok.tg"
+    let lock_path = "tests/__intent_cli_ok.lock"
+    let lock_bad_path = "tests/__intent_cli_bad.lock"
+    let bad_strategy_path = "tests/__intent_cli_bad_strategy.tg"
+    let auto_path = "tests/__intent_cli_auto.tg"
+
+    let src_ok = "intent loop i in 0..n:" + nl
+    src_ok = src_ok + "    goal: reduce_sum" + nl
+    src_ok = src_ok + "    constraints:" + nl
+    src_ok = src_ok + "        deterministic == true" + nl
+    src_ok = src_ok + "        time <= O(n)" + nl
+    src_ok = src_ok + "func main() -> i32:" + nl
+    src_ok = src_ok + "    return 0" + nl
+    fails = fails + _expect_i32("write intent ok source", fs.write_text(ok_path, src_ok), 1)
+
+    let src_bad_strategy = "intent block:" + nl
+    src_bad_strategy = src_bad_strategy + "    goal: fibonacci_dp" + nl
+    src_bad_strategy = src_bad_strategy + "    strategy: totally.unknown.strategy" + nl
+    src_bad_strategy = src_bad_strategy + "    constraints:" + nl
+    src_bad_strategy = src_bad_strategy + "        deterministic == true" + nl
+    src_bad_strategy = src_bad_strategy + "func main() -> i32:" + nl
+    src_bad_strategy = src_bad_strategy + "    return 0" + nl
+    fails = fails + _expect_i32("write bad strategy source", fs.write_text(bad_strategy_path, src_bad_strategy), 1)
+
+    let src_auto = "intent func lower_bound_index(n: i32) -> i32:" + nl
+    src_auto = src_auto + "    goal: auto_plan" + nl
+    src_auto = src_auto + "    constraints:" + nl
+    src_auto = src_auto + "        deterministic == true" + nl
+    src_auto = src_auto + "func lower_bound_index(n: i32) -> i32:" + nl
+    src_auto = src_auto + "    return n" + nl
+    src_auto = src_auto + "func main() -> i32:" + nl
+    src_auto = src_auto + "    return 0" + nl
+    fails = fails + _expect_i32("write auto source", fs.write_text(auto_path, src_auto), 1)
+
+    fails = fails + _expect_i32("policy default mode safe", _contains(intent.policy_default_mode("safe"), "max"), 1)
+    fails = fails + _expect_i32("policy default mode fast", _contains(intent.policy_default_mode("fast"), "min"), 1)
+    fails = fails + _expect_i32("policy default mode debug", _contains(intent.policy_default_mode("debug"), "off"), 1)
+    fails = fails + _expect_i32("normalize mode fallback", _contains(intent.normalize_intent_mode("weird"), "min"), 1)
+
+    fails = fails + _expect_i32("intent doctor ok", intent.run_intent_doctor(ok_path, "max", 0), 0)
+    fails = fails + _expect_i32("intent explain json", intent.run_intent_explain(ok_path, "max", 1), 0)
+    let explain_ok = fs.read_text(".thagore/intent/last_explain.json")
+    fails = fails + _expect_contains("explain selected rule", explain_ok, "\"selected_rule\":\"rule.reduce_sum.simd.v2\"")
+    fails = fails + _expect_contains("explain candidate parallel", explain_ok, "\"rule.reduce_sum.parallel.v3\"")
+
+    fails = fails + _expect_i32("intent lock ok", intent.run_intent_lock(ok_path, lock_path, "max"), 0)
+    let lock_ok = fs.read_text(lock_path)
+    fails = fails + _expect_contains("lock selected rule", lock_ok, "\"selected_rule\":\"rule.reduce_sum.simd.v2\"")
+
+    fails = fails + _expect_i32("intent strict gate ok", intent.run_intent_gate(ok_path, "max", "deny", 1, lock_path), 0)
+    let lock_bad = _replace_all(lock_ok, "rule.reduce_sum.simd.v2", "rule.reduce_sum.scalar.v1")
+    fails = fails + _expect_i32("write bad lock", fs.write_text(lock_bad_path, lock_bad), 1)
+    fails = fails + _expect_i32("intent strict gate mismatch", intent.run_intent_gate(ok_path, "max", "deny", 1, lock_bad_path), 1)
+
+    fails = fails + _expect_i32("intent lock bad strategy fails", intent.run_intent_lock(bad_strategy_path, "", "max"), 1)
+
+    fails = fails + _expect_i32("intent explain auto plan", intent.run_intent_explain(auto_path, "max", 1), 0)
+    let explain_auto = fs.read_text(".thagore/intent/last_explain.json")
+    fails = fails + _expect_contains("auto plan heuristic goal", explain_auto, "\"goal\":\"lower_bound_sorted\"")
+    fails = fails + _expect_contains("auto plan heuristic rule", explain_auto, "\"selected_rule\":\"rule.search.lower_bound.sorted.v1\"")
+
+    if (fails == 0):
+        print("PASS: intent cli")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
