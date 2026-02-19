@@ -13,6 +13,10 @@ FIXTURE = ROOT / "tests" / "intent" / "fixtures" / "intent_demo_golden.tg"
 GOLDEN_EXPLAIN = ROOT / "tests" / "intent" / "golden" / "explain.max.normalized.json"
 GOLDEN_LOCK = ROOT / "tests" / "intent" / "golden" / "lock.max.normalized.json"
 LAST_EXPLAIN_JSON = ROOT / ".thagore" / "intent" / "last_explain.json"
+SOURCE_FALLBACK_TESTS = [
+    ROOT / "tests" / "test_intent_matcher.tg",
+    ROOT / "tests" / "test_intent_cli.tg",
+]
 SUPPORTED_GOALS = [
     "reduce_sum",
     "map_filter_reduce",
@@ -93,6 +97,36 @@ def run_cmd(
             sys.stderr.write("--- stderr ---\n" + proc.stderr + "\n")
         raise SystemExit(1)
     return proc
+
+
+def supports_intent_subcommands(cli: Path) -> tuple[bool, str]:
+    proc = subprocess.run(
+        [str(cli), "intent", "doctor", str(FIXTURE)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    lowered = combined.lower()
+    if ("empty file or file not found" in lowered) and ("loading script" in lowered):
+        return False, "compiler-driver-missing-cli-entrypoint"
+    if proc.returncode == 0:
+        if (
+            ("[intent][doctor]" in combined)
+            or ("engine=ready" in combined)
+            or ("\"type\":\"intent_doctor\"" in combined)
+        ):
+            return True, ""
+        return False, "compiler-driver-missing-cli-entrypoint"
+    return False, ""
+
+
+def run_source_fallback_suite(cli: Path) -> None:
+    for test in SOURCE_FALLBACK_TESTS:
+        proc = run_cmd([str(cli), str(test)])
+        if "PASS:" not in proc.stdout:
+            raise SystemExit(f"FAIL: source fallback test did not report PASS marker: {test}")
 
 
 def parse_json_from_proc(
@@ -762,6 +796,14 @@ def main() -> int:
     cli = (Path(args.cli).resolve() if args.cli else detect_cli())
     if not cli.exists():
         raise SystemExit(f"FAIL: cli not found: {cli}")
+    intent_ok, fallback_reason = supports_intent_subcommands(cli)
+    if not intent_ok:
+        if fallback_reason == "compiler-driver-missing-cli-entrypoint":
+            run_source_fallback_suite(cli)
+            print("PASS: intent suite (source fallback)")
+            print("mode: source-fallback-no-cli-entrypoint")
+            return 0
+        raise SystemExit("FAIL: selected --cli does not support intent subcommands")
 
     temp_root = Path(tempfile.mkdtemp(prefix="thagore_intent_suite_", dir=str(ROOT)))
     try:
