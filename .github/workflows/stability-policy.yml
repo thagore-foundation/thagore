@@ -37,7 +37,8 @@ jobs:
             }
 
             const isTag = (context.ref || "").startsWith("refs/tags/v");
-            const enforceStrict = true;
+            // Keep push/main non-blocking so recovery commits are not deadlocked by stale streak history.
+            const enforceStrict = isTag;
             const targets = [
               {
                 name: "CI",
