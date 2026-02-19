@@ -21,7 +21,7 @@ Thagore needs **LLVM 21.1.8** on your PATH. Run the official install script for 
   <TabItem label="🐧 Linux (Ubuntu/Debian)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/ubuntu.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode ubuntu --yes
 ```
 
 Installs LLVM 21 via the official `apt.llvm.org` repository.
@@ -30,14 +30,14 @@ Installs LLVM 21 via the official `apt.llvm.org` repository.
   <TabItem label="🐧 Linux (generic)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/linux.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode linux --yes
 ```
 
   </TabItem>
   <TabItem label="🍎 macOS">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/macos.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode macos --yes
 ```
 
 Installs `llvm@21` via Homebrew. Requires [Homebrew](https://brew.sh/).
@@ -55,7 +55,7 @@ Installs LLVM 21.1.8 via `winget` or `choco`.
   <TabItem label="🔧 Portable (Android/BSD/…)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/portable.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode portable --yes
 ```
 
 Builds LLVM from source using `cmake` + `ninja`. Takes 30–60 min. Useful for Termux, FreeBSD, or any non-standard environment.
@@ -104,8 +104,8 @@ chmod +x thagore
   <TabItem label="🪟 Windows">
 
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-windows-x86_64.zip" -OutFile thagore.zip
-Expand-Archive thagore.zip -DestinationPath .
+Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-windows-x86_64.tar.gz" -OutFile thagore.tar.gz
+tar -xzf .\thagore.tar.gz
 ```
 
   </TabItem>
@@ -196,11 +196,12 @@ curl -fsSL -o method.tg https://raw.githubusercontent.com/thagore-foundation/tha
 
 | Platform | Script URL |
 |----------|-----------|
-| **Ubuntu / Debian** | `…/scripts/install/ubuntu.sh` |
-| **Linux (generic)** | `…/scripts/install/linux.sh` |
-| **macOS** | `…/scripts/install/macos.sh` |
+| **Auto detect (Linux/macOS/portable)** | `…/scripts/install/install.sh` |
+| **Ubuntu / Debian** | `…/scripts/install/install.sh --mode ubuntu` |
+| **Linux (generic)** | `…/scripts/install/install.sh --mode linux` |
+| **macOS** | `…/scripts/install/install.sh --mode macos` |
 | **Windows** | `…/scripts/install/windows.ps1` |
-| **Portable (Android/BSD)** | `…/scripts/install/portable.sh` |
+| **Portable (Android/BSD)** | `…/scripts/install/install.sh --mode portable` |
 
 Base: `https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/`
 

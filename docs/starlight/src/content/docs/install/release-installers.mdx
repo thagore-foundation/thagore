@@ -13,17 +13,34 @@ Each Thagore release publishes the following artifacts:
 
 | Artifact | Platform | Description |
 |----------|----------|-------------|
-| `thagore-windows-x64.zip` | Windows x86-64 | Pre-built compiler + runtime |
-| `thagore-linux-x64.tar.gz` | Linux x86-64 | Pre-built compiler + runtime |
+| `thagore-windows-x86_64.tar.gz` | Windows x86-64 | Pre-built compiler + runtime |
+| `thagore-windows-arm64.tar.gz` | Windows ARM64 | Pre-built compiler + runtime |
+| `thagore-setup-windows-x86_64.exe` | Windows x86-64 | UI installer |
+| `thagore-setup-windows-arm64.exe` | Windows ARM64 | UI installer |
+| `thagore-linux-x86_64.tar.gz` | Linux x86-64 | Pre-built compiler + runtime |
 | `thagore-linux-arm64.tar.gz` | Linux ARM64 | Pre-built compiler + runtime |
 | `thagore-macos-arm64.tar.gz` | macOS ARM64 | Pre-built compiler + runtime |
 
 ## Using Pre-built Releases
 
-1. Download the release archive for your platform from [GitHub Releases](https://github.com/thagore/thagore/releases)
+1. Download the release archive for your platform from [GitHub Releases](https://github.com/thagore-foundation/thagore/releases)
 2. Extract to a directory of your choice
 3. Add the directory to your system `PATH`
 4. Verify: `thagore --version`
+
+## Installer Scripts
+
+Use the unified installer entrypoint:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode auto --yes
+```
+
+Modes:
+- `--mode ubuntu`
+- `--mode linux`
+- `--mode macos`
+- `--mode portable`
 
 ## CI/CD Pipelines
 
