@@ -332,6 +332,32 @@ jobs:
             local bin="$1"
             "./$bin" --help >/dev/null 2>&1
           }
+          build_stage1_blob_native() {
+            mkdir -p _s1/blobseed/dist/bin
+            fetch_runtime_blob _s1/runtime.cc
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              PY=python
+            else
+              PY=python3
+            fi
+            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
+            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
+            CXX_ARGS=(-x c++ -std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              CXX_ARGS=(-x c++ -target aarch64-unknown-linux-gnu -std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
+            fi
+            clang "${CXX_ARGS[@]}"
+            chmod +x "${{ matrix.stage1_bin }}" || true
+            if ! "./${{ matrix.stage1_bin }}" --help >/tmp/stage1_blob_help.txt 2>&1; then
+              echo "CRITICAL: blob-native stage1 is not runnable on this runner." >&2
+              cat /tmp/stage1_blob_help.txt >&2 || true
+              return 1
+            fi
+            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thagore
+            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thag
+            tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C _s1/blobseed dist
+            STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
+          }
           STAGE1_ASSET=""
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
@@ -443,8 +469,14 @@ jobs:
             fi
           fi
           if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
-            exit 1
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              echo "[WARN] current stage1 failed probe on linux-arm64; rebuilding native blob stage1." | tee -a "$STAGE_TRACE_FILE"
+              build_stage1_blob_native
+              probe_stage1_chain "${{ matrix.stage1_bin }}"
+            else
+              echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
