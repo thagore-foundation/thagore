@@ -723,6 +723,11 @@ jobs:
             return 0
           }
           USE_SNAPSHOT_STAGE2=1
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            # On GitHub hosted ARM runners, clang-linking large snapshot IR is memory-fragile.
+            # Prefer native Stage1 -> Stage2 source bootstrap on this lane.
+            USE_SNAPSHOT_STAGE2=0
+          fi
           if [[ "$USE_SNAPSHOT_STAGE2" -eq 1 ]]; then
             if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
               STAGE2_BIN="${{ matrix.stage2_bin }}"
@@ -848,9 +853,9 @@ jobs:
             exit 1
           fi
 
-          if [[ "$STRICT_WINDOWS" -eq 1 ]]; then
+          if [[ "$STRICT_WINDOWS" -eq 1 || ( "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ) ]]; then
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] strict windows lane: keep source-built compiler as release compiler (no rebuild fallback)." | tee -a "$STAGE_TRACE_FILE"
+            echo "[INFO] keeping source-built compiler as release compiler (no second rebuild on this lane)." | tee -a "$STAGE_TRACE_FILE"
           else
             if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
               exit 1
