@@ -1002,7 +1002,6 @@ jobs:
               'exit /b %ERRORLEVEL%' \
               '' \
               ':run_update' \
-              'shift' \
               'powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %2 %3 %4 %5 %6 %7 %8 %9' \
               'exit /b %ERRORLEVEL%' > dist/bin/thagore.cmd
           else
@@ -1042,23 +1041,23 @@ jobs:
             exit 1
           fi
 
-      - name: Build Windows EXE installer (NSIS)
+      - name: Build Windows EXE installer (Inno Setup)
         if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
-          choco install nsis --no-progress -y --execution-timeout=1800
-          NSIS_BIN=""
-          if command -v makensis >/dev/null 2>&1; then
-            NSIS_BIN="makensis"
-          elif [[ -x "/c/Program Files (x86)/NSIS/makensis.exe" ]]; then
-            NSIS_BIN="/c/Program Files (x86)/NSIS/makensis.exe"
-          elif [[ -x "/c/ProgramData/chocolatey/bin/makensis.exe" ]]; then
-            NSIS_BIN="/c/ProgramData/chocolatey/bin/makensis.exe"
+          choco install innosetup --no-progress -y --execution-timeout=1800
+          ISCC_BIN=""
+          if command -v iscc >/dev/null 2>&1; then
+            ISCC_BIN="iscc"
+          elif [[ -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]]; then
+            ISCC_BIN="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          elif [[ -x "/c/ProgramData/chocolatey/bin/iscc.exe" ]]; then
+            ISCC_BIN="/c/ProgramData/chocolatey/bin/iscc.exe"
           fi
-          [[ -n "$NSIS_BIN" ]] || (echo "CRITICAL: NSIS makensis not found after installation."; exit 1)
-          NSIS_WIN="$(cygpath -w "$NSIS_BIN")"
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$NSIS_WIN' /DVERSION=${{ github.ref_name }} installer/windows/thagore.nsi"
+          [[ -n "$ISCC_BIN" ]] || (echo "CRITICAL: Inno Setup ISCC not found after installation."; exit 1)
+          ISCC_WIN="$(cygpath -w "$ISCC_BIN")"
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$ISCC_WIN' '/DMyAppVersion=${{ github.ref_name }}' installer/windows/thagore.iss"
           cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
       - name: Sign Windows executables (optional)

@@ -1,10 +1,17 @@
 param(
     [string]$mode = "check",
     [switch]$yes,
-    [switch]$dryRun
+    [switch]$dryRun,
+    [switch]$elevated
 )
 
 $ErrorActionPreference = "Stop"
+
+function Test-IsAdmin {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
 function Get-Semver([string]$text) {
     if ([string]::IsNullOrWhiteSpace($text)) { return "0.0.0" }
@@ -37,6 +44,52 @@ function Resolve-AssetUrl($release, [string]$arch) {
     throw "Cannot find asset '$name' in latest release."
 }
 
+function Copy-WithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Target,
+        [int]$RetryCount = 5
+    )
+    for ($i = 0; $i -lt $RetryCount; $i++) {
+        try {
+            Copy-Item -Force $Source $Target
+            return
+        } catch {
+            if ($i -eq ($RetryCount - 1)) { throw }
+            Start-Sleep -Milliseconds (300 * ($i + 1))
+        }
+    }
+}
+
+function Ensure-AdminForInstallPath([string]$targetPath, [string]$mode) {
+    if ($mode -notin @("apply", "rollback")) { return }
+    if (Test-IsAdmin) { return }
+
+    $programFiles64 = [Environment]::GetFolderPath("ProgramFiles")
+    $programFiles32 = [Environment]::GetFolderPath("ProgramFilesX86")
+    $normTarget = [System.IO.Path]::GetFullPath($targetPath).ToLowerInvariant()
+
+    $needsAdmin = $false
+    foreach ($root in @($programFiles64, $programFiles32)) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $normRoot = [System.IO.Path]::GetFullPath($root).ToLowerInvariant().TrimEnd('\') + "\"
+        if ($normTarget.StartsWith($normRoot)) {
+            $needsAdmin = $true
+            break
+        }
+    }
+    if (-not $needsAdmin) { return }
+    if ($elevated) { return }
+
+    $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", $mode, "-elevated")
+    if ($yes) { $argList += "-yes" }
+    if ($dryRun) { $argList += "-dryRun" }
+
+    Write-Host "[update] Relaunching with administrator privileges..."
+    $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    exit $proc.ExitCode
+}
+
 $selfDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $binCandidates = @()
 if (-not [string]::IsNullOrWhiteSpace($env:THAGORE_BIN)) {
@@ -61,6 +114,9 @@ $engine = Join-Path $binDir "thag.exe"
 if (-not (Test-Path $engine)) {
     throw "Cannot find engine binary: $engine"
 }
+$cmdWrapper = Join-Path $binDir "thagore.cmd"
+$installRoot = (Resolve-Path (Join-Path $binDir "..")).Path
+Ensure-AdminForInstallPath -targetPath $engine -mode $mode
 
 $currentRaw = (& $engine --version 2>$null | Out-String).Trim()
 $currentVer = Get-Semver $currentRaw
@@ -98,6 +154,7 @@ if ($mode -eq "apply") {
     $archivePath = Join-Path $stateDir "download.tar.gz"
     $extractDir = Join-Path $stateDir "extract"
     $backupPath = Join-Path $stateDir "thag.prev.exe"
+    $backupCmd = Join-Path $stateDir "thagore.prev.cmd"
     if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
 
@@ -117,10 +174,40 @@ if ($mode -eq "apply") {
     if (-not (Test-Path $newEngine)) {
         throw "Extracted asset does not contain thag.exe/thagore.exe"
     }
+    $newCmd = Join-Path $extractDir "bin\thagore.cmd"
+    $newInstallerDir = Join-Path $extractDir "installer"
+    $newStdDir = Join-Path $extractDir "lib\std"
 
-    Copy-Item -Force $engine $backupPath
-    Copy-Item -Force $newEngine $engine
+    Copy-WithRetry -Source $engine -Target $backupPath
+    if (Test-Path $cmdWrapper) {
+        Copy-WithRetry -Source $cmdWrapper -Target $backupCmd
+    }
+
+    Copy-WithRetry -Source $newEngine -Target $engine
+    if (Test-Path $newCmd) {
+        Copy-WithRetry -Source $newCmd -Target $cmdWrapper
+    }
+    if (Test-Path $newInstallerDir) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $installRoot "installer") | Out-Null
+        Copy-Item -Recurse -Force (Join-Path $newInstallerDir "*") (Join-Path $installRoot "installer")
+    }
+    if (Test-Path $newStdDir) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $installRoot "lib\std") | Out-Null
+        Copy-Item -Recurse -Force (Join-Path $newStdDir "*") (Join-Path $installRoot "lib\std")
+    }
+
+    $newHash = (Get-FileHash -Algorithm SHA256 -Path $newEngine).Hash
+    $installedHash = (Get-FileHash -Algorithm SHA256 -Path $engine).Hash
+    if ($newHash -ne $installedHash) {
+        Copy-WithRetry -Source $backupPath -Target $engine
+        if (Test-Path $backupCmd) {
+            Copy-WithRetry -Source $backupCmd -Target $cmdWrapper
+        }
+        throw "Updated binary hash mismatch after copy. Rolled back."
+    }
+
     Write-Host "Updated to $latestTag"
+    Write-Host "[update] binary replaced: $engine"
     exit 0
 }
 
@@ -136,7 +223,7 @@ if ($mode -eq "rollback") {
             exit 1
         }
     }
-    Copy-Item -Force $backupPath $engine
+    Copy-WithRetry -Source $backupPath -Target $engine
     Write-Host "Rollback completed."
     exit 0
 }
