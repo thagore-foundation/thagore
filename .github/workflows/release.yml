@@ -649,6 +649,12 @@ jobs:
           STRICT_WINDOWS=0
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             STRICT_WINDOWS=1
+          else
+            mkdir -p .toolchain-shim
+            printf '%s\n' '#!/usr/bin/env bash' 'exec clang++ "$@"' > .toolchain-shim/clang
+            chmod +x .toolchain-shim/clang
+            export PATH="$PWD/.toolchain-shim:$PATH"
+            echo "[INFO] unix linker shim enabled: clang -> clang++" | tee -a "$STAGE_TRACE_FILE"
           fi
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
@@ -731,7 +737,7 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          USE_SNAPSHOT_STAGE2=0
+          USE_SNAPSHOT_STAGE2=1
           if [[ "$USE_SNAPSHOT_STAGE2" -eq 1 ]]; then
             if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
               STAGE2_BIN="${{ matrix.stage2_bin }}"
@@ -740,7 +746,20 @@ jobs:
                 echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
               fi
               if cli_sanity_ok "$STAGE2_BIN"; then
-                echo "[INFO] snapshot stage2 sanity passed; continuing with source bootstrap to avoid stale snapshot lane." | tee -a "$STAGE_TRACE_FILE"
+                STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
+                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+                "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+                "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+                HELLO_BIN="${{ matrix.hello_bin }}"
+                FIB_BIN="${{ matrix.fib_bin }}"
+                test -f "$HELLO_BIN"
+                test -f "$FIB_BIN"
+                echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+                echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+                echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+                echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+                exit 0
               else
                 echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
               fi
