@@ -17,6 +17,10 @@ permissions:
   actions: read
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   discord-notify-init:
     name: discord-notify-init
@@ -779,7 +783,22 @@ jobs:
             shift
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               echo "[TIMEOUT] linux-arm64 build timeout=${BUILD_TIMEOUT_SECS}s :: ./$cc $*" | tee -a "$STAGE_TRACE_FILE"
-              timeout --signal=TERM --kill-after=15s "${BUILD_TIMEOUT_SECS}s" "./$cc" "$@"
+              set +e
+              setsid "./$cc" "$@" &
+              local cmd_pid=$!
+              (
+                sleep "$BUILD_TIMEOUT_SECS"
+                kill -TERM "-$cmd_pid" >/dev/null 2>&1 || true
+                sleep 15
+                kill -KILL "-$cmd_pid" >/dev/null 2>&1 || true
+              ) &
+              local watchdog_pid=$!
+              wait "$cmd_pid"
+              local rc=$?
+              kill "$watchdog_pid" >/dev/null 2>&1 || true
+              wait "$watchdog_pid" 2>/dev/null || true
+              set -e
+              return "$rc"
             else
               "./$cc" "$@"
             fi
