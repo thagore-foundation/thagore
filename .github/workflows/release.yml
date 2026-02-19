@@ -997,12 +997,13 @@ jobs:
               '@echo off' \
               'setlocal' \
               'set "SELF_DIR=%~dp0"' \
-              'if /I "%~1"=="update" (' \
-              '  shift' \
-              '  powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %*' \
-              '  exit /b %ERRORLEVEL%' \
-              ')' \
+              'if /I "%~1"=="update" goto run_update' \
               '"%SELF_DIR%thag.exe" %*' \
+              'exit /b %ERRORLEVEL%' \
+              '' \
+              ':run_update' \
+              'shift' \
+              'powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %*' \
               'exit /b %ERRORLEVEL%' > dist/bin/thagore.cmd
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
