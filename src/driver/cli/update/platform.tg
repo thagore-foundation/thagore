@@ -22,25 +22,56 @@ func _update_detect_arch() -> String:
         return "arm64"
     return "unknown"
 
+func _update_cli_command_name() -> String:
+    if (_update_detect_os() == "windows"):
+        return "thagore.exe"
+    return "thagore"
+
+func _update_platform_supported(os_name: String, arch: String) -> i32:
+    if ((os_name != "windows") and (os_name != "linux") and (os_name != "macos")):
+        return 0
+    if (arch == "unknown"):
+        return 0
+    return 1
+
+func _update_target_binary_name(os_name: String) -> String:
+    if (os_name == "windows"):
+        return "thagore.exe"
+    return "thagore"
+
 func _update_executable_path() -> String:
+    let os_name = _update_detect_os()
+    let target_name = _update_target_binary_name(os_name)
+    let probe = "thagore_update_where.log"
+    if (os_name == "windows"):
+        if (process.run("where thagore.exe > " + probe + " 2>&1") == 0):
+            let line = _trim(_line_at(fs.read_text(probe), 0))
+            if (strlen(line) > 0):
+                return _normalize_path(line)
+    else:
+        if (process.run("which thagore > " + probe + " 2>&1") == 0):
+            let line2 = _trim(_line_at(fs.read_text(probe), 0))
+            if (strlen(line2) > 0):
+                return _normalize_path(line2)
     let argv0 = _trim(env.program_name())
     if (strlen(argv0) == 0):
         return ""
     let norm = _normalize_path(argv0)
     if ((_contains(norm, "/") == 1) or (_contains(norm, ":") == 1)):
-        return norm
-    let probe = "thagore_update_where.log"
-    if (_update_detect_os() == "windows"):
-        if (process.run("where " + argv0 + " > " + probe + " 2>&1") == 0):
-            let line = _trim(_line_at(fs.read_text(probe), 0))
-            if (strlen(line) > 0):
-                return _normalize_path(line)
-    else:
-        if (process.run("which " + argv0 + " > " + probe + " 2>&1") == 0):
-            let line2 = _trim(_line_at(fs.read_text(probe), 0))
-            if (strlen(line2) > 0):
-                return _normalize_path(line2)
-    return _normalize_path(path.join(env.cwd(), argv0))
+        let base_dir = _normalize_path(path.dirname(norm))
+        let candidate = _normalize_path(path.join(base_dir, target_name))
+        if (fs.exists(candidate) == 1):
+            return candidate
+        if (fs.exists(norm) == 1):
+            return norm
+        return candidate
+    let from_cwd = _normalize_path(path.join(env.cwd(), norm))
+    let from_cwd_target = _normalize_path(path.join(_normalize_path(path.dirname(from_cwd)), target_name))
+    if (fs.exists(from_cwd_target) == 1):
+        return from_cwd_target
+    if (fs.exists(from_cwd) == 1):
+        return from_cwd
+    return from_cwd_target
 
 func _update_asset_matches(name_raw: String, os_name: String, arch: String) -> i32:
     let name = _trim(name_raw)
@@ -77,9 +108,4 @@ func _update_asset_binary_path(extract_dir: String, os_name: String) -> String:
         c2 = path.join(extract_dir, "thagore.exe")
     if (fs.exists(c2) == 1):
         return c2
-    let c3 = path.join(extract_dir, "bin/thag")
-    if (os_name == "windows"):
-        c3 = path.join(extract_dir, "bin/thag.exe")
-    if (fs.exists(c3) == 1):
-        return c3
     return ""

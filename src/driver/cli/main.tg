@@ -4,22 +4,24 @@ import "src/driver/cli/test/flow.tg"
 import "src/driver/cli/build/flow.tg"
 import "src/driver/cli/install/flow.tg"
 import "src/driver/cli/update/flow.tg"
+import "src/driver/cli/update/platform.tg"
 import "src/driver/cli/update/version.tg"
 import "src/driver/flow/engine.tg" as flowctl
 import "src/driver/intent/engine.tg" as intentctl
 
 func _print_help() -> void:
-    print("thagore " + _update_current_version_text())
+    let cli = _update_cli_command_name()
+    print(cli + " " + _update_current_version_text())
     print("Usage:")
-    print("  thagore --help")
-    print("  thagore --version")
-    print("  thagore build <input.tg> [-o output]")
-    print("  thagore <input.tg> [-o output]")
-    print("  thagore test [filter] [--workspace|--all] [--json]")
-    print("  thagore fix <doctor|dry-run|apply|explain|rollback> ...")
-    print("  thagore intent <doctor|explain|lock> <entry.tg> [flags]")
-    print("  thagore install toolchain [--yes]")
-    print("  thagore update <check|apply|rollback> [flags]")
+    print("  " + cli + " --help")
+    print("  " + cli + " --version")
+    print("  " + cli + " build <input.tg> [-o output]")
+    print("  " + cli + " <input.tg> [-o output]")
+    print("  " + cli + " test [filter] [--workspace|--all] [--json]")
+    print("  " + cli + " fix <doctor|dry-run|apply|explain|rollback> ...")
+    print("  " + cli + " intent <doctor|explain|lock> <entry.tg> [flags]")
+    print("  " + cli + " install toolchain [--yes]")
+    print("  " + cli + " update <check|apply|rollback> [flags]")
 
 func main() -> i32:
     let argc = env.count()
@@ -31,7 +33,7 @@ func main() -> i32:
         _print_help()
         return 0
     if ((cmd == "--version") or (cmd == "version")):
-        print("thagore " + _update_current_version_text())
+        print(_update_cli_command_name() + " " + _update_current_version_text())
         return 0
     _update_auto_notify_if_needed(cmd)
     if (cmd == "flow"):

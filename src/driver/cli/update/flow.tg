@@ -7,11 +7,12 @@ import "lib/io.tg" as io
 import "lib/path.tg" as path
 
 func _update_print_help() -> void:
-    print("thagore update")
+    let cli = _update_cli_command_name()
+    print(cli + " update")
     print("Usage:")
-    print("  thagore update check")
-    print("  thagore update apply [--yes] [--dry-run]")
-    print("  thagore update rollback [--yes]")
+    print("  " + cli + " update check")
+    print("  " + cli + " update apply [--yes] [--dry-run]")
+    print("  " + cli + " update rollback [--yes]")
 
 func _update_extract_archive(archive_path: String, out_dir: String) -> i32:
     if (_ends_with(archive_path, ".zip") == 1):
@@ -46,8 +47,8 @@ func _update_apply(argc: i32, start: i32) -> i32:
         i = i + 1
     let os_name = _update_detect_os()
     let arch = _update_detect_arch()
-    if (arch == "unknown"):
-        print("ERROR: unsupported architecture for update.")
+    if (_update_platform_supported(os_name, arch) == 0):
+        print("ERROR: update is not supported on this platform (" + os_name + "/" + arch + ").")
         return 1
     let rel = _update_fetch_latest_foundation_release(os_name, arch)
     if (rel.ok == 0):
@@ -90,6 +91,19 @@ func _update_apply(argc: i32, start: i32) -> i32:
     let backup_path = _update_backup_file()
     if (_ends_with(exe_path, ".exe") == 1):
         backup_path = backup_path + ".exe"
+    if (os_name == "windows"):
+        let staged_path = path.join(_update_state_dir(), "thagore.exe.next")
+        if (fs.exists(staged_path) == 1):
+            fs.remove(staged_path)
+        if (fs.move(new_bin, staged_path) != 1):
+            print("ERROR: failed to stage updated binary for Windows.")
+            return 1
+        print("ERROR: Windows self-update is not supported by current runtime API (cannot replace running thagore.exe).")
+        print("[update] Staged binary: " + staged_path)
+        print("[update] Apply manually after closing all thagore processes:")
+        print("[update]   move /y \"" + exe_path + "\" \"" + backup_path + "\"")
+        print("[update]   move /y \"" + staged_path + "\" \"" + exe_path + "\"")
+        return 1
     if (fs.exists(exe_path) == 1):
         if (fs.move(exe_path, backup_path) != 1):
             print("ERROR: failed to create backup: " + backup_path)
@@ -109,8 +123,8 @@ func _update_apply(argc: i32, start: i32) -> i32:
 func _update_check() -> i32:
     let os_name = _update_detect_os()
     let arch = _update_detect_arch()
-    if (arch == "unknown"):
-        print("ERROR: unsupported architecture for update.")
+    if (_update_platform_supported(os_name, arch) == 0):
+        print("ERROR: update is not supported on this platform (" + os_name + "/" + arch + ").")
         return 1
     let rel = _update_fetch_latest_foundation_release(os_name, arch)
     if (rel.ok == 0):
@@ -118,7 +132,7 @@ func _update_check() -> i32:
         return 1
     if (_update_is_newer_than_current(rel.tag) > 0):
         print("Update available: " + rel.tag + " (current: " + _update_current_version_text() + ")")
-        print("Run: thagore update apply")
+        print("Run: " + _update_cli_command_name() + " update apply")
         return 0
     print("Already up to date (" + _update_current_version_text() + ").")
     return 0
@@ -143,6 +157,11 @@ func _update_rollback(argc: i32, start: i32) -> i32:
     if (fs.exists(backup_path) == 0):
         print("ERROR: no backup binary to rollback.")
         return 1
+    if (_update_detect_os() == "windows"):
+        print("ERROR: Windows rollback is not supported by current runtime API (cannot replace running thagore.exe).")
+        print("[update] Run manually from a separate process after closing thagore.exe:")
+        print("[update]   move /y \"" + backup_path + "\" \"" + exe_path + "\"")
+        return 1
     if (_update_confirm(yes, "Rollback current binary?") == 0):
         print("Rollback aborted.")
         return 1
@@ -164,7 +183,7 @@ func _update_auto_notify_if_needed(cmd: String) -> void:
         return
     let os_name = _update_detect_os()
     let arch = _update_detect_arch()
-    if (arch == "unknown"):
+    if (_update_platform_supported(os_name, arch) == 0):
         return
     let rel = _update_fetch_latest_foundation_release(os_name, arch)
     if (rel.ok == 0):
@@ -173,7 +192,7 @@ func _update_auto_notify_if_needed(cmd: String) -> void:
     let notify_ms = _update_get_state_i32("last_notify_ms", 0)
     if ((_update_is_newer_than_current(rel.tag) > 0) and ((prev_notified != rel.tag) or ((now - notify_ms) >= 86400000))):
         print("[update] New version available " + rel.tag + " (current: " + _update_current_version_text() + ")")
-        print("[update] Run: thagore update apply")
+        print("[update] Run: " + _update_cli_command_name() + " update apply")
         _update_write_state(now, now, rel.tag, rel.tag)
         return
     _update_write_state(now, notify_ms, prev_notified, rel.tag)
