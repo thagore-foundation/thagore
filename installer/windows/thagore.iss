@@ -48,8 +48,6 @@ const
   EnvKeyMachine = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
   EnvKeyUser = 'Environment';
   EnvValueName = 'Path';
-  WM_SETTINGCHANGE = $001A;
-  HWND_BROADCAST = $FFFF;
   SMTO_ABORTIFHUNG = $0002;
 
 function SendMessageTimeout(hWnd: Integer; Msg: Integer; wParam: Integer; lParam: string; fuFlags: Integer; uTimeout: Integer; var lpdwResult: Integer): Integer;
