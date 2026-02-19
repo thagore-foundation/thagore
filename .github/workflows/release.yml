@@ -655,6 +655,8 @@ jobs:
               if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
                 echo "[CMD] clang -x c++ -std=c++17 _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang -x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module
+                echo "[CMD] clang src/thagore.ll thag_runtime.lib -o _s1/thagore-helper.exe -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang src/thagore.ll thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module
               else
                 echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
@@ -713,6 +715,10 @@ jobs:
           }
           if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
             STAGE2_BIN="${{ matrix.stage2_bin }}"
+            if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
+              export THAG_HELPER_BIN="$(pwd)/_s1/thagore-helper.exe"
+              echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
             if cli_sanity_ok "$STAGE2_BIN"; then
               STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
               echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
@@ -1019,6 +1025,9 @@ jobs:
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
+            if [[ "${{ matrix.arch }}" == "x86_64" && -f "_s1/thagore-helper.exe" ]]; then
+              cp "_s1/thagore-helper.exe" "dist/bin/stage1.exe"
+            fi
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           fi
