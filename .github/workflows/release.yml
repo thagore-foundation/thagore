@@ -805,6 +805,10 @@ jobs:
           if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]]; then
             cli_sanity_ok "$STAGE2_REBUILD_BIN"
           else
+            if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+              echo "CRITICAL: release tag build entered stage1 compatibility lane; refusing publish."
+              exit 1
+            fi
             echo "[SANITY] skip strict CLI marker checks for stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
           fi
           if [[ "$COMPILER_SUPPORTS_HELP" == "0" ]]; then
@@ -992,6 +996,10 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
+          chmod +x "dist/bin/${{ matrix.output_bin }}" || true
+          PKG_HELP="$(./dist/bin/${{ matrix.output_bin }} --help 2>&1 || true)"
+          grep -Eq "Usage:|Compiler CLI|thagore build" <<<"$PKG_HELP"
+          grep -Eq "thagore update|update <check\|apply\|rollback>" <<<"$PKG_HELP"
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
           else
