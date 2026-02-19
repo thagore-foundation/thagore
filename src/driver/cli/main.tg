@@ -8,6 +8,7 @@ import "src/driver/cli/update/platform.tg"
 import "src/driver/cli/update/version.tg"
 import "src/driver/flow/engine.tg" as flowctl
 import "src/driver/intent/engine.tg" as intentctl
+import "src/driver/state/engine.tg" as statectl
 
 func _print_help() -> void:
     let cli = _update_cli_command_name()
@@ -20,6 +21,7 @@ func _print_help() -> void:
     print("  " + cli + " test [filter] [--workspace|--all] [--json]")
     print("  " + cli + " fix <doctor|dry-run|apply|explain|rollback> ...")
     print("  " + cli + " intent <doctor|explain|lock> <entry.tg> [flags]")
+    print("  " + cli + " state <doctor|explain> <entry.tg> [--mode off|on|strict] [--json] [-o report.json]")
     print("  " + cli + " install toolchain [--yes]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
@@ -181,6 +183,60 @@ func main() -> i32:
         if (sub_intent == "lock"):
             return intentctl.run_intent_lock(entry_intent, intent_lock_out, intent_mode)
         print("ERROR: unknown intent subcommand: " + sub_intent)
+        return 1
+    if (cmd == "state"):
+        if (argc <= 2):
+            print("ERROR: missing state subcommand.")
+            return 1
+        let sub_state = _trim(env.get(2))
+        let entry_state = ""
+        let state_mode = "on"
+        let state_json = 0
+        let state_out = ""
+        let i_state = 3
+        while (i_state < argc):
+            let arg_state = _trim(env.get(i_state))
+            if (_starts_with(arg_state, "--mode=") == 1):
+                state_mode = statectl.normalize_state_mode(_value_after_prefix(arg_state, "--mode="))
+            else:
+                if ((arg_state == "--mode") and ((i_state + 1) < argc) and (_starts_with(_trim(env.get(i_state + 1)), "--") == 0)):
+                    state_mode = statectl.normalize_state_mode(_trim(env.get(i_state + 1)))
+                    i_state = i_state + 1
+                else:
+                    if (arg_state == "--json"):
+                        state_json = 1
+                    else:
+                        if (_starts_with(arg_state, "-o=") == 1):
+                            state_out = _trim(_value_after_prefix(arg_state, "-o="))
+                        else:
+                            if (_starts_with(arg_state, "--out=") == 1):
+                                state_out = _trim(_value_after_prefix(arg_state, "--out="))
+                            else:
+                                if (_starts_with(arg_state, "--output=") == 1):
+                                    state_out = _trim(_value_after_prefix(arg_state, "--output="))
+                                else:
+                                    if (((arg_state == "-o") or (arg_state == "--out") or (arg_state == "--output")) and ((i_state + 1) < argc) and (_starts_with(_trim(env.get(i_state + 1)), "--") == 0)):
+                                        state_out = _trim(env.get(i_state + 1))
+                                        i_state = i_state + 1
+                                    else:
+                                        if (_starts_with(arg_state, "--") == 1):
+                                            print("ERROR: unknown state flag: " + arg_state)
+                                            return 1
+                                        else:
+                                            if (strlen(entry_state) == 0):
+                                                entry_state = arg_state
+                                            else:
+                                                print("ERROR: multiple state entry paths are not supported: " + arg_state)
+                                                return 1
+            i_state = i_state + 1
+        if (strlen(entry_state) == 0):
+            print("ERROR: missing entry path for state command.")
+            return 1
+        if (sub_state == "doctor"):
+            return statectl.run_state_doctor(entry_state, state_mode, state_json)
+        if (sub_state == "explain"):
+            return statectl.run_state_explain_to(entry_state, state_mode, state_json, state_out)
+        print("ERROR: unknown state subcommand: " + sub_state)
         return 1
     if (cmd == "fix"):
         if (argc <= 2):
@@ -470,6 +526,7 @@ func main() -> i32:
     let autofix_exclude_csv = ""
     let flow_mode_build = "off"
     let flow_strip_debug = 0
+    let state_mode_build = "off"
     let intent_mode_build = ""
     let intent_policy_build = ""
     let intent_fallback_build = ""
@@ -600,9 +657,19 @@ func main() -> i32:
                                                                                                                     if (arg == "--flow-strip-debug"):
                                                                                                                         flow_strip_debug = 1
                                                                                                                     else:
-                                                                                                                        if ((arg == "-o") and ((i + 1) < argc)):
-                                                                                                                            out_path = _trim(env.get(i + 1))
-                                                                                                                            i = i + 1
+                                                                                                                        if (_starts_with(arg, "--state=") == 1):
+                                                                                                                            state_mode_build = statectl.normalize_state_mode(_value_after_prefix(arg, "--state="))
+                                                                                                                        else:
+                                                                                                                            if (arg == "--state"):
+                                                                                                                                if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                                                    state_mode_build = statectl.normalize_state_mode(_trim(env.get(i + 1)))
+                                                                                                                                    i = i + 1
+                                                                                                                                else:
+                                                                                                                                    state_mode_build = "on"
+                                                                                                                            else:
+                                                                                                                                if ((arg == "-o") and ((i + 1) < argc)):
+                                                                                                                                    out_path = _trim(env.get(i + 1))
+                                                                                                                                    i = i + 1
         i = i + 1
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
@@ -635,5 +702,8 @@ func main() -> i32:
             return 1
         if (flow_strip_debug == 1):
             print("[flow] note: --flow-strip-debug accepted (metadata stripping is deferred in current build path).")
+    if (state_mode_build != "off"):
+        if (statectl.run_state_gate(input_path, state_mode_build, 0) != 0):
+            return 1
     let autofix_exclude_set = _csv_to_set(autofix_exclude_csv)
     return _build(input_path, out_path, emit_only, autofix_mode, autofix_lock, autofix_lock_strict, autofix_lock_locked, autofix_max_iterations, autofix_max_files, autofix_workspace, autofix_exclude_set)

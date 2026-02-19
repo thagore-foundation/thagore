@@ -1,0 +1,145 @@
+import "lib/fs.tg" as fs
+import "src/driver/state/engine.tg" as state
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_contains(label: String, text: String, needle: String) -> i32:
+    if (_contains(text, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("missing: " + needle)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let nl = __string_from_codepoint(10)
+    let ok_path = "tests/__state_cli_ok.tg"
+    let unknown_path = "tests/__state_cli_unknown.tg"
+    let mismatch_path = "tests/__state_cli_mismatch.tg"
+    let ret_bad_path = "tests/__state_cli_return_bad.tg"
+    let ambig_path = "tests/__state_cli_ambiguous.tg"
+    let loop_ambig_path = "tests/__state_cli_loop_ambiguous.tg"
+    let custom_report = "tests/__state_cli_custom_report.json"
+
+    let src_ok = "state Session:" + nl
+    src_ok = src_ok + "    Ready" + nl
+    src_ok = src_ok + "    Closed" + nl
+    src_ok = src_ok + "func open() -> Session[Ready]:" + nl
+    src_ok = src_ok + "    return open()" + nl
+    src_ok = src_ok + "func send(s: Session[Ready], msg: String) -> Session[Ready]:" + nl
+    src_ok = src_ok + "    return s" + nl
+    src_ok = src_ok + "func close(s: Session[Ready]) -> Session[Closed]:" + nl
+    src_ok = src_ok + "    return close(s)" + nl
+    src_ok = src_ok + "func main() -> i32:" + nl
+    src_ok = src_ok + "    let s = open()" + nl
+    src_ok = src_ok + "    let s2 = send(s, \"ping\")" + nl
+    src_ok = src_ok + "    let s3 = close(s2)" + nl
+    src_ok = src_ok + "    return 0" + nl
+    fails = fails + _expect_i32("write state ok source", fs.write_text(ok_path, src_ok), 1)
+
+    let src_unknown = "func bad(x: Socket[Ready]) -> i32:" + nl
+    src_unknown = src_unknown + "    return 0" + nl
+    fails = fails + _expect_i32("write state unknown source", fs.write_text(unknown_path, src_unknown), 1)
+
+    let src_mismatch = "state Session:" + nl
+    src_mismatch = src_mismatch + "    Ready" + nl
+    src_mismatch = src_mismatch + "    Closed" + nl
+    src_mismatch = src_mismatch + "func send(s: Session[Ready], msg: String) -> Session[Ready]:" + nl
+    src_mismatch = src_mismatch + "    return s" + nl
+    src_mismatch = src_mismatch + "func close(s: Session[Ready]) -> Session[Closed]:" + nl
+    src_mismatch = src_mismatch + "    return close(s)" + nl
+    src_mismatch = src_mismatch + "func main(s: Session[Ready]) -> i32:" + nl
+    src_mismatch = src_mismatch + "    let c = close(s)" + nl
+    src_mismatch = src_mismatch + "    let n = send(c, \"x\")" + nl
+    src_mismatch = src_mismatch + "    return 0" + nl
+    fails = fails + _expect_i32("write state mismatch source", fs.write_text(mismatch_path, src_mismatch), 1)
+
+    let src_ret_bad = "state Session:" + nl
+    src_ret_bad = src_ret_bad + "    Ready" + nl
+    src_ret_bad = src_ret_bad + "    Closed" + nl
+    src_ret_bad = src_ret_bad + "func bad(s: Session[Ready]) -> Session[Closed]:" + nl
+    src_ret_bad = src_ret_bad + "    return s" + nl
+    fails = fails + _expect_i32("write state return bad source", fs.write_text(ret_bad_path, src_ret_bad), 1)
+
+    let src_ambig = "state Session:" + nl
+    src_ambig = src_ambig + "    Ready" + nl
+    src_ambig = src_ambig + "    Closed" + nl
+    src_ambig = src_ambig + "func send(s: Session[Ready], msg: String) -> Session[Ready]:" + nl
+    src_ambig = src_ambig + "    return s" + nl
+    src_ambig = src_ambig + "func close(s: Session[Ready]) -> Session[Closed]:" + nl
+    src_ambig = src_ambig + "    return close(s)" + nl
+    src_ambig = src_ambig + "func main(flag: i32, s: Session[Ready]) -> i32:" + nl
+    src_ambig = src_ambig + "    if (flag > 0):" + nl
+    src_ambig = src_ambig + "        s = close(s)" + nl
+    src_ambig = src_ambig + "    else:" + nl
+    src_ambig = src_ambig + "        s = send(s, \"ok\")" + nl
+    src_ambig = src_ambig + "    return 0" + nl
+    fails = fails + _expect_i32("write state ambiguous source", fs.write_text(ambig_path, src_ambig), 1)
+
+    let src_loop_ambig = "state Session:" + nl
+    src_loop_ambig = src_loop_ambig + "    Ready" + nl
+    src_loop_ambig = src_loop_ambig + "    Closed" + nl
+    src_loop_ambig = src_loop_ambig + "func close(s: Session[Ready]) -> Session[Closed]:" + nl
+    src_loop_ambig = src_loop_ambig + "    return close(s)" + nl
+    src_loop_ambig = src_loop_ambig + "func main(s: Session[Ready], n: i32) -> i32:" + nl
+    src_loop_ambig = src_loop_ambig + "    while (n > 0):" + nl
+    src_loop_ambig = src_loop_ambig + "        s = close(s)" + nl
+    src_loop_ambig = src_loop_ambig + "        n = n - 1" + nl
+    src_loop_ambig = src_loop_ambig + "    return 0" + nl
+    fails = fails + _expect_i32("write state loop ambiguous source", fs.write_text(loop_ambig_path, src_loop_ambig), 1)
+
+    fails = fails + _expect_i32("normalize state off", _contains(state.normalize_state_mode("off"), "off"), 1)
+    fails = fails + _expect_i32("normalize state strict", _contains(state.normalize_state_mode("strict"), "strict"), 1)
+    fails = fails + _expect_i32("normalize state default on", _contains(state.normalize_state_mode("weird"), "on"), 1)
+
+    fails = fails + _expect_i32("state doctor ok", state.run_state_doctor(ok_path, "on", 0), 0)
+    fails = fails + _expect_i32("state doctor ok json", state.run_state_doctor(ok_path, "on", 1), 0)
+    fails = fails + _expect_i32("state explain ok json", state.run_state_explain(ok_path, "on", 1), 0)
+    let last_report = fs.read_text(".thagore/state/last_report.path")
+    fails = fails + _expect_i32("state explain report exists", fs.exists(last_report), 1)
+    let report_text = fs.read_text(last_report)
+    fails = fails + _expect_contains("state explain has state_sets", report_text, "\"state_sets\"")
+    fails = fails + _expect_contains("state explain has functions", report_text, "\"functions\"")
+    fails = fails + _expect_i32("state explain custom out", state.run_state_explain_to(ok_path, "on", 0, custom_report), 0)
+    fails = fails + _expect_i32("state explain custom out exists", fs.exists(custom_report), 1)
+    fails = fails + _expect_contains("state explain custom out schema", fs.read_text(custom_report), "\"schema_version\":\"1.0\"")
+
+    fails = fails + _expect_i32("state gate unknown set fails", state.run_state_gate(unknown_path, "on", 0), 1)
+    fails = fails + _expect_i32("state gate mismatch fails", state.run_state_gate(mismatch_path, "on", 0), 1)
+    fails = fails + _expect_i32("state gate return mismatch strict fails", state.run_state_gate(ret_bad_path, "strict", 0), 1)
+    fails = fails + _expect_i32("state gate ambiguous on warns only", state.run_state_gate(ambig_path, "on", 0), 0)
+    fails = fails + _expect_i32("state gate ambiguous strict fails", state.run_state_gate(ambig_path, "strict", 0), 1)
+    fails = fails + _expect_i32("state gate loop ambiguous on warns only", state.run_state_gate(loop_ambig_path, "on", 0), 0)
+    fails = fails + _expect_i32("state gate loop ambiguous strict fails", state.run_state_gate(loop_ambig_path, "strict", 0), 1)
+    fails = fails + _expect_i32("state explain ambiguous json", state.run_state_explain(ambig_path, "on", 1), 0)
+    let ambig_report = fs.read_text(fs.read_text(".thagore/state/last_report.path"))
+    fails = fails + _expect_contains("state explain includes ambiguous code", ambig_report, "\"W_STATE_AMBIGUOUS\"")
+    fails = fails + _expect_i32("state gate off ignores errors", state.run_state_gate(mismatch_path, "off", 0), 0)
+
+    if (fails == 0):
+        print("PASS: state cli")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

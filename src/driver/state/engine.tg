@@ -1,0 +1,1375 @@
+import "lib/fs.tg" as fs
+import "lib/time.tg" as time
+import "src/syntax/parser/header.tg" as ph
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+struct StateAcc:
+    findings: String
+    errors: i32
+    warnings: i32
+    ambiguous: i32
+    seq: i32
+
+
+struct StateReport:
+    state_sets: String
+    fn_meta: String
+    fn_params: String
+    fn_returns: String
+    findings: String
+    functions_analyzed: i32
+    errors: i32
+    warnings: i32
+    ambiguous: i32
+
+
+struct StateBlock:
+    var_map: String
+    ambiguous_vars: String
+    acc: StateAcc
+
+
+func _state_acc(findings: String, errors: i32, warnings: i32, ambiguous: i32, seq: i32) -> StateAcc:
+    return StateAcc(findings, errors, warnings, ambiguous, seq)
+
+func _state_report(state_sets: String, fn_meta: String, fn_params: String, fn_returns: String, findings: String, functions_analyzed: i32, errors: i32, warnings: i32, ambiguous: i32) -> StateReport:
+    return StateReport(state_sets, fn_meta, fn_params, fn_returns, findings, functions_analyzed, errors, warnings, ambiguous)
+
+func _state_block(var_map: String, ambiguous_vars: String, acc: StateAcc) -> StateBlock:
+    return StateBlock(var_map, ambiguous_vars, acc)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _ends_with(text: String, suffix: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(suffix)
+    if (m > n):
+        return 0
+    if (__thg_str_substr(text, n - m, m) == suffix):
+        return 1
+    return 0
+
+func _contains(text: String, needle: String) -> i32:
+    if (_find(text, needle) >= 0):
+        return 1
+    return 0
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let left = 0
+    let i = 0
+    while (i < n):
+        let ch = _char_at(text, i)
+        if ((ch == " ") or (ch == "\t") or (ch == _cr()) or (ch == _nl())):
+            left = i + 1
+            i = i + 1
+        else:
+            i = n
+    let right = n - 1
+    let j = n - 1
+    while (j >= left):
+        let ch2 = _char_at(text, j)
+        if ((ch2 == " ") or (ch2 == "\t") or (ch2 == _cr()) or (ch2 == _nl())):
+            right = j - 1
+            j = j - 1
+        else:
+            j = left - 1
+    if (right < left):
+        return ""
+    return __thg_str_substr(text, left, right - left + 1)
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _normalize_path(path: String) -> String:
+    return _replace_all(path, "\\", "/")
+
+func _sanitize_id(text: String) -> String:
+    let out = _normalize_path(text)
+    let out1 = _replace_all(out, "/", "_")
+    let out2 = _replace_all(out1, ":", "_")
+    let out3 = _replace_all(out2, ".", "_")
+    return _replace_all(out3, " ", "_")
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + __thg_str_substr("0123456789", r, 1)
+        n = q
+    let out = ""
+    let i = strlen(rev) - 1
+    while (i >= 0):
+        out = out + _char_at(rev, i)
+        i = i - 1
+    return sign + out
+
+func _parse_i32_default(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let sign = 1
+    let i = 0
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        i = 1
+    if (i >= strlen(s)):
+        return fallback
+    let out = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        let d = _find_char("0123456789", ch)
+        if (d < 0):
+            return fallback
+        out = (out * 10) + d
+        i = i + 1
+    if (sign < 0):
+        return 0 - out
+    return out
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let c = 1
+    while (i < n):
+        if (_char_at(source, i) == _nl()):
+            c = c + 1
+        i = i + 1
+    return c
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line = ""
+            line_idx = line_idx + 1
+            i = i + 1
+        else:
+            if (ch == _cr()):
+                i = i + 1
+            else:
+                line = line + ch
+                i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    let out = 0
+    while (i < n):
+        let ch = _char_at(line, i)
+        if (ch == " "):
+            out = out + 1
+            i = i + 1
+        else:
+            if (ch == "\t"):
+                out = out + 4
+                i = i + 1
+            else:
+                i = n
+    return out
+
+func _strip_inline_comment(line: String) -> String:
+    let p = _find_char(line, "#")
+    if (p < 0):
+        return line
+    if (p == 0):
+        return ""
+    return __thg_str_substr(line, 0, p)
+
+func _json_escape(text: String) -> String:
+    let out = _replace_all(text, "\\", "\\\\")
+    let out1 = _replace_all(out, _dq(), "\\" + _dq())
+    let out2 = _replace_all(out1, _nl(), "\\n")
+    return _replace_all(out2, _cr(), "\\r")
+
+func _json_quote(text: String) -> String:
+    return _dq() + _json_escape(text) + _dq()
+
+func _json_bool(flag: i32) -> String:
+    if (flag == 1):
+        return "true"
+    return "false"
+
+func _append_record(records: String, record: String) -> String:
+    if (strlen(record) == 0):
+        return records
+    if (strlen(records) == 0):
+        return record
+    return records + _nl() + record
+
+func _record_count(records: String) -> i32:
+    let total = _line_count(records)
+    let i = 0
+    let out = 0
+    while (i < total):
+        if (strlen(_trim(_line_at(records, i))) > 0):
+            out = out + 1
+        i = i + 1
+    return out
+
+func _set_count(set_text: String) -> i32:
+    let i = 0
+    let n = strlen(set_text)
+    let token = ""
+    let out = 0
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = out + 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = out + 1
+    return out
+
+func _record_field(record: String, field_index: i32) -> String:
+    let i = 0
+    let idx = 0
+    let token = ""
+    while (i < strlen(record)):
+        let ch = _char_at(record, i)
+        if (ch == "|"):
+            if (idx == field_index):
+                return token
+            token = ""
+            idx = idx + 1
+        else:
+            token = token + ch
+        i = i + 1
+    if (idx == field_index):
+        return token
+    return ""
+
+func _set_contains(set_text: String, token: String) -> i32:
+    if (strlen(token) == 0):
+        return 0
+    if (_contains(set_text, ";" + token + ";") == 1):
+        return 1
+    return 0
+
+func _set_add_unique(set_text: String, token: String) -> String:
+    if (strlen(token) == 0):
+        return set_text
+    if (_set_contains(set_text, token) == 1):
+        return set_text
+    return set_text + token + ";"
+
+func _set_remove(set_text: String, token: String) -> String:
+    if (strlen(token) == 0):
+        return set_text
+    let out = ";"
+    let i = 0
+    let n = strlen(set_text)
+    let cur = ""
+    while (i < n):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(cur) > 0):
+                if (cur != token):
+                    out = _set_add_unique(out, cur)
+                cur = ""
+        else:
+            cur = cur + ch
+        i = i + 1
+    if ((strlen(cur) > 0) and (cur != token)):
+        out = _set_add_unique(out, cur)
+    return out
+
+func _set_union(left: String, right: String) -> String:
+    let out = left
+    let i = 0
+    let n = strlen(right)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(right, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                out = _set_add_unique(out, token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        out = _set_add_unique(out, token)
+    return out
+
+func _set_to_json_array(set_text: String) -> String:
+    let out = "["
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + _json_quote(token)
+                first = 0
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out + "]"
+
+func _top_level_colon(text: String) -> i32:
+    let i = 0
+    let depth_br = 0
+    let depth_par = 0
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == "["):
+            depth_br = depth_br + 1
+        else:
+            if (ch == "]"):
+                if (depth_br > 0):
+                    depth_br = depth_br - 1
+            else:
+                if (ch == "("):
+                    depth_par = depth_par + 1
+                else:
+                    if (ch == ")"):
+                        if (depth_par > 0):
+                            depth_par = depth_par - 1
+                    else:
+                        if (ch == ":"):
+                            if ((depth_br == 0) and (depth_par == 0)):
+                                return i
+        i = i + 1
+    return -1
+
+func _matching_rparen(text: String, lp: i32) -> i32:
+    if (lp < 0):
+        return -1
+    let i = lp
+    let depth = 0
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == "("):
+            depth = depth + 1
+        else:
+            if (ch == ")"):
+                depth = depth - 1
+                if (depth == 0):
+                    return i
+        i = i + 1
+    return -1
+
+func _arg_count(args_text: String) -> i32:
+    let s = _trim(args_text)
+    if (strlen(s) == 0):
+        return 0
+    let count = 1
+    let i = 0
+    let depth_br = 0
+    let depth_par = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (ch == "["):
+            depth_br = depth_br + 1
+        else:
+            if (ch == "]"):
+                if (depth_br > 0):
+                    depth_br = depth_br - 1
+            else:
+                if (ch == "("):
+                    depth_par = depth_par + 1
+                else:
+                    if (ch == ")"):
+                        if (depth_par > 0):
+                            depth_par = depth_par - 1
+                    else:
+                        if (ch == ","):
+                            if ((depth_br == 0) and (depth_par == 0)):
+                                count = count + 1
+        i = i + 1
+    return count
+
+func _arg_at(args_text: String, target_index: i32) -> String:
+    let s = _trim(args_text)
+    if (target_index < 0):
+        return ""
+    if (strlen(s) == 0):
+        return ""
+    let idx = 0
+    let token = ""
+    let i = 0
+    let depth_br = 0
+    let depth_par = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (ch == "["):
+            depth_br = depth_br + 1
+            token = token + ch
+        else:
+            if (ch == "]"):
+                if (depth_br > 0):
+                    depth_br = depth_br - 1
+                token = token + ch
+            else:
+                if (ch == "("):
+                    depth_par = depth_par + 1
+                    token = token + ch
+                else:
+                    if (ch == ")"):
+                        if (depth_par > 0):
+                            depth_par = depth_par - 1
+                        token = token + ch
+                    else:
+                        if ((ch == ",") and (depth_br == 0) and (depth_par == 0)):
+                            if (idx == target_index):
+                                return _trim(token)
+                            token = ""
+                            idx = idx + 1
+                        else:
+                            token = token + ch
+        i = i + 1
+    if (idx == target_index):
+        return _trim(token)
+    return ""
+
+func _parse_state_name(line: String) -> String:
+    let s = _trim(line)
+    if (_starts_with(s, "state ") == 0):
+        return ""
+    if (_ends_with(s, ":") == 0):
+        return ""
+    if (strlen(s) <= 7):
+        return ""
+    return _trim(__thg_str_substr(s, 6, strlen(s) - 7))
+
+func _parse_state_tag(type_expr: String) -> String:
+    let s = _trim(type_expr)
+    let lp = _find_char(s, "[")
+    let rp = _find_char(s, "]")
+    if ((lp <= 0) or (rp <= lp)):
+        return ""
+    if (rp != (strlen(s) - 1)):
+        return ""
+    let base = _trim(__thg_str_substr(s, 0, lp))
+    let state = _trim(__thg_str_substr(s, lp + 1, rp - lp - 1))
+    if ((strlen(base) == 0) or (strlen(state) == 0)):
+        return ""
+    if ((_contains(state, ",") == 1) or (_contains(state, "|") == 1)):
+        return ""
+    if ((_contains(state, "[") == 1) or (_contains(state, "]") == 1)):
+        return ""
+    return base + "|" + state
+
+func _tag_type(tag: String) -> String:
+    return _record_field(tag, 0)
+
+func _tag_state(tag: String) -> String:
+    return _record_field(tag, 1)
+
+func _state_variants_for(state_sets: String, set_name: String) -> String:
+    let total = _line_count(state_sets)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(state_sets, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == set_name):
+                return _record_field(rec, 1)
+        i = i + 1
+    return ""
+
+func _state_set_exists(state_sets: String, set_name: String) -> i32:
+    if (strlen(_state_variants_for(state_sets, set_name)) > 0):
+        return 1
+    return 0
+
+func _state_variant_exists(state_sets: String, set_name: String, variant: String) -> i32:
+    let variants = _state_variants_for(state_sets, set_name)
+    if (strlen(variants) == 0):
+        return 0
+    return _set_contains(variants, variant)
+
+func _is_ident_char(ch: String) -> i32:
+    if (_find_char("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", ch) >= 0):
+        return 1
+    return 0
+
+func _is_simple_ident(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return 0
+    let first = _char_at(s, 0)
+    if (_find_char("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", first) < 0):
+        return 0
+    let i = 1
+    while (i < strlen(s)):
+        if (_is_ident_char(_char_at(s, i)) == 0):
+            return 0
+        i = i + 1
+    return 1
+
+func _map_get_type(map_records: String, key: String) -> String:
+    let total = _line_count(map_records)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(map_records, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == key):
+                return _record_field(rec, 1)
+        i = i + 1
+    return ""
+
+func _map_get_state(map_records: String, key: String) -> String:
+    let total = _line_count(map_records)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(map_records, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == key):
+                return _record_field(rec, 2)
+        i = i + 1
+    return ""
+
+func _map_remove(map_records: String, key: String) -> String:
+    let total = _line_count(map_records)
+    let i = 0
+    let out = ""
+    while (i < total):
+        let rec = _trim(_line_at(map_records, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) != key):
+                out = _append_record(out, rec)
+        i = i + 1
+    return out
+
+func _map_set(map_records: String, key: String, ty: String, state: String) -> String:
+    let clean = _map_remove(map_records, key)
+    if ((strlen(key) == 0) or (strlen(ty) == 0) or (strlen(state) == 0)):
+        return clean
+    let rec = key + "|" + ty + "|" + state
+    return _append_record(clean, rec)
+
+func _fn_return_tag(fn_returns: String, func_name: String) -> String:
+    let total = _line_count(fn_returns)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(fn_returns, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == func_name):
+                return _record_field(rec, 1) + "|" + _record_field(rec, 2)
+        i = i + 1
+    return ""
+
+func _parse_call_expr(expr: String) -> String:
+    let s = _trim(expr)
+    let lp = _find_char(s, "(")
+    if (lp <= 0):
+        return ""
+    let rp = _matching_rparen(s, lp)
+    if (rp < 0):
+        return ""
+    let tail = _trim(__thg_str_substr(s, rp + 1, strlen(s) - rp - 1))
+    if (strlen(tail) > 0):
+        return ""
+    let callee = _trim(__thg_str_substr(s, 0, lp))
+    if (_contains(callee, " ") == 1):
+        return ""
+    let args = _trim(__thg_str_substr(s, lp + 1, rp - lp - 1))
+    return callee + "|" + args
+
+func _find_assignment_eq(line: String) -> i32:
+    let i = 0
+    while (i < strlen(line)):
+        if (_char_at(line, i) == "="):
+            let prev = ""
+            let next = ""
+            if (i > 0):
+                prev = _char_at(line, i - 1)
+            if ((i + 1) < strlen(line)):
+                next = _char_at(line, i + 1)
+            if ((prev != "=") and (next != "=") and (prev != "!") and (prev != "<") and (prev != ">")):
+                return i
+        i = i + 1
+    return -1
+
+func _parse_assignment(line: String) -> String:
+    let s0 = _trim(line)
+    if (_starts_with(s0, "if ") == 1):
+        return ""
+    if (_starts_with(s0, "while ") == 1):
+        return ""
+    let s = s0
+    if (_starts_with(s, "let ") == 1):
+        s = _trim(__thg_str_substr(s, 4, strlen(s) - 4))
+    let eq = _find_assignment_eq(s)
+    if (eq <= 0):
+        return ""
+    let lhs = _trim(__thg_str_substr(s, 0, eq))
+    let rhs = _trim(__thg_str_substr(s, eq + 1, strlen(s) - eq - 1))
+    if ((_is_simple_ident(lhs) == 0) or (strlen(rhs) == 0)):
+        return ""
+    return lhs + "|" + rhs
+
+func _next_finding_id(seq: i32, kind: String) -> String:
+    return "TSE-" + kind + "-" + _to_string_i32(seq)
+
+func _state_add_finding(acc: StateAcc, severity: String, code: String, line_no: i32, symbol: String, required: String, actual: String, reason: String, hint: String, kind: String) -> StateAcc:
+    let next_seq = acc.seq + 1
+    let id = _next_finding_id(next_seq, kind)
+    let rec = id + "|" + severity + "|" + code + "|" + _to_string_i32(line_no) + "|" + symbol + "|" + required + "|" + actual + "|" + reason + "|" + hint
+    let out_findings = _append_record(acc.findings, rec)
+    let out_errors = acc.errors
+    let out_warnings = acc.warnings
+    if (severity == "error"):
+        out_errors = out_errors + 1
+    else:
+        out_warnings = out_warnings + 1
+    let out_ambiguous = acc.ambiguous
+    if ((code == "E_STATE_AMBIGUOUS") or (code == "W_STATE_AMBIGUOUS")):
+        out_ambiguous = out_ambiguous + 1
+    return _state_acc(out_findings, out_errors, out_warnings, out_ambiguous, next_seq)
+
+func _check_call(callee: String, args: String, line_no: i32, var_map: String, fn_params: String, acc: StateAcc) -> StateAcc:
+    let out = acc
+    let total = _line_count(fn_params)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(fn_params, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == callee):
+                let idx = _parse_i32_default(_record_field(rec, 1), -1)
+                if (idx >= 0):
+                    let arg = _arg_at(args, idx)
+                    if (_is_simple_ident(arg) == 1):
+                        let actual_ty = _map_get_type(var_map, arg)
+                        let actual_state = _map_get_state(var_map, arg)
+                        let req_ty = _record_field(rec, 3)
+                        let req_state = _record_field(rec, 4)
+                        if ((strlen(actual_ty) > 0) and (strlen(actual_state) > 0)):
+                            if ((actual_ty != req_ty) or (actual_state != req_state)):
+                                let required = req_ty + "[" + req_state + "]"
+                                let actual = actual_ty + "[" + actual_state + "]"
+                                let symbol = callee + "(" + arg + ")"
+                                out = _state_add_finding(out, "error", "E_STATE_MISMATCH_ARG", line_no, symbol, required, actual, "argument state mismatch", "ensure argument state matches function signature", "mismatch")
+        i = i + 1
+    return out
+
+func _ambiguous_code(mode_norm: String) -> String:
+    if (mode_norm == "strict"):
+        return "E_STATE_AMBIGUOUS"
+    return "W_STATE_AMBIGUOUS"
+
+func _ambiguous_severity(mode_norm: String) -> String:
+    if (mode_norm == "strict"):
+        return "error"
+    return "warning"
+
+func _check_ambiguous_args(callee: String, args: String, line_no: i32, ambiguous_vars: String, mode_norm: String, acc: StateAcc) -> StateAcc:
+    let out = acc
+    let argc = _arg_count(args)
+    let i = 0
+    while (i < argc):
+        let arg = _arg_at(args, i)
+        if (_is_simple_ident(arg) == 1):
+            if (_set_contains(ambiguous_vars, arg) == 1):
+                out = _state_add_finding(out, _ambiguous_severity(mode_norm), _ambiguous_code(mode_norm), line_no, callee + "(" + arg + ")", "single-state", "ambiguous", "ambiguous state passed to call", "normalize state before call", "ambiguous-call")
+        i = i + 1
+    return out
+
+func _map_keys_set(map_records: String) -> String:
+    let out = ";"
+    let total = _line_count(map_records)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(map_records, i))
+        if (strlen(rec) > 0):
+            out = _set_add_unique(out, _record_field(rec, 0))
+        i = i + 1
+    return out
+
+func _find_else_after(source: String, start_line: i32, end_line: i32, header_indent: i32) -> String:
+    let else_line = -1
+    let after_line = end_line + 1
+    let scan = start_line
+    while (scan <= end_line):
+        let raw_scan = _line_at(source, scan - 1)
+        let line_scan = _trim(_strip_inline_comment(raw_scan))
+        if (strlen(line_scan) == 0):
+            scan = scan + 1
+        else:
+            let indent_scan = _leading_spaces(raw_scan)
+            if ((line_scan == "else:") and (indent_scan == header_indent)):
+                else_line = scan
+                scan = scan + 1
+            else:
+                if (indent_scan <= header_indent):
+                    after_line = scan
+                    scan = end_line + 1
+                else:
+                    scan = scan + 1
+    return _to_string_i32(else_line) + "|" + _to_string_i32(after_line)
+
+func _find_block_after(source: String, start_line: i32, end_line: i32, header_indent: i32) -> i32:
+    let after_line = end_line + 1
+    let scan = start_line
+    while (scan <= end_line):
+        let raw_scan = _line_at(source, scan - 1)
+        let line_scan = _trim(_strip_inline_comment(raw_scan))
+        if (strlen(line_scan) == 0):
+            scan = scan + 1
+        else:
+            let indent_scan = _leading_spaces(raw_scan)
+            if (indent_scan <= header_indent):
+                after_line = scan
+                scan = end_line + 1
+            else:
+                scan = scan + 1
+    return after_line
+
+func _merge_path_states(base_map: String, left_map: String, right_map: String, base_amb: String, left_amb: String, right_amb: String, mode_norm: String, line_no: i32, acc: StateAcc, reason: String) -> StateBlock:
+    let merged_map = ""
+    let merged_amb = _set_union(_set_union(base_amb, left_amb), right_amb)
+    let out_acc = acc
+    let keys = _set_union(_set_union(_map_keys_set(base_map), _map_keys_set(left_map)), _map_keys_set(right_map))
+    let i = 0
+    let n = strlen(keys)
+    let token = ""
+    while (i < n):
+        let ch = _char_at(keys, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let key = token
+                let l_ty = _map_get_type(left_map, key)
+                let l_st = _map_get_state(left_map, key)
+                let r_ty = _map_get_type(right_map, key)
+                let r_st = _map_get_state(right_map, key)
+                let l_has = ((strlen(l_ty) > 0) and (strlen(l_st) > 0))
+                let r_has = ((strlen(r_ty) > 0) and (strlen(r_st) > 0))
+                if (_set_contains(merged_amb, key) == 1):
+                    merged_map = _map_remove(merged_map, key)
+                else:
+                    if ((l_has == 1) and (r_has == 1) and (l_ty == r_ty) and (l_st == r_st)):
+                        merged_map = _map_set(merged_map, key, l_ty, l_st)
+                    else:
+                        if ((l_has == 1) or (r_has == 1)):
+                            if (_set_contains(merged_amb, key) == 0):
+                                merged_amb = _set_add_unique(merged_amb, key)
+                                let actual = ""
+                                if ((l_has == 1) and (r_has == 1)):
+                                    actual = l_ty + "[" + l_st + "] vs " + r_ty + "[" + r_st + "]"
+                                else:
+                                    if (l_has == 1):
+                                        actual = l_ty + "[" + l_st + "] vs none"
+                                    else:
+                                        actual = "none vs " + r_ty + "[" + r_st + "]"
+                                out_acc = _state_add_finding(out_acc, _ambiguous_severity(mode_norm), _ambiguous_code(mode_norm), line_no, key, "single-state", actual, reason, "normalize state before next stateful use", "ambiguous-merge")
+                            merged_map = _map_remove(merged_map, key)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return _state_block(merged_map, merged_amb, out_acc)
+
+func _analyze_block_range(source: String, start_line: i32, end_line: i32, parent_indent: i32, func_name: String, var_map_input: String, ambiguous_input: String, fn_params: String, fn_returns: String, mode_norm: String, acc_input: StateAcc) -> StateBlock:
+    let var_map = var_map_input
+    let ambiguous_vars = ambiguous_input
+    let acc = acc_input
+    let line_no = start_line
+    while (line_no <= end_line):
+        let raw_line = _line_at(source, line_no - 1)
+        let line_body = _trim(_strip_inline_comment(raw_line))
+        if (strlen(line_body) == 0):
+            line_no = line_no + 1
+        else:
+            let indent = _leading_spaces(raw_line)
+            if (indent <= parent_indent):
+                line_no = end_line + 1
+            else:
+                if ((_starts_with(line_body, "if ") == 1) and (_ends_with(line_body, ":") == 1)):
+                    let edge = _find_else_after(source, line_no + 1, end_line, indent)
+                    let else_line = _parse_i32_default(_record_field(edge, 0), -1)
+                    let after_line = _parse_i32_default(_record_field(edge, 1), end_line + 1)
+                    let then_end = after_line - 1
+                    if (else_line > 0):
+                        then_end = else_line - 1
+                    let then_res = _analyze_block_range(source, line_no + 1, then_end, indent, func_name, var_map, ambiguous_vars, fn_params, fn_returns, mode_norm, acc)
+                    let else_map = var_map
+                    let else_amb = ambiguous_vars
+                    let else_acc = then_res.acc
+                    if (else_line > 0):
+                        let else_res = _analyze_block_range(source, else_line + 1, after_line - 1, indent, func_name, var_map, ambiguous_vars, fn_params, fn_returns, mode_norm, then_res.acc)
+                        else_map = else_res.var_map
+                        else_amb = else_res.ambiguous_vars
+                        else_acc = else_res.acc
+                    let merged = _merge_path_states(var_map, then_res.var_map, else_map, ambiguous_vars, then_res.ambiguous_vars, else_amb, mode_norm, after_line, else_acc, "state becomes ambiguous after if/else merge")
+                    var_map = merged.var_map
+                    ambiguous_vars = merged.ambiguous_vars
+                    acc = merged.acc
+                    line_no = after_line
+                else:
+                    if (((_starts_with(line_body, "while ") == 1) or (_starts_with(line_body, "for ") == 1)) and (_ends_with(line_body, ":") == 1)):
+                        let loop_after = _find_block_after(source, line_no + 1, end_line, indent)
+                        let body_res = _analyze_block_range(source, line_no + 1, loop_after - 1, indent, func_name, var_map, ambiguous_vars, fn_params, fn_returns, mode_norm, acc)
+                        let merged_loop = _merge_path_states(var_map, var_map, body_res.var_map, ambiguous_vars, ambiguous_vars, body_res.ambiguous_vars, mode_norm, loop_after, body_res.acc, "state becomes ambiguous after loop")
+                        var_map = merged_loop.var_map
+                        ambiguous_vars = merged_loop.ambiguous_vars
+                        acc = merged_loop.acc
+                        line_no = loop_after
+                    else:
+                        if (_starts_with(line_body, "return ") == 1):
+                            let ret_expr = _trim(__thg_str_substr(line_body, 7, strlen(line_body) - 7))
+                            let ret_tag_req = _fn_return_tag(fn_returns, func_name)
+                            let actual_tag = ""
+                            let ret_call = _parse_call_expr(ret_expr)
+                            if (strlen(ret_call) > 0):
+                                let callee = _record_field(ret_call, 0)
+                                let args = _record_field(ret_call, 1)
+                                acc = _check_ambiguous_args(callee, args, line_no, ambiguous_vars, mode_norm, acc)
+                                acc = _check_call(callee, args, line_no, var_map, fn_params, acc)
+                                actual_tag = _fn_return_tag(fn_returns, callee)
+                            else:
+                                if (_is_simple_ident(ret_expr) == 1):
+                                    if (_set_contains(ambiguous_vars, ret_expr) == 1):
+                                        acc = _state_add_finding(acc, _ambiguous_severity(mode_norm), _ambiguous_code(mode_norm), line_no, ret_expr, "single-state", "ambiguous", "return uses ambiguous state", "normalize state before return", "ambiguous-return")
+                                    let t = _map_get_type(var_map, ret_expr)
+                                    let s = _map_get_state(var_map, ret_expr)
+                                    if ((strlen(t) > 0) and (strlen(s) > 0)):
+                                        actual_tag = t + "|" + s
+                            if ((strlen(ret_tag_req) > 0) and (strlen(actual_tag) > 0)):
+                                if (((_tag_type(ret_tag_req) != _tag_type(actual_tag)) or (_tag_state(ret_tag_req) != _tag_state(actual_tag)))):
+                                    let required = _tag_type(ret_tag_req) + "[" + _tag_state(ret_tag_req) + "]"
+                                    let actual = _tag_type(actual_tag) + "[" + _tag_state(actual_tag) + "]"
+                                    acc = _state_add_finding(acc, "error", "E_STATE_MISMATCH_RETURN", line_no, func_name, required, actual, "return state mismatch", "return value must match function return state", "mismatch-return")
+                            line_no = line_no + 1
+                        else:
+                            let asg = _parse_assignment(line_body)
+                            if (strlen(asg) > 0):
+                                let lhs = _record_field(asg, 0)
+                                let rhs = _record_field(asg, 1)
+                                ambiguous_vars = _set_remove(ambiguous_vars, lhs)
+                                let call = _parse_call_expr(rhs)
+                                if (strlen(call) > 0):
+                                    let callee2 = _record_field(call, 0)
+                                    let args2 = _record_field(call, 1)
+                                    acc = _check_ambiguous_args(callee2, args2, line_no, ambiguous_vars, mode_norm, acc)
+                                    acc = _check_call(callee2, args2, line_no, var_map, fn_params, acc)
+                                    let ret_tag2 = _fn_return_tag(fn_returns, callee2)
+                                    if (strlen(ret_tag2) > 0):
+                                        var_map = _map_set(var_map, lhs, _tag_type(ret_tag2), _tag_state(ret_tag2))
+                                    else:
+                                        var_map = _map_remove(var_map, lhs)
+                                else:
+                                    if (_is_simple_ident(rhs) == 1):
+                                        if (_set_contains(ambiguous_vars, rhs) == 1):
+                                            ambiguous_vars = _set_add_unique(ambiguous_vars, lhs)
+                                            var_map = _map_remove(var_map, lhs)
+                                            acc = _state_add_finding(acc, _ambiguous_severity(mode_norm), _ambiguous_code(mode_norm), line_no, lhs, "single-state", "ambiguous", "assignment from ambiguous source", "normalize source state before assignment", "ambiguous-assign")
+                                        else:
+                                            let t2 = _map_get_type(var_map, rhs)
+                                            let s2 = _map_get_state(var_map, rhs)
+                                            if ((strlen(t2) > 0) and (strlen(s2) > 0)):
+                                                var_map = _map_set(var_map, lhs, t2, s2)
+                                            else:
+                                                var_map = _map_remove(var_map, lhs)
+                                    else:
+                                        var_map = _map_remove(var_map, lhs)
+                                line_no = line_no + 1
+                            else:
+                                let call3 = _parse_call_expr(line_body)
+                                if (strlen(call3) > 0):
+                                    acc = _check_ambiguous_args(_record_field(call3, 0), _record_field(call3, 1), line_no, ambiguous_vars, mode_norm, acc)
+                                    acc = _check_call(_record_field(call3, 0), _record_field(call3, 1), line_no, var_map, fn_params, acc)
+                                line_no = line_no + 1
+    return _state_block(var_map, ambiguous_vars, acc)
+
+func _ensure_state_dirs() -> void:
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/state")
+    fs.mkdir(".thagore/state/reports")
+
+func _state_session_id(entry_path: String) -> String:
+    return "STE-" + _to_string_i32(time.now_ms()) + "-" + _sanitize_id(entry_path)
+
+func _is_tg_source(path: String) -> i32:
+    if (_ends_with(_normalize_path(path), ".tg") == 1):
+        return 1
+    return 0
+
+func normalize_state_mode(mode_input: String) -> String:
+    let mode = _trim(mode_input)
+    if (mode == "off"):
+        return "off"
+    if (mode == "strict"):
+        return "strict"
+    return "on"
+
+func _analyze_source(entry_path: String, source: String, mode: String) -> StateReport:
+    let mode_norm = normalize_state_mode(mode)
+    let total = _line_count(source)
+    let state_sets = ""
+    let fn_meta = ""
+    let fn_params = ""
+    let fn_returns = ""
+    let functions_analyzed = 0
+
+    let i = 0
+    while (i < total):
+        let raw = _line_at(source, i)
+        let line = _trim(_strip_inline_comment(raw))
+        let indent = _leading_spaces(raw)
+        let state_name = _parse_state_name(line)
+        if (strlen(state_name) > 0):
+            let variants = ";"
+            let j = i + 1
+            let run = 1
+            while ((j < total) and (run == 1)):
+                let raw2 = _line_at(source, j)
+                let line2 = _trim(_strip_inline_comment(raw2))
+                let indent2 = _leading_spaces(raw2)
+                if (strlen(line2) == 0):
+                    j = j + 1
+                else:
+                    if (indent2 <= indent):
+                        run = 0
+                    else:
+                        if (_is_simple_ident(line2) == 1):
+                            variants = _set_add_unique(variants, line2)
+                        j = j + 1
+            state_sets = _append_record(state_sets, state_name + "|" + variants + "|" + _to_string_i32(i + 1))
+            i = j
+        else:
+            let fn_name = ph.parse_func_name(line)
+            if ((_starts_with(line, "func ") == 1) and (strlen(fn_name) > 0) and (_ends_with(line, ":") == 1)):
+                let j2 = i + 1
+                let in_fn = 1
+                while ((j2 < total) and (in_fn == 1)):
+                    let body_raw = _line_at(source, j2)
+                    let body_line = _trim(_strip_inline_comment(body_raw))
+                    let body_indent = _leading_spaces(body_raw)
+                    if (strlen(body_line) == 0):
+                        j2 = j2 + 1
+                    else:
+                        if (body_indent <= indent):
+                            in_fn = 0
+                        else:
+                            j2 = j2 + 1
+                let body_start = i + 2
+                let body_end = j2
+                if (body_end < body_start):
+                    body_end = body_start - 1
+                fn_meta = _append_record(fn_meta, fn_name + "|" + _to_string_i32(i + 1) + "|" + _to_string_i32(body_start) + "|" + _to_string_i32(body_end))
+                functions_analyzed = functions_analyzed + 1
+
+                let lp = _find_char(line, "(")
+                let rp = _matching_rparen(line, lp)
+                if ((lp >= 0) and (rp > lp)):
+                    let params_text = _trim(__thg_str_substr(line, lp + 1, rp - lp - 1))
+                    let param_count = _arg_count(params_text)
+                    let pi = 0
+                    while (pi < param_count):
+                        let item = _trim(_arg_at(params_text, pi))
+                        let colon = _top_level_colon(item)
+                        if (colon > 0):
+                            let p_name = _trim(__thg_str_substr(item, 0, colon))
+                            let p_type = _trim(__thg_str_substr(item, colon + 1, strlen(item) - colon - 1))
+                            let tag = _parse_state_tag(p_type)
+                            if ((strlen(tag) > 0) and (_is_simple_ident(p_name) == 1)):
+                                fn_params = _append_record(fn_params, fn_name + "|" + _to_string_i32(pi) + "|" + p_name + "|" + _tag_type(tag) + "|" + _tag_state(tag) + "|" + _to_string_i32(i + 1))
+                        pi = pi + 1
+                let arrow = _find(line, "->")
+                if (arrow >= 0):
+                    let ret_tail = _trim(__thg_str_substr(line, arrow + 2, strlen(line) - arrow - 2))
+                    let c = _find_char(ret_tail, ":")
+                    let ret_expr = ret_tail
+                    if (c >= 0):
+                        ret_expr = _trim(__thg_str_substr(ret_tail, 0, c))
+                    let ret_tag = _parse_state_tag(ret_expr)
+                    if (strlen(ret_tag) > 0):
+                        fn_returns = _append_record(fn_returns, fn_name + "|" + _tag_type(ret_tag) + "|" + _tag_state(ret_tag) + "|" + _to_string_i32(i + 1))
+            i = i + 1
+
+    let acc = _state_acc("", 0, 0, 0, 0)
+    if (mode_norm != "off"):
+        let total_params = _line_count(fn_params)
+        let p = 0
+        while (p < total_params):
+            let rec = _trim(_line_at(fn_params, p))
+            if (strlen(rec) > 0):
+                let ty = _record_field(rec, 3)
+                let st = _record_field(rec, 4)
+                let ln = _parse_i32_default(_record_field(rec, 5), 1)
+                if (_state_set_exists(state_sets, ty) == 0):
+                    acc = _state_add_finding(acc, "error", "E_STATE_UNKNOWN_SET", ln, _record_field(rec, 2), ty + "[" + st + "]", "", "unknown state set", "declare `state " + ty + ":` before usage", "unknown-set")
+                else:
+                    if (_state_variant_exists(state_sets, ty, st) == 0):
+                        acc = _state_add_finding(acc, "error", "E_STATE_UNKNOWN_VARIANT", ln, _record_field(rec, 2), ty + "[" + st + "]", "", "unknown state variant", "add variant `" + st + "` to `state " + ty + "`", "unknown-variant")
+            p = p + 1
+        let total_returns = _line_count(fn_returns)
+        let r = 0
+        while (r < total_returns):
+            let rec2 = _trim(_line_at(fn_returns, r))
+            if (strlen(rec2) > 0):
+                let ty2 = _record_field(rec2, 1)
+                let st2 = _record_field(rec2, 2)
+                let ln2 = _parse_i32_default(_record_field(rec2, 3), 1)
+                if (_state_set_exists(state_sets, ty2) == 0):
+                    acc = _state_add_finding(acc, "error", "E_STATE_UNKNOWN_SET", ln2, _record_field(rec2, 0), ty2 + "[" + st2 + "]", "", "unknown state set", "declare `state " + ty2 + ":` before usage", "unknown-set")
+                else:
+                    if (_state_variant_exists(state_sets, ty2, st2) == 0):
+                        acc = _state_add_finding(acc, "error", "E_STATE_UNKNOWN_VARIANT", ln2, _record_field(rec2, 0), ty2 + "[" + st2 + "]", "", "unknown state variant", "add variant `" + st2 + "` to `state " + ty2 + "`", "unknown-variant")
+            r = r + 1
+
+        let total_funcs = _line_count(fn_meta)
+        let f = 0
+        while (f < total_funcs):
+            let frec = _trim(_line_at(fn_meta, f))
+            if (strlen(frec) > 0):
+                let fn = _record_field(frec, 0)
+                let decl_line = _parse_i32_default(_record_field(frec, 1), 1)
+                let body_start = _parse_i32_default(_record_field(frec, 2), 0)
+                let body_end = _parse_i32_default(_record_field(frec, 3), -1)
+                let raw_decl = _line_at(source, decl_line - 1)
+                let fn_indent = _leading_spaces(raw_decl)
+                let var_map = ""
+                let p2 = 0
+                while (p2 < total_params):
+                    let prec = _trim(_line_at(fn_params, p2))
+                    if (strlen(prec) > 0):
+                        if (_record_field(prec, 0) == fn):
+                            var_map = _map_set(var_map, _record_field(prec, 2), _record_field(prec, 3), _record_field(prec, 4))
+                    p2 = p2 + 1
+                let block = _analyze_block_range(source, body_start, body_end, fn_indent, fn, var_map, ";", fn_params, fn_returns, mode_norm, acc)
+                acc = block.acc
+            f = f + 1
+    return _state_report(state_sets, fn_meta, fn_params, fn_returns, acc.findings, functions_analyzed, acc.errors, acc.warnings, acc.ambiguous)
+
+func _state_sets_json(state_sets: String) -> String:
+    let out = "["
+    let first = 1
+    let total = _line_count(state_sets)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(state_sets, i))
+        if (strlen(rec) > 0):
+            if (first == 0):
+                out = out + ","
+            out = out + "{"
+            out = out + _json_quote("name") + ":" + _json_quote(_record_field(rec, 0)) + ","
+            out = out + _json_quote("variants") + ":" + _set_to_json_array(_record_field(rec, 1))
+            out = out + "}"
+            first = 0
+        i = i + 1
+    return out + "]"
+
+func _fn_params_json(fn_params: String, func_name: String) -> String:
+    let out = "["
+    let first = 1
+    let total = _line_count(fn_params)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(fn_params, i))
+        if (strlen(rec) > 0):
+            if (_record_field(rec, 0) == func_name):
+                if (first == 0):
+                    out = out + ","
+                out = out + "{"
+                out = out + _json_quote("name") + ":" + _json_quote(_record_field(rec, 2)) + ","
+                out = out + _json_quote("type") + ":" + _json_quote(_record_field(rec, 3)) + ","
+                out = out + _json_quote("state") + ":" + _json_quote(_record_field(rec, 4))
+                out = out + "}"
+                first = 0
+        i = i + 1
+    return out + "]"
+
+func _fn_first_param_tag(fn_params: String, func_name: String) -> String:
+    let total = _line_count(fn_params)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(fn_params, i))
+        if (strlen(rec) > 0):
+            if ((_record_field(rec, 0) == func_name) and (_record_field(rec, 1) == "0")):
+                return _record_field(rec, 3) + "|" + _record_field(rec, 4)
+        i = i + 1
+    return ""
+
+func _functions_json(fn_meta: String, fn_params: String, fn_returns: String, entry_path: String) -> String:
+    let out = "["
+    let first = 1
+    let total = _line_count(fn_meta)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(fn_meta, i))
+        if (strlen(rec) > 0):
+            let fn = _record_field(rec, 0)
+            let start_line = _record_field(rec, 1)
+            let end_line = _record_field(rec, 3)
+            let ret_tag = _fn_return_tag(fn_returns, fn)
+            let ret_type = _tag_type(ret_tag)
+            let ret_state = _tag_state(ret_tag)
+            let first_param_tag = _fn_first_param_tag(fn_params, fn)
+            let edge_json = "[]"
+            if ((strlen(ret_type) > 0) and (strlen(ret_state) > 0) and (strlen(first_param_tag) > 0)):
+                if (_tag_type(first_param_tag) == ret_type):
+                    edge_json = "[{" + _json_quote("from") + ":" + _json_quote(_tag_state(first_param_tag)) + "," + _json_quote("to") + ":" + _json_quote(ret_state) + "," + _json_quote("kind") + ":" + _json_quote("signature") + "}]"
+            if (first == 0):
+                out = out + ","
+            out = out + "{"
+            out = out + _json_quote("name") + ":" + _json_quote(fn) + ","
+            out = out + _json_quote("file") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+            out = out + _json_quote("range") + ":{"
+            out = out + _json_quote("start_line") + ":" + start_line + ","
+            out = out + _json_quote("start_col") + ":1,"
+            out = out + _json_quote("end_line") + ":" + end_line + ","
+            out = out + _json_quote("end_col") + ":1},"
+            out = out + _json_quote("params") + ":" + _fn_params_json(fn_params, fn) + ","
+            out = out + _json_quote("return") + ":{"
+            out = out + _json_quote("type") + ":" + _json_quote(ret_type) + ","
+            out = out + _json_quote("state") + ":" + _json_quote(ret_state) + "},"
+            out = out + _json_quote("edges") + ":" + edge_json
+            out = out + "}"
+            first = 0
+        i = i + 1
+    return out + "]"
+
+func _findings_json(findings: String, entry_path: String) -> String:
+    let out = "["
+    let first = 1
+    let total = _line_count(findings)
+    let i = 0
+    while (i < total):
+        let rec = _trim(_line_at(findings, i))
+        if (strlen(rec) > 0):
+            if (first == 0):
+                out = out + ","
+            out = out + "{"
+            out = out + _json_quote("finding_id") + ":" + _json_quote(_record_field(rec, 0)) + ","
+            out = out + _json_quote("severity") + ":" + _json_quote(_record_field(rec, 1)) + ","
+            out = out + _json_quote("code") + ":" + _json_quote(_record_field(rec, 2)) + ","
+            out = out + _json_quote("file") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+            out = out + _json_quote("range") + ":{"
+            out = out + _json_quote("start_line") + ":" + _record_field(rec, 3) + ","
+            out = out + _json_quote("start_col") + ":1,"
+            out = out + _json_quote("end_line") + ":" + _record_field(rec, 3) + ","
+            out = out + _json_quote("end_col") + ":1},"
+            out = out + _json_quote("symbol") + ":" + _json_quote(_record_field(rec, 4)) + ","
+            out = out + _json_quote("required_state") + ":" + _json_quote(_record_field(rec, 5)) + ","
+            out = out + _json_quote("actual_state") + ":" + _json_quote(_record_field(rec, 6)) + ","
+            out = out + _json_quote("reason") + ":" + _json_quote(_record_field(rec, 7)) + ","
+            out = out + _json_quote("hint") + ":" + _json_quote(_record_field(rec, 8))
+            out = out + "}"
+            first = 0
+        i = i + 1
+    return out + "]"
+
+func _gate_exit(report: StateReport, mode: String) -> i32:
+    if (mode == "off"):
+        return 0
+    if (report.errors > 0):
+        return 1
+    if ((mode == "strict") and (report.ambiguous > 0)):
+        return 1
+    return 0
+
+func _state_summary_json(entry_path: String, mode: String, report: StateReport, session_id: String) -> String:
+    let json = "{"
+    json = json + _json_quote("schema_version") + ":" + _json_quote("1.0") + ","
+    json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    json = json + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    json = json + _json_quote("summary") + ":{"
+    json = json + _json_quote("files_analyzed") + ":1,"
+    json = json + _json_quote("functions_analyzed") + ":" + _to_string_i32(report.functions_analyzed) + ","
+    json = json + _json_quote("errors") + ":" + _to_string_i32(report.errors) + ","
+    json = json + _json_quote("warnings") + ":" + _to_string_i32(report.warnings) + ","
+    json = json + _json_quote("ambiguous") + ":" + _to_string_i32(report.ambiguous)
+    json = json + "},"
+    json = json + _json_quote("state_sets") + ":" + _state_sets_json(report.state_sets) + ","
+    json = json + _json_quote("functions") + ":" + _functions_json(report.fn_meta, report.fn_params, report.fn_returns, entry_path) + ","
+    json = json + _json_quote("findings") + ":" + _findings_json(report.findings, entry_path)
+    json = json + "}"
+    return json
+
+func run_state_doctor(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    let mode = normalize_state_mode(mode_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[state] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[state] error: source file not found: " + entry_path)
+        return 1
+    let report = _analyze_source(entry_path, fs.read_text(entry_path), mode)
+    let session_id = _state_session_id(entry_path)
+    let state_set_count = _record_count(report.state_sets)
+    let stateful_param_count = _record_count(report.fn_params)
+    let stateful_return_count = _record_count(report.fn_returns)
+    let state_variants_total = 0
+    let si = 0
+    let stotal = _line_count(report.state_sets)
+    while (si < stotal):
+        let srec = _trim(_line_at(report.state_sets, si))
+        if (strlen(srec) > 0):
+            state_variants_total = state_variants_total + _set_count(_record_field(srec, 1))
+        si = si + 1
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+        json = json + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("files_analyzed") + ":1,"
+        json = json + _json_quote("functions_analyzed") + ":" + _to_string_i32(report.functions_analyzed) + ","
+        json = json + _json_quote("state_sets") + ":" + _to_string_i32(state_set_count) + ","
+        json = json + _json_quote("state_variants") + ":" + _to_string_i32(state_variants_total) + ","
+        json = json + _json_quote("stateful_params") + ":" + _to_string_i32(stateful_param_count) + ","
+        json = json + _json_quote("stateful_returns") + ":" + _to_string_i32(stateful_return_count) + ","
+        json = json + _json_quote("errors") + ":" + _to_string_i32(report.errors) + ","
+        json = json + _json_quote("warnings") + ":" + _to_string_i32(report.warnings) + ","
+        json = json + _json_quote("ambiguous") + ":" + _to_string_i32(report.ambiguous)
+        json = json + "}"
+        print(json)
+    else:
+        print("[state] session=" + session_id)
+        print("[state] mode=" + mode + " files=1 functions=" + _to_string_i32(report.functions_analyzed))
+        print("[state][doctor] state_sets=" + _to_string_i32(state_set_count) + " variants=" + _to_string_i32(state_variants_total))
+        print("[state][doctor] stateful_params=" + _to_string_i32(stateful_param_count) + " stateful_returns=" + _to_string_i32(stateful_return_count))
+        let sj = 0
+        while (sj < stotal):
+            let srec2 = _trim(_line_at(report.state_sets, sj))
+            if (strlen(srec2) > 0):
+                print("[state][doctor] set=" + _record_field(srec2, 0) + " variants=" + _to_string_i32(_set_count(_record_field(srec2, 1))))
+            sj = sj + 1
+        print("[state] errors=" + _to_string_i32(report.errors) + " warnings=" + _to_string_i32(report.warnings) + " ambiguous=" + _to_string_i32(report.ambiguous))
+    return _gate_exit(report, mode)
+
+func run_state_explain(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    return run_state_explain_to(entry_path, mode_input, as_json, "")
+
+func run_state_explain_to(entry_path: String, mode_input: String, as_json: i32, out_path: String) -> i32:
+    let mode = normalize_state_mode(mode_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[state] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[state] error: source file not found: " + entry_path)
+        return 1
+    _ensure_state_dirs()
+    let report = _analyze_source(entry_path, fs.read_text(entry_path), mode)
+    let session_id = _state_session_id(entry_path)
+    let json = _state_summary_json(entry_path, mode, report, session_id)
+    let report_path = _trim(out_path)
+    if (strlen(report_path) == 0):
+        report_path = ".thagore/state/reports/" + session_id + ".json"
+    fs.write_text(report_path, json + _nl())
+    fs.write_text(".thagore/state/last_report.path", report_path)
+    fs.write_text(".thagore/state/last_explain.json", json + _nl())
+    fs.write_text(".thagore/state/last_session.id", session_id)
+    if (as_json == 1):
+        print(json)
+    else:
+        print("[state] session=" + session_id)
+        print("[state] mode=" + mode + " files=1 functions=" + _to_string_i32(report.functions_analyzed))
+        print("[state] errors=" + _to_string_i32(report.errors) + " warnings=" + _to_string_i32(report.warnings) + " ambiguous=" + _to_string_i32(report.ambiguous))
+        print("[state] report=" + report_path)
+    return _gate_exit(report, mode)
+
+func run_state_gate(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    let mode = normalize_state_mode(mode_input)
+    print("[state] mode=" + mode)
+    if (mode == "off"):
+        return 0
+    if (fs.exists(entry_path) == 0):
+        print("[state] error: source file not found: " + entry_path)
+        return 1
+    let report = _analyze_source(entry_path, fs.read_text(entry_path), mode)
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("functions_analyzed") + ":" + _to_string_i32(report.functions_analyzed) + ","
+        json = json + _json_quote("errors") + ":" + _to_string_i32(report.errors) + ","
+        json = json + _json_quote("warnings") + ":" + _to_string_i32(report.warnings) + ","
+        json = json + _json_quote("ambiguous") + ":" + _to_string_i32(report.ambiguous)
+        json = json + "}"
+        print(json)
+    else:
+        print("[state] errors=" + _to_string_i32(report.errors) + " warnings=" + _to_string_i32(report.warnings) + " ambiguous=" + _to_string_i32(report.ambiguous))
+    return _gate_exit(report, mode)
