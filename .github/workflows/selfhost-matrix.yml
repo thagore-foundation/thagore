@@ -336,11 +336,7 @@ jobs:
             set -e
             if [[ $rc -ne 0 ]]; then
               cat intent-suite.log
-              if grep -q "did not produce valid JSON output" intent-suite.log; then
-                echo "WARN: intent suite JSON output missing on Linux bootstrap seed; continue while native chain gate remains."
-              else
-                exit $rc
-              fi
+              exit $rc
             fi
           else
             if ! THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN"; then

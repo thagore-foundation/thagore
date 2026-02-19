@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "intent" / "fixtures" / "intent_demo_golden.tg"
 GOLDEN_EXPLAIN = ROOT / "tests" / "intent" / "golden" / "explain.max.normalized.json"
 GOLDEN_LOCK = ROOT / "tests" / "intent" / "golden" / "lock.max.normalized.json"
+LAST_EXPLAIN_JSON = ROOT / ".thagore" / "intent" / "last_explain.json"
 SUPPORTED_GOALS = [
     "reduce_sum",
     "map_filter_reduce",
@@ -94,7 +95,11 @@ def run_cmd(
     return proc
 
 
-def parse_json_from_proc(proc: subprocess.CompletedProcess[str], label: str) -> dict:
+def parse_json_from_proc(
+    proc: subprocess.CompletedProcess[str],
+    label: str,
+    fallback_json_path: Path | None = None,
+) -> dict:
     decoder = json.JSONDecoder()
 
     def try_decode_text(text: str) -> dict | None:
@@ -121,12 +126,27 @@ def parse_json_from_proc(proc: subprocess.CompletedProcess[str], label: str) -> 
         payload = try_decode_text(raw)
         if payload is not None:
             return payload
+    if fallback_json_path and fallback_json_path.exists():
+        fallback_raw = fallback_json_path.read_text(encoding="utf-8")
+        fallback_payload = try_decode_text(fallback_raw)
+        if fallback_payload is not None:
+            return fallback_payload
     sys.stderr.write(f"FAIL: {label} did not produce valid JSON output\n")
     if proc.stdout:
         sys.stderr.write("--- stdout ---\n" + proc.stdout + "\n")
     if proc.stderr:
         sys.stderr.write("--- stderr ---\n" + proc.stderr + "\n")
+    if fallback_json_path and fallback_json_path.exists():
+        sys.stderr.write(f"--- fallback ({fallback_json_path}) ---\n")
+        sys.stderr.write(fallback_json_path.read_text(encoding="utf-8") + "\n")
     raise SystemExit(1)
+
+
+def run_explain_json(cli: Path, entry: Path, mode: str, label: str) -> dict:
+    if LAST_EXPLAIN_JSON.exists():
+        LAST_EXPLAIN_JSON.unlink()
+    proc = run_cmd([str(cli), "intent", "explain", str(entry), "--json", f"--mode={mode}"])
+    return parse_json_from_proc(proc, label, fallback_json_path=LAST_EXPLAIN_JSON)
 
 
 def load_json(path: Path) -> dict:
@@ -170,8 +190,7 @@ def assert_json_equal(actual: dict, expected_path: Path, label: str) -> None:
 
 
 def golden_tests(cli: Path, workdir: Path) -> None:
-    proc = run_cmd([str(cli), "intent", "explain", str(FIXTURE), "--json", "--mode=max"])
-    explain = parse_json_from_proc(proc, "intent explain --json")
+    explain = run_explain_json(cli, FIXTURE, "max", "intent explain --json")
     assert_json_equal(normalize_explain(explain), GOLDEN_EXPLAIN, "intent explain --json")
 
     lock_path = workdir / "intent_demo.lock"
@@ -248,8 +267,7 @@ def property_tests(cli: Path, workdir: Path, rounds: int) -> None:
         )
         chosen: str | None = None
         for _ in range(rounds):
-            proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-            payload = parse_json_from_proc(proc, f"property_tests goal={goal}")
+            payload = run_explain_json(cli, src, "max", f"property_tests goal={goal}")
             entries = payload.get("entries", [])
             if len(entries) != 1:
                 raise SystemExit(f"FAIL: expected one entry for goal {goal}")
@@ -466,8 +484,7 @@ def strategy_pinning_test(cli: Path, workdir: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-    payload = parse_json_from_proc(proc, "strategy_pinning_test")
+    payload = run_explain_json(cli, src, "max", "strategy_pinning_test")
     entries = payload.get("entries", [])
     if len(entries) != 1:
         raise SystemExit("FAIL: expected one intent entry for strategy pin test")
@@ -558,8 +575,7 @@ def strategy_matrix_pinning_test(cli: Path, workdir: Path) -> None:
             "    return 0\n",
             encoding="utf-8",
         )
-        proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-        payload = parse_json_from_proc(proc, f"strategy_matrix_pinning_test strategy={strategy}")
+        payload = run_explain_json(cli, src, "max", f"strategy_matrix_pinning_test strategy={strategy}")
         entries = payload.get("entries", [])
         if len(entries) != 1:
             raise SystemExit(f"FAIL: expected one entry for strategy matrix case {strategy}")
@@ -583,8 +599,7 @@ def intent_disable_test(cli: Path, workdir: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    explain_goal_off = run_cmd([str(cli), "intent", "explain", str(goal_off_src), "--json", "--mode=max"])
-    payload_goal_off = json.loads(explain_goal_off.stdout)
+    payload_goal_off = run_explain_json(cli, goal_off_src, "max", "intent_disable goal=off")
     entry_goal_off = payload_goal_off.get("entries", [{}])[0]
     if entry_goal_off.get("selected_rule") != "rule.intent.off":
         raise SystemExit("FAIL: goal: off must select rule.intent.off")
@@ -610,8 +625,7 @@ def intent_disable_test(cli: Path, workdir: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    explain_constraint_off = run_cmd([str(cli), "intent", "explain", str(constraint_off_src), "--json", "--mode=max"])
-    payload_constraint_off = json.loads(explain_constraint_off.stdout)
+    payload_constraint_off = run_explain_json(cli, constraint_off_src, "max", "intent_disable constraint=intent==false")
     entry_constraint_off = payload_constraint_off.get("entries", [{}])[0]
     if entry_constraint_off.get("selected_rule") != "rule.intent.off":
         raise SystemExit("FAIL: constraints intent==false must select rule.intent.off")
@@ -712,8 +726,7 @@ def auto_plan_name_heuristic_test(cli: Path, workdir: Path) -> None:
             "    return 0\n",
             encoding="utf-8",
         )
-        proc = run_cmd([str(cli), "intent", "explain", str(src), "--json", "--mode=max"])
-        payload = parse_json_from_proc(proc, f"auto_plan_name_heuristic_test fn={fn_name}")
+        payload = run_explain_json(cli, src, "max", f"auto_plan_name_heuristic_test fn={fn_name}")
         entries = payload.get("entries", [])
         if len(entries) != 1:
             raise SystemExit(f"FAIL: expected one entry for auto-plan name case {fn_name}")
