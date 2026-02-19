@@ -6,7 +6,7 @@
 
 #define MyAppName "Thagore Compiler"
 #define MyAppPublisher "Thagore Foundation"
-#define MyAppExeName "thag.exe"
+#define MyAppExeName "thagore.exe"
 
 [Setup]
 AppId={{40A6C9A9-6E1A-4E2F-9D89-4EC2EC8E67A0}

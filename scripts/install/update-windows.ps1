@@ -128,12 +128,12 @@ foreach ($cand in $binCandidates) {
 if (-not $binDir) {
     throw "Cannot resolve bin directory near $selfDir"
 }
-$engine = Join-Path $binDir "thag.exe"
-$compatEngine = Join-Path $binDir "thagore.exe"
+$engine = Join-Path $binDir "thagore.exe"
 if (-not (Test-Path $engine)) {
     throw "Cannot find engine binary: $engine"
 }
-$cmdWrapper = Join-Path $binDir "thagore.cmd"
+$legacyEngine = Join-Path $binDir "thag.exe"
+$legacyCmdWrapper = Join-Path $binDir "thagore.cmd"
 $installRoot = (Resolve-Path (Join-Path $binDir "..")).Path
 Ensure-AdminForInstallPath -targetPath $engine -mode $mode
 
@@ -172,66 +172,38 @@ if ($mode -eq "apply") {
     New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     $archivePath = Join-Path $stateDir "download.tar.gz"
     $extractDir = Join-Path $stateDir "extract"
-    $backupEngine = Join-Path $stateDir "thag.prev.exe"
-    $backupCompat = Join-Path $stateDir "thagore.prev.exe"
-    $backupCmd = Join-Path $stateDir "thagore.prev.cmd"
+    $backupEngine = Join-Path $stateDir "thagore.prev.exe"
     if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
 
     Write-Host "[update] release=$latestTag asset=$($asset.Name)"
     if ($dryRun) {
         Write-Host "[update] dry-run url=$($asset.Url)"
-        Write-Host "[update] dry-run target=$engine,$compatEngine"
+        Write-Host "[update] dry-run target=$engine"
         exit 0
     }
 
     Invoke-WebRequest -Uri $asset.Url -OutFile $archivePath
     tar -xzf $archivePath -C $extractDir
-    $newEngine = Join-Path $extractDir "bin\thag.exe"
+    $newEngine = Join-Path $extractDir "bin\thagore.exe"
     if (-not (Test-Path $newEngine)) {
-        $newEngine = Join-Path $extractDir "bin\thagore.exe"
+        throw "Extracted asset does not contain thagore.exe"
     }
-    if (-not (Test-Path $newEngine)) {
-        throw "Extracted asset does not contain thag.exe/thagore.exe"
-    }
-    $newCompat = Join-Path $extractDir "bin\thagore.exe"
-    if (-not (Test-Path $newCompat)) {
-        $newCompat = $newEngine
-    }
-    $newCmd = Join-Path $extractDir "bin\thagore.cmd"
     $newInstallerDir = Join-Path $extractDir "installer"
     $newStdDir = Join-Path $extractDir "lib\std"
 
     Copy-WithRetry -Source $engine -Target $backupEngine
-    if (Test-Path $compatEngine) {
-        Copy-WithRetry -Source $compatEngine -Target $backupCompat
-    } else {
-        Copy-WithRetry -Source $engine -Target $backupCompat
-    }
-    if (Test-Path $cmdWrapper) {
-        Copy-WithRetry -Source $cmdWrapper -Target $backupCmd
-    }
 
     $newEngineHash = Get-FileSha256 -Path $newEngine
-    $newCompatHash = Get-FileSha256 -Path $newCompat
 
     try {
-        Copy-And-VerifyHash -Source $newEngine -Target $engine -ExpectedHash $newEngineHash -Label "thag.exe"
-        Copy-And-VerifyHash -Source $newCompat -Target $compatEngine -ExpectedHash $newCompatHash -Label "thagore.exe"
+        Copy-And-VerifyHash -Source $newEngine -Target $engine -ExpectedHash $newEngineHash -Label "thagore.exe"
     } catch {
         $backupEngineHash = Get-FileSha256 -Path $backupEngine
-        $backupCompatHash = Get-FileSha256 -Path $backupCompat
-        Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thag.exe"
-        Copy-And-VerifyHash -Source $backupCompat -Target $compatEngine -ExpectedHash $backupCompatHash -Label "rollback thagore.exe"
-        if (Test-Path $backupCmd) {
-            Copy-WithRetry -Source $backupCmd -Target $cmdWrapper
-        }
+        Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
         throw "Failed to install new binaries safely. Rolled back. $($_.Exception.Message)"
     }
 
-    if (Test-Path $newCmd) {
-        Copy-WithRetry -Source $newCmd -Target $cmdWrapper
-    }
     if (Test-Path $newInstallerDir) {
         New-Item -ItemType Directory -Force -Path (Join-Path $installRoot "installer") | Out-Null
         Copy-Item -Recurse -Force (Join-Path $newInstallerDir "*") (Join-Path $installRoot "installer")
@@ -240,25 +212,23 @@ if ($mode -eq "apply") {
         New-Item -ItemType Directory -Force -Path (Join-Path $installRoot "lib\std") | Out-Null
         Copy-Item -Recurse -Force (Join-Path $newStdDir "*") (Join-Path $installRoot "lib\std")
     }
-    if (Test-Path $compatEngine) {
-        Remove-Item -Force $compatEngine
+    if (Test-Path $legacyEngine) {
+        Remove-Item -Force $legacyEngine
+    }
+    if (Test-Path $legacyCmdWrapper) {
+        Remove-Item -Force $legacyCmdWrapper
     }
 
     Write-Host "Updated to $latestTag"
     Write-Host "[update] binary replaced: $engine"
-    Write-Host "[update] stale compat binary removed: $compatEngine"
+    Write-Host "[update] stale legacy binaries removed: $legacyEngine, $legacyCmdWrapper"
     exit 0
 }
 
 if ($mode -eq "rollback") {
-    $backupEngine = Join-Path $env:LOCALAPPDATA "Thagore\update\thag.prev.exe"
-    $backupCompat = Join-Path $env:LOCALAPPDATA "Thagore\update\thagore.prev.exe"
-    $backupCmd = Join-Path $env:LOCALAPPDATA "Thagore\update\thagore.prev.cmd"
+    $backupEngine = Join-Path $env:LOCALAPPDATA "Thagore\update\thagore.prev.exe"
     if (-not (Test-Path $backupEngine)) {
-        throw "No rollback backup found for thag.exe."
-    }
-    if (-not (Test-Path $backupCompat)) {
-        $backupCompat = $backupEngine
+        throw "No rollback backup found for thagore.exe."
     }
     if (-not $yes) {
         $ans = Read-Host "Rollback current binary? [Y/n]"
@@ -268,12 +238,12 @@ if ($mode -eq "rollback") {
         }
     }
     $backupEngineHash = Get-FileSha256 -Path $backupEngine
-    Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thag.exe"
-    if (Test-Path $compatEngine) {
-        Remove-Item -Force $compatEngine
+    Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
+    if (Test-Path $legacyEngine) {
+        Remove-Item -Force $legacyEngine
     }
-    if (Test-Path $backupCmd) {
-        Copy-WithRetry -Source $backupCmd -Target $cmdWrapper
+    if (Test-Path $legacyCmdWrapper) {
+        Remove-Item -Force $legacyCmdWrapper
     }
     Write-Host "Rollback completed."
     exit 0

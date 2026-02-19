@@ -8,8 +8,15 @@ Write-Host "[thagore-installer] Installing Thagore to $Prefix..."
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 Copy-Item -Recurse -Force (Join-Path $RootDir "dist\*") $Prefix
 
-$thagoreBin = Join-Path $Prefix "bin\thagore.cmd"
-$thagCompatBin = Join-Path $Prefix "bin\thag.exe"
+$thagoreBin = Join-Path $Prefix "bin\thagore.exe"
+$legacyThagBin = Join-Path $Prefix "bin\thag.exe"
+$legacyCmdBin = Join-Path $Prefix "bin\thagore.cmd"
+if (Test-Path $legacyThagBin) {
+    Remove-Item -Force $legacyThagBin
+}
+if (Test-Path $legacyCmdBin) {
+    Remove-Item -Force $legacyCmdBin
+}
 
 function Add-PathEntry {
     param(
@@ -37,5 +44,5 @@ if ($env:Path -notlike "*$binPath*") {
 
 Write-Host "Thagore installed successfully."
 Write-Host "Binary: $thagoreBin"
-Write-Host "Alias: $thagCompatBin"
+Write-Host "Legacy cleaned: $legacyThagBin, $legacyCmdBin"
 Write-Host "Stdlib: $Prefix\lib\std"
