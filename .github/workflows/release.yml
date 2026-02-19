@@ -662,7 +662,6 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          COMPILER_SUPPORTS_HELP=1
           if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
             STAGE2_BIN="${{ matrix.stage2_bin }}"
             if cli_sanity_ok "$STAGE2_BIN"; then
@@ -681,8 +680,7 @@ jobs:
               echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
               exit 0
             fi
-            echo "[WARN] snapshot-linked stage2 failed CLI sanity; fallback to bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
-            FORCE_STAGE1_ONLY=1
+            echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
@@ -752,73 +750,26 @@ jobs:
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
-          STAGE2_CHAIN_OK=1
-          if [[ "${FORCE_STAGE1_ONLY:-0}" == "1" ]]; then
-            STAGE2_CHAIN_OK=0
-            echo "[WARN] using stage1 compiler directly because snapshot stage2 failed CLI sanity." | tee -a "$STAGE_TRACE_FILE"
-          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE2_CHAIN_OK=0
-            echo "[WARN] linux-arm64: release lane uses direct stage1 compiler path (stage2 chain disabled for stability)." | tee -a "$STAGE_TRACE_FILE"
-          elif ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
+          if ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
             exit 1
-          else
-            STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
-            test -f "$STAGE2_BIN"
-            chmod +x "$STAGE2_BIN" || true
+          fi
+          STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
+          test -f "$STAGE2_BIN"
+          chmod +x "$STAGE2_BIN" || true
 
-            if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
-              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-                STAGE2_CHAIN_OK=0
-                echo "[WARN] linux-arm64: Stage2->Stage2 chain did not complete; fallback to stage1 compiler for release checks." | tee -a "$STAGE_TRACE_FILE"
-              else
-                exit 1
-              fi
-            fi
-          fi
-          if [[ "$STAGE2_CHAIN_OK" == "1" ]]; then
-            STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
-            if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-              STAGE2_REBUILD_BIN="$STAGE2_BIN"
-              echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-            fi
-          else
-            STAGE2_BIN="${{ matrix.stage1_bin }}"
-            STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
-            COMPILER_SUPPORTS_HELP=0
-          fi
-          if [[ "$COMPILER_SUPPORTS_HELP" == "0" && "${{ runner.os }}" == "Windows" ]]; then
-            echo "CRITICAL: Windows release cannot fallback to stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
+          if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
             exit 1
+          fi
+          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_BIN"
+            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
-          if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]] && ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            if [[ "$STAGE2_REBUILD_BIN" != "${{ matrix.stage1_bin }}" ]]; then
-              echo "[WARN] fallback to stage1 due CLI sanity failure: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-              STAGE2_BIN="${{ matrix.stage1_bin }}"
-              STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
-              COMPILER_SUPPORTS_HELP=0
-              test -f "$STAGE2_REBUILD_BIN"
-              chmod +x "$STAGE2_REBUILD_BIN" || true
-            fi
-          fi
-          if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]]; then
-            cli_sanity_ok "$STAGE2_REBUILD_BIN"
-          else
-            echo "[SANITY] skip strict CLI marker checks for stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
-          fi
-          if [[ "$COMPILER_SUPPORTS_HELP" == "0" ]]; then
-            HELLO_BIN="${{ matrix.hello_bin }}"
-            FIB_BIN="${{ matrix.fib_bin }}"
-            : > "$HELLO_BIN"
-            : > "$FIB_BIN"
-            echo "[WARN] skip example compile smoke on stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
-            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-            echo "COMPILER_SUPPORTS_HELP=$COMPILER_SUPPORTS_HELP" >> "$GITHUB_ENV"
-            exit 0
+          if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
+            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -856,7 +807,6 @@ jobs:
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-          echo "COMPILER_SUPPORTS_HELP=$COMPILER_SUPPORTS_HELP" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
         if: env.RELEASE_OPTIONAL_SKIP != '1'
@@ -910,14 +860,10 @@ jobs:
           HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1 || true)"
           printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
-          if [[ "${COMPILER_SUPPORTS_HELP:-1}" == "1" ]]; then
-            grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
-            grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt
-            if ! grep -E "thagore update|update <check\|apply\|rollback>" cli-help-release-${{ matrix.asset_tag }}.txt; then
-              echo "[WARN] native --help missing update command; Windows wrapper provides update routing." | tee -a "$STAGE_TRACE_FILE"
-            fi
-          else
-            grep -E "Thagore|thagore|Compiler" cli-version-release-${{ matrix.asset_tag }}.txt
+          grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
+          grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt
+          if ! grep -E "thagore update|update <check\|apply\|rollback>" cli-help-release-${{ matrix.asset_tag }}.txt; then
+            echo "[WARN] native --help missing update command." | tee -a "$STAGE_TRACE_FILE"
           fi
 
       - name: Run hello + fib
@@ -925,10 +871,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${COMPILER_SUPPORTS_HELP:-1}" == "0" ]]; then
-            echo "[WARN] skip hello/fib runtime gate on stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
-            exit 0
-          fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           HELLO_OUT="$(./$HELLO_BIN 2>&1)"
           FIB_OUT="$(./$FIB_BIN 2>&1)"
@@ -994,26 +936,7 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$STAGE2_REBUILD_BIN" dist/bin/thag.exe
-            printf '%s\n' \
-              '@echo off' \
-              'setlocal' \
-              'set "SELF_DIR=%~dp0"' \
-              'if /I "%~1"=="update" goto run_update' \
-              'if /I "%~1"=="--help" goto run_help' \
-              'if /I "%~1"=="help" goto run_help' \
-              '"%SELF_DIR%thag.exe" %*' \
-              'exit /b %ERRORLEVEL%' \
-              '' \
-              ':run_update' \
-              'powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %2 %3 %4 %5 %6 %7 %8 %9' \
-              'exit /b %ERRORLEVEL%' \
-              '' \
-              ':run_help' \
-              '"%SELF_DIR%thag.exe" --help' \
-              'if ERRORLEVEL 1 exit /b %ERRORLEVEL%' \
-              'echo   thagore update ^<check^|apply^|rollback^> [--yes] [--dry-run]' \
-              'exit /b %ERRORLEVEL%' > dist/bin/thagore.cmd
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
             cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
@@ -1048,6 +971,23 @@ jobs:
           bytes_pkg="$(wc -c < "${{ matrix.package_name }}")"
           if [[ "$bytes_pkg" -lt 2000 ]]; then
             echo "CRITICAL: ${{ matrix.package_name }} too small ($bytes_pkg bytes)."
+            exit 1
+          fi
+
+      - name: Guard Windows package has no thag alias/wrapper
+        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e dist/bin/thag.exe || -e dist/bin/thagore.cmd || -e dist/bin/thag ]]; then
+            echo "CRITICAL: forbidden Windows alias/wrapper found in dist/bin"
+            ls -la dist/bin
+            exit 1
+          fi
+          tar -tzf "${{ matrix.package_name }}" > _release_pkg_list_windows.txt
+          if grep -Eq '/bin/(thag\.exe|thagore\.cmd|thag)$' _release_pkg_list_windows.txt; then
+            echo "CRITICAL: Windows release package contains forbidden alias/wrapper entry."
+            cat _release_pkg_list_windows.txt
             exit 1
           fi
 
@@ -1099,7 +1039,6 @@ jobs:
 
           $targets = @(
             "dist\bin\${{ matrix.output_bin }}",
-            "dist\bin\thag.exe",
             "thagore-setup-windows-${{ matrix.arch }}.exe",
             "${{ matrix.stage1_seed_name }}"
           )
