@@ -640,16 +640,7 @@ jobs:
             local out="$1"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
-                cat > _s1/entry_cli.ll <<'EOF'
-declare void @__thg_init_env(i32, ptr)
-declare i32 @__thg_cli_main_native()
-define i32 @main(i32 %argc, ptr %argv) {
-entry:
-  call void @__thg_init_env(i32 %argc, ptr %argv)
-  %rc = call i32 @__thg_cli_main_native()
-  ret i32 %rc
-}
-EOF
+                "$PY" -c "from pathlib import Path; Path('_s1/entry_cli.ll').write_text('declare void @__thg_init_env(i32, ptr)\\ndeclare i32 @__thg_cli_main_native()\\ndefine i32 @main(i32 %argc, ptr %argv) {\\nentry:\\n  call void @__thg_init_env(i32 %argc, ptr %argv)\\n  %rc = call i32 @__thg_cli_main_native()\\n  ret i32 %rc\\n}\\n', encoding='utf-8')"
                 echo "[CMD] clang -x c++ -std=c++17 _s1/entry_cli.ll _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang -x c++ -std=c++17 _s1/entry_cli.ll _s1/runtime.cc -o "$out" -Wno-override-module
               else
