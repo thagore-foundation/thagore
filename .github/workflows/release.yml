@@ -790,6 +790,10 @@ jobs:
             STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
             COMPILER_SUPPORTS_HELP=0
           fi
+          if [[ "$COMPILER_SUPPORTS_HELP" == "0" && "${{ runner.os }}" == "Windows" ]]; then
+            echo "CRITICAL: Windows release cannot fallback to stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]] && ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
@@ -992,13 +996,18 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$STAGE2_REBUILD_BIN" dist/bin/thagore.exe
             cp "$STAGE2_REBUILD_BIN" dist/bin/thag.exe
             printf '%s\n' \
               '@echo off' \
               'setlocal' \
               'set "SELF_DIR=%~dp0"' \
-              '"%SELF_DIR%thagore.exe" %*' \
+              'if /I "%~1"=="update" goto run_update' \
+              '"%SELF_DIR%thag.exe" %*' \
+              'exit /b %ERRORLEVEL%' \
+              '' \
+              ':run_update' \
+              'shift' \
+              'powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %*' \
               'exit /b %ERRORLEVEL%' > dist/bin/thagore.cmd
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"

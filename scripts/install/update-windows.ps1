@@ -240,9 +240,13 @@ if ($mode -eq "apply") {
         New-Item -ItemType Directory -Force -Path (Join-Path $installRoot "lib\std") | Out-Null
         Copy-Item -Recurse -Force (Join-Path $newStdDir "*") (Join-Path $installRoot "lib\std")
     }
+    if (Test-Path $compatEngine) {
+        Remove-Item -Force $compatEngine
+    }
 
     Write-Host "Updated to $latestTag"
-    Write-Host "[update] binaries replaced: $engine, $compatEngine"
+    Write-Host "[update] binary replaced: $engine"
+    Write-Host "[update] stale compat binary removed: $compatEngine"
     exit 0
 }
 
@@ -264,9 +268,10 @@ if ($mode -eq "rollback") {
         }
     }
     $backupEngineHash = Get-FileSha256 -Path $backupEngine
-    $backupCompatHash = Get-FileSha256 -Path $backupCompat
     Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thag.exe"
-    Copy-And-VerifyHash -Source $backupCompat -Target $compatEngine -ExpectedHash $backupCompatHash -Label "rollback thagore.exe"
+    if (Test-Path $compatEngine) {
+        Remove-Item -Force $compatEngine
+    }
     if (Test-Path $backupCmd) {
         Copy-WithRetry -Source $backupCmd -Target $cmdWrapper
     }
