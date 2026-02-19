@@ -772,7 +772,7 @@ jobs:
           fi
           BUILD_TIMEOUT_SECS=300
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            BUILD_TIMEOUT_SECS=180
+            BUILD_TIMEOUT_SECS=120
           fi
           run_build_cmd() {
             local cc="$1"
@@ -884,6 +884,12 @@ jobs:
           FIB_TARGET="${{ matrix.fib_bin }}"
 
           BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${{ matrix.stage1_bin }}")
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}")
+          fi
+          if [[ "${#BUILD_COMPILERS[@]}" -ge 2 && "${BUILD_COMPILERS[0]}" == "${BUILD_COMPILERS[1]}" ]]; then
+            BUILD_COMPILERS=("${BUILD_COMPILERS[0]}")
+          fi
 
           HELLO_BIN=""
           for cc in "${BUILD_COMPILERS[@]}"; do
