@@ -1,16 +1,16 @@
 <div align="center">
 
 <h1>
-  <img src="docs/starlight/src/assets/thagore-logo.svg" alt="Thagore" width="48" height="48" onerror="this.style.display='none'"/>
+  <img src="docs/assets/thagore.svg" alt="Thagore" width="48" height="48" onerror="this.style.display='none'"/>
   Thagore
 </h1>
 
 <p><strong>A statically-typed, self-hosted compiled language powered by LLVM</strong></p>
 
 <p>
-  <a href="https://github.com/thagore/thagore/actions/workflows/ci.yml"><img src="https://github.com/thagore/thagore/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/thagore/thagore/actions/workflows/selfhost-matrix.yml"><img src="https://github.com/thagore/thagore/actions/workflows/selfhost-matrix.yml/badge.svg" alt="Selfhost Matrix"></a>
-  <a href="https://github.com/thagore/thagore/actions/workflows/release.yml"><img src="https://github.com/thagore/thagore/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/ci.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/selfhost-matrix.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/selfhost-matrix.yml/badge.svg" alt="Selfhost Matrix"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/release.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/LLVM-21.x-orange.svg" alt="LLVM 21">
   <img src="https://img.shields.io/badge/stage-self--hosted-brightgreen.svg" alt="Self-Hosted">
