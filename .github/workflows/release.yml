@@ -482,7 +482,7 @@ jobs:
             fi
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
             mkdir -p _s1
             fetch_runtime_blob _s1/runtime.cc
             PY=python
@@ -645,9 +645,9 @@ jobs:
           else
             PY=python3
           fi
-          STRICT_WINDOWS_X64=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STRICT_WINDOWS_X64=1
+          STRICT_WINDOWS=0
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            STRICT_WINDOWS=1
           fi
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
@@ -665,9 +665,13 @@ jobs:
             local snapshot_ir="_snapshot_thagore.ll"
             prepare_snapshot_ir "$snapshot_ir"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
-                echo "[CMD] clang -x c++ -std=c++17 _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                clang -x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module
+              if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/runtime.cc" ]]; then
+                WIN_RT_ARGS=(-x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module)
+                if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                  WIN_RT_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_RT_ARGS[@]}")
+                fi
+                echo "[CMD] clang ${WIN_RT_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
+                clang "${WIN_RT_ARGS[@]}"
                 echo "[CMD] clang $snapshot_ir thag_runtime.lib -o _s1/thagore-helper.exe -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang "$snapshot_ir" thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module
               else
@@ -675,8 +679,8 @@ jobs:
                 clang "$snapshot_ir" thag_runtime.lib -o "$out" -Wno-override-module
               fi
             else
-              echo "[CMD] clang $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
+              echo "[CMD] clang++ $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+              clang++ "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
             fi
           }
           cli_sanity_ok() {
@@ -684,7 +688,7 @@ jobs:
             local ver=""
             local help=""
             local strict_cli_lane=0
-            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
               strict_cli_lane=1
             fi
             chmod +x "$bin" || true
@@ -728,7 +732,7 @@ jobs:
           }
           if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
             STAGE2_BIN="${{ matrix.stage2_bin }}"
-            if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
+            if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
               export THAG_HELPER_BIN="$(pwd)/_s1/thagore-helper.exe"
               echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
             fi
@@ -829,9 +833,9 @@ jobs:
             exit 1
           fi
 
-          if [[ "$STRICT_WINDOWS_X64" -eq 1 ]]; then
+          if [[ "$STRICT_WINDOWS" -eq 1 ]]; then
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] strict windows-x86_64 lane: keep source-built compiler as release compiler (no rebuild fallback)." | tee -a "$STAGE_TRACE_FILE"
+            echo "[INFO] strict windows lane: keep source-built compiler as release compiler (no rebuild fallback)." | tee -a "$STAGE_TRACE_FILE"
           else
             if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
               exit 1
@@ -933,7 +937,7 @@ jobs:
         run: |
           set -euxo pipefail
           STRICT_CLI_LANE=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
             STRICT_CLI_LANE=1
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
