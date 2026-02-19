@@ -211,17 +211,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            echo "Using preinstalled clang on Linux:"
-            clang --version
-          else
-            sudo apt-get update || true
-            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-            chmod +x /tmp/llvm.sh
-            sudo /tmp/llvm.sh 21 all || true
-            if [[ -d /usr/lib/llvm-21/bin ]]; then
-              echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
-            fi
+          LLVM_VERSION=21
+          sudo apt-get update || true
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "${LLVM_VERSION}" all
+          if [[ -d "/usr/lib/llvm-${LLVM_VERSION}/bin" ]]; then
+            echo "/usr/lib/llvm-${LLVM_VERSION}/bin" >> "$GITHUB_PATH"
           fi
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo apt-get update || true
@@ -237,8 +233,10 @@ jobs:
         run: |
           set -euo pipefail
           brew update
-          brew install llvm
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          if ! brew list llvm@21 >/dev/null 2>&1; then
+            brew install llvm@21
+          fi
+          echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
           clang --version
 
       - name: Install LLVM (Windows)
@@ -246,18 +244,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            echo "Using preinstalled clang on Windows:"
-            clang --version
-            exit 0
-          fi
-          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
-            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
-            clang --version
-            exit 0
-          fi
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
+          LLVM_VERSION=21.1.8
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=${LLVM_VERSION} --no-progress -y --execution-timeout=1800"
           echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          CLANG_MACHINE="$(clang -dumpmachine 2>/dev/null || true)"
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            if [[ "$CLANG_MACHINE" != *"aarch64"* ]]; then
+              echo "CRITICAL: Windows ARM lane requires aarch64 clang, got: $CLANG_MACHINE"
+              exit 1
+            fi
+          else
+            if [[ "$CLANG_MACHINE" != *"x86_64"* ]]; then
+              echo "CRITICAL: Windows x86_64 lane requires x86_64 clang, got: $CLANG_MACHINE"
+              exit 1
+            fi
+          fi
           clang --version
 
       - name: Download stage1 bootstrap asset
@@ -730,29 +731,20 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
-            STAGE2_BIN="${{ matrix.stage2_bin }}"
-            if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
-              export THAG_HELPER_BIN="$(pwd)/_s1/thagore-helper.exe"
-              echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
+          USE_SNAPSHOT_STAGE2=0
+          if [[ "$USE_SNAPSHOT_STAGE2" -eq 1 ]]; then
+            if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
+              STAGE2_BIN="${{ matrix.stage2_bin }}"
+              if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
+                export THAG_HELPER_BIN="$(pwd)/_s1/thagore-helper.exe"
+                echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
+              fi
+              if cli_sanity_ok "$STAGE2_BIN"; then
+                echo "[INFO] snapshot stage2 sanity passed; continuing with source bootstrap to avoid stale snapshot lane." | tee -a "$STAGE_TRACE_FILE"
+              else
+                echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
+              fi
             fi
-            if cli_sanity_ok "$STAGE2_BIN"; then
-              STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-              "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
-              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-              "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
-              HELLO_BIN="${{ matrix.hello_bin }}"
-              FIB_BIN="${{ matrix.fib_bin }}"
-              test -f "$HELLO_BIN"
-              test -f "$FIB_BIN"
-              echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-              echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-              echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-              echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-              exit 0
-            fi
-            echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
@@ -827,6 +819,10 @@ jobs:
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
           test -f "$STAGE2_BIN"
+          if [[ ! -s "$STAGE2_BIN" ]]; then
+            echo "CRITICAL: $STAGE2_BIN is empty after source build." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
           chmod +x "$STAGE2_BIN" || true
           if ! cli_sanity_ok "$STAGE2_BIN"; then
             echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
@@ -847,6 +843,10 @@ jobs:
             fi
           fi
           test -f "$STAGE2_REBUILD_BIN"
+          if [[ ! -s "$STAGE2_REBUILD_BIN" ]]; then
+            echo "CRITICAL: $STAGE2_REBUILD_BIN is empty after rebuild." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
             echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
