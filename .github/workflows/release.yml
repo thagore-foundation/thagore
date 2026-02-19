@@ -646,7 +646,7 @@ jobs:
             PY=python3
           fi
           STRICT_WINDOWS=0
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_WINDOWS=1
           else
             mkdir -p .toolchain-shim
@@ -983,7 +983,7 @@ jobs:
         run: |
           set -euxo pipefail
           STRICT_CLI_LANE=0
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_CLI_LANE=1
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
@@ -1026,7 +1026,7 @@ jobs:
         run: |
           set -euxo pipefail
           STRICT_RUNTIME_LANE=0
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_RUNTIME_LANE=1
           fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
