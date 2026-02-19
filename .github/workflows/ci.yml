@@ -334,15 +334,8 @@ jobs:
           fi
           CLI_BIN="./$STAGE1_BIN"
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            INTENT_CLI="$CLI_BIN"
-            if "./$STAGE1_BIN" build src/thagore.tg -o stage_intent >/dev/null 2>&1; then
-              if [[ -f stage_intent ]]; then
-                chmod +x stage_intent || true
-                INTENT_CLI="./stage_intent"
-              fi
-            fi
             set +e
-            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$INTENT_CLI" > intent-suite.log 2>&1
+            THAGORE_INTERNAL_EMIT=1 "$PY" scripts/intent_suite.py --cli "$CLI_BIN" > intent-suite.log 2>&1
             rc=$?
             set -e
             if [[ $rc -ne 0 ]]; then

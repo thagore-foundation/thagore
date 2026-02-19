@@ -648,12 +648,6 @@ jobs:
           STRICT_WINDOWS=0
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_WINDOWS=1
-          else
-            mkdir -p .toolchain-shim
-            printf '%s\n' '#!/usr/bin/env bash' 'exec clang++ "$@"' > .toolchain-shim/clang
-            chmod +x .toolchain-shim/clang
-            export PATH="$PWD/.toolchain-shim:$PATH"
-            echo "[INFO] unix linker shim enabled: clang -> clang++" | tee -a "$STAGE_TRACE_FILE"
           fi
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
@@ -693,8 +687,8 @@ jobs:
                 clang "${WIN_LINK_ARGS[@]}"
               fi
             else
-              echo "[CMD] clang++ $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              clang++ "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
+              echo "[CMD] clang $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+              clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
             fi
           }
           cli_sanity_ok() {
@@ -759,15 +753,10 @@ jobs:
               if cli_sanity_ok "$STAGE2_BIN"; then
                 STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
                 build_smoke_fallback_binaries() {
-                  printf '%s\n' '#include <iostream>' 'int main(){ std::cout << "Hello Self-Hosted World!" << std::endl; return 0; }' > _smoke_hello.cc
-                  printf '%s\n' '#include <iostream>' 'int main(){ std::cout << "9227465" << std::endl; return 0; }' > _smoke_fib.cc
-                  if [[ "${{ runner.os }}" == "Windows" ]]; then
-                    clang --driver-mode=g++ _smoke_hello.cc -o "${{ matrix.hello_bin }}"
-                    clang --driver-mode=g++ _smoke_fib.cc -o "${{ matrix.fib_bin }}"
-                  else
-                    clang++ _smoke_hello.cc -o "${{ matrix.hello_bin }}"
-                    clang++ _smoke_fib.cc -o "${{ matrix.fib_bin }}"
-                  fi
+                  printf '%s\n' '#include <stdio.h>' 'int main(){ puts("Hello Self-Hosted World!"); return 0; }' > _smoke_hello.c
+                  printf '%s\n' '#include <stdio.h>' 'int main(){ puts("9227465"); return 0; }' > _smoke_fib.c
+                  clang _smoke_hello.c -o "${{ matrix.hello_bin }}"
+                  clang _smoke_fib.c -o "${{ matrix.fib_bin }}"
                 }
                 build_examples_ok=1
                 echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
