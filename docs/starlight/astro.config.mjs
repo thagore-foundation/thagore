@@ -25,9 +25,6 @@ export default defineConfig({
           label: "Install & Tooling",
           items: [
             { label: "Quick Start", link: "/install/quick-start/" },
-            { label: "Prerequisites", link: "/install/prerequisites/" },
-            { label: "Windows Bootstrap", link: "/install/windows-bootstrap/" },
-            { label: "Unix Stage1 Seed", link: "/install/unix-stage1-seed/" },
             { label: "CLI Reference", link: "/install/cli-reference/" },
             { label: "Release & Installers", link: "/install/release-installers/" },
           ]

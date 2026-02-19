@@ -368,5 +368,5 @@ you may not use this file except in compliance with the License.
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by the Thagore community · <a href="https://github.com/thagore/thagore/discussions">Discussions</a> · <a href="https://github.com/thagore/thagore/issues">Issues</a></sub>
+  <sub>Built with ❤️ by the Thagore Foundation and Community · <a href="https://github.com/thagore/thagore/pulls">Pull Requests</a> · <a href="https://github.com/thagore/thagore/issues">Issues</a></sub>
 </div>

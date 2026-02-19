@@ -1,488 +1,227 @@
 ---
 title: "Quick Start: Install Thagore"
-description: Step-by-step installation guide — from zero to your first compiled Thagore program in 10 minutes.
+description: Install the Thagore compiler and run your first program in under 5 minutes — no build required.
 sidebar:
   order: 0
 ---
 
-import { Aside, Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Quick Start: Install Thagore
 
-Follow this guide to install the Thagore compiler on your system and run your first program. The entire process takes about **10 minutes**.
-
-<Aside type="tip" title="TL;DR — Fastest Path">
-```bash
-# 1. Clone the repo
-git clone https://github.com/thagore-foundation/thagore.git && cd thagore
-
-# 2. Run the platform installer (installs LLVM 21 + Thagore)
-# Windows (PowerShell as Admin):
-powershell -ExecutionPolicy Bypass -File scripts\install\install-windows.ps1
-# Linux:
-bash scripts/install/install-linux.sh
-# macOS:
-bash scripts/install/install-macos.sh
-
-# 3. Bootstrap the compiler
-# Windows:
-cmd /c scripts\bootstrap.bat
-# Linux/macOS:
-bash scripts/bootstrap.sh
-
-# 4. Write & run your first program
-echo 'print("Hello Thagore!")' > hello.tg
-stage2.exe build hello.tg -o hello.exe  # Windows
-./stage2 build hello.tg -o hello        # Linux/macOS
-```
-</Aside>
+Download a pre-built release from GitHub and write your first program in under 5 minutes. No build step, no bootstrap — CI/CD already did that for you.
 
 ---
 
-## Step 1: System Requirements
+## Step 1: Install LLVM 21
 
-Before installing, make sure your system meets these requirements:
-
-| Requirement | Minimum |
-|-------------|---------|
-| **OS** | Windows 10+, Ubuntu 20.04+, macOS 12+ (Apple Silicon or Intel) |
-| **Disk space** | ~2 GB (LLVM + compiler + runtime) |
-| **RAM** | 4 GB recommended |
-| **Git** | Any version (for cloning the repo) |
-
----
-
-## Step 2: Install LLVM 21
-
-Thagore compiles to native code via LLVM, so you need **LLVM 21.1.8** installed first.
+Thagore needs **LLVM 21.1.8** on your PATH. Run the official install script for your platform:
 
 <Tabs>
-  <TabItem label="🪟 Windows">
-
-### Option A: Automated (Recommended)
-
-The install script handles everything via `winget` or `chocolatey`:
-
-```powershell
-# Run as Administrator
-powershell -ExecutionPolicy Bypass -File scripts\install\windows.ps1 -yes
-```
-
-This will:
-- Detect your architecture (x86-64 or ARM64)
-- Install LLVM 21.1.8 via `winget` or `choco`
-- Verify `clang.exe` is on PATH
-
-### Option B: Manual
-
-1. **Using winget:**
-   ```powershell
-   winget install --id LLVM.LLVM --version 21.1.8 --silent
-   ```
-
-2. **Using Chocolatey:**
-   ```powershell
-   choco install llvm --version=21.1.8 -y
-   ```
-
-3. **Manual download:**
-   - Go to [LLVM Releases](https://github.com/llvm/llvm-project/releases/tag/llvmorg-21.1.8)
-   - Download `LLVM-21.1.8-win64.exe` (or the `.tar.xz` archive)
-   - Install or extract to `C:\Program Files\LLVM`
-   - Add `C:\Program Files\LLVM\bin` to your system `PATH`
-
-### Verify
-
-```powershell
-clang --version
-# Expected output: clang version 21.1.8 ...
-```
-
-  </TabItem>
   <TabItem label="🐧 Linux (Ubuntu/Debian)">
 
-### Option A: Automated (Recommended)
-
 ```bash
-bash scripts/install/ubuntu.sh --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/ubuntu.sh | bash -s -- --yes
 ```
 
-This will:
-- Run `apt-get update`
-- Download and execute the official LLVM install script
-- Install LLVM 21 with all components
-- Add `/usr/lib/llvm-21/bin` to PATH if needed
+Installs LLVM 21 via the official `apt.llvm.org` repository.
 
-### Option B: Manual
+  </TabItem>
+  <TabItem label="🐧 Linux (generic)">
 
 ```bash
-# Install from LLVM's official apt repository
-curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-chmod +x /tmp/llvm.sh
-sudo /tmp/llvm.sh 21 all
-
-# If clang is not found, add to PATH:
-export PATH="/usr/lib/llvm-21/bin:$PATH"
-```
-
-### Verify
-
-```bash
-clang --version
-# Expected output: clang version 21.1.8 ...
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/linux.sh | bash -s -- --yes
 ```
 
   </TabItem>
   <TabItem label="🍎 macOS">
 
-### Option A: Automated (Recommended)
-
-Requires [Homebrew](https://brew.sh/):
-
 ```bash
-bash scripts/install/macos.sh --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/macos.sh | bash -s -- --yes
 ```
 
-This will:
-- Run `brew update`
-- Tap `thagore-foundation/llvm`
-- Install `llvm@21`
-- Add the LLVM bin directory to PATH
+Installs `llvm@21` via Homebrew. Requires [Homebrew](https://brew.sh/).
 
-### Option B: Manual
+  </TabItem>
+  <TabItem label="🪟 Windows (PowerShell Admin)">
 
-```bash
-brew update
-brew install llvm@21
-
-# Add to PATH (Apple Silicon):
-export PATH="$(brew --prefix llvm@21)/bin:$PATH"
-
-# Add to your shell profile (~/.zshrc) for persistence:
-echo 'export PATH="$(brew --prefix llvm@21)/bin:$PATH"' >> ~/.zshrc
+```powershell
+irm https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/windows.ps1 | iex
 ```
 
-### Verify
+Installs LLVM 21.1.8 via `winget` or `choco`.
+
+  </TabItem>
+  <TabItem label="🔧 Portable (Android/BSD/…)">
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/portable.sh | bash -s -- --yes
+```
+
+Builds LLVM from source using `cmake` + `ninja`. Takes 30–60 min. Useful for Termux, FreeBSD, or any non-standard environment.
+
+  </TabItem>
+</Tabs>
+
+**Verify:**
 
 ```bash
 clang --version
-# Expected output: clang version 21.1.8 ...
-```
-
-  </TabItem>
-  <TabItem label="🔧 Portable (Build from Source)">
-
-For environments without package managers:
-
-```bash
-bash scripts/install/portable.sh --yes
-```
-
-**Requirements:** `git`, `cmake`, `ninja`
-
-This clones LLVM 21.1.8 from source and builds `clang` + `lld` into `~/.thagore/llvm-21.1.8/`. It takes 30–60 minutes.
-
-```bash
-# Custom prefix:
-THAGORE_LLVM_PREFIX=/opt/llvm-21 bash scripts/install/portable.sh --yes
-
-# Add to PATH:
-export PATH="$HOME/.thagore/llvm-21.1.8/bin:$PATH"
-```
-
-  </TabItem>
-</Tabs>
-
----
-
-## Step 3: Clone the Repository
-
-```bash
-git clone https://github.com/thagore-foundation/thagore.git
-cd thagore
+# clang version 21.1.8 ...
 ```
 
 ---
 
-## Step 4: Get the Stage1 Seed & Runtime
+## Step 2: Download the Compiler
 
-The **Stage1 seed** is a pre-built Thagore compiler binary used to bootstrap the full compiler. The **runtime ABI** provides core functions that compiled programs link against.
-
-Download both from the latest release:
-
-```bash
-# Check the latest seed tag at:
-# https://github.com/thagore-foundation/thagore/releases/tag/v0.3.25-stage1-seed
-```
+Download the latest pre-built release (`v0.3.33-foundation`) for your platform:
 
 <Tabs>
+  <TabItem label="🐧 Linux x86-64">
+
+```bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-linux-x86_64.tar.gz | tar xz
+chmod +x thagore
+```
+
+  </TabItem>
+  <TabItem label="🐧 Linux ARM64">
+
+```bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-linux-arm64.tar.gz | tar xz
+chmod +x thagore
+```
+
+  </TabItem>
+  <TabItem label="🍎 macOS ARM64">
+
+```bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-macos-arm64.tar.gz | tar xz
+chmod +x thagore
+```
+
+  </TabItem>
   <TabItem label="🪟 Windows">
 
-Download and place in the project root directory:
-- `stage1.exe` — the Stage1 seed compiler
-- `thag_runtime.lib` (or `thagore-runtime-windows.lib`) — the runtime library
-
 ```powershell
-# Verify the files are in place
-dir stage1.exe
-dir thag_runtime.lib
-```
-
-  </TabItem>
-  <TabItem label="🐧 Linux">
-
-Download and place in the project root directory:
-- `stage1` — the Stage1 seed compiler
-- `libthag_runtime.a` (or `thagore-runtime-linux.a`) — the runtime library
-
-```bash
-chmod +x stage1
-ls -la stage1 libthag_runtime.a
-```
-
-  </TabItem>
-  <TabItem label="🍎 macOS">
-
-Download and place in the project root directory:
-- `stage1` — the Stage1 seed compiler
-- `libthag_runtime.a` (or `thagore-runtime-macos.a`) — the runtime library
-
-```bash
-chmod +x stage1
-ls -la stage1 libthag_runtime.a
+Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-windows-x86_64.zip" -OutFile thagore.zip
+Expand-Archive thagore.zip -DestinationPath .
 ```
 
   </TabItem>
 </Tabs>
 
-<Aside type="note" title="Why do I need a seed?">
-Thagore is **self-hosted** — the compiler is written in Thagore itself. To compile the compiler, you need an existing Thagore compiler. The Stage1 seed breaks this chicken-and-egg cycle. Once you bootstrap, you won't need it again (Stage2 can compile itself).
+**Verify:**
+
+```bash
+./thagore --version
+```
+
+<Aside type="tip" title="Add to PATH (optional)">
+To use `thagore` from anywhere, move it to a directory on your PATH:
+
+```bash
+# Linux / macOS
+sudo mv thagore /usr/local/bin/thagore
+
+# Windows — add the folder to your System PATH via Settings
+```
 </Aside>
 
 ---
 
-## Step 5: Bootstrap the Compiler
+## Step 3: Write Your First Program
 
-The bootstrap process uses the Stage1 seed to build the full self-hosted compiler:
-
-<Tabs>
-  <TabItem label="🪟 Windows">
-
-```powershell
-cmd /c scripts\bootstrap.bat
-```
-
-  </TabItem>
-  <TabItem label="🐧 Linux / 🍎 macOS">
-
-```bash
-bash scripts/bootstrap.sh
-```
-
-  </TabItem>
-</Tabs>
-
-### What happens during bootstrap:
-
-```
-[1/4] Build stage2 from stage1...
-      stage1 compiles src/thagore.tg → stage2.exe
-
-[2/4] Rebuild stage2b from stage2...
-      stage2 compiles src/thagore.tg → stage2b.exe (proves self-hosting!)
-
-[3/4] Build hello_v2 from stage2b...
-      stage2b compiles examples/hello.tg → hello_v2.exe
-
-[4/4] Run hello_v2...
-      hello_v2.exe → "Hello Self-Hosted World!"
-
-[OK] Stage1-only bootstrap cycle completed.
-```
-
-<Aside type="caution" title="Bootstrap Failures">
-If the bootstrap fails:
-1. Verify LLVM/Clang is on PATH: `clang --version`
-2. Verify `stage1.exe` and runtime ABI are in the project root
-3. Ensure `.tg` files have Unix line endings (LF, not CRLF)
-4. Check that Python 3 is available (used by `build_runtime_abi.py`)
-</Aside>
-
-After a successful bootstrap, you now have `stage2.exe` (or `./stage2`) — the fully self-hosted Thagore compiler!
-
----
-
-## Step 6: Write Your First Program
-
-Create a file named `hello.tg`:
+Create a file `hello.tg`:
 
 ```python title="hello.tg"
 func main() -> i32:
     print("Hello, Thagore!")
-    print("Your first compiled program 🚀")
     return 0
 ```
 
-Compile and run it:
+Compile and run:
 
 <Tabs>
-  <TabItem label="🪟 Windows">
-
-```powershell
-.\stage2.exe build hello.tg -o hello.exe
-.\hello.exe
-```
-
-  </TabItem>
   <TabItem label="🐧 Linux / 🍎 macOS">
 
 ```bash
-./stage2 build hello.tg -o hello
+./thagore build hello.tg -o hello
 ./hello
 ```
 
   </TabItem>
-</Tabs>
-
-**Expected output:**
-```
-Hello, Thagore!
-Your first compiled program 🚀
-```
-
-🎉 **Congratulations!** You just compiled and ran your first Thagore program!
-
----
-
-## Step 7: Try More Examples
-
-The `examples/` directory has ready-to-run programs:
-
-```bash
-# Fibonacci (recursive)
-stage2 build examples/fib.tg -o fib
-./fib
-# Output: 9227465
-
-# Structs and methods
-stage2 build examples/method.tg -o method
-./method
-# Output: 200  1
-
-# Operator overloading
-stage2 build examples/ops.tg -o ops
-./ops
-# Output: 4  6  11
-
-# C FFI (calling sqrtf from libc)
-stage2 build examples/ffi.tg -o ffi
-./ffi
-# Output: 5.0
-
-# Dynamic list
-stage2 build examples/dynamic_list.tg -o dynlist
-./dynlist
-```
-
----
-
-## Step 8: System-Wide Installation (Optional)
-
-If you want `thagore` available globally as a command:
-
-<Tabs>
   <TabItem label="🪟 Windows">
 
-Run as Administrator:
-
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install\install-windows.ps1
-```
-
-This installs to `C:\Program Files\Thagore\` and adds it to `PATH`. After installation:
-- **Binary:** `C:\Program Files\Thagore\bin\thagore.exe`
-- **Alias:** `C:\Program Files\Thagore\bin\thag.exe`
-- **Stdlib:** `C:\Program Files\Thagore\lib\std`
-
-```powershell
-# After restarting your terminal:
-thagore --version
-thagore build hello.tg -o hello.exe
-```
-
-  </TabItem>
-  <TabItem label="🐧 Linux">
-
-```bash
-sudo bash scripts/install/install-linux.sh
-```
-
-Installs to `/opt/thagore/` and symlinks to `/usr/local/bin/`:
-- **Binary:** `/usr/local/bin/thagore`
-- **Alias:** `/usr/local/bin/thag`
-- **Stdlib:** `/opt/thagore/lib/std`
-
-```bash
-thagore --version
-thagore build hello.tg -o hello
-```
-
-  </TabItem>
-  <TabItem label="🍎 macOS">
-
-```bash
-sudo bash scripts/install/install-macos.sh
-```
-
-Installs to `/usr/local/thagore/` and symlinks to `/usr/local/bin/`:
-- **Binary:** `/usr/local/bin/thagore`
-- **Alias:** `/usr/local/bin/thag`
-- **Stdlib:** `/usr/local/thagore/lib/std`
-
-```bash
-thagore --version
-thagore build hello.tg -o hello
+.\thagore.exe build hello.tg -o hello.exe
+.\hello.exe
 ```
 
   </TabItem>
 </Tabs>
 
+```
+Hello, Thagore!
+```
+
+🎉 That's it — you're up and running!
+
 ---
 
-## Folder Structure After Installation
+## Step 4: Try More Examples
 
+Download and run examples directly from the repo:
+
+```bash
+# Fibonacci
+curl -fsSL -o fib.tg https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/examples/fib.tg
+./thagore build fib.tg -o fib && ./fib
+# 9227465
+
+# Read user input
+curl -fsSL -o input.tg https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/examples/console_input_i32.tg
+./thagore build input.tg -o input_demo && ./input_demo
+
+# Structs
+curl -fsSL -o method.tg https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/examples/method.tg
+./thagore build method.tg -o method && ./method
 ```
-thagore/
-├── stage1.exe          # Stage1 seed (bootstrap only)
-├── stage2.exe          # ✅ Your compiler — use this!
-├── stage2b.exe         # Self-host verification binary
-├── thag_runtime.lib    # Runtime ABI library
-├── src/                # Compiler source code
-├── lib/                # Standard library (fs, string, io, env, ...)
-├── std/                # Core primitives (core, list, string)
-├── examples/           # Example programs
-├── tests/              # Test suite
-├── scripts/            # Build & install scripts
-└── docs/               # Documentation
-```
+
+---
+
+## All Download URLs
+
+### LLVM Install Scripts
+
+| Platform | Script URL |
+|----------|-----------|
+| **Ubuntu / Debian** | `…/scripts/install/ubuntu.sh` |
+| **Linux (generic)** | `…/scripts/install/linux.sh` |
+| **macOS** | `…/scripts/install/macos.sh` |
+| **Windows** | `…/scripts/install/windows.ps1` |
+| **Portable (Android/BSD)** | `…/scripts/install/portable.sh` |
+
+Base: `https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/`
+
+### Compiler Releases (`v0.3.33-foundation`)
+
+| Platform | Asset |
+|----------|-------|
+| **Linux x86-64** | [`thagore-linux-x86_64.tar.gz`](https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-linux-x86_64.tar.gz) |
+| **Linux ARM64** | [`thagore-linux-arm64.tar.gz`](https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-linux-arm64.tar.gz) |
+| **macOS ARM64** | [`thagore-macos-arm64.tar.gz`](https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-macos-arm64.tar.gz) |
+| **Runtime (Linux x86-64)** | [`thagore-runtime-linux-x86_64.a`](https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-runtime-linux-x86_64.a) |
+| **Runtime (Linux ARM64)** | [`thagore-runtime-linux-arm64.a`](https://github.com/thagore-foundation/thagore/releases/download/v0.3.33-foundation/thagore-runtime-linux-arm64.a) |
+
+[→ All releases](https://github.com/thagore-foundation/thagore/releases)
 
 ---
 
 ## What's Next?
 
-Now that you have a working Thagore compiler, explore:
-
-1. 📖 **[Language Syntax](/syntax/index)** — learn the language features
-2. 🧩 **[Functions](/syntax/functions)** — functions, parameters, recursion
-3. 🏗️ **[Structs & Methods](/syntax/structs-and-impl)** — structs, impl, operator overloading
-4. 📚 **[Standard Library](/stdlib/index)** — built-in modules: fs, string, io, process
-5. 🔌 **[C FFI](/syntax/ffi-and-import)** — call C libraries from Thagore
-6. 🐍 **[Python Bridge](/integration/c-ffi-python)** — interface with Python & PyTorch
-7. ⚙️ **[CLI Reference](/install/cli-reference)** — all compiler flags and commands
-8. 💡 **[Patterns](/patterns/idiomatic)** — idiomatic code patterns and best practices
-
-<Aside type="tip" title="Get Help">
-- 🐛 Found a bug? [Open an issue](https://github.com/thagore-foundation/thagore/issues)
-- 💬 Questions? Check the [Contributing Guide](/contributing/first-pr)
-- 📖 Full API reference in the [Standard Library docs](/stdlib/index)
-</Aside>
+- 📖 [Language Syntax](/syntax/index) — variables, functions, control flow
+- ⌨️ [Reading Input](/syntax/input) — `input()`, `io.input_prompt()`
+- 📚 [Standard Library](/stdlib/index) — fs, io, string, process, path, http
+- ⚙️ [CLI Reference](/install/cli-reference) — all compiler flags
+- 💡 [Patterns & Idioms](/patterns/idiomatic) — best practices
