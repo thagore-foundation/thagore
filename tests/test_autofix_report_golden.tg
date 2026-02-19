@@ -43,6 +43,11 @@ func main() -> i32:
     fails = fails + _expect_contains("report path json", report_path, ".json")
     let report = fs.read_text(report_path)
 
+    fails = fails + _expect_contains("golden has schema version", report, dq + "schema_version" + dq + ":1")
+    fails = fails + _expect_contains("golden has event schema", report, dq + "event_schema" + dq + ":" + dq + "thagore.fix.session.v1" + dq)
+    fails = fails + _expect_contains("golden has single session type", report, dq + "session_type" + dq + ":" + dq + "single" + dq)
+    fails = fails + _expect_contains("golden has tool name", report, dq + "tool" + dq + ":" + dq + "thagore fix" + dq)
+    fails = fails + _expect_contains("golden has rollback command", report, dq + "rollback_command" + dq + ":" + dq + "thagore fix rollback ")
     fails = fails + _expect_contains("golden has fixes array", report, dq + "fixes" + dq + ":[")
     fails = fails + _expect_contains("golden has diff unified", report, dq + "diff_unified" + dq + ":")
     fails = fails + _expect_contains("golden has diagnostic family", report, dq + "diagnostic_family" + dq + ":")

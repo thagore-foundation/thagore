@@ -1,0 +1,247 @@
+import "lib/fs.tg" as fs
+import "src/driver/flow/engine.tg" as flowctl
+
+extern func __string_from_codepoint(cp: i32) -> String
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(hay: String, needle: String) -> i32:
+    let n = strlen(hay)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(hay, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print("  got : " + got)
+    print("  want: " + want)
+    return 1
+
+func _expect_contains(label: String, hay: String, needle: String) -> i32:
+    if (_contains(hay, needle) == 1):
+        return 0
+    print("FAIL: " + label)
+    print("  missing: " + needle)
+    return 1
+
+func _expect_contains_any(label: String, hay: String, a: String, b: String) -> i32:
+    if ((_contains(hay, a) == 1) or (_contains(hay, b) == 1)):
+        return 0
+    print("FAIL: " + label)
+    print("  missing both: " + a + " | " + b)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let nl = __string_from_codepoint(10)
+    let ok_path = "tests/__flow_cli_ok.tg"
+    let bad_path = "tests/__flow_cli_bad.tg"
+
+    let src_ok = "flow deploy_release(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_ok = src_ok + "    step vm = cloud.create_vm(input.spec)" + nl
+    src_ok = src_ok + "        undo cloud.delete_vm(vm.id)" + nl
+    src_ok = src_ok + "        retry 2 backoff exp(200ms, 2.0)" + nl
+    src_ok = src_ok + "        timeout 20s" + nl
+    src_ok = src_ok + "        idempotent" + nl
+    src_ok = src_ok + "    step pkg = artifact.upload(input.bundle)" + nl
+    src_ok = src_ok + "        undo artifact.delete(pkg.id)" + nl
+    src_ok = src_ok + "        timeout 30s" + nl
+    src_ok = src_ok + "func main() -> i32:" + nl
+    src_ok = src_ok + "    return 0" + nl
+    fails = fails + _expect_i32("write flow ok source", fs.write_text(ok_path, src_ok), 1)
+
+    let par_path = "tests/__flow_cli_parallel.tg"
+    let src_par = "flow deploy_parallel(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_par = src_par + "    parallel:" + nl
+    src_par = src_par + "        step vm = cloud.create_vm(input.spec)" + nl
+    src_par = src_par + "            undo cloud.delete_vm(vm.id)" + nl
+    src_par = src_par + "            timeout 20s" + nl
+    src_par = src_par + "        step pkg = artifact.upload(input.bundle)" + nl
+    src_par = src_par + "            undo artifact.delete(pkg.id)" + nl
+    src_par = src_par + "            timeout 30s" + nl
+    src_par = src_par + "    barrier" + nl
+    src_par = src_par + "func main() -> i32:" + nl
+    src_par = src_par + "    return 0" + nl
+    fails = fails + _expect_i32("write flow parallel source", fs.write_text(par_path, src_par), 1)
+
+    let deadline_path = "tests/__flow_cli_deadline.tg"
+    let src_deadline = "flow deploy_deadline(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_deadline = src_deadline + "    step vm = cloud.create_vm(input.spec)" + nl
+    src_deadline = src_deadline + "        undo cloud.delete_vm(vm.id)" + nl
+    src_deadline = src_deadline + "        retry 2 backoff exp(100ms, 2.0)" + nl
+    src_deadline = src_deadline + "        timeout 100ms" + nl
+    src_deadline = src_deadline + "        idempotent" + nl
+    src_deadline = src_deadline + "func main() -> i32:" + nl
+    src_deadline = src_deadline + "    return 0" + nl
+    fails = fails + _expect_i32("write flow deadline source", fs.write_text(deadline_path, src_deadline), 1)
+
+    let mapped_path = "tests/__flow_cli_mapped.tg"
+    let src_mapped = "flow deploy_mapped(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_mapped = src_mapped + "    step vm = cloud.create_vm(input.spec)" + nl
+    src_mapped = src_mapped + "        undo cloud.delete_vm(vm.id)" + nl
+    src_mapped = src_mapped + "        timeout 20s" + nl
+    src_mapped = src_mapped + "    step notify = queue.publish(input.bundle)" + nl
+    src_mapped = src_mapped + "        irreversible reason \"manual approval\"" + nl
+    src_mapped = src_mapped + "        on_error map.release_error(notify)" + nl
+    src_mapped = src_mapped + "        timeout 10s" + nl
+    src_mapped = src_mapped + "func main() -> i32:" + nl
+    src_mapped = src_mapped + "    return 0" + nl
+    fails = fails + _expect_i32("write flow mapped source", fs.write_text(mapped_path, src_mapped), 1)
+
+    let src_bad = "flow deploy_release(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_bad = src_bad + "    step vm = cloud.create_vm(input.spec)" + nl
+    src_bad = src_bad + "        timeout 20s" + nl
+    src_bad = src_bad + "func main() -> i32:" + nl
+    src_bad = src_bad + "    return 0" + nl
+    fails = fails + _expect_i32("write flow bad source", fs.write_text(bad_path, src_bad), 1)
+
+    let cap_path = "tests/__flow_cli_cap_unknown.tg"
+    let src_cap = "flow deploy_release(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    src_cap = src_cap + "    step ext = mystery.do_job(input.spec)" + nl
+    src_cap = src_cap + "        undo mystery.undo(ext.id)" + nl
+    src_cap = src_cap + "        timeout 20s" + nl
+    src_cap = src_cap + "func main() -> i32:" + nl
+    src_cap = src_cap + "    return 0" + nl
+    fails = fails + _expect_i32("write flow capability source", fs.write_text(cap_path, src_cap), 1)
+
+    let cache_dep_path = "tests/__flow_cache_dep.tg"
+    let cache_entry_path = "tests/__flow_cache_entry.tg"
+    let cache_dep_v1 = "func dep_value() -> i32:" + nl
+    cache_dep_v1 = cache_dep_v1 + "    return 1" + nl
+    fails = fails + _expect_i32("write flow cache dep v1", fs.write_text(cache_dep_path, cache_dep_v1), 1)
+    let cache_entry = "import \"tests/__flow_cache_dep.tg\" as dep" + nl
+    cache_entry = cache_entry + "flow deploy_cache(input: DeployInput) -> Result[DeployOut, DeployErr]:" + nl
+    cache_entry = cache_entry + "    step vm = cloud.create_vm(input.spec)" + nl
+    cache_entry = cache_entry + "        undo cloud.delete_vm(vm.id)" + nl
+    cache_entry = cache_entry + "        timeout 20s" + nl
+    cache_entry = cache_entry + "func main() -> i32:" + nl
+    cache_entry = cache_entry + "    return dep.dep_value()" + nl
+    fails = fails + _expect_i32("write flow cache entry", fs.write_text(cache_entry_path, cache_entry), 1)
+
+    fails = fails + _expect_str("normalize flow mode off", flowctl.normalize_flow_mode("off"), "off")
+    fails = fails + _expect_str("normalize flow mode strict", flowctl.normalize_flow_mode("strict"), "strict")
+    fails = fails + _expect_str("normalize flow mode default", flowctl.normalize_flow_mode("weird"), "on")
+    fails = fails + _expect_str("normalize flow durability high", flowctl.normalize_flow_durability("high"), "high")
+    fails = fails + _expect_str("normalize flow durability default", flowctl.normalize_flow_durability("weird"), "normal")
+    fails = fails + _expect_str("normalize flow journal format jsonl", flowctl.normalize_flow_journal_format("jsonl"), "jsonl")
+    fails = fails + _expect_str("normalize flow journal format binary", flowctl.normalize_flow_journal_format("binary"), "binary")
+    fails = fails + _expect_str("normalize flow journal format default", flowctl.normalize_flow_journal_format("weird"), "compact")
+
+    fails = fails + _expect_i32("flow doctor on ok", flowctl.run_flow_doctor(ok_path, "on", 0), 0)
+    let doctor_cache_path = fs.read_text(".thagore/flow/last_doctor_cache.path")
+    fails = fails + _expect_i32("flow doctor cache file exists", fs.exists(doctor_cache_path), 1)
+    fails = fails + _expect_i32("flow doctor json ok", flowctl.run_flow_doctor(ok_path, "on", 1), 0)
+    fails = fails + _expect_str("flow doctor cache hit on repeat", fs.read_text(".thagore/flow/last_doctor_cache.hit"), "1")
+    fails = fails + _expect_i32("flow doctor cache dep first", flowctl.run_flow_doctor(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_i32("flow doctor cache dep second", flowctl.run_flow_doctor(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_str("flow doctor cache dep hit", fs.read_text(".thagore/flow/last_doctor_cache.hit"), "1")
+    let cache_dep_v2 = "func dep_value() -> i32:" + nl
+    cache_dep_v2 = cache_dep_v2 + "    return 2" + nl
+    fails = fails + _expect_i32("write flow cache dep v2", fs.write_text(cache_dep_path, cache_dep_v2), 1)
+    fails = fails + _expect_i32("flow doctor cache dep invalidated", flowctl.run_flow_doctor(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_str("flow doctor cache dep miss after change", fs.read_text(".thagore/flow/last_doctor_cache.hit"), "0")
+    fails = fails + _expect_i32("flow explain human ok", flowctl.run_flow_explain(ok_path, "on", 0), 0)
+    fails = fails + _expect_i32("flow explain json ok", flowctl.run_flow_explain(ok_path, "on", 1), 0)
+    let explain_cache_path = fs.read_text(".thagore/flow/last_explain_cache.path")
+    fails = fails + _expect_i32("flow explain cache file exists", fs.exists(explain_cache_path), 1)
+    fails = fails + _expect_i32("flow explain json cache hit", flowctl.run_flow_explain(ok_path, "on", 1), 0)
+    fails = fails + _expect_str("flow explain cache hit on repeat", fs.read_text(".thagore/flow/last_explain_cache.hit"), "1")
+    fails = fails + _expect_i32("flow explain dep first", flowctl.run_flow_explain(cache_entry_path, "on", 1), 0)
+    fails = fails + _expect_i32("flow explain dep second", flowctl.run_flow_explain(cache_entry_path, "on", 1), 0)
+    fails = fails + _expect_str("flow explain dep hit", fs.read_text(".thagore/flow/last_explain_cache.hit"), "1")
+    let cache_dep_v3 = "func dep_value() -> i32:" + nl
+    cache_dep_v3 = cache_dep_v3 + "    return 3" + nl
+    fails = fails + _expect_i32("write flow cache dep v3", fs.write_text(cache_dep_path, cache_dep_v3), 1)
+    fails = fails + _expect_i32("flow explain dep invalidated", flowctl.run_flow_explain(cache_entry_path, "on", 1), 0)
+    fails = fails + _expect_str("flow explain dep miss after change", fs.read_text(".thagore/flow/last_explain_cache.hit"), "0")
+    fails = fails + _expect_i32("flow explain mapped json", flowctl.run_flow_explain(mapped_path, "on", 1), 0)
+    let mapped_explain_cache = fs.read_text(".thagore/flow/last_explain_cache.path")
+    let mapped_explain_cache_text = fs.read_text(mapped_explain_cache)
+    fails = fails + _expect_contains_any("flow explain includes on_error", mapped_explain_cache_text, "\"on_error\":\"map.release_error(notify)\"", "\\\"on_error\\\":\\\"map.release_error(notify)\\\"")
+    fails = fails + _expect_contains_any("flow explain includes irreversible reason", mapped_explain_cache_text, "\"irreversible_reason\":\"manual approval\"", "\\\"irreversible_reason\\\":\\\"manual approval\\\"")
+    fails = fails + _expect_i32("flow gate on ok", flowctl.run_flow_gate(ok_path, "on", 0), 0)
+    fails = fails + _expect_i32("flow gate on repeat", flowctl.run_flow_gate(ok_path, "on", 1), 0)
+    fails = fails + _expect_str("flow gate cache hit on repeat", fs.read_text(".thagore/flow/last_validate_cache.hit"), "1")
+    fails = fails + _expect_i32("flow gate dep first", flowctl.run_flow_gate(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_i32("flow gate dep second", flowctl.run_flow_gate(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_str("flow gate dep hit", fs.read_text(".thagore/flow/last_validate_cache.hit"), "1")
+    let cache_dep_v4 = "func dep_value() -> i32:" + nl
+    cache_dep_v4 = cache_dep_v4 + "    return 4" + nl
+    fails = fails + _expect_i32("write flow cache dep v4", fs.write_text(cache_dep_path, cache_dep_v4), 1)
+    fails = fails + _expect_i32("flow gate dep invalidated", flowctl.run_flow_gate(cache_entry_path, "on", 0), 0)
+    fails = fails + _expect_str("flow gate dep miss after change", fs.read_text(".thagore/flow/last_validate_cache.hit"), "0")
+    fails = fails + _expect_i32("flow simulate fail-once retried", flowctl.run_flow_simulate_with_policy(ok_path, "on", "", "vm", "", 0, 0), 0)
+    fails = fails + _expect_i32("flow simulate deadline timeout on retry", flowctl.run_flow_simulate_with_policy(deadline_path, "on", "", "vm", "", 0, 0), 1)
+    let deadline_journal = flowctl.latest_flow_journal_path()
+    let deadline_log = fs.read_text(deadline_journal)
+    fails = fails + _expect_contains_any("flow simulate deadline timeout logged", deadline_log, "timeout-deadline-exceeded", "timeout-deadline-exceeded\\u003b")
+    fails = fails + _expect_i32("flow simulate mapped fail note", flowctl.run_flow_simulate_with_policy(mapped_path, "on", "notify", "", "", 0, 0), 1)
+    let mapped_journal = flowctl.latest_flow_journal_path()
+    let mapped_log = fs.read_text(mapped_journal)
+    fails = fails + _expect_contains_any("flow simulate mapped on_error note", mapped_log, "on_error=map.release_error(notify)", "on_error\\u003dmap.release_error(notify)")
+    fails = fails + _expect_contains_any("flow simulate mapped irreversible reason note", mapped_log, "irreversible_reason=manual approval", "irreversible_reason\\u003dmanual approval")
+    fails = fails + _expect_contains_any("flow simulate mapped mapping marker", mapped_log, "on_error_mapped=true", "on_error_mapped\\u003dtrue")
+    let retry_journal = deadline_journal
+    let retry_log = fs.read_text(retry_journal)
+    fails = fails + _expect_contains_any("flow simulate retry ticks logged", retry_log, "retry_in_ticks=1", "retry_in_ticks\\u003d1")
+    fails = fails + _expect_i32("flow simulate durable high", flowctl.run_flow_simulate_with_policy_durable(ok_path, "on", "", "", "", 0, 0, "high"), 0)
+    let durable_sid = flowctl.latest_flow_session_id()
+    let durable_text = fs.read_text(".thagore/flow/sessions/" + durable_sid + ".json")
+    fails = fails + _expect_contains("flow session durability persisted", durable_text, "\"durability\":\"high\"")
+    fails = fails + _expect_contains("flow session compact journal persisted", durable_text, "\"journal_format\":\"compact\"")
+    fails = fails + _expect_i32("flow simulate jsonl compatibility", flowctl.run_flow_simulate_with_policy_full(ok_path, "on", "", "", "", 0, 0, "normal", "jsonl"), 0)
+    fails = fails + _expect_i32("flow simulate binary compatibility", flowctl.run_flow_simulate_with_policy_full(ok_path, "on", "", "", "", 0, 0, "normal", "binary"), 0)
+    let binary_sid = flowctl.latest_flow_session_id()
+    let binary_path = flowctl.latest_flow_journal_path()
+    let binary_text = fs.read_text(".thagore/flow/sessions/" + binary_sid + ".json")
+    fails = fails + _expect_contains("flow session binary journal persisted", binary_text, "\"journal_format\":\"binary\"")
+    fails = fails + _expect_contains("flow binary journal extension", binary_path, ".bin")
+    fails = fails + _expect_i32("flow binary journal exists", fs.exists(binary_path), 1)
+    fails = fails + _expect_i32("flow simulate timeout injected", flowctl.run_flow_simulate_with_policy(ok_path, "on", "", "", "pkg", 1, 0), 1)
+    fails = fails + _expect_i32("flow simulate success", flowctl.run_flow_simulate(ok_path, "on", "", 0), 0)
+    fails = fails + _expect_i32("flow simulate parallel fail keeps sibling effects", flowctl.run_flow_simulate_with_policy(par_path, "on", "vm", "", "", 0, 0), 1)
+    let par_journal = flowctl.latest_flow_journal_path()
+    let par_log = fs.read_text(par_journal)
+    fails = fails + _expect_contains_any("parallel sibling started", par_log, "\"step_id\":\"pkg\"", "|pkg|")
+    fails = fails + _expect_contains_any("parallel sibling compensated", par_log, "\"status\":\"compensated\"", "|compensated|")
+    fails = fails + _expect_i32("flow simulate fail-at", flowctl.run_flow_simulate(ok_path, "on", "pkg", 1), 1)
+    fails = fails + _expect_i32("flow simulate crash mode", flowctl.run_flow_simulate_crash(ok_path, "on", "pkg", 0), 1)
+    let recover_sid = flowctl.latest_flow_session_id()
+    fails = fails + _expect_i32("flow recover session id present", fs.exists(".thagore/flow/sessions/" + recover_sid + ".json"), 1)
+    fails = fails + _expect_i32("flow recover from crash", flowctl.run_flow_recover(recover_sid, 0), 0)
+    fails = fails + _expect_i32("flow recover noop on recovered", flowctl.run_flow_recover(recover_sid, 1), 0)
+    fails = fails + _expect_i32("flow simulate crash mode binary", flowctl.run_flow_simulate_with_policy_full(ok_path, "on", "pkg", "", "", 0, 1, "normal", "binary"), 1)
+    let recover_bin_sid = flowctl.latest_flow_session_id()
+    fails = fails + _expect_i32("flow recover from binary crash", flowctl.run_flow_recover(recover_bin_sid, 0), 0)
+    fails = fails + _expect_i32("flow simulate strict crash mode", flowctl.run_flow_simulate_with_policy(ok_path, "strict", "pkg", "", "", 0, 1), 1)
+    let strict_sid = flowctl.latest_flow_session_id()
+    let strict_journal = flowctl.latest_flow_journal_path()
+    fails = fails + _expect_i32("flow strict journal exists", fs.exists(strict_journal), 1)
+    fails = fails + _expect_i32("flow strict journal corrupt", fs.write_text(strict_journal, fs.read_text(strict_journal) + "corrupt-line" + nl), 1)
+    fails = fails + _expect_i32("flow recover strict journal corruption fails", flowctl.run_flow_recover(strict_sid, 1), 1)
+    fails = fails + _expect_i32("flow doctor strict bad", flowctl.run_flow_doctor(bad_path, "strict", 0), 1)
+    fails = fails + _expect_i32("flow doctor off bad allowed", flowctl.run_flow_doctor(bad_path, "off", 0), 0)
+    fails = fails + _expect_i32("flow doctor strict unknown capability", flowctl.run_flow_doctor(cap_path, "strict", 0), 1)
+    fails = fails + _expect_i32("flow doctor on unknown capability allowed", flowctl.run_flow_doctor(cap_path, "on", 0), 0)
+
+    if (fails == 0):
+        print("PASS: flow cli")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

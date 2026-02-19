@@ -5,6 +5,7 @@ import "src/driver/cli/build/flow.tg"
 import "src/driver/cli/install/flow.tg"
 import "src/driver/cli/update/flow.tg"
 import "src/driver/cli/update/version.tg"
+import "src/driver/flow/engine.tg" as flowctl
 
 func _print_help() -> void:
     print("thagore " + _update_current_version_text())
@@ -31,6 +32,99 @@ func main() -> i32:
         print("thagore " + _update_current_version_text())
         return 0
     _update_auto_notify_if_needed(cmd)
+    if (cmd == "flow"):
+        if (argc <= 2):
+            print("ERROR: missing flow subcommand.")
+            return 1
+        let sub_flow = _trim(env.get(2))
+        let entry_flow = ""
+        let flow_mode = "on"
+        let flow_durability = "normal"
+        let flow_journal_format = "compact"
+        let flow_json = 0
+        let flow_fail_at = ""
+        let flow_fail_once_at = ""
+        let flow_timeout_at = ""
+        let flow_crash_after_fail = 0
+        let i_flow = 3
+        while (i_flow < argc):
+            let arg_flow = _trim(env.get(i_flow))
+            if (_starts_with(arg_flow, "--mode=") == 1):
+                flow_mode = flowctl.normalize_flow_mode(_value_after_prefix(arg_flow, "--mode="))
+            else:
+                if ((arg_flow == "--mode") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                    flow_mode = flowctl.normalize_flow_mode(_trim(env.get(i_flow + 1)))
+                    i_flow = i_flow + 1
+                else:
+                    if (_starts_with(arg_flow, "--durability=") == 1):
+                        flow_durability = flowctl.normalize_flow_durability(_value_after_prefix(arg_flow, "--durability="))
+                    else:
+                        if ((arg_flow == "--durability") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                            flow_durability = flowctl.normalize_flow_durability(_trim(env.get(i_flow + 1)))
+                            i_flow = i_flow + 1
+                        else:
+                            if (_starts_with(arg_flow, "--journal-format=") == 1):
+                                flow_journal_format = flowctl.normalize_flow_journal_format(_value_after_prefix(arg_flow, "--journal-format="))
+                            else:
+                                if ((arg_flow == "--journal-format") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                                    flow_journal_format = flowctl.normalize_flow_journal_format(_trim(env.get(i_flow + 1)))
+                                    i_flow = i_flow + 1
+                                else:
+                                    if (arg_flow == "--json"):
+                                        flow_json = 1
+                                    else:
+                                        if (_starts_with(arg_flow, "--fail-at=") == 1):
+                                            flow_fail_at = _trim(_value_after_prefix(arg_flow, "--fail-at="))
+                                        else:
+                                            if ((arg_flow == "--fail-at") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                                                flow_fail_at = _trim(env.get(i_flow + 1))
+                                                i_flow = i_flow + 1
+                                            else:
+                                                if (_starts_with(arg_flow, "--fail-once-at=") == 1):
+                                                    flow_fail_once_at = _trim(_value_after_prefix(arg_flow, "--fail-once-at="))
+                                                else:
+                                                    if ((arg_flow == "--fail-once-at") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                                                        flow_fail_once_at = _trim(env.get(i_flow + 1))
+                                                        i_flow = i_flow + 1
+                                                    else:
+                                                        if (_starts_with(arg_flow, "--timeout-at=") == 1):
+                                                            flow_timeout_at = _trim(_value_after_prefix(arg_flow, "--timeout-at="))
+                                                        else:
+                                                            if ((arg_flow == "--timeout-at") and ((i_flow + 1) < argc) and (_starts_with(_trim(env.get(i_flow + 1)), "--") == 0)):
+                                                                flow_timeout_at = _trim(env.get(i_flow + 1))
+                                                                i_flow = i_flow + 1
+                                                            else:
+                                                                if (arg_flow == "--crash-after-fail"):
+                                                                    flow_crash_after_fail = 1
+                                                                else:
+                                                                    if (_starts_with(arg_flow, "--") == 1):
+                                                                        print("ERROR: unknown flow flag: " + arg_flow)
+                                                                        return 1
+                                                                    else:
+                                                                        if (strlen(entry_flow) == 0):
+                                                                            entry_flow = arg_flow
+                                                                        else:
+                                                                            print("ERROR: multiple flow entry paths are not supported: " + arg_flow)
+                                                                            return 1
+            i_flow = i_flow + 1
+        if (sub_flow == "recover"):
+            if (strlen(entry_flow) == 0):
+                entry_flow = flowctl.latest_flow_session_id()
+            if (strlen(entry_flow) == 0):
+                print("ERROR: missing flow session id for recover (and no latest session found).")
+                return 1
+            return flowctl.run_flow_recover(entry_flow, flow_json)
+        if (strlen(entry_flow) == 0):
+            print("ERROR: missing entry path for flow command.")
+            return 1
+        if (sub_flow == "doctor"):
+            return flowctl.run_flow_doctor(entry_flow, flow_mode, flow_json)
+        if (sub_flow == "explain"):
+            return flowctl.run_flow_explain(entry_flow, flow_mode, flow_json)
+        if (sub_flow == "simulate"):
+            return flowctl.run_flow_simulate_with_policy_full(entry_flow, flow_mode, flow_fail_at, flow_fail_once_at, flow_timeout_at, flow_json, flow_crash_after_fail, flow_durability, flow_journal_format)
+        print("ERROR: unknown flow subcommand: " + sub_flow)
+        return 1
     if (cmd == "fix"):
         if (argc <= 2):
             print("ERROR: missing fix subcommand.")
@@ -317,6 +411,8 @@ func main() -> i32:
     let autofix_max_files = 10
     let autofix_workspace = 0
     let autofix_exclude_csv = ""
+    let flow_mode_build = "off"
+    let flow_strip_debug = 0
     let input_path = ""
     let out_path = ""
     let i = 1
@@ -392,11 +488,29 @@ func main() -> i32:
                                                                 if (arg == "--autofix-workspace"):
                                                                     autofix_workspace = 1
                                                                 else:
-                                                                    if ((arg == "-o") and ((i + 1) < argc)):
-                                                                        out_path = _trim(env.get(i + 1))
-                                                                        i = i + 1
+                                                                    if (_starts_with(arg, "--flow=") == 1):
+                                                                        flow_mode_build = flowctl.normalize_flow_mode(_value_after_prefix(arg, "--flow="))
+                                                                    else:
+                                                                        if (arg == "--flow"):
+                                                                            if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                flow_mode_build = flowctl.normalize_flow_mode(_trim(env.get(i + 1)))
+                                                                                i = i + 1
+                                                                            else:
+                                                                                flow_mode_build = "on"
+                                                                        else:
+                                                                            if (arg == "--flow-strip-debug"):
+                                                                                flow_strip_debug = 1
+                                                                            else:
+                                                                                if ((arg == "-o") and ((i + 1) < argc)):
+                                                                                    out_path = _trim(env.get(i + 1))
+                                                                                    i = i + 1
         i = i + 1
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
+    if (flow_mode_build != "off"):
+        if (flowctl.run_flow_gate(input_path, flow_mode_build, 0) != 0):
+            return 1
+        if (flow_strip_debug == 1):
+            print("[flow] note: --flow-strip-debug accepted (metadata stripping is deferred in current build path).")
     let autofix_exclude_set = _csv_to_set(autofix_exclude_csv)
     return _build(input_path, out_path, emit_only, autofix_mode, autofix_lock, autofix_lock_strict, autofix_lock_locked, autofix_max_iterations, autofix_max_files, autofix_workspace, autofix_exclude_set)

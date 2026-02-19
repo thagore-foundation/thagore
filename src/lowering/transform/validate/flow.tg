@@ -270,6 +270,360 @@ func check_intent_headers(source: String) -> i32:
         i = i + 1
     return fail
 
+func _flow_set_contains(set_text: String, name: String) -> i32:
+    if (strlen(name) == 0):
+        return 0
+    if (_contains(set_text, ";" + name + ";") == 1):
+        return 1
+    return 0
+
+func _flow_set_add(set_text: String, name: String) -> String:
+    if (strlen(name) == 0):
+        return set_text
+    if (_flow_set_contains(set_text, name) == 1):
+        return set_text
+    return set_text + name + ";"
+
+func _is_digit_char(ch: String) -> i32:
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _parse_positive_i32(text: String) -> i32:
+    let s = _trim_edges(text)
+    if (strlen(s) == 0):
+        return -1
+    let i = 0
+    let value = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (_is_digit_char(ch) == 0):
+            return -1
+        value = (value * 10) + _find_char("0123456789", ch)
+        i = i + 1
+    if (value <= 0):
+        return -1
+    return value
+
+func _flow_retry_count(line: String) -> i32:
+    if (ph.is_flow_retry_line(line) == 0):
+        return 0
+    let s = _trim_edges(line)
+    let body = _trim_edges(__thg_str_substr(s, 6, strlen(s) - 6))
+    if (strlen(body) == 0):
+        return -1
+    let i = 0
+    let digits = ""
+    while (i < strlen(body)):
+        let ch = _char_at(body, i)
+        if (_is_digit_char(ch) == 1):
+            digits = digits + ch
+            i = i + 1
+        else:
+            i = strlen(body)
+    return _parse_positive_i32(digits)
+
+func _flow_timeout_token(line: String) -> String:
+    if (ph.is_flow_timeout_line(line) == 0):
+        return ""
+    let s = _trim_edges(line)
+    return _trim_edges(__thg_str_substr(s, 8, strlen(s) - 8))
+
+func _valid_flow_timeout(token: String) -> i32:
+    let t = _trim_edges(token)
+    let n = strlen(t)
+    if (n < 2):
+        return 0
+    let unit = ""
+    let digits = ""
+    if ((n >= 3) and (_char_at(t, n - 2) == "m") and (_char_at(t, n - 1) == "s")):
+        unit = "ms"
+        digits = __thg_str_substr(t, 0, n - 2)
+    else:
+        let tail = _char_at(t, n - 1)
+        if ((tail == "s") or (tail == "m")):
+            unit = tail
+            digits = __thg_str_substr(t, 0, n - 1)
+    if (strlen(unit) == 0):
+        return 0
+    if (_parse_positive_i32(digits) <= 0):
+        return 0
+    return 1
+
+func _flow_timeout_ms(token: String) -> i32:
+    let t = _trim_edges(token)
+    let n = strlen(t)
+    if (n < 2):
+        return -1
+    let digits = ""
+    let mul = 0
+    if ((n >= 3) and (_char_at(t, n - 2) == "m") and (_char_at(t, n - 1) == "s")):
+        digits = __thg_str_substr(t, 0, n - 2)
+        mul = 1
+    else:
+        let tail = _char_at(t, n - 1)
+        if (tail == "s"):
+            digits = __thg_str_substr(t, 0, n - 1)
+            mul = 1000
+        else:
+            if (tail == "m"):
+                digits = __thg_str_substr(t, 0, n - 1)
+                mul = 60000
+    if (mul <= 0):
+        return -1
+    let base = _parse_positive_i32(digits)
+    if (base <= 0):
+        return -1
+    return base * mul
+
+func _flow_step_expr(step_line: String) -> String:
+    let s = _trim_edges(step_line)
+    if (_starts_with(s, "step ") == 0):
+        return ""
+    let body = _trim_edges(__thg_str_substr(s, 5, strlen(s) - 5))
+    let eq = _find_char(body, "=")
+    if (eq < 0):
+        return ""
+    return _trim_edges(__thg_str_substr(body, eq + 1, strlen(body) - eq - 1))
+
+func _flow_step_capability(step_line: String) -> String:
+    let expr = _flow_step_expr(step_line)
+    if (strlen(expr) == 0):
+        return ""
+    let dot = _find_char(expr, ".")
+    if (dot <= 0):
+        return ""
+    let p = _find_char(expr, "(")
+    if ((p >= 0) and (p < dot)):
+        return ""
+    return _trim_edges(__thg_str_substr(expr, 0, dot))
+
+func _is_known_flow_capability(cap: String) -> i32:
+    let key = _trim_edges(cap)
+    if (strlen(key) == 0):
+        return 1
+    if (key == "cloud"):
+        return 1
+    if (key == "artifact"):
+        return 1
+    if (key == "db"):
+        return 1
+    if (key == "fs"):
+        return 1
+    if (key == "process"):
+        return 1
+    if (key == "http"):
+        return 1
+    if (key == "queue"):
+        return 1
+    if (key == "pubsub"):
+        return 1
+    return 0
+
+func _validate_flow_step_policy(step_id: String, step_line: i32, has_undo: i32, has_irreversible: i32, has_idempotent: i32, retry_count: i32, timeout_token: String, strict_mode: i32) -> i32:
+    let fail = 0
+    if ((has_undo == 0) and (has_irreversible == 0)):
+        print("Semantic error [E_FLOW_UNDO_REQUIRED] line " + _to_string_i32(step_line) + ": step '" + step_id + "' requires undo or irreversible.")
+        fail = 1
+    if ((retry_count > 0) and (has_idempotent == 0)):
+        print("Semantic error [E_FLOW_RETRY_IDEMPOTENT] line " + _to_string_i32(step_line) + ": retry requires idempotent step contract.")
+        fail = 1
+    if ((retry_count > 0) and (strlen(timeout_token) == 0)):
+        print("Semantic error [E_FLOW_RETRY_TIMEOUT] line " + _to_string_i32(step_line) + ": retry requires explicit timeout.")
+        fail = 1
+    if (strlen(timeout_token) > 0):
+        if (_valid_flow_timeout(timeout_token) == 0):
+            print("Semantic error [E_FLOW_TIMEOUT_FORMAT] line " + _to_string_i32(step_line) + ": timeout must use positive value with unit ms/s/m.")
+            fail = 1
+    if (strict_mode == 1):
+        if (has_irreversible == 1):
+            print("Semantic error [E_FLOW_STRICT_IRREVERSIBLE] line " + _to_string_i32(step_line) + ": irreversible is not allowed in strict flow mode.")
+            fail = 1
+        if (strlen(timeout_token) == 0):
+            print("Semantic error [E_FLOW_STRICT_TIMEOUT] line " + _to_string_i32(step_line) + ": strict flow mode requires timeout on every step.")
+            fail = 1
+        if (retry_count > 5):
+            print("Semantic error [E_FLOW_STRICT_RETRY_BUDGET] line " + _to_string_i32(step_line) + ": retry budget exceeds strict limit (max 5).")
+            fail = 1
+        let timeout_ms = _flow_timeout_ms(timeout_token)
+        if ((retry_count > 0) and (timeout_ms > 0)):
+            let min_budget = retry_count * 50
+            if (timeout_ms < min_budget):
+                print("Semantic error [E_FLOW_STRICT_TIMEOUT_BUDGET] line " + _to_string_i32(step_line) + ": timeout is too low for declared retry budget.")
+                fail = 1
+    return fail
+
+func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
+    let total = _line_count_raw(source)
+    let i = 0
+    let fail = 0
+    while (i < total):
+        let raw = _line_at_raw(source, i)
+        let line = _trim_edges(raw)
+        let indent = _leading_spaces(raw)
+        if (ph.is_flow_header(line) == 1):
+            let flow_id = ph.parse_flow_name(line)
+            let seen_steps = ";"
+            let flow_has_step = 0
+            let j = i + 1
+            let step_open = 0
+            let step_indent = -1
+            let step_line = -1
+            let step_id = ""
+            let step_has_undo = 0
+            let step_has_irreversible = 0
+            let step_has_idempotent = 0
+            let step_on_error_count = 0
+            let step_retry = 0
+            let step_timeout = ""
+            let in_parallel = 0
+            let parallel_indent = -1
+            let parallel_line = -1
+            let parallel_has_step = 0
+            let in_flow = 1
+            while ((j < total) and (in_flow == 1)):
+                let body_raw = _line_at_raw(source, j)
+                let body_line = _trim_edges(body_raw)
+                let body_indent = _leading_spaces(body_raw)
+                if (body_line.length() == 0):
+                    j = j + 1
+                else:
+                    if (body_indent <= indent):
+                        if (step_open == 1):
+                            fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+                            step_open = 0
+                        if (in_parallel == 1):
+                            if (parallel_has_step == 0):
+                                print("Semantic error [E_FLOW_PARALLEL_EMPTY] line " + _to_string_i32(parallel_line) + ": parallel block must contain at least one step.")
+                            print("Semantic error [E_FLOW_BARRIER_REQUIRED] line " + _to_string_i32(parallel_line) + ": parallel block requires barrier before leaving flow body.")
+                            fail = 1
+                            in_parallel = 0
+                        in_flow = 0
+                    else:
+                        if (step_open == 1):
+                            if (body_indent <= step_indent):
+                                fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+                                step_open = 0
+                            else:
+                                if (ph.is_flow_undo_line(body_line) == 1):
+                                    step_has_undo = 1
+                                if (ph.is_flow_retry_line(body_line) == 1):
+                                    let parsed_retry = _flow_retry_count(body_line)
+                                    if (parsed_retry <= 0):
+                                        print("Semantic error [E_FLOW_RETRY_FORMAT] line " + _to_string_i32(j + 1) + ": retry must use positive integer.")
+                                        fail = 1
+                                    else:
+                                        step_retry = parsed_retry
+                                if (ph.is_flow_timeout_line(body_line) == 1):
+                                    step_timeout = _flow_timeout_token(body_line)
+                                if (ph.is_flow_idempotent_line(body_line) == 1):
+                                    step_has_idempotent = 1
+                                if (ph.is_flow_irreversible_line(body_line) == 1):
+                                    step_has_irreversible = 1
+                                    if (_starts_with(body_line, "irreversible reason") == 1):
+                                        if (strlen(ph.parse_flow_irreversible_reason(body_line)) == 0):
+                                            print("Semantic error [E_FLOW_IRREVERSIBLE_REASON_FORMAT] line " + _to_string_i32(j + 1) + ": irreversible reason must be quoted text.")
+                                            fail = 1
+                                if (_starts_with(body_line, "on_error") == 1):
+                                    if (ph.is_flow_on_error_line(body_line) == 0):
+                                        print("Semantic error [E_FLOW_ON_ERROR_FORMAT] line " + _to_string_i32(j + 1) + ": on_error requires non-empty handler expression.")
+                                        fail = 1
+                                    else:
+                                        step_on_error_count = step_on_error_count + 1
+                                        if (step_on_error_count > 1):
+                                            print("Semantic error [E_FLOW_ON_ERROR_DUP] line " + _to_string_i32(j + 1) + ": duplicate on_error handler in same step.")
+                                            fail = 1
+                                j = j + 1
+                        else:
+                            if (ph.is_flow_parallel_header(body_line) == 1):
+                                if (in_parallel == 1):
+                                    print("Semantic error [E_FLOW_PARALLEL_NESTED] line " + _to_string_i32(j + 1) + ": nested parallel blocks are not supported.")
+                                    fail = 1
+                                else:
+                                    in_parallel = 1
+                                    parallel_indent = body_indent
+                                    parallel_line = j + 1
+                                    parallel_has_step = 0
+                                j = j + 1
+                            else:
+                                if (ph.is_flow_barrier_line(body_line) == 1):
+                                    if (in_parallel == 0):
+                                        print("Semantic error [E_FLOW_BARRIER_WITHOUT_PARALLEL] line " + _to_string_i32(j + 1) + ": barrier requires an open parallel block.")
+                                        fail = 1
+                                    else:
+                                        if (body_indent != parallel_indent):
+                                            print("Semantic error [E_FLOW_BARRIER_INDENT] line " + _to_string_i32(j + 1) + ": barrier must align with parallel header indentation.")
+                                            fail = 1
+                                        if (parallel_has_step == 0):
+                                            print("Semantic error [E_FLOW_PARALLEL_EMPTY] line " + _to_string_i32(parallel_line) + ": parallel block must contain at least one step.")
+                                            fail = 1
+                                        in_parallel = 0
+                                        parallel_indent = -1
+                                        parallel_line = -1
+                                        parallel_has_step = 0
+                                    j = j + 1
+                                else:
+                            if (ph.is_flow_step_line(body_line) == 1):
+                                if (strict_mode == 1):
+                                    let cap = _flow_step_capability(body_line)
+                                    if ((strlen(cap) > 0) and (_is_known_flow_capability(cap) == 0)):
+                                        print("Semantic error [E_FLOW_CAPABILITY_UNKNOWN] line " + _to_string_i32(j + 1) + ": unknown external flow capability '" + cap + "'.")
+                                        fail = 1
+                                if (in_parallel == 1):
+                                    if (body_indent <= parallel_indent):
+                                        print("Semantic error [E_FLOW_BARRIER_REQUIRED] line " + _to_string_i32(parallel_line) + ": missing barrier before exiting parallel block.")
+                                                fail = 1
+                                                in_parallel = 0
+                                                parallel_indent = -1
+                                                parallel_line = -1
+                                                parallel_has_step = 0
+                                            else:
+                                                parallel_has_step = 1
+                                        step_open = 1
+                                        step_indent = body_indent
+                                        step_line = j + 1
+                                        step_id = ph.parse_flow_step_id(body_line)
+                                        if (_flow_set_contains(seen_steps, step_id) == 1):
+                                            print("Semantic error [E_FLOW_DUP_STEP_ID] line " + _to_string_i32(j + 1) + ": duplicate step id '" + step_id + "' in flow '" + flow_id + "'.")
+                                            fail = 1
+                                        else:
+                                            seen_steps = _flow_set_add(seen_steps, step_id)
+                                        step_has_undo = 0
+                                        step_has_irreversible = 0
+                                        step_has_idempotent = 0
+                                        step_on_error_count = 0
+                                        step_retry = 0
+                                        step_timeout = ""
+                                        flow_has_step = 1
+                                        j = j + 1
+                                    else:
+                                        if ((in_parallel == 1) and (body_indent <= parallel_indent)):
+                                            print("Semantic error [E_FLOW_BARRIER_REQUIRED] line " + _to_string_i32(parallel_line) + ": missing barrier before exiting parallel block.")
+                                            fail = 1
+                                            in_parallel = 0
+                                            parallel_indent = -1
+                                            parallel_line = -1
+                                            parallel_has_step = 0
+                                        j = j + 1
+            if (step_open == 1):
+                fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+            if (in_parallel == 1):
+                if (parallel_has_step == 0):
+                    print("Semantic error [E_FLOW_PARALLEL_EMPTY] line " + _to_string_i32(parallel_line) + ": parallel block must contain at least one step.")
+                print("Semantic error [E_FLOW_BARRIER_REQUIRED] line " + _to_string_i32(parallel_line) + ": parallel block requires barrier before flow end.")
+                fail = 1
+            if (flow_has_step == 0):
+                print("Semantic error [E_FLOW_EMPTY] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' must contain at least one step.")
+                fail = 1
+        i = i + 1
+    return fail
+
+func check_flow_headers(source: String) -> i32:
+    return _check_flow_headers_internal(source, 0)
+
+func check_flow_headers_strict(source: String) -> i32:
+    return _check_flow_headers_internal(source, 1)
+
 func validate(source: String) -> i32:
     let normalized = _normalize_validation_source(source)
     let analyzed = _mask_string_literals(normalized)
@@ -280,5 +634,7 @@ func validate(source: String) -> i32:
     if (check_new_syntax_headers(analyzed) != 0):
         return 1
     if (check_intent_headers(analyzed) != 0):
+        return 1
+    if (check_flow_headers(analyzed) != 0):
         return 1
     return 0

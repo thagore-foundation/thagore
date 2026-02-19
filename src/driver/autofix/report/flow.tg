@@ -30,9 +30,14 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
     let aggressive_review_required = "false"
     if ((mode == "aggressive") and (fixes_applied > 0)):
         aggressive_review_required = "true"
+    let rollback_command = "thagore fix rollback " + session_id
 
     let report = "{"
+    report = report + _json_quote("schema_version") + ":1,"
+    report = report + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.session.v1") + ","
+    report = report + _json_quote("session_type") + ":" + _json_quote("single") + ","
     report = report + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    report = report + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
     report = report + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
     report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
     report = report + _json_quote("entry") + ":" + _json_quote(entry) + ","
@@ -43,6 +48,7 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
     report = report + _json_quote("summary") + ":" + summary_json + ","
     report = report + _json_quote("file_patches") + ":[" + file_patch_json + "],"
     report = report + _json_quote("aggressive_review_required") + ":" + aggressive_review_required + ","
+    report = report + _json_quote("rollback_command") + ":" + _json_quote(rollback_command) + ","
     report = report + _json_quote("lock_path") + ":" + _json_quote(lock_path) + ","
     let failure_json = "{"
     failure_json = failure_json + _json_quote("reason") + ":" + _json_quote(failure_reason) + ","
@@ -55,7 +61,11 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
     report = report + "}" + _nl()
     fs.write_text(report_path, report)
     let session = "{"
+    session = session + _json_quote("schema_version") + ":1,"
+    session = session + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.session.v1") + ","
+    session = session + _json_quote("session_type") + ":" + _json_quote("single") + ","
     session = session + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    session = session + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
     session = session + _json_quote("tool_version") + ":" + _json_quote(_tool_version()) + ","
     session = session + _json_quote("entry") + ":" + _json_quote(entry) + ","
     session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
@@ -67,6 +77,7 @@ func _write_report(session_id: String, mode: String, entry: String, files_scanne
     session = session + _json_quote("aggressive_review_required") + ":" + aggressive_review_required + ","
     session = session + _json_quote("failure") + ":" + failure_json + ","
     session = session + _json_quote("rebuild_outcome") + ":" + _json_quote(rebuild) + ","
+    session = session + _json_quote("rollback_command") + ":" + _json_quote(rollback_command) + ","
     session = session + _json_quote("backup_file") + ":" + _json_quote(backup_file) + ","
     session = session + _json_quote("report_file") + ":" + _json_quote(report_path) + ","
     session = session + _json_quote("lock_path") + ":" + _json_quote(lock_path)
@@ -201,4 +212,3 @@ func _unescape_newlines(text: String) -> String:
     out = _replace_all(out, "\\\\r", _nl())
     out = _replace_all(out, "\\r", _nl())
     return out
-

@@ -21,6 +21,12 @@ func check_new_syntax_headers(source: String) -> i32:
 func check_intent_headers(source: String) -> i32:
     return validationflow.check_intent_headers(source)
 
+func check_flow_headers(source: String) -> i32:
+    return validationflow.check_flow_headers(source)
+
+func check_flow_headers_strict(source: String) -> i32:
+    return validationflow.check_flow_headers_strict(source)
+
 func validate(source: String) -> i32:
     return validationflow.validate(source)
 

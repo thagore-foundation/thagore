@@ -387,3 +387,134 @@ func is_intent_examples_header(line: String) -> i32:
     if (s == "examples:"):
         return 1
     return 0
+
+func parse_flow_name(line: String) -> String:
+    let s = gt.trim(line)
+    if (_starts_with(s, "flow ") == 0):
+        return ""
+    if (_ends_with_colon(s) == 0):
+        return ""
+    let body = _drop_trailing_colon(s)
+    if (strlen(body) <= 5):
+        return ""
+    let after_kw = gt.trim(__thg_str_substr(body, 5, strlen(body) - 5))
+    if (strlen(after_kw) == 0):
+        return ""
+    let p_paren = _find_char(after_kw, "(")
+    if (p_paren <= 0):
+        return ""
+    return gt.trim(__thg_str_substr(after_kw, 0, p_paren))
+
+func is_flow_header(line: String) -> i32:
+    if (strlen(parse_flow_name(line)) > 0):
+        return 1
+    return 0
+
+func parse_flow_step_id(line: String) -> String:
+    let s = gt.trim(line)
+    if (_starts_with(s, "step ") == 0):
+        return ""
+    if (_contains(s, "=") == 0):
+        return ""
+    let body = gt.trim(__thg_str_substr(s, 5, strlen(s) - 5))
+    let eq = _find_char(body, "=")
+    if (eq <= 0):
+        return ""
+    let lhs = gt.trim(__thg_str_substr(body, 0, eq))
+    if (strlen(lhs) == 0):
+        return ""
+    let i = 0
+    let n = strlen(lhs)
+    while (i < n):
+        let ch = _char_at(lhs, i)
+        if (ch == " "):
+            return ""
+        i = i + 1
+    return lhs
+
+func is_flow_step_line(line: String) -> i32:
+    if (strlen(parse_flow_step_id(line)) > 0):
+        return 1
+    return 0
+
+func is_flow_undo_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "undo ") == 1):
+        if (strlen(gt.trim(__thg_str_substr(s, 5, strlen(s) - 5))) > 0):
+            return 1
+    return 0
+
+func is_flow_retry_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "retry ") == 0):
+        return 0
+    if (strlen(s) <= 6):
+        return 0
+    let token = gt.trim(__thg_str_substr(s, 6, strlen(s) - 6))
+    if (strlen(token) == 0):
+        return 0
+    let first = _char_at(token, 0)
+    if (_find_char("0123456789", first) < 0):
+        return 0
+    return 1
+
+func is_flow_timeout_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "timeout ") == 0):
+        return 0
+    if (strlen(s) <= 8):
+        return 0
+    let token = gt.trim(__thg_str_substr(s, 8, strlen(s) - 8))
+    if (strlen(token) == 0):
+        return 0
+    return 1
+
+func is_flow_idempotent_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (s == "idempotent"):
+        return 1
+    return 0
+
+func is_flow_irreversible_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (_starts_with(s, "irreversible") == 1):
+        return 1
+    return 0
+
+func parse_flow_irreversible_reason(line: String) -> String:
+    let s = gt.trim(line)
+    if (_starts_with(s, "irreversible reason ") == 0):
+        return ""
+    if (strlen(s) <= 20):
+        return ""
+    let body = gt.trim(__thg_str_substr(s, 20, strlen(s) - 20))
+    if (strlen(body) < 2):
+        return ""
+    if ((_char_at(body, 0) != "\"") or (_char_at(body, strlen(body) - 1) != "\"")):
+        return ""
+    return __thg_str_substr(body, 1, strlen(body) - 2)
+
+func parse_flow_on_error_expr(line: String) -> String:
+    let s = gt.trim(line)
+    if (_starts_with(s, "on_error ") == 0):
+        return ""
+    if (strlen(s) <= 9):
+        return ""
+    return gt.trim(__thg_str_substr(s, 9, strlen(s) - 9))
+
+func is_flow_on_error_line(line: String) -> i32:
+    if (strlen(parse_flow_on_error_expr(line)) > 0):
+        return 1
+    return 0
+
+func is_flow_parallel_header(line: String) -> i32:
+    let s = gt.trim(line)
+    if (s == "parallel:"):
+        return 1
+    return 0
+
+func is_flow_barrier_line(line: String) -> i32:
+    let s = gt.trim(line)
+    if (s == "barrier"):
+        return 1
+    return 0

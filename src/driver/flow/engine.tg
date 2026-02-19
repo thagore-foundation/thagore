@@ -1,0 +1,1932 @@
+import "lib/fs.tg" as fs
+import "lib/time.tg" as time
+import "src/lowering/transform/program.tg" as pipe
+import "src/syntax/parser/header.tg" as ph
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+struct FlowStats:
+    flow_count: i32
+    step_count: i32
+    retry_steps: i32
+    timeout_steps: i32
+    undo_steps: i32
+    irreversible_steps: i32
+    capability_known: i32
+    capability_unknown: i32
+
+
+func _flow_stats(flow_count: i32, step_count: i32, retry_steps: i32, timeout_steps: i32, undo_steps: i32, irreversible_steps: i32, capability_known: i32, capability_unknown: i32) -> FlowStats:
+    return FlowStats(flow_count, step_count, retry_steps, timeout_steps, undo_steps, irreversible_steps, capability_known, capability_unknown)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _dq() -> String:
+    return __string_from_codepoint(34)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _rs() -> String:
+    return __string_from_codepoint(30)
+
+func _us() -> String:
+    return __string_from_codepoint(31)
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let pn = strlen(prefix)
+    if (strlen(text) < pn):
+        return 0
+    if (__thg_str_substr(text, 0, pn) == prefix):
+        return 1
+    return 0
+
+func _ends_with(text: String, suffix: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(suffix)
+    if (m > n):
+        return 0
+    if (__thg_str_substr(text, n - m, m) == suffix):
+        return 1
+    return 0
+
+func _contains(text: String, needle: String) -> i32:
+    if (_find(text, needle) >= 0):
+        return 1
+    return 0
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    while (l < n):
+        let ch = _char_at(text, l)
+        if ((ch == " ") or (ch == _cr()) or (ch == _nl()) or (ch == "\t")):
+            l = l + 1
+        else:
+            l = n
+    let left = 0
+    let i = 0
+    while (i < n):
+        let ch2 = _char_at(text, i)
+        if ((ch2 == " ") or (ch2 == _cr()) or (ch2 == _nl()) or (ch2 == "\t")):
+            left = i + 1
+            i = i + 1
+        else:
+            i = n
+    let right = n - 1
+    let j = n - 1
+    while (j >= left):
+        let ch3 = _char_at(text, j)
+        if ((ch3 == " ") or (ch3 == _cr()) or (ch3 == _nl()) or (ch3 == "\t")):
+            right = j - 1
+            j = j - 1
+        else:
+            j = left - 1
+    if (right < left):
+        return ""
+    return __thg_str_substr(text, left, right - left + 1)
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + __thg_str_substr("0123456789", r, 1)
+        n = q
+    let out = ""
+    let i = strlen(rev) - 1
+    while (i >= 0):
+        out = out + _char_at(rev, i)
+        i = i - 1
+    return sign + out
+
+func _char_score(ch: String) -> i32:
+    let table = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:-+*<>=()[]{}!?,' " + _dq() + " \\t\\n\\r"
+    let idx = _find_char(table, ch)
+    if (idx < 0):
+        return 97
+    return idx + 1
+
+func _hash_text(text: String) -> i32:
+    let h = 0
+    let i = 0
+    let n = strlen(text)
+    while (i < n):
+        let ch = _char_at(text, i)
+        let raw = h * 131 + _char_score(ch) + i + 1
+        let q = raw / 2147483647
+        h = raw - (q * 2147483647)
+        i = i + 1
+    return h
+
+func _set_contains(set_text: String, token: String) -> i32:
+    if (strlen(token) == 0):
+        return 0
+    if (_contains(set_text, ";" + token + ";") == 1):
+        return 1
+    return 0
+
+func _set_add_unique(set_text: String, token: String) -> String:
+    if (strlen(token) == 0):
+        return set_text
+    if (_set_contains(set_text, token) == 1):
+        return set_text
+    return set_text + token + ";"
+
+func _json_escape(text: String) -> String:
+    let out = _replace_all(text, "\\", "\\\\")
+    out = _replace_all(out, _dq(), "\\" + _dq())
+    out = _replace_all(out, _nl(), "\\n")
+    out = _replace_all(out, _cr(), "\\r")
+    return out
+
+func _json_quote(text: String) -> String:
+    return _dq() + _json_escape(text) + _dq()
+
+func _json_bool(flag: i32) -> String:
+    if (flag == 1):
+        return "true"
+    return "false"
+
+func _json_get_string(text: String, key: String) -> String:
+    let dq = _dq()
+    let needle = dq + key + dq + ": " + dq
+    let p = _find(text, needle)
+    let used = needle
+    if (p < 0):
+        let compact = dq + key + dq + ":" + dq
+        p = _find(text, compact)
+        if (p >= 0):
+            used = compact
+    if (p < 0):
+        return ""
+    let i = p + strlen(used)
+    let out = ""
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == dq):
+            return out
+        if (ch == "\\"):
+            if ((i + 1) < strlen(text)):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                else:
+                    if (nx == "r"):
+                        out = out + _cr()
+                    else:
+                        out = out + nx
+                i = i + 2
+            else:
+                i = i + 1
+        else:
+            out = out + ch
+            i = i + 1
+    return out
+
+func _json_get_bool(text: String, key: String, fallback: i32) -> i32:
+    let dq = _dq()
+    let needle = dq + key + dq + ":"
+    let p = _find(text, needle)
+    if (p < 0):
+        return fallback
+    let i = p + strlen(needle)
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if ((ch == " ") or (ch == "\t") or (ch == _cr()) or (ch == _nl())):
+            i = i + 1
+        else:
+            if (_starts_with(__thg_str_substr(text, i, strlen(text) - i), "true") == 1):
+                return 1
+            if (_starts_with(__thg_str_substr(text, i, strlen(text) - i), "false") == 1):
+                return 0
+            return fallback
+    return fallback
+
+func _flow_event_json(flow_id: String, step_id: String, status: String, has_undo: i32, undo_expr: String, irreversible: i32, note: String) -> String:
+    let event = "{"
+    event = event + _json_quote("flow_id") + ":" + _json_quote(flow_id) + ","
+    event = event + _json_quote("step_id") + ":" + _json_quote(step_id) + ","
+    event = event + _json_quote("status") + ":" + _json_quote(status) + ","
+    event = event + _json_quote("has_undo") + ":" + _json_bool(has_undo) + ","
+    event = event + _json_quote("undo") + ":" + _json_quote(undo_expr) + ","
+    event = event + _json_quote("irreversible") + ":" + _json_bool(irreversible) + ","
+    event = event + _json_quote("idempotency_key_hash") + ":" + _json_quote(_to_string_i32(_hash_text(flow_id + "|" + step_id))) + ","
+    event = event + _json_quote("timestamp_ms") + ":" + _json_quote(_to_string_i32(time.now_ms())) + ","
+    event = event + _json_quote("note") + ":" + _json_quote(note)
+    event = event + "}" + _nl()
+    return event
+
+func _pack_field(text: String) -> String:
+    let out = _replace_all(text, "%", "%25")
+    out = _replace_all(out, "|", "%7C")
+    out = _replace_all(out, _us(), "%1F")
+    out = _replace_all(out, _rs(), "%1E")
+    out = _replace_all(out, _nl(), "%0A")
+    out = _replace_all(out, _cr(), "%0D")
+    return out
+
+func _unpack_field(text: String) -> String:
+    let out = _replace_all(text, "%0D", _cr())
+    out = _replace_all(out, "%0A", _nl())
+    out = _replace_all(out, "%1E", _rs())
+    out = _replace_all(out, "%1F", _us())
+    out = _replace_all(out, "%7C", "|")
+    out = _replace_all(out, "%25", "%")
+    return out
+
+func _compact_field_at(line: String, field_index: i32) -> String:
+    let i = 0
+    let idx = 0
+    let token = ""
+    let n = strlen(line)
+    while (i < n):
+        let ch = _char_at(line, i)
+        if (ch == "|"):
+            if (idx == field_index):
+                return token
+            token = ""
+            idx = idx + 1
+            i = i + 1
+        else:
+            token = token + ch
+            i = i + 1
+    if (idx == field_index):
+        return token
+    return ""
+
+func _flow_event_compact(flow_id: String, step_id: String, status: String, has_undo: i32, undo_expr: String, irreversible: i32, note: String) -> String:
+    let rec = "B|"
+    rec = rec + _pack_field(flow_id) + "|"
+    rec = rec + _pack_field(step_id) + "|"
+    rec = rec + _pack_field(status) + "|"
+    rec = rec + _to_string_i32(has_undo) + "|"
+    rec = rec + _pack_field(undo_expr) + "|"
+    rec = rec + _to_string_i32(irreversible) + "|"
+    rec = rec + _pack_field(_to_string_i32(_hash_text(flow_id + "|" + step_id))) + "|"
+    rec = rec + _pack_field(_to_string_i32(time.now_ms())) + "|"
+    rec = rec + _pack_field(note)
+    rec = rec + _nl()
+    return rec
+
+func _flow_event_binary(flow_id: String, step_id: String, status: String, has_undo: i32, undo_expr: String, irreversible: i32, note: String) -> String:
+    let rec = "B" + _us()
+    rec = rec + _pack_field(flow_id) + _us()
+    rec = rec + _pack_field(step_id) + _us()
+    rec = rec + _pack_field(status) + _us()
+    rec = rec + _to_string_i32(has_undo) + _us()
+    rec = rec + _pack_field(undo_expr) + _us()
+    rec = rec + _to_string_i32(irreversible) + _us()
+    rec = rec + _pack_field(_to_string_i32(_hash_text(flow_id + "|" + step_id))) + _us()
+    rec = rec + _pack_field(_to_string_i32(time.now_ms())) + _us()
+    rec = rec + _pack_field(note)
+    rec = rec + _rs()
+    return rec
+
+func _binary_journal_to_compact_lines(raw: String) -> String:
+    let out = ""
+    let i = 0
+    let n = strlen(raw)
+    while (i < n):
+        let ch = _char_at(raw, i)
+        if (ch == _us()):
+            out = out + "|"
+        else:
+            if (ch == _rs()):
+                out = out + _nl()
+            else:
+                out = out + ch
+        i = i + 1
+    return out
+
+func _flow_event_line(journal_format: String, flow_id: String, step_id: String, status: String, has_undo: i32, undo_expr: String, irreversible: i32, note: String) -> String:
+    if (journal_format == "jsonl"):
+        return _flow_event_json(flow_id, step_id, status, has_undo, undo_expr, irreversible, note)
+    if (journal_format == "binary"):
+        return _flow_event_binary(flow_id, step_id, status, has_undo, undo_expr, irreversible, note)
+    return _flow_event_compact(flow_id, step_id, status, has_undo, undo_expr, irreversible, note)
+
+func _normalize_path(path: String) -> String:
+    return _replace_all(path, "\\", "/")
+
+func _last_index_of(text: String, needle: String) -> i32:
+    let i = 0
+    let n = strlen(text)
+    let pos = -1
+    while (i < n):
+        if (_char_at(text, i) == needle):
+            pos = i
+        i = i + 1
+    return pos
+
+func _dir_of(path: String) -> String:
+    let p = _normalize_path(path)
+    let i = _last_index_of(p, "/")
+    if (i < 0):
+        return ""
+    if (i == 0):
+        return "/"
+    return __thg_str_substr(p, 0, i)
+
+func _is_abs_path(path: String) -> i32:
+    let p = _normalize_path(path)
+    if (_starts_with(p, "/") == 1):
+        return 1
+    let colon = _find_char(p, ":")
+    if ((colon > 0) and (colon <= 2)):
+        return 1
+    return 0
+
+func _resolve_import_path(base_file: String, import_path: String) -> String:
+    let imp = _normalize_path(_trim(import_path))
+    if (strlen(imp) == 0):
+        return ""
+    if (_is_abs_path(imp) == 1):
+        return imp
+    if (fs.exists(imp) == 1):
+        return imp
+    let base_dir = _dir_of(base_file)
+    if (strlen(base_dir) == 0):
+        return imp
+    let candidate = _normalize_path(base_dir + "/" + imp)
+    if (fs.exists(candidate) == 1):
+        return candidate
+    return imp
+
+func _import_path_from_line(line: String) -> String:
+    let s = _trim(line)
+    if (_starts_with(s, "import ") == 0):
+        return ""
+    let dq = _dq()
+    let a = _find_char(s, dq)
+    if (a < 0):
+        return ""
+    let rest = __thg_str_substr(s, a + 1, strlen(s) - a - 1)
+    let b_rel = _find_char(rest, dq)
+    if (b_rel < 0):
+        return ""
+    return __thg_str_substr(rest, 0, b_rel)
+
+func _flow_source_fingerprint(entry_path: String, entry_source: String) -> String:
+    let entry_norm = _normalize_path(entry_path)
+    let seed = "flow-cache-v2|" + entry_norm + "#" + _to_string_i32(_hash_text(entry_source)) + ";"
+    let queue = entry_norm + ";"
+    let visited = ";"
+    while (strlen(queue) > 0):
+        let sep = _find_char(queue, ";")
+        if (sep < 0):
+            queue = ""
+        else:
+            let file_path = __thg_str_substr(queue, 0, sep)
+            queue = __thg_str_substr(queue, sep + 1, strlen(queue) - sep - 1)
+            if ((strlen(file_path) > 0) and (_set_contains(visited, file_path) == 0)):
+                visited = _set_add_unique(visited, file_path)
+                let file_source = ""
+                if (file_path == entry_norm):
+                    file_source = entry_source
+                else:
+                    if (fs.exists(file_path) == 1):
+                        file_source = fs.read_text(file_path)
+                if (strlen(file_source) > 0):
+                    let total = _line_count(file_source)
+                    let i = 0
+                    while (i < total):
+                        let imp = _import_path_from_line(_line_at(file_source, i))
+                        if (strlen(imp) > 0):
+                            let dep_path = _normalize_path(_resolve_import_path(file_path, imp))
+                            if (fs.exists(dep_path) == 1):
+                                let dep_source = fs.read_text(dep_path)
+                                seed = seed + dep_path + "#" + _to_string_i32(_hash_text(dep_source)) + ";"
+                                if (_set_contains(visited, dep_path) == 0):
+                                    queue = queue + dep_path + ";"
+                        i = i + 1
+    return _to_string_i32(_hash_text(seed))
+
+func _write_binary_file(path: String, buffer: String) -> void:
+    let handle = fs.open_binary(path, "w")
+    if (handle == null):
+        fs.write_text(path, buffer)
+        return
+    fs.write_bytes(handle, buffer)
+    fs.close(handle)
+
+func _read_binary_file(path: String) -> String:
+    let handle = fs.open_binary(path, "r")
+    if (handle == null):
+        return fs.read_text(path)
+    let size = fs.seek(handle, 0, 2)
+    if (size < 0):
+        fs.close(handle)
+        return ""
+    fs.seek(handle, 0, 0)
+    let buffer = fs.read_bytes(handle, size)
+    fs.close(handle)
+    return buffer
+
+func _append_binary_file(path: String, chunk: String) -> void:
+    let handle = fs.open_binary(path, "a")
+    if (handle == null):
+        _write_binary_file(path, _read_binary_file(path) + chunk)
+        return
+    fs.write_bytes(handle, chunk)
+    fs.close(handle)
+
+func _append_text_file(path: String, chunk: String) -> void:
+    let handle = fs.open_binary(path, "a")
+    if (handle == null):
+        fs.write_text(path, fs.read_text(path) + chunk)
+        return
+    fs.write_bytes(handle, chunk)
+    fs.close(handle)
+
+func _sanitize_id(text: String) -> String:
+    let out = _normalize_path(text)
+    out = _replace_all(out, "/", "_")
+    out = _replace_all(out, ":", "_")
+    out = _replace_all(out, ".", "_")
+    out = _replace_all(out, " ", "_")
+    return out
+
+func _line_count(source: String) -> i32:
+    let n = strlen(source)
+    if (n == 0):
+        return 0
+    let i = 0
+    let count = 1
+    while (i < n):
+        if (_char_at(source, i) == _nl()):
+            count = count + 1
+        i = i + 1
+    return count
+
+func _line_at(source: String, index: i32) -> String:
+    let n = strlen(source)
+    let i = 0
+    let line_idx = 0
+    let line = ""
+    while (i < n):
+        let ch = _char_at(source, i)
+        if (ch == _nl()):
+            if (line_idx == index):
+                return line
+            line = ""
+            line_idx = line_idx + 1
+            i = i + 1
+        else:
+            if (ch == _cr()):
+                i = i + 1
+            else:
+                line = line + ch
+                i = i + 1
+    if (line_idx == index):
+        return line
+    return ""
+
+func _leading_spaces(line: String) -> i32:
+    let i = 0
+    let n = strlen(line)
+    while (i < n):
+        if (_char_at(line, i) != " "):
+            return i
+        i = i + 1
+    return n
+
+func _flow_mode(mode_input: String) -> String:
+    let mode = _trim(mode_input)
+    if (mode == "off"):
+        return "off"
+    if (mode == "strict"):
+        return "strict"
+    return "on"
+
+func normalize_flow_mode(mode_input: String) -> String:
+    return _flow_mode(mode_input)
+
+func _flow_durability(level_input: String) -> String:
+    let level = _trim(level_input)
+    if (level == "high"):
+        return "high"
+    if (level == "low"):
+        return "low"
+    return "normal"
+
+func normalize_flow_durability(level_input: String) -> String:
+    return _flow_durability(level_input)
+
+func _flow_journal_format(format_input: String) -> String:
+    let fmt = _trim(format_input)
+    if (fmt == "jsonl"):
+        return "jsonl"
+    if (fmt == "binary"):
+        return "binary"
+    return "compact"
+
+func normalize_flow_journal_format(format_input: String) -> String:
+    return _flow_journal_format(format_input)
+
+func _flow_validate_mode(source: String, mode: String) -> i32:
+    if (mode == "off"):
+        return 0
+    if (mode == "strict"):
+        return pipe.check_flow_headers_strict(source)
+    return pipe.check_flow_headers(source)
+
+func _ensure_flow_dirs() -> void:
+    fs.mkdir(".thagore")
+    fs.mkdir(".thagore/flow")
+    fs.mkdir(".thagore/flow/reports")
+    fs.mkdir(".thagore/flow/journal")
+    fs.mkdir(".thagore/flow/sessions")
+    fs.mkdir(".thagore/flow/cache")
+
+func _flow_doctor_cache_path(entry_path: String, mode: String, source_hash: String) -> String:
+    let key = _to_string_i32(_hash_text(entry_path + "|" + mode + "|" + source_hash))
+    return ".thagore/flow/cache/doctor-v1-" + key + ".json"
+
+func _flow_explain_cache_path(entry_path: String, mode: String, source_hash: String) -> String:
+    let key = _to_string_i32(_hash_text(entry_path + "|" + mode + "|" + source_hash))
+    return ".thagore/flow/cache/explain-v1-" + key + ".json"
+
+func _flow_validate_cache_path(entry_path: String, mode: String, source_hash: String) -> String:
+    let key = _to_string_i32(_hash_text(entry_path + "|" + mode + "|" + source_hash))
+    return ".thagore/flow/cache/validate-v1-" + key + ".json"
+
+func _flow_validate_mode_cached(entry_path: String, source: String, mode: String) -> i32:
+    _ensure_flow_dirs()
+    let entry_norm = _normalize_path(entry_path)
+    let source_hash = _flow_source_fingerprint(entry_norm, source)
+    let cache_path = _flow_validate_cache_path(entry_norm, mode, source_hash)
+    let cache_hit = 0
+    let rc = 0
+    if (fs.exists(cache_path) == 1):
+        let cache = fs.read_text(cache_path)
+        if ((_json_get_string(cache, "entry") == entry_norm) and (_json_get_string(cache, "mode") == mode) and (_json_get_string(cache, "source_hash") == source_hash)):
+            cache_hit = 1
+            rc = _parse_nonneg_i32(_json_get_string(cache, "validation_rc"), 1)
+    if (cache_hit == 0):
+        rc = _flow_validate_mode(source, mode)
+        let cache = "{"
+        cache = cache + _json_quote("schema_version") + ":1,"
+        cache = cache + _json_quote("type") + ":" + _json_quote("flow_validate_cache") + ","
+        cache = cache + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+        cache = cache + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        cache = cache + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+        cache = cache + _json_quote("validation_rc") + ":" + _json_quote(_to_string_i32(rc))
+        cache = cache + "}" + _nl()
+        fs.write_text(cache_path, cache)
+    fs.write_text(".thagore/flow/last_validate_cache.path", cache_path)
+    fs.write_text(".thagore/flow/last_validate_cache.hit", _to_string_i32(cache_hit))
+    return rc
+
+func _flow_session_id(entry_path: String) -> String:
+    return "FLW-" + _to_string_i32(time.now_ms()) + "-" + _sanitize_id(entry_path)
+
+func latest_flow_session_id() -> String:
+    if (fs.exists(".thagore/flow/last_session.id") == 0):
+        return ""
+    return _trim(fs.read_text(".thagore/flow/last_session.id"))
+
+func latest_flow_journal_path() -> String:
+    if (fs.exists(".thagore/flow/last_journal.path") == 0):
+        return ""
+    return _trim(fs.read_text(".thagore/flow/last_journal.path"))
+
+func _is_tg_source(path: String) -> i32:
+    let p = _normalize_path(path)
+    if (_ends_with(p, ".tg") == 1):
+        return 1
+    return 0
+
+func _retry_count_from_line(line: String) -> i32:
+    if (ph.is_flow_retry_line(line) == 0):
+        return 0
+    let s = _trim(line)
+    if (strlen(s) <= 6):
+        return 0
+    let body = _trim(__thg_str_substr(s, 6, strlen(s) - 6))
+    let digits = ""
+    let i = 0
+    while (i < strlen(body)):
+        let ch = _char_at(body, i)
+        if (_find_char("0123456789", ch) >= 0):
+            digits = digits + ch
+            i = i + 1
+        else:
+            i = strlen(body)
+    if (strlen(digits) == 0):
+        return 0
+    let j = 0
+    let out = 0
+    while (j < strlen(digits)):
+        out = (out * 10) + _find_char("0123456789", _char_at(digits, j))
+        j = j + 1
+    return out
+
+func _timeout_from_line(line: String) -> String:
+    if (ph.is_flow_timeout_line(line) == 0):
+        return ""
+    let s = _trim(line)
+    if (strlen(s) <= 8):
+        return ""
+    return _trim(__thg_str_substr(s, 8, strlen(s) - 8))
+
+func _is_digit_char(ch: String) -> i32:
+    if (_find_char("0123456789", ch) >= 0):
+        return 1
+    return 0
+
+func _parse_positive_i32(text: String) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return -1
+    let i = 0
+    let out = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (_is_digit_char(ch) == 0):
+            return -1
+        out = (out * 10) + _find_char("0123456789", ch)
+        i = i + 1
+    if (out <= 0):
+        return -1
+    return out
+
+func _parse_nonneg_i32(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let i = 0
+    let out = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        if (_is_digit_char(ch) == 0):
+            return fallback
+        out = (out * 10) + _find_char("0123456789", ch)
+        i = i + 1
+    return out
+
+func _timeout_ms_from_token(token: String) -> i32:
+    let t = _trim(token)
+    let n = strlen(t)
+    if (n < 2):
+        return 0
+    let digits = ""
+    let mul = 0
+    if ((n >= 3) and (_char_at(t, n - 2) == "m") and (_char_at(t, n - 1) == "s")):
+        digits = __thg_str_substr(t, 0, n - 2)
+        mul = 1
+    else:
+        let unit = _char_at(t, n - 1)
+        if (unit == "s"):
+            digits = __thg_str_substr(t, 0, n - 1)
+            mul = 1000
+        else:
+            if (unit == "m"):
+                digits = __thg_str_substr(t, 0, n - 1)
+                mul = 60000
+    if (mul <= 0):
+        return 0
+    let base = _parse_positive_i32(digits)
+    if (base <= 0):
+        return 0
+    return base * mul
+
+func _timeout_ticks_from_token(token: String) -> i32:
+    let ms = _timeout_ms_from_token(token)
+    if (ms <= 0):
+        return 0
+    let q = ms / 100
+    let rem = ms - (q * 100)
+    if (rem > 0):
+        return q + 1
+    if (q < 1):
+        return 1
+    return q
+
+func _synthetic_step_cost_ms(flow_id: String, step_id: String) -> i32:
+    let raw = _hash_text(flow_id + "|" + step_id)
+    let q = raw / 90
+    let rem = raw - (q * 90)
+    return 10 + rem
+
+func _retry_delay_ticks(attempt: i32) -> i32:
+    let d = attempt
+    if (d < 1):
+        return 1
+    if (d > 8):
+        return 8
+    return d
+
+func _is_flow_event_status(status: String) -> i32:
+    if (status == "started"):
+        return 1
+    if (status == "ok"):
+        return 1
+    if (status == "failed"):
+        return 1
+    if (status == "compensated"):
+        return 1
+    if (status == "comp_failed"):
+        return 1
+    return 0
+
+func _append_note_field(note: String, key: String, value: String) -> String:
+    if ((strlen(key) == 0) or (strlen(value) == 0)):
+        return note
+    if (strlen(note) == 0):
+        return key + "=" + value
+    return note + ";" + key + "=" + value
+
+func _decorate_step_note(note: String, on_error_expr: String, irreversible_reason: String) -> String:
+    let out = note
+    out = _append_note_field(out, "on_error", on_error_expr)
+    out = _append_note_field(out, "irreversible_reason", irreversible_reason)
+    return out
+
+func _decorate_failure_note(note: String, on_error_expr: String, irreversible_reason: String) -> String:
+    let out = _decorate_step_note(note, on_error_expr, irreversible_reason)
+    if (strlen(on_error_expr) > 0):
+        out = _append_note_field(out, "on_error_mapped", "true")
+    return out
+
+func _step_plan_json(flow_id: String, step_id: String, has_undo: i32, undo_expr: String, irreversible: i32, irreversible_reason: String, on_error_expr: String, retry_count: i32, timeout_value: String, group_id: String) -> String:
+    let row = "{"
+    row = row + _json_quote("flow_id") + ":" + _json_quote(flow_id) + ","
+    row = row + _json_quote("step_id") + ":" + _json_quote(step_id) + ","
+    row = row + _json_quote("has_undo") + ":" + _json_bool(has_undo) + ","
+    row = row + _json_quote("undo") + ":" + _json_quote(undo_expr) + ","
+    row = row + _json_quote("irreversible") + ":" + _json_bool(irreversible) + ","
+    row = row + _json_quote("irreversible_reason") + ":" + _json_quote(irreversible_reason) + ","
+    row = row + _json_quote("on_error") + ":" + _json_quote(on_error_expr) + ","
+    row = row + _json_quote("retry") + ":" + _json_quote(_to_string_i32(retry_count)) + ","
+    row = row + _json_quote("timeout") + ":" + _json_quote(timeout_value) + ","
+    row = row + _json_quote("group") + ":" + _json_quote(group_id)
+    row = row + "}" + _nl()
+    return row
+
+func _step_state_json(flow_id: String, step_id: String, has_undo: i32, undo_expr: String, irreversible: i32, irreversible_reason: String, on_error_expr: String, retry_count: i32, timeout_value: String, group_id: String, attempt: i32, done: i32, next_tick: i32, timeout_deadline_tick: i32) -> String:
+    let row = "{"
+    row = row + _json_quote("flow_id") + ":" + _json_quote(flow_id) + ","
+    row = row + _json_quote("step_id") + ":" + _json_quote(step_id) + ","
+    row = row + _json_quote("has_undo") + ":" + _json_bool(has_undo) + ","
+    row = row + _json_quote("undo") + ":" + _json_quote(undo_expr) + ","
+    row = row + _json_quote("irreversible") + ":" + _json_bool(irreversible) + ","
+    row = row + _json_quote("irreversible_reason") + ":" + _json_quote(irreversible_reason) + ","
+    row = row + _json_quote("on_error") + ":" + _json_quote(on_error_expr) + ","
+    row = row + _json_quote("retry") + ":" + _json_quote(_to_string_i32(retry_count)) + ","
+    row = row + _json_quote("timeout") + ":" + _json_quote(timeout_value) + ","
+    row = row + _json_quote("group") + ":" + _json_quote(group_id) + ","
+    row = row + _json_quote("attempt") + ":" + _json_quote(_to_string_i32(attempt)) + ","
+    row = row + _json_quote("done") + ":" + _json_bool(done) + ","
+    row = row + _json_quote("next_tick") + ":" + _json_quote(_to_string_i32(next_tick)) + ","
+    row = row + _json_quote("timeout_deadline_tick") + ":" + _json_quote(_to_string_i32(timeout_deadline_tick))
+    row = row + "}" + _nl()
+    return row
+
+func _journal_append(journal: String, event_line: String, journal_path: String, durability: String, journal_format: String) -> String:
+    let out = journal + event_line
+    if (durability == "high"):
+        if (journal_format == "binary"):
+            _append_binary_file(journal_path, event_line)
+        else:
+            _append_text_file(journal_path, event_line)
+    return out
+
+func _journal_flush(journal: String, journal_path: String, durability: String, journal_format: String, force: i32) -> void:
+    if (force == 1):
+        if (journal_format == "binary"):
+            _write_binary_file(journal_path, journal)
+        else:
+            fs.write_text(journal_path, journal)
+        return
+    if (durability == "normal"):
+        if (journal_format == "binary"):
+            _write_binary_file(journal_path, journal)
+        else:
+            fs.write_text(journal_path, journal)
+
+func _undo_from_line(line: String) -> String:
+    if (ph.is_flow_undo_line(line) == 0):
+        return ""
+    let s = _trim(line)
+    if (strlen(s) <= 5):
+        return ""
+    return _trim(__thg_str_substr(s, 5, strlen(s) - 5))
+
+func _flow_step_expr(step_line: String) -> String:
+    let s = _trim(step_line)
+    if (_starts_with(s, "step ") == 0):
+        return ""
+    let body = _trim(__thg_str_substr(s, 5, strlen(s) - 5))
+    let eq = _find_char(body, "=")
+    if (eq < 0):
+        return ""
+    return _trim(__thg_str_substr(body, eq + 1, strlen(body) - eq - 1))
+
+func _flow_step_capability(step_line: String) -> String:
+    let expr = _flow_step_expr(step_line)
+    if (strlen(expr) == 0):
+        return ""
+    let dot = _find_char(expr, ".")
+    if (dot <= 0):
+        return ""
+    let p = _find_char(expr, "(")
+    if ((p >= 0) and (p < dot)):
+        return ""
+    return _trim(__thg_str_substr(expr, 0, dot))
+
+func _is_known_flow_capability(capability: String) -> i32:
+    let cap = _trim(capability)
+    if (strlen(cap) == 0):
+        return 1
+    if (cap == "cloud"):
+        return 1
+    if (cap == "artifact"):
+        return 1
+    if (cap == "db"):
+        return 1
+    if (cap == "fs"):
+        return 1
+    if (cap == "process"):
+        return 1
+    if (cap == "http"):
+        return 1
+    if (cap == "queue"):
+        return 1
+    if (cap == "pubsub"):
+        return 1
+    return 0
+
+func _collect_flow_stats(source: String) -> FlowStats:
+    let total = _line_count(source)
+    let i = 0
+    let flow_count = 0
+    let step_count = 0
+    let retry_steps = 0
+    let timeout_steps = 0
+    let undo_steps = 0
+    let irreversible_steps = 0
+    let capability_known = 0
+    let capability_unknown = 0
+    while (i < total):
+        let line = _trim(_line_at(source, i))
+        if (ph.is_flow_header(line) == 1):
+            flow_count = flow_count + 1
+        if (ph.is_flow_step_line(line) == 1):
+            step_count = step_count + 1
+        if (ph.is_flow_retry_line(line) == 1):
+            retry_steps = retry_steps + 1
+        if (ph.is_flow_timeout_line(line) == 1):
+            timeout_steps = timeout_steps + 1
+        if (ph.is_flow_undo_line(line) == 1):
+            undo_steps = undo_steps + 1
+        if (ph.is_flow_irreversible_line(line) == 1):
+            irreversible_steps = irreversible_steps + 1
+        if (ph.is_flow_step_line(line) == 1):
+            let cap = _flow_step_capability(line)
+            if (strlen(cap) > 0):
+                if (_is_known_flow_capability(cap) == 1):
+                    capability_known = capability_known + 1
+                else:
+                    capability_unknown = capability_unknown + 1
+        i = i + 1
+    return _flow_stats(flow_count, step_count, retry_steps, timeout_steps, undo_steps, irreversible_steps, capability_known, capability_unknown)
+
+func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    let mode = _flow_mode(mode_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[flow] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[flow] error: source file not found: " + entry_path)
+        return 1
+    _ensure_flow_dirs()
+    let source = fs.read_text(entry_path)
+    let entry_norm = _normalize_path(entry_path)
+    let source_hash = _flow_source_fingerprint(entry_norm, source)
+    let cache_path = _flow_doctor_cache_path(entry_norm, mode, source_hash)
+    let cache_hit = 0
+    let rc = 0
+    let status = "ok"
+    let stats = _flow_stats(0, 0, 0, 0, 0, 0, 0, 0)
+    if (fs.exists(cache_path) == 1):
+        let cache = fs.read_text(cache_path)
+        if ((_json_get_string(cache, "entry") == entry_norm) and (_json_get_string(cache, "mode") == mode) and (_json_get_string(cache, "source_hash") == source_hash)):
+            cache_hit = 1
+            rc = _parse_nonneg_i32(_json_get_string(cache, "validation_rc"), 1)
+            status = _json_get_string(cache, "status")
+            stats = _flow_stats(
+                _parse_nonneg_i32(_json_get_string(cache, "flow_count"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "step_count"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "retry_steps"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "timeout_steps"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "undo_steps"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "irreversible_steps"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "capability_known"), 0),
+                _parse_nonneg_i32(_json_get_string(cache, "capability_unknown"), 0)
+            )
+    if (cache_hit == 0):
+        rc = _flow_validate_mode_cached(entry_path, source, mode)
+        if (rc != 0):
+            status = "failed"
+        stats = _collect_flow_stats(source)
+        let cache = "{"
+        cache = cache + _json_quote("schema_version") + ":1,"
+        cache = cache + _json_quote("type") + ":" + _json_quote("flow_doctor_cache") + ","
+        cache = cache + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+        cache = cache + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        cache = cache + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+        cache = cache + _json_quote("validation_rc") + ":" + _json_quote(_to_string_i32(rc)) + ","
+        cache = cache + _json_quote("status") + ":" + _json_quote(status) + ","
+        cache = cache + _json_quote("flow_count") + ":" + _json_quote(_to_string_i32(stats.flow_count)) + ","
+        cache = cache + _json_quote("step_count") + ":" + _json_quote(_to_string_i32(stats.step_count)) + ","
+        cache = cache + _json_quote("retry_steps") + ":" + _json_quote(_to_string_i32(stats.retry_steps)) + ","
+        cache = cache + _json_quote("timeout_steps") + ":" + _json_quote(_to_string_i32(stats.timeout_steps)) + ","
+        cache = cache + _json_quote("undo_steps") + ":" + _json_quote(_to_string_i32(stats.undo_steps)) + ","
+        cache = cache + _json_quote("irreversible_steps") + ":" + _json_quote(_to_string_i32(stats.irreversible_steps)) + ","
+        cache = cache + _json_quote("capability_known") + ":" + _json_quote(_to_string_i32(stats.capability_known)) + ","
+        cache = cache + _json_quote("capability_unknown") + ":" + _json_quote(_to_string_i32(stats.capability_unknown))
+        cache = cache + "}" + _nl()
+        fs.write_text(cache_path, cache)
+    if (strlen(status) == 0):
+        if (rc != 0):
+            status = "failed"
+        else:
+            status = "ok"
+    fs.write_text(".thagore/flow/last_doctor_cache.path", cache_path)
+    fs.write_text(".thagore/flow/last_doctor_cache.hit", _to_string_i32(cache_hit))
+    let cache_status = "miss"
+    if (cache_hit == 1):
+        cache_status = "hit"
+    let capability_total = stats.capability_known + stats.capability_unknown
+    let capability_coverage_pct = 100
+    if (capability_total > 0):
+        capability_coverage_pct = (stats.capability_known * 100) / capability_total
+    let session_id = _flow_session_id(entry_path)
+    let report_path = ".thagore/flow/reports/" + session_id + ".json"
+    let report = "{"
+    report = report + _json_quote("schema_version") + ":1,"
+    report = report + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+    report = report + _json_quote("type") + ":" + _json_quote("flow_doctor") + ","
+    report = report + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    report = report + _json_quote("tool") + ":" + _json_quote("thagore flow") + ","
+    report = report + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+    report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    report = report + _json_quote("cache") + ":" + _json_quote(cache_status) + ","
+    report = report + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+    report = report + _json_quote("status") + ":" + _json_quote(status) + ","
+    report = report + _json_quote("summary") + ":{"
+    report = report + _json_quote("flows") + ":" + _to_string_i32(stats.flow_count) + ","
+    report = report + _json_quote("steps") + ":" + _to_string_i32(stats.step_count) + ","
+    report = report + _json_quote("retry_steps") + ":" + _to_string_i32(stats.retry_steps) + ","
+    report = report + _json_quote("timeout_steps") + ":" + _to_string_i32(stats.timeout_steps) + ","
+    report = report + _json_quote("undo_steps") + ":" + _to_string_i32(stats.undo_steps) + ","
+    report = report + _json_quote("irreversible_steps") + ":" + _to_string_i32(stats.irreversible_steps) + ","
+    report = report + _json_quote("capability_known") + ":" + _to_string_i32(stats.capability_known) + ","
+    report = report + _json_quote("capability_unknown") + ":" + _to_string_i32(stats.capability_unknown) + ","
+    report = report + _json_quote("capability_coverage_pct") + ":" + _to_string_i32(capability_coverage_pct)
+    report = report + "}"
+    report = report + "}" + _nl()
+    fs.write_text(report_path, report)
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("schema_version") + ":1,"
+        json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+        json = json + _json_quote("type") + ":" + _json_quote("flow_doctor") + ","
+        json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+        json = json + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("cache") + ":" + _json_quote(cache_status) + ","
+        json = json + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+        json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+        json = json + _json_quote("capability_known") + ":" + _to_string_i32(stats.capability_known) + ","
+        json = json + _json_quote("capability_unknown") + ":" + _to_string_i32(stats.capability_unknown) + ","
+        json = json + _json_quote("capability_coverage_pct") + ":" + _to_string_i32(capability_coverage_pct) + ","
+        json = json + _json_quote("report_file") + ":" + _json_quote(report_path)
+        json = json + "}"
+        print(json)
+    else:
+        print("[flow] session=" + session_id)
+        print("[flow] mode=" + mode + " flows=" + _to_string_i32(stats.flow_count) + " steps=" + _to_string_i32(stats.step_count))
+        print("[flow] retry_steps=" + _to_string_i32(stats.retry_steps) + " timeout_steps=" + _to_string_i32(stats.timeout_steps))
+        print("[flow] undo_steps=" + _to_string_i32(stats.undo_steps) + " irreversible_steps=" + _to_string_i32(stats.irreversible_steps))
+        print("[flow] capability_known=" + _to_string_i32(stats.capability_known) + " capability_unknown=" + _to_string_i32(stats.capability_unknown) + " coverage_pct=" + _to_string_i32(capability_coverage_pct))
+        print("[flow] cache=" + cache_status + " source_hash=" + source_hash)
+        print("[flow] status=" + status)
+        print("[flow] report=" + report_path)
+    if (rc != 0):
+        return 1
+    return 0
+
+func run_flow_gate(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    let mode = _flow_mode(mode_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[flow] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[flow] error: source file not found: " + entry_path)
+        return 1
+    let source = fs.read_text(entry_path)
+    let rc = _flow_validate_mode_cached(entry_path, source, mode)
+    let cache_hit = _trim(fs.read_text(".thagore/flow/last_validate_cache.hit"))
+    let cache = "miss"
+    if (cache_hit == "1"):
+        cache = "hit"
+    let status = "ok"
+    if (rc != 0):
+        status = "failed"
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("schema_version") + ":1,"
+        json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+        json = json + _json_quote("type") + ":" + _json_quote("flow_gate") + ","
+        json = json + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("cache") + ":" + _json_quote(cache) + ","
+        json = json + _json_quote("status") + ":" + _json_quote(status)
+        json = json + "}"
+        print(json)
+    else:
+        print("[flow][gate] mode=" + mode + " cache=" + cache + " status=" + status)
+    if (rc != 0):
+        return 1
+    return 0
+
+func run_flow_explain(entry_path: String, mode_input: String, as_json: i32) -> i32:
+    let mode = _flow_mode(mode_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[flow] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[flow] error: source file not found: " + entry_path)
+        return 1
+    let source = fs.read_text(entry_path)
+    if (_flow_validate_mode_cached(entry_path, source, mode) != 0):
+        return 1
+    _ensure_flow_dirs()
+    let entry_norm = _normalize_path(entry_path)
+    let source_hash = _flow_source_fingerprint(entry_norm, source)
+    let cache_path = _flow_explain_cache_path(entry_norm, mode, source_hash)
+    let cache_hit = 0
+    if ((as_json == 1) and (fs.exists(cache_path) == 1)):
+        let cache = fs.read_text(cache_path)
+        if ((_json_get_string(cache, "entry") == entry_norm) and (_json_get_string(cache, "mode") == mode) and (_json_get_string(cache, "source_hash") == source_hash)):
+            let cached_json = _json_get_string(cache, "json_output")
+            if (strlen(cached_json) > 0):
+                cache_hit = 1
+                fs.write_text(".thagore/flow/last_explain_cache.path", cache_path)
+                fs.write_text(".thagore/flow/last_explain_cache.hit", _to_string_i32(cache_hit))
+                print(cached_json)
+                return 0
+    fs.write_text(".thagore/flow/last_explain_cache.path", cache_path)
+    fs.write_text(".thagore/flow/last_explain_cache.hit", _to_string_i32(cache_hit))
+    let total = _line_count(source)
+    let i = 0
+    let flow_items = ""
+    if (as_json == 0):
+        print("[flow][explain] mode=" + mode + " entry=" + entry_norm)
+    while (i < total):
+        let raw = _line_at(source, i)
+        let line = _trim(raw)
+        let indent = _leading_spaces(raw)
+        if (ph.is_flow_header(line) == 1):
+            let flow_id = ph.parse_flow_name(line)
+            let step_count = 0
+            let barrier_count = 0
+            let parallel_groups = 0
+            let step_items = ""
+            let j = i + 1
+            let parallel_open = 0
+            let parallel_indent = -1
+            let parallel_group_id = ""
+            let in_flow = 1
+            while ((j < total) and (in_flow == 1)):
+                let body_raw = _line_at(source, j)
+                let body_line = _trim(body_raw)
+                let body_indent = _leading_spaces(body_raw)
+                if (strlen(body_line) == 0):
+                    j = j + 1
+                else:
+                    if (body_indent <= indent):
+                        in_flow = 0
+                    else:
+                        if (ph.is_flow_parallel_header(body_line) == 1):
+                            if (parallel_open == 0):
+                                parallel_open = 1
+                                parallel_indent = body_indent
+                                parallel_groups = parallel_groups + 1
+                                parallel_group_id = "P" + _to_string_i32(parallel_groups)
+                                if (as_json == 0):
+                                    print("[flow][explain] flow=" + flow_id + " parallel_group=" + parallel_group_id + " open")
+                            j = j + 1
+                        else:
+                            if ((ph.is_flow_barrier_line(body_line) == 1) and (parallel_open == 1) and (body_indent == parallel_indent)):
+                                barrier_count = barrier_count + 1
+                                if (as_json == 0):
+                                    print("[flow][explain] flow=" + flow_id + " parallel_group=" + parallel_group_id + " barrier")
+                                parallel_open = 0
+                                parallel_indent = -1
+                                parallel_group_id = ""
+                                j = j + 1
+                            else:
+                                if (ph.is_flow_step_line(body_line) == 1):
+                                    let step_id = ph.parse_flow_step_id(body_line)
+                                    let step_indent = body_indent
+                                    let has_undo = 0
+                                    let undo_expr = ""
+                                    let retry_count = 0
+                                    let timeout_value = ""
+                                    let is_idempotent = 0
+                                    let is_irreversible = 0
+                                    let irreversible_reason = ""
+                                    let on_error_expr = ""
+                                    let step_group = ""
+                                    if ((parallel_open == 1) and (body_indent > parallel_indent)):
+                                        step_group = parallel_group_id
+                                    let k = j + 1
+                                    let in_step = 1
+                                    while ((k < total) and (in_step == 1)):
+                                        let meta_raw = _line_at(source, k)
+                                        let meta_line = _trim(meta_raw)
+                                        let meta_indent = _leading_spaces(meta_raw)
+                                        if (strlen(meta_line) == 0):
+                                            k = k + 1
+                                        else:
+                                            if (meta_indent <= step_indent):
+                                                in_step = 0
+                                            else:
+                                                if (ph.is_flow_undo_line(meta_line) == 1):
+                                                    has_undo = 1
+                                                    undo_expr = _undo_from_line(meta_line)
+                                                if (ph.is_flow_retry_line(meta_line) == 1):
+                                                    retry_count = _retry_count_from_line(meta_line)
+                                                if (ph.is_flow_timeout_line(meta_line) == 1):
+                                                    timeout_value = _timeout_from_line(meta_line)
+                                                if (ph.is_flow_idempotent_line(meta_line) == 1):
+                                                    is_idempotent = 1
+                                                if (ph.is_flow_irreversible_line(meta_line) == 1):
+                                                    is_irreversible = 1
+                                                if (_starts_with(meta_line, "irreversible reason") == 1):
+                                                    irreversible_reason = ph.parse_flow_irreversible_reason(meta_line)
+                                                if (ph.is_flow_on_error_line(meta_line) == 1):
+                                                    on_error_expr = ph.parse_flow_on_error_expr(meta_line)
+                                                k = k + 1
+                                    if (as_json == 0):
+                                        let timeout_show = timeout_value
+                                        if (strlen(timeout_show) == 0):
+                                            timeout_show = "none"
+                                        let group_show = step_group
+                                        if (strlen(group_show) == 0):
+                                            group_show = "serial"
+                                        let on_error_show = on_error_expr
+                                        if (strlen(on_error_show) == 0):
+                                            on_error_show = "none"
+                                        let irr_reason_show = irreversible_reason
+                                        if (strlen(irr_reason_show) == 0):
+                                            irr_reason_show = "none"
+                                        print("[flow][explain] flow=" + flow_id + " step=" + step_id + " group=" + group_show + " retry=" + _to_string_i32(retry_count) + " timeout=" + timeout_show + " idempotent=" + _json_bool(is_idempotent) + " undo=" + _json_bool(has_undo) + " irreversible=" + _json_bool(is_irreversible) + " on_error=" + on_error_show + " irreversible_reason=" + irr_reason_show)
+                                        if (has_undo == 1):
+                                            print("[flow][explain] compensation_edge=" + step_id + "->undo")
+                                    let step_json = "{"
+                                    step_json = step_json + _json_quote("step_id") + ":" + _json_quote(step_id) + ","
+                                    step_json = step_json + _json_quote("parallel_group") + ":" + _json_quote(step_group) + ","
+                                    step_json = step_json + _json_quote("retry") + ":" + _to_string_i32(retry_count) + ","
+                                    step_json = step_json + _json_quote("timeout") + ":" + _json_quote(timeout_value) + ","
+                                    step_json = step_json + _json_quote("idempotent") + ":" + _json_bool(is_idempotent) + ","
+                                    step_json = step_json + _json_quote("has_undo") + ":" + _json_bool(has_undo) + ","
+                                    step_json = step_json + _json_quote("undo") + ":" + _json_quote(undo_expr) + ","
+                                    step_json = step_json + _json_quote("irreversible") + ":" + _json_bool(is_irreversible) + ","
+                                    step_json = step_json + _json_quote("irreversible_reason") + ":" + _json_quote(irreversible_reason) + ","
+                                    step_json = step_json + _json_quote("on_error") + ":" + _json_quote(on_error_expr)
+                                    step_json = step_json + "}"
+                                    if (strlen(step_items) > 0):
+                                        step_items = step_items + ","
+                                    step_items = step_items + step_json
+                                    step_count = step_count + 1
+                                    j = k
+                                else:
+                                    j = j + 1
+            if (as_json == 0):
+                print("[flow][explain] flow=" + flow_id + " steps=" + _to_string_i32(step_count))
+            let flow_json = "{"
+            flow_json = flow_json + _json_quote("flow_id") + ":" + _json_quote(flow_id) + ","
+            flow_json = flow_json + _json_quote("step_count") + ":" + _to_string_i32(step_count) + ","
+            flow_json = flow_json + _json_quote("parallel_groups") + ":" + _to_string_i32(parallel_groups) + ","
+            flow_json = flow_json + _json_quote("barrier_count") + ":" + _to_string_i32(barrier_count) + ","
+            flow_json = flow_json + _json_quote("steps") + ":[" + step_items + "]"
+            flow_json = flow_json + "}"
+            if (strlen(flow_items) > 0):
+                flow_items = flow_items + ","
+            flow_items = flow_items + flow_json
+        i = i + 1
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("schema_version") + ":1,"
+        json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+        json = json + _json_quote("type") + ":" + _json_quote("flow_explain") + ","
+        json = json + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("flows") + ":[" + flow_items + "]"
+        json = json + "}"
+        let cache = "{"
+        cache = cache + _json_quote("schema_version") + ":1,"
+        cache = cache + _json_quote("type") + ":" + _json_quote("flow_explain_cache") + ","
+        cache = cache + _json_quote("entry") + ":" + _json_quote(entry_norm) + ","
+        cache = cache + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        cache = cache + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+        cache = cache + _json_quote("json_output") + ":" + _json_quote(json)
+        cache = cache + "}" + _nl()
+        fs.write_text(cache_path, cache)
+        print(json)
+    return 0
+
+func _write_flow_session(session_id: String, entry_path: String, mode: String, durability: String, journal_format: String, status: String, failed_flow: String, failed_step: String, journal_path: String, compensated: i32, skipped_irreversible: i32, comp_failed: i32) -> void:
+    _ensure_flow_dirs()
+    let session_path = ".thagore/flow/sessions/" + session_id + ".json"
+    let session = "{"
+    session = session + _json_quote("schema_version") + ":1,"
+    session = session + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+    session = session + _json_quote("type") + ":" + _json_quote("flow_session") + ","
+    session = session + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+    session = session + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+    session = session + _json_quote("mode") + ":" + _json_quote(mode) + ","
+    session = session + _json_quote("durability") + ":" + _json_quote(durability) + ","
+    session = session + _json_quote("journal_format") + ":" + _json_quote(journal_format) + ","
+    session = session + _json_quote("status") + ":" + _json_quote(status) + ","
+    session = session + _json_quote("failed_flow") + ":" + _json_quote(failed_flow) + ","
+    session = session + _json_quote("failed_step") + ":" + _json_quote(failed_step) + ","
+    session = session + _json_quote("compensated") + ":" + _to_string_i32(compensated) + ","
+    session = session + _json_quote("irreversible_skipped") + ":" + _to_string_i32(skipped_irreversible) + ","
+    session = session + _json_quote("compensation_failed") + ":" + _json_bool(comp_failed) + ","
+    session = session + _json_quote("journal_file") + ":" + _json_quote(journal_path) + ","
+    session = session + _json_quote("updated_ms") + ":" + _json_quote(_to_string_i32(time.now_ms()))
+    session = session + "}" + _nl()
+    fs.write_text(session_path, session)
+    fs.write_text(".thagore/flow/last_session.id", session_id)
+    fs.write_text(".thagore/flow/last_journal.path", journal_path)
+
+func _run_flow_simulate_internal(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32, durability_input: String, journal_format_input: String) -> i32:
+    let mode = _flow_mode(mode_input)
+    let durability = _flow_durability(durability_input)
+    let journal_format = _flow_journal_format(journal_format_input)
+    if (_is_tg_source(entry_path) == 0):
+        print("[flow] error: only .tg source files are supported.")
+        return 1
+    if (fs.exists(entry_path) == 0):
+        print("[flow] error: source file not found: " + entry_path)
+        return 1
+    let source = fs.read_text(entry_path)
+    if (_flow_validate_mode_cached(entry_path, source, mode) != 0):
+        return 1
+    let session_id = _flow_session_id(entry_path)
+    _ensure_flow_dirs()
+    let journal_ext = ".log"
+    if (journal_format == "jsonl"):
+        journal_ext = ".jsonl"
+    if (journal_format == "binary"):
+        journal_ext = ".bin"
+    let journal_path = ".thagore/flow/journal/" + session_id + journal_ext
+    let total = _line_count(source)
+    let i = 0
+    let completed_rev = ""
+    let journal = ""
+    let failed = 0
+    let failed_step = ""
+    let failed_flow = ""
+    let fail_once_consumed = 0
+    while ((i < total) and (failed == 0)):
+        let raw = _line_at(source, i)
+        let line = _trim(raw)
+        let indent = _leading_spaces(raw)
+        if (ph.is_flow_header(line) == 1):
+            let flow_id = ph.parse_flow_name(line)
+            let j = i + 1
+            let in_flow = 1
+            let parallel_open = 0
+            let parallel_indent = -1
+            let parallel_group_id = ""
+            let parallel_group_seq = 0
+            let pending_batch = ""
+            while ((j < total) and (in_flow == 1) and (failed == 0)):
+                let flush_batch = 0
+                let close_parallel = 0
+                let body_raw = _line_at(source, j)
+                let body_line = _trim(body_raw)
+                let body_indent = _leading_spaces(body_raw)
+                if (strlen(body_line) == 0):
+                    j = j + 1
+                else:
+                    if (body_indent <= indent):
+                        flush_batch = 1
+                        in_flow = 0
+                    else:
+                        if (ph.is_flow_parallel_header(body_line) == 1):
+                            if (parallel_open == 0):
+                                parallel_open = 1
+                                parallel_indent = body_indent
+                                parallel_group_seq = parallel_group_seq + 1
+                                parallel_group_id = "P" + _to_string_i32(parallel_group_seq)
+                            j = j + 1
+                        else:
+                            if ((ph.is_flow_barrier_line(body_line) == 1) and (parallel_open == 1) and (body_indent == parallel_indent)):
+                                flush_batch = 1
+                                close_parallel = 1
+                                j = j + 1
+                            else:
+                                if (ph.is_flow_step_line(body_line) == 1):
+                                    let step_id = ph.parse_flow_step_id(body_line)
+                                    let step_indent = body_indent
+                                    let has_undo = 0
+                                    let undo_expr = ""
+                                    let is_irreversible = 0
+                                    let irreversible_reason = ""
+                                    let on_error_expr = ""
+                                    let retry_count = 0
+                                    let timeout_value = ""
+                                    let step_group = ""
+                                    if ((parallel_open == 1) and (body_indent > parallel_indent)):
+                                        step_group = parallel_group_id
+                                    let k = j + 1
+                                    let in_step = 1
+                                    while ((k < total) and (in_step == 1)):
+                                        let meta_raw = _line_at(source, k)
+                                        let meta_line = _trim(meta_raw)
+                                        let meta_indent = _leading_spaces(meta_raw)
+                                        if (strlen(meta_line) == 0):
+                                            k = k + 1
+                                        else:
+                                            if (meta_indent <= step_indent):
+                                                in_step = 0
+                                            else:
+                                                if (ph.is_flow_undo_line(meta_line) == 1):
+                                                    has_undo = 1
+                                                    undo_expr = _undo_from_line(meta_line)
+                                                if (ph.is_flow_irreversible_line(meta_line) == 1):
+                                                    is_irreversible = 1
+                                                if (_starts_with(meta_line, "irreversible reason") == 1):
+                                                    irreversible_reason = ph.parse_flow_irreversible_reason(meta_line)
+                                                if (ph.is_flow_on_error_line(meta_line) == 1):
+                                                    on_error_expr = ph.parse_flow_on_error_expr(meta_line)
+                                                if (ph.is_flow_retry_line(meta_line) == 1):
+                                                    retry_count = _retry_count_from_line(meta_line)
+                                                if (ph.is_flow_timeout_line(meta_line) == 1):
+                                                    timeout_value = _timeout_from_line(meta_line)
+                                                k = k + 1
+                                    pending_batch = pending_batch + _step_plan_json(flow_id, step_id, has_undo, undo_expr, is_irreversible, irreversible_reason, on_error_expr, retry_count, timeout_value, step_group)
+                                    if (parallel_open == 0):
+                                        flush_batch = 1
+                                    j = k
+                                else:
+                                    if ((parallel_open == 1) and (body_indent <= parallel_indent)):
+                                        flush_batch = 1
+                                        close_parallel = 1
+                                    j = j + 1
+                if ((flush_batch == 1) and (strlen(pending_batch) > 0)):
+                    let batch_failed = 0
+                    let batch_failed_flow = ""
+                    let batch_failed_step = ""
+                    let batch_states = ""
+                    let bt = _line_count(pending_batch)
+                    let bi = 0
+                    while (bi < bt):
+                        let row = _trim(_line_at(pending_batch, bi))
+                        if (strlen(row) > 0):
+                            let step_timeout_value = _json_get_string(row, "timeout")
+                            let timeout_deadline_tick = 0
+                            let timeout_ticks = _timeout_ticks_from_token(step_timeout_value)
+                            if (timeout_ticks > 0):
+                                timeout_deadline_tick = timeout_ticks
+                            batch_states = batch_states + _step_state_json(
+                                _json_get_string(row, "flow_id"),
+                                _json_get_string(row, "step_id"),
+                                _json_get_bool(row, "has_undo", 0),
+                                _json_get_string(row, "undo"),
+                                _json_get_bool(row, "irreversible", 0),
+                                _json_get_string(row, "irreversible_reason"),
+                                _json_get_string(row, "on_error"),
+                                _parse_nonneg_i32(_json_get_string(row, "retry"), 0),
+                                step_timeout_value,
+                                _json_get_string(row, "group"),
+                                1,
+                                0,
+                                0,
+                                timeout_deadline_tick
+                            )
+                        bi = bi + 1
+                    let states = batch_states
+                    let tick = 0
+                    let pending_steps = 1
+                    while (pending_steps == 1):
+                        let active_next = 0
+                        let min_due_tick = -1
+                        let next_states = ""
+                        let due_states = ""
+                        let st_total = _line_count(states)
+                        let si = 0
+                        while (si < st_total):
+                            let srow = _trim(_line_at(states, si))
+                            if (strlen(srow) > 0):
+                                let done = _json_get_bool(srow, "done", 0)
+                                let next_tick = _parse_nonneg_i32(_json_get_string(srow, "next_tick"), 0)
+                                if (done == 1):
+                                    next_states = next_states + srow + _nl()
+                                else:
+                                    if (next_tick > tick):
+                                        active_next = 1
+                                        if ((min_due_tick < 0) or (next_tick < min_due_tick)):
+                                            min_due_tick = next_tick
+                                        next_states = next_states + srow + _nl()
+                                    else:
+                                        due_states = due_states + srow + _nl()
+                            si = si + 1
+                        if (strlen(_trim(due_states)) > 0):
+                            let dt_total = _line_count(due_states)
+                            let di = 0
+                            while (di < dt_total):
+                                let drow = _trim(_line_at(due_states, di))
+                                if (strlen(drow) > 0):
+                                    let step_flow_s = _json_get_string(drow, "flow_id")
+                                    let step_id_s = _json_get_string(drow, "step_id")
+                                    let step_has_undo_s = _json_get_bool(drow, "has_undo", 0)
+                                    let step_undo_s = _json_get_string(drow, "undo")
+                                    let step_irr_s = _json_get_bool(drow, "irreversible", 0)
+                                    let step_irr_reason_s = _json_get_string(drow, "irreversible_reason")
+                                    let step_on_error_s = _json_get_string(drow, "on_error")
+                                    let step_retry_s = _parse_nonneg_i32(_json_get_string(drow, "retry"), 0)
+                                    let step_timeout_s = _json_get_string(drow, "timeout")
+                                    let step_group_s = _json_get_string(drow, "group")
+                                    let attempt_s = _parse_nonneg_i32(_json_get_string(drow, "attempt"), 1)
+                                    let timeout_deadline_tick_s = _parse_nonneg_i32(_json_get_string(drow, "timeout_deadline_tick"), 0)
+                                    if ((timeout_deadline_tick_s == 0) or (tick < timeout_deadline_tick_s)):
+                                        let timeout_ms_s = _timeout_ms_from_token(step_timeout_s)
+                                        let synthetic_cost_s = _synthetic_step_cost_ms(step_flow_s, step_id_s)
+                                        let attempts_s = step_retry_s + 1
+                                        let start_note = "attempt=" + _to_string_i32(attempt_s) + "/" + _to_string_i32(attempts_s) + ";tick=" + _to_string_i32(tick)
+                                        if (strlen(step_group_s) > 0):
+                                            start_note = start_note + ";group=" + step_group_s
+                                        if (timeout_ms_s > 0):
+                                            start_note = start_note + ";timeout=" + step_timeout_s + ";cost_ms=" + _to_string_i32(synthetic_cost_s)
+                                        if (timeout_deadline_tick_s > 0):
+                                            start_note = start_note + ";deadline_tick=" + _to_string_i32(timeout_deadline_tick_s)
+                                        start_note = _decorate_step_note(start_note, step_on_error_s, step_irr_reason_s)
+                                        journal = _journal_append(journal, _flow_event_line(journal_format, step_flow_s, step_id_s, "started", step_has_undo_s, step_undo_s, step_irr_s, start_note), journal_path, durability, journal_format)
+                                di = di + 1
+                            let stop_after_wave = 0
+                            di = 0
+                            while (di < dt_total):
+                                let drow2 = _trim(_line_at(due_states, di))
+                                if (strlen(drow2) > 0):
+                                    let step_flow = _json_get_string(drow2, "flow_id")
+                                    let step_id = _json_get_string(drow2, "step_id")
+                                    let step_has_undo = _json_get_bool(drow2, "has_undo", 0)
+                                    let step_undo = _json_get_string(drow2, "undo")
+                                    let step_irr = _json_get_bool(drow2, "irreversible", 0)
+                                    let step_irr_reason = _json_get_string(drow2, "irreversible_reason")
+                                    let step_on_error = _json_get_string(drow2, "on_error")
+                                    let step_retry = _parse_nonneg_i32(_json_get_string(drow2, "retry"), 0)
+                                    let step_timeout = _json_get_string(drow2, "timeout")
+                                    let step_group = _json_get_string(drow2, "group")
+                                    let attempt = _parse_nonneg_i32(_json_get_string(drow2, "attempt"), 1)
+                                    let timeout_deadline_tick = _parse_nonneg_i32(_json_get_string(drow2, "timeout_deadline_tick"), 0)
+                                    let timeout_ms = _timeout_ms_from_token(step_timeout)
+                                    let synthetic_cost = _synthetic_step_cost_ms(step_flow, step_id)
+                                    let attempts = step_retry + 1
+                                    let should_fail = 0
+                                    let fail_note = ""
+                                    let retry_permitted = 1
+                                    if ((timeout_deadline_tick > 0) and (tick >= timeout_deadline_tick)):
+                                        should_fail = 1
+                                        fail_note = "timeout-deadline-exceeded"
+                                        retry_permitted = 0
+                                    else:
+                                        if ((timeout_ms > 0) and (synthetic_cost > timeout_ms)):
+                                            should_fail = 1
+                                            fail_note = "timeout-budget-exceeded"
+                                        if ((strlen(timeout_at) > 0) and (step_id == timeout_at)):
+                                            should_fail = 1
+                                            fail_note = "timeout-injected"
+                                        if ((strlen(fail_at) > 0) and (step_id == fail_at)):
+                                            should_fail = 1
+                                            fail_note = "failure-injected"
+                                        if ((strlen(fail_once_at) > 0) and (step_id == fail_once_at) and (fail_once_consumed == 0) and (should_fail == 0)):
+                                            should_fail = 1
+                                            fail_note = "failure-once-injected"
+                                            fail_once_consumed = 1
+                                    if (should_fail == 1):
+                                        if ((attempt < attempts) and (retry_permitted == 1) and (stop_after_wave == 0)):
+                                            let retry_ticks = _retry_delay_ticks(attempt)
+                                            let retry_ready_tick = tick + retry_ticks
+                                            if ((timeout_deadline_tick > 0) and (retry_ready_tick >= timeout_deadline_tick)):
+                                                let deadline_note = _decorate_failure_note("timeout-deadline-exceeded", step_on_error, step_irr_reason)
+                                                journal = _journal_append(journal, _flow_event_line(journal_format, step_flow, step_id, "failed", step_has_undo, step_undo, step_irr, deadline_note), journal_path, durability, journal_format)
+                                                next_states = next_states + _step_state_json(step_flow, step_id, step_has_undo, step_undo, step_irr, step_irr_reason, step_on_error, step_retry, step_timeout, step_group, attempt, 1, tick, timeout_deadline_tick)
+                                                if (batch_failed == 0):
+                                                    batch_failed = 1
+                                                    batch_failed_flow = step_flow
+                                                    batch_failed_step = step_id
+                                                    stop_after_wave = 1
+                                            else:
+                                                let retry_note = fail_note + ";retrying;retry_in_ticks=" + _to_string_i32(retry_ticks) + ";next_tick=" + _to_string_i32(retry_ready_tick)
+                                                retry_note = _decorate_step_note(retry_note, step_on_error, step_irr_reason)
+                                                journal = _journal_append(journal, _flow_event_line(journal_format, step_flow, step_id, "failed", step_has_undo, step_undo, step_irr, retry_note), journal_path, durability, journal_format)
+                                                next_states = next_states + _step_state_json(step_flow, step_id, step_has_undo, step_undo, step_irr, step_irr_reason, step_on_error, step_retry, step_timeout, step_group, attempt + 1, 0, retry_ready_tick, timeout_deadline_tick)
+                                                active_next = 1
+                                                if ((min_due_tick < 0) or (retry_ready_tick < min_due_tick)):
+                                                    min_due_tick = retry_ready_tick
+                                        else:
+                                            let final_fail_note = _decorate_failure_note(fail_note, step_on_error, step_irr_reason)
+                                            journal = _journal_append(journal, _flow_event_line(journal_format, step_flow, step_id, "failed", step_has_undo, step_undo, step_irr, final_fail_note), journal_path, durability, journal_format)
+                                            next_states = next_states + _step_state_json(step_flow, step_id, step_has_undo, step_undo, step_irr, step_irr_reason, step_on_error, step_retry, step_timeout, step_group, attempt, 1, tick, timeout_deadline_tick)
+                                            if (batch_failed == 0):
+                                                batch_failed = 1
+                                                batch_failed_flow = step_flow
+                                                batch_failed_step = step_id
+                                                stop_after_wave = 1
+                                    else:
+                                        let rec = step_flow + "^" + step_id + "^" + _to_string_i32(step_has_undo) + "^" + step_undo + "^" + _to_string_i32(step_irr)
+                                        completed_rev = rec + ";" + completed_rev
+                                        let ok_note = "attempt=" + _to_string_i32(attempt) + "/" + _to_string_i32(attempts) + ";tick=" + _to_string_i32(tick)
+                                        if (strlen(step_group) > 0):
+                                            ok_note = ok_note + ";group=" + step_group
+                                        ok_note = _decorate_step_note(ok_note, step_on_error, step_irr_reason)
+                                        journal = _journal_append(journal, _flow_event_line(journal_format, step_flow, step_id, "ok", step_has_undo, step_undo, step_irr, ok_note), journal_path, durability, journal_format)
+                                        next_states = next_states + _step_state_json(step_flow, step_id, step_has_undo, step_undo, step_irr, step_irr_reason, step_on_error, step_retry, step_timeout, step_group, attempt, 1, tick, timeout_deadline_tick)
+                                di = di + 1
+                            if (stop_after_wave == 1):
+                                active_next = 0
+                                min_due_tick = -1
+                        states = next_states
+                        pending_steps = active_next
+                        if (pending_steps == 1):
+                            if (min_due_tick > tick):
+                                tick = min_due_tick
+                            else:
+                                tick = tick + 1
+                    pending_batch = ""
+                    _journal_flush(journal, journal_path, durability, journal_format, 0)
+                    if (batch_failed == 1):
+                        failed = 1
+                        failed_flow = batch_failed_flow
+                        failed_step = batch_failed_step
+                if (close_parallel == 1):
+                    parallel_open = 0
+                    parallel_indent = -1
+                    parallel_group_id = ""
+        i = i + 1
+    let comp_failed = 0
+    let compensated = 0
+    let skipped_irreversible = 0
+    let t = ""
+    let p = 0
+    let m = strlen(completed_rev)
+    while (p < m):
+        let ch = _char_at(completed_rev, p)
+        if (ch == ";"):
+            if (strlen(t) > 0):
+                let a = _find(t, "^")
+                let b = -1
+                let c = -1
+                if (a >= 0):
+                    b = a + 1 + _find(__thg_str_substr(t, a + 1, strlen(t) - a - 1), "^")
+                if (b >= 0):
+                    c = b + 1 + _find(__thg_str_substr(t, b + 1, strlen(t) - b - 1), "^")
+                let flow = ""
+                let sid = ""
+                let has_undo_s = "0"
+                let undo_expr = ""
+                let irr_s = "0"
+                let d = -1
+                if (c >= 0):
+                    d = c + 1 + _find(__thg_str_substr(t, c + 1, strlen(t) - c - 1), "^")
+                if (a > 0):
+                    flow = __thg_str_substr(t, 0, a)
+                if ((b > a) and (a >= 0)):
+                    sid = __thg_str_substr(t, a + 1, b - a - 1)
+                if ((c > b) and (b >= 0)):
+                    has_undo_s = __thg_str_substr(t, b + 1, c - b - 1)
+                if ((d > c) and (c >= 0)):
+                    undo_expr = __thg_str_substr(t, c + 1, d - c - 1)
+                    irr_s = __thg_str_substr(t, d + 1, strlen(t) - d - 1)
+                if ((failed == 1) and (crash_after_fail == 0)):
+                    if (has_undo_s == "1"):
+                        compensated = compensated + 1
+                        journal = _journal_append(journal, _flow_event_line(journal_format, flow, sid, "compensated", 1, undo_expr, 0, ""), journal_path, durability, journal_format)
+                    else:
+                        if (irr_s == "1"):
+                            skipped_irreversible = skipped_irreversible + 1
+                        else:
+                            comp_failed = 1
+                            journal = _journal_append(journal, _flow_event_line(journal_format, flow, sid, "comp_failed", 0, "", 0, "missing-undo"), journal_path, durability, journal_format)
+                _journal_flush(journal, journal_path, durability, journal_format, 0)
+                t = ""
+        else:
+            t = t + ch
+        p = p + 1
+    _journal_flush(journal, journal_path, durability, journal_format, 1)
+    let status = "success"
+    if (failed == 1):
+        status = "step_failed"
+    if ((failed == 1) and (crash_after_fail == 1)):
+        status = "crashed"
+    if (comp_failed == 1):
+        status = "compensation_failed"
+    _write_flow_session(session_id, entry_path, mode, durability, journal_format, status, failed_flow, failed_step, journal_path, compensated, skipped_irreversible, comp_failed)
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("schema_version") + ":1,"
+        json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+        json = json + _json_quote("type") + ":" + _json_quote("flow_simulate") + ","
+        json = json + _json_quote("entry") + ":" + _json_quote(_normalize_path(entry_path)) + ","
+        json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
+        json = json + _json_quote("durability") + ":" + _json_quote(durability) + ","
+        json = json + _json_quote("journal_format") + ":" + _json_quote(journal_format) + ","
+        json = json + _json_quote("session_id") + ":" + _json_quote(session_id) + ","
+        json = json + _json_quote("status") + ":" + _json_quote(status) + ","
+        json = json + _json_quote("failed_flow") + ":" + _json_quote(failed_flow) + ","
+        json = json + _json_quote("failed_step") + ":" + _json_quote(failed_step) + ","
+        json = json + _json_quote("compensated") + ":" + _to_string_i32(compensated) + ","
+        json = json + _json_quote("irreversible_skipped") + ":" + _to_string_i32(skipped_irreversible) + ","
+        json = json + _json_quote("fail_once_at") + ":" + _json_quote(fail_once_at) + ","
+        json = json + _json_quote("timeout_at") + ":" + _json_quote(timeout_at) + ","
+        json = json + _json_quote("crash_after_fail") + ":" + _json_bool(crash_after_fail) + ","
+        json = json + _json_quote("journal_file") + ":" + _json_quote(journal_path)
+        json = json + "}"
+        print(json)
+    else:
+        print("[flow][simulate] session=" + session_id)
+        print("[flow][simulate] mode=" + mode + " durability=" + durability + " journal_format=" + journal_format + " status=" + status)
+        if (failed == 1):
+            print("[flow][simulate] failed_flow=" + failed_flow + " failed_step=" + failed_step)
+            print("[flow][simulate] compensated=" + _to_string_i32(compensated) + " irreversible_skipped=" + _to_string_i32(skipped_irreversible))
+        print("[flow][simulate] journal=" + journal_path)
+    if ((failed == 1) or (comp_failed == 1)):
+        return 1
+    return 0
+
+func run_flow_simulate_with_policy_full(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32, durability_input: String, journal_format_input: String) -> i32:
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, durability_input, journal_format_input)
+
+func run_flow_simulate_with_policy_durable(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32, durability_input: String) -> i32:
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, durability_input, "compact")
+
+func run_flow_simulate_with_policy(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32) -> i32:
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, "normal", "compact")
+
+func run_flow_simulate(entry_path: String, mode_input: String, fail_at: String, as_json: i32) -> i32:
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 0, "normal", "compact")
+
+func run_flow_simulate_crash(entry_path: String, mode_input: String, fail_at: String, as_json: i32) -> i32:
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 1, "normal", "compact")
+
+func run_flow_recover(session_id: String, as_json: i32) -> i32:
+    let sid = _trim(session_id)
+    if (strlen(sid) == 0):
+        print("[flow] recover error: missing session id.")
+        return 1
+    let session_path = ".thagore/flow/sessions/" + sid + ".json"
+    if (fs.exists(session_path) == 0):
+        print("[flow] recover error: session not found: " + sid)
+        return 1
+    let session_text = fs.read_text(session_path)
+    let entry = _json_get_string(session_text, "entry")
+    let mode = _json_get_string(session_text, "mode")
+    let durability = _flow_durability(_json_get_string(session_text, "durability"))
+    let status = _json_get_string(session_text, "status")
+    let failed_flow = _json_get_string(session_text, "failed_flow")
+    let failed_step = _json_get_string(session_text, "failed_step")
+    let journal_path = _json_get_string(session_text, "journal_file")
+    let journal_format = _flow_journal_format(_json_get_string(session_text, "journal_format"))
+    if ((strlen(_json_get_string(session_text, "journal_format")) == 0) and (_ends_with(journal_path, ".jsonl") == 1)):
+        journal_format = "jsonl"
+    if ((strlen(_json_get_string(session_text, "journal_format")) == 0) and (_ends_with(journal_path, ".bin") == 1)):
+        journal_format = "binary"
+    if (strlen(journal_path) == 0):
+        print("[flow] recover error: journal path missing in session.")
+        return 1
+    if (fs.exists(journal_path) == 0):
+        print("[flow] recover error: journal not found: " + journal_path)
+        return 1
+    if ((status == "success") or (status == "recovered")):
+        if (as_json == 1):
+            let json_noop = "{"
+            json_noop = json_noop + _json_quote("schema_version") + ":1,"
+            json_noop = json_noop + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+            json_noop = json_noop + _json_quote("type") + ":" + _json_quote("flow_recover") + ","
+            json_noop = json_noop + _json_quote("session_id") + ":" + _json_quote(sid) + ","
+            json_noop = json_noop + _json_quote("durability") + ":" + _json_quote(durability) + ","
+            json_noop = json_noop + _json_quote("journal_format") + ":" + _json_quote(journal_format) + ","
+            json_noop = json_noop + _json_quote("status") + ":" + _json_quote("noop")
+            json_noop = json_noop + "}"
+            print(json_noop)
+        else:
+            print("[flow][recover] session=" + sid + " status=noop")
+        return 0
+    let journal = ""
+    if (journal_format == "binary"):
+        journal = _binary_journal_to_compact_lines(_read_binary_file(journal_path))
+    else:
+        journal = fs.read_text(journal_path)
+    let reversible_rev = ""
+    let compensated_set = ";"
+    let comp_failed_set = ";"
+    let journal_corrupt = 0
+    let journal_corrupt_line = 0
+    let total = _line_count(journal)
+    let i = 0
+    while (i < total):
+        let line = _trim(_line_at(journal, i))
+        if (strlen(line) > 0):
+            let ev_flow = ""
+            let ev_step = ""
+            let ev_status = ""
+            let ev_has_undo = 0
+            let ev_undo = ""
+            let ev_irr = 0
+            if (_starts_with(line, "{") == 1):
+                ev_flow = _json_get_string(line, "flow_id")
+                ev_step = _json_get_string(line, "step_id")
+                ev_status = _json_get_string(line, "status")
+                ev_has_undo = _json_get_bool(line, "has_undo", 0)
+                ev_undo = _json_get_string(line, "undo")
+                ev_irr = _json_get_bool(line, "irreversible", 0)
+            else:
+                if (_starts_with(line, "B|") == 1):
+                    ev_flow = _unpack_field(_compact_field_at(line, 1))
+                    ev_step = _unpack_field(_compact_field_at(line, 2))
+                    ev_status = _unpack_field(_compact_field_at(line, 3))
+                    ev_has_undo = _parse_nonneg_i32(_compact_field_at(line, 4), 0)
+                    ev_undo = _unpack_field(_compact_field_at(line, 5))
+                    ev_irr = _parse_nonneg_i32(_compact_field_at(line, 6), 0)
+            if (mode == "strict"):
+                if ((strlen(ev_flow) == 0) or (strlen(ev_step) == 0) or (_is_flow_event_status(ev_status) == 0)):
+                    journal_corrupt = 1
+                    journal_corrupt_line = i + 1
+                    i = total
+            let ev_key = ev_flow + "|" + ev_step
+            if (journal_corrupt == 0):
+                if (ev_status == "ok"):
+                    let row = ev_flow + "^" + ev_step + "^" + _to_string_i32(ev_has_undo) + "^" + ev_undo + "^" + _to_string_i32(ev_irr)
+                    reversible_rev = row + ";" + reversible_rev
+                else:
+                    if (ev_status == "compensated"):
+                        compensated_set = _set_add_unique(compensated_set, ev_key)
+                    else:
+                        if (ev_status == "comp_failed"):
+                            comp_failed_set = _set_add_unique(comp_failed_set, ev_key)
+        i = i + 1
+    if (journal_corrupt == 1):
+        _write_flow_session(sid, entry, mode, durability, journal_format, "recovery_failed", failed_flow, failed_step, journal_path, 0, 0, 1)
+        if (as_json == 1):
+            let err_json = "{"
+            err_json = err_json + _json_quote("schema_version") + ":1,"
+            err_json = err_json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+            err_json = err_json + _json_quote("type") + ":" + _json_quote("flow_recover") + ","
+            err_json = err_json + _json_quote("session_id") + ":" + _json_quote(sid) + ","
+            err_json = err_json + _json_quote("durability") + ":" + _json_quote(durability) + ","
+            err_json = err_json + _json_quote("journal_format") + ":" + _json_quote(journal_format) + ","
+            err_json = err_json + _json_quote("status") + ":" + _json_quote("recovery_failed") + ","
+            err_json = err_json + _json_quote("error") + ":" + _json_quote("journal_corrupt") + ","
+            err_json = err_json + _json_quote("line") + ":" + _to_string_i32(journal_corrupt_line)
+            err_json = err_json + "}"
+            print(err_json)
+        else:
+            print("[flow][recover] session=" + sid + " status=recovery_failed")
+            print("[flow][recover] error=journal_corrupt line=" + _to_string_i32(journal_corrupt_line))
+        return 1
+    let recovery_events = ""
+    let recovered_comp = 0
+    let recovered_skip = 0
+    let recovery_failed = 0
+    let token = ""
+    let p = 0
+    let n = strlen(reversible_rev)
+    while (p < n):
+        let ch = _char_at(reversible_rev, p)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                let a = _find(token, "^")
+                let b = -1
+                let c = -1
+                let d = -1
+                if (a >= 0):
+                    b = a + 1 + _find(__thg_str_substr(token, a + 1, strlen(token) - a - 1), "^")
+                if (b >= 0):
+                    c = b + 1 + _find(__thg_str_substr(token, b + 1, strlen(token) - b - 1), "^")
+                if (c >= 0):
+                    d = c + 1 + _find(__thg_str_substr(token, c + 1, strlen(token) - c - 1), "^")
+                let row_flow = ""
+                let row_step = ""
+                let row_has_undo = "0"
+                let row_undo = ""
+                let row_irr = "0"
+                if (a > 0):
+                    row_flow = __thg_str_substr(token, 0, a)
+                if (b > a):
+                    row_step = __thg_str_substr(token, a + 1, b - a - 1)
+                if (c > b):
+                    row_has_undo = __thg_str_substr(token, b + 1, c - b - 1)
+                if (d > c):
+                    row_undo = __thg_str_substr(token, c + 1, d - c - 1)
+                    row_irr = __thg_str_substr(token, d + 1, strlen(token) - d - 1)
+                let row_key = row_flow + "|" + row_step
+                if ((_set_contains(compensated_set, row_key) == 0) and (_set_contains(comp_failed_set, row_key) == 0)):
+                    if (row_has_undo == "1"):
+                        recovered_comp = recovered_comp + 1
+                        compensated_set = _set_add_unique(compensated_set, row_key)
+                        recovery_events = recovery_events + _flow_event_line(journal_format, row_flow, row_step, "compensated", 1, row_undo, 0, "recover-resume")
+                    else:
+                        if (row_irr == "1"):
+                            recovered_skip = recovered_skip + 1
+                        else:
+                            recovery_failed = 1
+                            comp_failed_set = _set_add_unique(comp_failed_set, row_key)
+                            recovery_events = recovery_events + _flow_event_line(journal_format, row_flow, row_step, "comp_failed", 0, "", 0, "recover-missing-undo")
+                token = ""
+        else:
+            token = token + ch
+        p = p + 1
+    if (strlen(recovery_events) > 0):
+        fs.write_text(journal_path, journal + recovery_events)
+    let new_status = "recovered"
+    if (recovery_failed == 1):
+        new_status = "recovery_failed"
+    _write_flow_session(sid, entry, mode, durability, journal_format, new_status, failed_flow, failed_step, journal_path, recovered_comp, recovered_skip, recovery_failed)
+    if (as_json == 1):
+        let json = "{"
+        json = json + _json_quote("schema_version") + ":1,"
+        json = json + _json_quote("event_schema") + ":" + _json_quote("thagore.flow.v1") + ","
+        json = json + _json_quote("type") + ":" + _json_quote("flow_recover") + ","
+        json = json + _json_quote("session_id") + ":" + _json_quote(sid) + ","
+        json = json + _json_quote("durability") + ":" + _json_quote(durability) + ","
+        json = json + _json_quote("journal_format") + ":" + _json_quote(journal_format) + ","
+        json = json + _json_quote("status") + ":" + _json_quote(new_status) + ","
+        json = json + _json_quote("compensated") + ":" + _to_string_i32(recovered_comp) + ","
+        json = json + _json_quote("irreversible_skipped") + ":" + _to_string_i32(recovered_skip) + ","
+        json = json + _json_quote("journal_file") + ":" + _json_quote(journal_path)
+        json = json + "}"
+        print(json)
+    else:
+        print("[flow][recover] session=" + sid + " status=" + new_status)
+        print("[flow][recover] compensated=" + _to_string_i32(recovered_comp) + " irreversible_skipped=" + _to_string_i32(recovered_skip))
+        print("[flow][recover] journal=" + journal_path)
+    if (recovery_failed == 1):
+        return 1
+    return 0

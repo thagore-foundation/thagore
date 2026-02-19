@@ -1,9 +1,9 @@
 # Thagore Flow (Saga as Language Primitive)
 
 Implementation approval: Approved  
-Status: Approved for implementation  
+Status: Implemented (Phase A/B/C + tooling MVP; parallel/barrier semantic checks)  
 Owner: Thagore Compiler / Runtime Reliability  
-Last updated: 2026-02-15
+Last updated: 2026-02-19
 
 ## 1) Vision
 
@@ -109,7 +109,8 @@ Minimal journal fields:
 ```bash
 thagore flow doctor <entry.tg>
 thagore flow explain <entry.tg> [--json]
-thagore flow simulate <entry.tg> [--fail-at <step-id>]
+thagore flow simulate <entry.tg> [--fail-at <step-id>] [--fail-once-at <step-id>] [--timeout-at <step-id>] [--durability <high|normal|low>] [--journal-format <compact|jsonl|binary>]
+thagore flow recover <session-id> [--json]
 thagore build <entry.tg> --flow=<off|on|strict>
 ```
 
@@ -118,6 +119,7 @@ Command roles:
 - `flow doctor`: checks feature readiness and metadata coverage.
 - `flow explain`: prints generated state machine and compensation graph.
 - `flow simulate`: chaos-style failure injection in build/test context.
+- `flow recover`: resume rollback from a failed/crashed session (`session-id` defaults to latest when omitted in CLI).
 
 ## 8) Reliability contracts
 
@@ -213,6 +215,36 @@ Hard fail conditions:
 - `flow explain`,
 - `flow simulate`,
 - CI policy templates.
+
+## 14) Implementation snapshot (2026-02-19)
+
+Done:
+
+- Phase A/B parser + semantic checks for `flow/step/undo/retry/timeout/idempotent/irreversible`.
+- Runtime MVP supports journaled simulate + compensation + crash/recover workflow.
+- Optional step metadata (`on_error`, `irreversible reason`) is validated and surfaced in `flow explain` JSON/human output; simulate journal notes now carry mapped failure context for these declarations.
+- Runtime simulate executes `parallel` groups as barrier-bounded batches (group sibling steps are evaluated before flow fail decision).
+- Parallel batch scheduler uses round-robin attempt interleaving to model concurrent progress while preserving deterministic replay.
+- Retry scheduling now uses deterministic tick delays (`retry_in_ticks`) with bounded backoff to mimic timer-wheel semantics without per-step threads.
+- Timeout and retry now share step-level tick deadlines (`deadline_tick`), so retries are cut off when timeout budget is exhausted.
+- Scheduler now runs concurrent tick waves: all due steps in a tick are started before result evaluation, then resolved together.
+- Scheduler skips idle ticks by jumping directly to next due tick in batch state, reducing replay overhead.
+- Simulate supports injected fail paths (`fail-at`, `fail-once-at`, `timeout-at`) and retry attempts.
+- Simulate supports durability levels (`high|normal|low`) with different journal flush policies.
+- Journal now supports compact record format by default, with `jsonl` compatibility mode and binary (`.bin`) mode for compact persistence.
+- High durability journal writes now append incrementally (instead of rewriting full buffer each event), improving runtime write cost.
+- Strict recovery now hard-fails on corrupted journal events.
+- `parallel:` / `barrier` headers are validated semantically (including missing-barrier and empty-parallel diagnostics).
+- Strict mode rejects unknown external step capabilities; doctor reports capability known/unknown coverage.
+- `flow doctor` now has incremental cache (`.thagore/flow/cache`) keyed by entry/mode/source-hash with hit/miss reporting.
+- `flow explain --json` now reuses cached flow graph output (`.thagore/flow/cache`) keyed by entry/mode/source-hash.
+- Doctor/explain cache fingerprint now includes transitive `import` dependencies, so cache invalidates on dependency source changes.
+- Validation cache is now shared across doctor/explain/simulate/build gate, reducing repeated strict checks in the full flow pipeline.
+- CLI and tests cover doctor/explain/simulate/recover + strict/off/on build modes.
+
+Remaining (roadmap scope):
+
+- none.
 
 ## 12) Testing strategy
 

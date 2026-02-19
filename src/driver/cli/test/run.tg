@@ -1,5 +1,57 @@
 import "src/driver/cli/common/core.tg"
 
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _shell_quote(value: String) -> String:
+    let dq = __string_from_codepoint(34)
+    let escaped = _replace_all(value, dq, "\\" + dq)
+    return dq + escaped + dq
+
+func _args_text_to_shell_suffix(args_text: String) -> String:
+    let out = ""
+    let total = _line_count(args_text)
+    let i = 0
+    while (i < total):
+        let token = _trim(_line_at(args_text, i))
+        if (strlen(token) > 0):
+            out = out + " " + _shell_quote(token)
+        i = i + 1
+    return out
+
+func _exec_redirect_with_fallback(program: String, args_text: String, stdout_path: String, stderr_path: String) -> i32:
+    if ((strlen(stdout_path) == 0) and (strlen(stderr_path) == 0)):
+        return process.exec(program, args_text)
+    if (strlen(stdout_path) > 0):
+        fs.write_text(stdout_path, "")
+    if ((strlen(stderr_path) > 0) and (stderr_path != stdout_path)):
+        fs.write_text(stderr_path, "")
+    let rc = process.exec_redirect(program, args_text, stdout_path, stderr_path)
+    let stdout_ready = 1
+    let stderr_ready = 1
+    if (strlen(stdout_path) > 0):
+        if (fs.exists(stdout_path) == 0):
+            stdout_ready = 0
+    if (strlen(stderr_path) > 0):
+        if (fs.exists(stderr_path) == 0):
+            stderr_ready = 0
+    if ((stdout_ready == 1) and (stderr_ready == 1)):
+        return rc
+    let cmd = _shell_quote(program) + _args_text_to_shell_suffix(args_text)
+    if (strlen(stdout_path) > 0):
+        if ((strlen(stderr_path) == 0) or (stderr_path == stdout_path)):
+            cmd = cmd + " > " + _shell_quote(stdout_path) + " 2>&1"
+        else:
+            cmd = cmd + " > " + _shell_quote(stdout_path) + " 2> " + _shell_quote(stderr_path)
+    else:
+        if (strlen(stderr_path) > 0):
+            cmd = cmd + " 2> " + _shell_quote(stderr_path)
+    let rc_shell = process.run(cmd)
+    if ((strlen(stdout_path) > 0) and (fs.exists(stdout_path) == 0)):
+        fs.write_text(stdout_path, "")
+    if ((strlen(stderr_path) > 0) and (fs.exists(stderr_path) == 0)):
+        fs.write_text(stderr_path, "")
+    return rc_shell
+
 func _resolve_test_compiler() -> String:
     if (fs.exists("stage1.exe") == 1):
         return ".\\stage1.exe"
@@ -15,8 +67,13 @@ func _build_test_target(input_path: String, out_path: String, quiet: i32, build_
     let compiler = _resolve_test_compiler()
     if (strlen(compiler) > 0):
         let args = "build\n" + input_path + "\n-o\n" + out_path
-        if ((quiet == 1) and (strlen(build_log_path) > 0)):
-            return process.exec_redirect(compiler, args, build_log_path, build_log_path)
+        if (strlen(build_log_path) > 0):
+            let rc = _exec_redirect_with_fallback(compiler, args, build_log_path, build_log_path)
+            if (quiet == 0):
+                let text = fs.read_text(build_log_path)
+                if (strlen(_trim(text)) > 0):
+                    print(text)
+            return rc
         return process.exec(compiler, args)
     return _build_once(input_path, out_path, 0)
 
@@ -32,11 +89,31 @@ func _test_exec_path(path: String) -> String:
 
 func _run_test_binary(path: String, quiet: i32, run_log_path: String) -> i32:
     let exec_path = _test_exec_path(path)
-    if (quiet == 0):
-        return process.exec(exec_path, "")
+    if (strlen(run_log_path) > 0):
+        let rc = _exec_redirect_with_fallback(exec_path, "", run_log_path, run_log_path)
+        if (quiet == 0):
+            let text = fs.read_text(run_log_path)
+            if (strlen(_trim(text)) > 0):
+                print(text)
+        return rc
+    return process.exec(exec_path, "")
+
+func _run_log_has_fail_marker(run_log_path: String) -> i32:
+    if ((strlen(run_log_path) == 0) or (fs.exists(run_log_path) == 0)):
+        return 0
+    let text = fs.read_text(run_log_path)
+    if (_contains(text, "TOTAL FAILS:") == 1):
+        return 1
+    if (_contains(text, "FAIL:") == 1):
+        return 1
+    return 0
+
+func _run_log_missing(run_log_path: String) -> i32:
     if (strlen(run_log_path) == 0):
-        return process.exec(exec_path, "")
-    return process.exec_redirect(exec_path, "", run_log_path, run_log_path)
+        return 0
+    if (fs.exists(run_log_path) == 1):
+        return 0
+    return 1
 
 func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_json: i32, list_only: i32, exclude_set: String, package_set: String, exclude_package_set: String) -> i32:
     let tests = _discover_tests(filter, workspace, exclude_set, package_set, exclude_package_set)
@@ -140,7 +217,12 @@ func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_
                     if (as_json == 1):
                         _emit_test_case_json(path, "run", "started", 0, 0, run_log, 1, run_id)
                     let run_rc = _run_test_binary(out_bin, as_json, run_log)
-                    if (run_rc == 0):
+                    let effective_run_rc = run_rc
+                    if ((effective_run_rc == 0) and (_run_log_missing(run_log) == 1)):
+                        effective_run_rc = 1
+                    if ((effective_run_rc == 0) and (_run_log_has_fail_marker(run_log) == 1)):
+                        effective_run_rc = 1
+                    if (effective_run_rc == 0):
                         run_passed = run_passed + 1
                         if (as_json == 1):
                             _emit_test_case_json(path, "run", "ok", 0, 0, run_log, 1, run_id)
@@ -150,7 +232,7 @@ func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_
                         run_failed = run_failed + 1
                         run_failed_set = _set_add_unique(run_failed_set, path)
                         if (as_json == 1):
-                            _emit_test_case_json(path, "run", "failed", run_rc, 1, run_log, 1, run_id)
+                            _emit_test_case_json(path, "run", "failed", effective_run_rc, 1, run_log, 1, run_id)
                         else:
                             print("test " + path + " ... FAILED")
                         if (fail_fast == 1):
@@ -182,4 +264,3 @@ func _run_tests(filter: String, workspace: i32, no_run: i32, fail_fast: i32, as_
     if (failed_total == 0):
         return 0
     return 1
-

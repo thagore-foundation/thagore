@@ -498,6 +498,7 @@ func _write_bundle_session(entry_path: String, mode: String, lock_path: String, 
     let bundle_id = "BND-" + _to_string_i32(time.now_ms()) + "-" + _sanitize_test_id(entry_path)
     let session_path = ".thagore/fix/sessions/" + bundle_id + ".json"
     let report_path = ".thagore/fix/reports/" + bundle_id + ".json"
+    let rollback_command = "thagore fix rollback " + bundle_id
     let lock_digest = _lock_digest(lock_path)
     let diagnostics_seen_set = _bundle_member_union_string_array_set(member_sessions_set, "diagnostics_seen")
     let applied_rules_set = _bundle_member_union_string_array_set(member_sessions_set, "applied_rules")
@@ -510,6 +511,7 @@ func _write_bundle_session(entry_path: String, mode: String, lock_path: String, 
     summary = summary + "}"
     let report = "{"
     report = report + _json_quote("schema_version") + ":1,"
+    report = report + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.session.v1") + ","
     report = report + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
     report = report + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
     report = report + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
@@ -524,11 +526,13 @@ func _write_bundle_session(entry_path: String, mode: String, lock_path: String, 
     report = report + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
     report = report + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
     report = report + _json_quote("member_sessions") + ":" + _set_to_json_array(member_sessions_set) + ","
+    report = report + _json_quote("rollback_command") + ":" + _json_quote(rollback_command) + ","
     report = report + _json_quote("summary") + ":" + summary
     report = report + "}" + _nl()
     fs.write_text(report_path, report)
     let session = "{"
     session = session + _json_quote("schema_version") + ":1,"
+    session = session + _json_quote("event_schema") + ":" + _json_quote("thagore.fix.session.v1") + ","
     session = session + _json_quote("session_id") + ":" + _json_quote(bundle_id) + ","
     session = session + _json_quote("session_type") + ":" + _json_quote("bundle") + ","
     session = session + _json_quote("tool") + ":" + _json_quote("thagore fix") + ","
@@ -543,6 +547,7 @@ func _write_bundle_session(entry_path: String, mode: String, lock_path: String, 
     session = session + _json_quote("applied_rules") + ":" + _set_to_json_array(applied_rules_set) + ","
     session = session + _json_quote("member_sessions_set") + ":" + _json_quote(member_sessions_set) + ","
     session = session + _json_quote("summary") + ":" + summary + ","
+    session = session + _json_quote("rollback_command") + ":" + _json_quote(rollback_command) + ","
     session = session + _json_quote("report_file") + ":" + _json_quote(report_path)
     session = session + "}" + _nl()
     if (fs.write_text(session_path, session) == 0):
@@ -632,4 +637,3 @@ func _emit_fix_summary_json(sub: String, discovered_total: i32, attempts: i32, p
     json = json + _json_quote("lock_digest") + ":" + _json_quote(lock_digest)
     json = json + "}"
     print(json)
-
