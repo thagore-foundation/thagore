@@ -34,6 +34,23 @@ func _update_platform_supported(os_name: String, arch: String) -> i32:
         return 0
     return 1
 
+func _update_windows_is_admin() -> i32:
+    if (_update_detect_os() != "windows"):
+        return 0
+    if (process.run("net session >nul 2>&1") == 0):
+        return 1
+    return 0
+
+func _update_windows_needs_admin(exe_path: String) -> i32:
+    if (_update_detect_os() != "windows"):
+        return 0
+    let norm = _normalize_path(exe_path)
+    if (_contains(norm, "/Program Files/") == 1):
+        return 1
+    if (_contains(norm, "/Program Files (x86)/") == 1):
+        return 1
+    return 0
+
 func _update_target_binary_name(os_name: String) -> String:
     if (os_name == "windows"):
         return "thagore.exe"

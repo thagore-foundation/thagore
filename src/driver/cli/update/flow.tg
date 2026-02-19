@@ -33,6 +33,7 @@ func _update_confirm(yes: i32, text: String) -> i32:
 func _update_apply(argc: i32, start: i32) -> i32:
     let yes = 0
     let dry_run = 0
+    let elevated = 0
     let i = start
     while (i < argc):
         let arg = _trim(env.get(i))
@@ -42,8 +43,11 @@ func _update_apply(argc: i32, start: i32) -> i32:
             if (arg == "--dry-run"):
                 dry_run = 1
             else:
-                print("ERROR: unknown update apply flag: " + arg)
-                return 1
+                if (arg == "--elevated"):
+                    elevated = 1
+                else:
+                    print("ERROR: unknown update apply flag: " + arg)
+                    return 1
         i = i + 1
     let os_name = _update_detect_os()
     let arch = _update_detect_arch()
@@ -92,18 +96,61 @@ func _update_apply(argc: i32, start: i32) -> i32:
     if (_ends_with(exe_path, ".exe") == 1):
         backup_path = backup_path + ".exe"
     if (os_name == "windows"):
+        if ((_update_windows_needs_admin(exe_path) == 1) and (_update_windows_is_admin() == 0)):
+            if (elevated == 1):
+                print("ERROR: update requires administrator privileges, but elevation was not granted.")
+                return 1
+            let ps_args = "-NoProfile" + process.argv_sep()
+            ps_args = ps_args + "-ExecutionPolicy" + process.argv_sep()
+            ps_args = ps_args + "Bypass" + process.argv_sep()
+            ps_args = ps_args + "-Command" + process.argv_sep()
+            let ps_script = "Start-Process -Verb RunAs -FilePath " + _quote(exe_path) + " -ArgumentList 'update','apply','--yes','--elevated'"
+            ps_args = ps_args + ps_script
+            if (process.exec("powershell", ps_args) != 0):
+                print("ERROR: failed to relaunch updater with administrator privileges.")
+                return 1
+            print("[update] Relaunched elevated updater. Follow UAC prompt to continue.")
+            return 0
         let staged_path = path.join(_update_state_dir(), "thagore.exe.next")
+        let apply_script = path.join(_update_state_dir(), "apply-update.cmd")
         if (fs.exists(staged_path) == 1):
             fs.remove(staged_path)
+        if (fs.exists(apply_script) == 1):
+            fs.remove(apply_script)
         if (fs.move(new_bin, staged_path) != 1):
             print("ERROR: failed to stage updated binary for Windows.")
             return 1
-        print("ERROR: Windows self-update is not supported by current runtime API (cannot replace running thagore.exe).")
-        print("[update] Staged binary: " + staged_path)
-        print("[update] Apply manually after closing all thagore processes:")
-        print("[update]   move /y \"" + exe_path + "\" \"" + backup_path + "\"")
-        print("[update]   move /y \"" + staged_path + "\" \"" + exe_path + "\"")
-        return 1
+        let script = "@echo off" + _nl()
+        script = script + "setlocal" + _nl()
+        script = script + "set SRC=" + _quote(staged_path) + _nl()
+        script = script + "set DST=" + _quote(exe_path) + _nl()
+        script = script + "set BAK=" + _quote(backup_path) + _nl()
+        script = script + "for /l %%i in (1,1,20) do (" + _nl()
+        script = script + "  move /y %DST% %BAK% >nul 2>&1 && goto moved_old" + _nl()
+        script = script + "  timeout /t 1 /nobreak >nul" + _nl()
+        script = script + ")" + _nl()
+        script = script + "exit /b 1" + _nl()
+        script = script + ":moved_old" + _nl()
+        script = script + "for /l %%j in (1,1,20) do (" + _nl()
+        script = script + "  move /y %SRC% %DST% >nul 2>&1 && goto done" + _nl()
+        script = script + "  timeout /t 1 /nobreak >nul" + _nl()
+        script = script + ")" + _nl()
+        script = script + "move /y %BAK% %DST% >nul 2>&1" + _nl()
+        script = script + "exit /b 1" + _nl()
+        script = script + ":done" + _nl()
+        script = script + "exit /b 0" + _nl()
+        if (fs.write_text(apply_script, script) != 1):
+            print("ERROR: failed to write Windows apply script: " + apply_script)
+            return 1
+        if (process.run("cmd /c start \"\" /min cmd /c " + _quote(apply_script)) != 0):
+            print("ERROR: failed to launch Windows staged updater.")
+            return 1
+        fs.write_text(_update_backup_target_file(), exe_path)
+        let now2 = time.now_ms()
+        _update_write_state(now2, now2, rel.tag, rel.tag)
+        print("Update scheduled: " + rel.tag)
+        print("Close this shell and reopen to use updated binary.")
+        return 0
     if (fs.exists(exe_path) == 1):
         if (fs.move(exe_path, backup_path) != 1):
             print("ERROR: failed to create backup: " + backup_path)
@@ -139,14 +186,18 @@ func _update_check() -> i32:
 
 func _update_rollback(argc: i32, start: i32) -> i32:
     let yes = 0
+    let elevated = 0
     let i = start
     while (i < argc):
         let arg = _trim(env.get(i))
         if ((arg == "--yes") or (arg == "-y")):
             yes = 1
         else:
-            print("ERROR: unknown update rollback flag: " + arg)
-            return 1
+            if (arg == "--elevated"):
+                elevated = 1
+            else:
+                print("ERROR: unknown update rollback flag: " + arg)
+                return 1
         i = i + 1
     let exe_path = _trim(fs.read_text(_update_backup_target_file()))
     if (strlen(exe_path) == 0):
@@ -158,10 +209,44 @@ func _update_rollback(argc: i32, start: i32) -> i32:
         print("ERROR: no backup binary to rollback.")
         return 1
     if (_update_detect_os() == "windows"):
-        print("ERROR: Windows rollback is not supported by current runtime API (cannot replace running thagore.exe).")
-        print("[update] Run manually from a separate process after closing thagore.exe:")
-        print("[update]   move /y \"" + backup_path + "\" \"" + exe_path + "\"")
-        return 1
+        if ((_update_windows_needs_admin(exe_path) == 1) and (_update_windows_is_admin() == 0)):
+            if (elevated == 1):
+                print("ERROR: rollback requires administrator privileges, but elevation was not granted.")
+                return 1
+            let ps_args2 = "-NoProfile" + process.argv_sep()
+            ps_args2 = ps_args2 + "-ExecutionPolicy" + process.argv_sep()
+            ps_args2 = ps_args2 + "Bypass" + process.argv_sep()
+            ps_args2 = ps_args2 + "-Command" + process.argv_sep()
+            let ps_script2 = "Start-Process -Verb RunAs -FilePath " + _quote(exe_path) + " -ArgumentList 'update','rollback','--yes','--elevated'"
+            ps_args2 = ps_args2 + ps_script2
+            if (process.exec("powershell", ps_args2) != 0):
+                print("ERROR: failed to relaunch rollback with administrator privileges.")
+                return 1
+            print("[update] Relaunched elevated rollback. Follow UAC prompt to continue.")
+            return 0
+        let rollback_script = path.join(_update_state_dir(), "rollback-update.cmd")
+        if (fs.exists(rollback_script) == 1):
+            fs.remove(rollback_script)
+        let rs = "@echo off" + _nl()
+        rs = rs + "setlocal" + _nl()
+        rs = rs + "set SRC=" + _quote(backup_path) + _nl()
+        rs = rs + "set DST=" + _quote(exe_path) + _nl()
+        rs = rs + "for /l %%i in (1,1,20) do (" + _nl()
+        rs = rs + "  move /y %SRC% %DST% >nul 2>&1 && goto done" + _nl()
+        rs = rs + "  timeout /t 1 /nobreak >nul" + _nl()
+        rs = rs + ")" + _nl()
+        rs = rs + "exit /b 1" + _nl()
+        rs = rs + ":done" + _nl()
+        rs = rs + "exit /b 0" + _nl()
+        if (fs.write_text(rollback_script, rs) != 1):
+            print("ERROR: failed to write Windows rollback script: " + rollback_script)
+            return 1
+        if (process.run("cmd /c start \"\" /min cmd /c " + _quote(rollback_script)) != 0):
+            print("ERROR: failed to launch Windows staged rollback.")
+            return 1
+        print("Rollback scheduled.")
+        print("Close this shell and reopen to use rolled-back binary.")
+        return 0
     if (_update_confirm(yes, "Rollback current binary?") == 0):
         print("Rollback aborted.")
         return 1
