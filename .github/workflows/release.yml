@@ -366,7 +366,8 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+            # Keep linux-arm64 bootstrap strictly native; do not try x86_64 seed + qemu fallback.
+            :
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
           fi
@@ -401,56 +402,19 @@ jobs:
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
                 CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
                 [[ -n "$CANDIDATE" ]] || continue
-                if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" && "$ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
-                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}.x86_64"
-                  chmod +x "${{ matrix.stage1_bin }}.x86_64" || true
-                  EMU_LOCAL=""
-                  for cand in "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" /usr/bin/qemu-x86_64 /usr/bin/qemu-x86_64-static /usr/libexec/qemu-binfmt/x86_64-binfmt-P $(find /usr -maxdepth 6 -type f -name 'qemu*x86_64*' 2>/dev/null | head -n 16); do
-                    if [[ -n "$cand" && -x "$cand" ]]; then
-                      EMU_LOCAL="$cand"
-                      break
-                    fi
-                  done
-                  if [[ -z "$EMU_LOCAL" ]]; then
-                    TMP_QEMU_DIR="$(mktemp -d)"
-                    if (cd "$TMP_QEMU_DIR" && apt-get download qemu-user-static >/dev/null 2>&1); then
-                      QEMU_DEB="$(ls "$TMP_QEMU_DIR"/qemu-user-static_*.deb 2>/dev/null | head -n 1 || true)"
-                      if [[ -n "$QEMU_DEB" ]]; then
-                        dpkg-deb -x "$QEMU_DEB" "$TMP_QEMU_DIR/extract" || true
-                        QEMU_FOUND="$(find "$TMP_QEMU_DIR/extract" -type f \( -name qemu-x86_64-static -o -name qemu-x86_64 \) | head -n 1 || true)"
-                        if [[ -n "$QEMU_FOUND" ]]; then
-                          mkdir -p .toolchain
-                          cp "$QEMU_FOUND" .toolchain/"$(basename "$QEMU_FOUND")"
-                          chmod +x .toolchain/"$(basename "$QEMU_FOUND")" || true
-                          EMU_LOCAL="$PWD/.toolchain/$(basename "$QEMU_FOUND")"
-                        fi
-                      fi
-                    fi
-                  fi
-                  printf '%s\n' \
-                    '#!/usr/bin/env bash' \
-                    'set -euo pipefail' \
-                    'SELF_DIR="$(cd "$(dirname "$0")" && pwd)"' \
-                    "EMU_BIN=\"${EMU_LOCAL}\"" \
-                    'for cand in "$EMU_BIN" "$SELF_DIR/.toolchain/qemu-x86_64-static" "$SELF_DIR/.toolchain/qemu-x86_64" "$(command -v qemu-x86_64 || true)" "$(command -v qemu-x86_64-static || true)" "/usr/bin/qemu-x86_64" "/usr/bin/qemu-x86_64-static" "/usr/libexec/qemu-binfmt/x86_64-binfmt-P" $(find /usr -maxdepth 6 -type f -name "qemu*x86_64*" 2>/dev/null | head -n 16); do' \
-                    '  if [[ -n "$cand" && -x "$cand" ]]; then' \
-                    '    EMU_BIN="$cand"' \
-                    '    break' \
-                    '  fi' \
-                    'done' \
-                    'if [[ -n "$EMU_BIN" ]]; then' \
-                    '  exec "$EMU_BIN" "$SELF_DIR/stage1.x86_64" "$@"' \
-                    'fi' \
-                    'exec "$SELF_DIR/stage1.x86_64" "$@"' \
-                    > "${{ matrix.stage1_bin }}"
-                else
-                  cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
-                fi
+                cp "$CANDIDATE" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
                 STAGE1_ASSET="$ASSET"
                 break
               fi
             done
+            if [[ -z "$STAGE1_ASSET" ]]; then
+              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+                echo "[WARN] linux-arm64 seed stage1 asset missing; building native blob stage1." | tee -a "$STAGE_TRACE_FILE"
+                build_stage1_blob_native
+                probe_stage1_chain "${{ matrix.stage1_bin }}"
+              fi
+            fi
             if [[ -z "$STAGE1_ASSET" ]]; then
               if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
                 echo "[SKIP] optional lane missing Unix stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
