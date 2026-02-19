@@ -702,7 +702,7 @@ jobs:
             local ver=""
             local help=""
             local strict_cli_lane=0
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
+            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
               strict_cli_lane=1
             fi
             chmod +x "$bin" || true
