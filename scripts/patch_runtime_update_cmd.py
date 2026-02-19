@@ -63,15 +63,11 @@ UPDATE_BLOCK = r'''
 
     }
 
-    const std::string cmd = std::string("powershell -NoProfile -ExecutionPolicy Bypass -File ")
-
-      + quotePowerShellLiteral(scriptPath.string())
-
-      + " "
-
-      + quotePowerShellLiteral(mode);
-
-    return __process_run(cmd.c_str());
+    const std::string cmdArg = std::string("powershell -NoProfile -ExecutionPolicy Bypass -File \"")
+      + scriptPath.string()
+      + "\" "
+      + mode;
+    return std::system(cmdArg.c_str());
 
 #else
 
@@ -99,11 +95,14 @@ def patch_runtime(path: Path) -> int:
                 out_lines.append(HELP_INSERT)
     text = "".join(out_lines)
 
-    if UPDATE_MARK not in text:
+    idx = text.find(EMIT_ANCHOR)
+    if idx < 0:
+        raise RuntimeError(f"missing anchor: {EMIT_ANCHOR}")
+    existing = text.find(UPDATE_MARK)
+    if existing >= 0 and existing < idx:
+        text = text[:existing] + text[idx:]
         idx = text.find(EMIT_ANCHOR)
-        if idx < 0:
-            raise RuntimeError(f"missing anchor: {EMIT_ANCHOR}")
-        text = text[:idx] + UPDATE_BLOCK + text[idx:]
+    text = text[:idx] + UPDATE_BLOCK + text[idx:]
 
     path.write_text(text, encoding="utf-8")
     return 0
