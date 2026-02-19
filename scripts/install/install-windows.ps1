@@ -8,7 +8,7 @@ Write-Host "[thagore-installer] Installing Thagore to $Prefix..."
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 Copy-Item -Recurse -Force (Join-Path $RootDir "dist\*") $Prefix
 
-$thagoreBin = Join-Path $Prefix "bin\thagore.exe"
+$thagoreBin = Join-Path $Prefix "bin\thagore.cmd"
 $thagCompatBin = Join-Path $Prefix "bin\thag.exe"
 
 function Add-PathEntry {

@@ -991,11 +991,23 @@ jobs:
           set -euxo pipefail
           rm -rf dist
           mkdir -p dist/bin dist/lib
-          cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-          if [[ "${{ runner.os }}" != "Windows" ]]; then
-            cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "$STAGE2_REBUILD_BIN" dist/bin/thag.exe
+            cat > dist/bin/thagore.cmd <<'EOF'
+            @echo off
+            setlocal
+            set "SELF_DIR=%~dp0"
+            if /I "%~1"=="update" (
+              shift
+              powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %*
+              exit /b %ERRORLEVEL%
+            )
+            "%SELF_DIR%thag.exe" %*
+            exit /b %ERRORLEVEL%
+            EOF
           else
-            cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag.exe
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
+            cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
           fi
           cp -R std "dist/lib/std"
           mkdir -p dist/installer
