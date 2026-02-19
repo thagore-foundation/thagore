@@ -779,7 +779,7 @@ jobs:
             shift
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               echo "[TIMEOUT] linux-arm64 build timeout=${BUILD_TIMEOUT_SECS}s :: ./$cc $*" | tee -a "$STAGE_TRACE_FILE"
-              timeout --signal=KILL "${BUILD_TIMEOUT_SECS}s" "./$cc" "$@"
+              timeout --signal=TERM --kill-after=15s "${BUILD_TIMEOUT_SECS}s" "./$cc" "$@"
             else
               "./$cc" "$@"
             fi
