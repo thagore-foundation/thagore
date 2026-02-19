@@ -1030,12 +1030,6 @@ jobs:
             artifacts/**/thagore-macos-*.tar.gz
             artifacts/**/thagore-windows-*.tar.gz
             artifacts/**/thagore-setup-windows-*.exe
-            artifacts/**/thagore-stage1-linux-*.tar.gz
-            artifacts/**/thagore-stage1-macos-*.tar.gz
-            artifacts/**/thagore-stage1-windows-*.exe
-            artifacts/**/thagore-runtime-linux-*.a
-            artifacts/**/thagore-runtime-macos-*.a
-            artifacts/**/thagore-runtime-windows-*.lib
             artifacts/**/release-stage-trace-*.log
 
       - name: Discord update - Publish GitHub Release Assets
