@@ -9,7 +9,7 @@ import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Updating Thagore
 
-The `thagore update` command lets you check for new releases, apply them in-place, and roll back if something goes wrong — all without leaving your terminal.
+The `thagore update` command lets you check for new releases, apply them in-place, and roll back if something goes wrong, all without leaving your terminal.
 
 ---
 
@@ -17,7 +17,7 @@ The `thagore update` command lets you check for new releases, apply them in-plac
 
 ```bash
 thagore --version
-# thagore 0.3.33-foundation (linux/x86_64)
+# thagore 0.3.60-foundation (linux/x86_64)
 ```
 
 ---
@@ -30,14 +30,14 @@ Queries GitHub Releases and reports whether a newer version is available. Does *
 thagore update check
 ```
 
-**Example output — up to date:**
+**Example output - up to date:**
 ```
-thagore 0.3.33-foundation is up to date.
+thagore 0.3.60-foundation is up to date.
 ```
 
-**Example output — update available:**
+**Example output - update available:**
 ```
-Update available: 0.3.33-foundation → 0.3.34-foundation
+Update available: 0.3.60-foundation -> 0.3.61-foundation
 Run `thagore update apply` to install.
 ```
 
@@ -54,7 +54,7 @@ thagore update apply
 By default this asks for confirmation before writing to disk:
 
 ```
-Update available: 0.3.33-foundation → 0.3.34-foundation
+Update available: 0.3.60-foundation -> 0.3.61-foundation
 Apply update? [Y/n]:
 ```
 
@@ -71,7 +71,7 @@ thagore update apply --dry-run
 ```
 
 ```
-[dry-run] Would download: thagore-linux-x86_64.tar.gz (v0.3.34-foundation)
+[dry-run] Would download: thagore-linux-x86_64.tar.gz (latest)
 [dry-run] Would replace: /usr/local/bin/thagore
 No files were changed.
 ```
@@ -93,7 +93,7 @@ thagore update rollback
 Prompts for confirmation before restoring:
 
 ```
-Roll back from 0.3.34-foundation to 0.3.33-foundation? [Y/n]:
+Roll back from 0.3.61-foundation to 0.3.60-foundation? [Y/n]:
 ```
 
 ### Skip the prompt
@@ -113,13 +113,13 @@ Rollback restores the **immediately previous** binary only. Running `update appl
 By default, Thagore silently checks for updates in the background **once every 24 hours** and prints a one-line notice on your next compiler invocation:
 
 ```
-Notice: thagore 0.3.34-foundation is available. Run `thagore update apply` to install.
+Notice: thagore 0.3.61-foundation is available. Run `thagore update apply` to install.
 ```
 
-To disable this behaviour, set the environment variable `THAGORE_DISABLE_UPDATE_CHECK=1`:
+To disable this behavior, set the environment variable `THAGORE_DISABLE_UPDATE_CHECK=1`:
 
 <Tabs>
-  <TabItem label="🐧 Linux / 🍎 macOS">
+  <TabItem label="Linux / macOS">
 
 ```bash
 # Disable for current session
@@ -130,7 +130,7 @@ echo 'export THAGORE_DISABLE_UPDATE_CHECK=1' >> ~/.bashrc
 ```
 
   </TabItem>
-  <TabItem label="🪟 Windows (PowerShell)">
+  <TabItem label="Windows (PowerShell)">
 
 ```powershell
 # Disable for current session
@@ -188,7 +188,7 @@ thagore update rollback --yes
 ```
 
 <Aside type="tip" title="See also">
-- [Quick Start](/install/quick-start) — first-time installation
-- [CLI Reference](/install/cli-reference) — all `thagore build`, `test`, `fix` flags
-- [Release & Installers](/install/release-installers) — manual download links
+- [Quick Start](/install/quick-start) - first-time installation
+- [CLI Reference](/install/cli-reference) - all `thagore build`, `test`, `fix` flags
+- [Release and Installers](/install/release-installers) - manual download links
 </Aside>
