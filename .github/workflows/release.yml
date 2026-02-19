@@ -628,6 +628,36 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
+          # This avoids seed compiler drift that can silently emit stub binaries.
+          link_from_snapshot_ir() {
+            local out="$1"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+              clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
+            else
+              echo "[CMD] clang src/thagore.ll libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+              clang src/thagore.ll libthag_runtime.a -o "$out" -Wno-override-module
+            fi
+          }
+          if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
+            STAGE2_BIN="${{ matrix.stage2_bin }}"
+            STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
+            chmod +x "$STAGE2_BIN" || true
+            echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+            echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+            HELLO_BIN="${{ matrix.hello_bin }}"
+            FIB_BIN="${{ matrix.fib_bin }}"
+            test -f "$HELLO_BIN"
+            test -f "$FIB_BIN"
+            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+            exit 0
+          fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
             local cc="$1"
