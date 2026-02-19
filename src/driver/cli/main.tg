@@ -6,6 +6,18 @@ import "src/driver/cli/install/flow.tg"
 import "src/driver/cli/update/flow.tg"
 import "src/driver/cli/update/version.tg"
 
+func _print_help() -> void:
+    print("thagore " + _update_current_version_text())
+    print("Usage:")
+    print("  thagore --help")
+    print("  thagore --version")
+    print("  thagore build <input.tg> [-o output]")
+    print("  thagore <input.tg> [-o output]")
+    print("  thagore test [filter] [--workspace|--all] [--json]")
+    print("  thagore fix <doctor|dry-run|apply|explain|rollback> ...")
+    print("  thagore install toolchain [--yes]")
+    print("  thagore update <check|apply|rollback> [flags]")
+
 func main() -> i32:
     let argc = env.count()
     if (argc <= 1):

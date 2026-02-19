@@ -64,18 +64,17 @@ llvm_done:
 SectionEnd
 
 Section "Add to PATH" SecPath
-  ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
-  ${If} $0 == ""
-    StrCpy $0 "$INSTDIR\bin"
-  ${Else}
-    StrCpy $0 "$0;$INSTDIR\bin"
+  ; Update Machine + User PATH idempotently (no duplicate entries).
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; $scopes = @(''Machine'',''User''); foreach ($scope in $scopes) { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { [Environment]::SetEnvironmentVariable(''Path'', $target, $scope); continue }; $parts = $cur -split '';''; if (-not ($parts -contains $target)) { [Environment]::SetEnvironmentVariable(''Path'', ($cur.TrimEnd('';'') + '';'' + $target), $scope) } }"'
+  Pop $0
+  ${If} $0 != 0
+    MessageBox MB_ICONEXCLAMATION "PATH update returned code $0. You may need to add $INSTDIR\bin manually."
   ${EndIf}
-  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0"
-  System::Call 'Kernel32::SetEnvironmentVariable(t, t) i("Path", "$0").r1'
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment"
 SectionEnd
 
 Section "Uninstall"
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; $scopes = @(''Machine'',''User''); foreach ($scope in $scopes) { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { continue }; $parts = @(); foreach ($p in ($cur -split '';'')) { if ($p -and ($p -ne $target)) { $parts += $p } }; [Environment]::SetEnvironmentVariable(''Path'', ($parts -join '';''), $scope) }"'
   Delete "$INSTDIR\bin\thagore.exe"
   Delete "$INSTDIR\bin\thag.exe"
   RMDir /r "$INSTDIR\lib\std"

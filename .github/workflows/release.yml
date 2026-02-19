@@ -821,14 +821,31 @@ jobs:
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Build Stage2 -> Stage2 (mandatory)
 
+      - name: Smoke CLI help/version
+        if: env.RELEASE_OPTIONAL_SKIP != '1'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+          VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1 || true)"
+          HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1 || true)"
+          printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
+          printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
+          grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
+          grep -E "Usage:" cli-help-release-${{ matrix.asset_tag }}.txt
+
       - name: Run hello + fib
         if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          "./$HELLO_BIN"
-          "./$FIB_BIN"
+          HELLO_OUT="$(./$HELLO_BIN 2>&1)"
+          FIB_OUT="$(./$FIB_BIN 2>&1)"
+          printf '%s\n' "$HELLO_OUT" > hello-output-release-${{ matrix.asset_tag }}.txt
+          printf '%s\n' "$FIB_OUT" > fib-output-release-${{ matrix.asset_tag }}.txt
+          grep -F "Hello Self-Hosted World!" hello-output-release-${{ matrix.asset_tag }}.txt
+          grep -E "(^|[^0-9])9227465([^0-9]|$)" fib-output-release-${{ matrix.asset_tag }}.txt
 
       - name: Guard no stage0 markers
         if: env.RELEASE_OPTIONAL_SKIP != '1'
