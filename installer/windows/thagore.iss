@@ -48,6 +48,7 @@ const
   EnvKeyMachine = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
   EnvKeyUser = 'Environment';
   EnvValueName = 'Path';
+  WM_SETTINGCHANGE_MSG = $001A;
   SMTO_ABORTIFHUNG = $0002;
 
 function SendMessageTimeout(hWnd: Integer; Msg: Integer; wParam: Integer; lParam: string; fuFlags: Integer; uTimeout: Integer; var lpdwResult: Integer): Integer;
@@ -189,7 +190,7 @@ procedure BroadcastPathChange;
 var
   SendResult: Integer;
 begin
-  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 'Environment', SMTO_ABORTIFHUNG, 5000, SendResult);
+  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE_MSG, 0, 'Environment', SMTO_ABORTIFHUNG, 5000, SendResult);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
