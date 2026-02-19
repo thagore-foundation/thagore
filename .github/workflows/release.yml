@@ -117,7 +117,6 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') || matrix.asset_tag == 'windows-x86_64' }}
     continue-on-error: ${{ matrix.allow_failure }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -125,51 +124,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
-            os_name: Linux
-            arch: x86_64
-            asset_tag: linux-x86_64
-            allow_failure: true
-            stage1_bin: stage1
-            output_bin: thagore
-            stage2_bin: stage2
-            stage2_rebuild_bin: stage2_rebuild
-            hello_bin: hello_release
-            fib_bin: fib_release
-            package_name: thagore-linux-x86_64.tar.gz
-            stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
-            runtime_seed_name: thagore-runtime-linux-x86_64.a
-            stage_trace_file: release-stage-trace-linux-x86_64.log
-          - runner: ubuntu-24.04-arm
-            os_name: Linux
-            arch: arm64
-            asset_tag: linux-arm64
-            allow_failure: true
-            stage1_bin: stage1
-            output_bin: thagore
-            stage2_bin: stage2
-            stage2_rebuild_bin: stage2_rebuild
-            hello_bin: hello_release
-            fib_bin: fib_release
-            package_name: thagore-linux-arm64.tar.gz
-            stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
-            runtime_seed_name: thagore-runtime-linux-arm64.a
-            stage_trace_file: release-stage-trace-linux-arm64.log
-          - runner: macos-latest
-            os_name: macOS
-            arch: arm64
-            asset_tag: macos-arm64
-            allow_failure: true
-            stage1_bin: stage1
-            output_bin: thagore
-            stage2_bin: stage2
-            stage2_rebuild_bin: stage2_rebuild
-            hello_bin: hello_release
-            fib_bin: fib_release
-            package_name: thagore-macos-arm64.tar.gz
-            stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
-            runtime_seed_name: thagore-runtime-macos-arm64.a
-            stage_trace_file: release-stage-trace-macos-arm64.log
           - runner: windows-latest
             os_name: Windows
             arch: x86_64
@@ -185,21 +139,6 @@ jobs:
             stage1_seed_name: thagore-stage1-windows-x86_64.exe
             runtime_seed_name: thagore-runtime-windows-x86_64.lib
             stage_trace_file: release-stage-trace-windows-x86_64.log
-          - runner: windows-11-arm
-            os_name: Windows
-            arch: arm64
-            asset_tag: windows-arm64
-            allow_failure: true
-            stage1_bin: stage1.exe
-            output_bin: thagore.exe
-            stage2_bin: stage2.exe
-            stage2_rebuild_bin: stage2_rebuild.exe
-            hello_bin: hello_release.exe
-            fib_bin: fib_release.exe
-            package_name: thagore-windows-arm64.tar.gz
-            stage1_seed_name: thagore-stage1-windows-arm64.exe
-            runtime_seed_name: thagore-runtime-windows-arm64.lib
-            stage_trace_file: release-stage-trace-windows-arm64.log
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
