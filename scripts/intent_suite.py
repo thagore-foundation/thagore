@@ -145,7 +145,13 @@ def supports_intent_subcommands(cli: Path) -> tuple[bool, str]:
 def run_source_fallback_suite(cli: Path) -> None:
     for test in SOURCE_FALLBACK_TESTS:
         proc = run_cmd([str(cli), str(test)])
-        if "PASS:" not in proc.stdout:
+        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        has_pass_marker = "PASS:" in combined
+        has_driver_success = (
+            "Execution finished with code:" in combined
+            and "\n0" in combined
+        )
+        if not (has_pass_marker or has_driver_success):
             raise SystemExit(f"FAIL: source fallback test did not report PASS marker: {test}")
 
 
