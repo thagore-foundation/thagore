@@ -64,8 +64,9 @@ llvm_done:
 SectionEnd
 
 Section "Add to PATH" SecPath
-  ; Update Machine + User PATH idempotently (no duplicate entries).
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; $scopes = @(''Machine'',''User''); foreach ($scope in $scopes) { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { [Environment]::SetEnvironmentVariable(''Path'', $target, $scope); continue }; $parts = $cur -split '';''; if (-not ($parts -contains $target)) { [Environment]::SetEnvironmentVariable(''Path'', ($cur.TrimEnd('';'') + '';'' + $target), $scope) } }"'
+  ; Update PATH idempotently.
+  ; Exit code is non-zero only when BOTH Machine/User scopes fail.
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = ''Stop''; $target = ''$INSTDIR\bin''; $ok = $false; foreach ($scope in @(''Machine'',''User'')) { try { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { [Environment]::SetEnvironmentVariable(''Path'', $target, $scope); $ok = $true; continue }; $parts = @(); foreach ($p in ($cur -split '';'')) { if ($p) { $parts += $p.Trim() } }; if ($parts -contains $target) { $ok = $true; continue }; [Environment]::SetEnvironmentVariable(''Path'', ($cur.TrimEnd('';'') + '';'' + $target), $scope); $ok = $true } catch { } }; if (-not $ok) { exit 1 }"'
   Pop $0
   ${If} $0 != 0
     MessageBox MB_ICONEXCLAMATION "PATH update returned code $0. You may need to add $INSTDIR\bin manually."
@@ -74,7 +75,7 @@ Section "Add to PATH" SecPath
 SectionEnd
 
 Section "Uninstall"
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; $scopes = @(''Machine'',''User''); foreach ($scope in $scopes) { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { continue }; $parts = @(); foreach ($p in ($cur -split '';'')) { if ($p -and ($p -ne $target)) { $parts += $p } }; [Environment]::SetEnvironmentVariable(''Path'', ($parts -join '';''), $scope) }"'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$target = ''$INSTDIR\bin''; foreach ($scope in @(''Machine'',''User'')) { try { $cur = [Environment]::GetEnvironmentVariable(''Path'', $scope); if ([string]::IsNullOrEmpty($cur)) { continue }; $parts = @(); foreach ($p in ($cur -split '';'')) { if ($p) { $trimmed = $p.Trim(); if ($trimmed -and ($trimmed -ne $target)) { $parts += $trimmed } } }; [Environment]::SetEnvironmentVariable(''Path'', ($parts -join '';''), $scope) } catch { } }"'
   Delete "$INSTDIR\bin\thagore.exe"
   Delete "$INSTDIR\bin\thag.exe"
   RMDir /r "$INSTDIR\lib\std"

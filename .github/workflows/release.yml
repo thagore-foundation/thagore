@@ -1044,6 +1044,52 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$NSIS_WIN' /DVERSION=${{ github.ref_name }} installer/windows/thagore.nsi"
           cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
+      - name: Sign Windows executables (optional)
+        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
+        shell: pwsh
+        env:
+          WIN_SIGN_CERT_B64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WIN_SIGN_CERT_PASS: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:WIN_SIGN_CERT_B64) -or [string]::IsNullOrWhiteSpace($env:WIN_SIGN_CERT_PASS)) {
+            Write-Host "[SIGN] Skip: WINDOWS_SIGN_CERT_BASE64 / WINDOWS_SIGN_CERT_PASSWORD not configured."
+            exit 0
+          }
+
+          $certPath = Join-Path $env:RUNNER_TEMP "thagore-signing.pfx"
+          [System.IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WIN_SIGN_CERT_B64))
+
+          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          if (-not $signtool) {
+            $candidates = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending
+            if ($candidates) {
+              $signtool = $candidates[0].FullName
+            }
+          }
+          if (-not $signtool) {
+            throw "signtool.exe not found on runner."
+          }
+
+          $targets = @(
+            "dist\bin\${{ matrix.output_bin }}",
+            "dist\bin\thag.exe",
+            "thagore-setup-windows-${{ matrix.arch }}.exe",
+            "${{ matrix.stage1_seed_name }}"
+          )
+          foreach ($file in $targets) {
+            if (-not (Test-Path $file)) {
+              continue
+            }
+            Write-Host "[SIGN] $file"
+            & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certPath /p $env:WIN_SIGN_CERT_PASS "$file"
+            if ($LASTEXITCODE -ne 0) {
+              throw "signtool failed for $file with exit code $LASTEXITCODE"
+            }
+          }
+
+          Remove-Item -Force $certPath
+
       - name: Discord update - Package release payload
         if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
