@@ -60,6 +60,31 @@ begin
     Delete(Result, Length(Result), 1);
 end;
 
+function SplitSemicolon(const Value: string): TArrayOfString;
+var
+  Work: string;
+  P: Integer;
+  Item: string;
+begin
+  SetArrayLength(Result, 0);
+  Work := Value;
+  while True do
+  begin
+    P := Pos(';', Work);
+    if P = 0 then
+    begin
+      SetArrayLength(Result, GetArrayLength(Result) + 1);
+      Result[GetArrayLength(Result) - 1] := Work;
+      Break;
+    end;
+
+    Item := Copy(Work, 1, P - 1);
+    SetArrayLength(Result, GetArrayLength(Result) + 1);
+    Result[GetArrayLength(Result) - 1] := Item;
+    Delete(Work, 1, P);
+  end;
+end;
+
 function PathContainsEntry(const PathValue, Entry: string): Boolean;
 var
   CurrentParts: TArrayOfString;
@@ -67,7 +92,7 @@ var
   Candidate: string;
 begin
   Result := False;
-  CurrentParts := SplitString(PathValue, ';');
+  CurrentParts := SplitSemicolon(PathValue);
   for I := 0 to GetArrayLength(CurrentParts) - 1 do
   begin
     Candidate := NormalizePath(CurrentParts[I]);
@@ -144,7 +169,7 @@ begin
   if not ReadPath(AllUsers, CurrentPath) then
     Exit;
 
-  CurrentParts := SplitString(CurrentPath, ';');
+  CurrentParts := SplitSemicolon(CurrentPath);
   SetArrayLength(Filtered, 0);
   for I := 0 to GetArrayLength(CurrentParts) - 1 do
   begin
