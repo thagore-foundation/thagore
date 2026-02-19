@@ -493,8 +493,6 @@ jobs:
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
-          elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
-            RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
@@ -520,7 +518,11 @@ jobs:
             if ! command -v "$AR_BIN" >/dev/null 2>&1; then
               AR_BIN="ar"
             fi
-            clang -x c++ -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
+            RT_CLANG_ARGS=(-x c++ -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o)
+            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+              RT_CLANG_ARGS=(--target=aarch64-pc-windows-msvc "${RT_CLANG_ARGS[@]}")
+            fi
+            clang "${RT_CLANG_ARGS[@]}"
             if [[ "${{ runner.os }}" == "Windows" ]] && command -v llvm-lib >/dev/null 2>&1; then
               llvm-lib "/OUT:bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
             else
@@ -649,21 +651,32 @@ jobs:
           fi
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
+          prepare_snapshot_ir() {
+            local out_ir="$1"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              PY=python
+            else
+              PY=python3
+            fi
+            "$PY" -c "from pathlib import Path; import re; src=Path('src/thagore.ll').read_text(encoding='utf-8'); src=re.sub(r'\\bicmp\\s+samesign\\s+', 'icmp ', src); Path('$out_ir').write_text(src, encoding='utf-8')"
+          }
           link_from_snapshot_ir() {
             local out="$1"
+            local snapshot_ir="_snapshot_thagore.ll"
+            prepare_snapshot_ir "$snapshot_ir"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
                 echo "[CMD] clang -x c++ -std=c++17 _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang -x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module
-                echo "[CMD] clang src/thagore.ll thag_runtime.lib -o _s1/thagore-helper.exe -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                clang src/thagore.ll thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module
+                echo "[CMD] clang $snapshot_ir thag_runtime.lib -o _s1/thagore-helper.exe -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang "$snapshot_ir" thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module
               else
-                echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
+                echo "[CMD] clang $snapshot_ir thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang "$snapshot_ir" thag_runtime.lib -o "$out" -Wno-override-module
               fi
             else
-              echo "[CMD] clang src/thagore.ll libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              clang src/thagore.ll libthag_runtime.a -o "$out" -Wno-override-module
+              echo "[CMD] clang $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+              clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
             fi
           }
           cli_sanity_ok() {

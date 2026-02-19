@@ -2,12 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -d "$SCRIPT_DIR/../bin" && -d "$SCRIPT_DIR/../lib" ]]; then
+if [[ -n "${THAGORE_ROOT:-}" ]]; then
+  ROOT_DIR="$THAGORE_ROOT"
+elif [[ -d "$SCRIPT_DIR/../bin" && -d "$SCRIPT_DIR/../lib" ]]; then
   ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 elif [[ -d "$SCRIPT_DIR/../../dist/bin" ]]; then
   ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 else
   echo "ERROR: cannot resolve Thagore package root from $SCRIPT_DIR" >&2
+  exit 1
+fi
+if [[ ! -d "$ROOT_DIR/bin" && ! -d "$ROOT_DIR/dist/bin" ]]; then
+  echo "ERROR: invalid THAGORE_ROOT/ROOT_DIR ($ROOT_DIR), missing bin payload" >&2
   exit 1
 fi
 PREFIX="${PREFIX:-/usr/local/thagore}"
