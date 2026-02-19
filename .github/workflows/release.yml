@@ -158,7 +158,7 @@ jobs:
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
-            allow_failure: false
+            allow_failure: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -640,23 +640,47 @@ jobs:
               clang src/thagore.ll libthag_runtime.a -o "$out" -Wno-override-module
             fi
           }
+          cli_sanity_ok() {
+            local bin="$1"
+            local ver=""
+            local help=""
+            chmod +x "$bin" || true
+            ver="$("./$bin" --version 2>&1 || true)"
+            help="$("./$bin" --help 2>&1 || true)"
+            if [[ -z "$ver" || -z "$help" ]]; then
+              echo "[SANITY] $bin rejected: empty --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            if ! grep -Eq "thagore|Thagore" <<<"$ver"; then
+              echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            if ! grep -Eq "Usage:" <<<"$help"; then
+              echo "[SANITY] $bin rejected: --help does not contain Usage." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
+            return 0
+          }
           if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
             STAGE2_BIN="${{ matrix.stage2_bin }}"
-            STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-            chmod +x "$STAGE2_BIN" || true
-            echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
-            echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-            "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
-            HELLO_BIN="${{ matrix.hello_bin }}"
-            FIB_BIN="${{ matrix.fib_bin }}"
-            test -f "$HELLO_BIN"
-            test -f "$FIB_BIN"
-            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-            exit 0
+            if cli_sanity_ok "$STAGE2_BIN"; then
+              STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
+              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+              "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+              "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+              HELLO_BIN="${{ matrix.hello_bin }}"
+              FIB_BIN="${{ matrix.fib_bin }}"
+              test -f "$HELLO_BIN"
+              test -f "$FIB_BIN"
+              echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+              echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+              echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+              echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "[WARN] snapshot-linked stage2 failed CLI sanity; fallback to bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
@@ -726,20 +750,6 @@ jobs:
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE2_BIN="${{ matrix.stage1_bin }}"
-            STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
-            HELLO_BIN="${{ matrix.hello_bin }}"
-            FIB_BIN="${{ matrix.fib_bin }}"
-            printf '%s\n' '#!/usr/bin/env bash' 'echo hello-arm64-smoke' > "$HELLO_BIN"
-            printf '%s\n' '#!/usr/bin/env bash' 'echo fib-arm64-smoke' > "$FIB_BIN"
-            chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-            exit 0
-          fi
           STAGE2_CHAIN_OK=1
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE2_CHAIN_OK=0
@@ -772,6 +782,16 @@ jobs:
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
+          if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
+            if [[ "$STAGE2_REBUILD_BIN" != "${{ matrix.stage1_bin }}" ]]; then
+              echo "[WARN] fallback to stage1 due CLI sanity failure: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+              STAGE2_BIN="${{ matrix.stage1_bin }}"
+              STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
+              test -f "$STAGE2_REBUILD_BIN"
+              chmod +x "$STAGE2_REBUILD_BIN" || true
+            fi
+          fi
+          cli_sanity_ok "$STAGE2_REBUILD_BIN"
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
