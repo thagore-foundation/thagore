@@ -311,56 +311,9 @@ jobs:
             fi
             return 1
           }
-          fetch_runtime_blob() {
-            local out_path="$1"
-            local blob_sha="7f9ed799c71ceff8da657316012dc5e4d01d34d4"
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            if git cat-file blob "$blob_sha" > "$out_path" 2>/dev/null; then
-              return 0
-            fi
-            local blob_json
-            blob_json="$(mktemp)"
-            gh api "repos/${{ github.repository }}/git/blobs/$blob_sha" > "$blob_json"
-            "$PY" -c "import base64, json, pathlib, sys; d=json.load(open(sys.argv[1], encoding='utf-8')); pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(d['content']))" "$blob_json" "$out_path"
-            rm -f "$blob_json" || true
-          }
           probe_stage1_chain() {
             local bin="$1"
             "./$bin" --help >/dev/null 2>&1
-          }
-          build_stage1_blob_native() {
-            mkdir -p _s1/blobseed/dist/bin
-            fetch_runtime_blob _s1/runtime.cc
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
-            CXX_ARGS=(-std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              CXX_ARGS=(-target aarch64-unknown-linux-gnu -std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
-            fi
-            clang++ "${CXX_ARGS[@]}"
-            chmod +x "${{ matrix.stage1_bin }}" || true
-            if [[ "${{ runner.os }}" == "Linux" ]]; then
-              file "${{ matrix.stage1_bin }}" || true
-              ldd "${{ matrix.stage1_bin }}" || true
-            fi
-            if ! "./${{ matrix.stage1_bin }}" --help >/tmp/stage1_blob_help.txt 2>&1; then
-              echo "CRITICAL: blob-native stage1 is not runnable on this runner." >&2
-              cat /tmp/stage1_blob_help.txt >&2 || true
-              return 1
-            fi
-            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thagore
-            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thag
-            tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C _s1/blobseed dist
-            STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
           }
           STAGE1_ASSET=""
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
@@ -457,9 +410,6 @@ jobs:
                 break
               fi
             done
-            if [[ -z "$STAGE1_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              build_stage1_blob_native
-            fi
             if [[ -z "$STAGE1_ASSET" ]]; then
               if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
                 echo "[SKIP] optional lane missing Unix stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
@@ -476,14 +426,8 @@ jobs:
             fi
           fi
           if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              echo "[WARN] current stage1 failed probe on linux-arm64; rebuilding native blob stage1." | tee -a "$STAGE_TRACE_FILE"
-              build_stage1_blob_native
-              probe_stage1_chain "${{ matrix.stage1_bin }}"
-            else
-              echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
@@ -507,33 +451,6 @@ jobs:
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
           fi
           RUNTIME_ASSET=""
-          build_runtime_fallback() {
-            mkdir -p _rt
-            fetch_runtime_blob _rt/runtime.cc
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            "$PY" -c "from pathlib import Path; p=Path('_rt/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            AR_BIN="llvm-ar"
-            if ! command -v "$AR_BIN" >/dev/null 2>&1; then
-              AR_BIN="ar"
-            fi
-            clang++ -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
-            if [[ "${{ runner.os }}" == "Windows" ]] && command -v llvm-lib >/dev/null 2>&1; then
-              llvm-lib "/OUT:bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
-            else
-              "$AR_BIN" rcs "bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
-            fi
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
-            else
-              cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
-            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
-          }
           runtime_contract_ok() {
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               PY=python
@@ -562,13 +479,10 @@ jobs:
               fi
             done
           fi
-          if [[ -z "$RUNTIME_ASSET" ]]; then
-            build_runtime_fallback || true
-          fi
           if [[ -n "$RUNTIME_ASSET" ]]; then
             if ! runtime_contract_ok; then
-              echo "[WARN] runtime asset $RUNTIME_ASSET failed bootstrap-critical contract, rebuilding fallback..." | tee -a "$STAGE_TRACE_FILE"
-              build_runtime_fallback || true
+              echo "CRITICAL: runtime asset $RUNTIME_ASSET failed bootstrap-critical contract." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
             fi
           fi
           if [[ -z "$RUNTIME_ASSET" ]]; then
