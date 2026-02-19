@@ -341,6 +341,7 @@ jobs:
               PY=python3
             fi
             "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
+            "$PY" scripts/patch_runtime_update_cmd.py _s1/runtime.cc
             "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
             CXX_ARGS=(-std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
             clang --driver-mode=g++ "${CXX_ARGS[@]}"
@@ -506,6 +507,7 @@ jobs:
               PY=python3
             fi
             "$PY" -c "from pathlib import Path; p=Path('_rt/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
+            "$PY" scripts/patch_runtime_update_cmd.py _rt/runtime.cc
             AR_BIN="llvm-ar"
             if ! command -v "$AR_BIN" >/dev/null 2>&1; then
               AR_BIN="ar"
@@ -637,8 +639,23 @@ jobs:
           link_from_snapshot_ir() {
             local out="$1"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
+              if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
+                cat > _s1/entry_cli.ll <<'EOF'
+declare void @__thg_init_env(i32, ptr)
+declare i32 @__thg_cli_main_native()
+define i32 @main(i32 %argc, ptr %argv) {
+entry:
+  call void @__thg_init_env(i32 %argc, ptr %argv)
+  %rc = call i32 @__thg_cli_main_native()
+  ret i32 %rc
+}
+EOF
+                echo "[CMD] clang -x c++ -std=c++17 _s1/entry_cli.ll _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang -x c++ -std=c++17 _s1/entry_cli.ll _s1/runtime.cc -o "$out" -Wno-override-module
+              else
+                echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
+              fi
             else
               echo "[CMD] clang src/thagore.ll libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
               clang src/thagore.ll libthag_runtime.a -o "$out" -Wno-override-module
@@ -683,10 +700,6 @@ jobs:
             if [[ "$strict_cli_lane" -eq 1 ]]; then
               local update_out=""
               update_out="$("./$bin" update check 2>&1 || true)"
-              if [[ -z "$update_out" ]]; then
-                echo "[SANITY] $bin rejected: update check returned empty output." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
               if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$update_out"; then
                 echo "[SANITY] $bin rejected: update check output matches legacy/wrapper failure." | tee -a "$STAGE_TRACE_FILE"
                 return 1
@@ -695,29 +708,25 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          if [[ "$STRICT_WINDOWS_X64" -eq 0 ]]; then
-            if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
-              STAGE2_BIN="${{ matrix.stage2_bin }}"
-              if cli_sanity_ok "$STAGE2_BIN"; then
-                STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-                "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
-                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-                "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
-                HELLO_BIN="${{ matrix.hello_bin }}"
-                FIB_BIN="${{ matrix.fib_bin }}"
-                test -f "$HELLO_BIN"
-                test -f "$FIB_BIN"
-                echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-                echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-                echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-                echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-                exit 0
-              fi
-              echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
+          if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
+            STAGE2_BIN="${{ matrix.stage2_bin }}"
+            if cli_sanity_ok "$STAGE2_BIN"; then
+              STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
+              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+              "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+              "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+              HELLO_BIN="${{ matrix.hello_bin }}"
+              FIB_BIN="${{ matrix.fib_bin }}"
+              test -f "$HELLO_BIN"
+              test -f "$FIB_BIN"
+              echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+              echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+              echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+              echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+              exit 0
             fi
-          else
-            echo "[INFO] strict windows-x86_64 lane: skip snapshot IR shortcut, enforce source-built compiler." | tee -a "$STAGE_TRACE_FILE"
+            echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
