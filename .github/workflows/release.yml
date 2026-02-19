@@ -117,6 +117,7 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') || matrix.asset_tag == 'windows-x86_64' }}
     continue-on-error: ${{ matrix.allow_failure }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
