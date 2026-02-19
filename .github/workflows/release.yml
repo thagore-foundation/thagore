@@ -133,7 +133,6 @@ jobs:
             arch: x86_64
             asset_tag: linux-x86_64
             allow_failure: false
-            stage2_step_timeout_minutes: 12
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -149,7 +148,6 @@ jobs:
             arch: arm64
             asset_tag: linux-arm64
             allow_failure: false
-            stage2_step_timeout_minutes: 8
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -165,7 +163,6 @@ jobs:
             arch: arm64
             asset_tag: macos-arm64
             allow_failure: false
-            stage2_step_timeout_minutes: 12
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -181,7 +178,6 @@ jobs:
             arch: x86_64
             asset_tag: windows-x86_64
             allow_failure: false
-            stage2_step_timeout_minutes: 12
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -197,7 +193,6 @@ jobs:
             arch: arm64
             asset_tag: windows-arm64
             allow_failure: false
-            stage2_step_timeout_minutes: 12
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -610,7 +605,7 @@ jobs:
 
       - name: Build Stage2 -> Stage2 (mandatory)
         if: env.RELEASE_OPTIONAL_SKIP != '1'
-        timeout-minutes: ${{ matrix.stage2_step_timeout_minutes }}
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euxo pipefail
