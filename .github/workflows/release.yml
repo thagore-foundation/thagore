@@ -638,6 +638,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
           STRICT_WINDOWS_X64=0
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_WINDOWS_X64=1
