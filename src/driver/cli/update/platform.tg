@@ -1,0 +1,85 @@
+import "src/driver/cli/common/core.tg"
+import "src/driver/cli/install/platform.tg"
+import "lib/path.tg" as path
+
+func _update_detect_os() -> String:
+    let raw = _install_detect_os()
+    if (raw == "ubuntu"):
+        return "linux"
+    if (raw == "windows"):
+        return "windows"
+    if (raw == "macos"):
+        return "macos"
+    if (raw == "linux"):
+        return "linux"
+    return "portable"
+
+func _update_detect_arch() -> String:
+    let raw = _install_detect_arch()
+    if (raw == "x86_64"):
+        return "x86_64"
+    if (raw == "arm64"):
+        return "arm64"
+    return "unknown"
+
+func _update_executable_path() -> String:
+    let argv0 = _trim(env.program_name())
+    if (strlen(argv0) == 0):
+        return ""
+    let norm = _normalize_path(argv0)
+    if ((_contains(norm, "/") == 1) or (_contains(norm, ":") == 1)):
+        return norm
+    let probe = "thagore_update_where.log"
+    if (_update_detect_os() == "windows"):
+        if (process.run("where " + argv0 + " > " + probe + " 2>&1") == 0):
+            let line = _trim(_line_at(fs.read_text(probe), 0))
+            if (strlen(line) > 0):
+                return _normalize_path(line)
+    else:
+        if (process.run("which " + argv0 + " > " + probe + " 2>&1") == 0):
+            let line2 = _trim(_line_at(fs.read_text(probe), 0))
+            if (strlen(line2) > 0):
+                return _normalize_path(line2)
+    return _normalize_path(path.join(env.cwd(), argv0))
+
+func _update_asset_matches(name_raw: String, os_name: String, arch: String) -> i32:
+    let name = _trim(name_raw)
+    if (_contains(name, "stage1") == 1):
+        return 0
+    if (_contains(name, "runtime") == 1):
+        return 0
+    if ((os_name == "windows") and (_contains(name, "windows") == 0)):
+        return 0
+    if ((os_name == "linux") and (_contains(name, "linux") == 0)):
+        return 0
+    if ((os_name == "macos") and (_contains(name, "macos") == 0)):
+        return 0
+    if ((arch == "x86_64") and (_contains(name, "x86_64") == 0) and (_contains(name, "amd64") == 0)):
+        return 0
+    if ((arch == "arm64") and (_contains(name, "arm64") == 0) and (_contains(name, "aarch64") == 0)):
+        return 0
+    if (_ends_with(name, ".tar.gz") == 1):
+        return 3
+    if (_ends_with(name, ".zip") == 1):
+        return 2
+    if (_ends_with(name, ".exe") == 1):
+        return 1
+    return 0
+
+func _update_asset_binary_path(extract_dir: String, os_name: String) -> String:
+    let c1 = path.join(extract_dir, "bin/thagore")
+    if (os_name == "windows"):
+        c1 = path.join(extract_dir, "bin/thagore.exe")
+    if (fs.exists(c1) == 1):
+        return c1
+    let c2 = path.join(extract_dir, "thagore")
+    if (os_name == "windows"):
+        c2 = path.join(extract_dir, "thagore.exe")
+    if (fs.exists(c2) == 1):
+        return c2
+    let c3 = path.join(extract_dir, "bin/thag")
+    if (os_name == "windows"):
+        c3 = path.join(extract_dir, "bin/thag.exe")
+    if (fs.exists(c3) == 1):
+        return c3
+    return ""

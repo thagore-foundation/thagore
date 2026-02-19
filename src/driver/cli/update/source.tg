@@ -1,0 +1,105 @@
+import "src/driver/cli/common/core.tg"
+import "src/driver/cli/update/platform.tg"
+import "src/driver/cli/update/version.tg"
+import "lib/http.tg" as http
+
+struct UpdateRelease:
+    ok: i32
+    tag: String
+    semver: String
+    asset_name: String
+    asset_url: String
+
+func _update_release_empty() -> UpdateRelease:
+    return UpdateRelease(0, "", "0.0.0", "", "")
+
+func _update_json_string_from(text: String, start: i32) -> String:
+    let out = ""
+    let i = start
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        if (ch == "\""):
+            return out
+        if (ch == "\\"):
+            if ((i + 1) < strlen(text)):
+                let nx = _char_at(text, i + 1)
+                if (nx == "n"):
+                    out = out + _nl()
+                else:
+                    out = out + nx
+                i = i + 2
+            else:
+                i = i + 1
+        else:
+            out = out + ch
+            i = i + 1
+    return out
+
+func _update_find_json_string(text: String, key: String) -> String:
+    let needle = "\"" + key + "\":\""
+    let p = _find(text, needle)
+    if (p < 0):
+        let needle2 = "\"" + key + "\": \""
+        p = _find(text, needle2)
+        if (p < 0):
+            return ""
+        return _update_json_string_from(text, p + strlen(needle2))
+    return _update_json_string_from(text, p + strlen(needle))
+
+func _update_scan_best_asset(release_json: String, os_name: String, arch: String) -> String:
+    let best_name = ""
+    let best_url = ""
+    let best_score = 0
+    let i = 0
+    while (i < strlen(release_json)):
+        let p_name = _find(__thg_str_substr(release_json, i, strlen(release_json) - i), "\"name\":\"")
+        if (p_name < 0):
+            i = strlen(release_json)
+        else:
+            let abs_name = i + p_name + strlen("\"name\":\"")
+            let name = _update_json_string_from(release_json, abs_name)
+            let p_url = _find(__thg_str_substr(release_json, abs_name, strlen(release_json) - abs_name), "\"browser_download_url\":\"")
+            if (p_url >= 0):
+                let abs_url = abs_name + p_url + strlen("\"browser_download_url\":\"")
+                let url = _update_json_string_from(release_json, abs_url)
+                let score = _update_asset_matches(name, os_name, arch)
+                if (score > best_score):
+                    best_score = score
+                    best_name = name
+                    best_url = url
+                i = abs_url + strlen(url) + 1
+            else:
+                i = abs_name + strlen(name) + 1
+    if (best_score <= 0):
+        return ""
+    return best_name + "\n" + best_url
+
+func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> UpdateRelease:
+    let api = "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=20"
+    let body = http.get(api)
+    if (strlen(_trim(body)) == 0):
+        return _update_release_empty()
+    let i = 0
+    while (i < strlen(body)):
+        let p = _find(__thg_str_substr(body, i, strlen(body) - i), "\"tag_name\":\"")
+        if (p < 0):
+            return _update_release_empty()
+        let abs = i + p + strlen("\"tag_name\":\"")
+        let tag = _update_json_string_from(body, abs)
+        let p_assets = _find(__thg_str_substr(body, abs, strlen(body) - abs), "\"assets\":")
+        if (p_assets < 0):
+            return _update_release_empty()
+        let next_abs = abs + p_assets
+        i = next_abs + 8
+        if (_contains(tag, "-foundation") == 1):
+            let semver = _update_extract_semver(tag)
+            let pair = _update_scan_best_asset(__thg_str_substr(body, abs, strlen(body) - abs), os_name, arch)
+            if (strlen(pair) > 0):
+                let asset_name = _line_at(pair, 0)
+                let asset_url = _line_at(pair, 1)
+                return UpdateRelease(1, tag, semver, asset_name, asset_url)
+    return _update_release_empty()
+
+func _update_is_newer_than_current(tag_or_version: String) -> i32:
+    return _update_semver_compare(_update_extract_semver(tag_or_version), _update_current_version_semver())
+

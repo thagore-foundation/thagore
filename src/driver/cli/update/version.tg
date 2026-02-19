@@ -1,0 +1,89 @@
+import "src/driver/cli/common/core.tg"
+
+func _update_current_version_text() -> String:
+    return "0.4.0-native-cli"
+
+func _update_current_version_semver() -> String:
+    return _update_extract_semver(_update_current_version_text())
+
+func _update_extract_semver(raw: String) -> String:
+    let text = _trim(raw)
+    if (strlen(text) == 0):
+        return "0.0.0"
+    let i = 0
+    if (_starts_with(text, "v") == 1):
+        i = 1
+    let out = ""
+    let dots = 0
+    while (i < strlen(text)):
+        let ch = _char_at(text, i)
+        let is_digit = _find_char("0123456789", ch)
+        if (is_digit >= 0):
+            out = out + ch
+        else:
+            if (ch == "."):
+                if (strlen(out) == 0):
+                    i = strlen(text)
+                else:
+                    out = out + "."
+                    dots = dots + 1
+            else:
+                i = strlen(text)
+        i = i + 1
+    if (strlen(out) == 0):
+        return "0.0.0"
+    let parts = 0
+    let j = 0
+    while (j < strlen(out)):
+        if (_char_at(out, j) == "."):
+            parts = parts + 1
+        j = j + 1
+    if (parts == 0):
+        return out + ".0.0"
+    if (parts == 1):
+        return out + ".0"
+    return out
+
+func _update_semver_part(version: String, index: i32) -> i32:
+    let i = 0
+    let part_idx = 0
+    let value = 0
+    let has_digit = 0
+    while (i <= strlen(version)):
+        let at_end = 0
+        let ch = ""
+        if (i >= strlen(version)):
+            at_end = 1
+            ch = "."
+        else:
+            ch = _char_at(version, i)
+        if ((at_end == 1) or (ch == ".")):
+            if (part_idx == index):
+                if (has_digit == 1):
+                    return value
+                return 0
+            part_idx = part_idx + 1
+            value = 0
+            has_digit = 0
+        else:
+            let d = _find_char("0123456789", ch)
+            if (d >= 0):
+                value = (value * 10) + d
+                has_digit = 1
+        i = i + 1
+    return 0
+
+func _update_semver_compare(left: String, right: String) -> i32:
+    let l = _update_extract_semver(left)
+    let r = _update_extract_semver(right)
+    let i = 0
+    while (i < 3):
+        let lv = _update_semver_part(l, i)
+        let rv = _update_semver_part(r, i)
+        if (lv > rv):
+            return 1
+        if (lv < rv):
+            return -1
+        i = i + 1
+    return 0
+

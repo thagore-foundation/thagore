@@ -1,0 +1,196 @@
+import "src/driver/cli/common/core.tg"
+import "src/driver/cli/update/platform.tg"
+import "src/driver/cli/update/source.tg"
+import "src/driver/cli/update/state.tg"
+import "src/driver/cli/update/version.tg"
+import "lib/io.tg" as io
+import "lib/path.tg" as path
+
+func _update_print_help() -> void:
+    print("thagore update")
+    print("Usage:")
+    print("  thagore update check")
+    print("  thagore update apply [--yes] [--dry-run]")
+    print("  thagore update rollback [--yes]")
+
+func _update_extract_archive(archive_path: String, out_dir: String) -> i32:
+    if (_ends_with(archive_path, ".zip") == 1):
+        return process.unzip(archive_path, out_dir)
+    if (_ends_with(archive_path, ".tar.gz") == 1):
+        let cmd = "tar -xzf " + _quote(archive_path) + " -C " + _quote(out_dir)
+        return process.run(cmd)
+    return 1
+
+func _update_confirm(yes: i32, text: String) -> i32:
+    if (yes == 1):
+        return 1
+    let answer = _trim(io.input_prompt(text + " [Y/n]: "))
+    if ((strlen(answer) == 0) or (answer == "y") or (answer == "Y") or (answer == "yes") or (answer == "YES")):
+        return 1
+    return 0
+
+func _update_apply(argc: i32, start: i32) -> i32:
+    let yes = 0
+    let dry_run = 0
+    let i = start
+    while (i < argc):
+        let arg = _trim(env.get(i))
+        if ((arg == "--yes") or (arg == "-y")):
+            yes = 1
+        else:
+            if (arg == "--dry-run"):
+                dry_run = 1
+            else:
+                print("ERROR: unknown update apply flag: " + arg)
+                return 1
+        i = i + 1
+    let os_name = _update_detect_os()
+    let arch = _update_detect_arch()
+    if (arch == "unknown"):
+        print("ERROR: unsupported architecture for update.")
+        return 1
+    let rel = _update_fetch_latest_foundation_release(os_name, arch)
+    if (rel.ok == 0):
+        print("ERROR: cannot fetch release metadata.")
+        return 1
+    if (_update_is_newer_than_current(rel.tag) <= 0):
+        print("Already up to date (" + _update_current_version_text() + ").")
+        return 0
+    if (_update_confirm(yes, "Update to " + rel.tag + "?") == 0):
+        print("Update aborted.")
+        return 1
+    let exe_path = _update_executable_path()
+    if (strlen(exe_path) == 0):
+        print("ERROR: cannot resolve current executable path.")
+        return 1
+    _update_ensure_dir()
+    let archive_path = path.join(_update_state_dir(), "download.tmp")
+    if (_ends_with(rel.asset_name, ".tar.gz") == 1):
+        archive_path = path.join(_update_state_dir(), "download.tar.gz")
+    else:
+        if (_ends_with(rel.asset_name, ".zip") == 1):
+            archive_path = path.join(_update_state_dir(), "download.zip")
+    let extract_dir = path.join(_update_state_dir(), "extract")
+    fs.mkdir(extract_dir)
+    print("[update] release=" + rel.tag + " asset=" + rel.asset_name)
+    if (dry_run == 1):
+        print("[update] dry-run exe=" + exe_path)
+        print("[update] dry-run url=" + rel.asset_url)
+        return 0
+    if (process.download(rel.asset_url, archive_path) != 0):
+        print("ERROR: failed to download update asset.")
+        return 1
+    if (_update_extract_archive(archive_path, extract_dir) != 0):
+        print("ERROR: failed to extract update archive.")
+        return 1
+    let new_bin = _update_asset_binary_path(extract_dir, os_name)
+    if (strlen(new_bin) == 0):
+        print("ERROR: extracted package missing compiler binary.")
+        return 1
+    let backup_path = _update_backup_file()
+    if (_ends_with(exe_path, ".exe") == 1):
+        backup_path = backup_path + ".exe"
+    if (fs.exists(exe_path) == 1):
+        if (fs.move(exe_path, backup_path) != 1):
+            print("ERROR: failed to create backup: " + backup_path)
+            return 1
+    if (fs.move(new_bin, exe_path) != 1):
+        if (fs.exists(backup_path) == 1):
+            fs.move(backup_path, exe_path)
+        print("ERROR: failed to place updated binary.")
+        return 1
+    fs.write_text(_update_backup_target_file(), exe_path)
+    let now = time.now_ms()
+    _update_write_state(now, now, rel.tag, rel.tag)
+    print("Update completed: " + rel.tag)
+    print("Restart shell to use new binary.")
+    return 0
+
+func _update_check() -> i32:
+    let os_name = _update_detect_os()
+    let arch = _update_detect_arch()
+    if (arch == "unknown"):
+        print("ERROR: unsupported architecture for update.")
+        return 1
+    let rel = _update_fetch_latest_foundation_release(os_name, arch)
+    if (rel.ok == 0):
+        print("ERROR: cannot fetch release metadata.")
+        return 1
+    if (_update_is_newer_than_current(rel.tag) > 0):
+        print("Update available: " + rel.tag + " (current: " + _update_current_version_text() + ")")
+        print("Run: thagore update apply")
+        return 0
+    print("Already up to date (" + _update_current_version_text() + ").")
+    return 0
+
+func _update_rollback(argc: i32, start: i32) -> i32:
+    let yes = 0
+    let i = start
+    while (i < argc):
+        let arg = _trim(env.get(i))
+        if ((arg == "--yes") or (arg == "-y")):
+            yes = 1
+        else:
+            print("ERROR: unknown update rollback flag: " + arg)
+            return 1
+        i = i + 1
+    let exe_path = _trim(fs.read_text(_update_backup_target_file()))
+    if (strlen(exe_path) == 0):
+        exe_path = _update_executable_path()
+    let backup_path = _update_backup_file()
+    if (_ends_with(exe_path, ".exe") == 1):
+        backup_path = backup_path + ".exe"
+    if (fs.exists(backup_path) == 0):
+        print("ERROR: no backup binary to rollback.")
+        return 1
+    if (_update_confirm(yes, "Rollback current binary?") == 0):
+        print("Rollback aborted.")
+        return 1
+    if (fs.exists(exe_path) == 1):
+        fs.remove(exe_path)
+    if (fs.move(backup_path, exe_path) != 1):
+        print("ERROR: rollback failed.")
+        return 1
+    print("Rollback completed.")
+    return 0
+
+func _update_auto_notify_if_needed(cmd: String) -> void:
+    if (env.get_var("THAGORE_DISABLE_UPDATE_CHECK") == "1"):
+        return
+    if ((cmd == "update") or (cmd == "help") or (cmd == "--help") or (cmd == "version") or (cmd == "--version") or (cmd == "install")):
+        return
+    let now = time.now_ms()
+    if (_update_should_check(now, 86400000) == 0):
+        return
+    let os_name = _update_detect_os()
+    let arch = _update_detect_arch()
+    if (arch == "unknown"):
+        return
+    let rel = _update_fetch_latest_foundation_release(os_name, arch)
+    if (rel.ok == 0):
+        return
+    let prev_notified = _update_get_state_string("notified_tag")
+    let notify_ms = _update_get_state_i32("last_notify_ms", 0)
+    if ((_update_is_newer_than_current(rel.tag) > 0) and ((prev_notified != rel.tag) or ((now - notify_ms) >= 86400000))):
+        print("[update] New version available " + rel.tag + " (current: " + _update_current_version_text() + ")")
+        print("[update] Run: thagore update apply")
+        _update_write_state(now, now, rel.tag, rel.tag)
+        return
+    _update_write_state(now, notify_ms, prev_notified, rel.tag)
+
+func _update_dispatch(argc: i32, start: i32) -> i32:
+    if (argc <= start):
+        _update_print_help()
+        return 0
+    let sub = _trim(env.get(start))
+    if (sub == "check"):
+        return _update_check()
+    if (sub == "apply"):
+        return _update_apply(argc, start + 1)
+    if (sub == "rollback"):
+        return _update_rollback(argc, start + 1)
+    if ((sub == "--help") or (sub == "-h") or (sub == "help")):
+        _update_print_help()
+        return 0
+    print("ERROR: unknown update subcommand: " + sub)
+    return 1

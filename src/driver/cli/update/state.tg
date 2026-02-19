@@ -1,0 +1,55 @@
+import "src/driver/cli/common/core.tg"
+
+func _update_state_dir() -> String:
+    return ".thagore/update"
+
+func _update_state_file() -> String:
+    return ".thagore/update/state.json"
+
+func _update_backup_file() -> String:
+    return ".thagore/update/thagore.prev"
+
+func _update_backup_target_file() -> String:
+    return ".thagore/update/target.path"
+
+func _update_ensure_dir() -> void:
+    fs.mkdir(".thagore")
+    fs.mkdir(_update_state_dir())
+
+func _update_read_state_text() -> String:
+    if (fs.exists(_update_state_file()) == 0):
+        return "{}"
+    let text = fs.read_text(_update_state_file())
+    if (strlen(_trim(text)) == 0):
+        return "{}"
+    return text
+
+func _update_get_state_i32(key: String, fallback: i32) -> i32:
+    return _json_get_i32(_update_read_state_text(), key, fallback)
+
+func _update_get_state_string(key: String) -> String:
+    return _json_get_string(_update_read_state_text(), key)
+
+func _update_write_state(last_check_ms: i32, last_notify_ms: i32, notified_tag: String, last_seen_tag: String) -> i32:
+    _update_ensure_dir()
+    let text = "{"
+    text = text + _json_quote("schema_version") + ":1,"
+    text = text + _json_quote("last_check_ms") + ":" + _to_string_i32(last_check_ms) + ","
+    text = text + _json_quote("last_notify_ms") + ":" + _to_string_i32(last_notify_ms) + ","
+    text = text + _json_quote("notified_tag") + ":" + _json_quote(notified_tag) + ","
+    text = text + _json_quote("last_seen_tag") + ":" + _json_quote(last_seen_tag)
+    text = text + "}" + _nl()
+    return fs.write_text(_update_state_file(), text)
+
+func _update_should_check(now_ms: i32, interval_ms: i32) -> i32:
+    if (now_ms <= 0):
+        return 1
+    let last = _update_get_state_i32("last_check_ms", 0)
+    if (last <= 0):
+        return 1
+    if (now_ms < last):
+        return 1
+    if ((now_ms - last) >= interval_ms):
+        return 1
+    return 0
+

@@ -3,6 +3,8 @@ import "src/driver/cli/fix/flow.tg"
 import "src/driver/cli/test/flow.tg"
 import "src/driver/cli/build/flow.tg"
 import "src/driver/cli/install/flow.tg"
+import "src/driver/cli/update/flow.tg"
+import "src/driver/cli/update/version.tg"
 
 func main() -> i32:
     let argc = env.count()
@@ -14,8 +16,9 @@ func main() -> i32:
         _print_help()
         return 0
     if ((cmd == "--version") or (cmd == "version")):
-        print("thagore 0.4.0-native-cli")
+        print("thagore " + _update_current_version_text())
         return 0
+    _update_auto_notify_if_needed(cmd)
     if (cmd == "fix"):
         if (argc <= 2):
             print("ERROR: missing fix subcommand.")
@@ -291,6 +294,8 @@ func main() -> i32:
             return _install_toolchain(argc, 3)
         print("ERROR: unknown install subcommand: " + _trim(env.get(2)))
         return 1
+    if (cmd == "update"):
+        return _update_dispatch(argc, 2)
     let emit_only = 0
     let autofix_mode = "off"
     let autofix_lock = ""
