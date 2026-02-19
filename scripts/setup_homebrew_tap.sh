@@ -20,7 +20,6 @@ class Thagore < Formula
 
   def install
     bin.install "dist/bin/thagore"
-    bin.install_symlink bin/"thagore" => "thag"
     libexec.install "dist/lib/std"
   end
 

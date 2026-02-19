@@ -939,7 +939,6 @@ jobs:
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            cp "dist/bin/${{ matrix.output_bin }}" dist/bin/thag
           fi
           cp -R std "dist/lib/std"
           mkdir -p dist/installer

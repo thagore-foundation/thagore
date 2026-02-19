@@ -69,8 +69,6 @@ def detect_cli() -> Path:
         ROOT / "stage1",
         ROOT / "thagore.exe",
         ROOT / "thagore",
-        ROOT / "thag.exe",
-        ROOT / "thag",
     ]
     for candidate in candidates:
         if candidate.exists():
