@@ -25,6 +25,7 @@ export default defineConfig({
           label: "Install & Tooling",
           items: [
             { label: "Quick Start", link: "/install/quick-start/" },
+            { label: "Updating Thagore", link: "/install/update/" },
             { label: "CLI Reference", link: "/install/cli-reference/" },
             { label: "Release & Installers", link: "/install/release-installers/" },
           ]

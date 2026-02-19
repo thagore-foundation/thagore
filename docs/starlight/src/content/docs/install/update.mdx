@@ -1,0 +1,194 @@
+---
+title: Updating Thagore
+description: How to check for, apply, and roll back Thagore compiler updates using the built-in update command.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
+
+# Updating Thagore
+
+The `thagore update` command lets you check for new releases, apply them in-place, and roll back if something goes wrong — all without leaving your terminal.
+
+---
+
+## Check Your Current Version
+
+```bash
+thagore --version
+# thagore 0.3.33-foundation (linux/x86_64)
+```
+
+---
+
+## `thagore update check`
+
+Queries GitHub Releases and reports whether a newer version is available. Does **not** download or install anything.
+
+```bash
+thagore update check
+```
+
+**Example output — up to date:**
+```
+thagore 0.3.33-foundation is up to date.
+```
+
+**Example output — update available:**
+```
+Update available: 0.3.33-foundation → 0.3.34-foundation
+Run `thagore update apply` to install.
+```
+
+---
+
+## `thagore update apply`
+
+Downloads the latest release for your platform and replaces the current binary.
+
+```bash
+thagore update apply
+```
+
+By default this asks for confirmation before writing to disk:
+
+```
+Update available: 0.3.33-foundation → 0.3.34-foundation
+Apply update? [Y/n]:
+```
+
+### Skip the prompt
+
+```bash
+thagore update apply --yes
+```
+
+### Dry run (preview only, no changes)
+
+```bash
+thagore update apply --dry-run
+```
+
+```
+[dry-run] Would download: thagore-linux-x86_64.tar.gz (v0.3.34-foundation)
+[dry-run] Would replace: /usr/local/bin/thagore
+No files were changed.
+```
+
+<Aside type="tip" title="What gets updated">
+`update apply` replaces only the `thagore` binary itself. Your source files, standard library, and project configurations are not touched.
+</Aside>
+
+---
+
+## `thagore update rollback`
+
+Restores the previous version of the compiler that was saved before the last `apply`. Thagore keeps one backup automatically.
+
+```bash
+thagore update rollback
+```
+
+Prompts for confirmation before restoring:
+
+```
+Roll back from 0.3.34-foundation to 0.3.33-foundation? [Y/n]:
+```
+
+### Skip the prompt
+
+```bash
+thagore update rollback --yes
+```
+
+<Aside type="caution" title="Only one level of rollback">
+Rollback restores the **immediately previous** binary only. Running `update apply` twice without a rollback in between will overwrite the backup.
+</Aside>
+
+---
+
+## Auto Update Notifications
+
+By default, Thagore silently checks for updates in the background **once every 24 hours** and prints a one-line notice on your next compiler invocation:
+
+```
+Notice: thagore 0.3.34-foundation is available. Run `thagore update apply` to install.
+```
+
+To disable this behaviour, set the environment variable `THAGORE_DISABLE_UPDATE_CHECK=1`:
+
+<Tabs>
+  <TabItem label="🐧 Linux / 🍎 macOS">
+
+```bash
+# Disable for current session
+export THAGORE_DISABLE_UPDATE_CHECK=1
+
+# Disable permanently (add to ~/.bashrc or ~/.zshrc)
+echo 'export THAGORE_DISABLE_UPDATE_CHECK=1' >> ~/.bashrc
+```
+
+  </TabItem>
+  <TabItem label="🪟 Windows (PowerShell)">
+
+```powershell
+# Disable for current session
+$env:THAGORE_DISABLE_UPDATE_CHECK = "1"
+
+# Disable permanently (user scope)
+[Environment]::SetEnvironmentVariable("THAGORE_DISABLE_UPDATE_CHECK", "1", "User")
+```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `thagore --version` | Print the current compiler version |
+| `thagore update check` | Check if a newer release is available |
+| `thagore update apply` | Download and install the latest release (prompts) |
+| `thagore update apply --yes` | Apply update without prompting |
+| `thagore update apply --dry-run` | Preview what would be downloaded, make no changes |
+| `thagore update rollback` | Restore the previous binary (prompts) |
+| `thagore update rollback --yes` | Roll back without prompting |
+
+### Environment Variables
+
+| Variable | Value | Effect |
+|----------|-------|--------|
+| `THAGORE_DISABLE_UPDATE_CHECK` | `1` | Suppress the 24-hour background update check |
+
+---
+
+## Typical Workflow
+
+```bash
+# 1. See what version you have
+thagore --version
+
+# 2. Check if there is a newer release
+thagore update check
+
+# 3. Preview the update
+thagore update apply --dry-run
+
+# 4. Apply it
+thagore update apply --yes
+
+# 5. Verify
+thagore --version
+
+# 6. Something broke? Roll back instantly
+thagore update rollback --yes
+```
+
+<Aside type="tip" title="See also">
+- [Quick Start](/install/quick-start) — first-time installation
+- [CLI Reference](/install/cli-reference) — all `thagore build`, `test`, `fix` flags
+- [Release & Installers](/install/release-installers) — manual download links
+</Aside>
