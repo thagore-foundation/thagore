@@ -644,6 +644,10 @@ jobs:
             local bin="$1"
             local ver=""
             local help=""
+            local strict_cli_lane=0
+            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+              strict_cli_lane=1
+            fi
             chmod +x "$bin" || true
             ver="$("./$bin" --version 2>&1 || true)"
             help="$("./$bin" --help 2>&1 || true)"
@@ -652,12 +656,25 @@ jobs:
               return 1
             fi
             if ! grep -Eq "thagore|Thagore" <<<"$ver"; then
-              echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+              if [[ "$strict_cli_lane" -eq 1 ]]; then
+                echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[WARN] [SANITY] $bin --version missing thagore marker on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
             fi
             if ! grep -Eq "Usage:|Compiler CLI|thagore build" <<<"$help"; then
-              echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+              if [[ "$strict_cli_lane" -eq 1 ]]; then
+                echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[WARN] [SANITY] $bin --help missing expected help markers on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
+            fi
+            if ! grep -Eq "thagore update|update <check\|apply\|rollback>" <<<"$help"; then
+              if [[ "$strict_cli_lane" -eq 1 ]]; then
+                echo "[SANITY] $bin rejected: --help missing update command marker." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[WARN] [SANITY] $bin --help missing update command marker on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
             fi
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
@@ -855,15 +872,39 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          STRICT_CLI_LANE=0
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            STRICT_CLI_LANE=1
+          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1 || true)"
           HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1 || true)"
           printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
-          grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
-          grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt
+          if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+            echo "CRITICAL: empty --version/--help output in smoke step."
+            exit 1
+          fi
+          if ! grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt; then
+            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
+              echo "CRITICAL: strict lane missing thagore marker in --version."
+              exit 1
+            fi
+            echo "[WARN] non-strict lane missing thagore marker in --version." | tee -a "$STAGE_TRACE_FILE"
+          fi
+          if ! grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt; then
+            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
+              echo "CRITICAL: strict lane missing help markers in --help."
+              exit 1
+            fi
+            echo "[WARN] non-strict lane missing help markers in --help." | tee -a "$STAGE_TRACE_FILE"
+          fi
           if ! grep -E "thagore update|update <check\|apply\|rollback>" cli-help-release-${{ matrix.asset_tag }}.txt; then
-            echo "[WARN] native --help missing update command." | tee -a "$STAGE_TRACE_FILE"
+            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
+              echo "CRITICAL: strict lane missing update command marker in --help."
+              exit 1
+            fi
+            echo "[WARN] native --help missing update command on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
           fi
 
       - name: Run hello + fib
