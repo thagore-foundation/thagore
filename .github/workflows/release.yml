@@ -681,6 +681,7 @@ jobs:
               exit 0
             fi
             echo "[WARN] snapshot-linked stage2 failed CLI sanity; fallback to bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
+            FORCE_STAGE1_ONLY=1
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
@@ -751,7 +752,10 @@ jobs:
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
           STAGE2_CHAIN_OK=1
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+          if [[ "${FORCE_STAGE1_ONLY:-0}" == "1" ]]; then
+            STAGE2_CHAIN_OK=0
+            echo "[WARN] using stage1 compiler directly because snapshot stage2 failed CLI sanity." | tee -a "$STAGE_TRACE_FILE"
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE2_CHAIN_OK=0
             echo "[WARN] linux-arm64: release lane uses direct stage1 compiler path (stage2 chain disabled for stability)." | tee -a "$STAGE_TRACE_FILE"
           elif ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
