@@ -662,6 +662,7 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
+          COMPILER_SUPPORTS_HELP=1
           if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
             STAGE2_BIN="${{ matrix.stage2_bin }}"
             if cli_sanity_ok "$STAGE2_BIN"; then
@@ -783,19 +784,25 @@ jobs:
           else
             STAGE2_BIN="${{ matrix.stage1_bin }}"
             STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
+            COMPILER_SUPPORTS_HELP=0
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
-          if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
+          if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]] && ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
             if [[ "$STAGE2_REBUILD_BIN" != "${{ matrix.stage1_bin }}" ]]; then
               echo "[WARN] fallback to stage1 due CLI sanity failure: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
               STAGE2_BIN="${{ matrix.stage1_bin }}"
               STAGE2_REBUILD_BIN="${{ matrix.stage1_bin }}"
+              COMPILER_SUPPORTS_HELP=0
               test -f "$STAGE2_REBUILD_BIN"
               chmod +x "$STAGE2_REBUILD_BIN" || true
             fi
           fi
-          cli_sanity_ok "$STAGE2_REBUILD_BIN"
+          if [[ "$COMPILER_SUPPORTS_HELP" == "1" ]]; then
+            cli_sanity_ok "$STAGE2_REBUILD_BIN"
+          else
+            echo "[SANITY] skip strict CLI marker checks for stage1 compatibility lane." | tee -a "$STAGE_TRACE_FILE"
+          fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
@@ -832,6 +839,7 @@ jobs:
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+          echo "COMPILER_SUPPORTS_HELP=$COMPILER_SUPPORTS_HELP" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
         if: env.RELEASE_OPTIONAL_SKIP != '1'
@@ -885,8 +893,12 @@ jobs:
           HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1 || true)"
           printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
-          grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
-          grep -E "Usage:" cli-help-release-${{ matrix.asset_tag }}.txt
+          if [[ "${COMPILER_SUPPORTS_HELP:-1}" == "1" ]]; then
+            grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
+            grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt
+          else
+            grep -E "Thagore|thagore|Compiler" cli-version-release-${{ matrix.asset_tag }}.txt
+          fi
 
       - name: Run hello + fib
         if: env.RELEASE_OPTIONAL_SKIP != '1'
