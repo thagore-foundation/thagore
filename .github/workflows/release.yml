@@ -659,6 +659,10 @@ jobs:
               echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
+            if ! grep -Eq "thagore update|update <check\|apply\|rollback>" <<<"$help"; then
+              echo "[SANITY] $bin rejected: --help does not expose update command." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
@@ -909,6 +913,7 @@ jobs:
           if [[ "${COMPILER_SUPPORTS_HELP:-1}" == "1" ]]; then
             grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt
             grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt
+            grep -E "thagore update|update <check\|apply\|rollback>" cli-help-release-${{ matrix.asset_tag }}.txt
           else
             grep -E "Thagore|thagore|Compiler" cli-version-release-${{ matrix.asset_tag }}.txt
           fi
