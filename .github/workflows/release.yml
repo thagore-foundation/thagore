@@ -628,6 +628,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          STRICT_WINDOWS_X64=0
+          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            STRICT_WINDOWS_X64=1
+          fi
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
           link_from_snapshot_ir() {
@@ -676,28 +680,44 @@ jobs:
               fi
               echo "[WARN] [SANITY] $bin --help missing update command marker on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
             fi
+            if [[ "$strict_cli_lane" -eq 1 ]]; then
+              local update_out=""
+              update_out="$("./$bin" update check 2>&1 || true)"
+              if [[ -z "$update_out" ]]; then
+                echo "[SANITY] $bin rejected: update check returned empty output." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$update_out"; then
+                echo "[SANITY] $bin rejected: update check output matches legacy/wrapper failure." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+            fi
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
-            STAGE2_BIN="${{ matrix.stage2_bin }}"
-            if cli_sanity_ok "$STAGE2_BIN"; then
-              STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-              "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
-              echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-              "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
-              HELLO_BIN="${{ matrix.hello_bin }}"
-              FIB_BIN="${{ matrix.fib_bin }}"
-              test -f "$HELLO_BIN"
-              test -f "$FIB_BIN"
-              echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-              echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-              echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-              echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-              exit 0
+          if [[ "$STRICT_WINDOWS_X64" -eq 0 ]]; then
+            if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
+              STAGE2_BIN="${{ matrix.stage2_bin }}"
+              if cli_sanity_ok "$STAGE2_BIN"; then
+                STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
+                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
+                "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"
+                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
+                "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"
+                HELLO_BIN="${{ matrix.hello_bin }}"
+                FIB_BIN="${{ matrix.fib_bin }}"
+                test -f "$HELLO_BIN"
+                test -f "$FIB_BIN"
+                echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
+                echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+                echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
+                echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
             fi
-            echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
+          else
+            echo "[INFO] strict windows-x86_64 lane: skip snapshot IR shortcut, enforce source-built compiler." | tee -a "$STAGE_TRACE_FILE"
           fi
           BUILD_TIMEOUT_SECS=300
           run_build_cmd() {
@@ -773,14 +793,23 @@ jobs:
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg")"
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
-
-          if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
+          if ! cli_sanity_ok "$STAGE2_BIN"; then
+            echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             exit 1
           fi
-          STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+
+          if [[ "$STRICT_WINDOWS_X64" -eq 1 ]]; then
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "[INFO] strict windows-x86_64 lane: keep source-built compiler as release compiler (no rebuild fallback)." | tee -a "$STAGE_TRACE_FILE"
+          else
+            if ! thg_build "$STAGE2_BIN" src/thagore.tg "${{ matrix.stage2_rebuild_bin }}"; then
+              exit 1
+            fi
+            STAGE2_REBUILD_BIN="$(resolve_bin "${{ matrix.stage2_rebuild_bin }}" "src/thagore.tg" || true)"
+            if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+              STAGE2_REBUILD_BIN="$STAGE2_BIN"
+              echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
