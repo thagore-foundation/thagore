@@ -992,17 +992,13 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "$STAGE2_REBUILD_BIN" dist/bin/thagore.exe
             cp "$STAGE2_REBUILD_BIN" dist/bin/thag.exe
             printf '%s\n' \
               '@echo off' \
               'setlocal' \
               'set "SELF_DIR=%~dp0"' \
-              'if /I "%~1"=="update" goto run_update' \
-              '"%SELF_DIR%thag.exe" %*' \
-              'exit /b %ERRORLEVEL%' \
-              '' \
-              ':run_update' \
-              'powershell -NoProfile -ExecutionPolicy Bypass -File "%SELF_DIR%..\installer\update-windows.ps1" %2 %3 %4 %5 %6 %7 %8 %9' \
+              '"%SELF_DIR%thagore.exe" %*' \
               'exit /b %ERRORLEVEL%' > dist/bin/thagore.cmd
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"

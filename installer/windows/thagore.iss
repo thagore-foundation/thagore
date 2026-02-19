@@ -31,6 +31,11 @@ SetupLogging=yes
 Name: "addtopath"; Description: "Add Thagore to PATH"; Flags: checkedonce
 Name: "installllvm"; Description: "Install LLVM 21.1.8 automatically (winget)"; Flags: unchecked
 
+[InstallDelete]
+Type: files; Name: "{app}\bin\thagore.exe"
+Type: files; Name: "{app}\bin\thag.exe"
+Type: files; Name: "{app}\bin\thagore.cmd"
+
 [Files]
 Source: "..\..\dist\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\dist\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
