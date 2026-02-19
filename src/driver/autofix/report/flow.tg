@@ -123,6 +123,7 @@ func _write_lock_file(lock_path: String, mode: String, allowed_rules_set: String
     lock_json = lock_json + _json_quote("last_session_id") + ":" + _json_quote(last_session_id) + ","
     lock_json = lock_json + _json_quote("last_entry_hash_before") + ":" + _json_quote(_to_string_i32(entry_hash_before)) + ","
     lock_json = lock_json + _json_quote("last_entry_hash_after") + ":" + _json_quote(_to_string_i32(entry_hash_after)) + ","
+    lock_json = lock_json + _json_quote("source_digest") + ":" + _json_quote(_to_string_i32(entry_hash_after)) + ","
     lock_json = lock_json + _json_quote("updated_ms") + ":" + _json_quote(_to_string_i32(time.now_ms()))
     lock_json = lock_json + "}" + _nl()
     if (fs.write_text(lock_path, lock_json) == 0):

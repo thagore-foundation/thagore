@@ -1,5 +1,36 @@
 import "src/driver/autofix/common/core.tg"
 
+func _parse_i32_loose(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let sign = 1
+    let idx = 0
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        idx = 1
+    if (idx >= strlen(s)):
+        return fallback
+    let value = 0
+    let digits = 0
+    while (idx < strlen(s)):
+        let ch = _char_at(s, idx)
+        if (_is_digit(ch) == 1):
+            value = (value * 10) + _find_char("0123456789", ch)
+            digits = digits + 1
+            idx = idx + 1
+        else:
+            idx = strlen(s)
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
+func _preview_for_log(text: String) -> String:
+    let clipped = _cli_preview(text, 5, 140)
+    return _json_quote(_replace_all(clipped, _nl(), "\\n"))
+
 func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dry_run_flag: i32, explain_flag: i32, explain_json_flag: i32, from_build: i32, lock_path: String, lock_strict: i32, lock_locked: i32) -> i32:
     let mode = _mode_or_safe(mode_input)
     if ((lock_strict == 1) and (strlen(lock_path) == 0)):
@@ -59,6 +90,10 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
     let lock_rules_set = ";"
     let lock_fix_ids_set = ";"
     let lock_entries_set = ";"
+    let source_hash_current = _hash_text(source)
+    let lock_expected_hash = -2147483647
+    let lock_has_expected_hash = 0
+    let lock_entry_covered = 0
     if (strlen(lock_path) > 0):
         lock_used = 1
         if (fs.exists(lock_path) == 1):
@@ -73,6 +108,16 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
             lock_entries_set = _json_get_string(lock_text, "entries_set")
             if (strlen(lock_entries_set) == 0):
                 lock_entries_set = ";"
+            lock_entry_covered = _set_contains(lock_entries_set, normalized_entry)
+            let lock_digest_text = _json_get_string(lock_text, "source_digest")
+            if (strlen(lock_digest_text) == 0):
+                lock_digest_text = _json_get_string(lock_text, "last_entry_hash_after")
+            if (strlen(lock_digest_text) > 0):
+                lock_expected_hash = _parse_i32_loose(lock_digest_text, -2147483647)
+            else:
+                lock_expected_hash = _json_get_i32(lock_text, "last_entry_hash_after", -2147483647)
+            if (lock_expected_hash != -2147483647):
+                lock_has_expected_hash = 1
         else:
             if (lock_strict == 1):
                 print("[autofix] error: lock file not found under strict mode: " + lock_path)
@@ -639,15 +684,15 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
             explain_json = explain_json + "}"
             print(explain_json)
         else:
-            print("[autofix][explain] rule=compiler_suggestion_span_edit diagnostic=COMPILER_SUGGESTION confidence=0.99 risk=safe+aggressive candidate=" + _to_string_i32(cand_compiler) + " selected=" + _to_string_i32(sel_compiler) + " machine_candidates=" + _to_string_i32(compiler_machine_candidates) + " maybe_candidates=" + _to_string_i32(compiler_maybe_candidates) + " overlap_skipped=" + _to_string_i32(compiler_overlap_skipped) + " reason=" + reason_compiler)
-            print("[autofix][explain] rule=canonical_whitespace_tabs_to_spaces diagnostic=PARSE_INDENT_TAB confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_tabs) + " selected=" + _to_string_i32(sel_tabs) + " reason=" + reason_tabs)
-            print("[autofix][explain] rule=canonical_whitespace_trim_trailing diagnostic=PARSE_TRAILING_WHITESPACE confidence=0.97 risk=safe candidate=" + _to_string_i32(cand_trim_ws) + " selected=" + _to_string_i32(sel_trim_ws) + " reason=" + reason_trim_ws)
-            print("[autofix][explain] rule=canonical_newline_final_newline diagnostic=PARSE_MISSING_FINAL_NEWLINE confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_final_nl) + " selected=" + _to_string_i32(sel_final_nl) + " reason=" + reason_final_nl)
-            print("[autofix][explain] rule=normalize_deprecated_fn_keyword diagnostic=PARSE_DEPRECATED_FN_KEYWORD confidence=0.95 risk=safe candidate=" + _to_string_i32(cand_dep_fn) + " selected=" + _to_string_i32(sel_dep_fn) + " reason=" + reason_dep_fn)
-            print("[autofix][explain] rule=remove_duplicate_trivial_modifiers diagnostic=PARSE_DUPLICATE_MODIFIER confidence=0.96 risk=safe candidate=" + _to_string_i32(cand_dup_mod) + " selected=" + _to_string_i32(sel_dup_mod) + " reason=" + reason_dup_mod)
-            print("[autofix][explain] rule=add_missing_std_import diagnostic=SYM_MISSING_STD_IMPORT confidence=0.96 risk=safe candidate=" + _to_string_i32(cand_imports) + " selected=" + _to_string_i32(sel_imports) + " reason=" + reason_imports)
-            print("[autofix][explain] rule=missing_colon_block_header diagnostic=PARSE_MISSING_BLOCK_COLON confidence=0.98 risk=safe candidate=" + _to_string_i32(cand_colon) + " selected=" + _to_string_i32(sel_colon) + " reason=" + reason_colon)
-            print("[autofix][explain] rule=infer_return_annotation_literal diagnostic=TYPE_MISSING_RETURN_ANNOTATION confidence=0.82 threshold=0.80 risk=aggressive candidate=" + _to_string_i32(cand_ret) + " selected=" + _to_string_i32(sel_ret) + " reason=" + reason_ret)
+            print("[autofix][explain] rule=compiler_suggestion_span_edit diagnostic=COMPILER_SUGGESTION confidence=0.99 risk=safe+aggressive candidate=" + _to_string_i32(cand_compiler) + " selected=" + _to_string_i32(sel_compiler) + " machine_candidates=" + _to_string_i32(compiler_machine_candidates) + " maybe_candidates=" + _to_string_i32(compiler_maybe_candidates) + " overlap_skipped=" + _to_string_i32(compiler_overlap_skipped) + " reason=" + reason_compiler + " preview_old=" + _preview_for_log(preview_compiler_old) + " preview_new=" + _preview_for_log(preview_compiler_new))
+            print("[autofix][explain] rule=canonical_whitespace_tabs_to_spaces diagnostic=PARSE_INDENT_TAB confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_tabs) + " selected=" + _to_string_i32(sel_tabs) + " reason=" + reason_tabs + " preview_old=" + _preview_for_log(preview_tabs_old) + " preview_new=" + _preview_for_log(preview_tabs_new))
+            print("[autofix][explain] rule=canonical_whitespace_trim_trailing diagnostic=PARSE_TRAILING_WHITESPACE confidence=0.97 risk=safe candidate=" + _to_string_i32(cand_trim_ws) + " selected=" + _to_string_i32(sel_trim_ws) + " reason=" + reason_trim_ws + " preview_old=" + _preview_for_log(preview_trim_ws_old) + " preview_new=" + _preview_for_log(preview_trim_ws_new))
+            print("[autofix][explain] rule=canonical_newline_final_newline diagnostic=PARSE_MISSING_FINAL_NEWLINE confidence=0.99 risk=safe candidate=" + _to_string_i32(cand_final_nl) + " selected=" + _to_string_i32(sel_final_nl) + " reason=" + reason_final_nl + " preview_old=" + _preview_for_log(preview_final_nl_old) + " preview_new=" + _preview_for_log(preview_final_nl_new))
+            print("[autofix][explain] rule=normalize_deprecated_fn_keyword diagnostic=PARSE_DEPRECATED_FN_KEYWORD confidence=0.95 risk=safe candidate=" + _to_string_i32(cand_dep_fn) + " selected=" + _to_string_i32(sel_dep_fn) + " reason=" + reason_dep_fn + " preview_old=" + _preview_for_log(preview_dep_fn_old) + " preview_new=" + _preview_for_log(preview_dep_fn_new))
+            print("[autofix][explain] rule=remove_duplicate_trivial_modifiers diagnostic=PARSE_DUPLICATE_MODIFIER confidence=0.96 risk=safe candidate=" + _to_string_i32(cand_dup_mod) + " selected=" + _to_string_i32(sel_dup_mod) + " reason=" + reason_dup_mod + " preview_old=" + _preview_for_log(preview_dup_mod_old) + " preview_new=" + _preview_for_log(preview_dup_mod_new))
+            print("[autofix][explain] rule=add_missing_std_import diagnostic=SYM_MISSING_STD_IMPORT confidence=0.96 risk=safe candidate=" + _to_string_i32(cand_imports) + " selected=" + _to_string_i32(sel_imports) + " reason=" + reason_imports + " preview_old=" + _preview_for_log(preview_imports_old) + " preview_new=" + _preview_for_log(preview_imports_new))
+            print("[autofix][explain] rule=missing_colon_block_header diagnostic=PARSE_MISSING_BLOCK_COLON confidence=0.98 risk=safe candidate=" + _to_string_i32(cand_colon) + " selected=" + _to_string_i32(sel_colon) + " reason=" + reason_colon + " preview_old=" + _preview_for_log(preview_colon_old) + " preview_new=" + _preview_for_log(preview_colon_new))
+            print("[autofix][explain] rule=infer_return_annotation_literal diagnostic=TYPE_MISSING_RETURN_ANNOTATION confidence=0.82 threshold=0.80 risk=aggressive candidate=" + _to_string_i32(cand_ret) + " selected=" + _to_string_i32(sel_ret) + " reason=" + reason_ret + " preview_old=" + _preview_for_log(preview_ret_old) + " preview_new=" + _preview_for_log(preview_ret_new))
 
     let files_scanned = 1
     let files_changed = 0
@@ -684,27 +729,65 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
     let missing_locked_rules_set = _set_difference(applied_rules_set, lock_rules_set)
     let missing_locked_fix_ids_set = _set_difference(applied_fix_ids_set, lock_fix_ids_set)
 
-    if ((lock_locked == 1) and ((selected_total > 0) or (candidate_total > 0))):
-        if ((strlen(missing_locked_rules_set) > 1) or (strlen(missing_locked_fix_ids_set) > 1)):
+    if ((lock_locked == 1) and (lock_exists == 1)):
+        if (lock_entry_covered == 0):
             can_apply = 0
             rebuild = "locked-out-of-date"
-            failure_reason = "locked-out-of-date"
-            failing_diagnostic = "LOCKED_OUT_OF_DATE"
+            failure_reason = "locked-entry-missing"
+            failing_diagnostic = "LOCK_ENTRY_NOT_COVERED"
             conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
-            conflict_fix_ids_set = _set_union(conflict_fix_ids_set, missing_locked_fix_ids_set)
-            print("[autofix] locked violation: lock file is out of date.")
-            if (strlen(_set_to_json_array(missing_locked_rules_set)) > 2):
-                print("[autofix] lock_missing_rules=" + _set_to_json_array(missing_locked_rules_set))
-            if (strlen(_set_to_json_array(missing_locked_fix_ids_set)) > 2):
-                print("[autofix] lock_missing_fix_ids=" + _set_to_json_array(missing_locked_fix_ids_set))
+            print("[autofix] locked violation: entry is not covered by lock entries_set.")
+            print("[autofix] lock_entry=" + normalized_entry)
+        else:
+            if ((lock_has_expected_hash == 1) and (lock_expected_hash != source_hash_current)):
+                can_apply = 0
+                rebuild = "locked-out-of-date"
+                failure_reason = "locked-source-mismatch"
+                failing_diagnostic = "LOCK_SOURCE_DIGEST_MISMATCH"
+                conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
+                print("[autofix] locked violation: source digest mismatch.")
+                print("[autofix] lock_expected_hash=" + _to_string_i32(lock_expected_hash))
+                print("[autofix] source_hash=" + _to_string_i32(source_hash_current))
+            else:
+                if ((selected_total > 0) or (candidate_total > 0)):
+                    if ((strlen(missing_locked_rules_set) > 1) or (strlen(missing_locked_fix_ids_set) > 1)):
+                        can_apply = 0
+                        rebuild = "locked-out-of-date"
+                        failure_reason = "locked-out-of-date"
+                        failing_diagnostic = "LOCKED_OUT_OF_DATE"
+                        conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
+                        conflict_fix_ids_set = _set_union(conflict_fix_ids_set, missing_locked_fix_ids_set)
+                        print("[autofix] locked violation: lock file is out of date.")
+                        if (strlen(_set_to_json_array(missing_locked_rules_set)) > 2):
+                            print("[autofix] lock_missing_rules=" + _set_to_json_array(missing_locked_rules_set))
+                        if (strlen(_set_to_json_array(missing_locked_fix_ids_set)) > 2):
+                            print("[autofix] lock_missing_fix_ids=" + _set_to_json_array(missing_locked_fix_ids_set))
 
-    if ((apply_flag == 1) and (lock_strict == 1) and (lock_used == 1) and (lock_exists == 1) and (lock_blocked_total > 0)):
-        can_apply = 0
-        rebuild = "lock-blocked"
-        failure_reason = "lock-strict-blocked"
-        failing_diagnostic = "LOCK_STRICT_BLOCKED"
-        conflict_files_set = _set_add_unique(conflict_files_set, entry_path)
-        print("[autofix] lock strict violation: blocked fixes=" + _to_string_i32(lock_blocked_total))
+    if ((apply_flag == 1) and (lock_strict == 1) and (lock_used == 1) and (lock_exists == 1)):
+        if ((can_apply == 1) and (lock_entry_covered == 0)):
+            can_apply = 0
+            rebuild = "lock-blocked"
+            failure_reason = "lock-strict-entry-missing"
+            failing_diagnostic = "LOCK_ENTRY_NOT_COVERED"
+            conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
+            print("[autofix] lock strict violation: entry is not covered by lock entries_set.")
+            print("[autofix] lock_entry=" + normalized_entry)
+        if ((can_apply == 1) and (lock_has_expected_hash == 1) and (lock_expected_hash != source_hash_current)):
+            can_apply = 0
+            rebuild = "lock-blocked"
+            failure_reason = "lock-strict-source-mismatch"
+            failing_diagnostic = "LOCK_SOURCE_DIGEST_MISMATCH"
+            conflict_files_set = _set_add_unique(conflict_files_set, lock_path)
+            print("[autofix] lock strict violation: source digest mismatch.")
+            print("[autofix] lock_expected_hash=" + _to_string_i32(lock_expected_hash))
+            print("[autofix] source_hash=" + _to_string_i32(source_hash_current))
+        if ((can_apply == 1) and (lock_blocked_total > 0)):
+            can_apply = 0
+            rebuild = "lock-blocked"
+            failure_reason = "lock-strict-blocked"
+            failing_diagnostic = "LOCK_STRICT_BLOCKED"
+            conflict_files_set = _set_add_unique(conflict_files_set, entry_path)
+            print("[autofix] lock strict violation: blocked fixes=" + _to_string_i32(lock_blocked_total))
 
     if ((apply_flag == 1) and (can_apply == 1)):
         fixes_applied = selected_total
@@ -811,4 +894,3 @@ func _run_fix_engine(entry_path: String, mode_input: String, apply_flag: i32, dr
         print("[autofix] report: " + report_path)
         return -2
     return selected_total
-

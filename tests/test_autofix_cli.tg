@@ -159,6 +159,26 @@ func main() -> i32:
     fails = fails + _expect_contains("lock strict keeps source", after_lock, "func main()")
     fails = fails + _expect_not_contains("lock strict blocks colon fix", after_lock, "func main():")
 
+    let lock_hash_mismatch_path = "tests/__autofix_hash_mismatch.lock"
+    let lock_hash_mismatch_json = "{\n  " + dq + "mode" + dq + ": " + dq + "safe" + dq + ",\n  " + dq + "allowed_rules_set" + dq + ": " + dq + ";missing_colon_block_header;" + dq + ",\n  " + dq + "allowed_rules" + dq + ": [" + dq + "missing_colon_block_header" + dq + "],\n  " + dq + "entries_set" + dq + ": " + dq + ";" + sample_path + ";" + dq + ",\n  " + dq + "entries" + dq + ": [" + dq + sample_path + dq + "],\n  " + dq + "source_digest" + dq + ": " + dq + "123456789" + dq + "\n}\n"
+    fails = fails + _expect_i32("write lock hash mismatch", fs.write_text(lock_hash_mismatch_path, lock_hash_mismatch_json), 1)
+    fails = fails + _expect_i32("rewrite sample for lock hash mismatch", fs.write_text(sample_path, src2), 1)
+    fails = fails + _expect_i32("lock strict fails on hash mismatch", autofix.run_fix_apply(sample_path, "safe", lock_hash_mismatch_path, 1, 0), 1)
+    fails = fails + _expect_i32("locked fails on hash mismatch", autofix.run_fix_apply(sample_path, "safe", lock_hash_mismatch_path, 0, 1), 1)
+    let after_hash_mismatch = fs.read_text(sample_path)
+    fails = fails + _expect_contains("hash mismatch keeps source", after_hash_mismatch, "func main()")
+    fails = fails + _expect_not_contains("hash mismatch blocks colon fix", after_hash_mismatch, "func main():")
+    let hash_mismatch_report = fs.read_text(autofix.latest_report_path())
+    fails = fails + _expect_contains("hash mismatch diagnostic", hash_mismatch_report, "LOCK_SOURCE_DIGEST_MISMATCH")
+
+    let lock_entry_mismatch_path = "tests/__autofix_entry_mismatch.lock"
+    let lock_entry_mismatch_json = "{\n  " + dq + "mode" + dq + ": " + dq + "safe" + dq + ",\n  " + dq + "allowed_rules_set" + dq + ": " + dq + ";missing_colon_block_header;" + dq + ",\n  " + dq + "allowed_rules" + dq + ": [" + dq + "missing_colon_block_header" + dq + "],\n  " + dq + "entries_set" + dq + ": " + dq + ";tests/other_entry.tg;" + dq + ",\n  " + dq + "entries" + dq + ": [" + dq + "tests/other_entry.tg" + dq + "],\n  " + dq + "source_digest" + dq + ": " + dq + "0" + dq + "\n}\n"
+    fails = fails + _expect_i32("write lock entry mismatch", fs.write_text(lock_entry_mismatch_path, lock_entry_mismatch_json), 1)
+    fails = fails + _expect_i32("rewrite sample for lock entry mismatch", fs.write_text(sample_path, src2), 1)
+    fails = fails + _expect_i32("locked fails on entry mismatch", autofix.run_fix_apply(sample_path, "safe", lock_entry_mismatch_path, 0, 1), 1)
+    let entry_mismatch_report = fs.read_text(autofix.latest_report_path())
+    fails = fails + _expect_contains("entry mismatch diagnostic", entry_mismatch_report, "LOCK_ENTRY_NOT_COVERED")
+
     fails = fails + _expect_i32("lock strict requires lock path", autofix.run_fix_apply(sample_path, "safe", "", 1, 0), 1)
     fails = fails + _expect_i32("locked requires lock path", autofix.run_fix_apply(sample_path, "safe", "", 0, 1), 1)
     let missing_lock = "tests/__autofix_missing.lock"

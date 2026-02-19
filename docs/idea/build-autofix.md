@@ -1,9 +1,9 @@
 # Thagore Build AutoFix (Guardian)
 
 Implementation approval: Approved  
-Status: Approved for implementation  
+Status: Implemented (safe/aggressive + LFM complete)  
 Owner: Thagore Build System / Diagnostics  
-Last updated: 2026-02-15
+Last updated: 2026-02-19
 
 ## 1) Vision
 
@@ -170,6 +170,8 @@ Behavior:
 
 - `thagore fix apply --lock thagore.fix.lock` replays only allowed fixes.
 - Build fails if required fix is missing from lock under strict policy.
+- `source_digest` / `last_entry_hash_after` must match current source hash under `--locked` and `--lock-strict`.
+- `entries_set` must include the target entry under `--locked` and `--lock-strict`.
 
 ## 10) Diagnostics and explainability
 
