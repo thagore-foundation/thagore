@@ -649,6 +649,22 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STRICT_WINDOWS=1
           fi
+          ARM64_STAGE2_TIMEOUT_SECS=900
+          ARM64_CLI_SANITY_TIMEOUT_SECS=45
+          run_with_guard_timeout() {
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]] && command -v timeout >/dev/null 2>&1; then
+              timeout --signal=TERM --kill-after=15s "${ARM64_STAGE2_TIMEOUT_SECS}s" "$@"
+            else
+              "$@"
+            fi
+          }
+          run_capture_with_guard_timeout() {
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]] && command -v timeout >/dev/null 2>&1; then
+              timeout --signal=TERM --kill-after=15s "${ARM64_CLI_SANITY_TIMEOUT_SECS}s" "$@" 2>&1 || true
+            else
+              "$@" 2>&1 || true
+            fi
+          }
           # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
           # This avoids seed compiler drift that can silently emit stub binaries.
           prepare_snapshot_ir() {
@@ -671,24 +687,24 @@ jobs:
                   WIN_RT_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_RT_ARGS[@]}")
                 fi
                 echo "[CMD] clang ${WIN_RT_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                clang "${WIN_RT_ARGS[@]}"
+                run_with_guard_timeout clang "${WIN_RT_ARGS[@]}"
                 WIN_HELPER_ARGS=("$snapshot_ir" thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module)
                 if [[ "${{ matrix.arch }}" == "arm64" ]]; then
                   WIN_HELPER_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_HELPER_ARGS[@]}")
                 fi
                 echo "[CMD] clang ${WIN_HELPER_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                clang "${WIN_HELPER_ARGS[@]}"
+                run_with_guard_timeout clang "${WIN_HELPER_ARGS[@]}"
               else
                 WIN_LINK_ARGS=("$snapshot_ir" thag_runtime.lib -o "$out" -Wno-override-module)
                 if [[ "${{ matrix.arch }}" == "arm64" ]]; then
                   WIN_LINK_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_LINK_ARGS[@]}")
                 fi
                 echo "[CMD] clang ${WIN_LINK_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                clang "${WIN_LINK_ARGS[@]}"
+                run_with_guard_timeout clang "${WIN_LINK_ARGS[@]}"
               fi
             else
               echo "[CMD] clang $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
+              run_with_guard_timeout clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
             fi
           }
           cli_sanity_ok() {
@@ -700,8 +716,8 @@ jobs:
               strict_cli_lane=1
             fi
             chmod +x "$bin" || true
-            ver="$("./$bin" --version 2>&1 || true)"
-            help="$("./$bin" --help 2>&1 || true)"
+            ver="$(run_capture_with_guard_timeout "./$bin" --version)"
+            help="$(run_capture_with_guard_timeout "./$bin" --help)"
             if [[ -z "$ver" || -z "$help" ]]; then
               if [[ "$strict_cli_lane" -eq 1 ]]; then
                 echo "[SANITY] $bin rejected: empty --version/--help output." | tee -a "$STAGE_TRACE_FILE"
