@@ -80,6 +80,11 @@ Compiler validations:
 - unbounded execution path in strict mode,
 - unknown external step capability metadata.
 
+Capability metadata contract is now versioned in:
+
+- `docs/idea/flow_capability_registry.txt`
+- override via `THAG_FLOW_CAPABILITY_REGISTRY=<path>`
+
 Strict mode target:
 
 ```bash
@@ -236,6 +241,7 @@ Done:
 - Strict recovery now hard-fails on corrupted journal events.
 - `parallel:` / `barrier` headers are validated semantically (including missing-barrier and empty-parallel diagnostics).
 - Strict mode rejects unknown external step capabilities; doctor reports capability known/unknown coverage.
+- Capability checks now read from a versioned registry contract (`flow_capability_registry.txt`) shared by validator and runtime doctor.
 - `flow doctor` now has incremental cache (`.thagore/flow/cache`) keyed by entry/mode/source-hash with hit/miss reporting.
 - `flow explain --json` now reuses cached flow graph output (`.thagore/flow/cache`) keyed by entry/mode/source-hash.
 - Doctor/explain cache fingerprint now includes transitive `import` dependencies, so cache invalidates on dependency source changes.

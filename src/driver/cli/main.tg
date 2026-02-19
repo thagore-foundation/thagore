@@ -43,7 +43,7 @@ func main() -> i32:
         let sub_flow = _trim(env.get(2))
         let entry_flow = ""
         let flow_mode = "on"
-        let flow_durability = "normal"
+        let flow_durability = ""
         let flow_journal_format = "compact"
         let flow_json = 0
         let flow_fail_at = ""

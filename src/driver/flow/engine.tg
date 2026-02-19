@@ -2,6 +2,7 @@ import "lib/fs.tg" as fs
 import "lib/time.tg" as time
 import "src/lowering/transform/program.tg" as pipe
 import "src/syntax/parser/header.tg" as ph
+import "src/semantics/flow/capability_registry.tg" as fcr
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
@@ -190,6 +191,33 @@ func _set_add_unique(set_text: String, token: String) -> String:
     if (_set_contains(set_text, token) == 1):
         return set_text
     return set_text + token + ";"
+
+func _set_to_json_array(set_text: String) -> String:
+    let out = "["
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + _json_quote(token)
+                first = 0
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out + "]"
+
+func _flow_complexity_level(step_count: i32, parallel_groups: i32, retry_steps: i32, timeout_steps: i32) -> String:
+    let score = step_count + (parallel_groups * 3) + retry_steps + timeout_steps
+    if (score >= 96):
+        return "high"
+    if (score >= 40):
+        return "medium"
+    return "low"
 
 func _json_escape(text: String) -> String:
     let out = _replace_all(text, "\\", "\\\\")
@@ -571,6 +599,12 @@ func _flow_durability(level_input: String) -> String:
 func normalize_flow_durability(level_input: String) -> String:
     return _flow_durability(level_input)
 
+func _flow_default_runtime_durability(mode: String, durability_input: String) -> String:
+    let raw = _trim(durability_input)
+    if ((mode == "strict") and (strlen(raw) == 0)):
+        return "high"
+    return _flow_durability(durability_input)
+
 func _flow_journal_format(format_input: String) -> String:
     let fmt = _trim(format_input)
     if (fmt == "jsonl"):
@@ -893,31 +927,13 @@ func _flow_step_capability(step_line: String) -> String:
         return ""
     return _trim(__thg_str_substr(expr, 0, dot))
 
-func _is_known_flow_capability(capability: String) -> i32:
-    let cap = _trim(capability)
-    if (strlen(cap) == 0):
-        return 1
-    if (cap == "cloud"):
-        return 1
-    if (cap == "artifact"):
-        return 1
-    if (cap == "db"):
-        return 1
-    if (cap == "fs"):
-        return 1
-    if (cap == "process"):
-        return 1
-    if (cap == "http"):
-        return 1
-    if (cap == "queue"):
-        return 1
-    if (cap == "pubsub"):
-        return 1
-    return 0
+func _is_known_flow_capability(registry: String, capability: String) -> i32:
+    return fcr.registry_is_known(registry, _trim(capability))
 
 func _collect_flow_stats(source: String) -> FlowStats:
     let total = _line_count(source)
     let i = 0
+    let capability_registry = fcr.load_registry()
     let flow_count = 0
     let step_count = 0
     let retry_steps = 0
@@ -943,7 +959,7 @@ func _collect_flow_stats(source: String) -> FlowStats:
         if (ph.is_flow_step_line(line) == 1):
             let cap = _flow_step_capability(line)
             if (strlen(cap) > 0):
-                if (_is_known_flow_capability(cap) == 1):
+                if (_is_known_flow_capability(capability_registry, cap) == 1):
                     capability_known = capability_known + 1
                 else:
                     capability_unknown = capability_unknown + 1
@@ -967,6 +983,9 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
     let rc = 0
     let status = "ok"
     let stats = _flow_stats(0, 0, 0, 0, 0, 0, 0, 0)
+    let capability_registry = fcr.load_registry()
+    let capability_registry_source = fcr.registry_source(capability_registry)
+    let capability_registry_schema = fcr.registry_schema_version(capability_registry)
     if (fs.exists(cache_path) == 1):
         let cache = fs.read_text(cache_path)
         if ((_json_get_string(cache, "entry") == entry_norm) and (_json_get_string(cache, "mode") == mode) and (_json_get_string(cache, "source_hash") == source_hash)):
@@ -1020,6 +1039,19 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
     let capability_coverage_pct = 100
     if (capability_total > 0):
         capability_coverage_pct = (stats.capability_known * 100) / capability_total
+    let complexity_level = "low"
+    let risk_flags = ";"
+    if ((stats.step_count > 24) or (stats.retry_steps > 12) or (stats.timeout_steps > 12)):
+        complexity_level = "medium"
+    if ((stats.step_count > 64) or (stats.retry_steps > 32) or (stats.timeout_steps > 32)):
+        complexity_level = "high"
+    if (stats.step_count > 64):
+        risk_flags = _set_add_unique(risk_flags, "step-complexity-high")
+    if ((stats.retry_steps > 0) and (stats.timeout_steps == 0)):
+        risk_flags = _set_add_unique(risk_flags, "retry-timeout-unbalanced")
+    if (stats.capability_unknown > 0):
+        risk_flags = _set_add_unique(risk_flags, "unknown-capability")
+    let risk_items = _set_to_json_array(risk_flags)
     let session_id = _flow_session_id(entry_path)
     let report_path = ".thagore/flow/reports/" + session_id + ".json"
     let report = "{"
@@ -1032,6 +1064,8 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
     report = report + _json_quote("mode") + ":" + _json_quote(mode) + ","
     report = report + _json_quote("cache") + ":" + _json_quote(cache_status) + ","
     report = report + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+    report = report + _json_quote("capability_registry_source") + ":" + _json_quote(capability_registry_source) + ","
+    report = report + _json_quote("capability_registry_schema") + ":" + _to_string_i32(capability_registry_schema) + ","
     report = report + _json_quote("status") + ":" + _json_quote(status) + ","
     report = report + _json_quote("summary") + ":{"
     report = report + _json_quote("flows") + ":" + _to_string_i32(stats.flow_count) + ","
@@ -1042,7 +1076,9 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
     report = report + _json_quote("irreversible_steps") + ":" + _to_string_i32(stats.irreversible_steps) + ","
     report = report + _json_quote("capability_known") + ":" + _to_string_i32(stats.capability_known) + ","
     report = report + _json_quote("capability_unknown") + ":" + _to_string_i32(stats.capability_unknown) + ","
-    report = report + _json_quote("capability_coverage_pct") + ":" + _to_string_i32(capability_coverage_pct)
+    report = report + _json_quote("capability_coverage_pct") + ":" + _to_string_i32(capability_coverage_pct) + ","
+    report = report + _json_quote("complexity_level") + ":" + _json_quote(complexity_level) + ","
+    report = report + _json_quote("risk_flags") + ":" + risk_items
     report = report + "}"
     report = report + "}" + _nl()
     fs.write_text(report_path, report)
@@ -1056,10 +1092,14 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
         json = json + _json_quote("mode") + ":" + _json_quote(mode) + ","
         json = json + _json_quote("cache") + ":" + _json_quote(cache_status) + ","
         json = json + _json_quote("source_hash") + ":" + _json_quote(source_hash) + ","
+        json = json + _json_quote("capability_registry_source") + ":" + _json_quote(capability_registry_source) + ","
+        json = json + _json_quote("capability_registry_schema") + ":" + _to_string_i32(capability_registry_schema) + ","
         json = json + _json_quote("status") + ":" + _json_quote(status) + ","
         json = json + _json_quote("capability_known") + ":" + _to_string_i32(stats.capability_known) + ","
         json = json + _json_quote("capability_unknown") + ":" + _to_string_i32(stats.capability_unknown) + ","
         json = json + _json_quote("capability_coverage_pct") + ":" + _to_string_i32(capability_coverage_pct) + ","
+        json = json + _json_quote("complexity_level") + ":" + _json_quote(complexity_level) + ","
+        json = json + _json_quote("risk_flags") + ":" + risk_items + ","
         json = json + _json_quote("report_file") + ":" + _json_quote(report_path)
         json = json + "}"
         print(json)
@@ -1069,6 +1109,8 @@ func run_flow_doctor(entry_path: String, mode_input: String, as_json: i32) -> i3
         print("[flow] retry_steps=" + _to_string_i32(stats.retry_steps) + " timeout_steps=" + _to_string_i32(stats.timeout_steps))
         print("[flow] undo_steps=" + _to_string_i32(stats.undo_steps) + " irreversible_steps=" + _to_string_i32(stats.irreversible_steps))
         print("[flow] capability_known=" + _to_string_i32(stats.capability_known) + " capability_unknown=" + _to_string_i32(stats.capability_unknown) + " coverage_pct=" + _to_string_i32(capability_coverage_pct))
+        print("[flow] capability_registry_source=" + capability_registry_source + " schema=" + _to_string_i32(capability_registry_schema))
+        print("[flow] complexity_level=" + complexity_level + " risks=" + risk_items)
         print("[flow] cache=" + cache_status + " source_hash=" + source_hash)
         print("[flow] status=" + status)
         print("[flow] report=" + report_path)
@@ -1152,6 +1194,8 @@ func run_flow_explain(entry_path: String, mode_input: String, as_json: i32) -> i
             let step_count = 0
             let barrier_count = 0
             let parallel_groups = 0
+            let flow_retry_steps = 0
+            let flow_timeout_steps = 0
             let step_items = ""
             let j = i + 1
             let parallel_open = 0
@@ -1260,17 +1304,26 @@ func run_flow_explain(entry_path: String, mode_input: String, as_json: i32) -> i
                                     if (strlen(step_items) > 0):
                                         step_items = step_items + ","
                                     step_items = step_items + step_json
+                                    if (retry_count > 0):
+                                        flow_retry_steps = flow_retry_steps + 1
+                                    if (strlen(timeout_value) > 0):
+                                        flow_timeout_steps = flow_timeout_steps + 1
                                     step_count = step_count + 1
                                     j = k
                                 else:
                                     j = j + 1
             if (as_json == 0):
                 print("[flow][explain] flow=" + flow_id + " steps=" + _to_string_i32(step_count))
+                if (step_count > 64):
+                    print("[flow][explain] risk=step-complexity-high")
             let flow_json = "{"
             flow_json = flow_json + _json_quote("flow_id") + ":" + _json_quote(flow_id) + ","
             flow_json = flow_json + _json_quote("step_count") + ":" + _to_string_i32(step_count) + ","
             flow_json = flow_json + _json_quote("parallel_groups") + ":" + _to_string_i32(parallel_groups) + ","
             flow_json = flow_json + _json_quote("barrier_count") + ":" + _to_string_i32(barrier_count) + ","
+            flow_json = flow_json + _json_quote("retry_steps") + ":" + _to_string_i32(flow_retry_steps) + ","
+            flow_json = flow_json + _json_quote("timeout_steps") + ":" + _to_string_i32(flow_timeout_steps) + ","
+            flow_json = flow_json + _json_quote("complexity_level") + ":" + _json_quote(_flow_complexity_level(step_count, parallel_groups, flow_retry_steps, flow_timeout_steps)) + ","
             flow_json = flow_json + _json_quote("steps") + ":[" + step_items + "]"
             flow_json = flow_json + "}"
             if (strlen(flow_items) > 0):
@@ -1325,7 +1378,7 @@ func _write_flow_session(session_id: String, entry_path: String, mode: String, d
 
 func _run_flow_simulate_internal(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32, durability_input: String, journal_format_input: String) -> i32:
     let mode = _flow_mode(mode_input)
-    let durability = _flow_durability(durability_input)
+    let durability = _flow_default_runtime_durability(mode, durability_input)
     let journal_format = _flow_journal_format(journal_format_input)
     if (_is_tg_source(entry_path) == 0):
         print("[flow] error: only .tg source files are supported.")
@@ -1728,13 +1781,13 @@ func run_flow_simulate_with_policy_durable(entry_path: String, mode_input: Strin
     return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, durability_input, "compact")
 
 func run_flow_simulate_with_policy(entry_path: String, mode_input: String, fail_at: String, fail_once_at: String, timeout_at: String, as_json: i32, crash_after_fail: i32) -> i32:
-    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, "normal", "compact")
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, fail_once_at, timeout_at, as_json, crash_after_fail, "", "compact")
 
 func run_flow_simulate(entry_path: String, mode_input: String, fail_at: String, as_json: i32) -> i32:
-    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 0, "normal", "compact")
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 0, "", "compact")
 
 func run_flow_simulate_crash(entry_path: String, mode_input: String, fail_at: String, as_json: i32) -> i32:
-    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 1, "normal", "compact")
+    return _run_flow_simulate_internal(entry_path, mode_input, fail_at, "", "", as_json, 1, "", "compact")
 
 func run_flow_recover(session_id: String, as_json: i32) -> i32:
     let sid = _trim(session_id)

@@ -359,6 +359,45 @@ func _candidate_rules_for_goal(goal: String, mode: String) -> String:
         return ";"
     return ";" + selected + ";"
 
+func _goal_requires_sorted_input(goal: String) -> i32:
+    if ((goal == "binary_search_sorted") or (goal == "lower_bound_sorted") or (goal == "upper_bound_sorted")):
+        return 1
+    if ((goal == "count_less_sorted") or (goal == "count_less_equal_sorted") or (goal == "count_greater_sorted")):
+        return 1
+    if ((goal == "count_greater_equal_sorted") or (goal == "count_equal_sorted") or (goal == "count_not_equal_sorted")):
+        return 1
+    if ((goal == "count_range_sorted") or (goal == "count_outside_range_sorted") or (goal == "two_sum_sorted_exists")):
+        return 1
+    return 0
+
+func _rule_is_deterministic(rule: String) -> i32:
+    if (rule == "rule.reduce_sum.parallel.v3"):
+        return 0
+    if (rule == "rule.unsupported"):
+        return 0
+    return 1
+
+func _constraints_has_flag_true(constraints_lines: String, key: String) -> i32:
+    let needle_a = key + "==true"
+    let needle_b = key + "=true"
+    let total = _line_count(constraints_lines)
+    let i = 0
+    while (i < total):
+        let norm = _strip_spaces(_trim(_line_at(constraints_lines, i)))
+        if ((norm == needle_a) or (norm == needle_b)):
+            return 1
+        i = i + 1
+    return 0
+
+func _constraints_has_sorted_evidence(constraints_lines: String) -> i32:
+    if (_constraints_has_flag_true(constraints_lines, "input_sorted") == 1):
+        return 1
+    if (_constraints_has_flag_true(constraints_lines, "sorted") == 1):
+        return 1
+    if (_constraints_has_flag_true(constraints_lines, "source_sorted") == 1):
+        return 1
+    return 0
+
 func _parse_plan(entry_path: String, source: String, mode: String) -> IntentPlan:
     let total = _line_count(source)
     let mode_norm = normalize_intent_mode(mode)
@@ -455,6 +494,16 @@ func _parse_plan(entry_path: String, source: String, mode: String) -> IntentPlan
                             selected_rule = strategy_rule
                             verified = 1
                             verify_reason = "ok"
+                if ((verified == 1) and (_constraints_has_flag_true(constraints_lines, "deterministic") == 1)):
+                    if (_rule_is_deterministic(selected_rule) == 0):
+                        selected_rule = "rule.unsupported"
+                        verified = 0
+                        verify_reason = "constraint-deterministic-violated"
+                if ((verified == 1) and (_goal_requires_sorted_input(resolved_goal) == 1)):
+                    if (_constraints_has_sorted_evidence(constraints_lines) == 0):
+                        selected_rule = "rule.unsupported"
+                        verified = 0
+                        verify_reason = "constraint-missing-input-sorted"
                 let candidate_rules_set = _candidate_rules_for_goal(resolved_goal, mode_norm)
                 candidate_rules_set = _set_add_unique(candidate_rules_set, selected_rule)
                 let intent_id = _normalize_path(entry_path) + ":" + _to_string_i32(i + 1) + ":intent_" + kind + "_" + _to_string_i32(count + 1)
@@ -537,12 +586,17 @@ func _map_set_i32(map_text: String, key: String, value: i32) -> String:
 
 func _registry_enforce(records: String) -> i32:
     let reg_path = _trim(env.get("THAG_INTENT_REGISTRY"))
-    if (strlen(reg_path) == 0):
+    let effective_reg_path = reg_path
+    if (strlen(effective_reg_path) == 0):
+        let default_reg = "docs/idea/intent_rule_registry.txt"
+        if (fs.exists(default_reg) == 1):
+            effective_reg_path = default_reg
+    if (strlen(effective_reg_path) == 0):
         return 0
-    if (fs.exists(reg_path) == 0):
-        print("[intent] error: registry file not found: " + reg_path)
+    if (fs.exists(effective_reg_path) == 0):
+        print("[intent] error: registry file not found: " + effective_reg_path)
         return 1
-    let text = fs.read_text(reg_path)
+    let text = fs.read_text(effective_reg_path)
     let enabled = 1
     let budget_total = -1
     let rules_set = ";"
@@ -792,6 +846,9 @@ func run_intent_gate(entry_path: String, mode: String, fallback: String, strict_
     if (strict_lock == 1):
         if (_strict_lock_validate(source, plan.records, mode_norm, lock_path) != 0):
             return 1
+    else:
+        if (mode_norm == "max"):
+            print("[intent] warning: strict lock is disabled in max mode; reproducibility is weaker.")
     let total = _line_count(plan.records)
     let i = 0
     while (i < total):
@@ -803,9 +860,9 @@ func run_intent_gate(entry_path: String, mode: String, fallback: String, strict_
             let fn_name = _record_field(rec, 8)
             if (verified != "1"):
                 if (fallback_norm == "allow"):
-                    print("[intent] warning: fallback allow due to " + reason)
+                    print("[intent] warning: fallback allow due to " + reason + " (goal=" + _record_field(rec, 3) + ", selected_rule=" + selected + ")")
                 else:
-                    print("[intent] error: verification failed: " + reason)
+                    print("[intent] error: verification failed: " + reason + " (goal=" + _record_field(rec, 3) + ", selected_rule=" + selected + ")")
                     return 1
             if ((selected == "rule.dp.trib.iterative.v1") and (strlen(fn_name) > 0)):
                 print("intent rewrite applied for " + fn_name + " using " + selected)

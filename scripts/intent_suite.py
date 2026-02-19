@@ -60,6 +60,28 @@ SUPPORTED_GOALS = [
     "sqrt_bounded_loop",
 ]
 
+SORTED_REQUIRED_GOALS = {
+    "binary_search_sorted",
+    "lower_bound_sorted",
+    "upper_bound_sorted",
+    "count_less_sorted",
+    "count_less_equal_sorted",
+    "count_greater_sorted",
+    "count_greater_equal_sorted",
+    "count_equal_sorted",
+    "count_not_equal_sorted",
+    "count_range_sorted",
+    "count_outside_range_sorted",
+    "two_sum_sorted_exists",
+}
+
+
+def constraints_for_goal(goal: str) -> str:
+    lines = ["        deterministic == true\n"]
+    if goal in SORTED_REQUIRED_GOALS:
+        lines.append("        input_sorted == true\n")
+    return "".join(lines)
+
 
 def detect_cli() -> Path:
     candidates = [
@@ -290,8 +312,8 @@ def property_tests(cli: Path, workdir: Path, rounds: int) -> None:
             "intent block:\n"
             f"    goal: {goal}\n"
             "    constraints:\n"
-            "        deterministic == true\n"
-            "\n"
+            + constraints_for_goal(goal)
+            + "\n"
             "func main() -> i32:\n"
             "    print(\"OK\")\n"
             "    return 0\n",
@@ -470,6 +492,7 @@ def policy_presets_test(cli: Path, workdir: Path) -> None:
 
 def tribonacci_rewrite_smoke(cli: Path, workdir: Path) -> None:
     src = workdir / "trib_rewrite.tg"
+    lock_path = workdir / "trib_rewrite.lock"
     src.write_text(
         "intent func trib(n: i32) -> i32:\n"
         "    goal: tribonacci_dp\n"
@@ -492,7 +515,20 @@ def tribonacci_rewrite_smoke(cli: Path, workdir: Path) -> None:
     )
     exe_ext = ".exe" if os.name == "nt" else ""
     out_bin = workdir / f"trib_rewrite{exe_ext}"
-    proc = run_cmd([str(cli), "build", str(src), "--intent=max", "-o", str(out_bin)])
+    run_cmd([str(cli), "intent", "lock", str(src), "-o", str(lock_path), "--mode=max"])
+    proc = run_cmd(
+        [
+            str(cli),
+            "build",
+            str(src),
+            "--intent=max",
+            "--strict-lock",
+            "--intent-lock",
+            str(lock_path),
+            "-o",
+            str(out_bin),
+        ]
+    )
     if "intent rewrite applied for trib using rule.dp.trib.iterative.v1" not in proc.stdout:
         raise SystemExit("FAIL: tribonacci rewrite note was not emitted")
 
@@ -600,8 +636,8 @@ def strategy_matrix_pinning_test(cli: Path, workdir: Path) -> None:
             f"    goal: {goal}\n"
             f"    strategy: {strategy}\n"
             "    constraints:\n"
-            "        deterministic == true\n"
-            "\n"
+            + constraints_for_goal(goal)
+            + "\n"
             "func main() -> i32:\n"
             "    print(\"STRATEGY_MATRIX_OK\")\n"
             "    return 0\n",
@@ -748,8 +784,8 @@ def auto_plan_name_heuristic_test(cli: Path, workdir: Path) -> None:
             f"intent func {fn_name}(n: i32) -> i32:\n"
             "    goal: auto_plan\n"
             "    constraints:\n"
-            "        deterministic == true\n"
-            "\n"
+            + constraints_for_goal(expected_goal)
+            + "\n"
             f"func {fn_name}(n: i32) -> i32:\n"
             "    return n\n"
             "\n"

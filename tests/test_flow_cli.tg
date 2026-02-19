@@ -232,6 +232,8 @@ func main() -> i32:
     let strict_sid = flowctl.latest_flow_session_id()
     let strict_journal = flowctl.latest_flow_journal_path()
     fails = fails + _expect_i32("flow strict journal exists", fs.exists(strict_journal), 1)
+    let strict_session_text = fs.read_text(".thagore/flow/sessions/" + strict_sid + ".json")
+    fails = fails + _expect_contains("flow strict defaults high durability", strict_session_text, "\"durability\":\"high\"")
     fails = fails + _expect_i32("flow strict journal corrupt", fs.write_text(strict_journal, fs.read_text(strict_journal) + "corrupt-line" + nl), 1)
     fails = fails + _expect_i32("flow recover strict journal corruption fails", flowctl.run_flow_recover(strict_sid, 1), 1)
     fails = fails + _expect_i32("flow doctor strict bad", flowctl.run_flow_doctor(bad_path, "strict", 0), 1)

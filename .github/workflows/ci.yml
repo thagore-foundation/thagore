@@ -312,6 +312,17 @@ jobs:
           fi
           "$PY" scripts/intent_budget_gate.py
 
+      - name: Intent strict-lock gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          "$PY" scripts/intent_strict_lock_gate.py
+
       - name: Intent suite (doctor + strict-lock)
         shell: bash
         run: |

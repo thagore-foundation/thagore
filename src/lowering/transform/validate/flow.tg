@@ -7,6 +7,7 @@ import "src/lowering/transform/preprocess/value.tg"
 import "src/lowering/transform/preprocess/parse.tg"
 import "src/lowering/transform/comptime/eval.tg"
 import "src/lowering/transform/comptime/rewrite.tg"
+import "src/semantics/flow/capability_registry.tg" as fcr
 
 
 
@@ -398,30 +399,44 @@ func _flow_step_capability(step_line: String) -> String:
         return ""
     return _trim_edges(__thg_str_substr(expr, 0, dot))
 
-func _is_known_flow_capability(cap: String) -> i32:
-    let key = _trim_edges(cap)
-    if (strlen(key) == 0):
-        return 1
-    if (key == "cloud"):
-        return 1
-    if (key == "artifact"):
-        return 1
-    if (key == "db"):
-        return 1
-    if (key == "fs"):
-        return 1
-    if (key == "process"):
-        return 1
-    if (key == "http"):
-        return 1
-    if (key == "queue"):
-        return 1
-    if (key == "pubsub"):
-        return 1
-    return 0
+func _is_known_flow_capability(registry: String, cap: String) -> i32:
+    return fcr.registry_is_known(registry, _trim_edges(cap))
 
-func _validate_flow_step_policy(step_id: String, step_line: i32, has_undo: i32, has_irreversible: i32, has_idempotent: i32, retry_count: i32, timeout_token: String, strict_mode: i32) -> i32:
+func _flow_capability_supports_undo(registry: String, cap: String) -> i32:
+    return fcr.registry_supports_undo(registry, _trim_edges(cap))
+
+func _flow_capability_allows_irreversible(registry: String, cap: String) -> i32:
+    return fcr.registry_allows_irreversible(registry, _trim_edges(cap))
+
+func _flow_step_timeout_budget_ms(retry_count: i32, timeout_token: String) -> i32:
+    let timeout_ms = _flow_timeout_ms(timeout_token)
+    if (timeout_ms <= 0):
+        return 0
+    let attempts = retry_count + 1
+    if (attempts < 1):
+        return timeout_ms
+    return timeout_ms * attempts
+
+func _flow_strict_max_steps() -> i32:
+    return 64
+
+func _flow_strict_max_parallel_groups() -> i32:
+    return 16
+
+func _flow_strict_max_retry_budget() -> i32:
+    return 64
+
+func _flow_strict_max_timeout_budget_ms() -> i32:
+    return 900000
+
+func _validate_flow_step_policy(registry: String, step_id: String, step_line: i32, capability: String, has_undo: i32, has_irreversible: i32, has_idempotent: i32, retry_count: i32, timeout_token: String, strict_mode: i32) -> i32:
     let fail = 0
+    if ((has_undo == 1) and (_flow_capability_supports_undo(registry, capability) == 0)):
+        print("Semantic error [E_FLOW_CAPABILITY_UNDO_UNSUPPORTED] line " + _to_string_i32(step_line) + ": capability '" + capability + "' does not guarantee undo semantics.")
+        fail = 1
+    if ((has_irreversible == 1) and (_flow_capability_allows_irreversible(registry, capability) == 0)):
+        print("Semantic error [E_FLOW_CAPABILITY_IRREVERSIBLE_UNSUPPORTED] line " + _to_string_i32(step_line) + ": capability '" + capability + "' must provide reversible contract (irreversible not allowed).")
+        fail = 1
     if ((has_undo == 0) and (has_irreversible == 0)):
         print("Semantic error [E_FLOW_UNDO_REQUIRED] line " + _to_string_i32(step_line) + ": step '" + step_id + "' requires undo or irreversible.")
         fail = 1
@@ -457,6 +472,7 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
     let total = _line_count_raw(source)
     let i = 0
     let fail = 0
+    let capability_registry = fcr.load_registry()
     while (i < total):
         let raw = _line_at_raw(source, i)
         let line = _trim_edges(raw)
@@ -470,12 +486,17 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
             let step_indent = -1
             let step_line = -1
             let step_id = ""
+            let step_capability = ""
             let step_has_undo = 0
             let step_has_irreversible = 0
             let step_has_idempotent = 0
             let step_on_error_count = 0
             let step_retry = 0
             let step_timeout = ""
+            let flow_step_count = 0
+            let flow_parallel_groups = 0
+            let flow_retry_budget = 0
+            let flow_timeout_budget_ms = 0
             let in_parallel = 0
             let parallel_indent = -1
             let parallel_line = -1
@@ -490,7 +511,9 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                 else:
                     if (body_indent <= indent):
                         if (step_open == 1):
-                            fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+                            flow_retry_budget = flow_retry_budget + step_retry
+                            flow_timeout_budget_ms = flow_timeout_budget_ms + _flow_step_timeout_budget_ms(step_retry, step_timeout)
+                            fail = fail + _validate_flow_step_policy(capability_registry, step_id, step_line, step_capability, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
                             step_open = 0
                         if (in_parallel == 1):
                             if (parallel_has_step == 0):
@@ -502,7 +525,9 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                     else:
                         if (step_open == 1):
                             if (body_indent <= step_indent):
-                                fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+                                flow_retry_budget = flow_retry_budget + step_retry
+                                flow_timeout_budget_ms = flow_timeout_budget_ms + _flow_step_timeout_budget_ms(step_retry, step_timeout)
+                                fail = fail + _validate_flow_step_policy(capability_registry, step_id, step_line, step_capability, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
                                 step_open = 0
                             else:
                                 if (ph.is_flow_undo_line(body_line) == 1):
@@ -541,6 +566,7 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                                     fail = 1
                                 else:
                                     in_parallel = 1
+                                    flow_parallel_groups = flow_parallel_groups + 1
                                     parallel_indent = body_indent
                                     parallel_line = j + 1
                                     parallel_has_step = 0
@@ -566,7 +592,7 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                             if (ph.is_flow_step_line(body_line) == 1):
                                 if (strict_mode == 1):
                                     let cap = _flow_step_capability(body_line)
-                                    if ((strlen(cap) > 0) and (_is_known_flow_capability(cap) == 0)):
+                                    if ((strlen(cap) > 0) and (_is_known_flow_capability(capability_registry, cap) == 0)):
                                         print("Semantic error [E_FLOW_CAPABILITY_UNKNOWN] line " + _to_string_i32(j + 1) + ": unknown external flow capability '" + cap + "'.")
                                         fail = 1
                                 if (in_parallel == 1):
@@ -588,6 +614,7 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                                             fail = 1
                                         else:
                                             seen_steps = _flow_set_add(seen_steps, step_id)
+                                        step_capability = _flow_step_capability(body_line)
                                         step_has_undo = 0
                                         step_has_irreversible = 0
                                         step_has_idempotent = 0
@@ -595,6 +622,7 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                                         step_retry = 0
                                         step_timeout = ""
                                         flow_has_step = 1
+                                        flow_step_count = flow_step_count + 1
                                         j = j + 1
                                     else:
                                         if ((in_parallel == 1) and (body_indent <= parallel_indent)):
@@ -606,7 +634,9 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
                                             parallel_has_step = 0
                                         j = j + 1
             if (step_open == 1):
-                fail = fail + _validate_flow_step_policy(step_id, step_line, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
+                flow_retry_budget = flow_retry_budget + step_retry
+                flow_timeout_budget_ms = flow_timeout_budget_ms + _flow_step_timeout_budget_ms(step_retry, step_timeout)
+                fail = fail + _validate_flow_step_policy(capability_registry, step_id, step_line, step_capability, step_has_undo, step_has_irreversible, step_has_idempotent, step_retry, step_timeout, strict_mode)
             if (in_parallel == 1):
                 if (parallel_has_step == 0):
                     print("Semantic error [E_FLOW_PARALLEL_EMPTY] line " + _to_string_i32(parallel_line) + ": parallel block must contain at least one step.")
@@ -615,6 +645,19 @@ func _check_flow_headers_internal(source: String, strict_mode: i32) -> i32:
             if (flow_has_step == 0):
                 print("Semantic error [E_FLOW_EMPTY] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' must contain at least one step.")
                 fail = 1
+            if (strict_mode == 1):
+                if (flow_step_count > _flow_strict_max_steps()):
+                    print("Semantic error [E_FLOW_STRICT_COMPLEXITY_STEPS] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' has too many steps (" + _to_string_i32(flow_step_count) + "), max " + _to_string_i32(_flow_strict_max_steps()) + ".")
+                    fail = 1
+                if (flow_parallel_groups > _flow_strict_max_parallel_groups()):
+                    print("Semantic error [E_FLOW_STRICT_COMPLEXITY_PARALLEL] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' has too many parallel groups (" + _to_string_i32(flow_parallel_groups) + "), max " + _to_string_i32(_flow_strict_max_parallel_groups()) + ".")
+                    fail = 1
+                if (flow_retry_budget > _flow_strict_max_retry_budget()):
+                    print("Semantic error [E_FLOW_STRICT_RETRY_GLOBAL_BUDGET] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' retry budget is too high (" + _to_string_i32(flow_retry_budget) + "), max " + _to_string_i32(_flow_strict_max_retry_budget()) + ".")
+                    fail = 1
+                if (flow_timeout_budget_ms > _flow_strict_max_timeout_budget_ms()):
+                    print("Semantic error [E_FLOW_STRICT_TIMEOUT_GLOBAL_BUDGET] line " + _to_string_i32(i + 1) + ": flow '" + flow_id + "' timeout budget is too high (" + _to_string_i32(flow_timeout_budget_ms) + "ms), max " + _to_string_i32(_flow_strict_max_timeout_budget_ms()) + "ms.")
+                    fail = 1
         i = i + 1
     return fail
 

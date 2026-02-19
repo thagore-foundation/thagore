@@ -59,6 +59,7 @@ func main() -> i32:
     let lock_bad_path = "tests/__intent_cli_bad.lock"
     let bad_strategy_path = "tests/__intent_cli_bad_strategy.tg"
     let auto_path = "tests/__intent_cli_auto.tg"
+    let missing_sorted_path = "tests/__intent_cli_missing_sorted.tg"
 
     let src_ok = "intent loop i in 0..n:" + nl
     src_ok = src_ok + "    goal: reduce_sum" + nl
@@ -82,11 +83,20 @@ func main() -> i32:
     src_auto = src_auto + "    goal: auto_plan" + nl
     src_auto = src_auto + "    constraints:" + nl
     src_auto = src_auto + "        deterministic == true" + nl
+    src_auto = src_auto + "        input_sorted == true" + nl
     src_auto = src_auto + "func lower_bound_index(n: i32) -> i32:" + nl
     src_auto = src_auto + "    return n" + nl
     src_auto = src_auto + "func main() -> i32:" + nl
     src_auto = src_auto + "    return 0" + nl
     fails = fails + _expect_i32("write auto source", fs.write_text(auto_path, src_auto), 1)
+
+    let src_missing_sorted = "intent block:" + nl
+    src_missing_sorted = src_missing_sorted + "    goal: lower_bound_sorted" + nl
+    src_missing_sorted = src_missing_sorted + "    constraints:" + nl
+    src_missing_sorted = src_missing_sorted + "        deterministic == true" + nl
+    src_missing_sorted = src_missing_sorted + "func main() -> i32:" + nl
+    src_missing_sorted = src_missing_sorted + "    return 0" + nl
+    fails = fails + _expect_i32("write missing sorted source", fs.write_text(missing_sorted_path, src_missing_sorted), 1)
 
     fails = fails + _expect_i32("policy default mode safe", _contains(intent.policy_default_mode("safe"), "max"), 1)
     fails = fails + _expect_i32("policy default mode fast", _contains(intent.policy_default_mode("fast"), "min"), 1)
@@ -109,6 +119,7 @@ func main() -> i32:
     fails = fails + _expect_i32("intent strict gate mismatch", intent.run_intent_gate(ok_path, "max", "deny", 1, lock_bad_path), 1)
 
     fails = fails + _expect_i32("intent lock bad strategy fails", intent.run_intent_lock(bad_strategy_path, "", "max"), 1)
+    fails = fails + _expect_i32("intent lock missing sorted constraint fails", intent.run_intent_lock(missing_sorted_path, "", "max"), 1)
 
     fails = fails + _expect_i32("intent explain auto plan", intent.run_intent_explain(auto_path, "max", 1), 0)
     let explain_auto = fs.read_text(".thagore/intent/last_explain.json")

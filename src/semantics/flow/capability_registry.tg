@@ -1,0 +1,255 @@
+import "lib/env.tg" as env
+import "lib/fs.tg" as fs
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_from_codepoint(cp: i32) -> String
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _nl() -> String:
+    return __string_from_codepoint(10)
+
+func _cr() -> String:
+    return __string_from_codepoint(13)
+
+func _find_char(text: String, ch: String) -> i32:
+    let i = 0
+    while (i < strlen(text)):
+        if (_char_at(text, i) == ch):
+            return i
+        i = i + 1
+    return -1
+
+func _starts_with(text: String, prefix: String) -> i32:
+    if (strlen(text) < strlen(prefix)):
+        return 0
+    if (__thg_str_substr(text, 0, strlen(prefix)) == prefix):
+        return 1
+    return 0
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let left = 0
+    while (left < n):
+        let ch = _char_at(text, left)
+        if ((ch == " ") or (ch == "\t") or (ch == _nl()) or (ch == _cr())):
+            left = left + 1
+        else:
+            left = n
+    let start = 0
+    let i = 0
+    while (i < n):
+        let ch2 = _char_at(text, i)
+        if ((ch2 == " ") or (ch2 == "\t") or (ch2 == _nl()) or (ch2 == _cr())):
+            start = i + 1
+            i = i + 1
+        else:
+            i = n
+    let right = n - 1
+    let j = n - 1
+    while (j >= start):
+        let ch3 = _char_at(text, j)
+        if ((ch3 == " ") or (ch3 == "\t") or (ch3 == _nl()) or (ch3 == _cr())):
+            right = j - 1
+            j = j - 1
+        else:
+            j = start - 1
+    if (right < start):
+        return ""
+    return __thg_str_substr(text, start, right - start + 1)
+
+func _parse_i32_default(text: String, fallback: i32) -> i32:
+    let s = _trim(text)
+    if (strlen(s) == 0):
+        return fallback
+    let i = 0
+    let sign = 1
+    if (_char_at(s, 0) == "-"):
+        sign = -1
+        i = 1
+    if (i >= strlen(s)):
+        return fallback
+    let value = 0
+    let digits = 0
+    while (i < strlen(s)):
+        let ch = _char_at(s, i)
+        let d = _find_char("0123456789", ch)
+        if (d < 0):
+            return fallback
+        value = (value * 10) + d
+        digits = digits + 1
+        i = i + 1
+    if (digits == 0):
+        return fallback
+    if (sign < 0):
+        return 0 - value
+    return value
+
+func _to_string_i32(value: i32) -> String:
+    if (value == 0):
+        return "0"
+    if (value == (-2147483647 - 1)):
+        return "-2147483648"
+    let n = value
+    let sign = ""
+    if (n < 0):
+        sign = "-"
+        n = 0 - n
+    let rev = ""
+    while (n > 0):
+        let q = n / 10
+        let r = n - (q * 10)
+        rev = rev + __thg_str_substr("0123456789", r, 1)
+        n = q
+    let out = ""
+    let i = strlen(rev) - 1
+    while (i >= 0):
+        out = out + _char_at(rev, i)
+        i = i - 1
+    return sign + out
+
+func _set_contains(set_text: String, token: String) -> i32:
+    if (strlen(token) == 0):
+        return 0
+    if (_contains(set_text, ";" + token + ";") == 1):
+        return 1
+    return 0
+
+func _set_add_unique(set_text: String, token: String) -> String:
+    if (strlen(token) == 0):
+        return set_text
+    if (_set_contains(set_text, token) == 1):
+        return set_text
+    return set_text + token + ";"
+
+func _map_get_field(text: String, key: String) -> String:
+    let total = _line_count(text)
+    let i = 0
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if (_starts_with(line, key) == 1):
+            return _trim(__thg_str_substr(line, strlen(key), strlen(line) - strlen(key)))
+        i = i + 1
+    return ""
+
+func _builtin_registry_text() -> String:
+    let nl = _nl()
+    let out = "schema_version=1" + nl
+    out = out + "enabled=1" + nl
+    out = out + "capability.cloud=undo:1,irreversible:0" + nl
+    out = out + "capability.artifact=undo:1,irreversible:0" + nl
+    out = out + "capability.db=undo:1,irreversible:0" + nl
+    out = out + "capability.fs=undo:1,irreversible:0" + nl
+    out = out + "capability.process=undo:1,irreversible:1" + nl
+    out = out + "capability.http=undo:1,irreversible:1" + nl
+    out = out + "capability.queue=undo:0,irreversible:1" + nl
+    out = out + "capability.pubsub=undo:0,irreversible:1" + nl
+    return out
+
+func _registry_map(schema_version: i32, source: String, known_set: String, undo_set: String, irreversible_set: String) -> String:
+    let nl = _nl()
+    let out = "schema_version=" + _to_string_i32(schema_version) + nl
+    out = out + "source=" + source + nl
+    out = out + "known=" + known_set + nl
+    out = out + "undo_supported=" + undo_set + nl
+    out = out + "irreversible_allowed=" + irreversible_set + nl
+    return out
+
+func _parse_registry_text(text: String, source: String) -> String:
+    let schema_version = 1
+    let known_set = ";"
+    let undo_set = ";"
+    let irreversible_set = ";"
+    let total = _line_count(text)
+    let i = 0
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if ((strlen(line) > 0) and (_starts_with(line, "#") == 0)):
+            if (_starts_with(line, "schema_version=") == 1):
+                schema_version = _parse_i32_default(__thg_str_substr(line, 15, strlen(line) - 15), schema_version)
+            else:
+                if (_starts_with(line, "capability.") == 1):
+                    let eq = _find_char(line, "=")
+                    if (eq > 11):
+                        let cap = _trim(__thg_str_substr(line, 11, eq - 11))
+                        let props = _trim(__thg_str_substr(line, eq + 1, strlen(line) - eq - 1))
+                        if (strlen(cap) > 0):
+                            known_set = _set_add_unique(known_set, cap)
+                            if (_contains(props, "undo:1") == 1):
+                                undo_set = _set_add_unique(undo_set, cap)
+                            if (_contains(props, "irreversible:1") == 1):
+                                irreversible_set = _set_add_unique(irreversible_set, cap)
+        i = i + 1
+    if (known_set == ";"):
+        let fallback = _parse_registry_text(_builtin_registry_text(), "builtin")
+        if (source == "builtin"):
+            return fallback
+        let src = _map_get_field(fallback, "source=")
+        let keep = source + "|fallback:" + src
+        return _registry_map(
+            _parse_i32_default(_map_get_field(fallback, "schema_version="), 1),
+            keep,
+            _map_get_field(fallback, "known="),
+            _map_get_field(fallback, "undo_supported="),
+            _map_get_field(fallback, "irreversible_allowed=")
+        )
+    return _registry_map(schema_version, source, known_set, undo_set, irreversible_set)
+
+func load_registry() -> String:
+    let env_path = _trim(env.get("THAG_FLOW_CAPABILITY_REGISTRY"))
+    let source = env_path
+    let text = ""
+    if (strlen(source) == 0):
+        let default_path = "docs/idea/flow_capability_registry.txt"
+        if (fs.exists(default_path) == 1):
+            source = default_path
+    if (strlen(source) > 0):
+        if (fs.exists(source) == 1):
+            text = fs.read_text(source)
+        else:
+            if (strlen(env_path) > 0):
+                print("[flow] warning: capability registry file not found: " + source + "; using builtin defaults.")
+    if (strlen(text) == 0):
+        source = "builtin"
+        text = _builtin_registry_text()
+    return _parse_registry_text(text, source)
+
+func registry_source(registry: String) -> String:
+    return _map_get_field(registry, "source=")
+
+func registry_schema_version(registry: String) -> i32:
+    return _parse_i32_default(_map_get_field(registry, "schema_version="), 1)
+
+func registry_is_known(registry: String, capability: String) -> i32:
+    let cap = _trim(capability)
+    if (strlen(cap) == 0):
+        return 1
+    return _set_contains(_map_get_field(registry, "known="), cap)
+
+func registry_supports_undo(registry: String, capability: String) -> i32:
+    let cap = _trim(capability)
+    if (strlen(cap) == 0):
+        return 1
+    return _set_contains(_map_get_field(registry, "undo_supported="), cap)
+
+func registry_allows_irreversible(registry: String, capability: String) -> i32:
+    let cap = _trim(capability)
+    if (strlen(cap) == 0):
+        return 1
+    return _set_contains(_map_get_field(registry, "irreversible_allowed="), cap)
