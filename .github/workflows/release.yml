@@ -653,9 +653,8 @@ jobs:
             local out="$1"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               if [[ "$STRICT_WINDOWS_X64" -eq 1 && -f "_s1/runtime.cc" ]]; then
-                "$PY" -c "from pathlib import Path; Path('_s1/entry_cli.cc').write_text('#include <cstddef>\\nextern \"C\" void __thg_init_env(int, void*);\\nextern \"C\" int __thg_cli_main_native();\\nint main(int argc, char** argv) {\\n  __thg_init_env(argc, static_cast<void*>(argv));\\n  return __thg_cli_main_native();\\n}\\n', encoding='utf-8')"
-                echo "[CMD] clang -x c++ -std=c++17 _s1/entry_cli.cc _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-                clang -x c++ -std=c++17 _s1/entry_cli.cc _s1/runtime.cc -o "$out" -Wno-override-module
+                echo "[CMD] clang -x c++ -std=c++17 _s1/runtime.cc -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
+                clang -x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module
               else
                 echo "[CMD] clang src/thagore.ll thag_runtime.lib -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
                 clang src/thagore.ll thag_runtime.lib -o "$out" -Wno-override-module
