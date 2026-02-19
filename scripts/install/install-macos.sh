@@ -42,10 +42,25 @@ ensure_user_path_entry() {
   fi
 }
 
+ensure_user_path_entry_to_rcs() {
+  local entry="$1"
+  shift
+  local rc_file
+  for rc_file in "$@"; do
+    ensure_user_path_entry "$entry" "$rc_file"
+  done
+}
+
+readonly COMMON_MACOS_RC_FILES=(
+  "$HOME/.zprofile"
+  "$HOME/.zshrc"
+  "$HOME/.bash_profile"
+  "$HOME/.bashrc"
+  "$HOME/.profile"
+)
+
 if [[ ":$PATH:" != *":$BIN_LINK_DIR:"* ]]; then
-  ensure_user_path_entry "$BIN_LINK_DIR" "$HOME/.zprofile"
-  ensure_user_path_entry "$BIN_LINK_DIR" "$HOME/.zshrc"
-  ensure_user_path_entry "$BIN_LINK_DIR" "$HOME/.bash_profile"
+  ensure_user_path_entry_to_rcs "$BIN_LINK_DIR" "${COMMON_MACOS_RC_FILES[@]}"
 fi
 
 cat <<EOF

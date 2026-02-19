@@ -36,14 +36,26 @@ ensure_user_path_entry() {
   fi
 }
 
+ensure_user_path_entry_to_rcs() {
+  local entry="$1"
+  shift
+  local rc_file
+  for rc_file in "$@"; do
+    ensure_user_path_entry "$entry" "$rc_file"
+  done
+}
+
+readonly COMMON_POSIX_RC_FILES=(
+  "$HOME/.profile"
+  "$HOME/.bash_profile"
+  "$HOME/.bash_login"
+  "$HOME/.bashrc"
+  "$HOME/.zprofile"
+  "$HOME/.zshrc"
+)
+
 if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-  ensure_user_path_entry "/usr/local/bin" "$HOME/.profile"
-  if [[ -f "$HOME/.bashrc" ]]; then
-    ensure_user_path_entry "/usr/local/bin" "$HOME/.bashrc"
-  fi
-  if [[ -f "$HOME/.zshrc" ]]; then
-    ensure_user_path_entry "/usr/local/bin" "$HOME/.zshrc"
-  fi
+  ensure_user_path_entry_to_rcs "/usr/local/bin" "${COMMON_POSIX_RC_FILES[@]}"
 fi
 
 cat <<EOF
