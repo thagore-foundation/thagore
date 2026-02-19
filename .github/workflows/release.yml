@@ -658,7 +658,7 @@ jobs:
             else
               PY=python3
             fi
-            "$PY" -c "from pathlib import Path; import re; src=Path('src/thagore.ll').read_text(encoding='utf-8'); src=re.sub(r'\\bicmp\\s+samesign\\s+', 'icmp ', src); src=re.sub(r'\\brange\\([^)]*\\)\\s+', '', src); Path('$out_ir').write_text(src, encoding='utf-8')"
+            "$PY" -c "from pathlib import Path; import re; src=Path('src/thagore.ll').read_text(encoding='utf-8'); src=re.sub(r'\\bicmp\\s+samesign\\s+', 'icmp ', src); src=re.sub(r'\\brange\\([^)]*\\)\\s+', '', src); src=re.sub(r'\\bcaptures\\([^)]*\\)\\s*', '', src); Path('$out_ir').write_text(src, encoding='utf-8')"
           }
           link_from_snapshot_ir() {
             local out="$1"
