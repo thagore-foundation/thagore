@@ -3,27 +3,42 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODE="auto"
-PASS_ARGS=()
+LLVM_VERSION="21.1.8"
+ARCH="auto"
+ASSUME_YES=0
+SKIP_LLVM=0
+SKIP_PAYLOAD=0
+INSTALL_PREFIX=""
+LLVM_PREFIX="${THAGORE_LLVM_PREFIX:-$HOME/.thagore/llvm-21.1.8}"
 
 print_help() {
   cat <<'EOF'
-Usage: install.sh [--mode auto|linux|ubuntu|macos|portable] [installer args...]
+Usage: install.sh [--mode auto|linux|ubuntu|macos|portable] [options]
 
 Examples:
   install.sh --mode auto --yes
   install.sh --mode linux --prefix /opt/thagore --yes
   install.sh --mode ubuntu --yes
   install.sh --mode macos --yes
-  install.sh --mode portable --prefix "$HOME/.local/share/thagore" --yes
+  install.sh --mode portable --prefix "$HOME/.local/share/thagore --yes
 
-Supported forwarded args (depend on selected installer):
+Options:
+  --mode <auto|linux|ubuntu|macos|portable>
   --llvm-version <version>
   --arch <x86_64|arm64>
   --prefix <path>
+  --llvm-prefix <path>     (portable mode LLVM prefix)
   --skip-llvm
   --skip-payload
   --yes | -y
 EOF
+}
+
+normalize_arch() {
+  local in="$1"
+  if [[ "$in" == "amd64" ]]; then echo "x86_64"; return; fi
+  if [[ "$in" == "aarch64" ]]; then echo "arm64"; return; fi
+  echo "$in"
 }
 
 detect_mode() {
@@ -59,19 +74,259 @@ detect_mode() {
   echo "linux"
 }
 
+detect_source_root() {
+  if [[ -n "${THAGORE_ROOT:-}" ]]; then
+    echo "$THAGORE_ROOT"
+    return
+  fi
+  if [[ -d "$SCRIPT_DIR/../bin" && -d "$SCRIPT_DIR/../lib/std" ]]; then
+    echo "$(cd "$SCRIPT_DIR/.." && pwd)"
+    return
+  fi
+  if [[ -d "$SCRIPT_DIR/../../dist/bin" && -d "$SCRIPT_DIR/../../dist/lib/std" ]]; then
+    echo "$(cd "$SCRIPT_DIR/../../dist" && pwd)"
+    return
+  fi
+  echo ""
+}
+
+append_path_rc() {
+  local entry="$1"
+  local rc_file="$2"
+  local line="export PATH=\"$entry:\$PATH\""
+  if [[ ! -f "$rc_file" ]]; then
+    printf '%s\n' "$line" >> "$rc_file"
+    return
+  fi
+  if ! grep -Fq "$line" "$rc_file"; then
+    printf '\n%s\n' "$line" >> "$rc_file"
+  fi
+}
+
+ensure_path_persisted() {
+  local entry="$1"
+  if [[ ":$PATH:" != *":$entry:"* ]]; then
+    append_path_rc "$entry" "$HOME/.profile"
+    append_path_rc "$entry" "$HOME/.bash_profile"
+    append_path_rc "$entry" "$HOME/.bash_login"
+    append_path_rc "$entry" "$HOME/.bashrc"
+    append_path_rc "$entry" "$HOME/.zprofile"
+    append_path_rc "$entry" "$HOME/.zshrc"
+    export PATH="$entry:$PATH"
+  fi
+}
+
+confirm_install() {
+  if [[ "$ASSUME_YES" -eq 1 ]]; then
+    return
+  fi
+  local prompt="$1"
+  read -r -p "$prompt [Y/n]: " reply
+  reply="${reply:-Y}"
+  case "$reply" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted."; exit 1 ;;
+  esac
+}
+
+install_llvm_ubuntu() {
+  if command -v clang >/dev/null 2>&1 && clang --version | grep -qE "version 21|21\.1\.8"; then
+    echo "LLVM already available."
+    return
+  fi
+  sudo apt-get update
+  curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+  chmod +x /tmp/llvm.sh
+  sudo /tmp/llvm.sh 21 all
+  if ! command -v clang >/dev/null 2>&1 && [[ -d /usr/lib/llvm-21/bin ]]; then
+    export PATH="/usr/lib/llvm-21/bin:$PATH"
+  fi
+  clang --version || true
+}
+
+install_llvm_linux() {
+  if [[ "$SKIP_LLVM" -eq 1 ]]; then
+    return
+  fi
+  if command -v clang >/dev/null 2>&1 && clang --version | grep -qE "version 21|21\.1\.8"; then
+    echo "LLVM already available."
+    return
+  fi
+  if [[ "$MODE" == "ubuntu" ]] || command -v apt-get >/dev/null 2>&1; then
+    install_llvm_ubuntu
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y clang lld llvm llvm-devel
+  elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y clang lld llvm llvm-devel
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -Sy --noconfirm clang lld llvm
+  elif command -v zypper >/dev/null 2>&1; then
+    sudo zypper --non-interactive install clang llvm lld
+  elif command -v apk >/dev/null 2>&1; then
+    sudo apk add llvm clang lld
+  else
+    echo "No supported package manager found. Falling back to portable LLVM install."
+    install_llvm_portable
+  fi
+  clang --version || true
+  echo "[thagore-installer] LLVM ${LLVM_VERSION} install done for linux/${ARCH}"
+}
+
+install_llvm_macos() {
+  if [[ "$SKIP_LLVM" -eq 1 ]]; then
+    return
+  fi
+  if command -v clang >/dev/null 2>&1 && clang --version | grep -qE "version 21|21\.1\.8"; then
+    echo "LLVM already available."
+    return
+  fi
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "ERROR: Homebrew is required to install LLVM automatically." >&2
+    exit 1
+  fi
+  brew update
+  brew tap thagore-foundation/llvm || true
+  if brew list llvm@21 >/dev/null 2>&1; then
+    echo "llvm@21 already installed."
+  else
+    brew install llvm@21 || brew install llvm
+  fi
+  if brew --prefix llvm@21 >/dev/null 2>&1; then
+    export PATH="$(brew --prefix llvm@21)/bin:$PATH"
+  else
+    export PATH="$(brew --prefix llvm)/bin:$PATH"
+  fi
+  clang --version || true
+  echo "[thagore-installer] LLVM ${LLVM_VERSION} install done for macos/${ARCH}"
+}
+
+install_llvm_portable() {
+  if [[ "$SKIP_LLVM" -eq 1 ]]; then
+    return
+  fi
+  mkdir -p "$LLVM_PREFIX"
+  if command -v clang >/dev/null 2>&1 && clang --version | grep -qE "version 21|21\.1\.8"; then
+    echo "LLVM already available."
+    return
+  fi
+  if command -v cmake >/dev/null 2>&1 && command -v git >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1; then
+    local workdir
+    workdir="$(mktemp -d)"
+    trap 'rm -rf "$workdir"' EXIT
+    git clone --depth 1 --branch llvmorg-21.1.8 https://github.com/llvm/llvm-project.git "$workdir/llvm-project"
+    cmake -S "$workdir/llvm-project/llvm" -B "$workdir/build" -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX="$LLVM_PREFIX" \
+      -DLLVM_ENABLE_PROJECTS="clang;lld" \
+      -DLLVM_TARGETS_TO_BUILD="AArch64;X86"
+    cmake --build "$workdir/build" --target install -j2
+    "$LLVM_PREFIX/bin/clang" --version || true
+    echo "LLVM installed under: $LLVM_PREFIX"
+  else
+    echo "ERROR: portable mode requires git + cmake + ninja to build LLVM from source." >&2
+    exit 1
+  fi
+}
+
+install_payload_with_prefix() {
+  local payload_prefix="$1"
+  if [[ "$SKIP_PAYLOAD" -eq 1 ]]; then
+    return
+  fi
+
+  local source_root
+  source_root="$(detect_source_root)"
+  if [[ -z "$source_root" ]]; then
+    echo "[thagore-installer] No package payload near installer script; LLVM setup finished."
+    return
+  fi
+
+  mkdir -p "$payload_prefix"
+  cp -R "$source_root/"* "$payload_prefix/"
+  if [[ ! -x "$payload_prefix/bin/thagore" ]]; then
+    echo "ERROR: installed payload missing executable: $payload_prefix/bin/thagore" >&2
+    exit 1
+  fi
+
+  local link_dir="$HOME/.local/bin"
+  mkdir -p "$link_dir"
+  ln -sf "$payload_prefix/bin/thagore" "$link_dir/thagore"
+
+  if [[ "$MODE" == "portable" && -d "$LLVM_PREFIX/bin" ]]; then
+    ensure_path_persisted "$LLVM_PREFIX/bin"
+  fi
+  ensure_path_persisted "$link_dir"
+
+  cat <<EOF
+Thagore installed successfully.
+Binary: $link_dir/thagore
+Prefix: $payload_prefix
+Stdlib: $payload_prefix/lib/std
+EOF
+}
+
+install_payload_linux() {
+  local final_prefix="${INSTALL_PREFIX:-${PREFIX:-/opt/thagore}}"
+  if [[ "$final_prefix" == "/opt/thagore" && ! -w "/opt" && "$(id -u)" -ne 0 ]]; then
+    final_prefix="$HOME/.local/share/thagore"
+  fi
+  install_payload_with_prefix "$final_prefix"
+}
+
+install_payload_macos() {
+  local final_prefix="${INSTALL_PREFIX:-${PREFIX:-/usr/local/thagore}}"
+  if [[ "$final_prefix" == "/usr/local/thagore" && ! -w "/usr/local" ]]; then
+    final_prefix="$HOME/.local/share/thagore"
+  fi
+  install_payload_with_prefix "$final_prefix"
+}
+
+install_payload_portable() {
+  local final_prefix="${INSTALL_PREFIX:-${THAGORE_PREFIX:-$HOME/.local/share/thagore}}"
+  install_payload_with_prefix "$final_prefix"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
       MODE="${2:-}"
       shift 2
       ;;
+    --llvm-version)
+      LLVM_VERSION="${2:-}"
+      shift 2
+      ;;
+    --arch)
+      ARCH="${2:-}"
+      shift 2
+      ;;
+    --prefix)
+      INSTALL_PREFIX="${2:-}"
+      shift 2
+      ;;
+    --llvm-prefix)
+      LLVM_PREFIX="${2:-}"
+      shift 2
+      ;;
+    --skip-llvm)
+      SKIP_LLVM=1
+      shift
+      ;;
+    --skip-payload)
+      SKIP_PAYLOAD=1
+      shift
+      ;;
+    --yes|-y)
+      ASSUME_YES=1
+      shift
+      ;;
     --help|-h)
       print_help
       exit 0
       ;;
     *)
-      PASS_ARGS+=("$1")
-      shift
+      echo "Unknown arg: $1" >&2
+      exit 1
       ;;
   esac
 done
@@ -80,19 +335,36 @@ if [[ "$MODE" == "auto" ]]; then
   MODE="$(detect_mode)"
 fi
 
+if [[ "$LLVM_VERSION" != "21.1.8" ]]; then
+  echo "ERROR: only LLVM 21.1.8 is supported in release installer." >&2
+  exit 1
+fi
+
+if [[ "$ARCH" == "auto" ]]; then
+  ARCH="$(uname -m || true)"
+fi
+ARCH="$(normalize_arch "$ARCH")"
+
 case "$MODE" in
   linux)
-    exec bash "$SCRIPT_DIR/linux.sh" "${PASS_ARGS[@]}"
+    confirm_install "Install Thagore on Linux (${ARCH}) with LLVM ${LLVM_VERSION}?"
+    install_llvm_linux
+    install_payload_linux
     ;;
   ubuntu)
-    # Ubuntu/Debian should still use the full Linux installer so payload+PATH are handled.
-    exec bash "$SCRIPT_DIR/linux.sh" "${PASS_ARGS[@]}"
+    confirm_install "Install Thagore on Ubuntu/Debian (${ARCH}) with LLVM ${LLVM_VERSION}?"
+    install_llvm_linux
+    install_payload_linux
     ;;
   macos)
-    exec bash "$SCRIPT_DIR/macos.sh" "${PASS_ARGS[@]}"
+    confirm_install "Install Thagore on macOS (${ARCH}) with LLVM ${LLVM_VERSION}?"
+    install_llvm_macos
+    install_payload_macos
     ;;
   portable)
-    exec bash "$SCRIPT_DIR/portable.sh" "${PASS_ARGS[@]}"
+    confirm_install "Install portable LLVM ${LLVM_VERSION} and Thagore payload (${ARCH})?"
+    install_llvm_portable
+    install_payload_portable
     ;;
   *)
     echo "ERROR: unsupported mode '$MODE'. Expected auto|linux|ubuntu|macos|portable." >&2
