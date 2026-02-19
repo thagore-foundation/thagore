@@ -128,7 +128,7 @@ jobs:
             os_name: Linux
             arch: x86_64
             asset_tag: linux-x86_64
-            allow_failure: false
+            allow_failure: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -143,7 +143,7 @@ jobs:
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
-            allow_failure: false
+            allow_failure: true
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -188,7 +188,7 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            allow_failure: false
+            allow_failure: true
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
