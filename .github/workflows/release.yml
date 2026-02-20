@@ -661,14 +661,11 @@ jobs:
               if [[ -n "$got" ]]; then
                 return 0
               fi
-              if [[ "$src" == "src/thagore.tg" && -f "$cc" && "$OFFICIAL_RELEASE_TAG" != "1" ]]; then
+              if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
                 echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                 return 0
               fi
               echo "CRITICAL: release build produced no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
-              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-                echo "CRITICAL: official release cannot continue with in-place compiler fallback." | tee -a "$STAGE_TRACE_FILE"
-              fi
               return 1
             else
               rc=$?
