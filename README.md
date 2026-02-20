@@ -14,7 +14,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/LLVM-21.x-orange.svg" alt="LLVM 21">
   <img src="https://img.shields.io/badge/stage-self--hosted-brightgreen.svg" alt="Self-Hosted">
-  <a href="https://deepwiki.com/thagore-foundation/thagore"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
 <p>
