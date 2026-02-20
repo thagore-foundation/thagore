@@ -142,7 +142,7 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            allow_failure: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
@@ -651,9 +651,28 @@ jobs:
           else
             PY=python3
           fi
+          BUNDLE_CORE="seed-bundle-core-${{ matrix.asset_tag }}.json"
+          TRACE_ASSET="seed-stage-trace-${{ matrix.asset_tag }}.log"
+          cp "$STAGE_TRACE_FILE" "$TRACE_ASSET"
+          "$PY" scripts/seed_bundle.py capture \
+            --output "$BUNDLE_CORE" \
+            --asset "${{ matrix.stage1_seed_name }}" \
+            --asset "${{ matrix.runtime_seed_name }}" \
+            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --asset "$TRACE_ASSET" \
+            --seed-tag "${{ github.event.inputs.seed_tag }}" \
+            --asset-tag "${{ matrix.asset_tag }}" \
+            --runner-os "${{ runner.os }}" \
+            --arch "${{ matrix.arch }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --repository "${{ github.repository }}"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "$BUNDLE_CORE")"
+          [[ -n "$BUNDLE_ID" ]] || (echo "CRITICAL: failed to compute bundle_id"; exit 1)
           PROV="seed-stage1-provenance-${{ matrix.asset_tag }}.json"
           ASSET_ARGS=()
-          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
+          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a "$TRACE_ASSET"; do
             if [[ -f "$f" ]]; then
               ASSET_ARGS+=(--asset "$f")
             fi
@@ -670,8 +689,29 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --bundle-id "$BUNDLE_ID" \
             --repository "${{ github.repository }}" \
             "${ASSET_ARGS[@]}"
+          BUNDLE_OUT="seed-bundle-${{ matrix.asset_tag }}.json"
+          "$PY" scripts/seed_bundle.py capture \
+            --output "$BUNDLE_OUT" \
+            --asset "${{ matrix.stage1_seed_name }}" \
+            --asset "${{ matrix.runtime_seed_name }}" \
+            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --asset "$PROV" \
+            --asset "$TRACE_ASSET" \
+            --seed-tag "${{ github.event.inputs.seed_tag }}" \
+            --asset-tag "${{ matrix.asset_tag }}" \
+            --runner-os "${{ runner.os }}" \
+            --arch "${{ matrix.arch }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --repository "${{ github.repository }}"
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "$BUNDLE_OUT" \
+            --manifest "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --provenance "$PROV"
           if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" || "${{ matrix.asset_tag }}" == "linux-x86_64" || "${{ matrix.asset_tag }}" == "macos-arm64" ]]; then
             cp "$PROV" "seed-stage1-provenance-${{ runner.os }}.json"
           fi
@@ -696,11 +736,164 @@ jobs:
             seed-promotion-manifest-${{ runner.os }}.txt
             seed-stage1-provenance-${{ matrix.asset_tag }}.json
             seed-stage1-provenance-${{ runner.os }}.json
+            seed-stage-trace-${{ matrix.asset_tag }}.log
+            seed-bundle-core-${{ matrix.asset_tag }}.json
+            seed-bundle-${{ matrix.asset_tag }}.json
+
+  verify-bundle-before-publish:
+    name: verify-bundle (${{ matrix.asset_tag }})
+    runs-on: ${{ matrix.runner }}
+    needs: [discord-notify-init, build-seed]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: Linux
+            arch: x86_64
+            asset_tag: linux-x86_64
+            stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-x86_64.a
+          - runner: ubuntu-24.04-arm
+            os_name: Linux
+            arch: arm64
+            asset_tag: linux-arm64
+            stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-arm64.a
+          - runner: macos-latest
+            os_name: macOS
+            arch: arm64
+            asset_tag: macos-arm64
+            stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-macos-arm64.a
+          - runner: windows-latest
+            os_name: Windows
+            arch: x86_64
+            asset_tag: windows-x86_64
+            stage1_seed_name: thagore-stage1-windows-x86_64.exe
+            runtime_seed_name: thagore-runtime-windows-x86_64.lib
+          - runner: windows-11-arm
+            os_name: Windows
+            arch: arm64
+            asset_tag: windows-arm64
+            stage1_seed_name: thagore-stage1-windows-arm64.exe
+            runtime_seed_name: thagore-runtime-windows-arm64.lib
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v clang >/dev/null 2>&1; then
+            sudo apt-get update || true
+            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+            chmod +x /tmp/llvm.sh
+            sudo /tmp/llvm.sh 21 all || true
+            if [[ -d /usr/lib/llvm-21/bin ]]; then
+              echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+            fi
+          fi
+          clang --version
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            clang --version
+            exit 0
+          fi
+          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
+            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+            clang --version
+            exit 0
+          fi
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
+          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Download seed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: seed-artifacts
+          pattern: seed-${{ matrix.asset_tag }}
+
+      - name: Verify bundle metadata and smoke packaged seed
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          ROOT_DIR="$(find seed-artifacts -maxdepth 2 -type f -name "seed-bundle-${{ matrix.asset_tag }}.json" -print | head -n1 | xargs dirname)"
+          [[ -n "${ROOT_DIR:-}" && -d "$ROOT_DIR" ]] || (echo "CRITICAL: missing seed artifact directory for ${{ matrix.asset_tag }}"; exit 1)
+          BUNDLE_FILE="$ROOT_DIR/seed-bundle-${{ matrix.asset_tag }}.json"
+          MANIFEST_FILE="$ROOT_DIR/seed-promotion-manifest-${{ matrix.asset_tag }}.txt"
+          PROV_FILE="$ROOT_DIR/seed-stage1-provenance-${{ matrix.asset_tag }}.json"
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "$BUNDLE_FILE" \
+            --manifest "$MANIFEST_FILE" \
+            --provenance "$PROV_FILE"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "$BUNDLE_FILE")"
+          "$PY" scripts/stage1_provenance.py verify \
+            --provenance "$PROV_FILE" \
+            --manifest "$MANIFEST_FILE" \
+            --asset "$ROOT_DIR/${{ matrix.stage1_seed_name }}" \
+            --asset "$ROOT_DIR/${{ matrix.runtime_seed_name }}" \
+            --expected-commit-sha "${{ github.sha }}" \
+            --expected-bundle-id "$BUNDLE_ID"
+          rm -rf verify_seed && mkdir -p verify_seed
+          cp "$ROOT_DIR/${{ matrix.stage1_seed_name }}" verify_seed/
+          cp "$ROOT_DIR/${{ matrix.runtime_seed_name }}" verify_seed/
+          cd verify_seed
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "${{ matrix.stage1_seed_name }}" stage1.exe
+            cp "${{ matrix.runtime_seed_name }}" thag_runtime.lib
+            STAGE1_BIN="stage1.exe"
+            HELLO_OUT="hello_bundle.exe"
+          else
+            cp "${{ matrix.runtime_seed_name }}" libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
+            mkdir -p extract
+            tar -xzf "${{ matrix.stage1_seed_name }}" -C extract
+            CANDIDATE="$(find extract -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in packaged seed archive"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1
+            STAGE1_BIN="stage1"
+            HELLO_OUT="hello_bundle"
+          fi
+          VER_OUT="$("./$STAGE1_BIN" --version 2>&1 || true)"
+          HELP_OUT="$("./$STAGE1_BIN" --help 2>&1 || true)"
+          [[ -n "${VER_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: packaged stage1 has empty --version output"; exit 1)
+          [[ -n "${HELP_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: packaged stage1 has empty --help output"; exit 1)
+          "./$STAGE1_BIN" build ../examples/hello.tg -o "$HELLO_OUT"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            [[ -f "$HELLO_OUT" ]] || [[ -f "${HELLO_OUT%.exe}" ]] || (echo "CRITICAL: hello binary missing from packaged stage1 build"; exit 1)
+          else
+            [[ -f "$HELLO_OUT" ]] || [[ -f "${HELLO_OUT}.exe" ]] || (echo "CRITICAL: hello binary missing from packaged stage1 build"; exit 1)
+          fi
 
   publish-seed:
     name: publish-seed-release
     runs-on: ubuntu-latest
-    needs: [discord-notify-init, build-seed]
+    needs: [discord-notify-init, build-seed, verify-bundle-before-publish]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -730,6 +923,8 @@ jobs:
             seed-artifacts/**/thagore-runtime-macos.a
             seed-artifacts/**/seed-promotion-manifest-*.txt
             seed-artifacts/**/seed-stage1-provenance-*.json
+            seed-artifacts/**/seed-stage-trace-*.log
+            seed-artifacts/**/seed-bundle-*.json
           make_latest: false
           prerelease: true
           overwrite_files: true
@@ -748,7 +943,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, discord-notify-live, build-seed, publish-seed]
+    needs: [discord-notify-init, discord-notify-live, build-seed, verify-bundle-before-publish, publish-seed]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

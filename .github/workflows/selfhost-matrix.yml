@@ -77,7 +77,6 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
-      BOOTSTRAP_STAGE1_COMPILER_TAG: "v0.3.22-stage1-seed"
       STAGE_TRACE_FILE: selfhost-stage-trace.log
     steps:
       - name: Checkout
@@ -159,9 +158,8 @@ jobs:
           }
           download_stage1_asset() {
             local pattern="$1"
-            local tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
-            [[ -n "$tag" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_COMPILER_TAG is required."; exit 1)
-            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
           download_runtime_asset() {
             local pattern="$1"
@@ -293,11 +291,41 @@ jobs:
           download_asset "$MANIFEST_ASSET"
           [[ -f "bootstrap/$MANIFEST_ASSET" ]] || (echo "CRITICAL: missing seed promotion manifest $MANIFEST_ASSET"; exit 1)
           echo "[SEED] manifest=$MANIFEST_ASSET" | tee -a "$STAGE_TRACE_FILE"
+          PROVENANCE_ASSET="seed-stage1-provenance-${{ runner.os }}.json"
+          BUNDLE_ASSET=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            BUNDLE_ASSET="seed-bundle-windows-x86_64.json"
+            STAGE1_VERIFY_ASSET="thagore-stage1.exe"
+            RUNTIME_VERIFY_ASSET="thagore-runtime-windows.lib"
+          elif [[ "${{ runner.os }}" == "Linux" ]]; then
+            BUNDLE_ASSET="seed-bundle-linux-x86_64.json"
+            STAGE1_VERIFY_ASSET="thagore-stage1-linux.tar.gz"
+            RUNTIME_VERIFY_ASSET="thagore-runtime-linux.a"
+          else
+            BUNDLE_ASSET="seed-bundle-macos-arm64.json"
+            STAGE1_VERIFY_ASSET="thagore-stage1-macos.tar.gz"
+            RUNTIME_VERIFY_ASSET="thagore-runtime-macos.a"
+          fi
+          download_asset "$PROVENANCE_ASSET"
+          download_asset "$BUNDLE_ASSET"
+          [[ -f "bootstrap/$PROVENANCE_ASSET" ]] || (echo "CRITICAL: missing stage1 provenance $PROVENANCE_ASSET"; exit 1)
+          [[ -f "bootstrap/$BUNDLE_ASSET" ]] || (echo "CRITICAL: missing seed bundle $BUNDLE_ASSET"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
             PY=python3
           fi
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "bootstrap/$BUNDLE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --provenance "bootstrap/$PROVENANCE_ASSET"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "bootstrap/$BUNDLE_ASSET")"
+          "$PY" scripts/stage1_provenance.py verify \
+            --provenance "bootstrap/$PROVENANCE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --asset "bootstrap/$STAGE1_VERIFY_ASSET" \
+            --asset "bootstrap/$RUNTIME_VERIFY_ASSET" \
+            --expected-bundle-id "$BUNDLE_ID"
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-selfhost-${{ matrix.os }}.txt"
           echo "STAGE1_BIN=$STAGE1_BIN" >> "$GITHUB_ENV"
 

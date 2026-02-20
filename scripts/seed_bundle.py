@@ -61,8 +61,15 @@ def _artifact_kind(name: str) -> str:
     return "other"
 
 
+CORE_KINDS = {"stage1", "runtime", "manifest", "trace"}
+
+
 def _canonical_hash_payload(rows: List[Dict[str, str]]) -> str:
-    parts = [f"{r['kind']}|{r['name']}|{r['sha256']}|{r['size_bytes']}" for r in rows]
+    parts = [
+        f"{r['kind']}|{r['name']}|{r['sha256']}|{r['size_bytes']}"
+        for r in rows
+        if r["kind"] in CORE_KINDS
+    ]
     parts.sort()
     return "\n".join(parts)
 

@@ -11,10 +11,6 @@ on:
         description: "Bootstrap seed tag"
         required: false
         default: "v0.3.25-stage1-seed"
-      bootstrap_stage1_compiler_tag:
-        description: "Bootstrap stage1 compiler seed tag"
-        required: false
-        default: "v0.3.22-stage1-seed"
   schedule:
     - cron: "0 2 * * *"
 
@@ -28,4 +24,3 @@ jobs:
     with:
       longhaul_rounds: ${{ github.event.inputs.longhaul_rounds || '3' }}
       bootstrap_stage1_tag: ${{ github.event.inputs.bootstrap_stage1_tag || 'v0.3.25-stage1-seed' }}
-      bootstrap_stage1_compiler_tag: ${{ github.event.inputs.bootstrap_stage1_compiler_tag || 'v0.3.22-stage1-seed' }}

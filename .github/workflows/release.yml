@@ -238,7 +238,6 @@ jobs:
       matrix: ${{ fromJson(needs.seed-asset-probe.outputs.release_matrix) }}
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
-      BOOTSTRAP_STAGE1_COMPILER_TAG: "v0.3.22-stage1-seed"
       THAGORE_WINDOWS_DONOR_TAG: "v0.3.61-foundation"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
@@ -359,16 +358,10 @@ jobs:
           }
           download_stage1_asset() {
             local pattern="$1"
-            local compiler_tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
-            local primary_tag="$compiler_tag"
-            local secondary_tag=""
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              primary_tag="$BOOTSTRAP_STAGE1_TAG"
-              secondary_tag="$compiler_tag"
-            fi
+            local primary_tag="$BOOTSTRAP_STAGE1_TAG"
             rm -f "bootstrap/$pattern" || true
             local used=""
-            for tag in "$primary_tag" "$secondary_tag"; do
+            for tag in "$primary_tag"; do
               [[ -n "$tag" ]] || continue
               if [[ -n "$used" && "$tag" == "$used" ]]; then
                 continue
@@ -585,11 +578,38 @@ jobs:
             echo "CRITICAL: missing seed promotion manifest for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"
             exit 1
           fi
+          PROVENANCE_ASSET=""
+          for CANDIDATE in "seed-stage1-provenance-${{ matrix.asset_tag }}.json" "seed-stage1-provenance-${{ runner.os }}.json"; do
+            if download_asset "$CANDIDATE"; then
+              PROVENANCE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$PROVENANCE_ASSET" ]] || (echo "CRITICAL: missing stage1 provenance for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"; exit 1)
+          BUNDLE_ASSET=""
+          for CANDIDATE in "seed-bundle-${{ matrix.asset_tag }}.json"; do
+            if download_asset "$CANDIDATE"; then
+              BUNDLE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$BUNDLE_ASSET" ]] || (echo "CRITICAL: missing seed bundle metadata for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
             PY=python3
           fi
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "bootstrap/$BUNDLE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --provenance "bootstrap/$PROVENANCE_ASSET"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "bootstrap/$BUNDLE_ASSET")"
+          "$PY" scripts/stage1_provenance.py verify \
+            --provenance "bootstrap/$PROVENANCE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --asset "bootstrap/${{ matrix.stage1_seed_name }}" \
+            --asset "bootstrap/${{ matrix.runtime_seed_name }}" \
+            --expected-bundle-id "$BUNDLE_ID"
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset

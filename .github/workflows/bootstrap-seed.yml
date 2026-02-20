@@ -121,6 +121,14 @@ jobs:
             fi
           done
           [[ -n "$PROVENANCE_ASSET" ]] || (echo "CRITICAL: stage1 provenance file not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
+          BUNDLE_ASSET=""
+          for CANDIDATE in "seed-bundle-linux-x86_64.json"; do
+            if download_optional "$CANDIDATE"; then
+              BUNDLE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$BUNDLE_ASSET" ]] || (echo "CRITICAL: seed bundle metadata not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
           cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
           cp libthag_runtime.a thag_runtime.lib
           CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -157,11 +165,17 @@ jobs:
           test -n "${SEED_PROVENANCE_PATH:-}"
           test -f "$SEED_MANIFEST_PATH"
           test -f "$SEED_PROVENANCE_PATH"
+          python3 scripts/seed_bundle.py verify \
+            --bundle bootstrap/seed-bundle-linux-x86_64.json \
+            --manifest "$SEED_MANIFEST_PATH" \
+            --provenance "$SEED_PROVENANCE_PATH"
+          BUNDLE_ID="$(python3 -c "import json;print(json.load(open('bootstrap/seed-bundle-linux-x86_64.json',encoding='utf-8'))['metadata']['bundle_id'])")"
           python3 scripts/stage1_provenance.py verify \
             --provenance "$SEED_PROVENANCE_PATH" \
             --manifest "$SEED_MANIFEST_PATH" \
             --asset bootstrap/thagore-stage1-linux.tar.gz \
-            --asset bootstrap/thagore-runtime-linux.a
+            --asset bootstrap/thagore-runtime-linux.a \
+            --expected-bundle-id "$BUNDLE_ID"
 
       - name: Verify Stage1 -> Stage2 -> Stage2
         shell: bash
