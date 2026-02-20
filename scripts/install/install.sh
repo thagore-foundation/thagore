@@ -138,11 +138,37 @@ download_release_payload() {
     exit 1
   fi
   local archive="$outdir/$asset"
+  local asset_tag="${asset#thagore-}"
+  asset_tag="${asset_tag%.tar.gz}"
+  local checksum_asset="SHA256SUMS-${asset_tag}.txt"
+  local checksum_file="$outdir/$checksum_asset"
   local extract_root="$outdir/payload"
   mkdir -p "$extract_root"
   local url="https://github.com/thagore-foundation/thagore/releases/latest/download/$asset"
+  local checksum_url="https://github.com/thagore-foundation/thagore/releases/latest/download/$checksum_asset"
   echo "[thagore-installer] Downloading compiler payload: $url"
   curl -fsSL "$url" -o "$archive"
+  echo "[thagore-installer] Downloading checksum manifest: $checksum_url"
+  curl -fsSL "$checksum_url" -o "$checksum_file"
+  local expected_hash
+  expected_hash="$(awk -v target="$asset" '$2 == target {print $1; exit}' "$checksum_file")"
+  if [[ -z "$expected_hash" ]]; then
+    echo "ERROR: checksum entry for $asset not found in $checksum_asset." >&2
+    exit 1
+  fi
+  local actual_hash
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_hash="$(sha256sum "$archive" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual_hash="$(shasum -a 256 "$archive" | awk '{print $1}')"
+  else
+    echo "ERROR: no SHA256 tool available to verify payload checksum." >&2
+    exit 1
+  fi
+  if [[ "${actual_hash,,}" != "${expected_hash,,}" ]]; then
+    echo "ERROR: checksum mismatch for $asset (expected $expected_hash, got $actual_hash)." >&2
+    exit 1
+  fi
   tar -xzf "$archive" -C "$extract_root"
   if [[ -d "$extract_root/bin" && -d "$extract_root/lib/std" ]]; then
     echo "$extract_root"

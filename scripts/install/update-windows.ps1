@@ -44,6 +44,34 @@ function Resolve-AssetUrl($release, [string]$arch) {
     throw "Cannot find asset '$name' in latest release."
 }
 
+function Resolve-ChecksumUrl($release, [string]$arch) {
+    $name = "SHA256SUMS-windows-$arch.txt"
+    foreach ($asset in $release.assets) {
+        if ($asset.name -eq $name) {
+            return @{ Name = $name; Url = $asset.browser_download_url }
+        }
+    }
+    throw "Cannot find checksum asset '$name' in latest release."
+}
+
+function Get-ExpectedHashFromChecksums {
+    param(
+        [Parameter(Mandatory = $true)][string]$ChecksumFile,
+        [Parameter(Mandatory = $true)][string]$AssetName
+    )
+    foreach ($line in Get-Content -Path $ChecksumFile) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = $line -split '\s+', 2
+        if ($parts.Count -lt 2) { continue }
+        $hash = $parts[0].Trim()
+        $name = $parts[1].Trim()
+        if ($name -eq $AssetName) {
+            return $hash
+        }
+    }
+    throw "Checksum for asset '$AssetName' not found in $ChecksumFile."
+}
+
 function Copy-WithRetry {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
@@ -144,6 +172,7 @@ $release = Get-LatestRelease
 $latestTag = "$($release.tag_name)"
 $latestVer = Get-Semver $latestTag
 $asset = Resolve-AssetUrl $release $arch
+$checksumAsset = Resolve-ChecksumUrl $release $arch
 
 if ($mode -eq "check") {
     if ($latestVer -gt $currentVer) {
@@ -171,6 +200,7 @@ if ($mode -eq "apply") {
     $stateDir = Join-Path $env:LOCALAPPDATA "Thagore\update"
     New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     $archivePath = Join-Path $stateDir "download.tar.gz"
+    $checksumPath = Join-Path $stateDir "SHA256SUMS.txt"
     $extractDir = Join-Path $stateDir "extract"
     $backupEngine = Join-Path $stateDir "thagore.prev.exe"
     if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
@@ -184,6 +214,12 @@ if ($mode -eq "apply") {
     }
 
     Invoke-WebRequest -Uri $asset.Url -OutFile $archivePath
+    Invoke-WebRequest -Uri $checksumAsset.Url -OutFile $checksumPath
+    $expectedArchiveHash = Get-ExpectedHashFromChecksums -ChecksumFile $checksumPath -AssetName $asset.Name
+    $actualArchiveHash = Get-FileSha256 -Path $archivePath
+    if ($actualArchiveHash.ToUpperInvariant() -ne $expectedArchiveHash.ToUpperInvariant()) {
+        throw "Archive checksum mismatch for $($asset.Name)."
+    }
     tar -xzf $archivePath -C $extractDir
     $newEngine = Join-Path $extractDir "bin\thagore.exe"
     if (-not (Test-Path $newEngine)) {

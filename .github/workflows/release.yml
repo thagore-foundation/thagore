@@ -215,7 +215,7 @@ jobs:
           echo "release_matrix=$RELEASE_MATRIX" >> "$GITHUB_OUTPUT"
           echo "release_matrix=$RELEASE_MATRIX"
 
-  build-release:
+  release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
     runs-on: ${{ matrix.runner }}
@@ -885,6 +885,21 @@ jobs:
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           fi
           cp -R std "dist/lib/std"
+          if [[ ! -d "dist/bin" ]]; then
+            echo "CRITICAL: dist/bin not found after packaging."
+            exit 1
+          fi
+          if [[ ! -f "dist/bin/${{ matrix.output_bin }}" ]]; then
+            echo "CRITICAL: missing compiler binary dist/bin/${{ matrix.output_bin }}."
+            exit 1
+          fi
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "dist/bin/${{ matrix.output_bin }}"
+          fi
+          if [[ ! -d "dist/lib/std" ]]; then
+            echo "CRITICAL: missing std library directory dist/lib/std."
+            exit 1
+          fi
           if [[ -f "thag_runtime.lib" ]]; then
             cp "thag_runtime.lib" "dist/lib/runtime.lib"
           elif [[ -f "runtime.lib" ]]; then
@@ -1012,6 +1027,28 @@ jobs:
 
           Remove-Item -Force $certPath
 
+      - name: Generate package checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null 2>&1; then
+            HASH_CMD="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then
+            HASH_CMD="shasum -a 256"
+          else
+            echo "CRITICAL: no SHA256 tool available for checksum generation."
+            exit 1
+          fi
+          CHECKSUM_FILE="SHA256SUMS-${{ matrix.asset_tag }}.txt"
+          : > "$CHECKSUM_FILE"
+          for f in "${{ matrix.package_name }}" "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}"; do
+            [[ -f "$f" ]] || (echo "CRITICAL: missing artifact for checksum: $f"; exit 1)
+            $HASH_CMD "$f" >> "$CHECKSUM_FILE"
+          done
+          if [[ -f "thagore-setup-windows-${{ matrix.arch }}.exe" ]]; then
+            $HASH_CMD "thagore-setup-windows-${{ matrix.arch }}.exe" >> "$CHECKSUM_FILE"
+          fi
+
       - name: Discord update - Package release payload
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
@@ -1040,6 +1077,7 @@ jobs:
             spec-summary-release-${{ matrix.asset_tag }}.txt
             seed-tag-sync-release.txt
             thagore-setup-windows-${{ matrix.arch }}.exe
+            SHA256SUMS-${{ matrix.asset_tag }}.txt
 
       - name: Upload typed-ir audit artifact
         if: always()
@@ -1065,11 +1103,30 @@ jobs:
           name: spec-summary-release-${{ matrix.asset_tag }}
           path: spec-summary-release-${{ matrix.asset_tag }}.txt
 
-  publish:
-    name: publish-release
+  official-tag-gate:
+    name: official-tag-gate
     runs-on: ubuntu-latest
-    needs: [discord-notify-init, build-release]
-    if: startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
+    needs: [discord-notify-init, release]
+    outputs:
+      is_official_tag: ${{ steps.gate.outputs.is_official_tag }}
+    steps:
+      - name: Evaluate official release tag
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME:-}"
+          if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_official_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_official_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  public-release:
+    name: public-release
+    runs-on: ubuntu-latest
+    needs: [discord-notify-init, official-tag-gate]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.official-tag-gate.outputs.is_official_tag == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -1085,8 +1142,10 @@ jobs:
           files: |
             artifacts/**/thagore-linux-*.tar.gz
             artifacts/**/thagore-macos-*.tar.gz
+            artifacts/**/thagore-windows-*.tar.gz
             artifacts/**/thagore-setup-windows-*.exe
             artifacts/**/release-stage-trace-*.log
+            artifacts/**/SHA256SUMS-*.txt
 
       - name: Discord update - Publish GitHub Release Assets
         if: always()
@@ -1102,7 +1161,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, discord-notify-live, build-release, publish]
+    needs: [discord-notify-init, discord-notify-live, release, official-tag-gate, public-release]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
