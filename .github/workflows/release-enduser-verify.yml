@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Lint workflows with actionlint
-        uses: rhysd/actionlint@v1
+        uses: devops-actions/actionlint@v0.1.10
 
       - name: Parse release workflows as YAML
         shell: bash
