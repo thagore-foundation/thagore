@@ -98,6 +98,8 @@ jobs:
           fi
           if has_asset "thagore-stage1-linux-arm64.tar.gz" && has_asset "thagore-runtime-linux-arm64.a"; then
             available="${available}linux-arm64;"
+          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
+            available="${available}linux-arm64;"
           fi
           if has_asset "thagore-stage1-macos-x86_64.tar.gz" && has_asset "thagore-runtime-macos-x86_64.a"; then
             available="${available}macos-x86_64;"
@@ -121,7 +123,6 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
-    if: contains(needs.seed-asset-probe.outputs.available_tags, format(';{0};', matrix.asset_tag))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -349,8 +350,7 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            # Keep linux-arm64 bootstrap strictly native; do not try x86_64 seed + qemu fallback.
-            :
+            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
           fi
@@ -410,10 +410,7 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            # linux-arm64 must not consume generic linux (x86_64) runtime asset
-            # because it produces linker "Relocations in generic ELF (EM: 62)".
-            # If arm64 seed runtime is unavailable, fallback builder creates a native arm64 archive.
-            :
+            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
           fi
