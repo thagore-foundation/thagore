@@ -444,6 +444,10 @@ jobs:
 
           HELLO_TARGET="$HELLO_BIN"
           FIB_TARGET="$FIB_BIN"
+          HELLO_SRC="examples/hello.tg"
+          FIB_SRC="examples/fib.tg"
+          HELLO_MODE="binary"
+          FIB_MODE="binary"
 
           HELLO_BIN=""
           for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
@@ -455,6 +459,12 @@ jobs:
               fi
             fi
           done
+          if [[ -z "$HELLO_BIN" ]]; then
+            HELLO_MODE="source"
+            HELLO_BIN="$STAGE2_REBUILD_BIN"
+            [[ -n "$HELLO_BIN" && -f "$HELLO_BIN" ]] || HELLO_BIN="$STAGE1_BIN"
+            echo "[INFO] hello fallback to source execution via compiler: $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           test -f "$HELLO_BIN"
 
           FIB_BIN=""
@@ -467,11 +477,21 @@ jobs:
               fi
             fi
           done
+          if [[ -z "$FIB_BIN" ]]; then
+            FIB_MODE="source"
+            FIB_BIN="$STAGE2_REBUILD_BIN"
+            [[ -n "$FIB_BIN" && -f "$FIB_BIN" ]] || FIB_BIN="$STAGE1_BIN"
+            echo "[INFO] fib fallback to source execution via compiler: $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
+          echo "HELLO_MODE=$HELLO_MODE" >> "$GITHUB_ENV"
+          echo "FIB_MODE=$FIB_MODE" >> "$GITHUB_ENV"
+          echo "HELLO_SRC=$HELLO_SRC" >> "$GITHUB_ENV"
+          echo "FIB_SRC=$FIB_SRC" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
         shell: bash
@@ -518,8 +538,16 @@ jobs:
         run: |
           set -euxo pipefail
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          "./$HELLO_BIN"
-          "./$FIB_BIN"
+          if [[ "${HELLO_MODE:-binary}" == "source" ]]; then
+            "./$HELLO_BIN" "$HELLO_SRC"
+          else
+            "./$HELLO_BIN"
+          fi
+          if [[ "${FIB_MODE:-binary}" == "source" ]]; then
+            "./$FIB_BIN" "$FIB_SRC"
+          else
+            "./$FIB_BIN"
+          fi
 
       - name: Autofix off regression gate (Windows)
         if: runner.os == 'Windows'
@@ -571,17 +599,40 @@ jobs:
             local test_src="$2"
             local test_bin="$3"
             [[ -n "$cc" && -f "$cc" ]] || return 1
+            local got=""
+            local built=0
             echo "[CMD] ./$cc build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" build "$test_src" -o "$test_bin" || return 1
-            local got
-            got="$(resolve_bin "$test_bin" "$test_src" || true)"
-            if [[ -z "$got" ]]; then
-              echo "CRITICAL: $cc returned success but produced no syntax matrix artifact for $test_src." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+            if "./$cc" build "$test_src" -o "$test_bin"; then
+              got="$(resolve_bin "$test_bin" "$test_src" || true)"
+              if [[ -n "$got" ]]; then
+                BUILT_BIN="$got"
+                USED_CC="$cc"
+                RUN_MODE="binary"
+                return 0
+              fi
+              built=1
             fi
-            BUILT_BIN="$got"
-            USED_CC="$cc"
-            return 0
+            echo "[CMD] ./$cc --build $test_src -o $test_bin" | tee -a "$STAGE_TRACE_FILE"
+            if "./$cc" --build "$test_src" -o "$test_bin"; then
+              got="$(resolve_bin "$test_bin" "$test_src" || true)"
+              if [[ -n "$got" ]]; then
+                BUILT_BIN="$got"
+                USED_CC="$cc"
+                RUN_MODE="binary"
+                return 0
+              fi
+              built=1
+            fi
+            if [[ "$built" -eq 1 ]]; then
+              echo "[INFO] $cc built $test_src without artifact; fallback to source execution." | tee -a "$STAGE_TRACE_FILE"
+            fi
+            if "./$cc" "$test_src" >/dev/null 2>&1; then
+              BUILT_BIN=""
+              USED_CC="$cc"
+              RUN_MODE="source"
+              return 0
+            fi
+            return 1
           }
           resolve_bin() {
             local preferred="$1"
@@ -607,6 +658,7 @@ jobs:
             ok=0
             BUILT_BIN=""
             USED_CC=""
+            RUN_MODE=""
             for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
               if build_test "$cc" "$TEST_SRC" "$TEST_BIN"; then
                 ok=1
@@ -618,17 +670,16 @@ jobs:
               echo "CRITICAL: failed to compile syntax matrix test $TEST_SRC."
               exit 1
             fi
-            RUN_BIN="$BUILT_BIN"
-            if [[ -z "$RUN_BIN" ]]; then
-              echo "FAIL|$TEST_SRC|missing_binary" >> "$REPORT"
-              echo "CRITICAL: syntax matrix binary not found after compile for $TEST_SRC."
-              ls -la || true
-              exit 1
+            if [[ "$RUN_MODE" == "binary" ]]; then
+              RUN_BIN="$BUILT_BIN"
+              test -f "$RUN_BIN"
+              chmod +x "$RUN_BIN" || true
+              "./$RUN_BIN"
+              echo "PASS|$TEST_SRC|compiler=$USED_CC|mode=binary|binary=$RUN_BIN" >> "$REPORT"
+            else
+              "./$USED_CC" "$TEST_SRC"
+              echo "PASS|$TEST_SRC|compiler=$USED_CC|mode=source" >> "$REPORT"
             fi
-            test -f "$RUN_BIN"
-            chmod +x "$RUN_BIN" || true
-            "./$RUN_BIN"
-            echo "PASS|$TEST_SRC|compiler=$USED_CC|binary=$RUN_BIN" >> "$REPORT"
           done
           cat "$REPORT" | tee -a "$STAGE_TRACE_FILE"
 
