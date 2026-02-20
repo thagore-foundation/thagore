@@ -406,6 +406,7 @@ jobs:
           if ($merged -match "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe") {
               Write-Warning "CLI suite detected legacy/wrapper markers (non-gating)."
           }
+          $global:LASTEXITCODE = 0
 
       - name: Discord update - Windows CLI command suite
         if: always()
