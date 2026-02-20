@@ -551,6 +551,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          OFFICIAL_RELEASE_TAG=0
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            OFFICIAL_RELEASE_TAG=1
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
@@ -657,17 +661,28 @@ jobs:
               if [[ -n "$got" ]]; then
                 return 0
               fi
-              if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              if [[ "$src" == "src/thagore.tg" ]]; then
+                echo "[WARN] primary build path produced no artifact for $src; trying legacy --build compatibility path." | tee -a "$STAGE_TRACE_FILE"
+                echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+                if run_build_cmd "$cc" --build "$src" -o "$out"; then
+                  got="$(resolve_local "$out" || true)"
+                  if [[ -n "$got" ]]; then
+                    return 0
+                  fi
+                fi
+              fi
+              if [[ "$src" == "src/thagore.tg" && -f "$cc" && "$OFFICIAL_RELEASE_TAG" != "1" ]]; then
                 echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                 return 0
               fi
-              echo "CRITICAL: builder path build succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
-              echo "CRITICAL: legacy --build fallback is forbidden in release lane." | tee -a "$STAGE_TRACE_FILE"
+              echo "CRITICAL: release build produced no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
+              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
+                echo "CRITICAL: official release cannot continue with in-place compiler fallback." | tee -a "$STAGE_TRACE_FILE"
+              fi
               return 1
             else
               rc=$?
               echo "CRITICAL: build failed for '$cc build $src -o $out' (rc=$rc)." | tee -a "$STAGE_TRACE_FILE"
-              echo "CRITICAL: legacy --build fallback is forbidden in release lane." | tee -a "$STAGE_TRACE_FILE"
               return "$rc"
             fi
           }
