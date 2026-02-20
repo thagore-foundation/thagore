@@ -721,6 +721,7 @@ jobs:
             return 1
           }
           USE_DONOR_BIN=0
+          DONOR_COMPILER=""
           if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
             if [[ -n "$DONOR_TAG" ]]; then
@@ -747,9 +748,8 @@ jobs:
                     chmod +x donor_thagore.exe || true
                     if cli_sanity_ok donor_thagore.exe; then
                       USE_DONOR_BIN=1
-                      STAGE2_BIN="donor_thagore.exe"
-                      STAGE2_REBUILD_BIN="donor_thagore.exe"
-                      echo "[INFO] official Windows lane uses donor verified compiler from $DONOR_TAG at $DONOR_SRC." | tee -a "$STAGE_TRACE_FILE"
+                      DONOR_COMPILER="donor_thagore.exe"
+                      echo "[INFO] official Windows lane uses donor compiler bootstrap from $DONOR_TAG at $DONOR_SRC." | tee -a "$STAGE_TRACE_FILE"
                     else
                       echo "[WARN] donor compiler failed CLI sanity: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
                     fi
@@ -769,44 +769,50 @@ jobs:
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
-          if [[ "$USE_DONOR_BIN" != "1" ]]; then
-            if ! thg_build "${{ matrix.stage1_bin }}" src/thagore.tg "${{ matrix.stage2_bin }}"; then
-              exit 1
-            fi
-            STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
-            if [[ -z "${STAGE2_BIN:-}" ]]; then
-              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-                echo "CRITICAL: official release cannot fallback to stage1/in-place compiler when stage2 artifact is missing." | tee -a "$STAGE_TRACE_FILE"
+          BOOTSTRAP_COMPILER="${{ matrix.stage1_bin }}"
+          if [[ "$USE_DONOR_BIN" == "1" && -n "$DONOR_COMPILER" ]]; then
+            BOOTSTRAP_COMPILER="$DONOR_COMPILER"
+          fi
+          if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
+            exit 1
+          fi
+          STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
+          if [[ -z "${STAGE2_BIN:-}" ]]; then
+            if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
+              if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
+                STAGE2_BIN="$DONOR_COMPILER"
+                echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+              else
+                echo "CRITICAL: official release cannot fallback when stage2 artifact is missing." | tee -a "$STAGE_TRACE_FILE"
                 exit 1
               fi
-              if [[ -f "${{ matrix.stage1_bin }}" ]]; then
-                STAGE2_BIN="${{ matrix.stage1_bin }}"
-                echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              fi
+            elif [[ -f "${{ matrix.stage1_bin }}" ]]; then
+              STAGE2_BIN="${{ matrix.stage1_bin }}"
+              echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             fi
-            test -f "$STAGE2_BIN"
-            if [[ ! -s "$STAGE2_BIN" ]]; then
-              echo "CRITICAL: $STAGE2_BIN is empty after source build." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            chmod +x "$STAGE2_BIN" || true
-            if ! cli_sanity_ok "$STAGE2_BIN"; then
-              echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+          fi
+          test -f "$STAGE2_BIN"
+          if [[ ! -s "$STAGE2_BIN" ]]; then
+            echo "CRITICAL: $STAGE2_BIN is empty after source build." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
+          chmod +x "$STAGE2_BIN" || true
+          if ! cli_sanity_ok "$STAGE2_BIN"; then
+            echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
 
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] keeping source-built compiler as release compiler (second rebuild disabled for deterministic lane stability)." | tee -a "$STAGE_TRACE_FILE"
-            test -f "$STAGE2_REBUILD_BIN"
-            if [[ ! -s "$STAGE2_REBUILD_BIN" ]]; then
-              echo "CRITICAL: $STAGE2_REBUILD_BIN is empty after rebuild." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            chmod +x "$STAGE2_REBUILD_BIN" || true
-            if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-              echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+          STAGE2_REBUILD_BIN="$STAGE2_BIN"
+          echo "[INFO] keeping source-built compiler as release compiler (second rebuild disabled for deterministic lane stability)." | tee -a "$STAGE_TRACE_FILE"
+          test -f "$STAGE2_REBUILD_BIN"
+          if [[ ! -s "$STAGE2_REBUILD_BIN" ]]; then
+            echo "CRITICAL: $STAGE2_REBUILD_BIN is empty after rebuild." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+          if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
+            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
