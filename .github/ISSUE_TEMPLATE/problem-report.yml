@@ -1,0 +1,45 @@
+name: "⚠️ Problem Report"
+description: "Report a non-bug issue such as unclear docs, process gaps, or trust/audit concerns."
+title: "[Problem]: "
+labels:
+  - "problem"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for systemic or process problems that are not strictly runtime bugs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: "🧾 Summary"
+      description: "What is the problem and why does it matter?"
+      placeholder: "Current release process lacks an independently verifiable trust anchor..."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "🔍 Evidence"
+      description: "Link workflows, docs, commands, logs, or artifacts that demonstrate the problem."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "🎯 Expected state"
+      description: "What should exist instead?"
+      placeholder: "A fail-closed verification step with manifest + provenance checks."
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: "🧪 Suggested technical path"
+      description: "Optional: concrete steps to resolve the issue."
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Checklist"
+      options:
+        - label: "I checked existing issues to avoid duplicates."
+          required: true

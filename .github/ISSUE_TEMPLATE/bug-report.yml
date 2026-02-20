@@ -1,0 +1,58 @@
+name: "🐛 Bug Report"
+description: "Report incorrect behavior, regressions, crashes, or broken outputs."
+title: "[Bug]: "
+labels:
+  - "bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A minimal reproducible example helps us fix faster.
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: "📌 What happened?"
+      description: "Describe the bug and the observed behavior."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "🔁 Steps to reproduce"
+      description: "Provide exact commands and files when possible."
+      placeholder: |
+        1. Run `stage2 build examples/hello.tg -o hello`
+        2. Run `./hello`
+        3. Observe crash
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "✅ Expected behavior"
+      description: "What should have happened?"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "💻 Environment details"
+      description: "OS, architecture, compiler version/tag, and install method."
+      placeholder: "Ubuntu 24.04 x86_64, stage1 tag v0.3.25-stage1-seed..."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: "🪵 Logs / stack traces"
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Checklist"
+      options:
+        - label: "I can reproduce this on the latest available version."
+          required: true
+        - label: "I searched for existing bug reports."
+          required: true

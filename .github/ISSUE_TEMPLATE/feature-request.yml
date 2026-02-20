@@ -1,0 +1,44 @@
+name: "✨ Feature Request / Change"
+description: "Propose a new feature or a change to existing behavior."
+title: "[Feature]: "
+labels:
+  - "enhancement"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Great ideas are welcome. Please focus on the problem and expected impact.
+  - type: textarea
+    id: problem
+    attributes:
+      label: "🧠 Problem statement"
+      description: "What problem are you facing today?"
+      placeholder: "Current workflow requires manual steps that are error-prone..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "🛠️ Proposed solution"
+      description: "Describe your preferred solution."
+      placeholder: "Add a CLI command that validates stage1 provenance before bootstrap."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "🔀 Alternatives considered"
+      description: "What other approaches did you consider?"
+  - type: textarea
+    id: scope
+    attributes:
+      label: "📏 Scope and impact"
+      description: "Which modules, workflows, or docs are affected?"
+      placeholder: "Touches bootstrap-seed.yml and seed-stage1.yml."
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Checklist"
+      options:
+        - label: "I checked for existing feature requests."
+          required: true

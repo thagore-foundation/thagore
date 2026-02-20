@@ -1,0 +1,47 @@
+name: "🙋 Support / Q&A"
+description: "Ask for help using Thagore, setup guidance, or best practices."
+title: "[Support]: "
+labels:
+  - "support"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reaching out. Please share enough context so we can help quickly.
+  - type: input
+    id: goal
+    attributes:
+      label: "🎯 What are you trying to do?"
+      description: "Describe your goal in one sentence."
+      placeholder: "Compile and run my first Thagore project on Linux."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "🧩 Context"
+      description: "What did you try already? What is confusing?"
+      placeholder: "I followed the quick start, but I'm not sure how to configure LLVM."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "💻 Environment"
+      description: "Provide OS, shell, compiler/runtime versions, and install method."
+      placeholder: "OS: Ubuntu 24.04, Shell: bash, Installed via release asset..."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: "🪵 Relevant logs or output"
+      description: "Paste errors or command output (if any)."
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Checklist"
+      options:
+        - label: "I searched existing issues and discussions."
+          required: true
