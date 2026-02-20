@@ -1,7 +1,13 @@
+import "lib/fs.tg" as fs
+import "lib/process.tg" as process
 import "src/codegen/native/emitter.tg" as native_codegen
 import "src/lowering/coreir/nodes.tg"
 import "src/codegen/llvm/api/core.tg" as llvmtier1
 import "src/codegen/llvm/api/target.tg" as llvmtier2
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_fs_remove(path: String) -> i32
 
 func emit_program(root: ptr) -> String:
     root = root
@@ -9,6 +15,65 @@ func emit_program(root: ptr) -> String:
 
 func emit_program_core(core: CoreProgram, module_name: String) -> String:
     return native_codegen.emit_program_core(core, module_name)
+
+func _char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + _char_at(text, i)
+                i = i + 1
+        else:
+            out = out + _char_at(text, i)
+            i = i + 1
+    return out
+
+func _quote(path: String) -> String:
+    if (_contains(path, "\"") == 1):
+        return "\"" + _replace_all(path, "\"", "\\\"") + "\""
+    return "\"" + path + "\""
+
+func _looks_like_valid_llvm(ir: String) -> i32:
+    if (_contains(ir, "define i32 @main(") == 0):
+        return 0
+    if (_contains(ir, "\\n") == 1):
+        return 0
+    return 1
+
+func emit_object_core(core: CoreProgram, module_name: String, clang_bin: String, object_path: String) -> i32:
+    let ir = emit_program_core(core, module_name)
+    if (_looks_like_valid_llvm(ir) == 0):
+        return 2
+    let ir_path = object_path + ".tmp.ll"
+    if (fs.write_text(ir_path, ir) == 0):
+        return 1
+    let cmd = clang_bin + " -x ir -c " + _quote(ir_path) + " -o " + _quote(object_path)
+    let rc = process.run(cmd)
+    __thg_fs_remove(ir_path)
+    return rc
 
 func system_decls() -> String:
     return ""

@@ -1,0 +1,243 @@
+import "src/driver/cli/common/core.tg"
+
+extern func __thg_fs_remove(path: String) -> i32
+
+func _probe_clang_driver(candidate: String) -> String:
+    if (process.run(candidate + " --version > thagore_clang_probe.log 2>&1") == 0):
+        return candidate
+    return ""
+
+func _detect_clang_driver(prefer_cxx: i32) -> String:
+    if (prefer_cxx == 1):
+        let candidate = _probe_clang_driver("clang++")
+        if (candidate.length() > 0):
+            return candidate
+        let candidate_win = _probe_clang_driver("C:/Progra~1/LLVM/bin/clang++.exe")
+        if (candidate_win.length() > 0):
+            return candidate_win
+        let candidate_usr = _probe_clang_driver("/usr/bin/clang++")
+        if (candidate_usr.length() > 0):
+            return candidate_usr
+        let candidate_usr_local = _probe_clang_driver("/usr/local/bin/clang++")
+        if (candidate_usr_local.length() > 0):
+            return candidate_usr_local
+    let fallback = _probe_clang_driver("clang")
+    if (fallback.length() > 0):
+        return fallback
+    let fallback_win = _probe_clang_driver("C:/Progra~1/LLVM/bin/clang.exe")
+    if (fallback_win.length() > 0):
+        return fallback_win
+    let fallback_usr = _probe_clang_driver("/usr/bin/clang")
+    if (fallback_usr.length() > 0):
+        return fallback_usr
+    let fallback_usr_local = _probe_clang_driver("/usr/local/bin/clang")
+    if (fallback_usr_local.length() > 0):
+        return fallback_usr_local
+    return ""
+
+func _detect_host_uname() -> String:
+    let log_path = "thagore_link_uname.log"
+    if (process.run("uname -s > " + log_path + " 2>&1") != 0):
+        return ""
+    if (fs.exists(log_path) == 0):
+        return ""
+    return _trim(fs.read_text(log_path))
+
+func _host_prefers_clangxx() -> i32:
+    let uname = _detect_host_uname()
+    if (_contains(uname, "Darwin") == 1):
+        return 1
+    if (_contains(uname, "Linux") == 1):
+        return 1
+    return 0
+
+func _link_with_runtime(clang_bin: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32) -> i32:
+    if (fs.exists(runtime_lib) == 0):
+        return -1
+    let mode_flag = ""
+    if ((force_cxx_mode == 1) and (_contains(clang_bin, "clang++") == 0)):
+        mode_flag = " --driver-mode=g++"
+    let cmd = clang_bin + mode_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
+    return process.run(cmd)
+
+func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
+    if (total_fixed > 0):
+        print("[autofix] rebuild=failed after fixes_applied=" + _to_string_i32(total_fixed))
+    print("[autofix] failing_diagnostic=build_code_" + _to_string_i32(code))
+    let report_path = ""
+    if (total_fixed > 0):
+        report_path = autofix.latest_applied_report_path()
+    if (strlen(report_path) == 0):
+        report_path = autofix.latest_report_path()
+    if (strlen(report_path) > 0):
+        print("[autofix] report: " + report_path)
+
+func _link_exe(input_path: String, out_path: String, clang_bin: String, prefer_cxx: i32) -> i32:
+    let first_lib = "runtime.lib"
+    let second_lib = "runtime.a"
+    let third_lib = "thag_runtime.lib"
+    let fourth_lib = "libthag_runtime.a"
+    if (prefer_cxx == 1):
+        first_lib = "runtime.a"
+        second_lib = "runtime.lib"
+        third_lib = "libthag_runtime.a"
+        fourth_lib = "thag_runtime.lib"
+    if (_link_with_runtime(clang_bin, first_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    if (_link_with_runtime(clang_bin, second_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    if (_link_with_runtime(clang_bin, third_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    if (_link_with_runtime(clang_bin, fourth_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    print("CRITICAL: runtime library not found (expected runtime.lib/runtime.a).")
+    return 1
+
+func _looks_like_valid_llvm(ir: String) -> i32:
+    if (_starts_with(ir, "; ModuleID = '") == 0):
+        return 0
+    if (_contains(ir, "\\n") == 1):
+        return 0
+    if (_contains(ir, "@main(") == 0):
+        return 0
+    return 1
+
+func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
+    let source = fs.read_text(input_path)
+    if (source.length() == 0):
+        print("ERROR: cannot read source file: " + input_path)
+        return 11
+    let typed = typechecker.typecheck_to_typed(source)
+    if (typed.error_count > 0):
+        if (typed.error_code.length() > 0):
+            print("Typecheck error [" + typed.error_code + "]: " + typed.error_message)
+        print("ERROR: typecheck failed.")
+        return 21
+    let core = lowering.lower_program(typed)
+    if (core.error_count > 0):
+        if (core.error_code.length() > 0):
+            print("Lowering error [" + core.error_code + "]: " + core.error_message)
+        print("ERROR: lowering failed.")
+        return 22
+    let module_name = _strip_ext(_base_name(input_path))
+    if (emit_only == 1):
+        let ir = emitter.emit_program_core(core, module_name)
+        if (_looks_like_valid_llvm(ir) == 0):
+            fs.write_text(out_path + ".raw.ll", ir)
+            print("ERROR: native emitter produced invalid LLVM IR.")
+            return 2
+        let ir_path = out_path + ".ll"
+        if (out_path.length() > 3):
+            if (__thg_str_substr(out_path, out_path.length() - 3, 3) == ".ll"):
+                ir_path = out_path
+        if (fs.write_text(ir_path, ir) == 0):
+            print("ERROR: failed to write IR file: " + ir_path)
+            return 1
+        print(ir_path)
+        return 0
+    let prefer_cxx = _host_prefers_clangxx()
+    let clang_bin = _detect_clang_driver(prefer_cxx)
+    if (clang_bin.length() == 0):
+        print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
+        return 1
+    let object_path = out_path + ".o"
+    if (emitter.emit_object_core(core, module_name, clang_bin, object_path) != 0):
+        print("ERROR: object emission failed.")
+        return 1
+    if (_link_exe(object_path, out_path, clang_bin, prefer_cxx) != 0):
+        print("ERROR: link failed.")
+        return 1
+    __thg_fs_remove(object_path)
+    print("Build success.")
+    return 0
+
+func _build(input_path: String, out_path: String, emit_only: i32, autofix_mode_raw: String, autofix_lock: String, autofix_lock_strict: i32, autofix_lock_locked: i32, autofix_max_iterations: i32, autofix_max_files_touched: i32, autofix_workspace: i32, autofix_exclude_set: String) -> i32:
+    let mode = autofix.normalize_mode(autofix_mode_raw)
+    if (mode == "off"):
+        return _build_once(input_path, out_path, emit_only)
+    let max_iters = autofix_max_iterations
+    if (max_iters < 1):
+        max_iters = 1
+    if (max_iters > 12):
+        max_iters = 12
+    let max_files = autofix_max_files_touched
+    if (max_files < 1):
+        max_files = 1
+    let pass_idx = 0
+    let total_fixed = 0
+    let applied_sessions = ";"
+    let baseline_rank = _error_severity_rank(21)
+    while (pass_idx < max_iters):
+        let code = _build_once(input_path, out_path, emit_only)
+        if (code == 0):
+            if (pass_idx > 0):
+                print("[autofix] rebuild=success")
+            return 0
+        if ((pass_idx > 0) and (total_fixed > 0)):
+            let now_rank = _error_severity_rank(code)
+            if (now_rank > baseline_rank):
+                print("[autofix] severity_increase_detected after autofix; rolling back applied sessions.")
+                _rollback_sessions(applied_sessions)
+                _print_autofix_build_failure(total_fixed, code)
+                return code
+        if (code != 21):
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        if (pass_idx >= (max_iters - 1)):
+            print("[autofix] max_passes_reached=" + _to_string_i32(max_iters))
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        let batch = _apply_autofix_batch(input_path, mode, autofix_lock, autofix_lock_strict, autofix_lock_locked, max_files, autofix_workspace, autofix_exclude_set)
+        if ((batch.error == 1) or (batch.changed <= 0)):
+            print("[autofix] rebuild=failed")
+            _print_autofix_build_failure(total_fixed, code)
+            return code
+        print("[autofix] iteration=" + _to_string_i32(pass_idx + 1) + " errors_before=1 warnings_before=0 fixes_applied=" + _to_string_i32(batch.changed))
+        total_fixed = total_fixed + batch.changed
+        applied_sessions = _set_union(applied_sessions, batch.sessions_set)
+        pass_idx = pass_idx + 1
+    print("[autofix] rebuild=failed")
+    return 1
+
+func _print_help() -> void:
+    print("Thagore Compiler CLI")
+    print("Usage:")
+    print("  thagore build <input.tg> -o <output> [--autofix=<off|safe|aggressive>]")
+    print("       [--autofix-lock <path>] [--autofix-lock-strict] [--autofix-locked] [--autofix-workspace]")
+    print("       [--autofix-max-iterations N] [--autofix-max-files N] [--autofix-exclude a,b,c]")
+    print("  thagore build <input.tg> --emit-llvm")
+    print("  thagore <input.tg> --emit-llvm")
+    print("  thagore test [filter] [--workspace] [--package <name>|a,b] [--exclude <a,b,c>]")
+    print("       [--exclude-package <a,b,c>] [--no-run] [--fail-fast] [--json]")
+    print("       [--message-format json|human] [--list]")
+    print("  thagore fix doctor <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
+    print("  thagore fix dry-run <entry.tg> [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
+    print("  thagore fix apply <entry.tg> [--level safe|aggressive] [--workspace] [--exclude a,b,c] [--max-files N] [--max-iterations N]")
+    print("       [--lock <path>] [--lock-strict] [--locked] [--message-format json|human]")
+    print("  thagore fix explain <entry.tg> [--json] [--workspace] [--exclude a,b,c] [--lock <path>] [--lock-strict] [--locked]")
+    print("       [--message-format json|human]")
+    print("  thagore fix rollback <session-id>")
+    print("  thagore install toolchain [--yes] [--dry-run] [--llvm-version 21.1.8]")
+    print("       [--target-os auto|windows|ubuntu|macos|linux|portable]")
+    print("       [--arch auto|amd64|x86_64|arm64|aarch64]")
+    print("  thagore update check")
+    print("  thagore update apply [--yes] [--dry-run]")
+    print("  thagore update rollback [--yes]")
+    print("  thagore --version")
+
+func _fix_level(raw: String) -> String:
+    let m = _trim(raw)
+    if (m == "aggressive"):
+        return "aggressive"
+    return "safe"
+
+func _test_message_format_mode(raw: String) -> i32:
+    let m = _trim(raw)
+    if (m == "json"):
+        return 1
+    if ((m == "human") or (m == "pretty") or (m == "text")):
+        return 0
+    return -1
+

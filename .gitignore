@@ -1,4 +1,6 @@
 build/
+!src/driver/cli/build/
+!src/driver/cli/build/*.tg
 .vscode/
 *.exe
 *.obj
