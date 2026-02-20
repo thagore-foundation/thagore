@@ -4,11 +4,11 @@ import "src/codegen/native/emit/text.tg" as emittext
 import "src/lowering/coreir/nodes.tg"
 import "src/codegen/llvm/api/core.tg" as llvmtier1
 import "src/codegen/llvm/api/target.tg" as llvmtier2
+import "src/codegen/llvm/api/builder.tg" as llvmbuilder
 
 extern func strlen(s: String) -> i32
 extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
 extern func __thg_llvm_emit_object_from_ir(ir_text: String, module_name: String, object_path: String) -> i32
-extern func __thg_llvm_builder_emit_cli_runtime_wrapper(module_name: String, object_path: String) -> i32
 
 func emit_program(root: ptr) -> String:
     root = root
@@ -54,7 +54,7 @@ func emit_object_core(core: CoreProgram, module_name: String, clang_bin: String,
     clang_bin = clang_bin
     let normalized = emittext._normalize_source_newlines(core.normalized_source)
     if (_is_runtime_wrapper_source(normalized) == 1):
-        return __thg_llvm_builder_emit_cli_runtime_wrapper(module_name, object_path)
+        return llvmbuilder.__thg_llvm_builder_emit_cli_runtime_wrapper(module_name, object_path)
     let ir = emit_program_core(core, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
         return 2

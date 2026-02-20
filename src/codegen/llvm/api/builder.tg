@@ -1,0 +1,38 @@
+extern func __thg_llvm_builder_context_create() -> ptr
+extern func __thg_llvm_builder_context_dispose(ctx: ptr) -> void
+
+extern func __thg_llvm_builder_module_create(ctx: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_module_dispose(module_ref: ptr) -> void
+
+extern func __thg_llvm_builder_type_i32(ctx: ptr) -> ptr
+extern func __thg_llvm_builder_type_void(ctx: ptr) -> ptr
+
+extern func __thg_llvm_builder_function_type(ret_ty: ptr, param_types: ptr, param_count: i32, is_var_arg: i32) -> ptr
+extern func __thg_llvm_builder_function_add(module_ref: ptr, name: String, fn_ty: ptr) -> ptr
+extern func __thg_llvm_builder_function_main_i32(module_ref: ptr, ctx: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_function_i32_one_param(module_ref: ptr, ctx: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_function_get_param(fn_value: ptr, index: i32) -> ptr
+
+extern func __thg_llvm_builder_block_append(ctx: ptr, fn_value: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_create(ctx: ptr) -> ptr
+extern func __thg_llvm_builder_dispose(builder: ptr) -> void
+extern func __thg_llvm_builder_position_at_end(builder: ptr, block: ptr) -> void
+
+extern func __thg_llvm_builder_const_i32(ctx: ptr, value: i32) -> ptr
+extern func __thg_llvm_builder_build_alloca(builder: ptr, ty: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_store(builder: ptr, value: ptr, ptr_value: ptr) -> ptr
+extern func __thg_llvm_builder_build_load(builder: ptr, ty: ptr, ptr_value: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_add(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_sub(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_mul(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_div(builder: ptr, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_icmp(builder: ptr, pred: i32, lhs: ptr, rhs: ptr, name: String) -> ptr
+extern func __thg_llvm_builder_build_br(builder: ptr, dest: ptr) -> ptr
+extern func __thg_llvm_builder_build_cond_br(builder: ptr, cond: ptr, then_block: ptr, else_block: ptr) -> ptr
+extern func __thg_llvm_builder_build_call(builder: ptr, fn_ty: ptr, fn_value: ptr, args_data: ptr, arg_count: i32, name: String) -> ptr
+extern func __thg_llvm_builder_build_ret(builder: ptr, value: ptr) -> ptr
+extern func __thg_llvm_builder_build_ret_void(builder: ptr) -> ptr
+
+extern func __thg_llvm_builder_verify_module(module_ref: ptr, action: i32, out_message: ptr) -> i32
+extern func __thg_llvm_builder_emit_object(module_ref: ptr, object_path: String) -> i32
+extern func __thg_llvm_builder_emit_cli_runtime_wrapper(module_name: String, object_path: String) -> i32
