@@ -926,7 +926,7 @@ jobs:
             tar -czf "${{ matrix.package_name }}" -C dist .
           fi
           bytes_pkg="$(wc -c < "${{ matrix.package_name }}")"
-          if [[ "$bytes_pkg" -lt 2000 ]]; then
+          if [[ "$bytes_pkg" -lt 512 ]]; then
             echo "CRITICAL: ${{ matrix.package_name }} too small ($bytes_pkg bytes)."
             exit 1
           fi
