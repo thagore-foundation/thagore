@@ -479,10 +479,6 @@ jobs:
               exit 1
             fi
           fi
-          if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
-            exit 1
-          fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
               cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
@@ -540,6 +536,11 @@ jobs:
             done
           fi
           [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."; exit 1)
+          # Stage1 fixture probe links against runtime; download runtime before probing stage1.
+          if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
+            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
           if [[ -n "$RUNTIME_ASSET" ]]; then
             if ! runtime_contract_ok; then
               echo "CRITICAL: runtime asset $RUNTIME_ASSET failed bootstrap-critical contract." | tee -a "$STAGE_TRACE_FILE"
