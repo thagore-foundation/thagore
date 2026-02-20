@@ -195,11 +195,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if args.manifest:
         manifest_entries = parse_manifest(normalize_path(args.manifest))
         by_name = {row["name"]: row["sha256"] for row in normalized_rows}
-        for name, expected in manifest_entries.items():
-            got = by_name.get(name, "")
+        for name, got in by_name.items():
+            expected = manifest_entries.get(name, "")
+            if not expected:
+                errors.append(f"manifest missing entry for {name}")
+                continue
             if got != expected:
                 errors.append(
-                    f"manifest mismatch for {name}: expected={expected} got={got or '<missing>'}"
+                    f"manifest mismatch for {name}: expected={expected} got={got}"
                 )
 
     if args.provenance:

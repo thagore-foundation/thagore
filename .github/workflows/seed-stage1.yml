@@ -713,11 +713,6 @@ jobs:
             --asset "$PROV"
             --asset "$TRACE_ASSET"
           )
-          for f in thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
-            if [[ -f "$f" ]]; then
-              BUNDLE_ASSET_ARGS+=(--asset "$f")
-            fi
-          done
           "$PY" scripts/seed_bundle.py capture \
             --output "$BUNDLE_OUT" \
             --seed-tag "${{ github.event.inputs.seed_tag }}" \
