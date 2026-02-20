@@ -71,6 +71,12 @@ jobs:
             echo "$FALLBACK_HITS"
             exit 1
           fi
+          RELEASE_FALLBACK_HITS="$(grep -REn "RELEASE_OPTIONAL_SKIP|build_runtime_fallback|build_stage1_blob_native|fallback smoke binaries|non-strict lane|continue with bootstrap chain" .github/workflows/release.yml || true)"
+          if [[ -n "$RELEASE_FALLBACK_HITS" ]]; then
+            echo "CRITICAL: release fallback markers are forbidden."
+            echo "$RELEASE_FALLBACK_HITS"
+            exit 1
+          fi
           SCRIPT_HITS="$(grep -REn "ALLOW_STAGE0_BOOTSTRAP|legacy[/\\]stage0|legacy[/\\]build[/\\].*thag" scripts \
             | grep -Ev "intent_budget_gate.py|policy-no-stage0.yml" || true)"
           if [[ -n "$SCRIPT_HITS" ]]; then
