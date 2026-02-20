@@ -13,6 +13,8 @@ HELP_ANCHORS = (
 )
 UPDATE_MARK = 'if (arg1 == "update") {'
 EMIT_ANCHOR = '  if (arg1 == "--emit-llvm-internal") {'
+RUNTIME_FN_START = "static auto cliDetectRuntimeLib() -> std::string {"
+RUNTIME_NEXT_ANCHOR = "static auto cliReadText(const std::string &path) -> std::string {"
 
 UPDATE_BLOCK = r'''
   if (arg1 == "update") {
@@ -81,6 +83,67 @@ UPDATE_BLOCK = r'''
 
 '''
 
+RUNTIME_BLOCK = r'''
+static auto cliDetectRuntimeLib() -> std::string {
+  const char *envRuntime = std::getenv("THAGORE_RUNTIME_LIB");
+  if (envRuntime == nullptr || envRuntime[0] == '\0') {
+    envRuntime = std::getenv("THAG_RUNTIME_LIB");
+  }
+  if (envRuntime != nullptr && envRuntime[0] != '\0') {
+    const std::filesystem::path configuredPath {envRuntime};
+    std::error_code configuredEc {};
+    if (std::filesystem::exists(configuredPath, configuredEc) && !configuredEc) {
+      return configuredPath.string();
+    }
+  }
+
+  std::vector<std::filesystem::path> roots {};
+  const auto selfPath = resolveSelfExecutablePath();
+  if (!selfPath.empty()) {
+    const auto selfDir = selfPath.parent_path();
+    if (!selfDir.empty()) {
+      roots.push_back(selfDir);
+      const auto installRoot = selfDir.parent_path();
+      if (!installRoot.empty()) {
+        roots.push_back(installRoot);
+      }
+    }
+  }
+  std::error_code cwdEc {};
+  const auto cwd = std::filesystem::current_path(cwdEc);
+  if (!cwdEc && !cwd.empty()) {
+    roots.push_back(cwd);
+  }
+
+  const std::vector<std::filesystem::path> relCandidates {
+    "thag_runtime.lib",
+    "libthag_runtime.a",
+    std::filesystem::path("lib") / "thag_runtime.lib",
+    std::filesystem::path("lib") / "libthag_runtime.a",
+    std::filesystem::path("runtime") / "thag_runtime.lib",
+    std::filesystem::path("runtime") / "libthag_runtime.a",
+    std::filesystem::path("runtime") / "build" / "thag_runtime.lib",
+    std::filesystem::path("runtime") / "build" / "Release" / "thag_runtime.lib",
+    std::filesystem::path("runtime") / "build" / "libthag_runtime.a",
+    std::filesystem::path("build") / "thag_runtime.lib",
+    std::filesystem::path("build") / "libthag_runtime.a",
+  };
+
+  for (const auto &root : roots) {
+    for (const auto &rel : relCandidates) {
+      const auto candidate = root.empty() ? rel : (root / rel);
+      std::error_code ec {};
+      if (std::filesystem::exists(candidate, ec) && !ec) {
+        return candidate.string();
+      }
+    }
+  }
+
+  return "";
+}
+
+'''
+
 
 def patch_runtime(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
@@ -103,6 +166,12 @@ def patch_runtime(path: Path) -> int:
         text = text[:existing] + text[idx:]
         idx = text.find(EMIT_ANCHOR)
     text = text[:idx] + UPDATE_BLOCK + text[idx:]
+
+    runtime_start = text.find(RUNTIME_FN_START)
+    runtime_next = text.find(RUNTIME_NEXT_ANCHOR)
+    if runtime_start < 0 or runtime_next < 0 or runtime_next <= runtime_start:
+        raise RuntimeError(f"missing runtime detect anchors: {RUNTIME_FN_START} / {RUNTIME_NEXT_ANCHOR}")
+    text = text[:runtime_start] + RUNTIME_BLOCK + text[runtime_next:]
 
     path.write_text(text, encoding="utf-8")
     return 0

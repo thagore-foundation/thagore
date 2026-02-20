@@ -1134,6 +1134,16 @@ jobs:
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           fi
           cp -R std "dist/lib/std"
+          if [[ -f "thag_runtime.lib" ]]; then
+            cp "thag_runtime.lib" "dist/lib/thag_runtime.lib"
+          fi
+          if [[ -f "libthag_runtime.a" ]]; then
+            cp "libthag_runtime.a" "dist/lib/libthag_runtime.a"
+          fi
+          if [[ ! -f "dist/lib/thag_runtime.lib" && ! -f "dist/lib/libthag_runtime.a" ]]; then
+            echo "CRITICAL: missing runtime library in dist/lib (expected thag_runtime.lib or libthag_runtime.a)."
+            exit 1
+          fi
           mkdir -p dist/installer
           cp scripts/install/*.sh dist/installer/ || true
           cp scripts/install/*.ps1 dist/installer/ || true
