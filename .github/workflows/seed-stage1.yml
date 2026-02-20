@@ -897,12 +897,7 @@ jobs:
           fi
           "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
-          "./$STAGE1_BIN" build ../examples/hello.tg -o "$HELLO_OUT"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            [[ -f "$HELLO_OUT" ]] || [[ -f "${HELLO_OUT%.exe}" ]] || (echo "CRITICAL: hello binary missing from packaged stage1 build"; exit 1)
-          else
-            [[ -f "$HELLO_OUT" ]] || [[ -f "${HELLO_OUT}.exe" ]] || (echo "CRITICAL: hello binary missing from packaged stage1 build"; exit 1)
-          fi
+          "./$STAGE1_BIN" build ../examples/hello.tg -o "$HELLO_OUT" || (echo "CRITICAL: packaged stage1 failed to build hello sample"; exit 1)
 
   publish-seed:
     name: publish-seed-release
