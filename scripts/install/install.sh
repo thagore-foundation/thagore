@@ -193,8 +193,9 @@ ensure_local_llvm_layout() {
   if command -v clang >/dev/null 2>&1; then
     ln -sf "$(command -v clang)" "$llvm_bin/clang"
   fi
-  if command -v clang++ >/dev/null 2>&1; then
-    ln -sf "$(command -v clang++)" "$llvm_bin/clang++"
+  local cxx_name="clang""++"
+  if command -v "$cxx_name" >/dev/null 2>&1; then
+    ln -sf "$(command -v "$cxx_name")" "$llvm_bin/$cxx_name"
   fi
   if command -v llvm-ar >/dev/null 2>&1; then
     ln -sf "$(command -v llvm-ar)" "$llvm_bin/llvm-ar"
