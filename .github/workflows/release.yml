@@ -798,7 +798,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -Eqi "stage[[:space:]_-]*0|THAG_STAGE[[:space:]_-]*0_HELPER|ALLOW_STAGE[[:space:]_-]*0_BOOTSTRAP|clang -x ir|\.tmp\.ll" "$STAGE_TRACE_FILE"; then
+          if grep -Eqi "stage[[:space:]_-]*0|THAG_STAGE[[:space:]_-]*0_HELPER|ALLOW_STAGE[[:space:]_-]*0_BOOTSTRAP|clang[[:space:]]+-x[[:space:]]+ir|[.]tmp[.]ll" "$STAGE_TRACE_FILE"; then
             echo "CRITICAL: forbidden fallback markers detected"
             cat "$STAGE_TRACE_FILE"
             exit 1
