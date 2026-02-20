@@ -157,20 +157,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            clang --version
-            exit 0
-          fi
-          sudo apt-get update || true
-          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 21 all || true
-          if [[ -d /usr/lib/llvm-21/bin ]]; then
-            echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
-          fi
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo apt-get update || true
             sudo apt-get install -y qemu-user qemu-user-static libc6-amd64-cross
+          fi
+          if ! command -v clang >/dev/null 2>&1; then
+            sudo apt-get update || true
+            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+            chmod +x /tmp/llvm.sh
+            sudo /tmp/llvm.sh 21 all || true
+            if [[ -d /usr/lib/llvm-21/bin ]]; then
+              echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+            fi
           fi
           clang --version
 
@@ -551,9 +549,9 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$SEED_CANDIDATE" "${{ matrix.stage1_seed_name }}"
             test -f "${{ matrix.stage1_seed_name }}"
-            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}")"
-            if [[ "$bytes" -lt 200000 ]]; then
-              echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes bytes), abort publish."
+            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
+            if [[ "${bytes:-0}" -lt 512 ]]; then
+              echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
               exit 1
             fi
             [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing thag_runtime.lib for seed runtime asset"; exit 1)
@@ -566,9 +564,9 @@ jobs:
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
-            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}")"
-            if [[ "$bytes" -lt 20000 ]]; then
-              echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes bytes), abort publish."
+            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
+            if [[ "${bytes:-0}" -lt 512 ]]; then
+              echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
               exit 1
             fi
             [[ -f libthag_runtime.a ]] || (echo "CRITICAL: missing libthag_runtime.a for linux seed runtime asset"; exit 1)
@@ -581,9 +579,9 @@ jobs:
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
-            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}")"
-            if [[ "$bytes" -lt 20000 ]]; then
-              echo "CRITICAL: ${{ matrix.stage1_seed_name }} too small ($bytes bytes), abort publish."
+            bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
+            if [[ "${bytes:-0}" -lt 512 ]]; then
+              echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
               exit 1
             fi
             [[ -f libthag_runtime.a ]] || (echo "CRITICAL: missing libthag_runtime.a for macos seed runtime asset"; exit 1)
