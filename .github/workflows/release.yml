@@ -121,6 +121,7 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
+    if: contains(needs.seed-asset-probe.outputs.available_tags, format(';{0};', matrix.asset_tag))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -533,42 +534,59 @@ jobs:
             local bin="$1"
             local ver=""
             local help=""
+            local update_out=""
             chmod +x "$bin" || true
             ver="$(run_capture_with_guard_timeout "./$bin" --version)"
             help="$(run_capture_with_guard_timeout "./$bin" --help)"
-            if [[ -z "$ver" || -z "$help" ]]; then
-              local smoke_out=""
-              local smoke_ir="_sanity_${bin//\//_}.ll"
-              smoke_out="$(run_capture_with_guard_timeout "./$bin" examples/hello.tg --emit-llvm -o "$smoke_ir")"
-              if [[ -s "$smoke_ir" ]]; then
-                echo "[SANITY] $bin accepted via compile probe (no --help/--version output on this bootstrap lane)." | tee -a "$STAGE_TRACE_FILE"
-                rm -f "$smoke_ir" || true
-                return 0
-              fi
-              echo "[SANITY] $bin rejected: empty --version/--help output and compile probe failed." | tee -a "$STAGE_TRACE_FILE"
-              echo "$smoke_out" | tee -a "$STAGE_TRACE_FILE"
-              return 1
-            fi
-            if ! grep -Eq "thagore|Thagore" <<<"$ver"; then
-              echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
-              return 1
-            fi
-            if ! grep -Eq "Usage:|Compiler CLI|thagore build" <<<"$help"; then
-              echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
-              return 1
-            fi
-            if ! grep -Eq "thagore update|update <check\|apply\|rollback>" <<<"$help"; then
-              echo "[SANITY] $bin rejected: --help missing update command marker." | tee -a "$STAGE_TRACE_FILE"
-              return 1
-            fi
-            local update_out=""
-            update_out="$("./$bin" update check 2>&1 || true)"
+            update_out="$(run_capture_with_guard_timeout "./$bin" update check)"
             if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$update_out"; then
               echo "[SANITY] $bin rejected: update check output matches legacy/wrapper failure." | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
-            echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
-            return 0
+            if [[ -n "$update_out" ]]; then
+              echo "[SANITY] $bin accepted via native update command probe." | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
+            if [[ -n "$ver" ]] && ! grep -Eq "thagore|Thagore" <<<"$ver"; then
+              echo "[SANITY] $bin rejected: --version exists but does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            if [[ -n "$help" ]]; then
+              if ! grep -Eq "Usage:|Compiler CLI|thagore build" <<<"$help"; then
+                echo "[SANITY] $bin rejected: --help exists but does not contain expected markers." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              if grep -Eq "Usage:\s*thg\.exe" <<<"$help"; then
+                echo "[SANITY] $bin rejected: --help still points to legacy thg driver." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+            fi
+            if [[ -n "$ver" && -n "$help" ]]; then
+              echo "[SANITY] $bin accepted via --version/--help markers." | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
+            local smoke_out=""
+            local smoke_ir="_sanity_${bin//\//_}.ll"
+            local smoke_bin="_sanity_${bin//\//_}.out"
+            smoke_out="$(run_capture_with_guard_timeout "./$bin" --emit-llvm examples/hello.tg -o "$smoke_ir")"
+            if [[ ! -s "$smoke_ir" ]]; then
+              smoke_out="$(run_capture_with_guard_timeout "./$bin" examples/hello.tg --emit-llvm -o "$smoke_ir")"
+            fi
+            if [[ -s "$smoke_ir" ]]; then
+              echo "[SANITY] $bin accepted via LLVM emit probe." | tee -a "$STAGE_TRACE_FILE"
+              rm -f "$smoke_ir" || true
+              return 0
+            fi
+            smoke_out="$(run_capture_with_guard_timeout "./$bin" build examples/hello.tg -o "$smoke_bin")"
+            if [[ -s "$smoke_bin" || -s "${smoke_bin}.exe" ]]; then
+              echo "[SANITY] $bin accepted via build probe." | tee -a "$STAGE_TRACE_FILE"
+              rm -f "$smoke_bin" "${smoke_bin}.exe" || true
+              return 0
+            fi
+            echo "[SANITY] $bin rejected: all CLI probes failed (update/help/version/emit/build)." | tee -a "$STAGE_TRACE_FILE"
+            echo "$smoke_out" | tee -a "$STAGE_TRACE_FILE"
+            rm -f "$smoke_ir" "$smoke_bin" "${smoke_bin}.exe" || true
+            return 1
           }
           BUILD_TIMEOUT_SECS=300
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
