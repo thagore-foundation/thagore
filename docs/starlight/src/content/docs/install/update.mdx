@@ -17,7 +17,7 @@ The `thagore update` command lets you check for new releases, apply them in-plac
 
 ```bash
 thagore --version
-# thagore 0.3.60-foundation (linux/x86_64)
+# thagore 0.3.60 (linux/x86_64)
 ```
 
 ---
@@ -32,12 +32,12 @@ thagore update check
 
 **Example output - up to date:**
 ```
-thagore 0.3.60-foundation is up to date.
+thagore 0.3.60 is up to date.
 ```
 
 **Example output - update available:**
 ```
-Update available: 0.3.60-foundation -> 0.3.61-foundation
+Update available: 0.3.60 -> 0.3.61
 Run `thagore update apply` to install.
 ```
 
@@ -45,7 +45,7 @@ Run `thagore update apply` to install.
 
 ## `thagore update apply`
 
-Downloads the latest release for your platform and replaces the current binary.
+Downloads the latest **official public release** for your platform and replaces the current binary.
 
 ```bash
 thagore update apply
@@ -54,7 +54,7 @@ thagore update apply
 By default this asks for confirmation before writing to disk:
 
 ```
-Update available: 0.3.60-foundation -> 0.3.61-foundation
+Update available: 0.3.60 -> 0.3.61
 Apply update? [Y/n]:
 ```
 
@@ -93,7 +93,7 @@ thagore update rollback
 Prompts for confirmation before restoring:
 
 ```
-Roll back from 0.3.61-foundation to 0.3.60-foundation? [Y/n]:
+Roll back from 0.3.61 to 0.3.60? [Y/n]:
 ```
 
 ### Skip the prompt
@@ -113,7 +113,7 @@ Rollback restores the **immediately previous** binary only. Running `update appl
 By default, Thagore silently checks for updates in the background **once every 24 hours** and prints a one-line notice on your next compiler invocation:
 
 ```
-Notice: thagore 0.3.61-foundation is available. Run `thagore update apply` to install.
+Notice: thagore 0.3.61 is available. Run `thagore update apply` to install.
 ```
 
 To disable this behavior, set the environment variable `THAGORE_DISABLE_UPDATE_CHECK=1`:

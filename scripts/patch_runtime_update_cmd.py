@@ -684,6 +684,60 @@ extern "C" int __thg_llvm_emit_object_from_ir(const char *ir_text, const char *m
 '''
 
 
+WINDOWS_CONSOLE_BLOCK = r'''#if defined(_WIN32)
+  bool hasConsole = GetConsoleWindow() != nullptr;
+  if (!hasConsole) {
+    if (AttachConsole(ATTACH_PARENT_PROCESS) != 0) {
+      hasConsole = true;
+    } else {
+      const DWORD attachError = GetLastError();
+      if (attachError == ERROR_ACCESS_DENIED) {
+        hasConsole = true;
+      } else if (attachError == ERROR_INVALID_HANDLE) {
+        hasConsole = AllocConsole() != 0;
+      }
+    }
+  }
+  if (hasConsole) {
+    const HANDLE inHandle = GetStdHandle(STD_INPUT_HANDLE);
+    if (inHandle != nullptr && inHandle != INVALID_HANDLE_VALUE) {
+      FILE *in = freopen("CONIN$", "r", stdin);
+      (void)in;
+    }
+    const HANDLE outHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (outHandle != nullptr && outHandle != INVALID_HANDLE_VALUE) {
+      FILE *out = freopen("CONOUT$", "w", stdout);
+      (void)out;
+    }
+    const HANDLE errHandle = GetStdHandle(STD_ERROR_HANDLE);
+    if (errHandle != nullptr && errHandle != INVALID_HANDLE_VALUE) {
+      FILE *err = freopen("CONOUT$", "w", stderr);
+      (void)err;
+    }
+  }
+#endif
+'''
+
+
+def patch_windows_console_block(text: str) -> str:
+    cli_fn_anchor = "int __thg_cli_main_native() {"
+    argc_anchor = "  const int argc = __thg_arg_count();"
+    fn_idx = text.find(cli_fn_anchor)
+    if fn_idx < 0:
+        raise RuntimeError(f"missing cli entry anchor: {cli_fn_anchor}")
+    argc_idx = text.find(argc_anchor, fn_idx)
+    if argc_idx < 0:
+        raise RuntimeError(f"missing argc anchor: {argc_anchor}")
+    win_start = text.find("#if defined(_WIN32)", fn_idx, argc_idx)
+    if win_start < 0:
+        raise RuntimeError("missing _WIN32 console guard before argc")
+    win_end = text.find("#endif", win_start, argc_idx)
+    if win_end < 0:
+        raise RuntimeError("missing #endif for _WIN32 console guard")
+    win_end += len("#endif")
+    return text[:win_start] + WINDOWS_CONSOLE_BLOCK + text[win_end:]
+
+
 def patch_runtime(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
 
@@ -726,6 +780,7 @@ def patch_runtime(path: Path) -> int:
     if namespace_idx < 0:
         raise RuntimeError(f"missing LLVM bridge insert anchor: {BRIDGE_INSERT_ANCHOR!r}")
     text = text[:namespace_idx] + "\n" + LLVM_BRIDGE_BLOCK + text[namespace_idx:]
+    text = patch_windows_console_block(text)
 
     path.write_text(text, encoding="utf-8")
     return 0

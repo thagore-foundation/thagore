@@ -174,6 +174,48 @@ jobs:
           "$HOME/.local/bin/thagore" --version
           "$HOME/.local/bin/thagore" --help
 
+      - name: Run Linux CLI command suite (syntax + commands)
+        shell: bash
+        run: |
+          set -euo pipefail
+          THAG="$HOME/.local/bin/thagore"
+          VERSION_OUT="$("$THAG" --version 2>&1 || true)"
+          HELP_OUT="$("$THAG" --help 2>&1 || true)"
+          BUILD_USAGE_OUT="$("$THAG" build 2>&1 || true)"
+          TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
+          FIX_DOCTOR_OUT="$("$THAG" fix doctor examples/hello.tg --json 2>&1 || true)"
+          UPDATE_CHECK_OUT="$("$THAG" update check 2>&1 || true)"
+
+          printf '%s\n' "$VERSION_OUT" > linux-cli-version.txt
+          printf '%s\n' "$HELP_OUT" > linux-cli-help.txt
+          printf '%s\n' "$BUILD_USAGE_OUT" > linux-cli-build.txt
+          printf '%s\n' "$TEST_LIST_OUT" > linux-cli-test-list.txt
+          printf '%s\n' "$FIX_DOCTOR_OUT" > linux-cli-fix-doctor.txt
+          printf '%s\n' "$UPDATE_CHECK_OUT" > linux-cli-update-check.txt
+
+          for file in linux-cli-version.txt linux-cli-help.txt linux-cli-build.txt linux-cli-test-list.txt linux-cli-fix-doctor.txt linux-cli-update-check.txt; do
+            if [[ ! -s "$file" ]]; then
+              echo "Missing CLI output in $file"
+              exit 1
+            fi
+          done
+
+          MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$BUILD_USAGE_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+            echo "CRITICAL: CLI suite detected legacy/wrapper markers."
+            exit 1
+          fi
+
+      - name: Discord update - Linux CLI command suite
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Linux CLI command suite complete
+
       - name: Discord update - Linux install and CLI smoke
         if: always()
         uses: ./.github/actions/discord-ci-status
@@ -278,6 +320,65 @@ jobs:
           & (Join-Path $env:THAGORE_BIN "thagore.exe") --help
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 check
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 apply -yes -dryRun
+
+      - name: Run Windows CLI command suite (syntax + commands)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
+          $env:THAGORE_BIN = Join-Path $extract "bin"
+          $thagore = Join-Path $env:THAGORE_BIN "thagore.exe"
+          if (-not (Test-Path $thagore)) {
+              throw "Missing CLI binary at $thagore"
+          }
+
+          function Invoke-CliText {
+              param([string[]]$Args)
+              return [string]((& $thagore @Args 2>&1 | Out-String))
+          }
+
+          $versionOut = Invoke-CliText @("--version")
+          $helpOut = Invoke-CliText @("--help")
+          $buildUsageOut = Invoke-CliText @("build")
+          $testListOut = Invoke-CliText @("test", "--list", "--workspace")
+          $fixDoctorOut = Invoke-CliText @("fix", "doctor", "examples/hello.tg", "--json")
+          $updateCheckOut = Invoke-CliText @("update", "check")
+
+          Set-Content -Path "windows-cli-version.txt" -Value $versionOut -Encoding utf8
+          Set-Content -Path "windows-cli-help.txt" -Value $helpOut -Encoding utf8
+          Set-Content -Path "windows-cli-build.txt" -Value $buildUsageOut -Encoding utf8
+          Set-Content -Path "windows-cli-test-list.txt" -Value $testListOut -Encoding utf8
+          Set-Content -Path "windows-cli-fix-doctor.txt" -Value $fixDoctorOut -Encoding utf8
+          Set-Content -Path "windows-cli-update-check.txt" -Value $updateCheckOut -Encoding utf8
+
+          $outputs = @(
+              @{ name = "version"; value = $versionOut },
+              @{ name = "help"; value = $helpOut },
+              @{ name = "build"; value = $buildUsageOut },
+              @{ name = "test-list"; value = $testListOut },
+              @{ name = "fix-doctor"; value = $fixDoctorOut },
+              @{ name = "update-check"; value = $updateCheckOut }
+          )
+          foreach ($entry in $outputs) {
+              if ([string]::IsNullOrWhiteSpace($entry.value)) {
+                  throw "Missing CLI output for $($entry.name)"
+              }
+          }
+
+          $merged = ($outputs | ForEach-Object { $_.value }) -join "`n"
+          if ($merged -match "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe") {
+              throw "CRITICAL: CLI suite detected legacy/wrapper markers."
+          }
+
+      - name: Discord update - Windows CLI command suite
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Windows CLI command suite complete
 
       - name: Discord update - Windows updater and CLI smoke
         if: always()
