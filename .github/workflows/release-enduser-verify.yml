@@ -1,0 +1,172 @@
+name: Release End-User Verify
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (default: latest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-enduser-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax-gate:
+    name: syntax-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint workflows with actionlint
+        uses: rhysd/actionlint@v1
+
+      - name: Parse release workflows as YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/release.yml').read_text(encoding='utf-8')); yaml.safe_load(pathlib.Path('.github/workflows/release-enduser-verify.yml').read_text(encoding='utf-8')); print('YAML_PARSE_OK')"
+
+      - name: Verify release workflow contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '^  release:$' .github/workflows/release.yml
+          grep -q '^  official-tag-gate:$' .github/workflows/release.yml
+          grep -q '^  public-release:$' .github/workflows/release.yml
+          grep -q 'SHA256SUMS-\*\.txt' .github/workflows/release.yml
+
+      - name: Validate installer shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/install/install.sh
+
+  linux-enduser-smoke:
+    name: linux-enduser-smoke
+    runs-on: ubuntu-latest
+    needs: [syntax-gate]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          INPUT_TAG="${{ inputs.tag }}"
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$(python3 -c "import json, urllib.request; print(json.load(urllib.request.urlopen('https://api.github.com/repos/${{ github.repository }}/releases/latest'))['tag_name'])")"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
+      - name: Download and verify Linux release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          ASSET="thagore-linux-x86_64.tar.gz"
+          SUMS="SHA256SUMS-linux-x86_64.txt"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          curl -fsSL "$BASE/$ASSET" -o "$ASSET"
+          curl -fsSL "$BASE/$SUMS" -o "$SUMS"
+          EXPECTED="$(awk -v target="$ASSET" '$2 == target {print $1; exit}' "$SUMS")"
+          [[ -n "$EXPECTED" ]] || (echo "Missing checksum for $ASSET in $SUMS"; exit 1)
+          ACTUAL="$(sha256sum "$ASSET" | awk '{print $1}')"
+          [[ "${ACTUAL,,}" == "${EXPECTED,,}" ]] || (echo "Checksum mismatch for $ASSET"; exit 1)
+          tar -xzf "$ASSET" -C "$RUNNER_TEMP"
+          [[ -x "$RUNNER_TEMP/bin/thagore" ]] || (echo "Missing executable bin/thagore"; exit 1)
+          [[ -d "$RUNNER_TEMP/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
+          [[ -f "$RUNNER_TEMP/lib/runtime.a" || -f "$RUNNER_TEMP/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
+
+      - name: Smoke test install.sh and CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/install/install.sh --mode linux --skip-llvm --yes --prefix "$RUNNER_TEMP/thagore-user"
+          "$HOME/.local/bin/thagore" --version
+          "$HOME/.local/bin/thagore" --help
+
+  windows-enduser-smoke:
+    name: windows-enduser-smoke
+    runs-on: windows-latest
+    needs: [syntax-gate]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          $inputTag = "${{ inputs.tag }}"
+          if ("${{ github.event_name }}" -eq "release") {
+              $tag = "${{ github.event.release.tag_name }}"
+          } elseif (-not [string]::IsNullOrWhiteSpace($inputTag)) {
+              $tag = $inputTag
+          } else {
+              $latest = Invoke-RestMethod -Headers @{ "User-Agent" = "thagore-release-verify" } -Uri "https://api.github.com/repos/${{ github.repository }}/releases/latest" -Method Get
+              $tag = "$($latest.tag_name)"
+          }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Release tag: $tag"
+
+      - name: Download and verify Windows release payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ steps.tag.outputs.tag }}"
+          $asset = "thagore-windows-x86_64.tar.gz"
+          $sums = "SHA256SUMS-windows-x86_64.txt"
+          $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+          Invoke-WebRequest -Uri "$base/$asset" -OutFile $asset
+          Invoke-WebRequest -Uri "$base/$sums" -OutFile $sums
+
+          $expected = $null
+          foreach ($line in Get-Content $sums) {
+              if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              $parts = $line -split '\s+', 2
+              if ($parts.Count -lt 2) { continue }
+              if ($parts[1].Trim() -eq $asset) {
+                  $expected = $parts[0].Trim()
+                  break
+              }
+          }
+          if ([string]::IsNullOrWhiteSpace($expected)) {
+              throw "Missing checksum for $asset in $sums"
+          }
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $asset).Hash
+          if ($actual.ToUpperInvariant() -ne $expected.ToUpperInvariant()) {
+              throw "Checksum mismatch for $asset"
+          }
+
+          $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          tar -xzf $asset -C $extract
+          if (-not (Test-Path (Join-Path $extract "bin\\thagore.exe"))) { throw "Missing bin\\thagore.exe" }
+          if (-not (Test-Path (Join-Path $extract "lib\\std"))) { throw "Missing lib\\std" }
+          if (-not (Test-Path (Join-Path $extract "lib\\runtime.lib"))) { throw "Missing lib\\runtime.lib" }
+
+      - name: Smoke test updater and CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
+          $env:THAGORE_BIN = Join-Path $extract "bin"
+          & (Join-Path $env:THAGORE_BIN "thagore.exe") --version
+          & (Join-Path $env:THAGORE_BIN "thagore.exe") --help
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 check
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 apply -yes -dryRun
