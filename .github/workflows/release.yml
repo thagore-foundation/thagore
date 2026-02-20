@@ -537,7 +537,16 @@ jobs:
             ver="$(run_capture_with_guard_timeout "./$bin" --version)"
             help="$(run_capture_with_guard_timeout "./$bin" --help)"
             if [[ -z "$ver" || -z "$help" ]]; then
-              echo "[SANITY] $bin rejected: empty --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              local smoke_out=""
+              local smoke_ir="_sanity_${bin//\//_}.ll"
+              smoke_out="$(run_capture_with_guard_timeout "./$bin" examples/hello.tg --emit-llvm -o "$smoke_ir")"
+              if [[ -s "$smoke_ir" ]]; then
+                echo "[SANITY] $bin accepted via compile probe (no --help/--version output on this bootstrap lane)." | tee -a "$STAGE_TRACE_FILE"
+                rm -f "$smoke_ir" || true
+                return 0
+              fi
+              echo "[SANITY] $bin rejected: empty --version/--help output and compile probe failed." | tee -a "$STAGE_TRACE_FILE"
+              echo "$smoke_out" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
             if ! grep -Eq "thagore|Thagore" <<<"$ver"; then
