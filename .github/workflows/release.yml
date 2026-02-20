@@ -638,12 +638,8 @@ jobs:
               return 0
             fi
             if [[ -z "$ver" || -z "$help" ]]; then
-              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-                echo "[SANITY] $bin rejected: missing required --version/--help output on official release." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[SANITY] $bin accepted (non-official lane): partial CLI output tolerated for bootstrap probing." | tee -a "$STAGE_TRACE_FILE"
-              return 0
+              echo "[SANITY] $bin rejected: missing required --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if [[ -n "$update_out" ]]; then
               echo "[SANITY] $bin accepted via native update command probe." | tee -a "$STAGE_TRACE_FILE"
@@ -794,17 +790,12 @@ jobs:
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
           if [[ -z "${STAGE2_BIN:-}" ]]; then
-            if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-              if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-                STAGE2_BIN="$DONOR_COMPILER"
-                echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              else
-                echo "CRITICAL: official release cannot fallback when stage2 artifact is missing." | tee -a "$STAGE_TRACE_FILE"
-                exit 1
-              fi
-            elif [[ -f "${{ matrix.stage1_bin }}" ]]; then
-              STAGE2_BIN="${{ matrix.stage1_bin }}"
-              echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
+              STAGE2_BIN="$DONOR_COMPILER"
+              echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            else
+              echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
             fi
           fi
           test -f "$STAGE2_BIN"
@@ -951,10 +942,6 @@ jobs:
             exit 1
           fi
           if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-              echo "CRITICAL: official release must provide non-empty --version and --help output."
-              exit 1
-            fi
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
@@ -965,13 +952,39 @@ jobs:
               fi
             fi
           else
-            if [[ -z "$VERSION_OUT" && -z "$HELP_OUT" && -z "$UPDATE_OUT" ]]; then
-              echo "WARN: empty --version/--help/update output in non-official release lane."
+            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+              echo "CRITICAL: release lane requires non-empty --version and --help output."
+              exit 1
             fi
           fi
           PROOF_FILE="thagore-enduser-verified-${{ matrix.asset_tag }}.txt"
           if [[ -n "$VERSION_OUT" && -n "$HELP_OUT" ]]; then
             printf 'status=pass\ntag=%s\nasset_tag=%s\nversion=%s\n' "${GITHUB_REF_NAME:-}" "${{ matrix.asset_tag }}" "$VERSION_OUT" > "$PROOF_FILE"
+          fi
+
+      - name: Smoke helper import/use
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+          cat > helperdep.tg <<'TG'
+          func helper_value() -> i32:
+              return 7
+          TG
+          cat > helpermain.tg <<'TG'
+          import "helperdep.tg"
+
+          func main() -> i32:
+              return helper_value()
+          TG
+          HELPER_OUT="helper-smoke"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            HELPER_OUT="helper-smoke.exe"
+          fi
+          THAG_HELPER_BIN="./$STAGE2_REBUILD_BIN" "./$STAGE2_REBUILD_BIN" build helpermain.tg -o "$HELPER_OUT"
+          if [[ ! -f "$HELPER_OUT" ]]; then
+            echo "CRITICAL: helper import/use smoke did not produce output binary: $HELPER_OUT"
+            exit 1
           fi
 
       - name: Run hello + fib

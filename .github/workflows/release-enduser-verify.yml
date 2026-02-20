@@ -570,6 +570,7 @@ jobs:
           $helperBuildStatus = "pass"
           if (($helperBuildCode -ne 0) -or (-not (Test-Path "helpertest.exe"))) {
               $helperBuildStatus = "fail"
+              Write-Host $helperBuildLog
           }
           Set-Content -Path "windows-cli-helper-build.txt" -Value $helperBuildLog -Encoding utf8
           Set-Content -Path "windows-cli-helper-status.txt" -Value $helperBuildStatus -Encoding utf8
