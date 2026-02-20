@@ -141,16 +141,19 @@ jobs:
           ASSET="thagore-linux-x86_64.tar.gz"
           SUMS="SHA256SUMS-linux-x86_64.txt"
           BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          PAYLOAD_DIR="$RUNNER_TEMP/release-payload"
+          rm -rf "$PAYLOAD_DIR"
+          mkdir -p "$PAYLOAD_DIR"
           curl -fsSL "$BASE/$ASSET" -o "$ASSET"
           curl -fsSL "$BASE/$SUMS" -o "$SUMS"
           EXPECTED="$(awk -v target="$ASSET" '$2 == target {print $1; exit}' "$SUMS")"
           [[ -n "$EXPECTED" ]] || (echo "Missing checksum for $ASSET in $SUMS"; exit 1)
           ACTUAL="$(sha256sum "$ASSET" | awk '{print $1}')"
           [[ "${ACTUAL,,}" == "${EXPECTED,,}" ]] || (echo "Checksum mismatch for $ASSET"; exit 1)
-          tar -xzf "$ASSET" -C "$RUNNER_TEMP"
-          [[ -x "$RUNNER_TEMP/bin/thagore" ]] || (echo "Missing executable bin/thagore"; exit 1)
-          [[ -d "$RUNNER_TEMP/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
-          [[ -f "$RUNNER_TEMP/lib/runtime.a" || -f "$RUNNER_TEMP/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
+          tar -xzf "$ASSET" -C "$PAYLOAD_DIR"
+          [[ -x "$PAYLOAD_DIR/bin/thagore" ]] || (echo "Missing executable bin/thagore"; exit 1)
+          [[ -d "$PAYLOAD_DIR/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
+          [[ -f "$PAYLOAD_DIR/lib/runtime.a" || -f "$PAYLOAD_DIR/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
 
       - name: Discord update - Verify Linux payload checksum and layout
         if: always()
@@ -166,7 +169,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export THAGORE_ROOT="$RUNNER_TEMP"
+          export THAGORE_ROOT="$RUNNER_TEMP/release-payload"
           bash scripts/install/install.sh --mode linux --skip-llvm --yes --prefix "$RUNNER_TEMP/thagore-user"
           "$HOME/.local/bin/thagore" --version
           "$HOME/.local/bin/thagore" --help
