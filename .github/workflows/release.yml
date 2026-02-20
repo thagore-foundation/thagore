@@ -123,7 +123,7 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
-    if: contains(needs.seed-asset-probe.outputs.available_tags, format('{0};', matrix.asset_tag))
+    if: contains(needs.seed-asset-probe.outputs.available_tags, matrix.asset_tag)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
