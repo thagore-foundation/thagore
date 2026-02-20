@@ -3,6 +3,8 @@ name: Release End-User Verify
 on:
   release:
     types: [published]
+  schedule:
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       tag:
