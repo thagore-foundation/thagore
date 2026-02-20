@@ -357,7 +357,7 @@ jobs:
           }
           fetch_runtime_blob() {
             local out_path="$1"
-            local blob_sha="ba2649bc06de56b381ca9ed358ff71ea9d37e9ce"
+            local blob_sha="7f9ed799c71ceff8da657316012dc5e4d01d34d4"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               PY=python
             else
@@ -443,6 +443,7 @@ jobs:
             PY=python
             "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
             "$PY" scripts/patch_runtime_update_cmd.py _s1/runtime.cc
+            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); s=t.find('if (isInternalEmitMode()) {'); e=t.find('\\n  }\\n\\n  std::string moduleNameText', s); (s >= 0 and e >= 0) or (_ for _ in ()).throw(SystemExit('missing internal emit fallback block')); r='  if (isInternalEmitMode()) {\\n    auto *fallback = parseProgramSource(source);\\n    return __thg_codegen_emit_llvm(fallback);\\n  }\\n'; p.write_text(t[:s] + r + t[e+5:], encoding='utf-8')"
             "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
           fi
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
