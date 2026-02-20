@@ -288,7 +288,22 @@ jobs:
         run: |
           set -euo pipefail
           LLVM_VERSION=21.1.8
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=${LLVM_VERSION} --no-progress -y --execution-timeout=1800"
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "
+            \$ErrorActionPreference = 'Stop'
+            function Install-Llvm([string]\$version) {
+              if ([string]::IsNullOrWhiteSpace(\$version)) {
+                choco install llvm --no-progress -y --execution-timeout=1800
+              } else {
+                choco install llvm --version=\$version --no-progress -y --execution-timeout=1800
+              }
+            }
+            try {
+              Install-Llvm '${LLVM_VERSION}'
+            } catch {
+              Write-Warning \"Pinned LLVM ${LLVM_VERSION} install failed (\$($_.Exception.Message)). Falling back to latest llvm package.\"
+              Install-Llvm ''
+            }
+          "
           echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
           CLANG_MACHINE="$(clang -dumpmachine 2>/dev/null || true)"
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
