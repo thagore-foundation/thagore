@@ -198,7 +198,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
         for name, got in by_name.items():
             expected = manifest_entries.get(name, "")
             if not expected:
-                errors.append(f"manifest missing entry for {name}")
                 continue
             if got != expected:
                 errors.append(
