@@ -141,11 +141,56 @@ download_release_payload() {
   local asset_tag="${asset#thagore-}"
   asset_tag="${asset_tag%.tar.gz}"
   local checksum_asset="SHA256SUMS-${asset_tag}.txt"
+  local proof_asset="thagore-enduser-verified-${asset_tag}.txt"
   local checksum_file="$outdir/$checksum_asset"
   local extract_root="$outdir/payload"
   mkdir -p "$extract_root"
-  local url="https://github.com/thagore-foundation/thagore/releases/latest/download/$asset"
-  local checksum_url="https://github.com/thagore-foundation/thagore/releases/latest/download/$checksum_asset"
+  local py_bin=""
+  if command -v python3 >/dev/null 2>&1; then
+    py_bin="python3"
+  elif command -v python >/dev/null 2>&1; then
+    py_bin="python"
+  else
+    echo "ERROR: python is required to resolve verified official release assets." >&2
+    exit 1
+  fi
+  local release_meta
+  release_meta="$("$py_bin" - "$asset" "$checksum_asset" "$proof_asset" <<'PY'
+import json
+import re
+import sys
+import urllib.request
+
+asset = sys.argv[1]
+checksum = sys.argv[2]
+proof = sys.argv[3]
+url = "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=100"
+req = urllib.request.Request(url, headers={"User-Agent": "thagore-install"})
+data = json.load(urllib.request.urlopen(req))
+tag_re = re.compile(r"^v\d+\.\d+\.\d+$")
+for rel in data:
+    if rel.get("draft") or rel.get("prerelease"):
+        continue
+    tag = str(rel.get("tag_name", "")).strip()
+    if not tag_re.match(tag):
+        continue
+    assets = rel.get("assets", [])
+    names = {str(a.get("name", "")) for a in assets}
+    if asset not in names or checksum not in names or proof not in names:
+        continue
+    by_name = {str(a.get("name", "")): str(a.get("browser_download_url", "")) for a in assets}
+    print(f"{tag}|{by_name.get(asset,'')}|{by_name.get(checksum,'')}")
+    break
+PY
+)"
+  local release_tag=""
+  local url=""
+  local checksum_url=""
+  IFS='|' read -r release_tag url checksum_url <<<"$release_meta"
+  if [[ -z "$release_tag" || -z "$url" || -z "$checksum_url" ]]; then
+    echo "ERROR: no verified official release found for $asset (missing $proof_asset)." >&2
+    exit 1
+  fi
   echo "[thagore-installer] Downloading compiler payload: $url"
   curl -fsSL "$url" -o "$archive"
   echo "[thagore-installer] Downloading checksum manifest: $checksum_url"

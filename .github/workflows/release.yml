@@ -876,6 +876,10 @@ jobs:
               echo "WARN: empty --version/--help/update output in non-official release lane."
             fi
           fi
+          PROOF_FILE="thagore-enduser-verified-${{ matrix.asset_tag }}.txt"
+          if [[ -n "$VERSION_OUT" && -n "$HELP_OUT" ]]; then
+            printf 'status=pass\ntag=%s\nasset_tag=%s\nversion=%s\n' "${GITHUB_REF_NAME:-}" "${{ matrix.asset_tag }}" "$VERSION_OUT" > "$PROOF_FILE"
+          fi
 
       - name: Run hello + fib
         shell: bash
@@ -1149,6 +1153,7 @@ jobs:
             seed-tag-sync-release.txt
             thagore-setup-windows-${{ matrix.arch }}.exe
             SHA256SUMS-${{ matrix.asset_tag }}.txt
+            thagore-enduser-verified-${{ matrix.asset_tag }}.txt
 
       - name: Upload typed-ir audit artifact
         if: always()
@@ -1219,6 +1224,7 @@ jobs:
             artifacts/**/thagore-setup-windows-*.exe
             artifacts/**/release-stage-trace-*.log
             artifacts/**/SHA256SUMS-*.txt
+            artifacts/**/thagore-enduser-verified-*.txt
 
       - name: Discord update - Publish GitHub Release Assets
         if: always()

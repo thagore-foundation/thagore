@@ -87,12 +87,29 @@ func _update_is_official_tag(tag_raw: String) -> i32:
         return 0
     return 1
 
+func _update_release_proof_name(os_name: String, arch: String) -> String:
+    if (_update_platform_supported(os_name, arch) == 0):
+        return ""
+    return "thagore-enduser-verified-" + os_name + "-" + arch + ".txt"
+
+func _update_has_enduser_proof(release_json: String, os_name: String, arch: String) -> i32:
+    let proof_name = _update_release_proof_name(os_name, arch)
+    if (strlen(proof_name) == 0):
+        return 0
+    let needle = "\"name\":\"" + proof_name + "\""
+    if (_contains(release_json, needle) == 1):
+        return 1
+    let needle2 = "\"name\": \"" + proof_name + "\""
+    if (_contains(release_json, needle2) == 1):
+        return 1
+    return 0
+
 func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> UpdateRelease:
     let latest_api = "https://api.github.com/repos/thagore-foundation/thagore/releases/latest"
     let latest_body = http.get(latest_api)
     if (strlen(_trim(latest_body)) > 0):
         let latest_tag = _update_find_json_string(latest_body, "tag_name")
-        if (_update_is_official_tag(latest_tag) == 1):
+        if ((_update_is_official_tag(latest_tag) == 1) and (_update_has_enduser_proof(latest_body, os_name, arch) == 1)):
             let latest_pair = _update_scan_best_asset(latest_body, os_name, arch)
             if (strlen(latest_pair) > 0):
                 let latest_semver = _update_extract_semver(latest_tag)
@@ -116,9 +133,10 @@ func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> U
             return _update_release_empty()
         let next_abs = abs + p_assets
         i = next_abs + 8
-        if (_update_is_official_tag(tag) == 1):
+        let release_json = __thg_str_substr(body, abs, strlen(body) - abs)
+        if ((_update_is_official_tag(tag) == 1) and (_update_has_enduser_proof(release_json, os_name, arch) == 1)):
             let semver = _update_extract_semver(tag)
-            let pair = _update_scan_best_asset(__thg_str_substr(body, abs, strlen(body) - abs), os_name, arch)
+            let pair = _update_scan_best_asset(release_json, os_name, arch)
             if (strlen(pair) > 0):
                 let asset_name = _line_at(pair, 0)
                 let asset_url = _line_at(pair, 1)

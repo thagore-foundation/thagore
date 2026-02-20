@@ -36,12 +36,29 @@ function Get-ArchTag {
     return "x86_64"
 }
 
-function Get-LatestRelease {
+function Get-VerifiedRelease {
+    param([string]$arch)
     $headers = @{
         "User-Agent" = "thagore-update"
         "Accept" = "application/vnd.github+json"
     }
-    return Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/thagore-foundation/thagore/releases/latest" -Method Get
+    $assetName = "thagore-windows-$arch.tar.gz"
+    $checksumName = "SHA256SUMS-windows-$arch.txt"
+    $proofName = "thagore-enduser-verified-windows-$arch.txt"
+    $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=100" -Method Get
+    foreach ($rel in $releases) {
+        if ($rel.draft -or $rel.prerelease) { continue }
+        $tag = "$($rel.tag_name)"
+        if ($tag -notmatch '^v\d+\.\d+\.\d+$') { continue }
+        $names = @{}
+        foreach ($a in $rel.assets) {
+            $names["$($a.name)"] = $true
+        }
+        if ($names.ContainsKey($assetName) -and $names.ContainsKey($checksumName) -and $names.ContainsKey($proofName)) {
+            return $rel
+        }
+    }
+    throw "No verified official release found for windows-$arch (missing proof asset $proofName)."
 }
 
 function Resolve-AssetUrl($release, [string]$arch) {
@@ -51,7 +68,7 @@ function Resolve-AssetUrl($release, [string]$arch) {
             return @{ Name = $name; Url = $asset.browser_download_url }
         }
     }
-    throw "Cannot find asset '$name' in latest release."
+    throw "Cannot find asset '$name' in verified release."
 }
 
 function Resolve-ChecksumUrl($release, [string]$arch) {
@@ -61,7 +78,7 @@ function Resolve-ChecksumUrl($release, [string]$arch) {
             return @{ Name = $name; Url = $asset.browser_download_url }
         }
     }
-    throw "Cannot find checksum asset '$name' in latest release."
+    throw "Cannot find checksum asset '$name' in verified release."
 }
 
 function Get-ExpectedHashFromChecksums {
@@ -193,7 +210,7 @@ Ensure-AdminForInstallPath -targetPath $engine -mode $mode
 $currentRaw = (& $engine --version 2>$null | Out-String).Trim()
 $currentVer = Get-Semver $currentRaw
 $arch = Get-ArchTag
-$release = Get-LatestRelease
+$release = Get-VerifiedRelease -arch $arch
 $latestTag = "$($release.tag_name)"
 $latestVer = Get-Semver $latestTag
 $asset = Resolve-AssetUrl $release $arch
