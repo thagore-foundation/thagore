@@ -895,10 +895,8 @@ jobs:
             STAGE1_BIN="stage1"
             HELLO_OUT="hello_bundle"
           fi
-          VER_OUT="$("./$STAGE1_BIN" --version 2>&1 || true)"
-          HELP_OUT="$("./$STAGE1_BIN" --help 2>&1 || true)"
-          [[ -n "${VER_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: packaged stage1 has empty --version output"; exit 1)
-          [[ -n "${HELP_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: packaged stage1 has empty --help output"; exit 1)
+          "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
+          "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           "./$STAGE1_BIN" build ../examples/hello.tg -o "$HELLO_OUT"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             [[ -f "$HELLO_OUT" ]] || [[ -f "${HELLO_OUT%.exe}" ]] || (echo "CRITICAL: hello binary missing from packaged stage1 build"; exit 1)
