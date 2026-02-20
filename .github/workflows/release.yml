@@ -359,11 +359,33 @@ jobs:
           }
           download_stage1_asset() {
             local pattern="$1"
-            local tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
+            local compiler_tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
+            local primary_tag="$compiler_tag"
+            local secondary_tag="$BOOTSTRAP_STAGE1_TAG"
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              primary_tag="$BOOTSTRAP_STAGE1_TAG"
+              secondary_tag="$compiler_tag"
+            fi
             rm -f "bootstrap/$pattern" || true
-            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            local used=""
+            for tag in "$primary_tag" "$secondary_tag"; do
+              [[ -n "$tag" ]] || continue
+              if [[ -n "$used" && "$tag" == "$used" ]]; then
+                continue
+              fi
+              used="$tag"
+              gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+              if [[ ! -f "bootstrap/$pattern" ]]; then
+                curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+              fi
+              if [[ -f "bootstrap/$pattern" ]]; then
+                echo "[SEED] stage1 asset=$pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
+                return 0
+              fi
+              rm -f "bootstrap/$pattern" || true
+            done
             if [[ ! -f "bootstrap/$pattern" ]]; then
-              curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+              return 1
             fi
             [[ -f "bootstrap/$pattern" ]]
           }
@@ -689,6 +711,11 @@ jobs:
           run_build_cmd() {
             local cc="$1"
             shift
+            local helper_bin="$cc"
+            if [[ "$helper_bin" != */* && "$helper_bin" != *\\* ]]; then
+              helper_bin="./$helper_bin"
+            fi
+            export THAG_HELPER_BIN="$helper_bin"
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               echo "[TIMEOUT] linux-arm64 build timeout=${BUILD_TIMEOUT_SECS}s :: ./$cc $*" | tee -a "$STAGE_TRACE_FILE"
               set +e
