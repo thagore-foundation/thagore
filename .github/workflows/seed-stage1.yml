@@ -121,7 +121,7 @@ jobs:
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
-            allow_failure: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
             runtime_seed_name: thagore-runtime-linux-arm64.a
           - runner: macos-latest
@@ -167,6 +167,14 @@ jobs:
           sudo /tmp/llvm.sh 21 all || true
           if [[ -d /usr/lib/llvm-21/bin ]]; then
             echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          fi
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            sudo apt-get update || true
+            sudo apt-get install -y qemu-user libc6-amd64-cross
+            if [[ ! -x /usr/bin/qemu-x86_64 ]]; then
+              echo "CRITICAL: qemu-x86_64 is required on linux-arm64 seed lane."
+              exit 1
+            fi
           fi
           clang --version
 
@@ -220,6 +228,9 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
@@ -239,6 +250,17 @@ jobs:
               break
             fi
           done
+          if [[ -z "$RUNTIME_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            mkdir -p _rt
+            git cat-file blob 7f9ed799c71ceff8da657316012dc5e4d01d34d4 > _rt/runtime.cc
+            AR_BIN="llvm-ar"
+            if ! command -v "$AR_BIN" >/dev/null 2>&1; then
+              AR_BIN="ar"
+            fi
+            clang -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
+            "$AR_BIN" rcs "bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
+            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+          fi
           [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: runtime bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
@@ -259,6 +281,13 @@ jobs:
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary missing in Linux seed archive"; exit 1)
             cp "$CANDIDATE" stage1
             chmod +x stage1 || true
+            STAGE1_FILE_INFO="$(file -b stage1 || true)"
+            if [[ "${{ matrix.arch }}" == "arm64" && "$STAGE1_FILE_INFO" == *"x86-64"* ]]; then
+              echo "STAGE1_EMULATE_X86_64=1" >> "$GITHUB_ENV"
+              echo "QEMU_LD_PREFIX=/usr/x86_64-linux-gnu" >> "$GITHUB_ENV"
+            else
+              echo "STAGE1_EMULATE_X86_64=0" >> "$GITHUB_ENV"
+            fi
           else
             cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
             cp libthag_runtime.a thag_runtime.lib
@@ -303,6 +332,15 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          run_compiler() {
+            local cc="$1"
+            shift
+            if [[ "${STAGE1_EMULATE_X86_64:-0}" == "1" && "$cc" == "stage1" ]]; then
+              QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" /usr/bin/qemu-x86_64 "./$cc" "$@"
+              return $?
+            fi
+            "./$cc" "$@"
+          }
           resolve_bin() {
             local preferred="$1"
             local src="$2"
@@ -347,14 +385,14 @@ jobs:
             local out="$3"
             local got=""
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            if "./$cc" build "$src" -o "$out"; then
+            if run_compiler "$cc" build "$src" -o "$out"; then
               got="$(resolve_bin "$out" "$src" || true)"
               if [[ -n "$got" ]]; then
                 return 0
               fi
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            "./$cc" --build "$src" -o "$out"
+            run_compiler "$cc" --build "$src" -o "$out"
             got="$(resolve_bin "$out" "$src" || true)"
             if [[ -n "$got" ]]; then
               return 0
@@ -432,7 +470,7 @@ jobs:
                 fi
               fi
               echo "[CMD] ./$cc --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
-              if "./$cc" --emit-llvm-internal "$src" -o "$ir_out"; then
+              if run_compiler "$cc" --emit-llvm-internal "$src" -o "$ir_out"; then
                 found_ir="$(resolve_ir "$ir_out" "$src" || true)"
                 if [[ -n "$found_ir" ]] && grep -q "@main(" "$found_ir"; then
                   echo "[CMD] clang $found_ir -> $out" | tee -a "$STAGE_TRACE_FILE"
