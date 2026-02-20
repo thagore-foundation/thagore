@@ -423,10 +423,7 @@ jobs:
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               probe_out="${probe_out}.exe"
             fi
-            cat > "$probe_src" <<'TG'
-            func main() -> i32:
-                return 0
-            TG
+            printf 'func main() -> i32:\n    return 0\n' > "$probe_src"
             rm -f "$probe_out" "${probe_out}.exe" "${probe_out%.exe}" a.out a.exe out out.exe || true
             if ! "./$bin" build "$probe_src" -o "$probe_out"; then
               echo "CRITICAL: selected stage1 failed fixture build in bootstrap probe."
