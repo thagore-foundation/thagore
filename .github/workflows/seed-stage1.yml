@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo apt-get update || true
-            sudo apt-get install -y qemu-user qemu-user-static libc6-amd64-cross
+            sudo apt-get install -y qemu-user qemu-user-static libc6-amd64-cross libstdc++6-amd64-cross libgcc-s1-amd64-cross
           fi
           if ! command -v clang >/dev/null 2>&1; then
             sudo apt-get update || true
