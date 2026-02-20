@@ -544,6 +544,99 @@ extern "C" int __thg_llvm_builder_emit_object(void *module_ref, const char *obje
   return __thg_llvm_emit_object_from_module(module_ref, object_path);
 }
 
+extern "C" int __thg_llvm_builder_emit_cli_runtime_wrapper(const char *module_name, const char *object_path) {
+  if (object_path == nullptr) {
+    return 1;
+  }
+
+  void *ctx = LLVMContextCreate();
+  if (ctx == nullptr) {
+    return 2;
+  }
+
+  const char *mod_name = (module_name != nullptr && module_name[0] != '\\0') ? module_name : "thagore_module";
+  void *module_ref = LLVMModuleCreateWithNameInContext(mod_name, ctx);
+  if (module_ref == nullptr) {
+    LLVMContextDispose(ctx);
+    return 3;
+  }
+
+  void *i32_ty = LLVMInt32TypeInContext(ctx);
+  void *void_ty = LLVMVoidTypeInContext(ctx);
+  void *i8_ty = LLVMInt8TypeInContext(ctx);
+  void *ptr_ty = LLVMPointerType(i8_ty, 0);
+  if (i32_ty == nullptr || void_ty == nullptr || ptr_ty == nullptr) {
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 4;
+  }
+
+  void *init_param_tys[2] = {i32_ty, ptr_ty};
+  void *main_param_tys[2] = {i32_ty, ptr_ty};
+  void *init_ty = LLVMFunctionType(void_ty, init_param_tys, 2, 0);
+  void *cli_ty = LLVMFunctionType(i32_ty, nullptr, 0, 0);
+  void *main_ty = LLVMFunctionType(i32_ty, main_param_tys, 2, 0);
+  if (init_ty == nullptr || cli_ty == nullptr || main_ty == nullptr) {
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 5;
+  }
+
+  void *init_fn = LLVMAddFunction(module_ref, "__thg_init_env", init_ty);
+  void *cli_fn = LLVMAddFunction(module_ref, "__thg_cli_main_native", cli_ty);
+  void *main_fn = LLVMAddFunction(module_ref, "main", main_ty);
+  if (init_fn == nullptr || cli_fn == nullptr || main_fn == nullptr) {
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 6;
+  }
+
+  void *entry = LLVMAppendBasicBlockInContext(ctx, main_fn, "entry");
+  void *builder = LLVMCreateBuilderInContext(ctx);
+  if (entry == nullptr || builder == nullptr) {
+    if (builder != nullptr) {
+      LLVMDisposeBuilder(builder);
+    }
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 7;
+  }
+  LLVMPositionBuilderAtEnd(builder, entry);
+
+  void *argc_value = LLVMGetParam(main_fn, 0);
+  void *argv_value = LLVMGetParam(main_fn, 1);
+  if (argc_value == nullptr || argv_value == nullptr) {
+    LLVMDisposeBuilder(builder);
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 8;
+  }
+
+  void *init_args[2] = {argc_value, argv_value};
+  LLVMBuildCall2(builder, init_ty, init_fn, init_args, 2, "");
+  void *rc = LLVMBuildCall2(builder, cli_ty, cli_fn, nullptr, 0, "rc");
+  if (rc == nullptr) {
+    LLVMDisposeBuilder(builder);
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 9;
+  }
+  LLVMBuildRet(builder, rc);
+
+  if (LLVMVerifyModule(module_ref, 2, nullptr) != 0) {
+    LLVMDisposeBuilder(builder);
+    LLVMDisposeModule(module_ref);
+    LLVMContextDispose(ctx);
+    return 10;
+  }
+
+  const int emit_code = __thg_llvm_emit_object_from_module(module_ref, object_path);
+  LLVMDisposeBuilder(builder);
+  LLVMDisposeModule(module_ref);
+  LLVMContextDispose(ctx);
+  return emit_code == 0 ? 0 : 11;
+}
+
 extern "C" int __thg_llvm_emit_object_from_ir(const char *ir_text, const char *module_name, const char *object_path) {
   if (ir_text == nullptr || object_path == nullptr) {
     return 1;
