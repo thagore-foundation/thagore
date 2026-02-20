@@ -20,8 +20,8 @@
   <a href="docs/starlight/src/content/docs/index.mdx"><strong>📖 Docs</strong></a> ·
   <a href="examples/"><strong>💡 Examples</strong></a> ·
   <a href=".github/CONTRIBUTING.md"><strong>🤝 Contributing</strong></a> ·
-  <a href="https://github.com/thagore/thagore/issues/new?template=bug_report.yml"><strong>🐛 Report Bug</strong></a> ·
-  <a href="https://github.com/thagore/thagore/issues/new?template=feature_request.yml"><strong>✨ Request Feature</strong></a>
+  <a href="https://github.com/thagore/thagore/issues/new"><strong>🐛 Report Bug</strong></a> ·
+  <a href="https://discord.gg/zrAsA9SAfF"><strong>✨ Discord Community</strong></a>
 </p>
 
 </div>
