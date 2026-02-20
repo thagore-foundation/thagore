@@ -17,7 +17,7 @@ Please **do not** open public issues for suspected security vulnerabilities.
 
 Report privately by email:
 
-- **security@thagorelang.org**
+- **support@thagore.io.vn**
 
 When reporting, include:
 
