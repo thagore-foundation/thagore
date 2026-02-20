@@ -204,7 +204,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     if args.manifest:
         manifest_entries = parse_manifest(normalize_path(args.manifest))
-        errors.extend(compare_hashes(manifest_entries, observed, "manifest"))
+        if args.asset:
+            manifest_subset: Dict[str, str] = {}
+            for name in observed:
+                if name not in manifest_entries:
+                    errors.append(f"manifest missing artifact entry for {name}")
+                else:
+                    manifest_subset[name] = manifest_entries[name]
+            errors.extend(compare_hashes(manifest_subset, observed, "manifest"))
+        else:
+            errors.extend(compare_hashes(manifest_entries, observed, "manifest"))
     if args.expected_commit_sha:
         expected_commit = args.expected_commit_sha.strip()
         if provenance_commit != expected_commit:
