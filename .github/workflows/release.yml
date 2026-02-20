@@ -121,7 +121,6 @@ jobs:
   build-release:
     name: release (${{ matrix.asset_tag }})
     needs: [discord-notify-init, seed-asset-probe]
-    continue-on-error: ${{ matrix.allow_failure }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -132,7 +131,6 @@ jobs:
             os_name: Linux
             arch: x86_64
             asset_tag: linux-x86_64
-            allow_failure: false
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -147,7 +145,6 @@ jobs:
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
-            allow_failure: false
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -162,7 +159,6 @@ jobs:
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
-            allow_failure: false
             stage1_bin: stage1
             output_bin: thagore
             stage2_bin: stage2
@@ -177,7 +173,6 @@ jobs:
             os_name: Windows
             arch: x86_64
             asset_tag: windows-x86_64
-            allow_failure: false
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -192,7 +187,6 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            allow_failure: false
             stage1_bin: stage1.exe
             output_bin: thagore.exe
             stage2_bin: stage2.exe
@@ -226,7 +220,8 @@ jobs:
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo apt-get update || true
             if ! sudo apt-get install -y qemu-user qemu-user-static qemu-user-binfmt; then
-              echo "[WARN] qemu packages were not installed via apt; fallback resolver in bootstrap step will be used."
+              echo "CRITICAL: qemu packages were not installed via apt."
+              exit 1
             fi
           fi
           clang --version
@@ -254,7 +249,8 @@ jobs:
           CLANG_MACHINE="$(clang -dumpmachine 2>/dev/null || true)"
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             if [[ "$CLANG_MACHINE" != *"aarch64"* ]]; then
-              echo "[WARN] Windows ARM lane got non-aarch64 clang: $CLANG_MACHINE (continuing with explicit --target flags where applicable)."
+              echo "CRITICAL: Windows ARM lane requires aarch64 clang, got: $CLANG_MACHINE"
+              exit 1
             fi
           else
             if [[ "$CLANG_MACHINE" != *"x86_64"* ]]; then
@@ -336,30 +332,6 @@ jobs:
             local bin="$1"
             "./$bin" --help >/dev/null 2>&1
           }
-          build_stage1_blob_native() {
-            mkdir -p _s1/blobseed/dist/bin
-            fetch_runtime_blob _s1/runtime.cc
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            "$PY" scripts/patch_runtime_update_cmd.py _s1/runtime.cc
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
-            CXX_ARGS=(-std=c++17 -O0 _s1/runtime.cc -o "${{ matrix.stage1_bin }}")
-            clang --driver-mode=g++ "${CXX_ARGS[@]}"
-            chmod +x "${{ matrix.stage1_bin }}" || true
-            if ! "./${{ matrix.stage1_bin }}" --help >/tmp/stage1_blob_help.txt 2>&1; then
-              echo "CRITICAL: blob-native stage1 is not runnable on this runner." >&2
-              cat /tmp/stage1_blob_help.txt >&2 || true
-              return 1
-            fi
-            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thagore
-            cp "${{ matrix.stage1_bin }}" _s1/blobseed/dist/bin/thag
-            tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C _s1/blobseed dist
-            STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
-          }
           STAGE1_ASSET=""
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
@@ -385,16 +357,6 @@ jobs:
               fi
             done
             if [[ -z "$STAGE1_ASSET" ]]; then
-              if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
-                echo "[SKIP] optional lane missing Windows stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
-                echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
-                : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
-                : > "core-ir-release-${{ matrix.asset_tag }}.txt"
-                : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
-                : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
-                : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
-                exit 0
-              fi
               echo "CRITICAL: no Windows stage1 asset found in releases."
               exit 1
             fi
@@ -413,36 +375,13 @@ jobs:
               fi
             done
             if [[ -z "$STAGE1_ASSET" ]]; then
-              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-                echo "[WARN] linux-arm64 seed stage1 asset missing; building native blob stage1." | tee -a "$STAGE_TRACE_FILE"
-                build_stage1_blob_native
-                probe_stage1_chain "${{ matrix.stage1_bin }}"
-              fi
-            fi
-            if [[ -z "$STAGE1_ASSET" ]]; then
-              if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
-                echo "[SKIP] optional lane missing Unix stage1 asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
-                echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
-                : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
-                : > "core-ir-release-${{ matrix.asset_tag }}.txt"
-                : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
-                : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
-                : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
-                exit 0
-              fi
               echo "CRITICAL: no Unix stage1 asset found in releases."
               exit 1
             fi
           fi
           if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-              echo "[WARN] current stage1 failed probe on linux-arm64; rebuilding native blob stage1." | tee -a "$STAGE_TRACE_FILE"
-              build_stage1_blob_native
-              probe_stage1_chain "${{ matrix.stage1_bin }}"
-            else
-              echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
@@ -472,38 +411,6 @@ jobs:
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
           fi
           RUNTIME_ASSET=""
-          build_runtime_fallback() {
-            mkdir -p _rt
-            fetch_runtime_blob _rt/runtime.cc
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            "$PY" -c "from pathlib import Path; p=Path('_rt/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            "$PY" scripts/patch_runtime_update_cmd.py _rt/runtime.cc
-            AR_BIN="llvm-ar"
-            if ! command -v "$AR_BIN" >/dev/null 2>&1; then
-              AR_BIN="ar"
-            fi
-            RT_CLANG_ARGS=(-x c++ -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o)
-            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
-              RT_CLANG_ARGS=(--target=aarch64-pc-windows-msvc "${RT_CLANG_ARGS[@]}")
-            fi
-            clang "${RT_CLANG_ARGS[@]}"
-            if [[ "${{ runner.os }}" == "Windows" ]] && command -v llvm-lib >/dev/null 2>&1; then
-              llvm-lib "/OUT:bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
-            else
-              "$AR_BIN" rcs "bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
-            fi
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
-            else
-              cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
-              cp libthag_runtime.a thag_runtime.lib
-            fi
-            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
-          }
           runtime_contract_ok() {
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               PY=python
@@ -532,28 +439,12 @@ jobs:
               fi
             done
           fi
-          if [[ -z "$RUNTIME_ASSET" ]]; then
-            build_runtime_fallback || true
-          fi
+          [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."; exit 1)
           if [[ -n "$RUNTIME_ASSET" ]]; then
             if ! runtime_contract_ok; then
-              echo "[WARN] runtime asset $RUNTIME_ASSET failed bootstrap-critical contract, rebuilding fallback..." | tee -a "$STAGE_TRACE_FILE"
-              build_runtime_fallback || true
+              echo "CRITICAL: runtime asset $RUNTIME_ASSET failed bootstrap-critical contract." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
             fi
-          fi
-          if [[ -z "$RUNTIME_ASSET" ]]; then
-            if [[ "${{ matrix.allow_failure }}" == "true" ]]; then
-              echo "[SKIP] optional lane missing runtime asset (${{ matrix.asset_tag }})." | tee -a "$STAGE_TRACE_FILE"
-              echo "RELEASE_OPTIONAL_SKIP=1" >> "$GITHUB_ENV"
-              : > "typed-ir-release-${{ matrix.asset_tag }}.txt"
-              : > "core-ir-release-${{ matrix.asset_tag }}.txt"
-              : > "spec-summary-release-${{ matrix.asset_tag }}.txt"
-              : > "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
-              : > "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
-              exit 0
-            fi
-            echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."
-            exit 1
           fi
           if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
             cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
@@ -578,7 +469,6 @@ jobs:
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -589,7 +479,6 @@ jobs:
           milestone: Download stage1 bootstrap asset
 
       - name: Runtime ABI bootstrap-critical gate
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -604,7 +493,6 @@ jobs:
             --write "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build Stage2 -> Stage2 (mandatory)
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         timeout-minutes: 8
         shell: bash
         run: |
@@ -680,49 +568,30 @@ jobs:
             local bin="$1"
             local ver=""
             local help=""
-            local strict_cli_lane=0
-            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-              strict_cli_lane=1
-            fi
             chmod +x "$bin" || true
             ver="$(run_capture_with_guard_timeout "./$bin" --version)"
             help="$(run_capture_with_guard_timeout "./$bin" --help)"
             if [[ -z "$ver" || -z "$help" ]]; then
-              if [[ "$strict_cli_lane" -eq 1 ]]; then
-                echo "[SANITY] $bin rejected: empty --version/--help output." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[WARN] [SANITY] $bin has empty --version/--help on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
-              return 0
+              echo "[SANITY] $bin rejected: empty --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if ! grep -Eq "thagore|Thagore" <<<"$ver"; then
-              if [[ "$strict_cli_lane" -eq 1 ]]; then
-                echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[WARN] [SANITY] $bin --version missing thagore marker on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
+              echo "[SANITY] $bin rejected: --version does not contain thagore marker." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if ! grep -Eq "Usage:|Compiler CLI|thagore build" <<<"$help"; then
-              if [[ "$strict_cli_lane" -eq 1 ]]; then
-                echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[WARN] [SANITY] $bin --help missing expected help markers on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
+              echo "[SANITY] $bin rejected: --help does not contain expected help markers." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if ! grep -Eq "thagore update|update <check\|apply\|rollback>" <<<"$help"; then
-              if [[ "$strict_cli_lane" -eq 1 ]]; then
-                echo "[SANITY] $bin rejected: --help missing update command marker." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[WARN] [SANITY] $bin --help missing update command marker on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
+              echo "[SANITY] $bin rejected: --help missing update command marker." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
-            if [[ "$strict_cli_lane" -eq 1 ]]; then
-              local update_out=""
-              update_out="$("./$bin" update check 2>&1 || true)"
-              if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$update_out"; then
-                echo "[SANITY] $bin rejected: update check output matches legacy/wrapper failure." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
+            local update_out=""
+            update_out="$("./$bin" update check 2>&1 || true)"
+            if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$update_out"; then
+              echo "[SANITY] $bin rejected: update check output matches legacy/wrapper failure." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
@@ -742,12 +611,6 @@ jobs:
               fi
               if cli_sanity_ok "$STAGE2_BIN"; then
                 STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-                build_smoke_fallback_binaries() {
-                  printf '%s\n' '#include <stdio.h>' 'int main(){ puts("Hello Self-Hosted World!"); return 0; }' > _smoke_hello.c
-                  printf '%s\n' '#include <stdio.h>' 'int main(){ puts("9227465"); return 0; }' > _smoke_fib.c
-                  clang _smoke_hello.c -o "${{ matrix.hello_bin }}"
-                  clang _smoke_fib.c -o "${{ matrix.fib_bin }}"
-                }
                 build_examples_ok=1
                 echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
                 if ! "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"; then
@@ -757,9 +620,9 @@ jobs:
                 if ! "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"; then
                   build_examples_ok=0
                 fi
-                if [[ "$build_examples_ok" -eq 0 && "$STRICT_WINDOWS" -eq 0 ]]; then
-                  echo "[WARN] snapshot compiler failed to build smoke examples on non-strict lane; using fallback smoke binaries." | tee -a "$STAGE_TRACE_FILE"
-                  build_smoke_fallback_binaries
+                if [[ "$build_examples_ok" -eq 0 ]]; then
+                  echo "CRITICAL: snapshot compiler failed to build smoke examples." | tee -a "$STAGE_TRACE_FILE"
+                  exit 1
                 fi
                 HELLO_BIN="${{ matrix.hello_bin }}"
                 FIB_BIN="${{ matrix.fib_bin }}"
@@ -771,7 +634,8 @@ jobs:
                 echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
                 exit 0
               else
-                echo "[WARN] snapshot-linked stage2 failed CLI sanity; continue with bootstrap chain." | tee -a "$STAGE_TRACE_FILE"
+                echo "CRITICAL: snapshot-linked stage2 failed CLI sanity." | tee -a "$STAGE_TRACE_FILE"
+                exit 1
               fi
             fi
           fi
@@ -829,7 +693,7 @@ jobs:
             else
               rc=$?
               if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-                echo "[WARN] linux-arm64 build failed for '$cc build $src -o $out' (rc=$rc), skip alternate --build path." | tee -a "$STAGE_TRACE_FILE"
+                echo "CRITICAL: linux-arm64 build failed for '$cc build $src -o $out' (rc=$rc)." | tee -a "$STAGE_TRACE_FILE"
                 return "$rc"
               fi
             fi
@@ -902,23 +766,6 @@ jobs:
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            echo "[WARN] linux-arm64: use fallback smoke binaries to avoid helper fork storm during example builds." | tee -a "$STAGE_TRACE_FILE"
-            printf '%s\n' '#include <stdio.h>' 'int main(){ puts("Hello Self-Hosted World!"); return 0; }' > _smoke_hello.c
-            printf '%s\n' '#include <stdio.h>' 'int main(){ puts("9227465"); return 0; }' > _smoke_fib.c
-            clang _smoke_hello.c -o "$HELLO_TARGET"
-            clang _smoke_fib.c -o "$FIB_TARGET"
-            HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-            FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-            test -f "$HELLO_BIN"
-            test -f "$FIB_BIN"
-            echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-            echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-            echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-            echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
           BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${{ matrix.stage1_bin }}")
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             BUILD_COMPILERS=()
@@ -962,7 +809,6 @@ jobs:
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -984,16 +830,11 @@ jobs:
           echo "[BOOTSTRAP] stage2=$STAGE2_BIN sha256=$H1" | tee -a "$STAGE_TRACE_FILE"
           echo "[BOOTSTRAP] stage2_rebuild=$STAGE2_REBUILD_BIN sha256=$H2" | tee -a "$STAGE_TRACE_FILE"
           if [[ "$H1" != "$H2" ]]; then
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              echo "WARN: bootstrap hash mismatch on Windows (non-bit-identical PE output)." | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "CRITICAL: bootstrap hash mismatch (Stage2 vs Stage2_rebuild)" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: bootstrap hash mismatch (Stage2 vs Stage2_rebuild)" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
       - name: Discord update - Build Stage2 -> Stage2 (mandatory)
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -1004,75 +845,50 @@ jobs:
           milestone: Build Stage2 -> Stage2 (mandatory)
 
       - name: Smoke CLI help/version
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
-          STRICT_CLI_LANE=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STRICT_CLI_LANE=1
-          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
-          VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1 || true)"
-          HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1 || true)"
+          VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1)"
+          HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1)"
           printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
-              echo "CRITICAL: empty --version/--help output in smoke step."
-              exit 1
-            fi
-            echo "[WARN] non-strict lane has empty --version/--help output in smoke step." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: empty --version/--help output in smoke step."
+            exit 1
           fi
           if ! grep -E "thagore|Thagore" cli-version-release-${{ matrix.asset_tag }}.txt; then
-            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
-              echo "CRITICAL: strict lane missing thagore marker in --version."
-              exit 1
-            fi
-            echo "[WARN] non-strict lane missing thagore marker in --version." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: missing thagore marker in --version."
+            exit 1
           fi
           if ! grep -E "Usage:|Compiler CLI|thagore build" cli-help-release-${{ matrix.asset_tag }}.txt; then
-            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
-              echo "CRITICAL: strict lane missing help markers in --help."
-              exit 1
-            fi
-            echo "[WARN] non-strict lane missing help markers in --help." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: missing help markers in --help."
+            exit 1
           fi
           if ! grep -E "thagore update|update <check\|apply\|rollback>" cli-help-release-${{ matrix.asset_tag }}.txt; then
-            if [[ "$STRICT_CLI_LANE" -eq 1 ]]; then
-              echo "CRITICAL: strict lane missing update command marker in --help."
-              exit 1
-            fi
-            echo "[WARN] native --help missing update command on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: missing update command marker in --help."
+            exit 1
           fi
 
       - name: Run hello + fib
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
-          STRICT_RUNTIME_LANE=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STRICT_RUNTIME_LANE=1
-          fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           HELLO_OUT="$(./$HELLO_BIN 2>&1)"
           FIB_OUT="$(./$FIB_BIN 2>&1)"
           printf '%s\n' "$HELLO_OUT" > hello-output-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$FIB_OUT" > fib-output-release-${{ matrix.asset_tag }}.txt
           if ! grep -Eq "Hello Self-Hosted World!|Hello|Self-Hosted" hello-output-release-${{ matrix.asset_tag }}.txt; then
-            echo "[WARN] hello output marker not found for ${{ matrix.asset_tag }} (continuing, fib is strict gate)." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: hello output marker not found for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           if ! grep -E "(^|[^0-9])9227465([^0-9]|$)" fib-output-release-${{ matrix.asset_tag }}.txt; then
-            if [[ "$STRICT_RUNTIME_LANE" -eq 1 ]]; then
-              echo "CRITICAL: strict runtime lane missing fib marker 9227465."
-              exit 1
-            fi
-            echo "[WARN] non-strict lane missing fib marker 9227465." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: runtime lane missing fib marker 9227465."
+            exit 1
           fi
 
       - name: Guard no stage0 markers
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -1083,7 +899,6 @@ jobs:
           fi
 
       - name: Enforce no C++ dependency gate
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -1095,7 +910,6 @@ jobs:
           "$PY" scripts/no_cpp_dependency_gate.py --report "no-cpp-dependency-release-${{ matrix.asset_tag }}.txt"
 
       - name: Enforce deprecated API gate
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -1107,7 +921,6 @@ jobs:
           "$PY" scripts/deprecated_api_gate.py --report "deprecated-api-gate-release-${{ matrix.asset_tag }}.txt"
 
       - name: Build spec snapshot audit artifacts
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -1119,7 +932,6 @@ jobs:
           "$PY" scripts/spec_snapshot_audit.py --os-tag "release-${{ matrix.asset_tag }}" --out-dir "."
 
       - name: Package release payload
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         shell: bash
         run: |
           set -euxo pipefail
@@ -1181,7 +993,7 @@ jobs:
           fi
 
       - name: Guard Windows package has no thag alias/wrapper
-        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -1198,7 +1010,7 @@ jobs:
           fi
 
       - name: Build Windows EXE installer (Inno Setup)
-        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -euxo pipefail
@@ -1217,7 +1029,7 @@ jobs:
           cp installer/windows/thagore-windows-setup.exe "thagore-setup-windows-${{ matrix.arch }}.exe"
 
       - name: Sign Windows executables (optional)
-        if: runner.os == 'Windows' && env.RELEASE_OPTIONAL_SKIP != '1'
+        if: runner.os == 'Windows'
         shell: pwsh
         env:
           WIN_SIGN_CERT_B64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
@@ -1262,7 +1074,6 @@ jobs:
           Remove-Item -Force $certPath
 
       - name: Discord update - Package release payload
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
         continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
@@ -1273,8 +1084,6 @@ jobs:
           milestone: Package release payload
 
       - name: Upload package artifacts
-        if: env.RELEASE_OPTIONAL_SKIP != '1'
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.asset_tag }}
