@@ -121,11 +121,17 @@ jobs:
           echo "available_tags=$available" >> "$GITHUB_OUTPUT"
           echo "available_tags=$available"
           export AVAILABLE_TAGS="$available"
+          OFFICIAL_RELEASE_TAG=0
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            OFFICIAL_RELEASE_TAG=1
+          fi
+          export OFFICIAL_RELEASE_TAG
           RELEASE_MATRIX="$(python3 - <<'PY'
           import json
           import os
 
           available = {tag for tag in os.environ.get("AVAILABLE_TAGS", "").strip(";").split(";") if tag}
+          official = os.environ.get("OFFICIAL_RELEASE_TAG", "0") == "1"
           entries = [
               {
                   "runner": "ubuntu-latest",
@@ -208,7 +214,12 @@ jobs:
                   "stage_trace_file": "release-stage-trace-windows-arm64.log",
               },
           ]
-          matrix = {"include": [entry for entry in entries if entry["asset_tag"] in available]}
+          selected = [entry for entry in entries if entry["asset_tag"] in available]
+          if official:
+              # Keep official release strictly on the end-user stable lane until
+              # cross-platform stage1 seeds are validated with non-empty CLI output.
+              selected = [entry for entry in selected if entry["asset_tag"] == "windows-x86_64"]
+          matrix = {"include": selected}
           print(json.dumps(matrix, separators=(",", ":")))
           PY
           )"
@@ -855,8 +866,9 @@ jobs:
               echo "CRITICAL: official release must provide non-empty --version and --help output."
               exit 1
             fi
-            if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT"; then
-              echo "CRITICAL: --version output does not match official release tag $GITHUB_REF_NAME."
+            TAG_SEMVER="${GITHUB_REF_NAME#v}"
+            if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
+              echo "CRITICAL: --version output does not match official release tag semver $GITHUB_REF_NAME."
               exit 1
             fi
           else
