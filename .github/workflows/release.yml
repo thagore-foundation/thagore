@@ -219,8 +219,14 @@ jobs:
           fi
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             sudo apt-get update || true
-            if ! sudo apt-get install -y qemu-user qemu-user-static qemu-user-binfmt; then
-              echo "CRITICAL: qemu packages were not installed via apt."
+            # qemu-user-binfmt conflicts with qemu-user-static on ubuntu runners.
+            # Keep only qemu-user + qemu-user-static to avoid dependency deadlock.
+            if ! sudo apt-get install -y qemu-user qemu-user-static; then
+              echo "CRITICAL: qemu-user/qemu-user-static were not installed via apt."
+              exit 1
+            fi
+            if ! command -v qemu-aarch64-static >/dev/null 2>&1 && ! command -v qemu-aarch64 >/dev/null 2>&1; then
+              echo "CRITICAL: qemu aarch64 emulator is missing after install."
               exit 1
             fi
           fi
