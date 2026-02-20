@@ -77,6 +77,12 @@ jobs:
             echo "$RELEASE_FALLBACK_HITS"
             exit 1
           fi
+          RELEASE_LEGACY_IR_HITS="$(grep -REn 'clang -x ir|\.tmp\.ll|\[CMD\] \./\$cc --build \$src -o \$out|run_build_cmd "\$cc" --build "\$src" -o "\$out"' .github/workflows/release.yml || true)"
+          if [[ -n "$RELEASE_LEGACY_IR_HITS" ]]; then
+            echo "CRITICAL: release must not contain legacy IR fallback markers (--build/clang -x ir/.tmp.ll)."
+            echo "$RELEASE_LEGACY_IR_HITS"
+            exit 1
+          fi
           SCRIPT_HITS="$(grep -REn "ALLOW_STAGE0_BOOTSTRAP|legacy[/\\]stage0|legacy[/\\]build[/\\].*thag" scripts \
             | grep -Ev "intent_budget_gate.py|policy-no-stage0.yml" || true)"
           if [[ -n "$SCRIPT_HITS" ]]; then

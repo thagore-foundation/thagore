@@ -102,7 +102,17 @@ func _looks_like_valid_llvm(ir: String) -> i32:
         return 0
     return 1
 
+func _assert_no_legacy_ir_fallback_artifact(tmp_ll_path: String) -> i32:
+    if (fs.exists(tmp_ll_path) == 1):
+        print("CRITICAL: forbidden legacy IR fallback artifact detected: " + tmp_ll_path)
+        print("CRITICAL: builder path is mandatory; clang -x ir fallback is disabled.")
+        return 1
+    return 0
+
 func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
+    let tmp_ll_path = out_path + ".tmp.ll"
+    if (fs.exists(tmp_ll_path) == 1):
+        __thg_fs_remove(tmp_ll_path)
     let source = fs.read_text(input_path)
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
@@ -142,11 +152,17 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         return 1
     let object_path = out_path + ".o"
     if (emitter.emit_object_core(core, module_name, clang_bin, object_path) != 0):
+        if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
+            return 1
         print("CRITICAL: native object backend emission failed.")
         print("CRITICAL: IR text executable lane is disabled; no fallback path is available.")
         return 1
     if (_link_exe(object_path, out_path, clang_bin, prefer_cxx) != 0):
+        if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
+            return 1
         print("ERROR: link failed.")
+        return 1
+    if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
         return 1
     __thg_fs_remove(object_path)
     print("Build success.")

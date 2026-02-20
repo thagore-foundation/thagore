@@ -606,25 +606,15 @@ jobs:
               if [[ -n "$got" ]]; then
                 return 0
               fi
+              echo "CRITICAL: builder path build succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
+              echo "CRITICAL: legacy --build fallback is forbidden in release lane." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             else
               rc=$?
-              if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-                echo "CRITICAL: linux-arm64 build failed for '$cc build $src -o $out' (rc=$rc)." | tee -a "$STAGE_TRACE_FILE"
-                return "$rc"
-              fi
+              echo "CRITICAL: build failed for '$cc build $src -o $out' (rc=$rc)." | tee -a "$STAGE_TRACE_FILE"
+              echo "CRITICAL: legacy --build fallback is forbidden in release lane." | tee -a "$STAGE_TRACE_FILE"
+              return "$rc"
             fi
-            echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
-            run_build_cmd "$cc" --build "$src" -o "$out" || return 1
-            got="$(resolve_local "$out" || true)"
-            if [[ -n "$got" ]]; then
-              return 0
-            fi
-            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
-              echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
-              return 0
-            fi
-            echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
-            return 1
           }
           resolve_bin() {
             local preferred="$1"
@@ -804,11 +794,11 @@ jobs:
             exit 1
           fi
 
-      - name: Guard no stage0 markers
+      - name: Guard no stage0 and legacy IR fallback markers
         shell: bash
         run: |
           set -euo pipefail
-          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP" "$STAGE_TRACE_FILE"; then
+          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP|clang -x ir|\.tmp\.ll" "$STAGE_TRACE_FILE"; then
             echo "CRITICAL: forbidden fallback markers detected"
             cat "$STAGE_TRACE_FILE"
             exit 1
