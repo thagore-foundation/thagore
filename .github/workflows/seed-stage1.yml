@@ -706,13 +706,20 @@ jobs:
             --repository "${{ github.repository }}" \
             "${ASSET_ARGS[@]}"
           BUNDLE_OUT="seed-bundle-${{ matrix.asset_tag }}.json"
+          BUNDLE_ASSET_ARGS=(
+            --asset "${{ matrix.stage1_seed_name }}"
+            --asset "${{ matrix.runtime_seed_name }}"
+            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt"
+            --asset "$PROV"
+            --asset "$TRACE_ASSET"
+          )
+          for f in thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
+            if [[ -f "$f" ]]; then
+              BUNDLE_ASSET_ARGS+=(--asset "$f")
+            fi
+          done
           "$PY" scripts/seed_bundle.py capture \
             --output "$BUNDLE_OUT" \
-            --asset "${{ matrix.stage1_seed_name }}" \
-            --asset "${{ matrix.runtime_seed_name }}" \
-            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
-            --asset "$PROV" \
-            --asset "$TRACE_ASSET" \
             --seed-tag "${{ github.event.inputs.seed_tag }}" \
             --asset-tag "${{ matrix.asset_tag }}" \
             --runner-os "${{ runner.os }}" \
@@ -720,7 +727,8 @@ jobs:
             --commit-sha "${{ github.sha }}" \
             --run-id "${{ github.run_id }}" \
             --run-attempt "${{ github.run_attempt }}" \
-            --repository "${{ github.repository }}"
+            --repository "${{ github.repository }}" \
+            "${BUNDLE_ASSET_ARGS[@]}"
           "$PY" scripts/seed_bundle.py verify \
             --bundle "$BUNDLE_OUT" \
             --manifest "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
