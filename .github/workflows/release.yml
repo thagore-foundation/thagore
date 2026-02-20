@@ -561,6 +561,8 @@ jobs:
       - name: Build Stage2 -> Stage2 (mandatory)
         timeout-minutes: 8
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
           OFFICIAL_RELEASE_TAG=0
