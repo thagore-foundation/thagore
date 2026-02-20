@@ -15,6 +15,9 @@ UPDATE_MARK = 'if (arg1 == "update") {'
 EMIT_ANCHOR = '  if (arg1 == "--emit-llvm-internal") {'
 RUNTIME_FN_START = "static auto cliDetectRuntimeLib() -> std::string {"
 RUNTIME_NEXT_ANCHOR = "static auto cliReadText(const std::string &path) -> std::string {"
+BRIDGE_INSERT_ANCHOR = "\nnamespace {\n"
+BRIDGE_MARK_BEGIN = "// THG_LLVM_CAPI_BRIDGE_BEGIN"
+BRIDGE_MARK_END = "// THG_LLVM_CAPI_BRIDGE_END"
 
 UPDATE_BLOCK = r'''
   if (arg1 == "update") {
@@ -155,9 +158,210 @@ static auto cliDetectRuntimeLib() -> std::string {
 
 '''
 
+LLVM_BRIDGE_BLOCK = r'''
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
+
+// THG_LLVM_CAPI_BRIDGE_BEGIN
+namespace thg_llvm_bridge {
+#if defined(_WIN32)
+using dynlib_t = HMODULE;
+#else
+using dynlib_t = void *;
+#endif
+
+auto open_library(const char *name) -> dynlib_t {
+#if defined(_WIN32)
+  return LoadLibraryA(name);
+#else
+  return dlopen(name, RTLD_NOW | RTLD_LOCAL);
+#endif
+}
+
+auto resolve_symbol(dynlib_t handle, const char *symbol) -> void * {
+  if (handle == nullptr) {
+    return nullptr;
+  }
+#if defined(_WIN32)
+  return reinterpret_cast<void *>(GetProcAddress(handle, symbol));
+#else
+  return dlsym(handle, symbol);
+#endif
+}
+
+auto detect_llvm_library() -> dynlib_t {
+  static dynlib_t handle = nullptr;
+  static std::once_flag once {};
+  std::call_once(once, []() {
+#if defined(_WIN32)
+    const std::array<const char *, 6> candidates {
+      "LLVM-C.dll",
+      "libLLVM.dll",
+      "LLVM.dll",
+      "LLVM-18.dll",
+      "LLVM-17.dll",
+      "LLVM-16.dll",
+    };
+#else
+    const std::array<const char *, 8> candidates {
+      "libLLVM.so",
+      "libLLVM-18.so",
+      "libLLVM-17.so",
+      "libLLVM-16.so",
+      "libLLVM.dylib",
+      "/opt/homebrew/opt/llvm/lib/libLLVM.dylib",
+      "/usr/local/opt/llvm/lib/libLLVM.dylib",
+      "/usr/lib/libLLVM.so",
+    };
+#endif
+    for (const char *name : candidates) {
+      auto loaded = open_library(name);
+      if (loaded != nullptr) {
+        handle = loaded;
+        break;
+      }
+    }
+  });
+  return handle;
+}
+
+template <typename Fn>
+auto resolve(const char *symbol) -> Fn {
+  auto *raw = resolve_symbol(detect_llvm_library(), symbol);
+#if !defined(_WIN32)
+  if (raw == nullptr) {
+    raw = dlsym(RTLD_DEFAULT, symbol);
+  }
+#endif
+  return reinterpret_cast<Fn>(raw);
+}
+} // namespace thg_llvm_bridge
+
+#define THG_LLVM_BRIDGE_PTR(name, params, args) \
+extern "C" void *name params { \
+  using fn_t = void * (*) params; \
+  static fn_t fn = thg_llvm_bridge::resolve<fn_t>(#name); \
+  if (fn == nullptr) { \
+    return nullptr; \
+  } \
+  return fn args; \
+}
+
+#define THG_LLVM_BRIDGE_I32(name, params, args) \
+extern "C" int name params { \
+  using fn_t = int (*) params; \
+  static fn_t fn = thg_llvm_bridge::resolve<fn_t>(#name); \
+  if (fn == nullptr) { \
+    return 1; \
+  } \
+  return fn args; \
+}
+
+#define THG_LLVM_BRIDGE_VOID(name, params, args) \
+extern "C" void name params { \
+  using fn_t = void (*) params; \
+  static fn_t fn = thg_llvm_bridge::resolve<fn_t>(#name); \
+  if (fn == nullptr) { \
+    return; \
+  } \
+  fn args; \
+}
+
+THG_LLVM_BRIDGE_PTR(LLVMContextCreate, (), ())
+THG_LLVM_BRIDGE_VOID(LLVMContextDispose, (void *ctx), (ctx))
+
+THG_LLVM_BRIDGE_PTR(LLVMModuleCreateWithNameInContext, (const char *name, void *ctx), (name, ctx))
+THG_LLVM_BRIDGE_VOID(LLVMDisposeModule, (void *module_ref), (module_ref))
+THG_LLVM_BRIDGE_VOID(LLVMSetTarget, (void *module_ref, const char *triple), (module_ref, triple))
+THG_LLVM_BRIDGE_VOID(LLVMSetSourceFileName, (void *module_ref, const char *name, int length), (module_ref, name, length))
+
+THG_LLVM_BRIDGE_PTR(LLVMInt1TypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMInt8TypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMInt16TypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMInt32TypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMInt64TypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMVoidTypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMFloatTypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMDoubleTypeInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_PTR(LLVMPointerType, (void *ty, int address_space), (ty, address_space))
+THG_LLVM_BRIDGE_PTR(LLVMArrayType2, (void *elem_ty, int count), (elem_ty, count))
+THG_LLVM_BRIDGE_PTR(LLVMStructTypeInContext, (void *ctx, void *elem_types, int elem_count, int packed), (ctx, elem_types, elem_count, packed))
+THG_LLVM_BRIDGE_PTR(LLVMFunctionType, (void *ret_ty, void *param_types, int param_count, int is_var_arg), (ret_ty, param_types, param_count, is_var_arg))
+
+THG_LLVM_BRIDGE_PTR(LLVMAddFunction, (void *module_ref, const char *name, void *fn_ty), (module_ref, name, fn_ty))
+THG_LLVM_BRIDGE_PTR(LLVMGetNamedFunction, (void *module_ref, const char *name), (module_ref, name))
+THG_LLVM_BRIDGE_PTR(LLVMAppendBasicBlockInContext, (void *ctx, void *fn_value, const char *name), (ctx, fn_value, name))
+THG_LLVM_BRIDGE_PTR(LLVMCreateBuilderInContext, (void *ctx), (ctx))
+THG_LLVM_BRIDGE_VOID(LLVMDisposeBuilder, (void *builder), (builder))
+THG_LLVM_BRIDGE_VOID(LLVMPositionBuilderAtEnd, (void *builder, void *block), (builder, block))
+THG_LLVM_BRIDGE_PTR(LLVMGetInsertBlock, (void *builder), (builder))
+THG_LLVM_BRIDGE_PTR(LLVMBuildRet, (void *builder, void *value), (builder, value))
+THG_LLVM_BRIDGE_PTR(LLVMBuildRetVoid, (void *builder), (builder))
+THG_LLVM_BRIDGE_PTR(LLVMBuildAlloca, (void *builder, void *ty, const char *name), (builder, ty, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildStore, (void *builder, void *value, void *ptr_value), (builder, value, ptr_value))
+THG_LLVM_BRIDGE_PTR(LLVMBuildLoad2, (void *builder, void *ty, void *ptr_value, const char *name), (builder, ty, ptr_value, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildAdd, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildSub, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildMul, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildSDiv, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildICmp, (void *builder, int pred, void *lhs, void *rhs, const char *name), (builder, pred, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildAnd, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildOr, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildXor, (void *builder, void *lhs, void *rhs, const char *name), (builder, lhs, rhs, name))
+THG_LLVM_BRIDGE_PTR(LLVMBuildBr, (void *builder, void *dest), (builder, dest))
+THG_LLVM_BRIDGE_PTR(LLVMBuildCondBr, (void *builder, void *cond, void *then_block, void *else_block), (builder, cond, then_block, else_block))
+THG_LLVM_BRIDGE_PTR(LLVMBuildCall2, (void *builder, void *fn_ty, void *fn_value, void *args_data, int arg_count, const char *name), (builder, fn_ty, fn_value, args_data, arg_count, name))
+
+THG_LLVM_BRIDGE_PTR(LLVMConstInt, (void *ty, int value, int sign_extend), (ty, value, sign_extend))
+THG_LLVM_BRIDGE_PTR(LLVMConstNull, (void *ty), (ty))
+THG_LLVM_BRIDGE_PTR(LLVMConstStringInContext2, (void *ctx, const char *value, int length, int dont_null_terminate), (ctx, value, length, dont_null_terminate))
+
+THG_LLVM_BRIDGE_I32(LLVMVerifyModule, (void *module_ref, int action, void *out_message), (module_ref, action, out_message))
+THG_LLVM_BRIDGE_VOID(LLVMDisposeMessage, (void *message), (message))
+THG_LLVM_BRIDGE_PTR(LLVMPrintModuleToString, (void *module_ref), (module_ref))
+
+THG_LLVM_BRIDGE_I32(LLVMInitializeNativeTarget, (), ())
+THG_LLVM_BRIDGE_I32(LLVMInitializeNativeAsmPrinter, (), ())
+THG_LLVM_BRIDGE_I32(LLVMInitializeNativeAsmParser, (), ())
+THG_LLVM_BRIDGE_PTR(LLVMGetDefaultTargetTriple, (), ())
+THG_LLVM_BRIDGE_I32(LLVMGetTargetFromTriple, (const char *triple, void *target_out, void *err_out), (triple, target_out, err_out))
+THG_LLVM_BRIDGE_PTR(LLVMCreateTargetMachine, (void *target, const char *triple, const char *cpu, const char *features, int opt_level, int reloc_mode, int code_model), (target, triple, cpu, features, opt_level, reloc_mode, code_model))
+THG_LLVM_BRIDGE_VOID(LLVMDisposeTargetMachine, (void *machine), (machine))
+THG_LLVM_BRIDGE_I32(LLVMTargetMachineEmitToFile, (void *machine, void *module_ref, const char *filename, int codegen, void *out_message), (machine, module_ref, filename, codegen, out_message))
+THG_LLVM_BRIDGE_I32(LLVMTargetMachineEmitToMemoryBuffer, (void *machine, void *module_ref, int codegen, void *out_message, void *out_mem_buf), (machine, module_ref, codegen, out_message, out_mem_buf))
+
+THG_LLVM_BRIDGE_PTR(LLVMCreatePassManager, (), ())
+THG_LLVM_BRIDGE_VOID(LLVMDisposePassManager, (void *pm), (pm))
+THG_LLVM_BRIDGE_I32(LLVMRunPassManager, (void *pm, void *module_ref), (pm, module_ref))
+THG_LLVM_BRIDGE_VOID(LLVMAddInstructionCombiningPass, (void *pm), (pm))
+THG_LLVM_BRIDGE_VOID(LLVMAddReassociatePass, (void *pm), (pm))
+THG_LLVM_BRIDGE_VOID(LLVMAddGVNPass, (void *pm), (pm))
+THG_LLVM_BRIDGE_VOID(LLVMAddCFGSimplificationPass, (void *pm), (pm))
+
+THG_LLVM_BRIDGE_I32(LLVMLinkModules2, (void *dest, void *src), (dest, src))
+THG_LLVM_BRIDGE_PTR(LLVMCreateMemoryBufferWithMemoryRangeCopy, (const char *data, int data_len, const char *buffer_name), (data, data_len, buffer_name))
+THG_LLVM_BRIDGE_VOID(LLVMDisposeMemoryBuffer, (void *mem_buf), (mem_buf))
+
+#undef THG_LLVM_BRIDGE_PTR
+#undef THG_LLVM_BRIDGE_I32
+#undef THG_LLVM_BRIDGE_VOID
+// THG_LLVM_CAPI_BRIDGE_END
+'''
+
 
 def patch_runtime(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
+
+    if BRIDGE_MARK_BEGIN in text and BRIDGE_MARK_END in text:
+        start = text.find(BRIDGE_MARK_BEGIN)
+        end = text.find(BRIDGE_MARK_END)
+        if end < start:
+            raise RuntimeError("invalid LLVM bridge marker order")
+        end += len(BRIDGE_MARK_END)
+        while end < len(text) and text[end] in "\r\n":
+            end += 1
+        text = text[:start] + text[end:]
 
     out_lines: list[str] = []
     lines = text.splitlines(keepends=True)
@@ -183,6 +387,11 @@ def patch_runtime(path: Path) -> int:
     if runtime_start < 0 or runtime_next < 0 or runtime_next <= runtime_start:
         raise RuntimeError(f"missing runtime detect anchors: {RUNTIME_FN_START} / {RUNTIME_NEXT_ANCHOR}")
     text = text[:runtime_start] + RUNTIME_BLOCK + text[runtime_next:]
+
+    namespace_idx = text.find(BRIDGE_INSERT_ANCHOR)
+    if namespace_idx < 0:
+        raise RuntimeError(f"missing LLVM bridge insert anchor: {BRIDGE_INSERT_ANCHOR!r}")
+    text = text[:namespace_idx] + "\n" + LLVM_BRIDGE_BLOCK + text[namespace_idx:]
 
     path.write_text(text, encoding="utf-8")
     return 0
