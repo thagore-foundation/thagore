@@ -28,7 +28,7 @@ PrivilegesRequired=admin
 SetupLogging=yes
 
 [Tasks]
-Name: "addtopath"; Description: "Add Thagore to PATH"; Flags: checked
+Name: "addtopath"; Description: "Add Thagore to PATH"; Flags: checkedonce
 Name: "installllvm"; Description: "Install LLVM 21.1.8 automatically (winget)"; Flags: unchecked
 
 [InstallDelete]
