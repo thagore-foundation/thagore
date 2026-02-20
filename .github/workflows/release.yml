@@ -1049,6 +1049,7 @@ jobs:
             cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1.exe"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1"
           fi
           cp -R std "dist/lib/std"
           if [[ ! -d "dist/bin" ]]; then
@@ -1061,6 +1062,16 @@ jobs:
           fi
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "dist/bin/${{ matrix.output_bin }}"
+            chmod +x "dist/bin/stage1"
+          fi
+          helper_bin_path="dist/bin/stage1"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            helper_bin_path="dist/bin/stage1.exe"
+          fi
+          if [[ ! -f "$helper_bin_path" ]]; then
+            echo "CRITICAL: missing helper binary $helper_bin_path in packaged payload."
+            ls -la dist/bin || true
+            exit 1
           fi
           if [[ ! -d "dist/lib/std" ]]; then
             echo "CRITICAL: missing std library directory dist/lib/std."
