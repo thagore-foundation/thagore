@@ -74,8 +74,33 @@ func _update_scan_best_asset(release_json: String, os_name: String, arch: String
         return ""
     return best_name + "\n" + best_url
 
+func _update_is_official_tag(tag_raw: String) -> i32:
+    let tag = _trim(tag_raw)
+    if (_starts_with(tag, "v") == 0):
+        return 0
+    if (_contains(tag, "-") == 1):
+        return 0
+    let semver = _update_extract_semver(tag)
+    if (semver == "0.0.0"):
+        return 0
+    if (("v" + semver) != tag):
+        return 0
+    return 1
+
 func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> UpdateRelease:
-    let api = "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=20"
+    let latest_api = "https://api.github.com/repos/thagore-foundation/thagore/releases/latest"
+    let latest_body = http.get(latest_api)
+    if (strlen(_trim(latest_body)) > 0):
+        let latest_tag = _update_find_json_string(latest_body, "tag_name")
+        if (_update_is_official_tag(latest_tag) == 1):
+            let latest_pair = _update_scan_best_asset(latest_body, os_name, arch)
+            if (strlen(latest_pair) > 0):
+                let latest_semver = _update_extract_semver(latest_tag)
+                let latest_asset_name = _line_at(latest_pair, 0)
+                let latest_asset_url = _line_at(latest_pair, 1)
+                return UpdateRelease(1, latest_tag, latest_semver, latest_asset_name, latest_asset_url)
+
+    let api = "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=50"
     let body = http.get(api)
     if (strlen(_trim(body)) == 0):
         return _update_release_empty()
@@ -91,7 +116,7 @@ func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> U
             return _update_release_empty()
         let next_abs = abs + p_assets
         i = next_abs + 8
-        if (_contains(tag, "-foundation") == 1):
+        if (_update_is_official_tag(tag) == 1):
             let semver = _update_extract_semver(tag)
             let pair = _update_scan_best_asset(__thg_str_substr(body, abs, strlen(body) - abs), os_name, arch)
             if (strlen(pair) > 0):
@@ -102,4 +127,3 @@ func _update_fetch_latest_foundation_release(os_name: String, arch: String) -> U
 
 func _update_is_newer_than_current(tag_or_version: String) -> i32:
     return _update_semver_compare(_update_extract_semver(tag_or_version), _update_current_version_semver())
-

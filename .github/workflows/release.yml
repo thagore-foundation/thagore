@@ -528,6 +528,24 @@ jobs:
             --fail-on-missing \
             --write "runtime-abi-inventory-release-${{ matrix.asset_tag }}.txt"
 
+      - name: Bind CLI version to release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            CLI_VERSION="$GITHUB_REF_NAME"
+          else
+            CLI_VERSION="0.0.0-dev"
+          fi
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          export CLI_VERSION
+          "$PY" -c "from pathlib import Path; import re, os; p=Path('src/driver/cli/update/version.tg'); t=p.read_text(encoding='utf-8'); v=os.environ.get('CLI_VERSION','0.0.0-dev'); t2=re.sub(r'return\\s+\\\"[^\\\"]+\\\"', f'return \\\"{v}\\\"', t, count=1); p.write_text(t2, encoding='utf-8')"
+          grep -n "func _update_current_version_text" -A2 src/driver/cli/update/version.tg
+
       - name: Build Stage2 -> Stage2 (mandatory)
         timeout-minutes: 8
         shell: bash
@@ -802,8 +820,19 @@ jobs:
             echo "CRITICAL: smoke step detected legacy/wrapper update markers."
             exit 1
           fi
-          if [[ -z "$VERSION_OUT" && -z "$HELP_OUT" && -z "$UPDATE_OUT" ]]; then
-            echo "WARN: empty --version/--help/update output in smoke step; tolerated on bootstrap-compatible lane."
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+              echo "CRITICAL: official release must provide non-empty --version and --help output."
+              exit 1
+            fi
+            if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT"; then
+              echo "CRITICAL: --version output does not match official release tag $GITHUB_REF_NAME."
+              exit 1
+            fi
+          else
+            if [[ -z "$VERSION_OUT" && -z "$HELP_OUT" && -z "$UPDATE_OUT" ]]; then
+              echo "WARN: empty --version/--help/update output in non-official release lane."
+            fi
           fi
 
       - name: Run hello + fib
@@ -1126,7 +1155,7 @@ jobs:
     name: public-release
     runs-on: ubuntu-latest
     needs: [discord-notify-init, official-tag-gate]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.official-tag-gate.outputs.is_official_tag == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -1139,6 +1168,8 @@ jobs:
       - name: Publish GitHub Release Assets
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ needs.official-tag-gate.outputs.is_official_tag != 'true' }}
+          make_latest: ${{ needs.official-tag-gate.outputs.is_official_tag == 'true' && 'true' || 'false' }}
           files: |
             artifacts/**/thagore-linux-*.tar.gz
             artifacts/**/thagore-macos-*.tar.gz

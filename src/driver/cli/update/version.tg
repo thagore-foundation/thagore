@@ -1,7 +1,7 @@
 import "src/driver/cli/common/core.tg"
 
 func _update_current_version_text() -> String:
-    return "0.4.0-native-cli"
+    return "0.0.0-dev"
 
 func _update_current_version_semver() -> String:
     return _update_extract_semver(_update_current_version_text())
@@ -86,4 +86,3 @@ func _update_semver_compare(left: String, right: String) -> i32:
             return -1
         i = i + 1
     return 0
-

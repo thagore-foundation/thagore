@@ -20,6 +20,16 @@ function Get-Semver([string]$text) {
     return "0.0.0"
 }
 
+function Compare-Semver([string]$left, [string]$right) {
+    try {
+        $lv = [version](Get-Semver $left)
+        $rv = [version](Get-Semver $right)
+        return $lv.CompareTo($rv)
+    } catch {
+        return 0
+    }
+}
+
 function Get-ArchTag {
     $pa = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
     if ($pa -eq "ARM64") { return "arm64" }
@@ -65,6 +75,9 @@ function Get-ExpectedHashFromChecksums {
         if ($parts.Count -lt 2) { continue }
         $hash = $parts[0].Trim()
         $name = $parts[1].Trim()
+        if ($name.StartsWith("*")) {
+            $name = $name.Substring(1)
+        }
         if ($name -eq $AssetName) {
             return $hash
         }
@@ -175,7 +188,7 @@ $asset = Resolve-AssetUrl $release $arch
 $checksumAsset = Resolve-ChecksumUrl $release $arch
 
 if ($mode -eq "check") {
-    if ($latestVer -gt $currentVer) {
+    if ((Compare-Semver $latestVer $currentVer) -gt 0) {
         Write-Host "Update available: $latestTag (current: $currentRaw)"
         Write-Host "Run: thagore update apply"
         exit 0
@@ -185,7 +198,7 @@ if ($mode -eq "check") {
 }
 
 if ($mode -eq "apply") {
-    if ($latestVer -le $currentVer) {
+    if ((Compare-Semver $latestVer $currentVer) -le 0) {
         Write-Host "Already up to date ($currentRaw)."
         exit 0
     }
