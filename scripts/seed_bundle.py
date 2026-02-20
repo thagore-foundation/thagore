@@ -136,6 +136,7 @@ def _validate_required_kinds(rows: List[Dict[str, str]]) -> List[str]:
 def cmd_verify(args: argparse.Namespace) -> int:
     bundle_path = normalize_path(args.bundle)
     bundle = _load_json(bundle_path)
+    bundle_dir = bundle_path.parent
     if bundle.get("schema") != SCHEMA:
         raise ValueError(f"unsupported bundle schema: {bundle.get('schema')}")
 
@@ -167,6 +168,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
             errors.append(f"incomplete artifact entry in bundle: {entry}")
             continue
         path = normalize_path(path_text)
+        if not path.is_file():
+            alt = bundle_dir / name
+            if alt.is_file():
+                path = alt
         if not path.is_file():
             errors.append(f"bundle artifact missing on disk: {path}")
             continue
