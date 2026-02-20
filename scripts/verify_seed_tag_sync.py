@@ -48,13 +48,18 @@ def main() -> int:
     rows: list[str] = []
     tags_by_file: dict[str, list[str]] = {}
     all_tags: set[str] = set()
+    compiler_tag_hits: list[str] = []
     for rel in WORKFLOWS:
         path = ROOT / rel
         if not path.exists():
             rows.append(f"FAIL|missing_file|{rel}")
             continue
-        tags = _extract_tags(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        tags = _extract_tags(text)
         tags_by_file[rel] = tags
+        if "BOOTSTRAP_STAGE1_COMPILER_TAG" in text:
+            compiler_tag_hits.append(rel)
+            rows.append(f"FAIL|forbidden_compiler_tag|{rel}")
         if not tags:
             rows.append(f"FAIL|missing_tag|{rel}")
         else:
@@ -66,6 +71,9 @@ def main() -> int:
     if len(all_tags) != 1:
         status = "fail"
         rows.append(f"FAIL|tag_mismatch|values={','.join(sorted(all_tags))}")
+    if compiler_tag_hits:
+        status = "fail"
+        rows.append(f"FAIL|compiler_tag_present|files={','.join(sorted(compiler_tag_hits))}")
     if any(r.startswith("FAIL|") for r in rows):
         status = "fail"
 

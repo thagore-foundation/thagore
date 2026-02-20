@@ -5,12 +5,11 @@ import argparse
 import datetime as dt
 import hashlib
 import json
-import os
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
-SCHEMA = "thagore.stage1.provenance.v1"
+SCHEMA = "thagore.stage1.provenance.v2"
 
 
 def sha256_file(path: Path) -> str:
@@ -96,6 +95,13 @@ def cmd_capture(args: argparse.Namespace) -> int:
             print(f"CRITICAL: {err}")
         return 1
 
+    bundle_id = args.bundle_id.strip().lower()
+    if len(bundle_id) != 64:
+        raise ValueError("bundle_id is required and must be sha256 hex")
+    commit_sha = args.commit_sha.strip()
+    if len(commit_sha) < 7:
+        raise ValueError("commit_sha is required")
+
     payload: Dict[str, object] = {
         "schema": SCHEMA,
         "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -107,8 +113,9 @@ def cmd_capture(args: argparse.Namespace) -> int:
             "arch": args.arch,
             "run_id": args.run_id,
             "run_attempt": args.run_attempt,
-            "commit_sha": args.commit_sha,
+            "commit_sha": commit_sha,
             "repository": args.repository,
+            "bundle_id": bundle_id,
         },
         "artifacts": assets,
         "validation": {
@@ -142,6 +149,16 @@ def load_provenance(path: Path) -> Dict[str, object]:
 def cmd_verify(args: argparse.Namespace) -> int:
     provenance_path = normalize_path(args.provenance)
     provenance = load_provenance(provenance_path)
+
+    metadata = provenance.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise ValueError("invalid provenance metadata")
+    provenance_commit = str(metadata.get("commit_sha", "")).strip()
+    provenance_bundle = str(metadata.get("bundle_id", "")).strip().lower()
+    if len(provenance_commit) < 7:
+        raise ValueError("provenance metadata.commit_sha is required")
+    if len(provenance_bundle) != 64:
+        raise ValueError("provenance metadata.bundle_id is required")
 
     artifacts = provenance.get("artifacts", [])
     if not isinstance(artifacts, list):
@@ -188,6 +205,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if args.manifest:
         manifest_entries = parse_manifest(normalize_path(args.manifest))
         errors.extend(compare_hashes(manifest_entries, observed, "manifest"))
+    if args.expected_commit_sha:
+        expected_commit = args.expected_commit_sha.strip()
+        if provenance_commit != expected_commit:
+            errors.append(
+                f"commit_sha mismatch: expected={expected_commit} got={provenance_commit}"
+            )
+    if args.expected_bundle_id:
+        expected_bundle = args.expected_bundle_id.strip().lower()
+        if provenance_bundle != expected_bundle:
+            errors.append(
+                f"bundle_id mismatch: expected={expected_bundle} got={provenance_bundle}"
+            )
 
     if errors:
         for err in errors:
@@ -215,6 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--run-id", default="")
     capture.add_argument("--run-attempt", default="")
     capture.add_argument("--commit-sha", default="")
+    capture.add_argument("--bundle-id", default="")
     capture.add_argument("--repository", default="")
     capture.add_argument(
         "--allow-manifest-mismatch",
@@ -227,6 +257,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--provenance", required=True, help="Provenance JSON path")
     verify.add_argument("--manifest", help="Seed promotion manifest path")
     verify.add_argument("--asset", action="append", help="Asset file path")
+    verify.add_argument("--expected-commit-sha", default="")
+    verify.add_argument("--expected-bundle-id", default="")
     verify.set_defaults(func=cmd_verify)
 
     return parser
