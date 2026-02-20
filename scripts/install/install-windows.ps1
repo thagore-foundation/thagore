@@ -10,7 +10,7 @@ if ((Test-Path (Join-Path $candidatePackageRoot "bin\thagore.exe")) -and (Test-P
     throw "Cannot resolve Thagore package root near $PSScriptRoot"
 }
 $Prefix = if ($env:THAGORE_PREFIX) { $env:THAGORE_PREFIX } else { Join-Path $env:ProgramFiles "Thagore" }
-& (Join-Path $PSScriptRoot "windows.ps1") -yes
+& (Join-Path $PSScriptRoot "windows.ps1") -yes -prefix $Prefix
 
 Write-Host "[thagore-installer] Installing Thagore to $Prefix..."
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null

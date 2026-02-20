@@ -10,6 +10,10 @@ SKIP_LLVM=0
 SKIP_PAYLOAD=0
 INSTALL_PREFIX=""
 LLVM_PREFIX="${THAGORE_LLVM_PREFIX:-$HOME/.thagore/llvm-21.1.8}"
+LLVM_PREFIX_EXPLICIT=0
+if [[ -n "${THAGORE_LLVM_PREFIX:-}" ]]; then
+  LLVM_PREFIX_EXPLICIT=1
+fi
 
 print_help() {
   cat <<'EOF'
@@ -114,6 +118,26 @@ ensure_path_persisted() {
     append_path_rc "$entry" "$HOME/.zshrc"
     export PATH="$entry:$PATH"
   fi
+}
+
+ensure_local_llvm_layout() {
+  local payload_prefix="$1"
+  local llvm_root="$payload_prefix/llvm"
+  local llvm_bin="$llvm_root/bin"
+  mkdir -p "$llvm_bin"
+
+  if command -v clang >/dev/null 2>&1; then
+    ln -sf "$(command -v clang)" "$llvm_bin/clang"
+  fi
+  if command -v clang++ >/dev/null 2>&1; then
+    ln -sf "$(command -v clang++)" "$llvm_bin/clang++"
+  fi
+  if command -v llvm-ar >/dev/null 2>&1; then
+    ln -sf "$(command -v llvm-ar)" "$llvm_bin/llvm-ar"
+  elif command -v ar >/dev/null 2>&1; then
+    ln -sf "$(command -v ar)" "$llvm_bin/llvm-ar"
+  fi
+  ensure_path_persisted "$llvm_bin"
 }
 
 confirm_install() {
@@ -252,6 +276,7 @@ install_payload_with_prefix() {
   mkdir -p "$link_dir"
   ln -sf "$payload_prefix/bin/thagore" "$link_dir/thagore"
 
+  ensure_local_llvm_layout "$payload_prefix"
   if [[ "$MODE" == "portable" && -d "$LLVM_PREFIX/bin" ]]; then
     ensure_path_persisted "$LLVM_PREFIX/bin"
   fi
@@ -306,6 +331,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --llvm-prefix)
       LLVM_PREFIX="${2:-}"
+      LLVM_PREFIX_EXPLICIT=1
       shift 2
       ;;
     --skip-llvm)
@@ -363,6 +389,12 @@ case "$MODE" in
     ;;
   portable)
     confirm_install "Install portable LLVM ${LLVM_VERSION} and Thagore payload (${ARCH})?"
+    if [[ -z "$INSTALL_PREFIX" ]]; then
+      INSTALL_PREFIX="${THAGORE_PREFIX:-$HOME/.local/share/thagore}"
+    fi
+    if [[ "$LLVM_PREFIX_EXPLICIT" -eq 0 ]]; then
+      LLVM_PREFIX="$INSTALL_PREFIX/llvm"
+    fi
     install_llvm_portable
     install_payload_portable
     ;;

@@ -1,6 +1,7 @@
 param(
     [string]$llvmVersion = "21.1.8",
     [string]$arch = "auto",
+    [string]$prefix = "",
     [switch]$yes
 )
 
@@ -31,8 +32,25 @@ function Test-LLVM {
     return $false
 }
 
-if (Test-LLVM) {
-    Write-Host "LLVM already available."
+function Test-LLVMAtPath([string]$llvmRoot) {
+    $clangPath = Join-Path $llvmRoot "bin\clang.exe"
+    if (-not (Test-Path $clangPath)) {
+        return $false
+    }
+    $v = & $clangPath --version 2>$null
+    if ($v -match "21\.1\.8" -or $v -match "version 21") { return $true }
+    return $false
+}
+
+$TargetPrefix = if ([string]::IsNullOrWhiteSpace($prefix)) {
+    Join-Path $env:ProgramFiles "Thagore"
+} else {
+    $prefix
+}
+$TargetLLVM = Join-Path $TargetPrefix "llvm"
+
+if (Test-LLVMAtPath $TargetLLVM) {
+    Write-Host "LLVM already available at $TargetLLVM."
     exit 0
 }
 
@@ -56,4 +74,48 @@ if (-not (Test-LLVM)) {
     throw "LLVM verification failed after install."
 }
 
-Write-Host "[thagore-installer] LLVM $llvmVersion install done for windows/$arch"
+New-Item -ItemType Directory -Force -Path $TargetLLVM | Out-Null
+$systemLLVM = "C:\Program Files\LLVM"
+if (-not (Test-Path (Join-Path $systemLLVM "bin\clang.exe"))) {
+    $clangCmd = Get-Command clang.exe -ErrorAction SilentlyContinue
+    if ($clangCmd) {
+        $resolved = Split-Path -Parent (Split-Path -Parent $clangCmd.Source)
+        if (Test-Path (Join-Path $resolved "bin\clang.exe")) {
+            $systemLLVM = $resolved
+        }
+    }
+}
+if (-not (Test-Path (Join-Path $systemLLVM "bin\clang.exe"))) {
+    throw "Unable to locate installed LLVM root after winget/choco install."
+}
+Copy-Item -Recurse -Force (Join-Path $systemLLVM "*") $TargetLLVM
+
+if (-not (Test-LLVMAtPath $TargetLLVM)) {
+    throw "LLVM verification failed at target path: $TargetLLVM"
+}
+
+$llvmBin = Join-Path $TargetLLVM "bin"
+function Add-PathEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Scope,
+        [Parameter(Mandatory = $true)][string]$Entry
+    )
+    $cur = [Environment]::GetEnvironmentVariable("Path", $Scope)
+    if ([string]::IsNullOrEmpty($cur)) {
+        [Environment]::SetEnvironmentVariable("Path", $Entry, $Scope)
+        return
+    }
+    $parts = $cur -split ";"
+    if ($parts -contains $Entry) {
+        return
+    }
+    [Environment]::SetEnvironmentVariable("Path", "$($cur.TrimEnd(';'));$Entry", $Scope)
+}
+
+Add-PathEntry -Scope "Machine" -Entry $llvmBin
+Add-PathEntry -Scope "User" -Entry $llvmBin
+if ($env:Path -notlike "*$llvmBin*") {
+    $env:Path = "$env:Path;$llvmBin"
+}
+
+Write-Host "[thagore-installer] LLVM $llvmVersion install done for windows/$arch at $TargetLLVM"

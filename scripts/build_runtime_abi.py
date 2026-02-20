@@ -17,14 +17,21 @@ def _sha256(path: Path) -> str:
 
 
 def _ensure_runtime_libs(root: Path, target_os: str) -> tuple[Path | None, Path | None]:
-    lib_win = root / "thag_runtime.lib"
-    lib_unix = root / "libthag_runtime.a"
+    lib_win = root / "runtime.lib"
+    lib_unix = root / "runtime.a"
+    legacy_win = root / "thag_runtime.lib"
+    legacy_unix = root / "libthag_runtime.a"
+
+    if (not lib_win.exists()) and legacy_win.exists():
+        shutil.copyfile(legacy_win, lib_win)
+    if (not lib_unix.exists()) and legacy_unix.exists():
+        shutil.copyfile(legacy_unix, lib_unix)
 
     has_win = lib_win.exists()
     has_unix = lib_unix.exists()
     if (not has_win) and (not has_unix):
         raise SystemExit(
-            "CRITICAL: missing runtime ABI library. expected thag_runtime.lib or libthag_runtime.a"
+            "CRITICAL: missing runtime ABI library. expected runtime.lib or runtime.a"
         )
 
     os_norm = target_os.strip().lower()
@@ -69,17 +76,17 @@ def main() -> int:
     lines.append(f"target_os={args.target_os}")
     lines.append(f"repo_root={root}")
     if lib_win and lib_win.exists():
-        lines.append(f"thag_runtime.lib.path={lib_win}")
-        lines.append(f"thag_runtime.lib.size={lib_win.stat().st_size}")
-        lines.append(f"thag_runtime.lib.sha256={_sha256(lib_win)}")
+        lines.append(f"runtime.lib.path={lib_win}")
+        lines.append(f"runtime.lib.size={lib_win.stat().st_size}")
+        lines.append(f"runtime.lib.sha256={_sha256(lib_win)}")
     else:
-        lines.append("thag_runtime.lib.path=missing")
+        lines.append("runtime.lib.path=missing")
     if lib_unix and lib_unix.exists():
-        lines.append(f"libthag_runtime.a.path={lib_unix}")
-        lines.append(f"libthag_runtime.a.size={lib_unix.stat().st_size}")
-        lines.append(f"libthag_runtime.a.sha256={_sha256(lib_unix)}")
+        lines.append(f"runtime.a.path={lib_unix}")
+        lines.append(f"runtime.a.size={lib_unix.stat().st_size}")
+        lines.append(f"runtime.a.sha256={_sha256(lib_unix)}")
     else:
-        lines.append("libthag_runtime.a.path=missing")
+        lines.append("runtime.a.path=missing")
     lines.append("")
 
     summary_path.write_text("\n".join(lines), encoding="utf-8")

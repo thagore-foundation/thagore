@@ -1135,13 +1135,17 @@ jobs:
           fi
           cp -R std "dist/lib/std"
           if [[ -f "thag_runtime.lib" ]]; then
-            cp "thag_runtime.lib" "dist/lib/thag_runtime.lib"
+            cp "thag_runtime.lib" "dist/lib/runtime.lib"
+          elif [[ -f "runtime.lib" ]]; then
+            cp "runtime.lib" "dist/lib/runtime.lib"
           fi
           if [[ -f "libthag_runtime.a" ]]; then
-            cp "libthag_runtime.a" "dist/lib/libthag_runtime.a"
+            cp "libthag_runtime.a" "dist/lib/runtime.a"
+          elif [[ -f "runtime.a" ]]; then
+            cp "runtime.a" "dist/lib/runtime.a"
           fi
-          if [[ ! -f "dist/lib/thag_runtime.lib" && ! -f "dist/lib/libthag_runtime.a" ]]; then
-            echo "CRITICAL: missing runtime library in dist/lib (expected thag_runtime.lib or libthag_runtime.a)."
+          if [[ ! -f "dist/lib/runtime.lib" && ! -f "dist/lib/runtime.a" ]]; then
+            echo "CRITICAL: missing runtime library in dist/lib (expected runtime.lib or runtime.a)."
             exit 1
           fi
           mkdir -p dist/installer

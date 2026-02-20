@@ -116,6 +116,17 @@ static auto cliDetectRuntimeLib() -> std::string {
   }
 
   const std::vector<std::filesystem::path> relCandidates {
+    "runtime.lib",
+    "runtime.a",
+    std::filesystem::path("lib") / "runtime.lib",
+    std::filesystem::path("lib") / "runtime.a",
+    std::filesystem::path("runtime") / "runtime.lib",
+    std::filesystem::path("runtime") / "runtime.a",
+    std::filesystem::path("runtime") / "build" / "runtime.lib",
+    std::filesystem::path("runtime") / "build" / "Release" / "runtime.lib",
+    std::filesystem::path("runtime") / "build" / "runtime.a",
+    std::filesystem::path("build") / "runtime.lib",
+    std::filesystem::path("build") / "runtime.a",
     "thag_runtime.lib",
     "libthag_runtime.a",
     std::filesystem::path("lib") / "thag_runtime.lib",

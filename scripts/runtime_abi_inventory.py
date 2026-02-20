@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_RUNTIME_LIB = ROOT / "thag_runtime.lib"
+DEFAULT_RUNTIME_LIB = ROOT / "runtime.lib"
 DEFAULT_BOOTSTRAP_REQUIRED = ROOT / "scripts" / "runtime_abi_required_bootstrap.txt"
 
 
@@ -97,6 +97,10 @@ def main() -> int:
     args = parser.parse_args()
 
     runtime_lib = Path(args.runtime_lib)
+    if not runtime_lib.exists() and runtime_lib.name == "runtime.lib":
+        legacy = runtime_lib.with_name("thag_runtime.lib")
+        if legacy.exists():
+            runtime_lib = legacy
     if not runtime_lib.exists():
         raise SystemExit(f"FAIL: runtime library not found: {runtime_lib}")
 
