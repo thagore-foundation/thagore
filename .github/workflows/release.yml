@@ -361,7 +361,7 @@ jobs:
             local pattern="$1"
             local compiler_tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
             local primary_tag="$compiler_tag"
-            local secondary_tag="$BOOTSTRAP_STAGE1_TAG"
+            local secondary_tag=""
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               primary_tag="$BOOTSTRAP_STAGE1_TAG"
               secondary_tag="$compiler_tag"
