@@ -357,7 +357,7 @@ jobs:
           }
           fetch_runtime_blob() {
             local out_path="$1"
-            local blob_sha="7f9ed799c71ceff8da657316012dc5e4d01d34d4"
+            local blob_sha="ba2649bc06de56b381ca9ed358ff71ea9d37e9ce"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               PY=python
             else
