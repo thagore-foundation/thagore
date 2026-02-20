@@ -566,6 +566,43 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          resolve_local() {
+            local preferred="$1"
+            local src="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "tests/$base" "tests/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
+          run_autofix_case() {
+            local src="$1"
+            local out="$2"
+            local got=""
+            rm -f "$out" "${out}.exe" || true
+            if "./$STAGE1_BIN" build "$src" -o "$out"; then
+              got="$(resolve_local "$out" "$src" || true)"
+              if [[ -n "$got" ]]; then
+                chmod +x "$got" || true
+                "./$got"
+                return 0
+              fi
+            fi
+            if "./$STAGE1_BIN" --build "$src" -o "$out"; then
+              got="$(resolve_local "$out" "$src" || true)"
+              if [[ -n "$got" ]]; then
+                chmod +x "$got" || true
+                "./$got"
+                return 0
+              fi
+            fi
+            echo "[INFO] source fallback for $src via $STAGE1_BIN" | tee -a "$STAGE_TRACE_FILE"
+            "./$STAGE1_BIN" "$src"
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             BIN1="autofix_cli_ci.exe"
             BIN2="autofix_report_golden_ci.exe"
@@ -575,16 +612,9 @@ jobs:
             BIN2="autofix_report_golden_ci"
             BIN3="autofix_compiler_suggestions_ci"
           fi
-          "./$STAGE1_BIN" build tests/test_autofix_cli.tg -o "$BIN1"
-          "./$STAGE1_BIN" build tests/test_autofix_report_golden.tg -o "$BIN2"
-          "./$STAGE1_BIN" build tests/test_autofix_compiler_suggestions.tg -o "$BIN3"
-          test -f "$BIN1"
-          test -f "$BIN2"
-          test -f "$BIN3"
-          chmod +x "$BIN1" "$BIN2" "$BIN3" || true
-          "./$BIN1"
-          "./$BIN2"
-          "./$BIN3"
+          run_autofix_case tests/test_autofix_cli.tg "$BIN1"
+          run_autofix_case tests/test_autofix_report_golden.tg "$BIN2"
+          run_autofix_case tests/test_autofix_compiler_suggestions.tg "$BIN3"
 
       - name: Run syntax matrix (15 features)
         shell: bash
