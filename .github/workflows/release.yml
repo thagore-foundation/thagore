@@ -1333,7 +1333,6 @@ jobs:
           files: |
             artifacts/**/thagore-linux-*.tar.gz
             artifacts/**/thagore-macos-*.tar.gz
-            artifacts/**/thagore-windows-*.tar.gz
             artifacts/**/thagore-setup-windows-*.exe
             artifacts/**/release-stage-trace-*.log
 

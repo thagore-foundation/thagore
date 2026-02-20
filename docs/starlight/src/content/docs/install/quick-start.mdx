@@ -104,8 +104,8 @@ chmod +x thagore
   <TabItem label="🪟 Windows">
 
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-windows-x86_64.tar.gz" -OutFile thagore.tar.gz
-tar -xzf .\thagore.tar.gz
+Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-x86_64.exe" -OutFile thagore-setup.exe
+Start-Process -FilePath .\thagore-setup.exe -Wait
 ```
 
   </TabItem>
@@ -114,7 +114,7 @@ tar -xzf .\thagore.tar.gz
 **Verify:**
 
 ```bash
-./thagore --version
+thagore --version
 ```
 
 <Aside type="tip" title="Add to PATH (optional)">
@@ -124,7 +124,7 @@ To use `thagore` from anywhere, move it to a directory on your PATH:
 # Linux / macOS
 sudo mv thagore /usr/local/bin/thagore
 
-# Windows — add the folder to your System PATH via Settings
+# Windows installer already adds Thagore to PATH
 ```
 </Aside>
 
