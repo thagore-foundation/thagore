@@ -24,7 +24,12 @@ For Windows end users, use only the UI installer (`thagore-setup-windows-*.exe`)
 ## Using Pre-built Releases
 
 1. Windows: download `thagore-setup-windows-x86_64.exe` or `thagore-setup-windows-arm64.exe` from [GitHub Releases](https://github.com/thagore-foundation/thagore/releases) and run the installer UI.
-2. Linux/macOS: download the release archive for your platform from [GitHub Releases](https://github.com/thagore-foundation/thagore/releases), extract it, and add the `bin` directory to `PATH`.
+2. Linux/macOS/portable: use installer script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode auto --yes
+```
+
 3. Verify: `thagore --version`
 
 ## Installer Scripts

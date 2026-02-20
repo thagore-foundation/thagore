@@ -94,6 +94,70 @@ detect_source_root() {
   echo ""
 }
 
+resolve_release_asset() {
+  case "$MODE" in
+    linux|ubuntu)
+      case "$ARCH" in
+        x86_64) echo "thagore-linux-x86_64.tar.gz" ;;
+        arm64) echo "thagore-linux-arm64.tar.gz" ;;
+        *)
+          echo "ERROR: unsupported Linux arch '$ARCH' for release payload." >&2
+          return 1
+          ;;
+      esac
+      ;;
+    macos)
+      case "$ARCH" in
+        arm64) echo "thagore-macos-arm64.tar.gz" ;;
+        *)
+          echo "ERROR: unsupported macOS arch '$ARCH' for release payload." >&2
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
+}
+
+download_release_payload() {
+  local outdir="$1"
+  local asset
+  asset="$(resolve_release_asset)"
+  if [[ -z "$asset" ]]; then
+    echo ""
+    return
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required to download Thagore release payload." >&2
+    exit 1
+  fi
+  if ! command -v tar >/dev/null 2>&1; then
+    echo "ERROR: tar is required to extract Thagore release payload." >&2
+    exit 1
+  fi
+  local archive="$outdir/$asset"
+  local extract_root="$outdir/payload"
+  mkdir -p "$extract_root"
+  local url="https://github.com/thagore-foundation/thagore/releases/latest/download/$asset"
+  echo "[thagore-installer] Downloading compiler payload: $url"
+  curl -fsSL "$url" -o "$archive"
+  tar -xzf "$archive" -C "$extract_root"
+  if [[ -d "$extract_root/bin" && -d "$extract_root/lib/std" ]]; then
+    echo "$extract_root"
+    return
+  fi
+  local nested
+  nested="$(find "$extract_root" -maxdepth 4 -type d -name bin | head -n 1 || true)"
+  if [[ -n "$nested" && -d "$(dirname "$nested")/lib/std" ]]; then
+    echo "$(dirname "$nested")"
+    return
+  fi
+  echo "ERROR: downloaded payload has invalid structure (missing bin and lib/std)." >&2
+  exit 1
+}
+
 append_path_rc() {
   local entry="$1"
   local rc_file="$2"
@@ -259,10 +323,18 @@ install_payload_with_prefix() {
   fi
 
   local source_root
+  local cleanup_source_root=""
   source_root="$(detect_source_root)"
   if [[ -z "$source_root" ]]; then
-    echo "[thagore-installer] No package payload near installer script; LLVM setup finished."
-    return
+    local tmp_payload
+    tmp_payload="$(mktemp -d)"
+    source_root="$(download_release_payload "$tmp_payload")"
+    cleanup_source_root="$tmp_payload"
+    if [[ -z "$source_root" ]]; then
+      echo "ERROR: no local payload found and no downloadable payload for mode '$MODE'." >&2
+      echo "HINT: pass --mode linux|ubuntu|macos, or set THAGORE_ROOT to a local payload root." >&2
+      exit 1
+    fi
   fi
 
   mkdir -p "$payload_prefix"
@@ -288,6 +360,10 @@ Binary: $link_dir/thagore
 Prefix: $payload_prefix
 Stdlib: $payload_prefix/lib/std
 EOF
+
+  if [[ -n "$cleanup_source_root" ]]; then
+    rm -rf "$cleanup_source_root"
+  fi
 }
 
 install_payload_linux() {
