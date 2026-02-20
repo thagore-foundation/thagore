@@ -25,8 +25,28 @@ func _print_help() -> void:
     print("  " + cli + " install toolchain [--yes]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
+func _configure_default_helper_bin() -> void:
+    if (strlen(_trim(env.get_var("THAG_HELPER_BIN"))) > 0):
+        return
+    let exe_path = _normalize_path(_trim(env.program_name()))
+    if (strlen(exe_path) == 0):
+        return
+    let exe_dir = _dir_name(exe_path)
+    let stage1_name = "stage1"
+    if (_update_detect_os() == "windows"):
+        stage1_name = "stage1.exe"
+    let direct = _normalize_path(exe_dir + "/" + stage1_name)
+    if (fs.exists(direct) == 1):
+        env.set_var("THAG_HELPER_BIN", direct)
+        return
+    let parent = _dir_name(exe_dir)
+    let under_bin = _normalize_path(parent + "/bin/" + stage1_name)
+    if (fs.exists(under_bin) == 1):
+        env.set_var("THAG_HELPER_BIN", under_bin)
+
 func main() -> i32:
     let argc = env.count()
+    _configure_default_helper_bin()
     if (argc <= 1):
         _print_help()
         return 0
