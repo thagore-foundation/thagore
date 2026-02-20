@@ -142,11 +142,19 @@ func check_new_syntax_headers(source: String) -> i32:
                 print("Semantic error: match header must end with ':'.")
                 fail = 1
         if (_starts_with(line, "for ") == 1):
+            if (_find_char(line, ":") < 0):
+                if (_contains(line, " in ") == 1):
+                    print("Semantic error [E_SYNTAX_FOR_HEADER] line " + _to_string_i32(i + 1) + ": range loop header must end with ':' (expected `for i in a..b:`).")
+                    fail = 1
             if (_find_char(line, ":") >= 0):
                 if (ph.is_range_loop_header(line) == 0):
                     if (_contains(line, " in ") == 1):
                         print("Semantic error: range loop must use 'for i in a..b:'.")
                         fail = 1
+        if (_contains(line, "= for ") == 1):
+            if ((_contains(line, " in ") == 1) and (_contains(line, "..") == 1)):
+                print("Semantic error [E_SYNTAX_FOR_HEADER] line " + _to_string_i32(i + 1) + ": `for ... in ...` is a statement header, not an expression.")
+                fail = 1
         if (_is_if_header_candidate(line) == 1):
             if (ph.is_if_stmt_header(line) == 0):
                 print("Semantic error [E_SYNTAX_IF_HEADER] line " + _to_string_i32(i + 1) + ": if header must be `if (condition):`.")
