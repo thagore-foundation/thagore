@@ -166,6 +166,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export THAGORE_ROOT="$RUNNER_TEMP"
           bash scripts/install/install.sh --mode linux --skip-llvm --yes --prefix "$RUNNER_TEMP/thagore-user"
           "$HOME/.local/bin/thagore" --version
           "$HOME/.local/bin/thagore" --help
@@ -230,7 +231,11 @@ jobs:
               if ([string]::IsNullOrWhiteSpace($line)) { continue }
               $parts = $line -split '\s+', 2
               if ($parts.Count -lt 2) { continue }
-              if ($parts[1].Trim() -eq $asset) {
+              $entryName = $parts[1].Trim()
+              if ($entryName.StartsWith("*")) {
+                  $entryName = $entryName.Substring(1)
+              }
+              if ($entryName -eq $asset) {
                   $expected = $parts[0].Trim()
                   break
               }
