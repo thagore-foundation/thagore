@@ -65,6 +65,8 @@ jobs:
 
       - name: Lint workflows with actionlint
         uses: devops-actions/actionlint@v0.1.10
+        with:
+          shellcheck_opts: -S error
 
       - name: Parse release workflows as YAML
         shell: bash
