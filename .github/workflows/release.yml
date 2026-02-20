@@ -523,48 +523,6 @@ jobs:
               "$@" 2>&1 || true
             fi
           }
-          # Prefer the checked-in self-host snapshot IR as release compiler source of truth.
-          # This avoids seed compiler drift that can silently emit stub binaries.
-          prepare_snapshot_ir() {
-            local out_ir="$1"
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            "$PY" -c "from pathlib import Path; import re; src=Path('src/thagore.ll').read_text(encoding='utf-8'); src=re.sub(r'\\bicmp\\s+samesign\\s+', 'icmp ', src); src=re.sub(r'\\brange\\([^)]*\\)\\s+', '', src); src=re.sub(r'\\bcaptures\\([^)]*\\)\\s*', '', src); Path('$out_ir').write_text(src, encoding='utf-8')"
-          }
-          link_from_snapshot_ir() {
-            local out="$1"
-            local snapshot_ir="_snapshot_thagore.ll"
-            prepare_snapshot_ir "$snapshot_ir"
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/runtime.cc" ]]; then
-                WIN_RT_ARGS=(-x c++ -std=c++17 _s1/runtime.cc -o "$out" -Wno-override-module)
-                if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-                  WIN_RT_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_RT_ARGS[@]}")
-                fi
-                echo "[CMD] clang ${WIN_RT_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                run_with_guard_timeout clang "${WIN_RT_ARGS[@]}"
-                WIN_HELPER_ARGS=("$snapshot_ir" thag_runtime.lib -o "_s1/thagore-helper.exe" -Wno-override-module)
-                if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-                  WIN_HELPER_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_HELPER_ARGS[@]}")
-                fi
-                echo "[CMD] clang ${WIN_HELPER_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                run_with_guard_timeout clang "${WIN_HELPER_ARGS[@]}"
-              else
-                WIN_LINK_ARGS=("$snapshot_ir" thag_runtime.lib -o "$out" -Wno-override-module)
-                if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-                  WIN_LINK_ARGS=(--target=aarch64-pc-windows-msvc "${WIN_LINK_ARGS[@]}")
-                fi
-                echo "[CMD] clang ${WIN_LINK_ARGS[*]}" | tee -a "$STAGE_TRACE_FILE"
-                run_with_guard_timeout clang "${WIN_LINK_ARGS[@]}"
-              fi
-            else
-              echo "[CMD] clang $snapshot_ir libthag_runtime.a -o $out -Wno-override-module" | tee -a "$STAGE_TRACE_FILE"
-              run_with_guard_timeout clang "$snapshot_ir" libthag_runtime.a -o "$out" -Wno-override-module
-            fi
-          }
           cli_sanity_ok() {
             local bin="$1"
             local ver=""
@@ -597,49 +555,6 @@ jobs:
             echo "[SANITY] $bin accepted." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
-          USE_SNAPSHOT_STAGE2=1
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            # On GitHub hosted ARM runners, clang-linking large snapshot IR is memory-fragile.
-            # Prefer native Stage1 -> Stage2 source bootstrap on this lane.
-            USE_SNAPSHOT_STAGE2=0
-          fi
-          if [[ "$USE_SNAPSHOT_STAGE2" -eq 1 ]]; then
-            if link_from_snapshot_ir "${{ matrix.stage2_bin }}"; then
-              STAGE2_BIN="${{ matrix.stage2_bin }}"
-              if [[ "$STRICT_WINDOWS" -eq 1 && -f "_s1/thagore-helper.exe" ]]; then
-                export THAG_HELPER_BIN="$(pwd)/_s1/thagore-helper.exe"
-                echo "[INFO] strict helper configured: $THAG_HELPER_BIN" | tee -a "$STAGE_TRACE_FILE"
-              fi
-              if cli_sanity_ok "$STAGE2_BIN"; then
-                STAGE2_REBUILD_BIN="${{ matrix.stage2_bin }}"
-                build_examples_ok=1
-                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/hello.tg -o ${{ matrix.hello_bin }}" | tee -a "$STAGE_TRACE_FILE"
-                if ! "./$STAGE2_REBUILD_BIN" build examples/hello.tg -o "${{ matrix.hello_bin }}"; then
-                  build_examples_ok=0
-                fi
-                echo "[CMD] ./$STAGE2_REBUILD_BIN build examples/fib.tg -o ${{ matrix.fib_bin }}" | tee -a "$STAGE_TRACE_FILE"
-                if ! "./$STAGE2_REBUILD_BIN" build examples/fib.tg -o "${{ matrix.fib_bin }}"; then
-                  build_examples_ok=0
-                fi
-                if [[ "$build_examples_ok" -eq 0 ]]; then
-                  echo "CRITICAL: snapshot compiler failed to build smoke examples." | tee -a "$STAGE_TRACE_FILE"
-                  exit 1
-                fi
-                HELLO_BIN="${{ matrix.hello_bin }}"
-                FIB_BIN="${{ matrix.fib_bin }}"
-                test -f "$HELLO_BIN"
-                test -f "$FIB_BIN"
-                echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
-                echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-                echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
-                echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-                exit 0
-              else
-                echo "CRITICAL: snapshot-linked stage2 failed CLI sanity." | tee -a "$STAGE_TRACE_FILE"
-                exit 1
-              fi
-            fi
-          fi
           BUILD_TIMEOUT_SECS=300
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             BUILD_TIMEOUT_SECS=120

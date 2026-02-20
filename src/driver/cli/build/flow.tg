@@ -142,7 +142,8 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         return 1
     let object_path = out_path + ".o"
     if (emitter.emit_object_core(core, module_name, clang_bin, object_path) != 0):
-        print("ERROR: object emission failed.")
+        print("CRITICAL: native object backend emission failed.")
+        print("CRITICAL: IR text executable lane is disabled; no fallback path is available.")
         return 1
     if (_link_exe(object_path, out_path, clang_bin, prefer_cxx) != 0):
         print("ERROR: link failed.")

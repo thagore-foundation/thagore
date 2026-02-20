@@ -71,9 +71,9 @@ jobs:
             echo "$FALLBACK_HITS"
             exit 1
           fi
-          RELEASE_FALLBACK_HITS="$(grep -REn "RELEASE_OPTIONAL_SKIP|build_runtime_fallback|build_stage1_blob_native|fallback smoke binaries|non-strict lane|continue with bootstrap chain" .github/workflows/release.yml || true)"
+          RELEASE_FALLBACK_HITS="$(grep -REn "RELEASE_OPTIONAL_SKIP|build_runtime_fallback|build_stage1_blob_native|fallback smoke binaries|non-strict lane|continue with bootstrap chain|USE_SNAPSHOT_STAGE2|prepare_snapshot_ir|link_from_snapshot_ir|_snapshot_thagore\\.ll|snapshot-linked stage2|snapshot compiler failed to build smoke examples" .github/workflows/release.yml || true)"
           if [[ -n "$RELEASE_FALLBACK_HITS" ]]; then
-            echo "CRITICAL: release fallback markers are forbidden."
+            echo "CRITICAL: release fallback markers are forbidden (including snapshot IR executable lane)."
             echo "$RELEASE_FALLBACK_HITS"
             exit 1
           fi
