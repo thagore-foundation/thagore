@@ -291,6 +291,9 @@ THG_LLVM_BRIDGE_PTR(LLVMFunctionType, (void *ret_ty, void *param_types, int para
 
 THG_LLVM_BRIDGE_PTR(LLVMAddFunction, (void *module_ref, const char *name, void *fn_ty), (module_ref, name, fn_ty))
 THG_LLVM_BRIDGE_PTR(LLVMGetNamedFunction, (void *module_ref, const char *name), (module_ref, name))
+THG_LLVM_BRIDGE_PTR(LLVMGetParam, (void *fn_value, int index), (fn_value, index))
+THG_LLVM_BRIDGE_I32(LLVMCountParams, (void *fn_value), (fn_value))
+THG_LLVM_BRIDGE_VOID(LLVMGetParamTypes, (void *fn_ty, void *dest), (fn_ty, dest))
 THG_LLVM_BRIDGE_PTR(LLVMAppendBasicBlockInContext, (void *ctx, void *fn_value, const char *name), (ctx, fn_value, name))
 THG_LLVM_BRIDGE_PTR(LLVMCreateBuilderInContext, (void *ctx), (ctx))
 THG_LLVM_BRIDGE_VOID(LLVMDisposeBuilder, (void *builder), (builder))
@@ -343,6 +346,204 @@ THG_LLVM_BRIDGE_I32(LLVMLinkModules2, (void *dest, void *src), (dest, src))
 THG_LLVM_BRIDGE_PTR(LLVMCreateMemoryBufferWithMemoryRangeCopy, (const char *data, int data_len, const char *buffer_name), (data, data_len, buffer_name))
 THG_LLVM_BRIDGE_VOID(LLVMDisposeMemoryBuffer, (void *mem_buf), (mem_buf))
 
+extern "C" int __thg_llvm_emit_object_from_module(void *module_ref, const char *object_path) {
+  if (module_ref == nullptr || object_path == nullptr) {
+    return 1;
+  }
+
+  if (LLVMInitializeNativeTarget() != 0 || LLVMInitializeNativeAsmPrinter() != 0 || LLVMInitializeNativeAsmParser() != 0) {
+    return 2;
+  }
+
+  auto *triple_ptr = reinterpret_cast<const char *>(LLVMGetDefaultTargetTriple());
+  if (triple_ptr == nullptr) {
+    return 3;
+  }
+  LLVMSetTarget(module_ref, triple_ptr);
+
+  void *target = nullptr;
+  void *target_err = nullptr;
+  if (LLVMGetTargetFromTriple(triple_ptr, &target, &target_err) != 0 || target == nullptr) {
+    if (target_err != nullptr) {
+      LLVMDisposeMessage(target_err);
+    }
+    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+    return 4;
+  }
+
+  void *machine = LLVMCreateTargetMachine(target, triple_ptr, "", "", 2, 0, 0);
+  if (machine == nullptr) {
+    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+    return 5;
+  }
+
+  void *emit_err = nullptr;
+  const int emit_code = LLVMTargetMachineEmitToFile(machine, module_ref, object_path, 1, &emit_err);
+  if (emit_err != nullptr) {
+    LLVMDisposeMessage(emit_err);
+  }
+  LLVMDisposeTargetMachine(machine);
+  LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+  return emit_code == 0 ? 0 : 6;
+}
+
+extern "C" void *__thg_llvm_builder_context_create() {
+  return LLVMContextCreate();
+}
+
+extern "C" void __thg_llvm_builder_context_dispose(void *ctx) {
+  LLVMContextDispose(ctx);
+}
+
+extern "C" void *__thg_llvm_builder_module_create(void *ctx, const char *name) {
+  if (ctx == nullptr) {
+    return nullptr;
+  }
+  const char *module_name = (name != nullptr && name[0] != '\0') ? name : "thagore_module";
+  return LLVMModuleCreateWithNameInContext(module_name, ctx);
+}
+
+extern "C" void __thg_llvm_builder_module_dispose(void *module_ref) {
+  LLVMDisposeModule(module_ref);
+}
+
+extern "C" void *__thg_llvm_builder_type_i32(void *ctx) {
+  return LLVMInt32TypeInContext(ctx);
+}
+
+extern "C" void *__thg_llvm_builder_type_void(void *ctx) {
+  return LLVMVoidTypeInContext(ctx);
+}
+
+extern "C" void *__thg_llvm_builder_function_type(void *ret_ty, void *param_types, int param_count, int is_var_arg) {
+  return LLVMFunctionType(ret_ty, param_types, param_count, is_var_arg);
+}
+
+extern "C" void *__thg_llvm_builder_function_add(void *module_ref, const char *name, void *fn_ty) {
+  if (module_ref == nullptr || fn_ty == nullptr) {
+    return nullptr;
+  }
+  const char *fn_name = (name != nullptr && name[0] != '\0') ? name : "main";
+  return LLVMAddFunction(module_ref, fn_name, fn_ty);
+}
+
+extern "C" void *__thg_llvm_builder_function_main_i32(void *module_ref, void *ctx, const char *name) {
+  if (module_ref == nullptr || ctx == nullptr) {
+    return nullptr;
+  }
+  void *i32_ty = LLVMInt32TypeInContext(ctx);
+  void *fn_ty = LLVMFunctionType(i32_ty, nullptr, 0, 0);
+  const char *fn_name = (name != nullptr && name[0] != '\0') ? name : "main";
+  return LLVMAddFunction(module_ref, fn_name, fn_ty);
+}
+
+extern "C" void *__thg_llvm_builder_function_i32_one_param(void *module_ref, void *ctx, const char *name) {
+  if (module_ref == nullptr || ctx == nullptr) {
+    return nullptr;
+  }
+  void *i32_ty = LLVMInt32TypeInContext(ctx);
+  void *params[1] {i32_ty};
+  void *fn_ty = LLVMFunctionType(i32_ty, params, 1, 0);
+  const char *fn_name = (name != nullptr && name[0] != '\0') ? name : "f";
+  return LLVMAddFunction(module_ref, fn_name, fn_ty);
+}
+
+extern "C" void *__thg_llvm_builder_function_get_param(void *fn_value, int index) {
+  return LLVMGetParam(fn_value, index);
+}
+
+extern "C" void *__thg_llvm_builder_block_append(void *ctx, void *fn_value, const char *name) {
+  if (ctx == nullptr || fn_value == nullptr) {
+    return nullptr;
+  }
+  const char *block_name = (name != nullptr && name[0] != '\0') ? name : "entry";
+  return LLVMAppendBasicBlockInContext(ctx, fn_value, block_name);
+}
+
+extern "C" void *__thg_llvm_builder_create(void *ctx) {
+  return LLVMCreateBuilderInContext(ctx);
+}
+
+extern "C" void __thg_llvm_builder_dispose(void *builder) {
+  LLVMDisposeBuilder(builder);
+}
+
+extern "C" void __thg_llvm_builder_position_at_end(void *builder, void *block) {
+  LLVMPositionBuilderAtEnd(builder, block);
+}
+
+extern "C" void *__thg_llvm_builder_const_i32(void *ctx, int value) {
+  return LLVMConstInt(LLVMInt32TypeInContext(ctx), value, 1);
+}
+
+extern "C" void *__thg_llvm_builder_build_alloca(void *builder, void *ty, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "tmp";
+  return LLVMBuildAlloca(builder, ty, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_store(void *builder, void *value, void *ptr_value) {
+  return LLVMBuildStore(builder, value, ptr_value);
+}
+
+extern "C" void *__thg_llvm_builder_build_load(void *builder, void *ty, void *ptr_value, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "loadtmp";
+  return LLVMBuildLoad2(builder, ty, ptr_value, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_add(void *builder, void *lhs, void *rhs, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "addtmp";
+  return LLVMBuildAdd(builder, lhs, rhs, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_sub(void *builder, void *lhs, void *rhs, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "subtmp";
+  return LLVMBuildSub(builder, lhs, rhs, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_mul(void *builder, void *lhs, void *rhs, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "multmp";
+  return LLVMBuildMul(builder, lhs, rhs, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_div(void *builder, void *lhs, void *rhs, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "divtmp";
+  return LLVMBuildSDiv(builder, lhs, rhs, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_icmp(void *builder, int pred, void *lhs, void *rhs, const char *name) {
+  const char *inst_name = (name != nullptr && name[0] != '\0') ? name : "cmptmp";
+  return LLVMBuildICmp(builder, pred, lhs, rhs, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_br(void *builder, void *dest) {
+  return LLVMBuildBr(builder, dest);
+}
+
+extern "C" void *__thg_llvm_builder_build_cond_br(void *builder, void *cond, void *then_block, void *else_block) {
+  return LLVMBuildCondBr(builder, cond, then_block, else_block);
+}
+
+extern "C" void *__thg_llvm_builder_build_call(void *builder, void *fn_ty, void *fn_value, void *args_data, int arg_count, const char *name) {
+  const char *inst_name = (name != nullptr) ? name : "";
+  return LLVMBuildCall2(builder, fn_ty, fn_value, args_data, arg_count, inst_name);
+}
+
+extern "C" void *__thg_llvm_builder_build_ret(void *builder, void *value) {
+  return LLVMBuildRet(builder, value);
+}
+
+extern "C" void *__thg_llvm_builder_build_ret_void(void *builder) {
+  return LLVMBuildRetVoid(builder);
+}
+
+extern "C" int __thg_llvm_builder_verify_module(void *module_ref, int action, void *out_message) {
+  return LLVMVerifyModule(module_ref, action, out_message);
+}
+
+extern "C" int __thg_llvm_builder_emit_object(void *module_ref, const char *object_path) {
+  return __thg_llvm_emit_object_from_module(module_ref, object_path);
+}
+
 extern "C" int __thg_llvm_emit_object_from_ir(const char *ir_text, const char *module_name, const char *object_path) {
   if (ir_text == nullptr || object_path == nullptr) {
     return 1;
@@ -376,57 +577,11 @@ extern "C" int __thg_llvm_emit_object_from_ir(const char *ir_text, const char *m
     return 5;
   }
 
-  if (LLVMInitializeNativeTarget() != 0 || LLVMInitializeNativeAsmPrinter() != 0 || LLVMInitializeNativeAsmParser() != 0) {
-    LLVMDisposeModule(module_ref);
-    LLVMDisposeMemoryBuffer(mem_buf);
-    LLVMContextDispose(ctx);
-    return 6;
-  }
-
-  auto *triple_ptr = reinterpret_cast<const char *>(LLVMGetDefaultTargetTriple());
-  if (triple_ptr == nullptr) {
-    LLVMDisposeModule(module_ref);
-    LLVMDisposeMemoryBuffer(mem_buf);
-    LLVMContextDispose(ctx);
-    return 7;
-  }
-
-  LLVMSetTarget(module_ref, triple_ptr);
-
-  void *target = nullptr;
-  void *target_err = nullptr;
-  if (LLVMGetTargetFromTriple(triple_ptr, &target, &target_err) != 0 || target == nullptr) {
-    if (target_err != nullptr) {
-      LLVMDisposeMessage(target_err);
-    }
-    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
-    LLVMDisposeModule(module_ref);
-    LLVMDisposeMemoryBuffer(mem_buf);
-    LLVMContextDispose(ctx);
-    return 8;
-  }
-
-  void *machine = LLVMCreateTargetMachine(target, triple_ptr, "", "", 2, 0, 0);
-  if (machine == nullptr) {
-    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
-    LLVMDisposeModule(module_ref);
-    LLVMDisposeMemoryBuffer(mem_buf);
-    LLVMContextDispose(ctx);
-    return 9;
-  }
-
-  void *emit_err = nullptr;
-  const int emit_code = LLVMTargetMachineEmitToFile(machine, module_ref, object_path, 1, &emit_err);
-  if (emit_err != nullptr) {
-    LLVMDisposeMessage(emit_err);
-  }
-
-  LLVMDisposeTargetMachine(machine);
-  LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+  const int emit_code = __thg_llvm_emit_object_from_module(module_ref, object_path);
   LLVMDisposeModule(module_ref);
   LLVMDisposeMemoryBuffer(mem_buf);
   LLVMContextDispose(ctx);
-  return emit_code == 0 ? 0 : 10;
+  return emit_code == 0 ? 0 : 6;
 }
 
 #undef THG_LLVM_BRIDGE_PTR
