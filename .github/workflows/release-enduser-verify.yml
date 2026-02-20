@@ -11,6 +11,7 @@ on:
         default: ""
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -18,9 +19,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discord-notify-init:
+    name: discord-notify-init
+    runs-on: ubuntu-latest
+    outputs:
+      message_id: ${{ steps.init.outputs.message_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Init Discord message
+        id: init
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: init
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  discord-notify-live:
+    name: discord-notify-live
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: discord-notify-init
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Watch Discord message realtime
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: watch
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          poll_seconds: "20"
+          max_minutes: "120"
+
   syntax-gate:
     name: syntax-gate
     runs-on: ubuntu-latest
+    needs: [discord-notify-init]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,10 +87,20 @@ jobs:
           set -euo pipefail
           bash -n scripts/install/install.sh
 
+      - name: Discord update - Syntax and workflow gate
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: End-user verify syntax gate
+
   linux-enduser-smoke:
     name: linux-enduser-smoke
     runs-on: ubuntu-latest
-    needs: [syntax-gate]
+    needs: [discord-notify-init, syntax-gate]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,6 +121,16 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Release tag: $TAG"
 
+      - name: Discord update - Resolve Linux release tag
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Linux smoke resolved release tag
+
       - name: Download and verify Linux release payload
         shell: bash
         run: |
@@ -92,6 +150,16 @@ jobs:
           [[ -d "$RUNNER_TEMP/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
           [[ -f "$RUNNER_TEMP/lib/runtime.a" || -f "$RUNNER_TEMP/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
 
+      - name: Discord update - Verify Linux payload checksum and layout
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Linux payload checksum and layout verified
+
       - name: Smoke test install.sh and CLI
         shell: bash
         run: |
@@ -100,10 +168,20 @@ jobs:
           "$HOME/.local/bin/thagore" --version
           "$HOME/.local/bin/thagore" --help
 
+      - name: Discord update - Linux install and CLI smoke
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Linux install and CLI smoke complete
+
   windows-enduser-smoke:
     name: windows-enduser-smoke
     runs-on: windows-latest
-    needs: [syntax-gate]
+    needs: [discord-notify-init, syntax-gate]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,6 +201,16 @@ jobs:
           }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Release tag: $tag"
+
+      - name: Discord update - Resolve Windows release tag
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Windows smoke resolved release tag
 
       - name: Download and verify Windows release payload
         shell: pwsh
@@ -160,6 +248,16 @@ jobs:
           if (-not (Test-Path (Join-Path $extract "lib\\std"))) { throw "Missing lib\\std" }
           if (-not (Test-Path (Join-Path $extract "lib\\runtime.lib"))) { throw "Missing lib\\runtime.lib" }
 
+      - name: Discord update - Verify Windows payload checksum and layout
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Windows payload checksum and layout verified
+
       - name: Smoke test updater and CLI
         shell: pwsh
         run: |
@@ -170,3 +268,30 @@ jobs:
           & (Join-Path $env:THAGORE_BIN "thagore.exe") --help
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 check
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 apply -yes -dryRun
+
+      - name: Discord update - Windows updater and CLI smoke
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: Windows updater and CLI smoke complete
+
+  discord-notify-finalize:
+    name: discord-notify-finalize
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [discord-notify-init, discord-notify-live, syntax-gate, linux-enduser-smoke, windows-enduser-smoke]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Finalize Discord message
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: finalize
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
