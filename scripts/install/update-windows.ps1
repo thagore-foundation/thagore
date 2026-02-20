@@ -227,6 +227,13 @@ if ($mode -eq "apply") {
     }
     $newInstallerDir = Join-Path $extractDir "installer"
     $newStdDir = Join-Path $extractDir "lib\std"
+    $newRuntimeLib = Join-Path $extractDir "lib\runtime.lib"
+    if (-not (Test-Path $newStdDir)) {
+        throw "Extracted asset does not contain lib\\std"
+    }
+    if (-not (Test-Path $newRuntimeLib)) {
+        throw "Extracted asset does not contain lib\\runtime.lib"
+    }
 
     Copy-WithRetry -Source $engine -Target $backupEngine
 

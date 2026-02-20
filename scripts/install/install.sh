@@ -171,12 +171,20 @@ download_release_payload() {
   fi
   tar -xzf "$archive" -C "$extract_root"
   if [[ -d "$extract_root/bin" && -d "$extract_root/lib/std" ]]; then
+    if [[ ! -f "$extract_root/lib/runtime.a" && ! -f "$extract_root/lib/runtime.lib" ]]; then
+      echo "ERROR: downloaded payload missing runtime library (expected lib/runtime.a or lib/runtime.lib)." >&2
+      exit 1
+    fi
     echo "$extract_root"
     return
   fi
   local nested
   nested="$(find "$extract_root" -maxdepth 4 -type d -name bin | head -n 1 || true)"
   if [[ -n "$nested" && -d "$(dirname "$nested")/lib/std" ]]; then
+    if [[ ! -f "$(dirname "$nested")/lib/runtime.a" && ! -f "$(dirname "$nested")/lib/runtime.lib" ]]; then
+      echo "ERROR: downloaded payload missing runtime library (expected lib/runtime.a or lib/runtime.lib)." >&2
+      exit 1
+    fi
     echo "$(dirname "$nested")"
     return
   fi
