@@ -6,7 +6,7 @@ on:
       seed_tag:
         description: "Seed release tag to upload runtime assets"
         required: false
-        default: "v0.3.25-stage1-seed"
+        default: "v0.3.22-stage1-seed"
 
 permissions:
   contents: write
@@ -161,7 +161,7 @@ jobs:
       - name: Publish runtime assets to seed tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SEED_TAG: ${{ github.event.inputs.seed_tag || 'v0.3.25-stage1-seed' }}
+          SEED_TAG: ${{ github.event.inputs.seed_tag || 'v0.3.22-stage1-seed' }}
         shell: bash
         run: |
           set -euo pipefail
