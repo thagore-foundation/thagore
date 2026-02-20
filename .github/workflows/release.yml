@@ -1046,7 +1046,7 @@ jobs:
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            cp "${{ matrix.stage1_bin }}" "dist/bin/stage1.exe"
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1.exe"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           fi
