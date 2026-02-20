@@ -332,7 +332,6 @@ jobs:
           mkdir -p bootstrap
           [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
           gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" \
-            --pattern "thagore-stage1*" \
             --pattern "thagore-runtime*" \
             --pattern "seed-promotion-manifest-*" \
             -D bootstrap || true
@@ -361,9 +360,7 @@ jobs:
           download_stage1_asset() {
             local pattern="$1"
             local tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
-            if [[ -f "bootstrap/$pattern" ]]; then
-              return 0
-            fi
+            rm -f "bootstrap/$pattern" || true
             gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
             if [[ ! -f "bootstrap/$pattern" ]]; then
               curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
