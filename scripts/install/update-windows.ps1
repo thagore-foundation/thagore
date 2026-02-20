@@ -120,6 +120,18 @@ function Copy-And-VerifyHash {
     }
 }
 
+function Assert-CliOutputHealthy([string]$ExePath) {
+    $versionOut = (& $ExePath --version 2>&1 | Out-String).Trim()
+    $helpOut = (& $ExePath --help 2>&1 | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($versionOut) -or [string]::IsNullOrWhiteSpace($helpOut)) {
+        throw "CLI health check failed: empty --version/--help output."
+    }
+    $merged = "$versionOut`n$helpOut"
+    if ($merged -match "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe") {
+        throw "CLI health check failed: legacy/wrapper markers detected."
+    }
+}
+
 function Ensure-AdminForInstallPath([string]$targetPath, [string]$mode) {
     if ($mode -notin @("apply", "rollback")) { return }
     if (Test-IsAdmin) { return }
@@ -254,6 +266,7 @@ if ($mode -eq "apply") {
 
     try {
         Copy-And-VerifyHash -Source $newEngine -Target $engine -ExpectedHash $newEngineHash -Label "thagore.exe"
+        Assert-CliOutputHealthy -ExePath $engine
     } catch {
         $backupEngineHash = Get-FileSha256 -Path $backupEngine
         Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
@@ -295,6 +308,7 @@ if ($mode -eq "rollback") {
     }
     $backupEngineHash = Get-FileSha256 -Path $backupEngine
     Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
+    Assert-CliOutputHealthy -ExePath $engine
     if (Test-Path $legacyEngine) {
         Remove-Item -Force $legacyEngine
     }

@@ -77,7 +77,7 @@ jobs:
       available_tags: ${{ steps.probe.outputs.available_tags }}
       release_matrix: ${{ steps.probe.outputs.release_matrix }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
     steps:
       - name: Probe stage1/runtime seed assets
         id: probe
@@ -224,7 +224,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.seed-asset-probe.outputs.release_matrix) }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
       - name: Checkout
@@ -600,8 +600,12 @@ jobs:
               return 1
             fi
             if [[ -z "$ver" && -z "$help" && -z "$update_out" ]]; then
-              echo "[SANITY] $bin accepted (bootstrap-tolerant): empty CLI output but no legacy/incompatible markers." | tee -a "$STAGE_TRACE_FILE"
-              return 0
+              echo "[SANITY] $bin rejected: empty output for --version/--help/update." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            if [[ -z "$ver" || -z "$help" ]]; then
+              echo "[SANITY] $bin rejected: missing required --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if [[ -n "$update_out" ]]; then
               echo "[SANITY] $bin accepted via native update command probe." | tee -a "$STAGE_TRACE_FILE"
@@ -702,9 +706,15 @@ jobs:
             exit 1
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
-          if [[ -z "${STAGE2_BIN:-}" && -f "${{ matrix.stage1_bin }}" ]]; then
-            STAGE2_BIN="${{ matrix.stage1_bin }}"
-            echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          if [[ -z "${STAGE2_BIN:-}" ]]; then
+            if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
+              echo "CRITICAL: official release cannot fallback to stage1/in-place compiler when stage2 artifact is missing." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+            if [[ -f "${{ matrix.stage1_bin }}" ]]; then
+              STAGE2_BIN="${{ matrix.stage1_bin }}"
+              echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
           fi
           test -f "$STAGE2_BIN"
           if [[ ! -s "$STAGE2_BIN" ]]; then
@@ -1166,7 +1176,7 @@ jobs:
   public-release:
     name: public-release
     runs-on: ubuntu-latest
-    needs: [discord-notify-init, official-tag-gate]
+    needs: [discord-notify-init, release, official-tag-gate]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
     steps:
       - name: Checkout

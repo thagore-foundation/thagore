@@ -239,6 +239,28 @@ ensure_local_llvm_layout() {
   ensure_path_persisted "$llvm_bin"
 }
 
+validate_cli_install() {
+  local cli_bin="$1"
+  if [[ ! -x "$cli_bin" ]]; then
+    echo "ERROR: CLI binary is not executable: $cli_bin" >&2
+    exit 1
+  fi
+  local version_out
+  local help_out
+  version_out="$("$cli_bin" --version 2>&1 || true)"
+  help_out="$("$cli_bin" --help 2>&1 || true)"
+  if [[ -z "${version_out//[[:space:]]/}" || -z "${help_out//[[:space:]]/}" ]]; then
+    echo "ERROR: installed CLI returned empty output for --version/--help." >&2
+    exit 1
+  fi
+  local merged_out
+  merged_out="$version_out"$'\n'"$help_out"
+  if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$merged_out"; then
+    echo "ERROR: installed CLI output matches legacy/wrapper markers." >&2
+    exit 1
+  fi
+}
+
 confirm_install() {
   if [[ "$ASSUME_YES" -eq 1 ]]; then
     return
@@ -382,6 +404,7 @@ install_payload_with_prefix() {
   local link_dir="$HOME/.local/bin"
   mkdir -p "$link_dir"
   ln -sf "$payload_prefix/bin/thagore" "$link_dir/thagore"
+  validate_cli_install "$link_dir/thagore"
 
   ensure_local_llvm_layout "$payload_prefix"
   if [[ "$MODE" == "portable" && -d "$LLVM_PREFIX/bin" ]]; then
