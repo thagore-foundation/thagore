@@ -31,6 +31,9 @@ func _configure_default_helper_bin() -> void:
     let exe_path = _normalize_path(_trim(env.program_name()))
     if (strlen(exe_path) == 0):
         return
+    if (fs.exists(exe_path) == 1):
+        env.set_var("THAG_HELPER_BIN", exe_path)
+        return
     let exe_dir = _dir_name(exe_path)
     let stage1_name = "stage1"
     if (_update_detect_os() == "windows"):
@@ -560,6 +563,10 @@ func main() -> i32:
             print("ERROR: missing input path.")
             return 1
         input_path = _trim(env.get(2))
+        if (fs.exists(input_path) == 0):
+            let restored = _replace_all(input_path, "_0_41", "")
+            if ((restored != input_path) and (fs.exists(restored) == 1)):
+                input_path = restored
         emit_only = 1
         i = 3
     else:
