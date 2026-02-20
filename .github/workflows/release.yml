@@ -1027,14 +1027,7 @@ jobs:
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            if [[ -f "bootstrap/${{ matrix.stage1_seed_name }}" ]]; then
-              cp "bootstrap/${{ matrix.stage1_seed_name }}" "dist/bin/stage1.exe"
-            elif [[ "${{ matrix.arch }}" == "x86_64" && -f "_s1/thagore-helper.exe" ]]; then
-              cp "_s1/thagore-helper.exe" "dist/bin/stage1.exe"
-            else
-              echo "CRITICAL: missing stage1 helper payload for Windows package."
-              exit 1
-            fi
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1.exe"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
           fi
