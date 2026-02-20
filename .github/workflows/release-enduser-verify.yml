@@ -329,6 +329,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $false
           $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
           $env:THAGORE_BIN = Join-Path $extract "bin"
           & (Join-Path $env:THAGORE_BIN "thagore.exe") --version
