@@ -77,7 +77,7 @@ jobs:
       available_tags: ${{ steps.probe.outputs.available_tags }}
       release_matrix: ${{ steps.probe.outputs.release_matrix }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
     steps:
       - name: Probe stage1/runtime seed assets
         id: probe
@@ -237,7 +237,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.seed-asset-probe.outputs.release_matrix) }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
+      BOOTSTRAP_STAGE1_COMPILER_TAG: "v0.3.22-stage1-seed"
       THAGORE_WINDOWS_DONOR_TAG: "v0.3.61-foundation"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
@@ -357,6 +358,18 @@ jobs:
             fi
             [[ -f "bootstrap/$pattern" ]]
           }
+          download_stage1_asset() {
+            local pattern="$1"
+            local tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
+            if [[ -f "bootstrap/$pattern" ]]; then
+              return 0
+            fi
+            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            if [[ ! -f "bootstrap/$pattern" ]]; then
+              curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+            fi
+            [[ -f "bootstrap/$pattern" ]]
+          }
           download_runtime_asset() {
             local pattern="$1"
             local dest="$2"
@@ -442,7 +455,7 @@ jobs:
           fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             for ASSET in "${STAGE1_CANDIDATES[@]}"; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
                 STAGE1_ASSET="$ASSET"
@@ -455,7 +468,7 @@ jobs:
             fi
           else
             for ASSET in "${STAGE1_CANDIDATES[@]}"; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 rm -rf bootstrap/extract_stage1 || true
                 mkdir -p bootstrap/extract_stage1
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue

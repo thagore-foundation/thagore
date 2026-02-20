@@ -19,7 +19,14 @@ WORKFLOWS = [
 def _extract_tags(text: str) -> list[str]:
     tags = re.findall(r'BOOTSTRAP_STAGE1_TAG:\s*"([^"]+)"', text)
     tags += re.findall(r"BOOTSTRAP_STAGE1_TAG:\s*([vV][0-9A-Za-z._-]+)", text)
-    tags += re.findall(r'([vV][0-9]+\.[0-9]+\.[0-9]+-stage1-seed[0-9A-Za-z._-]*)', text)
+    tags += re.findall(r'bootstrap_stage1_tag:\s*"([^"]+)"', text)
+    tags += re.findall(r"bootstrap_stage1_tag:\s*([vV][0-9A-Za-z._-]+)", text)
+    tags += re.findall(r"bootstrap_stage1_tag[^\n]*'([vV][0-9A-Za-z._-]+)'", text)
+    for m in re.finditer(r'([vV][0-9]+\.[0-9]+\.[0-9]+-stage1-seed[0-9A-Za-z._-]*)', text):
+        ctx = text[max(0, m.start() - 200) : m.start()].lower()
+        if "compiler" in ctx:
+            continue
+        tags.append(m.group(1))
     # Preserve order and remove duplicates
     seen: set[str] = set()
     uniq: list[str] = []

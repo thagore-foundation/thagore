@@ -7,11 +7,11 @@ on:
       seed_tag:
         description: "Release tag for new stage1 seed assets"
         required: true
-        default: "v0.3.22-stage1-seed"
+        default: "v0.3.25-stage1-seed"
       base_seed_tag:
         description: "Existing stage1 seed tag used for bootstrap"
         required: true
-        default: "v0.3.22-stage1-seed"
+        default: "v0.3.25-stage1-seed"
 
 permissions:
   actions: read

@@ -76,7 +76,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.22-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
+      BOOTSTRAP_STAGE1_COMPILER_TAG: "v0.3.22-stage1-seed"
       STAGE_TRACE_FILE: selfhost-stage-trace.log
     steps:
       - name: Checkout
@@ -156,6 +157,12 @@ jobs:
             [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
+          download_stage1_asset() {
+            local pattern="$1"
+            local tag="${BOOTSTRAP_STAGE1_COMPILER_TAG:-$BOOTSTRAP_STAGE1_TAG}"
+            [[ -n "$tag" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_COMPILER_TAG is required."; exit 1)
+            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+          }
           download_runtime_asset() {
             local pattern="$1"
             local dest="$2"
@@ -229,7 +236,7 @@ jobs:
             STAGE1_BIN="stage1.exe"
             STAGE1_ASSET=""
             for ASSET in thagore-stage1.exe; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "$STAGE1_BIN"
                 chmod +x "$STAGE1_BIN" || true
                 STAGE1_ASSET="$ASSET"
@@ -241,7 +248,7 @@ jobs:
             STAGE1_BIN="stage1"
             STAGE1_ASSET=""
             for ASSET in thagore-stage1-linux.tar.gz; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 rm -rf bootstrap/extract_stage1 || true
                 mkdir -p bootstrap/extract_stage1
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
@@ -258,7 +265,7 @@ jobs:
             STAGE1_BIN="stage1"
             STAGE1_ASSET=""
             for ASSET in thagore-stage1-macos.tar.gz; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 rm -rf bootstrap/extract_stage1 || true
                 mkdir -p bootstrap/extract_stage1
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
