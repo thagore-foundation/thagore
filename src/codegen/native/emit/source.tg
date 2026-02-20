@@ -167,7 +167,7 @@ func _emit_program_from_core_source(source: String, module_name: String) -> Stri
             i = i + _line_count(body) + 1
         else:
             if (_leading_spaces(raw) == 0):
-                if ((_starts_with(line, "if (") == 1) or (_starts_with(line, "while (") == 1)):
+                if ((_starts_with(line, "if (") == 1) or (_starts_with(line, "while (") == 1) or (_starts_with(line, "for ") == 1)):
                     let block = _extract_body(src, i)
                     script_body = script_body + raw
                     if (block.length() > 0):
