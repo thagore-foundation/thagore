@@ -661,6 +661,16 @@ jobs:
               if [[ -n "$got" ]]; then
                 return 0
               fi
+              if [[ "$src" == "src/thagore.tg" ]]; then
+                echo "[WARN] primary build path produced no artifact for $src; trying shorthand compile path." | tee -a "$STAGE_TRACE_FILE"
+                echo "[CMD] ./$cc $src -o $out" | tee -a "$STAGE_TRACE_FILE"
+                if run_build_cmd "$cc" "$src" -o "$out"; then
+                  got="$(resolve_local "$out" || true)"
+                  if [[ -n "$got" ]]; then
+                    return 0
+                  fi
+                fi
+              fi
               if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
                 echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                 return 0
