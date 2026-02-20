@@ -794,11 +794,11 @@ jobs:
             exit 1
           fi
 
-      - name: Guard no stage0 and legacy IR fallback markers
+      - name: Guard no legacy bootstrap and IR fallback markers
         shell: bash
         run: |
           set -euo pipefail
-          if grep -Eqi "stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP|clang -x ir|\.tmp\.ll" "$STAGE_TRACE_FILE"; then
+          if grep -Eqi "stage[[:space:]_-]*0|THAG_STAGE[[:space:]_-]*0_HELPER|ALLOW_STAGE[[:space:]_-]*0_BOOTSTRAP|clang -x ir|\.tmp\.ll" "$STAGE_TRACE_FILE"; then
             echo "CRITICAL: forbidden fallback markers detected"
             cat "$STAGE_TRACE_FILE"
             exit 1
