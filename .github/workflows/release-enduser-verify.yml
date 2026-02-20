@@ -311,6 +311,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $extract | Out-Null
           tar -xzf $asset -C $extract
           if (-not (Test-Path (Join-Path $extract "bin\\thagore.exe"))) { throw "Missing bin\\thagore.exe" }
+          if (-not (Test-Path (Join-Path $extract "bin\\stage1.exe"))) { throw "Missing bin\\stage1.exe" }
           if (-not (Test-Path (Join-Path $extract "lib\\std"))) { throw "Missing lib\\std" }
           if (-not (Test-Path (Join-Path $extract "lib\\runtime.lib"))) { throw "Missing lib\\runtime.lib" }
 
@@ -357,6 +358,25 @@ jobs:
           $testListOut = Invoke-CliText @("test", "--list", "--workspace")
           $fixDoctorOut = Invoke-CliText @("fix", "doctor", "examples/hello.tg", "--json")
           $updateCheckOut = Invoke-CliText @("update", "check")
+          $helperMain = @(
+              "import `"helperdep.tg`"",
+              "",
+              "func main() -> i32:",
+              "    return helper_value()"
+          ) -join "`n"
+          $helperDep = @(
+              "func helper_value() -> i32:",
+              "    return 7"
+          ) -join "`n"
+          Set-Content -Path "helpermain.tg" -Value $helperMain -Encoding utf8
+          Set-Content -Path "helperdep.tg" -Value $helperDep -Encoding utf8
+          & $thagore build helpermain.tg -o helpertest.exe
+          if ($LASTEXITCODE -ne 0) {
+              throw "Build import/use fixture failed with exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path "helpertest.exe")) {
+              throw "Missing helpertest.exe after import/use build"
+          }
 
           Set-Content -Path "windows-cli-version.txt" -Value $versionOut -Encoding utf8
           Set-Content -Path "windows-cli-help.txt" -Value $helpOut -Encoding utf8

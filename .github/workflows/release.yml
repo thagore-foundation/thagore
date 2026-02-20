@@ -1027,8 +1027,13 @@ jobs:
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            if [[ "${{ matrix.arch }}" == "x86_64" && -f "_s1/thagore-helper.exe" ]]; then
+            if [[ -f "bootstrap/${{ matrix.stage1_seed_name }}" ]]; then
+              cp "bootstrap/${{ matrix.stage1_seed_name }}" "dist/bin/stage1.exe"
+            elif [[ "${{ matrix.arch }}" == "x86_64" && -f "_s1/thagore-helper.exe" ]]; then
               cp "_s1/thagore-helper.exe" "dist/bin/stage1.exe"
+            else
+              echo "CRITICAL: missing stage1 helper payload for Windows package."
+              exit 1
             fi
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
@@ -1100,6 +1105,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ ! -f dist/bin/stage1.exe ]]; then
+            echo "CRITICAL: Windows release package is missing dist/bin/stage1.exe"
+            ls -la dist/bin || true
+            exit 1
+          fi
           if [[ -e dist/bin/thag.exe || -e dist/bin/thagore.cmd || -e dist/bin/thag ]]; then
             echo "CRITICAL: forbidden Windows alias/wrapper found in dist/bin"
             ls -la dist/bin
