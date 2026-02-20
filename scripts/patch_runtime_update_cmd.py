@@ -729,13 +729,14 @@ def patch_windows_console_block(text: str) -> str:
     if argc_idx < 0:
         raise RuntimeError(f"missing argc anchor: {argc_anchor}")
     win_start = text.find("#if defined(_WIN32)", fn_idx, argc_idx)
-    if win_start < 0:
-        raise RuntimeError("missing _WIN32 console guard before argc")
-    win_end = text.find("#endif", win_start, argc_idx)
-    if win_end < 0:
-        raise RuntimeError("missing #endif for _WIN32 console guard")
-    win_end += len("#endif")
-    return text[:win_start] + WINDOWS_CONSOLE_BLOCK + text[win_end:]
+    if win_start >= 0:
+        win_end = text.find("#endif", win_start, argc_idx)
+        if win_end < 0:
+            raise RuntimeError("missing #endif for _WIN32 console guard")
+        win_end += len("#endif")
+        return text[:win_start] + WINDOWS_CONSOLE_BLOCK + text[win_end:]
+    insert_at = fn_idx + len(cli_fn_anchor)
+    return text[:insert_at] + "\n" + WINDOWS_CONSOLE_BLOCK + text[insert_at:]
 
 
 def patch_runtime(path: Path) -> int:
