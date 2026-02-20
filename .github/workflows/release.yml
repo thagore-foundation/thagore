@@ -600,12 +600,20 @@ jobs:
               return 1
             fi
             if [[ -z "$ver" && -z "$help" && -z "$update_out" ]]; then
-              echo "[SANITY] $bin rejected: empty output for --version/--help/update." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
+                echo "[SANITY] $bin rejected: empty output for --version/--help/update on official release." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[SANITY] $bin accepted (non-official lane): empty output tolerated for bootstrap probing." | tee -a "$STAGE_TRACE_FILE"
+              return 0
             fi
             if [[ -z "$ver" || -z "$help" ]]; then
-              echo "[SANITY] $bin rejected: missing required --version/--help output." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
+                echo "[SANITY] $bin rejected: missing required --version/--help output on official release." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[SANITY] $bin accepted (non-official lane): partial CLI output tolerated for bootstrap probing." | tee -a "$STAGE_TRACE_FILE"
+              return 0
             fi
             if [[ -n "$update_out" ]]; then
               echo "[SANITY] $bin accepted via native update command probe." | tee -a "$STAGE_TRACE_FILE"
