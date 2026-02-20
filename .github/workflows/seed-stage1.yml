@@ -664,7 +664,9 @@ jobs:
           fi
           BUNDLE_CORE="seed-bundle-core-${{ matrix.asset_tag }}.json"
           TRACE_ASSET="seed-stage-trace-${{ matrix.asset_tag }}.log"
-          cp "$STAGE_TRACE_FILE" "$TRACE_ASSET"
+          if [[ "$STAGE_TRACE_FILE" != "$TRACE_ASSET" ]]; then
+            cp "$STAGE_TRACE_FILE" "$TRACE_ASSET"
+          fi
           "$PY" scripts/seed_bundle.py capture \
             --output "$BUNDLE_CORE" \
             --asset "${{ matrix.stage1_seed_name }}" \
