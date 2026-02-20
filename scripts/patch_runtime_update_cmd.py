@@ -343,6 +343,92 @@ THG_LLVM_BRIDGE_I32(LLVMLinkModules2, (void *dest, void *src), (dest, src))
 THG_LLVM_BRIDGE_PTR(LLVMCreateMemoryBufferWithMemoryRangeCopy, (const char *data, int data_len, const char *buffer_name), (data, data_len, buffer_name))
 THG_LLVM_BRIDGE_VOID(LLVMDisposeMemoryBuffer, (void *mem_buf), (mem_buf))
 
+extern "C" int __thg_llvm_emit_object_from_ir(const char *ir_text, const char *module_name, const char *object_path) {
+  if (ir_text == nullptr || object_path == nullptr) {
+    return 1;
+  }
+
+  using parse_ir_fn_t = int (*)(void *, void *, void *, void *);
+  static parse_ir_fn_t parse_ir = thg_llvm_bridge::resolve<parse_ir_fn_t>("LLVMParseIRInContext");
+  if (parse_ir == nullptr) {
+    return 2;
+  }
+
+  void *ctx = LLVMContextCreate();
+  if (ctx == nullptr) {
+    return 3;
+  }
+  const char *buf_name = module_name != nullptr ? module_name : "thagore_module";
+  void *mem_buf = LLVMCreateMemoryBufferWithMemoryRangeCopy(ir_text, static_cast<int>(std::strlen(ir_text)), buf_name);
+  if (mem_buf == nullptr) {
+    LLVMContextDispose(ctx);
+    return 4;
+  }
+
+  void *module_ref = nullptr;
+  void *parse_err = nullptr;
+  if (parse_ir(ctx, mem_buf, &module_ref, &parse_err) != 0 || module_ref == nullptr) {
+    if (parse_err != nullptr) {
+      LLVMDisposeMessage(parse_err);
+    }
+    LLVMDisposeMemoryBuffer(mem_buf);
+    LLVMContextDispose(ctx);
+    return 5;
+  }
+
+  if (LLVMInitializeNativeTarget() != 0 || LLVMInitializeNativeAsmPrinter() != 0 || LLVMInitializeNativeAsmParser() != 0) {
+    LLVMDisposeModule(module_ref);
+    LLVMDisposeMemoryBuffer(mem_buf);
+    LLVMContextDispose(ctx);
+    return 6;
+  }
+
+  auto *triple_ptr = reinterpret_cast<const char *>(LLVMGetDefaultTargetTriple());
+  if (triple_ptr == nullptr) {
+    LLVMDisposeModule(module_ref);
+    LLVMDisposeMemoryBuffer(mem_buf);
+    LLVMContextDispose(ctx);
+    return 7;
+  }
+
+  LLVMSetTarget(module_ref, triple_ptr);
+
+  void *target = nullptr;
+  void *target_err = nullptr;
+  if (LLVMGetTargetFromTriple(triple_ptr, &target, &target_err) != 0 || target == nullptr) {
+    if (target_err != nullptr) {
+      LLVMDisposeMessage(target_err);
+    }
+    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+    LLVMDisposeModule(module_ref);
+    LLVMDisposeMemoryBuffer(mem_buf);
+    LLVMContextDispose(ctx);
+    return 8;
+  }
+
+  void *machine = LLVMCreateTargetMachine(target, triple_ptr, "", "", 2, 0, 0);
+  if (machine == nullptr) {
+    LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+    LLVMDisposeModule(module_ref);
+    LLVMDisposeMemoryBuffer(mem_buf);
+    LLVMContextDispose(ctx);
+    return 9;
+  }
+
+  void *emit_err = nullptr;
+  const int emit_code = LLVMTargetMachineEmitToFile(machine, module_ref, object_path, 1, &emit_err);
+  if (emit_err != nullptr) {
+    LLVMDisposeMessage(emit_err);
+  }
+
+  LLVMDisposeTargetMachine(machine);
+  LLVMDisposeMessage(reinterpret_cast<void *>(const_cast<char *>(triple_ptr)));
+  LLVMDisposeModule(module_ref);
+  LLVMDisposeMemoryBuffer(mem_buf);
+  LLVMContextDispose(ctx);
+  return emit_code == 0 ? 0 : 10;
+}
+
 #undef THG_LLVM_BRIDGE_PTR
 #undef THG_LLVM_BRIDGE_I32
 #undef THG_LLVM_BRIDGE_VOID
