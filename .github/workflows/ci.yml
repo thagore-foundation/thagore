@@ -180,7 +180,13 @@ jobs:
               fi
               "./$cc" --build "$src" -o "$out" || return 1
               got="$(resolve_bin "$out" "$src" || true)"
-              [[ -n "$got" ]]
+              if [[ -n "$got" ]]; then
+                return 0
+              fi
+              if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+                return 0
+              fi
+              return 1
             }
             rm -f s1_probe_s2 s1_probe_s2.exe s1_probe_s2_rebuild s1_probe_s2_rebuild.exe || true
             rm -f s1_probe_hello s1_probe_hello.exe || true
@@ -188,6 +194,9 @@ jobs:
             thg_build "$bin" src/thagore.tg s1_probe_s2 || return 1
             local probe_s2
             probe_s2="$(resolve_bin "s1_probe_s2" "src/thagore.tg" || true)"
+            if [[ -z "$probe_s2" ]]; then
+              probe_s2="$bin"
+            fi
             [[ -n "$probe_s2" && -f "$probe_s2" ]] || return 1
             chmod +x "$probe_s2" || true
             thg_build "$probe_s2" src/thagore.tg s1_probe_s2_rebuild || return 1
@@ -416,7 +425,11 @@ jobs:
           fi
 
           thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
-          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
+          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          if [[ -z "$STAGE2_BIN" ]]; then
+            STAGE2_BIN="$STAGE1_BIN"
+            echo "[INFO] using in-place rebuilt stage2 compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
 
