@@ -447,12 +447,20 @@ jobs:
           fi
 
           thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
-          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
+          STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
+            STAGE2_BIN="$STAGE2_BIN_RESOLVED"
+          else
+            STAGE2_BIN="$STAGE1_BIN"
+            echo "[INFO] using in-place rebuilt compiler for stage2: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           chmod +x "$STAGE2_BIN" || true
 
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
-          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
+          else
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
             echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
