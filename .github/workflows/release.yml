@@ -120,7 +120,7 @@ jobs:
           fi
           echo "available_tags=$available" >> "$GITHUB_OUTPUT"
           echo "available_tags=$available"
-          AVAILABLE_TAGS="$available"
+          export AVAILABLE_TAGS="$available"
           RELEASE_MATRIX="$(python3 - <<'PY'
           import json
           import os
