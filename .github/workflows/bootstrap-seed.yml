@@ -78,15 +78,57 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p bootstrap
-          gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-stage1-linux.tar.gz" -D bootstrap
+          download_optional() {
+            local pattern="$1"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
+          }
+          STAGE1_ASSET=""
+          for CANDIDATE in "thagore-stage1-linux-x86_64.tar.gz" "thagore-stage1-linux.tar.gz"; do
+            if download_optional "$CANDIDATE"; then
+              STAGE1_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: stage1 linux seed asset not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
+          RUNTIME_ASSET=""
+          for CANDIDATE in "thagore-runtime-linux-x86_64.a" "thagore-runtime-linux.a"; do
+            if download_optional "$CANDIDATE"; then
+              RUNTIME_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: runtime linux seed asset not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
+          if [[ "$STAGE1_ASSET" != "thagore-stage1-linux.tar.gz" ]]; then
+            cp "bootstrap/$STAGE1_ASSET" bootstrap/thagore-stage1-linux.tar.gz
+          fi
+          if [[ "$RUNTIME_ASSET" != "thagore-runtime-linux.a" ]]; then
+            cp "bootstrap/$RUNTIME_ASSET" bootstrap/thagore-runtime-linux.a
+          fi
           tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap
-          gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "thagore-runtime-linux.a" -D bootstrap
+          MANIFEST_ASSET=""
+          for CANDIDATE in "seed-promotion-manifest-linux-x86_64.txt" "seed-promotion-manifest-Linux.txt"; do
+            if download_optional "$CANDIDATE"; then
+              MANIFEST_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$MANIFEST_ASSET" ]] || (echo "CRITICAL: seed promotion manifest not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
+          PROVENANCE_ASSET=""
+          for CANDIDATE in "seed-stage1-provenance-linux-x86_64.json" "seed-stage1-provenance-Linux.json"; do
+            if download_optional "$CANDIDATE"; then
+              PROVENANCE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$PROVENANCE_ASSET" ]] || (echo "CRITICAL: stage1 provenance file not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
           cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
           cp libthag_runtime.a thag_runtime.lib
           CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
           [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary not found in seed asset"; exit 1)
           cp "$CANDIDATE" stage1
           chmod +x stage1
+          echo "SEED_MANIFEST_PATH=bootstrap/$MANIFEST_ASSET" >> "$GITHUB_ENV"
+          echo "SEED_PROVENANCE_PATH=bootstrap/$PROVENANCE_ASSET" >> "$GITHUB_ENV"
           python3 scripts/build_runtime_abi.py --target-os "Linux" --summary "runtime-abi-summary-bootstrap-seed-linux.txt"
 
       - name: Discord update - Download stage1 seed asset
@@ -106,6 +148,20 @@ jobs:
             --profile bootstrap-critical \
             --fail-on-missing \
             --write runtime-abi-inventory-bootstrap-seed-linux.txt
+
+      - name: Verify stage1 seed manifest and provenance
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -n "${SEED_MANIFEST_PATH:-}"
+          test -n "${SEED_PROVENANCE_PATH:-}"
+          test -f "$SEED_MANIFEST_PATH"
+          test -f "$SEED_PROVENANCE_PATH"
+          python3 scripts/stage1_provenance.py verify \
+            --provenance "$SEED_PROVENANCE_PATH" \
+            --manifest "$SEED_MANIFEST_PATH" \
+            --asset bootstrap/thagore-stage1-linux.tar.gz \
+            --asset bootstrap/thagore-runtime-linux.a
 
       - name: Verify Stage1 -> Stage2 -> Stage2
         shell: bash
@@ -188,6 +244,8 @@ jobs:
           path: |
             runtime-abi-summary-bootstrap-seed-linux.txt
             runtime-abi-inventory-bootstrap-seed-linux.txt
+            bootstrap/seed-promotion-manifest-*.txt
+            bootstrap/seed-stage1-provenance-*.json
 
       - name: Discord update - Verify Stage1 -> Stage2 -> Stage2
         uses: ./.github/actions/discord-ci-status

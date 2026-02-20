@@ -644,6 +644,40 @@ jobs:
             cp "$OUT" "seed-promotion-manifest-${{ runner.os }}.txt"
           fi
 
+      - name: Build stage1 provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          PROV="seed-stage1-provenance-${{ matrix.asset_tag }}.json"
+          ASSET_ARGS=()
+          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
+            if [[ -f "$f" ]]; then
+              ASSET_ARGS+=(--asset "$f")
+            fi
+          done
+          "$PY" scripts/stage1_provenance.py capture \
+            --output "$PROV" \
+            --manifest "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --stage-trace "$STAGE_TRACE_FILE" \
+            --seed-tag "${{ github.event.inputs.seed_tag }}" \
+            --base-seed-tag "${{ github.event.inputs.base_seed_tag }}" \
+            --runner-os "${{ runner.os }}" \
+            --asset-tag "${{ matrix.asset_tag }}" \
+            --arch "${{ matrix.arch }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --repository "${{ github.repository }}" \
+            "${ASSET_ARGS[@]}"
+          if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" || "${{ matrix.asset_tag }}" == "linux-x86_64" || "${{ matrix.asset_tag }}" == "macos-arm64" ]]; then
+            cp "$PROV" "seed-stage1-provenance-${{ runner.os }}.json"
+          fi
+
       - name: Upload seed artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -662,6 +696,8 @@ jobs:
             runtime-abi-inventory-seed-${{ matrix.asset_tag }}.txt
             seed-promotion-manifest-${{ matrix.asset_tag }}.txt
             seed-promotion-manifest-${{ runner.os }}.txt
+            seed-stage1-provenance-${{ matrix.asset_tag }}.json
+            seed-stage1-provenance-${{ runner.os }}.json
 
   publish-seed:
     name: publish-seed-release
@@ -695,6 +731,7 @@ jobs:
             seed-artifacts/**/thagore-runtime-linux.a
             seed-artifacts/**/thagore-runtime-macos.a
             seed-artifacts/**/seed-promotion-manifest-*.txt
+            seed-artifacts/**/seed-stage1-provenance-*.json
           make_latest: false
           prerelease: true
           overwrite_files: true

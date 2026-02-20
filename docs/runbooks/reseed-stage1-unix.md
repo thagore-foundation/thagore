@@ -27,7 +27,32 @@ Mục tiêu: reseed lại asset Stage1 cho `linux` và `macOS` khi pipeline self
    - `selfhost-matrix.yml`
    - `release.yml`
 
+## Audit bắt buộc trước khi promote seed
+
+Mỗi seed release phải publish thêm:
+
+- `seed-promotion-manifest-*.txt`
+- `seed-stage1-provenance-*.json`
+- `seed-stage-trace-*.log`
+
+Manifest chứa hash công bố; provenance chứa metadata build + hash artifact + hash stage trace.
+
+### Verify độc lập (user-side)
+
+Ví dụ Linux:
+
+```bash
+python3 scripts/stage1_provenance.py verify \
+  --provenance bootstrap/seed-stage1-provenance-linux-x86_64.json \
+  --manifest bootstrap/seed-promotion-manifest-linux-x86_64.txt \
+  --asset bootstrap/thagore-stage1-linux.tar.gz \
+  --asset bootstrap/thagore-runtime-linux.a
+```
+
+Nếu hash lệch hoặc thiếu entry, script sẽ fail với `CRITICAL`.
+
 ## Kiểm tra nhanh
 
 - Stage trace phải hiển thị `bootstrap_source: release_asset_only`.
 - Không có lệnh `cmake -S legacy` trong Linux/macOS jobs.
+- `bootstrap-seed.yml` phải fail nếu verify manifest/provenance thất bại.
