@@ -722,10 +722,24 @@ jobs:
           if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
             if [[ -n "$DONOR_TAG" ]]; then
-              mkdir -p donor/extract
-              if gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "thagore-windows-x86_64.tar.gz" -D donor >/dev/null 2>&1; then
-                if tar -xzf donor/thagore-windows-x86_64.tar.gz -C donor/extract >/dev/null 2>&1; then
-                  DONOR_SRC="$(find donor/extract -maxdepth 6 -type f -name thagore.exe | head -n 1 || true)"
+              DONOR_ARCHIVE="donor/thagore-windows-x86_64.tar.gz"
+              DONOR_EXTRACT_DIR="donor/extract"
+              rm -rf donor donor_thagore.exe || true
+              mkdir -p "$DONOR_EXTRACT_DIR"
+              echo "[INFO] trying donor compiler from tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
+              gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "thagore-windows-x86_64.tar.gz" -D donor || true
+              if [[ -f "$DONOR_ARCHIVE" ]]; then
+                if tar -xzf "$DONOR_ARCHIVE" -C "$DONOR_EXTRACT_DIR"; then
+                  DONOR_SRC=""
+                  for candidate in "$DONOR_EXTRACT_DIR/bin/thagore.exe" "$DONOR_EXTRACT_DIR/thagore.exe"; do
+                    if [[ -f "$candidate" ]]; then
+                      DONOR_SRC="$candidate"
+                      break
+                    fi
+                  done
+                  if [[ -z "$DONOR_SRC" ]]; then
+                    DONOR_SRC="$("$PY" -c "import pathlib; roots=[pathlib.Path('$DONOR_EXTRACT_DIR')]; cands=[]; [cands.extend(sorted(r.rglob('thagore.exe'))) for r in roots if r.exists()]; print(cands[0].as_posix() if cands else '')")"
+                  fi
                   if [[ -n "$DONOR_SRC" && -f "$DONOR_SRC" ]]; then
                     cp "$DONOR_SRC" donor_thagore.exe
                     chmod +x donor_thagore.exe || true
@@ -733,10 +747,19 @@ jobs:
                       USE_DONOR_BIN=1
                       STAGE2_BIN="donor_thagore.exe"
                       STAGE2_REBUILD_BIN="donor_thagore.exe"
-                      echo "[INFO] official Windows lane uses donor verified compiler from $DONOR_TAG." | tee -a "$STAGE_TRACE_FILE"
+                      echo "[INFO] official Windows lane uses donor verified compiler from $DONOR_TAG at $DONOR_SRC." | tee -a "$STAGE_TRACE_FILE"
+                    else
+                      echo "[WARN] donor compiler failed CLI sanity: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
                     fi
+                  else
+                    echo "[WARN] donor compiler binary not found after extract: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
+                    ls -la "$DONOR_EXTRACT_DIR" | tee -a "$STAGE_TRACE_FILE" || true
                   fi
+                else
+                  echo "[WARN] failed to extract donor archive: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
                 fi
+              else
+                echo "[WARN] donor archive not downloaded for tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
               fi
             fi
           fi
