@@ -383,23 +383,17 @@ jobs:
             local pattern="$1"
             local primary_tag="$BOOTSTRAP_STAGE1_TAG"
             rm -f "bootstrap/$pattern" || true
-            local used=""
-            for tag in "$primary_tag"; do
-              [[ -n "$tag" ]] || continue
-              if [[ -n "$used" && "$tag" == "$used" ]]; then
-                continue
-              fi
-              used="$tag"
-              gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
-              if [[ ! -f "bootstrap/$pattern" ]]; then
-                curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
-              fi
-              if [[ -f "bootstrap/$pattern" ]]; then
-                echo "[SEED] stage1 asset=$pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
-                return 0
-              fi
-              rm -f "bootstrap/$pattern" || true
-            done
+            local tag="$primary_tag"
+            [[ -n "$tag" ]] || return 1
+            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            if [[ ! -f "bootstrap/$pattern" ]]; then
+              curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+            fi
+            if [[ -f "bootstrap/$pattern" ]]; then
+              echo "[SEED] stage1 asset=$pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
+            rm -f "bootstrap/$pattern" || true
             if [[ ! -f "bootstrap/$pattern" ]]; then
               return 1
             fi

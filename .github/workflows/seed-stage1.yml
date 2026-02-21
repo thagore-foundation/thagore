@@ -346,7 +346,10 @@ jobs:
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cc_bin="stage1.exe"
             fi
-            "./$cc_bin" --version >/dev/null 2>&1 || return 1
+            "./$cc_bin" --version >/dev/null 2>&1 || {
+              echo "[SEED][probe] $CURRENT_TAG: '$cc_bin --version' failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            }
             "./$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
             out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
             if [[ -z "$out_bin" ]]; then
@@ -361,27 +364,41 @@ jobs:
                 out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
               fi
             fi
-            [[ -n "$out_bin" && -f "$out_bin" ]] || return 1
+            if [[ -z "$out_bin" || ! -f "$out_bin" ]]; then
+              echo "[SEED][probe] $CURRENT_TAG: failed to emit hello binary for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
             chmod +x "$out_bin" || true
             got="$("./$out_bin" | tr -d '\r')"
-            [[ "$got" == *"Hello Self-Hosted World!"* ]] || return 1
+            if [[ "$got" != *"Hello Self-Hosted World!"* ]]; then
+              echo "[SEED][probe] $CURRENT_TAG: hello output mismatch for ${{ matrix.asset_tag }}: '$got'" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
             cc_sig_before="$(hash_file "$cc_bin" || true)"
-            "./$cc_bin" build src/thagore.tg -o "$stage2_stem" >/dev/null 2>&1 || true
+            if ! "./$cc_bin" build src/thagore.tg -o "$stage2_stem" >/dev/null 2>&1; then
+              echo "[SEED][probe] $CURRENT_TAG: build src/thagore.tg failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
             stage2_bin="$(resolve_probe_bin "$stage2_stem" "src/thagore.tg" || true)"
             if [[ -z "$stage2_bin" ]]; then
               cc_sig_after="$(hash_file "$cc_bin" || true)"
-              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
-                if [[ "${{ runner.os }}" == "Windows" ]]; then
-                  cp "$cc_bin" "${stage2_stem}.exe"
-                  stage2_bin="${stage2_stem}.exe"
-                else
-                  cp "$cc_bin" "$stage2_stem"
-                  stage2_bin="$stage2_stem"
-                fi
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                cp "$cc_bin" "${stage2_stem}.exe"
+                stage2_bin="${stage2_stem}.exe"
+              else
+                cp "$cc_bin" "$stage2_stem"
+                stage2_bin="$stage2_stem"
               fi
+              echo "[SEED][probe] $CURRENT_TAG: materialized in-place stage2 from $cc_bin (hash_before=$cc_sig_before hash_after=$cc_sig_after)." | tee -a "$STAGE_TRACE_FILE"
             fi
-            [[ -n "$stage2_bin" && -f "$stage2_bin" ]] || return 1
-            "./$stage2_bin" --version >/dev/null 2>&1 || return 1
+            if [[ -z "$stage2_bin" || ! -f "$stage2_bin" ]]; then
+              echo "[SEED][probe] $CURRENT_TAG: stage2 artifact missing for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            "./$stage2_bin" --version >/dev/null 2>&1 || {
+              echo "[SEED][probe] $CURRENT_TAG: stage2 --version failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            }
             return 0
           }
           materialize_from_release_package() {
@@ -483,23 +500,10 @@ jobs:
                 fi
               done
             fi
-            if [[ -z "$RUNTIME_ASSET" ]]; then
-              RUNTIME_FALLBACK_TAGS=("$CURRENT_TAG" "$BOOTSTRAP_STAGE1_TAG" "v0.3.25-stage1-seed")
-              for RT_TAG in "${RUNTIME_FALLBACK_TAGS[@]}"; do
-                [[ -n "$RT_TAG" ]] || continue
-                for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
-                  if download_optional_from_tag "$RT_TAG" "$ASSET"; then
-                    RUNTIME_ASSET="$ASSET"
-                    echo "[SEED] runtime fallback asset=$ASSET tag=$RT_TAG"
-                    break
-                  fi
-                done
-                if [[ -n "$RUNTIME_ASSET" ]]; then
-                  break
-                fi
-              done
+            if [[ -z "$RUNTIME_ASSET" || -z "$STAGE1_ASSET" ]]; then
+              echo "[SEED] reject tag=$CURRENT_TAG: missing atomic pair stage1/runtime for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
-            [[ -n "$RUNTIME_ASSET" && -n "$STAGE1_ASSET" ]] || return 1
             if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
               cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
             fi
@@ -510,12 +514,12 @@ jobs:
             seed_smoke_probe
           }
           TAG_CANDIDATES=(
-            "v0.3.97-stage1-seed"
-            "v0.3.96-stage1-seed"
             "$BOOTSTRAP_STAGE1_TAG"
-            "v0.3.61-foundation"
             "v0.5.20"
             "v0.5.13"
+            "v0.3.97-stage1-seed"
+            "v0.3.96-stage1-seed"
+            "v0.3.61-foundation"
             "v0.3.25-stage1-seed"
           )
           SELECTED_BOOTSTRAP_TAG=""
@@ -623,7 +627,7 @@ jobs:
             local cc="$1"
             shift
             local helper_env=()
-            if [[ -z "${THAG_HELPER_BIN:-}" && "$cc" != "stage1" && "$cc" != "stage1.exe" ]]; then
+            if [[ -z "${THAG_HELPER_BIN:-}" ]]; then
               if [[ "${{ runner.os }}" == "Windows" ]]; then
                 if [[ -f stage1.exe ]]; then
                   helper_env+=(THAG_HELPER_BIN=./stage1.exe)
@@ -754,6 +758,8 @@ jobs:
             local got=""
             local cc_sig_before=""
             local cc_sig_after=""
+            local build_rc=0
+            local alt_build_rc=0
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(hash_file "$cc" || true)"
             fi
@@ -763,18 +769,25 @@ jobs:
               if [[ -n "$got" ]]; then
                 return 0
               fi
+              build_rc=0
+            else
+              build_rc=$?
             fi
             echo "[CMD] ./$cc --build $src -o $out" | tee -a "$STAGE_TRACE_FILE" >&2
-            run_compiler "$cc" --build "$src" -o "$out" 1>&2
+            if run_compiler "$cc" --build "$src" -o "$out" 1>&2; then
+              alt_build_rc=0
+            else
+              alt_build_rc=$?
+            fi
             got="$(resolve_bin "$out" "$src" || true)"
             if [[ -n "$got" ]]; then
               return 0
             fi
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(hash_file "$cc" || true)"
-              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+              if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
                 cp "$cc" "$out"
-                echo "[INFO] compiler rebuilt in-place and was materialized as $out" | tee -a "$STAGE_TRACE_FILE" >&2
+                echo "[INFO] compiler rebuilt in-place and was materialized as $out (hash_before=$cc_sig_before hash_after=$cc_sig_after)" | tee -a "$STAGE_TRACE_FILE" >&2
                 return 0
               fi
             fi
