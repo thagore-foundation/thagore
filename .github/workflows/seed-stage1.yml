@@ -353,6 +353,15 @@ jobs:
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             free -h || true
           fi
+          run_with_watchdog() {
+            if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              if command -v timeout >/dev/null 2>&1; then
+                timeout --signal=TERM --kill-after=120 25m "$@"
+                return $?
+              fi
+            fi
+            "$@"
+          }
           run_compiler() {
             local cc="$1"
             shift
@@ -367,10 +376,10 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            "./$cc" "$@"
+            run_with_watchdog "./$cc" "$@"
           }
           resolve_bin() {
             local preferred="$1"
