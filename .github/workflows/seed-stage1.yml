@@ -371,10 +371,7 @@ jobs:
             local stage2_build_log="_seed_probe_stage2_build.log"
             local stage2_emit_log="_seed_probe_stage2_emit.log"
             local probe_exec_mode=1
-            cat > "$probe_src" <<'TG'
-func main() -> i32:
-    return 0
-TG
+            printf 'func main() -> i32:\n    return 0\n' > "$probe_src"
             rm -f \
               _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll \
               _seed_gate_stage2 _seed_gate_stage2.exe \
