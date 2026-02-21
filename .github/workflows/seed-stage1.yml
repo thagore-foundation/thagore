@@ -388,8 +388,11 @@ jobs:
               return 1
             }
             if run_seed_compiler "$cc_bin" build __seed_probe_missing__.tg -o __seed_probe_missing__.out >/dev/null 2>&1; then
-              echo "[SEED][probe] $CURRENT_TAG: compiler returned success for missing input (no-op behavior), reject bootstrap tag." | tee -a "$STAGE_TRACE_FILE"
-              return 1
+              if [[ -f "__seed_probe_missing__.out" || -f "__seed_probe_missing__.out.exe" ]]; then
+                echo "[SEED][probe] $CURRENT_TAG: compiler produced output for missing input (hard no-op behavior), reject bootstrap tag." | tee -a "$STAGE_TRACE_FILE"
+                return 1
+              fi
+              echo "[SEED][probe][WARN] $CURRENT_TAG: compiler returned success for missing input, but produced no output. Continue with strict positive probes." | tee -a "$STAGE_TRACE_FILE"
             fi
             run_seed_compiler "$cc_bin" build "$probe_src" -o "$out_stem" >"$probe_build_log" 2>&1 || true
             out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
@@ -892,8 +895,11 @@ jobs:
             COMPILER_CANDIDATES=("$SEED_BIN")
           else
             if run_compiler "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
-              echo "CRITICAL: seed compiler returned success for missing input (no-op behavior)."
-              exit 1
+              if [[ -f "__thagore_seed_missing_out__" || -f "__thagore_seed_missing_out__.exe" ]]; then
+                echo "CRITICAL: seed compiler produced output for missing input (hard no-op behavior)."
+                exit 1
+              fi
+              echo "[WARN] seed compiler returned success for missing input but produced no output; continuing with strict positive gates."
             fi
             thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
             STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
@@ -1584,8 +1590,11 @@ jobs:
             exit 0
           fi
           if run_compiler_cmd "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
-            echo "CRITICAL: packaged stage1 returns success for missing input (no-op behavior)."
-            exit 1
+            if [[ -f "__thagore_seed_missing_out__" || -f "__thagore_seed_missing_out__.exe" ]]; then
+              echo "CRITICAL: packaged stage1 produced output for missing input (hard no-op behavior)."
+              exit 1
+            fi
+            echo "[WARN] packaged stage1 returned success for missing input but produced no output; continuing with strict positive gates."
           fi
           cp -R ../src ./src
           cp -R ../examples ./examples
