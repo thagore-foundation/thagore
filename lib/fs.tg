@@ -29,6 +29,9 @@ func read_text(path: String) -> String:
 func write_text(path: String, text: String) -> i32:
     return __thg_fs_write_text(path, text)
 
+func remove(path: String) -> i32:
+    return __thg_fs_remove(path)
+
 func exists(path: String) -> i32:
     return __fs_exists(path)
 

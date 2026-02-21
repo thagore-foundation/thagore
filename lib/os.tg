@@ -1,0 +1,259 @@
+import "lib/env.tg" as env
+import "lib/fs.tg" as fs
+import "lib/http.tg" as http
+import "lib/io.tg" as io
+import "lib/list.tg" as list
+import "lib/map.tg" as map
+import "lib/path.tg" as path
+import "lib/process.tg" as process
+import "lib/string.tg" as str
+import "lib/time.tg" as time
+
+func os_platform_name() -> String:
+    let os_name = env.get_var("OS")
+    if (os_name == "Windows_NT"):
+        return "windows"
+    let ostype = str.lower(env.get_var("OSTYPE"))
+    if (str.contains(ostype, "linux") == 1):
+        return "linux"
+    if ((str.contains(ostype, "darwin") == 1) or (str.contains(ostype, "mac") == 1)):
+        return "macos"
+    if (str.contains(ostype, "bsd") == 1):
+        return "bsd"
+    return "unknown"
+
+func os_is_windows() -> i32:
+    if (os_platform_name() == "windows"):
+        return 1
+    return 0
+
+func os_args_count() -> i32:
+    return env.count()
+
+func os_arg(index: i32) -> String:
+    return env.get(index)
+
+func os_program_name() -> String:
+    return env.program_name()
+
+func os_getenv(key: String) -> String:
+    return env.get_var(key)
+
+func os_setenv(key: String, value: String) -> i32:
+    return env.set_var(key, value)
+
+func os_cwd() -> String:
+    return env.cwd()
+
+func os_args_text() -> String:
+    return env.args_text()
+
+func os_str_len(text: String) -> i32:
+    return str.len(text)
+
+func os_str_trim(text: String) -> String:
+    return str.trim(text)
+
+func os_str_contains(text: String, needle: String) -> i32:
+    return str.contains(text, needle)
+
+func os_str_starts_with(text: String, prefix: String) -> i32:
+    return str.starts_with(text, prefix)
+
+func os_str_ends_with(text: String, suffix: String) -> i32:
+    return str.ends_with(text, suffix)
+
+func os_str_replace(text: String, old_frag: String, new_frag: String) -> String:
+    return str.replace(text, old_frag, new_frag)
+
+func os_str_lower(text: String) -> String:
+    return str.lower(text)
+
+func os_str_upper(text: String) -> String:
+    return str.upper(text)
+
+func os_str_quote(text: String) -> String:
+    return str.quote(text)
+
+func os_str_unquote(text: String) -> String:
+    return str.unquote(text)
+
+func os_path_join(left: String, right: String) -> String:
+    return path.join(left, right)
+
+func os_path_join3(a: String, b: String, c: String) -> String:
+    return path.join(path.join(a, b), c)
+
+func os_path_basename(p: String) -> String:
+    return path.basename(p)
+
+func os_path_dirname(p: String) -> String:
+    return path.dirname(p)
+
+func os_path_ext(p: String) -> String:
+    return path.ext(p)
+
+func os_path_stem(p: String) -> String:
+    return path.stem(p)
+
+func os_path_strip_trailing(p: String) -> String:
+    return path.strip_trailing(p)
+
+func os_path_strip_leading(p: String) -> String:
+    return path.strip_leading(p)
+
+func os_file_read_text(p: String) -> String:
+    return fs.read_text(p)
+
+func os_file_write_text(p: String, text: String) -> i32:
+    return fs.write_text(p, text)
+
+func os_file_remove(p: String) -> i32:
+    return fs.remove(p)
+
+func os_file_exists(p: String) -> i32:
+    return fs.exists(p)
+
+func os_file_mkdir(p: String) -> i32:
+    return fs.mkdir(p)
+
+func os_file_ensure_dir(p: String) -> i32:
+    return fs.ensure_dir(p)
+
+func os_file_list_dir(p: String) -> String:
+    return fs.list_dir(p)
+
+func os_file_move(src: String, dst: String) -> i32:
+    return fs.move(src, dst)
+
+func os_file_open_binary(p: String, mode: String) -> ptr:
+    return fs.open_binary(p, mode)
+
+func os_file_open_read(p: String) -> ptr:
+    return fs.open_read(p)
+
+func os_file_open_write(p: String) -> ptr:
+    return fs.open_write(p)
+
+func os_file_write_bytes(handle: ptr, buffer: String) -> i32:
+    return fs.write_bytes(handle, buffer)
+
+func os_file_read_bytes(handle: ptr, size: i32) -> String:
+    return fs.read_bytes(handle, size)
+
+func os_file_seek(handle: ptr, offset: i32, whence: i32) -> i32:
+    return fs.seek(handle, offset, whence)
+
+func os_file_close(handle: ptr) -> i32:
+    return fs.close(handle)
+
+func os_file_write_ensured(p: String, text: String) -> i32:
+    let dir = path.dirname(p)
+    if (str.len(dir) > 0):
+        fs.ensure_dir(dir)
+    return fs.write_text(p, text)
+
+func os_file_read_or_default(p: String, fallback: String) -> String:
+    if (fs.exists(p) == 1):
+        return fs.read_text(p)
+    return fallback
+
+func os_stdin_line(prompt: String = "") -> String:
+    return io.stdin_read_line(prompt)
+
+func os_stdin_all() -> String:
+    return io.stdin_read_all()
+
+func os_stdin_or_file(p: String = "") -> String:
+    return io.stdread(p)
+
+func os_input_i32() -> i32:
+    return io.input_i32()
+
+func os_print_file_if_non_empty(path_text: String, header: String = "", footer: String = "") -> i32:
+    return io.print_file_if_non_empty(path_text, header, footer)
+
+func os_process_run(cmd: String) -> i32:
+    return process.run(cmd)
+
+func os_process_exec(program: String, args_text: String = "") -> i32:
+    return process.exec(program, args_text)
+
+func os_process_exec_timeout(program: String, args_text: String, timeout_ms: i32) -> i32:
+    return process.exec_timeout(program, args_text, timeout_ms)
+
+func os_process_exec_redirect(program: String, args_text: String, stdout_path: String, stderr_path: String) -> i32:
+    return process.exec_redirect(program, args_text, stdout_path, stderr_path)
+
+func os_process_exec_redirect_timeout(program: String, args_text: String, stdout_path: String, stderr_path: String, timeout_ms: i32) -> i32:
+    return process.exec_redirect_timeout(program, args_text, stdout_path, stderr_path, timeout_ms)
+
+func os_process_open_path(path_text: String) -> i32:
+    return process.open_path(path_text)
+
+func os_process_download(url: String, out_path: String) -> i32:
+    return process.download(url, out_path)
+
+func os_process_unzip(zip_path: String, out_dir: String) -> i32:
+    return process.unzip(zip_path, out_dir)
+
+func os_process_move_file(src: String, dst: String) -> i32:
+    return process.move_file(src, dst)
+
+func os_process_quote(text: String) -> String:
+    return process.quote(text)
+
+func os_process_argv_sep() -> String:
+    return process.argv_sep()
+
+func os_exec_capture(program: String, args_text: String, stdout_path: String, stderr_path: String, timeout_ms: i32) -> i32:
+    return process.exec_redirect_timeout(program, args_text, stdout_path, stderr_path, timeout_ms)
+
+func os_download_and_unzip(url: String, zip_path: String, out_dir: String) -> i32:
+    let rc1 = process.download(url, zip_path)
+    if (rc1 != 0):
+        return rc1
+    fs.ensure_dir(out_dir)
+    return process.unzip(zip_path, out_dir)
+
+func os_http_request(method: String, url: String, body: String) -> String:
+    return http.request(method, url, body)
+
+func os_http_get(url: String) -> String:
+    return http.get(url)
+
+func os_http_post(url: String, body: String) -> String:
+    return http.post(url, body)
+
+func os_time_now_ms() -> i32:
+    return time.now_ms()
+
+func os_time_sleep_ms(ms: i32) -> i32:
+    return time.sleep_ms(ms)
+
+func os_list_new() -> ptr:
+    return list.new()
+
+func os_list_push(items: ptr, item: ptr) -> i32:
+    return list.push(items, item)
+
+func os_list_get(items: ptr, index: i32) -> ptr:
+    return list.get(items, index)
+
+func os_list_count(items: ptr) -> i32:
+    return list.count(items)
+
+func os_list_dispose(items: ptr) -> i32:
+    return list.dispose(items)
+
+func os_map_new() -> ptr:
+    return map.new()
+
+func os_map_put(items: ptr, key: String, value: ptr) -> i32:
+    return map.put(items, key, value)
+
+func os_map_get(items: ptr, key: String) -> ptr:
+    return map.get(items, key)
+
+func os_map_is_null_ptr(p: ptr) -> i32:
+    return map.is_null_ptr(p)

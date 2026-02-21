@@ -1,0 +1,59 @@
+import "lib/os.tg" as os
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    fails = fails + _expect_i32("str len", os.os_str_len("abc"), 3)
+    fails = fails + _expect_str("str trim", os.os_str_trim("  hi  "), "hi")
+    fails = fails + _expect_i32("str contains", os.os_str_contains("thagore", "go"), 1)
+    fails = fails + _expect_str("path basename", os.os_path_basename("a/b/c.txt"), "c.txt")
+    fails = fails + _expect_str("path stem", os.os_path_stem("a/b/c.txt"), "c")
+
+    let root = ".tmp_os_api"
+    let file = os.os_path_join(root, "note.txt")
+    os.os_file_ensure_dir(root)
+    os.os_file_write_ensured(file, "hello-os")
+    fails = fails + _expect_i32("file exists", os.os_file_exists(file), 1)
+    fails = fails + _expect_str("file read", os.os_file_read_text(file), "hello-os")
+
+    let h = os.os_file_open_write(os.os_path_join(root, "bytes.bin"))
+    os.os_file_write_bytes(h, "abc")
+    os.os_file_close(h)
+    let hr = os.os_file_open_read(os.os_path_join(root, "bytes.bin"))
+    fails = fails + _expect_str("read bytes", os.os_file_read_bytes(hr, 3), "abc")
+    os.os_file_close(hr)
+
+    os.os_setenv("THAG_OS_API_TEST", "ok")
+    fails = fails + _expect_str("getenv", os.os_getenv("THAG_OS_API_TEST"), "ok")
+    fails = fails + _expect_str("quote", os.os_process_quote("x"), "\"x\"")
+
+    let items = os.os_list_new()
+    fails = fails + _expect_i32("list count default", os.os_list_count(items), 0)
+
+    let m = os.os_map_new()
+    let missing = os.os_map_get(m, "none")
+    fails = fails + _expect_i32("map get missing null", os.os_map_is_null_ptr(missing), 1)
+
+    fails = fails + _expect_i32("time now positive-ish", os.os_time_now_ms() >= 0, 1)
+    fails = fails + _expect_i32("sleep zero", os.os_time_sleep_ms(0), 0)
+
+    if (fails == 0):
+        print("PASS: os stdlib facade")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1
