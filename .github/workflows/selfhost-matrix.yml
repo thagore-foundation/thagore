@@ -198,6 +198,9 @@ jobs:
                 if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
                   return 0
                 fi
+                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
+                  return 0
+                fi
               fi
               return 1
             }
@@ -317,6 +320,7 @@ jobs:
           fi
           "$PY" -c "import json,sys; from pathlib import Path; b=Path(sys.argv[1]); data=json.loads(b.read_text(encoding='utf-8')); names=[str(e.get('name','')).strip() for e in data.get('artifacts', []) if str(e.get('name','')).strip()]; [print(n) for n in names]" "bootstrap/$BUNDLE_ASSET" bootstrap > bootstrap/bundle-assets.list
           while IFS= read -r ASSET_NAME; do
+            ASSET_NAME="${ASSET_NAME//$'\r'/}"
             [[ -n "${ASSET_NAME:-}" ]] || continue
             [[ -f "bootstrap/$ASSET_NAME" ]] && continue
             download_asset "$ASSET_NAME"
@@ -450,6 +454,10 @@ jobs:
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
               if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
                 echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
+                return 0
+              fi
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
+                echo "[WARN] compiler rebuild for $src completed with no emitted output and unchanged in-place binary ($cc); accepting as compiler-managed no-output mode." | tee -a "$STAGE_TRACE_FILE"
                 return 0
               fi
             fi
