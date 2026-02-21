@@ -899,9 +899,13 @@ jobs:
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(hash_file "$cc" || true)"
               if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
-                cp "$cc" "$out"
-                echo "[INFO] compiler rebuilt in-place and was materialized as $out (hash_before=$cc_sig_before hash_after=$cc_sig_after)" | tee -a "$STAGE_TRACE_FILE" >&2
-                return 0
+                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                  cp "$cc" "$out"
+                  echo "[INFO] compiler rebuilt in-place and was materialized as $out (hash_before=$cc_sig_before hash_after=$cc_sig_after)" | tee -a "$STAGE_TRACE_FILE" >&2
+                  return 0
+                fi
+                echo "CRITICAL: compiler $cc returned success for $src but produced no output and did not mutate binary." | tee -a "$STAGE_TRACE_FILE" >&2
+                return 1
               fi
             fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE" >&2
@@ -1091,8 +1095,10 @@ jobs:
             fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
+            cp "$SEED_CANDIDATE" seed/dist/bin/thag
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
+            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thag"
             bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
             if [[ "${bytes:-0}" -lt 512 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
@@ -1106,8 +1112,10 @@ jobs:
             fi
           else
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
+            cp "$SEED_CANDIDATE" seed/dist/bin/thag
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
+            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thag"
             bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
             if [[ "${bytes:-0}" -lt 512 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
@@ -1716,8 +1724,8 @@ jobs:
             tar -xzf "${{ matrix.stage1_seed_name }}" -C extract
             CANDIDATE="$(
               {
-                find extract -maxdepth 5 -type f -name thagore
                 find extract -maxdepth 5 -type f -name stage1
+                find extract -maxdepth 5 -type f -name thagore
                 find extract -maxdepth 5 -type f -name thag
               } | head -n1 || true
             )"
