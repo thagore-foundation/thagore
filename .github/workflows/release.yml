@@ -351,6 +351,7 @@ jobs:
             local preferred="$1"
             local src="$2"
             local probe_dir="$3"
+            local marker="${4:-}"
             local base
             base="$(basename "$src" .tg)"
             for c in "$preferred" "${preferred%.ll}.ll" "$probe_dir/${base}.ll" "${base}.ll"; do
@@ -361,6 +362,35 @@ jobs:
             done
             local found
             found="$(find "$probe_dir" -maxdepth 2 -type f -name '*.ll' | head -n 1 || true)"
+            if [[ -n "$found" ]]; then
+              echo "$found"
+              return 0
+            fi
+            if [[ -n "$marker" && -f "$marker" ]]; then
+              found="$(find . -maxdepth 6 -type f -newer "$marker" -name '*.ll' | head -n 1 || true)"
+              if [[ -n "$found" ]]; then
+                echo "$found"
+                return 0
+              fi
+            fi
+            return 1
+          }
+          resolve_probe_bin_from_marker() {
+            local src="$1"
+            local marker="$2"
+            local base
+            base="$(basename "$src" .tg)"
+            [[ -f "$marker" ]] || return 1
+            local found
+            found="$(find . -maxdepth 6 -type f -newer "$marker" \
+              \( -name "${base}*" -o -name "*${base}*" \) \
+              ! -name '*.tg' \
+              ! -name '*.ll' \
+              ! -name '*.o' \
+              ! -name '*.obj' \
+              ! -name '*.a' \
+              ! -name '*.lib' \
+              ! -name '*.txt' | head -n 1 || true)"
             if [[ -n "$found" ]]; then
               echo "$found"
               return 0
@@ -448,9 +478,11 @@ jobs:
             local probe_out=""
             local probe_bin=""
             local probe_ir=""
+            local probe_marker=""
             probe_dir="$(mktemp -d)"
             probe_src="$probe_dir/stage1_probe_cli.tg"
             probe_out="$probe_dir/stage1_probe_cli"
+            probe_marker="$probe_dir/.probe_marker"
             help_out="$("./$bin" --help 2>&1)" || help_rc=$?
             ver_out="$("./$bin" --version 2>&1)" || ver_rc=$?
             merged="$ver_out"$'\n'"$help_out"
@@ -468,6 +500,7 @@ jobs:
             fi
             printf 'func main() -> i32:\n    return 0\n' > "$probe_src"
             rm -f "$probe_out" "${probe_out}.exe" "${probe_out%.exe}" a.out a.exe out out.exe || true
+            touch "$probe_marker"
             if ! "./$bin" build "$probe_src" -o "$probe_out"; then
               echo "CRITICAL: selected stage1 failed fixture build in bootstrap probe."
               rm -rf "$probe_dir" || true
@@ -475,8 +508,11 @@ jobs:
             fi
             probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
             if [[ -z "${probe_bin:-}" ]]; then
+              probe_bin="$(resolve_probe_bin_from_marker "$probe_src" "$probe_marker" || true)"
+            fi
+            if [[ -z "${probe_bin:-}" ]]; then
               "./$bin" --emit-llvm-internal "$probe_src" -o "${probe_out}.ll" || true
-              probe_ir="$(resolve_ir "${probe_out}.ll" "$probe_src" "$probe_dir" || true)"
+              probe_ir="$(resolve_ir "${probe_out}.ll" "$probe_src" "$probe_dir" "$probe_marker" || true)"
               if [[ -n "${probe_ir:-}" ]]; then
                 if [[ -f libthag_runtime.a ]]; then
                   clang "$probe_ir" -o "$probe_out" -Wno-override-module libthag_runtime.a || true
@@ -485,6 +521,9 @@ jobs:
                   clang "$probe_ir" -o "$probe_out" -Wno-override-module thag_runtime.lib || true
                 fi
                 probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
+                if [[ -z "${probe_bin:-}" ]]; then
+                  probe_bin="$(resolve_probe_bin_from_marker "$probe_src" "$probe_marker" || true)"
+                fi
               fi
             fi
             if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
