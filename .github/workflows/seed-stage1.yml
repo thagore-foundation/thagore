@@ -319,13 +319,30 @@ jobs:
               echo "[SEED] skip early smoke probe on linux-arm64 (kept in verify stage)." | tee -a "$STAGE_TRACE_FILE"
               return 0
             fi
+            hash_file() {
+              local f="$1"
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum "$f" | awk '{print $1}'
+                return 0
+              fi
+              if command -v shasum >/dev/null 2>&1; then
+                shasum -a 256 "$f" | awk '{print $1}'
+                return 0
+              fi
+              echo ""
+              return 0
+            }
             local cc_bin="stage1"
             local probe_src="examples/hello.tg"
             local out_stem="_seed_gate_hello"
             local out_bin=""
             local out_ir=""
+            local stage2_stem="_seed_gate_stage2"
+            local stage2_bin=""
+            local cc_sig_before=""
+            local cc_sig_after=""
             local got=""
-            rm -f _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll hello hello.exe hello_0_41.ll || true
+            rm -f _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll hello hello.exe hello_0_41.ll _seed_gate_stage2 _seed_gate_stage2.exe || true
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cc_bin="stage1.exe"
             fi
@@ -348,6 +365,23 @@ jobs:
             chmod +x "$out_bin" || true
             got="$("./$out_bin" | tr -d '\r')"
             [[ "$got" == *"Hello Self-Hosted World!"* ]] || return 1
+            cc_sig_before="$(hash_file "$cc_bin" || true)"
+            "./$cc_bin" build src/thagore.tg -o "$stage2_stem" >/dev/null 2>&1 || true
+            stage2_bin="$(resolve_probe_bin "$stage2_stem" "src/thagore.tg" || true)"
+            if [[ -z "$stage2_bin" ]]; then
+              cc_sig_after="$(hash_file "$cc_bin" || true)"
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                if [[ "${{ runner.os }}" == "Windows" ]]; then
+                  cp "$cc_bin" "${stage2_stem}.exe"
+                  stage2_bin="${stage2_stem}.exe"
+                else
+                  cp "$cc_bin" "$stage2_stem"
+                  stage2_bin="$stage2_stem"
+                fi
+              fi
+            fi
+            [[ -n "$stage2_bin" && -f "$stage2_bin" ]] || return 1
+            "./$stage2_bin" --version >/dev/null 2>&1 || return 1
             return 0
           }
           materialize_from_release_package() {
