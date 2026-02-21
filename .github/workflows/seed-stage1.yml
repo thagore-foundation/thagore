@@ -1351,6 +1351,24 @@ jobs:
           run_compiler_cmd() {
             local cc="$1"
             shift
+            local helper="./stage1"
+            if [[ -f "./stage1.exe" ]]; then
+              helper="./stage1.exe"
+            fi
+            local -a common_env=()
+            if [[ -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
+              common_env+=(THAG_HELPER_BIN="$helper")
+            fi
+            if [[ -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
+              common_env+=(THAGORE_INTERNAL_EMIT=1)
+            fi
+            if [[ -z "${THAG_HELPER_DEPTH:-}" ]]; then
+              common_env+=(THAG_HELPER_DEPTH=1)
+            fi
+            if [[ ${#common_env[@]} -gt 0 ]]; then
+              env "${common_env[@]}" "./$cc" "$@"
+              return $?
+            fi
             "./$cc" "$@"
           }
           resolve_program_bin() {
