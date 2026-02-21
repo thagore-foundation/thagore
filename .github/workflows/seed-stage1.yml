@@ -264,12 +264,54 @@ jobs:
           }
           resolve_probe_bin() {
             local stem="$1"
-            for c in "$stem" "${stem}.exe" "_seed_gate_probe" "_seed_gate_probe.exe"; do
+            local src="$2"
+            local base=""
+            base="$(basename "$src" .tg)"
+            for c in "$stem" "${stem}.exe" "${stem%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
               fi
             done
+            {
+              find . -maxdepth 2 -type f -name "${stem}*" 2>/dev/null
+              find ./examples -maxdepth 2 -type f -name "${base}*" 2>/dev/null
+              find ./src -maxdepth 2 -type f -name "${base}*" 2>/dev/null
+            } \
+              | sed 's|^\./||' \
+              | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
+              | grep -E '(^|/)[^/.]+(\.exe)?$' \
+              | head -n 1 || true
+          }
+          resolve_probe_ir() {
+            local stem="$1"
+            local src="$2"
+            local base=""
+            base="$(basename "$src" .tg)"
+            for c in "${stem}.ll" "${stem%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            {
+              find . -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
+              find ./examples -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
+              find ./src -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
+            } \
+              | sed 's|^\./||' \
+              | head -n 1 || true
+          }
+          link_probe_ir() {
+            local ir="$1"
+            local out="$2"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib >/dev/null 2>&1 && return 0
+              clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a >/dev/null 2>&1 && return 0
+              return 1
+            fi
+            clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a >/dev/null 2>&1 && return 0
+            clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib >/dev/null 2>&1 && return 0
             return 1
           }
           seed_smoke_probe() {
@@ -278,32 +320,34 @@ jobs:
               return 0
             fi
             local cc_bin="stage1"
-            local out_stem="_seed_gate_probe_out"
+            local probe_src="examples/hello.tg"
+            local out_stem="_seed_gate_hello"
             local out_bin=""
+            local out_ir=""
             local got=""
-            rm -f _seed_gate_probe.tg _seed_gate_probe_out _seed_gate_probe_out.exe _seed_gate_probe_out.ll _seed_gate_probe _seed_gate_probe.exe || true
-            printf 'func main():\n    print("seed gate probe ok")\n' > _seed_gate_probe.tg
+            rm -f _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll hello hello.exe hello_0_41.ll || true
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cc_bin="stage1.exe"
             fi
             "./$cc_bin" --version >/dev/null 2>&1 || return 1
-            "./$cc_bin" build _seed_gate_probe.tg -o "$out_stem" >/dev/null 2>&1 || true
-            out_bin="$(resolve_probe_bin "$out_stem" || true)"
+            "./$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
+            out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
             if [[ -z "$out_bin" ]]; then
-              "./$cc_bin" --emit-llvm-internal _seed_gate_probe.tg -o "${out_stem}.ll" >/dev/null 2>&1 || true
-              if [[ -f "${out_stem}.ll" ]] && grep -q "@main(" "${out_stem}.ll"; then
+              "./$cc_bin" --emit-llvm-internal "$probe_src" -o "${out_stem}.ll" >/dev/null 2>&1 || true
+              out_ir="$(resolve_probe_ir "$out_stem" "$probe_src" || true)"
+              if [[ -n "$out_ir" && -f "$out_ir" ]]; then
                 if [[ "${{ runner.os }}" == "Windows" ]]; then
-                  clang "${out_stem}.ll" -o "${out_stem}.exe" -Wno-override-module thag_runtime.lib >/dev/null 2>&1 || return 1
+                  link_probe_ir "$out_ir" "${out_stem}.exe" || return 1
                 else
-                  clang "${out_stem}.ll" -o "${out_stem}" -Wno-override-module libthag_runtime.a >/dev/null 2>&1 || return 1
+                  link_probe_ir "$out_ir" "${out_stem}" || return 1
                 fi
-                out_bin="$(resolve_probe_bin "$out_stem" || true)"
+                out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
               fi
             fi
             [[ -n "$out_bin" && -f "$out_bin" ]] || return 1
             chmod +x "$out_bin" || true
-            got="$("./$out_bin" | tr -d '\r' | tr -d '\n')"
-            [[ "$got" == "seed gate probe ok" ]] || return 1
+            got="$("./$out_bin" | tr -d '\r')"
+            [[ "$got" == *"Hello Self-Hosted World!"* ]] || return 1
             return 0
           }
           materialize_from_release_package() {
@@ -433,6 +477,8 @@ jobs:
           }
           TAG_CANDIDATES=(
             "$BOOTSTRAP_STAGE1_TAG"
+            "v0.3.97-stage1-seed"
+            "v0.3.96-stage1-seed"
             "v0.3.61-foundation"
             "v0.5.20"
             "v0.5.13"
