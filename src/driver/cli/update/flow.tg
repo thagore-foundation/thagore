@@ -30,6 +30,24 @@ func _update_confirm(yes: i32, text: String) -> i32:
         return 1
     return 0
 
+func _update_windows_script_path(exe_path: String) -> String:
+    let install_root = _normalize_path(path.dirname(path.dirname(exe_path)))
+    return _normalize_path(path.join(install_root, "installer/update-windows.ps1"))
+
+func _update_windows_delegate(mode: String, yes: i32, dry_run: i32, elevated: i32, exe_path: String) -> i32:
+    let script_path = _update_windows_script_path(exe_path)
+    if (fs.exists(script_path) == 0):
+        print("ERROR: missing Windows updater script: " + script_path)
+        return 1
+    let cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File " + _quote(script_path) + " " + mode
+    if (yes == 1):
+        cmd = cmd + " -yes"
+    if (dry_run == 1):
+        cmd = cmd + " -dryRun"
+    if (elevated == 1):
+        cmd = cmd + " -elevated"
+    return process.run(cmd)
+
 func _update_apply(argc: i32, start: i32) -> i32:
     let yes = 0
     let dry_run = 0
@@ -54,6 +72,12 @@ func _update_apply(argc: i32, start: i32) -> i32:
     if (_update_platform_supported(os_name, arch) == 0):
         print("ERROR: update is not supported on this platform (" + os_name + "/" + arch + ").")
         return 1
+    let exe_path = _update_executable_path()
+    if (strlen(exe_path) == 0):
+        print("ERROR: cannot resolve current executable path.")
+        return 1
+    if (os_name == "windows"):
+        return _update_windows_delegate("apply", yes, dry_run, elevated, exe_path)
     let rel = _update_fetch_latest_foundation_release(os_name, arch)
     if (rel.ok == 0):
         print("ERROR: cannot fetch release metadata.")
@@ -63,10 +87,6 @@ func _update_apply(argc: i32, start: i32) -> i32:
         return 0
     if (_update_confirm(yes, "Update to " + rel.tag + "?") == 0):
         print("Update aborted.")
-        return 1
-    let exe_path = _update_executable_path()
-    if (strlen(exe_path) == 0):
-        print("ERROR: cannot resolve current executable path.")
         return 1
     _update_ensure_dir()
     let archive_path = path.join(_update_state_dir(), "download.tmp")
@@ -202,6 +222,11 @@ func _update_rollback(argc: i32, start: i32) -> i32:
     let exe_path = _trim(fs.read_text(_update_backup_target_file()))
     if (strlen(exe_path) == 0):
         exe_path = _update_executable_path()
+    if (_update_detect_os() == "windows"):
+        if (strlen(exe_path) == 0):
+            print("ERROR: cannot resolve current executable path.")
+            return 1
+        return _update_windows_delegate("rollback", yes, 0, elevated, exe_path)
     let backup_path = _update_backup_file()
     if (_ends_with(exe_path, ".exe") == 1):
         backup_path = backup_path + ".exe"
