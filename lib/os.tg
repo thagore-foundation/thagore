@@ -4,10 +4,23 @@ import "lib/http.tg" as http
 import "lib/io.tg" as io
 import "lib/list.tg" as list
 import "lib/map.tg" as map
+import "lib/os_abi_posix.tg" as abi_posix
+import "lib/os_abi_windows.tg" as abi_windows
 import "lib/path.tg" as path
 import "lib/process.tg" as process
 import "lib/string.tg" as str
 import "lib/time.tg" as time
+
+func os_abi_mode() -> String:
+    let mode = str.lower(str.trim(env.get_var("THAG_OS_ABI_MODE")))
+    if ((mode == "direct") or (mode == "native") or (mode == "os")):
+        return "direct"
+    return "wrapped"
+
+func os_abi_direct_enabled() -> i32:
+    if (os_abi_mode() == "direct"):
+        return 1
+    return 0
 
 func os_platform_name() -> String:
     let os_name = env.get_var("OS")
@@ -109,12 +122,30 @@ func os_file_write_text(p: String, text: String) -> i32:
     return fs.write_text(p, text)
 
 func os_file_remove(p: String) -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_remove_file(p)
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_remove_file(p)
     return fs.remove(p)
 
 func os_file_exists(p: String) -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_file_exists(p)
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_file_exists(p)
     return fs.exists(p)
 
 func os_file_mkdir(p: String) -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_mkdir(p)
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_mkdir(p)
     return fs.mkdir(p)
 
 func os_file_ensure_dir(p: String) -> i32:
@@ -124,6 +155,12 @@ func os_file_list_dir(p: String) -> String:
     return fs.list_dir(p)
 
 func os_file_move(src: String, dst: String) -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_move_file(src, dst)
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_move_file(src, dst)
     return fs.move(src, dst)
 
 func os_file_open_binary(p: String, mode: String) -> ptr:
@@ -226,10 +263,40 @@ func os_http_post(url: String, body: String) -> String:
     return http.post(url, body)
 
 func os_time_now_ms() -> i32:
+    if (os_abi_direct_enabled() == 1):
+        if (os_platform_name() == "windows"):
+            return abi_windows.abi_time_now_ms()
     return time.now_ms()
 
 func os_time_sleep_ms(ms: i32) -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_sleep_ms(ms)
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_sleep_ms(ms)
     return time.sleep_ms(ms)
+
+func os_process_id() -> i32:
+    if (os_abi_direct_enabled() == 1):
+        let plat = os_platform_name()
+        if (plat == "windows"):
+            return abi_windows.abi_process_id()
+        if (((plat == "linux") or (plat == "macos")) or (plat == "bsd")):
+            return abi_posix.abi_process_id()
+    return -1
+
+func os_thread_id() -> i32:
+    if (os_abi_direct_enabled() == 1):
+        if (os_platform_name() == "windows"):
+            return abi_windows.abi_thread_id()
+    return -1
+
+func os_debug_print(text: String) -> i32:
+    if ((os_abi_direct_enabled() == 1) and (os_platform_name() == "windows")):
+        return abi_windows.abi_debug_print(text)
+    print(text)
+    return 0
 
 func os_list_new() -> ptr:
     return list.new()
