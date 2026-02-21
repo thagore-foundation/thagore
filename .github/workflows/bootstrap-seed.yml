@@ -129,6 +129,14 @@ jobs:
             fi
           done
           [[ -n "$BUNDLE_ASSET" ]] || (echo "CRITICAL: seed bundle metadata not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
+          TRACE_ASSET=""
+          for CANDIDATE in "seed-stage-trace-linux-x86_64.log"; do
+            if download_optional "$CANDIDATE"; then
+              TRACE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$TRACE_ASSET" ]] || (echo "CRITICAL: seed stage trace not found in $BOOTSTRAP_STAGE1_TAG"; exit 1)
           cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
           cp libthag_runtime.a thag_runtime.lib
           CANDIDATE="$(find bootstrap -maxdepth 4 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -316,6 +324,7 @@ jobs:
             runtime-abi-inventory-bootstrap-seed-linux.txt
             bootstrap/seed-promotion-manifest-*.txt
             bootstrap/seed-stage1-provenance-*.json
+            bootstrap/seed-stage-trace-*.log
             seed-promotion-gate-bootstrap.txt
             seed-release-bundle-verify-bootstrap.txt
 
