@@ -120,107 +120,122 @@ jobs:
               });
             }
 
-            const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
-              owner,
-              repo,
-              per_page: 100,
-            });
-            const wfByName = new Map(workflows.map((w) => [w.name, w]));
-
             const report = [];
             let failed = false;
-
-            for (const target of targets) {
-              const wf = wfByName.get(target.name);
-              if (!wf) {
-                report.push(`FAIL|${target.name}|workflow_not_found`);
-                failed = true;
-                continue;
-              }
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+            try {
+              const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
                 owner,
                 repo,
-                workflow_id: wf.id,
                 per_page: 100,
               });
-              const filtered = runs.filter((r) => {
-                if (r.status !== "completed") return false;
-                if (!target.events.includes(r.event)) return false;
-                if (target.branch && r.head_branch !== target.branch) return false;
-                return true;
-              });
+              const wfByName = new Map(workflows.map((w) => [w.name, w]));
 
-              let streak = 0;
-              let breakRun = null;
-              const inspected = [];
-              for (const r of filtered) {
-                if (inspected.length >= windowSize) break;
-                inspected.push(`${r.id}:${r.conclusion}:${r.head_branch}:${r.event}`);
-                if (r.conclusion === "success") {
-                  streak += 1;
-                } else {
-                  breakRun = r;
-                  break;
+              for (const target of targets) {
+                const wf = wfByName.get(target.name);
+                if (!wf) {
+                  report.push(`FAIL|${target.name}|workflow_not_found`);
+                  failed = true;
+                  continue;
                 }
-              }
-
-              if (streak < windowSize) {
-                failed = true;
-                if (breakRun) {
-                  report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|break_run=${breakRun.id}|break_conclusion=${breakRun.conclusion}`);
-                } else {
-                  report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|insufficient_history`);
-                }
-              } else {
-                report.push(`PASS|${target.name}|streak=${streak}/${windowSize}`);
-              }
-              for (const row of inspected) {
-                report.push(`RUN|${target.name}|${row}`);
-              }
-
-              const successRuns = filtered.filter((r) => r.conclusion === "success").slice(0, windowSize);
-              if (successRuns.length < windowSize) {
-                failed = true;
-                report.push(`FAIL|${target.name}|artifact_audit=insufficient_success_runs|have=${successRuns.length}|need=${windowSize}`);
-                continue;
-              }
-
-              for (const r of successRuns) {
-                const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
                   owner,
                   repo,
-                  run_id: r.id,
+                  workflow_id: wf.id,
                   per_page: 100,
                 });
-                const names = artifacts.map((a) => a.name || "");
-                report.push(`ARTIFACTS|${target.name}|run=${r.id}|count=${names.length}`);
-                const missingRegexes = (target.artifactRegexes || []).filter((pat) => {
-                  const re = new RegExp(pat);
-                  return !names.some((n) => re.test(n));
+                const filtered = runs.filter((r) => {
+                  if (r.status !== "completed") return false;
+                  if (!target.events.includes(r.event)) return false;
+                  if (target.branch && r.head_branch !== target.branch) return false;
+                  return true;
                 });
-                if (missingRegexes.length > 0) {
+
+                let streak = 0;
+                let breakRun = null;
+                const inspected = [];
+                for (const r of filtered) {
+                  if (inspected.length >= windowSize) break;
+                  inspected.push(`${r.id}:${r.conclusion}:${r.head_branch}:${r.event}`);
+                  if (r.conclusion === "success") {
+                    streak += 1;
+                  } else {
+                    breakRun = r;
+                    break;
+                  }
+                }
+
+                if (streak < windowSize) {
                   failed = true;
-                  report.push(
-                    `FAIL|${target.name}|artifact_audit=missing_artifact|run=${r.id}|missing=${missingRegexes.join(",")}`
-                  );
+                  if (breakRun) {
+                    report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|break_run=${breakRun.id}|break_conclusion=${breakRun.conclusion}`);
+                  } else {
+                    report.push(`FAIL|${target.name}|streak=${streak}/${windowSize}|insufficient_history`);
+                  }
                 } else {
-                  report.push(`PASS|${target.name}|artifact_audit=ok|run=${r.id}`);
+                  report.push(`PASS|${target.name}|streak=${streak}/${windowSize}`);
+                }
+                for (const row of inspected) {
+                  report.push(`RUN|${target.name}|${row}`);
+                }
+
+                const successRuns = filtered.filter((r) => r.conclusion === "success").slice(0, windowSize);
+                if (successRuns.length < windowSize) {
+                  failed = true;
+                  report.push(`FAIL|${target.name}|artifact_audit=insufficient_success_runs|have=${successRuns.length}|need=${windowSize}`);
+                  continue;
+                }
+
+                for (const r of successRuns) {
+                  const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                    owner,
+                    repo,
+                    run_id: r.id,
+                    per_page: 100,
+                  });
+                  const names = artifacts.map((a) => a.name || "");
+                  report.push(`ARTIFACTS|${target.name}|run=${r.id}|count=${names.length}`);
+                  const missingRegexes = (target.artifactRegexes || []).filter((pat) => {
+                    const re = new RegExp(pat);
+                    return !names.some((n) => re.test(n));
+                  });
+                  if (missingRegexes.length > 0) {
+                    failed = true;
+                    report.push(
+                      `FAIL|${target.name}|artifact_audit=missing_artifact|run=${r.id}|missing=${missingRegexes.join(",")}`
+                    );
+                  } else {
+                    report.push(`PASS|${target.name}|artifact_audit=ok|run=${r.id}`);
+                  }
                 }
               }
-            }
 
-            const body = [
-              `ref=${context.ref}`,
-              `window=${windowSize}`,
-              ...report,
-            ].join("\n") + "\n";
-            require("fs").writeFileSync("stability-policy-report.txt", body, "utf8");
-            core.summary.addCodeBlock(body, "text").write();
-            if (failed) {
+              const body = [
+                `ref=${context.ref}`,
+                `window=${windowSize}`,
+                ...report,
+              ].join("\n") + "\n";
+              require("fs").writeFileSync("stability-policy-report.txt", body, "utf8");
+              core.summary.addCodeBlock(body, "text").write();
+              if (failed) {
+                if (enforceStrict) {
+                  core.setFailed("Stability policy failed. See stability-policy-report.txt");
+                } else {
+                  core.warning("Stability policy not yet satisfied on push/main. Report uploaded for tracking.");
+                }
+              }
+            } catch (err) {
+              const message = ((err && err.message) ? err.message : String(err)).replace(/\s+/g, " ").trim();
+              const body = [
+                `ref=${context.ref}`,
+                `window=${windowSize}`,
+                `WARN|api_error|${message}`,
+              ].join("\n") + "\n";
+              require("fs").writeFileSync("stability-policy-report.txt", body, "utf8");
+              core.summary.addCodeBlock(body, "text").write();
               if (enforceStrict) {
-                core.setFailed("Stability policy failed. See stability-policy-report.txt");
+                core.setFailed(`Stability policy API check failed: ${message}`);
               } else {
-                core.warning("Stability policy not yet satisfied on push/main. Report uploaded for tracking.");
+                core.warning(`Stability policy API check skipped due API error: ${message}`);
               }
             }
 
