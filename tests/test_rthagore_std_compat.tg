@@ -9,6 +9,7 @@ import "lib/rthagore/std/math.tg" as math
 import "lib/rthagore/std/mem.tg" as mem
 import "lib/rthagore/std/regex.tg" as regex
 import "lib/rthagore/std/set.tg" as setmod
+import "lib/rthagore/std/string.tg" as str
 
 func _expect_i32(label: String, got: i32, want: i32) -> i32:
     if (got == want):
@@ -76,12 +77,20 @@ func main() -> i32:
     let moved = mem.copy(dst, 0, src, 0, 2)
     fails = fails + _expect_str("mem copy", bytes.raw(moved), "HI")
 
-    let h = dylib.open("kernel32.dll")
+    let os_name = env.get("OS")
+    let ostype = str.lower(env.get("OSTYPE"))
+    let dylib_name = "libc.so.6"
+    let dylib_symbol = "malloc"
+    if (os_name == "Windows_NT"):
+        dylib_name = "kernel32.dll"
+        dylib_symbol = "GetTickCount"
+    if (str.contains(ostype, "darwin")):
+        dylib_name = "/usr/lib/libSystem.B.dylib"
+    let h = dylib.open(dylib_name)
+    if ((h == null) and (os_name != "Windows_NT")):
+        h = dylib.open("libc.so")
     fails = fails + _expect_i32("dylib open", h != null, 1)
-    if (env.get("OS") == "Windows_NT"):
-        fails = fails + _expect_i32("dylib symbol windows", dylib.symbol(h, "GetTickCount") != null, 1)
-    else:
-        fails = fails + _expect_i32("dylib symbol fallback", dylib.symbol(h, "noop") != null, 1)
+    fails = fails + _expect_i32("dylib symbol", dylib.symbol(h, dylib_symbol) != null, 1)
     fails = fails + _expect_i32("dylib close", dylib.close(h), 0)
 
     if (fails == 0):

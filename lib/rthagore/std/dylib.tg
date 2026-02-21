@@ -2,14 +2,18 @@
 
 use env as env
 
-extern func malloc(size: usize) -> ptr
-extern func free(p: ptr) -> void
+extern func dlopen(path: String, flags: i32) -> ptr
+extern func dlsym(module: ptr, name: String) -> ptr
+extern func dlclose(module: ptr) -> i32
 extern func LoadLibraryA(path: String) -> ptr
 extern func GetProcAddress(module: ptr, name: String) -> ptr
 extern func FreeLibrary(module: ptr) -> i32
 
 func _is_windows() -> bool
   return env.get("OS") == "Windows_NT"
+
+func _rtld_lazy() -> i32
+  return 1
 
 func open(path: String) -> ptr
   if path == null
@@ -18,7 +22,7 @@ func open(path: String) -> ptr
     return null
   if _is_windows()
     return LoadLibraryA(path)
-  return malloc(1)
+  return dlopen(path, _rtld_lazy())
 
 func symbol(handle: ptr, name: String) -> ptr
   if handle == null
@@ -29,7 +33,7 @@ func symbol(handle: ptr, name: String) -> ptr
     return null
   if _is_windows()
     return GetProcAddress(handle, name)
-  return handle
+  return dlsym(handle, name)
 
 func close(handle: ptr) -> i32
   if handle == null
@@ -38,5 +42,4 @@ func close(handle: ptr) -> i32
     if FreeLibrary(handle) != 0
       return 0
     return -1
-  free(handle)
-  return 0
+  return dlclose(handle)

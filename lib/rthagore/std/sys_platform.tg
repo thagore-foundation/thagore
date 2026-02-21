@@ -1,29 +1,46 @@
 // sys_platform (thagore-compatible shim)
 
 use env as env
+use string as string
 use time as time
 use sys_linux as linux
 use sys_windows as win
 use sys_bsd as bsd
 
-func platform_id() -> String
-    let override = env.get("THAGORE_PLATFORM")
-    if override == "windows"
+func _normalize_platform(value: String) -> String
+    let p = string.lower(string.trim(value))
+    if p == "windows" or p == "win" or p == "win32"
         return "windows"
-    if override == "linux"
+    if p == "linux" or p == "gnu/linux"
         return "linux"
-    if override == "macos"
+    if p == "macos" or p == "mac" or p == "darwin" or p == "osx"
         return "macos"
-    if override == "bsd"
+    if p == "bsd" or p == "freebsd" or p == "openbsd" or p == "netbsd"
         return "bsd"
+    return ""
+
+func _platform_from_ostype(value: String) -> String
+    let ostype = string.lower(value)
+    if string.contains(ostype, "darwin") or string.contains(ostype, "mac")
+        return "macos"
+    if string.contains(ostype, "freebsd") or string.contains(ostype, "openbsd") or string.contains(ostype, "netbsd") or string.contains(ostype, "bsd")
+        return "bsd"
+    if string.contains(ostype, "linux") or string.contains(ostype, "gnu")
+        return "linux"
+    if string.contains(ostype, "cygwin") or string.contains(ostype, "msys") or string.contains(ostype, "mingw") or string.contains(ostype, "win")
+        return "windows"
+    return ""
+
+func platform_id() -> String
+    let override = _normalize_platform(env.get("THAGORE_PLATFORM"))
+    if override != ""
+        return override
     let os = env.get("OS")
     if os == "Windows_NT"
         return "windows"
-    let ostype = env.get("OSTYPE")
-    if ostype == "darwin" or ostype == "macos"
-        return "macos"
-    if ostype == "freebsd" or ostype == "openbsd" or ostype == "netbsd"
-        return "bsd"
+    let by_ostype = _platform_from_ostype(env.get("OSTYPE"))
+    if by_ostype != ""
+        return by_ostype
     return "linux"
 
 func is_windows() -> bool = platform_id() == "windows"
