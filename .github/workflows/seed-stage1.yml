@@ -413,11 +413,27 @@ jobs:
               fi
             done
             local discovered=""
+            local base_matches=""
+            if [[ "$src" != "src/thagore.tg" ]]; then
+              base_matches="$(
+                {
+                  find . -maxdepth 2 -type f -name "${base}*" 2>/dev/null
+                  find ./src -maxdepth 2 -type f -name "${base}*" 2>/dev/null
+                  find ./examples -maxdepth 2 -type f -name "${base}*" 2>/dev/null
+                } \
+                | sed 's|^\./||' \
+                | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
+                || true
+              )"
+            fi
             discovered="$(
               {
                 find . -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
                 find ./src -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
                 find ./examples -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
+                if [[ -n "$base_matches" ]]; then
+                  printf '%s\n' "$base_matches"
+                fi
               } \
               | sed 's|^\./||' \
               | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
@@ -449,6 +465,9 @@ jobs:
                 find . -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
                 find ./src -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
                 find ./examples -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
+                find . -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
+                find ./src -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
+                find ./examples -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
               } \
               | sed 's|^\./||' \
               | head -n1 || true
