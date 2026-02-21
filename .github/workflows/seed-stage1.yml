@@ -1284,6 +1284,29 @@ jobs:
             fi
             return 1
           }
+          run_compiler_cmd() {
+            local cc="$1"
+            shift
+            local helper_env=()
+            if [[ -z "${THAG_HELPER_BIN:-}" ]]; then
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                if [[ -f stage1.exe ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+                fi
+              else
+                if [[ -f stage1 ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1)
+                elif [[ -f stage1.exe ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+                fi
+              fi
+            fi
+            if [[ "${#helper_env[@]}" -gt 0 ]]; then
+              env "${helper_env[@]}" "./$cc" "$@"
+            else
+              "./$cc" "$@"
+            fi
+          }
           resolve_program_bin() {
             local source_file="$1"
             local out_stem="$2"
@@ -1354,19 +1377,19 @@ jobs:
             local out_bin=""
             local linker="clang"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
-            "./$compiler_bin" build "$source_file" -o "$out_stem" || true
+            run_compiler_cmd "$compiler_bin" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            "./$compiler_bin" --build "$source_file" -o "$out_stem" || true
+            run_compiler_cmd "$compiler_bin" --build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            "./$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
             emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             if [[ -z "$emitted_ll" ]]; then
               return 1
@@ -1401,7 +1424,7 @@ jobs:
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
             fi
-            if "./$cc" build "$source_file" -o "$out_stem"; then
+            if run_compiler_cmd "$cc" build "$source_file" -o "$out_stem"; then
               build_rc=0
             else
               build_rc=$?
@@ -1411,7 +1434,7 @@ jobs:
               echo "$out_bin"
               return 0
             fi
-            if "./$cc" --build "$source_file" -o "$out_stem"; then
+            if run_compiler_cmd "$cc" --build "$source_file" -o "$out_stem"; then
               alt_build_rc=0
             else
               alt_build_rc=$?
@@ -1484,8 +1507,8 @@ jobs:
           cp -R ../src ./src
           cp -R ../examples ./examples
           cp -R ../lib ./lib
-          "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
-          "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
+          run_compiler_cmd "$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
+          run_compiler_cmd "$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
           thg_build_compiler "$STAGE1_BIN" src/thagore.tg "$STAGE2_STEM" >/dev/null || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
           STAGE2_BIN="$(resolve_bin "$STAGE2_STEM" || true)"
