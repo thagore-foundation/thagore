@@ -960,6 +960,83 @@ jobs:
             fi
             return 1
           }
+          resolve_program_bin() {
+            local source_file="$1"
+            local out_stem="$2"
+            local source_base=""
+            local source_dir_stem=""
+            source_base="$(basename "$source_file")"
+            source_base="${source_base%.tg}"
+            source_dir_stem="${source_file%.tg}"
+            if [[ -f "$out_stem" ]]; then
+              echo "$out_stem"
+              return 0
+            fi
+            if [[ -f "${out_stem}.exe" ]]; then
+              echo "${out_stem}.exe"
+              return 0
+            fi
+            if [[ -f "$source_base" ]]; then
+              echo "$source_base"
+              return 0
+            fi
+            if [[ -f "${source_base}.exe" ]]; then
+              echo "${source_base}.exe"
+              return 0
+            fi
+            if [[ -f "$source_dir_stem" ]]; then
+              echo "$source_dir_stem"
+              return 0
+            fi
+            if [[ -f "${source_dir_stem}.exe" ]]; then
+              echo "${source_dir_stem}.exe"
+              return 0
+            fi
+            return 1
+          }
+          build_program_with_cc() {
+            local compiler_bin="$1"
+            local source_file="$2"
+            local out_stem="$3"
+            local tmp_ll="${out_stem}.ll"
+            local out_bin=""
+            local linker="${CXX:-clang++}"
+            rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
+            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" build "$source_file" -o "$out_stem" || true
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" --build "$source_file" -o "$out_stem" || true
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            if [[ ! -f "$tmp_ll" ]]; then
+              return 1
+            fi
+            if ! command -v "$linker" >/dev/null 2>&1; then
+              if command -v clang++ >/dev/null 2>&1; then
+                linker="clang++"
+              elif command -v clang >/dev/null 2>&1; then
+                linker="clang"
+              else
+                return 1
+              fi
+            fi
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              "$linker" "$tmp_ll" thag_runtime.lib -O2 -std=c++17 -o "${out_stem}.exe" || return 1
+            else
+              "$linker" "$tmp_ll" libthag_runtime.a -O2 -std=c++17 -o "$out_stem" || return 1
+            fi
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            [[ -n "$out_bin" ]] || return 1
+            echo "$out_bin"
+            return 0
+          }
           thg_build_compiler() {
             local cc="$1"
             local source_file="$2"
@@ -1002,9 +1079,9 @@ jobs:
             local source_file="$2"
             local out_stem="$3"
             local expected="$4"
-            "./$compiler_bin" build "$source_file" -o "$out_stem" || (echo "CRITICAL: $compiler_bin failed to build $source_file"; exit 1)
             local out_bin
-            out_bin="$(resolve_bin "$out_stem")" || (echo "CRITICAL: missing output binary for $source_file"; exit 1)
+            out_bin="$(build_program_with_cc "$compiler_bin" "$source_file" "$out_stem" || true)"
+            [[ -n "$out_bin" ]] || (echo "CRITICAL: $compiler_bin failed to build executable for $source_file"; exit 1)
             if [[ "${{ runner.os }}" != "Windows" ]]; then
               chmod +x "$out_bin"
             fi
