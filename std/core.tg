@@ -1,6 +1,6 @@
-extern func malloc(size: i32) -> ptr
+extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
-extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
+extern func memcpy(dst: ptr, src: ptr, size: usize) -> ptr
 extern func strlen(s: String) -> i32
 extern func printf(fmt: String, value: i32) -> i32
 extern func puts(text: String) -> i32
