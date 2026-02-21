@@ -1,0 +1,52 @@
+import "lib/list.tg" as list
+import "lib/map.tg" as map
+
+extern func malloc(size: usize) -> ptr
+extern func free(p: ptr) -> void
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_ptr_non_null(label: String, got: ptr) -> i32:
+    if (got != null):
+        return 0
+    print("FAIL: " + label)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let items = list.new()
+    fails = fails + _expect_ptr_non_null("list new non-null", items)
+    fails = fails + _expect_i32("list count init", list.count(items), 0)
+
+    let p1 = malloc(1)
+    let p2 = malloc(1)
+    fails = fails + _expect_i32("list push p1", list.push(items, p1), 1)
+    fails = fails + _expect_i32("list push p2", list.push(items, p2), 1)
+    fails = fails + _expect_i32("list count after push", list.count(items), 2)
+    fails = fails + _expect_i32("list get0 non-null", list.get(items, 0) != null, 1)
+    fails = fails + _expect_i32("list get1 non-null", list.get(items, 1) != null, 1)
+
+    let m = map.new()
+    fails = fails + _expect_ptr_non_null("map new non-null", m)
+    fails = fails + _expect_i32("map missing is null", map.is_null_ptr(map.get(m, "none")), 1)
+    fails = fails + _expect_i32("map put alpha", map.put(m, "alpha", p1), 1)
+    fails = fails + _expect_i32("map put beta", map.put(m, "beta", p2), 1)
+    fails = fails + _expect_i32("map get alpha non-null", map.is_null_ptr(map.get(m, "alpha")), 0)
+    fails = fails + _expect_i32("map get beta non-null", map.is_null_ptr(map.get(m, "beta")), 0)
+
+    list.dispose(items)
+    free(p1)
+    free(p2)
+
+    if (fails == 0):
+        print("PASS: lib list/map")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

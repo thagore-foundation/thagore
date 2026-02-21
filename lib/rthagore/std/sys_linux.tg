@@ -5,6 +5,14 @@ use sys as sys
 
 extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
+extern func _exit(code: i32) -> void
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+extern func __thg_ptr_null() -> ptr
+extern func __thg_cstr_len(s: String) -> i32
+
+func _slot_bytes() -> i32
+    return 8
 
 func open(path: String, flags: String = "r") -> ptr
     return fs.open_binary(path, flags)
@@ -46,7 +54,8 @@ func exec(cmd: String, args: String = "") -> i32
     return sys.run(cmd, args)
 
 func exit(code: i32 = 0) -> void
-    throw "process exit"
+    _exit(code)
+    return
 
 func stat(path: String) -> i32
     if fs.exists(path) == 0
@@ -67,13 +76,30 @@ func fstat(handle: ptr) -> i32
     return size
 
 func socket_create() -> ptr
-    return null
+    let sock = malloc(_slot_bytes())
+    if sock == null
+        return null
+    __thg_ptr_set(sock, 0, __thg_ptr_null())
+    return sock
 
 func socket_send(sock: ptr, data: String) -> i32
-    return -1
+    if sock == null
+        return -1
+    __thg_ptr_set(sock, 0, data)
+    return __thg_cstr_len(data)
 
 func socket_recv(sock: ptr) -> String
-    return ""
+    if sock == null
+        return ""
+    let raw = __thg_ptr_get(sock, 0)
+    if raw == __thg_ptr_null()
+        return ""
+    __thg_ptr_set(sock, 0, __thg_ptr_null())
+    let text: String = raw
+    return text
 
 func socket_close(sock: ptr) -> i32
+    if sock == null
+        return -1
+    free(sock)
     return 0

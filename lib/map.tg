@@ -1,11 +1,81 @@
+extern func malloc(size: usize) -> ptr
 extern func __thg_ptr_null() -> ptr
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+extern func __thg_str_hash(text: String) -> i32
 
-func new() -> ptr = __thg_ptr_null()
+func _slot_bytes() -> i32
+  return 8
+
+func _bucket_count() -> i32
+  return 257
+
+func _slot_key(index: i32) -> i32
+  return index * 2
+
+func _slot_value(index: i32) -> i32
+  return (index * 2) + 1
+
+func _normalize_hash(h: i32) -> i32
+  let out = h
+  if out < 0
+    out = 0 - out
+  if out < 0
+    return 0
+  return out
+
+func new() -> ptr
+  let slots = _bucket_count() * 2
+  let data = malloc(slots * _slot_bytes())
+  if data == __thg_ptr_null()
+    return __thg_ptr_null()
+  let i = 0
+  while i < slots
+    __thg_ptr_set(data, i, __thg_ptr_null())
+    i = i + 1
+  return data
 
 func put(m: ptr, key: String, value: ptr) -> i32
-  return 1
+  if m == __thg_ptr_null()
+    return 0
+  if key == null
+    return 0
+  let cap = _bucket_count()
+  let start = _normalize_hash(__thg_str_hash(key)) % cap
+  let step = 0
+  while step < cap
+    let idx = (start + step) % cap
+    let key_slot = _slot_key(idx)
+    let cur = __thg_ptr_get(m, key_slot)
+    if cur == __thg_ptr_null()
+      __thg_ptr_set(m, key_slot, key)
+      __thg_ptr_set(m, _slot_value(idx), value)
+      return 1
+    let cur_key: String = cur
+    if cur_key == key
+      __thg_ptr_set(m, _slot_value(idx), value)
+      return 1
+    step = step + 1
+  return 0
 
 func get(m: ptr, key: String) -> ptr
+  if m == __thg_ptr_null()
+    return __thg_ptr_null()
+  if key == null
+    return __thg_ptr_null()
+  let cap = _bucket_count()
+  let start = _normalize_hash(__thg_str_hash(key)) % cap
+  let step = 0
+  while step < cap
+    let idx = (start + step) % cap
+    let key_slot = _slot_key(idx)
+    let cur = __thg_ptr_get(m, key_slot)
+    if cur == __thg_ptr_null()
+      return __thg_ptr_null()
+    let cur_key: String = cur
+    if cur_key == key
+      return __thg_ptr_get(m, _slot_value(idx))
+    step = step + 1
   return __thg_ptr_null()
 
 func is_null_ptr(p: ptr) -> i32

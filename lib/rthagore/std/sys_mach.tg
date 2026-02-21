@@ -2,19 +2,32 @@
 
 extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+extern func __thg_ptr_null() -> ptr
 
 func mach_port_create() -> ptr
-    return malloc(1)
+    let port = malloc(8)
+    if port == null
+        return null
+    __thg_ptr_set(port, 0, __thg_ptr_null())
+    return port
 
 func mach_port_send(port: ptr, message: String) -> i32
     if port == null
         return -1
+    __thg_ptr_set(port, 0, message)
     return 0
 
 func mach_port_recv(port: ptr) -> String
     if port == null
         return ""
-    return ""
+    let raw = __thg_ptr_get(port, 0)
+    if raw == __thg_ptr_null()
+        return ""
+    __thg_ptr_set(port, 0, __thg_ptr_null())
+    let text: String = raw
+    return text
 
 func mach_port_destroy(port: ptr) -> i32
     if port == null

@@ -151,6 +151,9 @@ func process_exit(code: i32 = 0) -> void
     if id == "windows"
         win.process_exit(code)
         return
+    if id == "macos" or id == "bsd"
+        bsd.exit(code)
+        return
     linux.exit(code)
     return
 
