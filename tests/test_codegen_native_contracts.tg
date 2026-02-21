@@ -47,6 +47,11 @@ func main() -> i32:
     fails = fails + _expect_i32("emit typed has @main", _contains(ir2, "define i32 @main("), 1)
     fails = fails + _expect_i32("emit typed has ret i32", _contains(ir2, "ret i32"), 1)
     fails = fails + _expect_i32("emit typed no __NL__ marker", _contains(ir2, "__NL__"), 0)
+    fails = fails + _expect_i32("emit typed has stack slot for let", _contains(ir2, "alloca i32"), 1)
+
+    let src_ret1 = "func main() -> i32:\n    return 1\n"
+    let ir_ret1 = _emit_core(src_ret1, "contract_ret1")
+    fails = fails + _expect_i32("emit return literal keeps ret i32 1", _contains(ir_ret1, "ret i32 1"), 1)
 
     let src_if = "func main() -> i32:\n    let n = 3\n    if (n < 5):\n        return n\n    return 0\n"
     let ir_if = _emit_core(src_if, "contract_if")
