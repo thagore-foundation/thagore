@@ -1454,6 +1454,7 @@ jobs:
           fi
           cp -R ../src ./src
           cp -R ../examples ./examples
+          cp -R ../lib ./lib
           "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
