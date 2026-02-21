@@ -189,10 +189,6 @@ jobs:
               },
           ]
           selected = [entry for entry in entries if entry["asset_tag"] in available]
-          if official:
-              # Keep official release strictly on the end-user stable lane until
-              # cross-platform stage1 seeds are validated with non-empty CLI output.
-              selected = [entry for entry in selected if entry["asset_tag"] == "windows-x86_64"]
           matrix = {"include": selected}
           print(json.dumps(matrix, separators=(",", ":")))
           PY
@@ -857,7 +853,9 @@ jobs:
           resolve_bin() {
             local preferred="$1"
             local src="$2"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
