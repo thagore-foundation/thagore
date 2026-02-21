@@ -865,11 +865,13 @@ jobs:
             local ir_out="${out}.ll"
             local found_ir=""
             purge_outputs "$src" "$out"
+            LAST_SUCCESS_COMPILER=""
             for cc in "${COMPILER_CANDIDATES[@]}"; do
               [[ -n "$cc" && -f "$cc" ]] || continue
               if thg_build "$cc" "$src" "$out"; then
                 found="$(resolve_bin "$out" "$src" || true)"
                 if [[ -n "$found" ]]; then
+                  LAST_SUCCESS_COMPILER="$cc"
                   echo "$found"
                   return 0
                 fi
@@ -882,6 +884,7 @@ jobs:
                   if link_ir_to_bin "$found_ir" "$out"; then
                     found="$(resolve_bin "$out" "$src" || true)"
                     if [[ -n "$found" ]]; then
+                      LAST_SUCCESS_COMPILER="$cc"
                       echo "$found"
                       return 0
                     fi
@@ -898,6 +901,9 @@ jobs:
           else
             HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
             [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
+            if [[ -n "${LAST_SUCCESS_COMPILER:-}" && -f "$LAST_SUCCESS_COMPILER" ]]; then
+              SEED_BIN="$LAST_SUCCESS_COMPILER"
+            fi
             chmod +x "$HELLO_BIN_FOUND" || true
             HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
             CC_HASH="$(hash_file "$SEED_BIN")"
