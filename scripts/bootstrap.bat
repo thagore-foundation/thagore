@@ -20,6 +20,7 @@ if errorlevel 1 (
 )
 
 echo [1/4] Build stage2 from stage1...
+if exist stage2.exe del /f /q stage2.exe >nul 2>&1
 stage1.exe build src/thagore.tg -o stage2.exe
 if errorlevel 1 (
   echo [FAIL] Stage2 build failed.
@@ -31,24 +32,20 @@ if not exist stage2.exe (
 )
 
 echo [2/4] Rebuild stage2b from stage2...
+if exist stage2b.exe del /f /q stage2b.exe >nul 2>&1
 stage2.exe build src/thagore.tg -o stage2b.exe
 if errorlevel 1 (
   echo [FAIL] Stage2b build failed.
   exit /b 1
 )
-set STAGE2B_BIN=stage2b.exe
 if not exist stage2b.exe (
-  if exist stage2.exe (
-    echo [INFO] stage2b.exe not produced, using in-place compiler stage2.exe
-    set STAGE2B_BIN=stage2.exe
-  ) else (
-    echo [FAIL] stage2b.exe was not created.
-    exit /b 1
-  )
+  echo [FAIL] stage2b.exe was not created.
+  exit /b 1
 )
 
 echo [3/4] Build hello_v2 from stage2b...
-%STAGE2B_BIN% build examples/hello.tg -o hello_v2.exe
+if exist hello_v2.exe del /f /q hello_v2.exe >nul 2>&1
+stage2b.exe build examples/hello.tg -o hello_v2.exe
 if errorlevel 1 (
   echo [FAIL] hello_v2 build failed.
   exit /b 1
