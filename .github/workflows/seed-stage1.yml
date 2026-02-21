@@ -280,7 +280,12 @@ jobs:
           }
           resolve_probe_bin() {
             local stem="$1"
-            for c in "$stem" "${stem}.exe" "${stem%.exe}"; do
+            local src="${2:-}"
+            local base=""
+            if [[ -n "$src" ]]; then
+              base="$(basename "$src" .tg)"
+            fi
+            for c in "$stem" "${stem}.exe" "${stem%.exe}" "$base" "${base}.exe" "examples/${base}" "examples/${base}.exe" "src/${base}" "src/${base}.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
@@ -290,7 +295,12 @@ jobs:
           }
           resolve_probe_ir() {
             local stem="$1"
-            for c in "${stem}.ll" "${stem%.exe}.ll"; do
+            local src="${2:-}"
+            local base=""
+            if [[ -n "$src" ]]; then
+              base="$(basename "$src" .tg)"
+            fi
+            for c in "${stem}.ll" "${stem%.exe}.ll" "${base}.ll" "examples/${base}.ll" "src/${base}.ll"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
@@ -357,17 +367,17 @@ jobs:
               return 1
             fi
             "./$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
-            out_bin="$(resolve_probe_bin "$out_stem" || true)"
+            out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
             if [[ -z "$out_bin" ]]; then
               "./$cc_bin" --emit-llvm-internal "$probe_src" -o "${out_stem}.ll" >/dev/null 2>&1 || true
-              out_ir="$(resolve_probe_ir "$out_stem" || true)"
+              out_ir="$(resolve_probe_ir "$out_stem" "$probe_src" || true)"
               if [[ -n "$out_ir" && -f "$out_ir" ]]; then
                 if [[ "${{ runner.os }}" == "Windows" ]]; then
                   link_probe_ir "$out_ir" "${out_stem}.exe" || return 1
                 else
                   link_probe_ir "$out_ir" "${out_stem}" || return 1
                 fi
-                  out_bin="$(resolve_probe_bin "$out_stem" || true)"
+                  out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
               fi
             fi
             if [[ -z "$out_bin" || ! -f "$out_bin" ]]; then
@@ -385,7 +395,7 @@ jobs:
               echo "[SEED][probe] $CURRENT_TAG: build src/thagore.tg failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
-            stage2_bin="$(resolve_probe_bin "$stage2_stem" || true)"
+            stage2_bin="$(resolve_probe_bin "$stage2_stem" "src/thagore.tg" || true)"
             if [[ -z "$stage2_bin" || ! -f "$stage2_bin" ]]; then
               cc_sig_after="$(hash_file "$cc_bin" || true)"
               echo "[SEED][probe] $CURRENT_TAG: stage2 artifact missing (hash_before=$cc_sig_before hash_after=$cc_sig_after)." | tee -a "$STAGE_TRACE_FILE"
