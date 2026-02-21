@@ -1544,13 +1544,13 @@ jobs:
             local emit_log="_emit_${out_stem}.log"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
             run_compiler_cmd "$compiler_bin" build "$source_file" -o "$out_stem" || true
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
             run_compiler_cmd "$compiler_bin" --build "$source_file" -o "$out_stem" || true
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
