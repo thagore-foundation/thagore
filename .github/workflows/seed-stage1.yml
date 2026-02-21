@@ -1359,8 +1359,6 @@ jobs:
                 find . -maxdepth 4 -type f -name "${source_base}*" 2>/dev/null
                 find . -maxdepth 4 -type f -name "${source_base}*_0_41*" 2>/dev/null
                 find . -maxdepth 4 -type f -name "*${source_base}*.exe" 2>/dev/null
-                find . -maxdepth 4 -type f -name "*.exe" -mmin -1 2>/dev/null
-                find . -maxdepth 4 -type f -perm -111 -mmin -1 2>/dev/null
               } | sed 's|^\./||' | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml|a|lib)$' | head -n1 || true
             )"
             if [[ -n "$discovered" ]]; then
@@ -1389,7 +1387,6 @@ jobs:
                 find . -maxdepth 2 -type f -name "${out_stem}*.ll" 2>/dev/null
                 find . -maxdepth 2 -type f -name "${source_base}*.ll" 2>/dev/null
                 find . -maxdepth 4 -type f -name "*${source_base}*.ll" 2>/dev/null
-                find . -maxdepth 4 -type f -name "*.ll" -mmin -1 2>/dev/null
               } | head -n1 || true
             )"
             if [[ -n "$discovered" ]]; then
