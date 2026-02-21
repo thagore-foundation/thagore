@@ -164,6 +164,7 @@ jobs:
           [[ "${ACTUAL,,}" == "${EXPECTED,,}" ]] || (echo "Checksum mismatch for $ASSET"; exit 1)
           tar -xzf "$ASSET" -C "$PAYLOAD_DIR"
           [[ -x "$PAYLOAD_DIR/bin/thagore" ]] || (echo "Missing executable bin/thagore"; exit 1)
+          [[ -x "$PAYLOAD_DIR/bin/stage1" ]] || (echo "Missing helper bin/stage1"; exit 1)
           [[ -d "$PAYLOAD_DIR/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
           [[ -f "$PAYLOAD_DIR/lib/runtime.a" || -f "$PAYLOAD_DIR/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
 
@@ -199,6 +200,30 @@ jobs:
           TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
           FIX_DOCTOR_OUT="$("$THAG" fix doctor examples/hello.tg --json 2>&1 || true)"
           UPDATE_CHECK_OUT="$("$THAG" update check 2>&1 || true)"
+          cat > helperdep.tg <<'TG'
+          func helper_value() -> i32:
+              return 7
+          TG
+          cat > helpermain.tg <<'TG'
+          import "helperdep.tg"
+
+          func main() -> i32:
+              return helper_value()
+          TG
+          set +e
+          HELPER_BUILD_LOG="$("$THAG" build helpermain.tg -o helpertest 2>&1)"
+          HELPER_BUILD_CODE=$?
+          set -e
+          HELPER_BUILD_STATUS="pass"
+          if [[ "$HELPER_BUILD_CODE" -ne 0 || ! -f helpertest ]]; then
+            HELPER_BUILD_STATUS="fail"
+          fi
+          printf '%s\n' "$HELPER_BUILD_LOG" > linux-cli-helper-build.txt
+          printf '%s\n' "$HELPER_BUILD_STATUS" > linux-cli-helper-status.txt
+          if [[ "$HELPER_BUILD_STATUS" != "pass" ]]; then
+            echo "CRITICAL: helper import/use fixture build failed (code=$HELPER_BUILD_CODE)."
+            exit 1
+          fi
 
           printf '%s\n' "$VERSION_OUT" > linux-cli-version.txt
           printf '%s\n' "$HELP_OUT" > linux-cli-help.txt
@@ -239,6 +264,170 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           message_id: ${{ needs.discord-notify-init.outputs.message_id }}
           milestone: Linux install and CLI smoke complete
+
+  macos-enduser-smoke:
+    name: macos-enduser-smoke
+    runs-on: macos-14
+    needs: [discord-notify-init, syntax-gate]
+    env:
+      SKIP_MACOS_SMOKE: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          INPUT_TAG="${{ inputs.tag }}"
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$(python3 -c "import json, urllib.request; print(json.load(urllib.request.urlopen('https://api.github.com/repos/${{ github.repository }}/releases/latest'))['tag_name'])")"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG"
+
+      - name: Discord update - Resolve macOS release tag
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: macOS smoke resolved release tag
+
+      - name: Download and verify macOS release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          ASSET="thagore-macos-arm64.tar.gz"
+          SUMS="SHA256SUMS-macos-arm64.txt"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          PAYLOAD_DIR="$RUNNER_TEMP/release-payload"
+          rm -rf "$PAYLOAD_DIR"
+          mkdir -p "$PAYLOAD_DIR"
+          if ! curl -fsSL "$BASE/$ASSET" -o "$ASSET"; then
+            echo "No macOS payload for tag $TAG, skip macos-enduser-smoke."
+            echo "SKIP_MACOS_SMOKE=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if ! curl -fsSL "$BASE/$SUMS" -o "$SUMS"; then
+            echo "No macOS checksum file for tag $TAG, skip macos-enduser-smoke."
+            echo "SKIP_MACOS_SMOKE=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          EXPECTED="$(awk -v target="$ASSET" '$2 == target {print $1; exit}' "$SUMS")"
+          [[ -n "$EXPECTED" ]] || (echo "Missing checksum for $ASSET in $SUMS"; exit 1)
+          ACTUAL="$(shasum -a 256 "$ASSET" | awk '{print $1}')"
+          [[ "${ACTUAL,,}" == "${EXPECTED,,}" ]] || (echo "Checksum mismatch for $ASSET"; exit 1)
+          tar -xzf "$ASSET" -C "$PAYLOAD_DIR"
+          [[ -x "$PAYLOAD_DIR/bin/thagore" ]] || (echo "Missing executable bin/thagore"; exit 1)
+          [[ -x "$PAYLOAD_DIR/bin/stage1" ]] || (echo "Missing helper bin/stage1"; exit 1)
+          [[ -d "$PAYLOAD_DIR/lib/std" ]] || (echo "Missing stdlib lib/std"; exit 1)
+          [[ -f "$PAYLOAD_DIR/lib/runtime.a" || -f "$PAYLOAD_DIR/lib/runtime.lib" ]] || (echo "Missing runtime lib"; exit 1)
+
+      - name: Discord update - Verify macOS payload checksum and layout
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: macOS payload checksum and layout verified
+
+      - name: Smoke test install.sh and CLI
+        if: env.SKIP_MACOS_SMOKE != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export THAGORE_ROOT="$RUNNER_TEMP/release-payload"
+          bash scripts/install/install.sh --mode macos --skip-llvm --yes --prefix "$RUNNER_TEMP/thagore-user"
+          "$HOME/.local/bin/thagore" --version
+          "$HOME/.local/bin/thagore" --help
+
+      - name: Run macOS CLI command suite (syntax + commands)
+        if: env.SKIP_MACOS_SMOKE != '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          THAG="$HOME/.local/bin/thagore"
+          VERSION_OUT="$("$THAG" --version 2>&1 || true)"
+          HELP_OUT="$("$THAG" --help 2>&1 || true)"
+          BUILD_USAGE_OUT="$("$THAG" build 2>&1 || true)"
+          TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
+          FIX_DOCTOR_OUT="$("$THAG" fix doctor examples/hello.tg --json 2>&1 || true)"
+          UPDATE_CHECK_OUT="$("$THAG" update check 2>&1 || true)"
+          cat > helperdep.tg <<'TG'
+          func helper_value() -> i32:
+              return 7
+          TG
+          cat > helpermain.tg <<'TG'
+          import "helperdep.tg"
+
+          func main() -> i32:
+              return helper_value()
+          TG
+          set +e
+          HELPER_BUILD_LOG="$("$THAG" build helpermain.tg -o helpertest 2>&1)"
+          HELPER_BUILD_CODE=$?
+          set -e
+          HELPER_BUILD_STATUS="pass"
+          if [[ "$HELPER_BUILD_CODE" -ne 0 || ! -f helpertest ]]; then
+            HELPER_BUILD_STATUS="fail"
+          fi
+          printf '%s\n' "$HELPER_BUILD_LOG" > macos-cli-helper-build.txt
+          printf '%s\n' "$HELPER_BUILD_STATUS" > macos-cli-helper-status.txt
+          if [[ "$HELPER_BUILD_STATUS" != "pass" ]]; then
+            echo "CRITICAL: helper import/use fixture build failed (code=$HELPER_BUILD_CODE)."
+            exit 1
+          fi
+
+          printf '%s\n' "$VERSION_OUT" > macos-cli-version.txt
+          printf '%s\n' "$HELP_OUT" > macos-cli-help.txt
+          printf '%s\n' "$BUILD_USAGE_OUT" > macos-cli-build.txt
+          printf '%s\n' "$TEST_LIST_OUT" > macos-cli-test-list.txt
+          printf '%s\n' "$FIX_DOCTOR_OUT" > macos-cli-fix-doctor.txt
+          printf '%s\n' "$UPDATE_CHECK_OUT" > macos-cli-update-check.txt
+
+          for file in macos-cli-version.txt macos-cli-help.txt macos-cli-build.txt macos-cli-test-list.txt macos-cli-fix-doctor.txt macos-cli-update-check.txt; do
+            if [[ ! -s "$file" ]]; then
+              echo "Missing CLI output in $file"
+              exit 1
+            fi
+          done
+
+          MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$BUILD_USAGE_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+            echo "CRITICAL: CLI suite detected legacy/wrapper markers."
+            exit 1
+          fi
+
+      - name: Discord update - macOS CLI command suite
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: macOS CLI command suite complete
+
+      - name: Discord update - macOS install and CLI smoke
+        if: always()
+        uses: ./.github/actions/discord-ci-status
+        with:
+          mode: update
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
+          milestone: macOS install and CLI smoke complete
 
   windows-enduser-smoke:
     name: windows-enduser-smoke
@@ -380,11 +569,14 @@ jobs:
           $helperBuildCode = $LASTEXITCODE
           $helperBuildStatus = "pass"
           if (($helperBuildCode -ne 0) -or (-not (Test-Path "helpertest.exe"))) {
-              $helperBuildStatus = "warn"
-              Write-Warning "Import/use fixture build failed (non-gating) with exit code $helperBuildCode"
+              $helperBuildStatus = "fail"
+              Write-Host $helperBuildLog
           }
           Set-Content -Path "windows-cli-helper-build.txt" -Value $helperBuildLog -Encoding utf8
           Set-Content -Path "windows-cli-helper-status.txt" -Value $helperBuildStatus -Encoding utf8
+          if ($helperBuildStatus -ne "pass") {
+              throw "Import/use fixture build failed with exit code $helperBuildCode"
+          }
 
           Set-Content -Path "windows-cli-version.txt" -Value $versionOut -Encoding utf8
           Set-Content -Path "windows-cli-help.txt" -Value $helpOut -Encoding utf8
@@ -437,7 +629,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, discord-notify-live, syntax-gate, linux-enduser-smoke, windows-enduser-smoke]
+    needs: [discord-notify-init, discord-notify-live, syntax-gate, linux-enduser-smoke, macos-enduser-smoke, windows-enduser-smoke]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

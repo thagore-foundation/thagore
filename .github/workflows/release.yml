@@ -99,6 +99,8 @@ jobs:
           fi
           if has_asset "thagore-stage1-linux-arm64.tar.gz" && has_asset "thagore-runtime-linux-arm64.a"; then
             available="${available}linux-arm64;"
+          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
+            available="${available}linux-arm64;"
           fi
           if has_asset "thagore-stage1-macos-x86_64.tar.gz" && has_asset "thagore-runtime-macos-x86_64.a"; then
             available="${available}macos-x86_64;"
@@ -329,7 +331,6 @@ jobs:
           mkdir -p bootstrap
           [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
           gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" \
-            --pattern "thagore-stage1*" \
             --pattern "thagore-runtime*" \
             --pattern "seed-promotion-manifest-*" \
             -D bootstrap || true
@@ -352,6 +353,32 @@ jobs:
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
             if [[ ! -f "bootstrap/$pattern" ]]; then
               curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_STAGE1_TAG/$pattern" || true
+            fi
+            [[ -f "bootstrap/$pattern" ]]
+          }
+          download_stage1_asset() {
+            local pattern="$1"
+            local primary_tag="$BOOTSTRAP_STAGE1_TAG"
+            rm -f "bootstrap/$pattern" || true
+            local used=""
+            for tag in "$primary_tag"; do
+              [[ -n "$tag" ]] || continue
+              if [[ -n "$used" && "$tag" == "$used" ]]; then
+                continue
+              fi
+              used="$tag"
+              gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+              if [[ ! -f "bootstrap/$pattern" ]]; then
+                curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+              fi
+              if [[ -f "bootstrap/$pattern" ]]; then
+                echo "[SEED] stage1 asset=$pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
+                return 0
+              fi
+              rm -f "bootstrap/$pattern" || true
+            done
+            if [[ ! -f "bootstrap/$pattern" ]]; then
+              return 1
             fi
             [[ -f "bootstrap/$pattern" ]]
           }
@@ -389,9 +416,34 @@ jobs:
           }
           probe_stage1_chain() {
             local bin="$1"
-            local out=""
-            out="$("./$bin" --help 2>&1 || true)"
-            if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|No such file or directory" <<<"$out"; then
+            local help_out=""
+            local ver_out=""
+            local merged=""
+            local probe_src="stage1_probe_cli.tg"
+            local probe_out="stage1_probe_cli"
+            local probe_bin=""
+            help_out="$("./$bin" --help 2>&1 || true)"
+            ver_out="$("./$bin" --version 2>&1 || true)"
+            merged="$ver_out"$'\n'"$help_out"
+            if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|No such file or directory|not recognized as an internal" <<<"$merged"; then
+              return 1
+            fi
+            if [[ -z "${merged//[[:space:]]/}" ]]; then
+              echo "CRITICAL: selected stage1 produced empty --version/--help output."
+              return 1
+            fi
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              probe_out="${probe_out}.exe"
+            fi
+            printf 'func main() -> i32:\n    return 0\n' > "$probe_src"
+            rm -f "$probe_out" "${probe_out}.exe" "${probe_out%.exe}" a.out a.exe out out.exe || true
+            if ! "./$bin" build "$probe_src" -o "$probe_out"; then
+              echo "CRITICAL: selected stage1 failed fixture build in bootstrap probe."
+              return 1
+            fi
+            probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
+            if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
+              echo "CRITICAL: selected stage1 bootstrap probe did not produce a non-empty artifact."
               return 1
             fi
             return 0
@@ -412,7 +464,7 @@ jobs:
           fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             for ASSET in "${STAGE1_CANDIDATES[@]}"; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 cp "bootstrap/$ASSET" "${{ matrix.stage1_bin }}"
                 chmod +x "${{ matrix.stage1_bin }}" || true
                 STAGE1_ASSET="$ASSET"
@@ -425,7 +477,7 @@ jobs:
             fi
           else
             for ASSET in "${STAGE1_CANDIDATES[@]}"; do
-              if download_asset "$ASSET"; then
+              if download_stage1_asset "$ASSET"; then
                 rm -rf bootstrap/extract_stage1 || true
                 mkdir -p bootstrap/extract_stage1
                 tar -xzf "bootstrap/$ASSET" -C bootstrap/extract_stage1 || continue
@@ -441,10 +493,6 @@ jobs:
               echo "CRITICAL: no Unix stage1 asset found in releases."
               exit 1
             fi
-          fi
-          if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
-            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
-            exit 1
           fi
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             if [[ -f "bootstrap/$STAGE1_ASSET" ]]; then
@@ -503,6 +551,11 @@ jobs:
             done
           fi
           [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: missing runtime asset for ${{ matrix.asset_tag }}."; exit 1)
+          # Stage1 fixture probe links against runtime; download runtime before probing stage1.
+          if ! probe_stage1_chain "${{ matrix.stage1_bin }}"; then
+            echo "CRITICAL: selected stage1 failed bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
+          fi
           if [[ -n "$RUNTIME_ASSET" ]]; then
             if ! runtime_contract_ok; then
               echo "CRITICAL: runtime asset $RUNTIME_ASSET failed bootstrap-critical contract." | tee -a "$STAGE_TRACE_FILE"
@@ -525,11 +578,38 @@ jobs:
             echo "CRITICAL: missing seed promotion manifest for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"
             exit 1
           fi
+          PROVENANCE_ASSET=""
+          for CANDIDATE in "seed-stage1-provenance-${{ matrix.asset_tag }}.json" "seed-stage1-provenance-${{ runner.os }}.json"; do
+            if download_asset "$CANDIDATE"; then
+              PROVENANCE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$PROVENANCE_ASSET" ]] || (echo "CRITICAL: missing stage1 provenance for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"; exit 1)
+          BUNDLE_ASSET=""
+          for CANDIDATE in "seed-bundle-${{ matrix.asset_tag }}.json"; do
+            if download_asset "$CANDIDATE"; then
+              BUNDLE_ASSET="$CANDIDATE"
+              break
+            fi
+          done
+          [[ -n "$BUNDLE_ASSET" ]] || (echo "CRITICAL: missing seed bundle metadata for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
             PY=python3
           fi
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "bootstrap/$BUNDLE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --provenance "bootstrap/$PROVENANCE_ASSET"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "bootstrap/$BUNDLE_ASSET")"
+          "$PY" scripts/stage1_provenance.py verify \
+            --provenance "bootstrap/$PROVENANCE_ASSET" \
+            --manifest "bootstrap/$MANIFEST_ASSET" \
+            --asset "bootstrap/${{ matrix.stage1_seed_name }}" \
+            --asset "bootstrap/${{ matrix.runtime_seed_name }}" \
+            --expected-bundle-id "$BUNDLE_ID"
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
       - name: Discord update - Download stage1 bootstrap asset
@@ -630,20 +710,12 @@ jobs:
               return 1
             fi
             if [[ -z "$ver" && -z "$help" && -z "$update_out" ]]; then
-              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-                echo "[SANITY] $bin rejected: empty output for --version/--help/update on official release." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[SANITY] $bin accepted (non-official lane): empty output tolerated for bootstrap probing." | tee -a "$STAGE_TRACE_FILE"
-              return 0
+              echo "[SANITY] $bin rejected: empty output for --version/--help/update." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if [[ -z "$ver" || -z "$help" ]]; then
-              if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-                echo "[SANITY] $bin rejected: missing required --version/--help output on official release." | tee -a "$STAGE_TRACE_FILE"
-                return 1
-              fi
-              echo "[SANITY] $bin accepted (non-official lane): partial CLI output tolerated for bootstrap probing." | tee -a "$STAGE_TRACE_FILE"
-              return 0
+              echo "[SANITY] $bin rejected: missing required --version/--help output." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             if [[ -n "$update_out" ]]; then
               echo "[SANITY] $bin accepted via native update command probe." | tee -a "$STAGE_TRACE_FILE"
@@ -659,6 +731,11 @@ jobs:
           run_build_cmd() {
             local cc="$1"
             shift
+            local helper_bin="$cc"
+            if [[ "$helper_bin" != */* && "$helper_bin" != *\\* ]]; then
+              helper_bin="./$helper_bin"
+            fi
+            export THAG_HELPER_BIN="$helper_bin"
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               echo "[TIMEOUT] linux-arm64 build timeout=${BUILD_TIMEOUT_SECS}s :: ./$cc $*" | tee -a "$STAGE_TRACE_FILE"
               set +e
@@ -687,6 +764,15 @@ jobs:
             local out="$3"
             local got=""
             local rc=0
+            local cc_sig_before=""
+            local cc_sig_after=""
+            compiler_sig() {
+              local bin_path="$1"
+              "$PY" -c "import hashlib, pathlib, sys; p=pathlib.Path(sys.argv[1]); print('' if not p.exists() else f'{p.stat().st_size}:{hashlib.sha256(p.read_bytes()).hexdigest()}')" "$bin_path"
+            }
+            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_before="$(compiler_sig "$cc" || true)"
+            fi
             resolve_local() {
               local preferred="$1"
               for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
@@ -714,8 +800,13 @@ jobs:
                 fi
               fi
               if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
-                echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
-                return 0
+                cc_sig_after="$(compiler_sig "$cc" || true)"
+                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                  echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
+                  return 0
+                fi
+                echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
+                return 1
               fi
               echo "CRITICAL: release build produced no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
               return 1
@@ -794,17 +885,12 @@ jobs:
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
           if [[ -z "${STAGE2_BIN:-}" ]]; then
-            if [[ "$OFFICIAL_RELEASE_TAG" == "1" ]]; then
-              if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-                STAGE2_BIN="$DONOR_COMPILER"
-                echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              else
-                echo "CRITICAL: official release cannot fallback when stage2 artifact is missing." | tee -a "$STAGE_TRACE_FILE"
-                exit 1
-              fi
-            elif [[ -f "${{ matrix.stage1_bin }}" ]]; then
-              STAGE2_BIN="${{ matrix.stage1_bin }}"
-              echo "[INFO] using in-place rebuilt compiler from stage1 path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
+              STAGE2_BIN="$DONOR_COMPILER"
+              echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            else
+              echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
             fi
           fi
           test -f "$STAGE2_BIN"
@@ -875,8 +961,8 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            echo "[WARN] hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-            HELLO_BIN=""
+            echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           FIB_BIN=""
@@ -890,8 +976,8 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            echo "[WARN] fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-            FIB_BIN=""
+            echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -951,10 +1037,6 @@ jobs:
             exit 1
           fi
           if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-              echo "CRITICAL: official release must provide non-empty --version and --help output."
-              exit 1
-            fi
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
@@ -965,8 +1047,9 @@ jobs:
               fi
             fi
           else
-            if [[ -z "$VERSION_OUT" && -z "$HELP_OUT" && -z "$UPDATE_OUT" ]]; then
-              echo "WARN: empty --version/--help/update output in non-official release lane."
+            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+              echo "CRITICAL: release lane requires non-empty --version and --help output."
+              exit 1
             fi
           fi
           PROOF_FILE="thagore-enduser-verified-${{ matrix.asset_tag }}.txt"
@@ -974,13 +1057,38 @@ jobs:
             printf 'status=pass\ntag=%s\nasset_tag=%s\nversion=%s\n' "${GITHUB_REF_NAME:-}" "${{ matrix.asset_tag }}" "$VERSION_OUT" > "$PROOF_FILE"
           fi
 
+      - name: Smoke helper import/use
+        shell: bash
+        run: |
+          set -euxo pipefail
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+          cat > helperdep.tg <<'TG'
+          func helper_value() -> i32:
+              return 7
+          TG
+          cat > helpermain.tg <<'TG'
+          import "helperdep.tg"
+
+          func main() -> i32:
+              return helper_value()
+          TG
+          HELPER_OUT="helper-smoke"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            HELPER_OUT="helper-smoke.exe"
+          fi
+          THAG_HELPER_BIN="./$STAGE2_REBUILD_BIN" "./$STAGE2_REBUILD_BIN" build helpermain.tg -o "$HELPER_OUT"
+          if [[ ! -f "$HELPER_OUT" ]]; then
+            echo "CRITICAL: helper import/use smoke did not produce output binary: $HELPER_OUT"
+            exit 1
+          fi
+
       - name: Run hello + fib
         shell: bash
         run: |
           set -euxo pipefail
           if [[ -z "${HELLO_BIN:-}" || -z "${FIB_BIN:-}" ]]; then
-            echo "WARN: skipping hello/fib runtime execution because smoke binaries are missing on this lane."
-            exit 0
+            echo "CRITICAL: hello/fib runtime execution requires both smoke binaries."
+            exit 1
           fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
           HELLO_OUT="$(./$HELLO_BIN 2>&1)"
@@ -992,7 +1100,8 @@ jobs:
             exit 1
           fi
           if ! grep -E "(^|[^0-9])9227465([^0-9]|$)" fib-output-release-${{ matrix.asset_tag }}.txt; then
-            echo "WARN: fib marker 9227465 not found on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: fib marker 9227465 not found on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
       - name: Guard no legacy bootstrap and IR fallback markers
@@ -1046,9 +1155,10 @@ jobs:
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            cp "${{ matrix.stage1_bin }}" "dist/bin/stage1.exe"
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1.exe"
           else
             cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
+            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1"
           fi
           cp -R std "dist/lib/std"
           if [[ ! -d "dist/bin" ]]; then
@@ -1061,6 +1171,16 @@ jobs:
           fi
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "dist/bin/${{ matrix.output_bin }}"
+            chmod +x "dist/bin/stage1"
+          fi
+          helper_bin_path="dist/bin/stage1"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            helper_bin_path="dist/bin/stage1.exe"
+          fi
+          if [[ ! -f "$helper_bin_path" ]]; then
+            echo "CRITICAL: missing helper binary $helper_bin_path in packaged payload."
+            ls -la dist/bin || true
+            exit 1
           fi
           if [[ ! -d "dist/lib/std" ]]; then
             echo "CRITICAL: missing std library directory dist/lib/std."

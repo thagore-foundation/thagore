@@ -108,13 +108,17 @@ jobs:
             local pattern="$1"
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
           }
+          ghdl_stage1() {
+            local pattern="$1"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ghdl "thagore-stage1.exe"
+            ghdl_stage1 "thagore-stage1.exe"
             cp bootstrap/thagore-stage1.exe stage1.exe
             chmod +x stage1.exe || true
             echo "STAGE1_BIN=stage1.exe" >> "$GITHUB_ENV"
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            ghdl "thagore-stage1-linux.tar.gz"
+            ghdl_stage1 "thagore-stage1-linux.tar.gz"
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
@@ -123,7 +127,7 @@ jobs:
             chmod +x stage1 || true
             echo "STAGE1_BIN=stage1" >> "$GITHUB_ENV"
           else
-            ghdl "thagore-stage1-macos.tar.gz"
+            ghdl_stage1 "thagore-stage1-macos.tar.gz"
             mkdir -p bootstrap/extract_stage1
             tar -xzf bootstrap/thagore-stage1-macos.tar.gz -C bootstrap/extract_stage1
             CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"

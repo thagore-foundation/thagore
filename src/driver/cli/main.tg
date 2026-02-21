@@ -25,6 +25,17 @@ func _print_help() -> void:
     print("  " + cli + " install toolchain [--yes]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
+func _helper_exec_path(candidate_raw: String) -> String:
+    let candidate = _normalize_path(_trim(candidate_raw))
+    if (strlen(candidate) == 0):
+        return ""
+    if ((_contains(candidate, "/") == 1) or (_contains(candidate, ":") == 1)):
+        return candidate
+    let cwd = _normalize_path(_trim(env.cwd()))
+    if (strlen(cwd) > 0):
+        return cwd + "/" + candidate
+    return "./" + candidate
+
 func _configure_default_helper_bin() -> void:
     if (strlen(_trim(env.get_var("THAG_HELPER_BIN"))) > 0):
         return
@@ -32,7 +43,7 @@ func _configure_default_helper_bin() -> void:
     if (strlen(exe_path) == 0):
         return
     if (fs.exists(exe_path) == 1):
-        env.set_var("THAG_HELPER_BIN", exe_path)
+        env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
         return
     let exe_dir = _dir_name(exe_path)
     let stage1_name = "stage1"
@@ -40,12 +51,12 @@ func _configure_default_helper_bin() -> void:
         stage1_name = "stage1.exe"
     let direct = _normalize_path(exe_dir + "/" + stage1_name)
     if (fs.exists(direct) == 1):
-        env.set_var("THAG_HELPER_BIN", direct)
+        env.set_var("THAG_HELPER_BIN", _helper_exec_path(direct))
         return
     let parent = _dir_name(exe_dir)
     let under_bin = _normalize_path(parent + "/bin/" + stage1_name)
     if (fs.exists(under_bin) == 1):
-        env.set_var("THAG_HELPER_BIN", under_bin)
+        env.set_var("THAG_HELPER_BIN", _helper_exec_path(under_bin))
 
 func main() -> i32:
     let argc = env.count()

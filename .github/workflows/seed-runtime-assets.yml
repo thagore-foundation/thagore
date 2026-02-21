@@ -1,176 +1,25 @@
-name: Seed Runtime Assets
+name: Seed Runtime Assets (Disabled)
 
 on:
   workflow_dispatch:
     inputs:
       seed_tag:
-        description: "Seed release tag to upload runtime assets"
+        description: "Deprecated. Runtime seed is now published only via atomic seed bundle."
         required: false
         default: "v0.3.25-stage1-seed"
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
-  build-runtime:
-    name: runtime (${{ matrix.asset_tag }})
-    continue-on-error: ${{ matrix.allow_failure }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            os_name: Linux
-            arch: x86_64
-            asset_tag: linux-x86_64
-            allow_failure: false
-            runtime_name: thagore-runtime-linux-x86_64.a
-          - runner: ubuntu-24.04-arm
-            os_name: Linux
-            arch: arm64
-            asset_tag: linux-arm64
-            allow_failure: true
-            runtime_name: thagore-runtime-linux-arm64.a
-          - runner: macos-latest
-            os_name: macOS
-            arch: arm64
-            asset_tag: macos-arm64
-            allow_failure: false
-            runtime_name: thagore-runtime-macos-arm64.a
-          - runner: windows-latest
-            os_name: Windows
-            arch: x86_64
-            asset_tag: windows-x86_64
-            allow_failure: false
-            runtime_name: thagore-runtime-windows-x86_64.lib
-          - runner: windows-11-arm
-            os_name: Windows
-            arch: arm64
-            asset_tag: windows-arm64
-            allow_failure: true
-            runtime_name: thagore-runtime-windows-arm64.lib
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install LLVM (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            clang --version
-            exit 0
-          fi
-          sudo apt-get update || true
-          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 21 all || true
-          if [[ -d /usr/lib/llvm-21/bin ]]; then
-            echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
-          fi
-          clang --version
-
-      - name: Install LLVM (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew update
-          brew install llvm
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
-          clang --version
-
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v clang >/dev/null 2>&1; then
-            clang --version
-            exit 0
-          fi
-          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
-            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
-            clang --version
-            exit 0
-          fi
-          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
-          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
-          clang --version
-
-      - name: Materialize runtime source blob
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p _rt
-          git cat-file blob 7f9ed799c71ceff8da657316012dc5e4d01d34d4 > _rt/runtime.cc
-          test -s _rt/runtime.cc
-
-      - name: Build runtime static library
-        shell: bash
-        run: |
-          set -euo pipefail
-          AR_BIN="llvm-ar"
-          if ! command -v "$AR_BIN" >/dev/null 2>&1; then
-            AR_BIN="ar"
-          fi
-          clang -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
-          else
-            "$AR_BIN" rcs "${{ matrix.runtime_name }}" _rt/runtime.o
-            if command -v ranlib >/dev/null 2>&1; then
-              ranlib "${{ matrix.runtime_name }}" || true
-            fi
-          fi
-          if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" ]]; then
-            cp "${{ matrix.runtime_name }}" thagore-runtime-windows.lib
-          elif [[ "${{ matrix.asset_tag }}" == "linux-x86_64" ]]; then
-            cp "${{ matrix.runtime_name }}" thagore-runtime-linux.a
-          elif [[ "${{ matrix.asset_tag }}" == "macos-arm64" ]]; then
-            cp "${{ matrix.runtime_name }}" thagore-runtime-macos.a
-          fi
-
-      - name: Upload runtime artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: runtime-${{ matrix.asset_tag }}
-          path: |
-            ${{ matrix.runtime_name }}
-            thagore-runtime-windows.lib
-            thagore-runtime-linux.a
-            thagore-runtime-macos.a
-
-  publish-runtime:
-    name: publish-runtime-assets
+  disabled:
     runs-on: ubuntu-latest
-    needs: build-runtime
     steps:
-      - name: Download runtime artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: runtime-artifacts
-
-      - name: Publish runtime assets to seed tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SEED_TAG: ${{ github.event.inputs.seed_tag || 'v0.3.25-stage1-seed' }}
+      - name: Block deprecated runtime-only publish
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "$SEED_TAG" \
-            runtime-artifacts/**/thagore-runtime-windows-*.lib \
-            runtime-artifacts/**/thagore-runtime-linux-*.a \
-            runtime-artifacts/**/thagore-runtime-macos-*.a \
-            runtime-artifacts/**/thagore-runtime-windows.lib \
-            runtime-artifacts/**/thagore-runtime-linux.a \
-            runtime-artifacts/**/thagore-runtime-macos.a \
-            --repo "${{ github.repository }}" \
-            --clobber
+          echo "CRITICAL: runtime-only seed publish is disabled."
+          echo "Use '.github/workflows/seed-stage1.yml' to publish atomic seed bundle (stage1+runtime+manifest+provenance+trace)."
+          exit 1

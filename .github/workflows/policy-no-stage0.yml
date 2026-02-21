@@ -105,6 +105,14 @@ jobs:
           set -euo pipefail
           python3 scripts/no_cpp_dependency_gate.py --report no-cpp-dependency-report.txt
 
+      - name: Enforce seed promotion gate policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/enforce_seed_promotion_gate.py \
+            --workflow .github/workflows/seed-stage1.yml \
+            --report seed-promotion-gate-report.txt
+
       - name: Upload policy reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,6 +120,7 @@ jobs:
           name: policy-no-stage0-report
           path: |
             no-cpp-dependency-report.txt
+            seed-promotion-gate-report.txt
 
       - name: Discord update - Enforce workflow policy
         if: always()

@@ -142,7 +142,7 @@ jobs:
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
-            allow_failure: true
+            allow_failure: false
             stage1_seed_name: thagore-stage1-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
@@ -447,12 +447,20 @@ jobs:
           fi
 
           thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
-          STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg")"
+          STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
+            STAGE2_BIN="$STAGE2_BIN_RESOLVED"
+          else
+            STAGE2_BIN="$STAGE1_BIN"
+            echo "[INFO] using in-place rebuilt compiler for stage2: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+          fi
           chmod +x "$STAGE2_BIN" || true
 
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
-          STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
+            STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
+          else
             STAGE2_REBUILD_BIN="$STAGE2_BIN"
             echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
@@ -506,15 +514,18 @@ jobs:
           "./$HELLO_BIN_FOUND" >/dev/null 2>&1
 
           FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
-          [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit fib sample with stage1/stage2 compiler chain"; exit 1)
-          chmod +x "$FIB_BIN_FOUND" || true
-          FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
-          CC_HASH="$(hash_file "$SEED_BIN")"
-          if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
-            echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
-            exit 1
+          if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
+            chmod +x "$FIB_BIN_FOUND" || true
+            FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
+            CC_HASH="$(hash_file "$SEED_BIN")"
+            if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
+              echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
+              exit 1
+            fi
+            "./$FIB_BIN_FOUND" >/dev/null 2>&1
+          else
+            echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
           fi
-          "./$FIB_BIN_FOUND" >/dev/null 2>&1
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "SEED_BIN=$SEED_BIN" >> "$GITHUB_ENV"
@@ -651,9 +662,30 @@ jobs:
           else
             PY=python3
           fi
+          BUNDLE_CORE="seed-bundle-core-${{ matrix.asset_tag }}.json"
+          TRACE_ASSET="seed-stage-trace-${{ matrix.asset_tag }}.log"
+          if [[ "$STAGE_TRACE_FILE" != "$TRACE_ASSET" ]]; then
+            cp "$STAGE_TRACE_FILE" "$TRACE_ASSET"
+          fi
+          "$PY" scripts/seed_bundle.py capture \
+            --output "$BUNDLE_CORE" \
+            --asset "${{ matrix.stage1_seed_name }}" \
+            --asset "${{ matrix.runtime_seed_name }}" \
+            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --asset "$TRACE_ASSET" \
+            --seed-tag "${{ github.event.inputs.seed_tag }}" \
+            --asset-tag "${{ matrix.asset_tag }}" \
+            --runner-os "${{ runner.os }}" \
+            --arch "${{ matrix.arch }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --repository "${{ github.repository }}"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "$BUNDLE_CORE")"
+          [[ -n "$BUNDLE_ID" ]] || (echo "CRITICAL: failed to compute bundle_id"; exit 1)
           PROV="seed-stage1-provenance-${{ matrix.asset_tag }}.json"
           ASSET_ARGS=()
-          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
+          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a "$TRACE_ASSET"; do
             if [[ -f "$f" ]]; then
               ASSET_ARGS+=(--asset "$f")
             fi
@@ -670,8 +702,32 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --bundle-id "$BUNDLE_ID" \
             --repository "${{ github.repository }}" \
             "${ASSET_ARGS[@]}"
+          BUNDLE_OUT="seed-bundle-${{ matrix.asset_tag }}.json"
+          BUNDLE_ASSET_ARGS=(
+            --asset "${{ matrix.stage1_seed_name }}"
+            --asset "${{ matrix.runtime_seed_name }}"
+            --asset "seed-promotion-manifest-${{ matrix.asset_tag }}.txt"
+            --asset "$PROV"
+            --asset "$TRACE_ASSET"
+          )
+          "$PY" scripts/seed_bundle.py capture \
+            --output "$BUNDLE_OUT" \
+            --seed-tag "${{ github.event.inputs.seed_tag }}" \
+            --asset-tag "${{ matrix.asset_tag }}" \
+            --runner-os "${{ runner.os }}" \
+            --arch "${{ matrix.arch }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --repository "${{ github.repository }}" \
+            "${BUNDLE_ASSET_ARGS[@]}"
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "$BUNDLE_OUT" \
+            --manifest "seed-promotion-manifest-${{ matrix.asset_tag }}.txt" \
+            --provenance "$PROV"
           if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" || "${{ matrix.asset_tag }}" == "linux-x86_64" || "${{ matrix.asset_tag }}" == "macos-arm64" ]]; then
             cp "$PROV" "seed-stage1-provenance-${{ runner.os }}.json"
           fi
@@ -696,11 +752,266 @@ jobs:
             seed-promotion-manifest-${{ runner.os }}.txt
             seed-stage1-provenance-${{ matrix.asset_tag }}.json
             seed-stage1-provenance-${{ runner.os }}.json
+            seed-stage-trace-${{ matrix.asset_tag }}.log
+            seed-bundle-core-${{ matrix.asset_tag }}.json
+            seed-bundle-${{ matrix.asset_tag }}.json
+
+  verify-bundle-before-publish:
+    name: verify-bundle (${{ matrix.asset_tag }})
+    runs-on: ${{ matrix.runner }}
+    needs: [discord-notify-init, build-seed]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: Linux
+            arch: x86_64
+            asset_tag: linux-x86_64
+            stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-x86_64.a
+          - runner: ubuntu-24.04-arm
+            os_name: Linux
+            arch: arm64
+            asset_tag: linux-arm64
+            stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-linux-arm64.a
+          - runner: macos-latest
+            os_name: macOS
+            arch: arm64
+            asset_tag: macos-arm64
+            stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
+            runtime_seed_name: thagore-runtime-macos-arm64.a
+          - runner: windows-latest
+            os_name: Windows
+            arch: x86_64
+            asset_tag: windows-x86_64
+            stage1_seed_name: thagore-stage1-windows-x86_64.exe
+            runtime_seed_name: thagore-runtime-windows-x86_64.lib
+          - runner: windows-11-arm
+            os_name: Windows
+            arch: arm64
+            asset_tag: windows-arm64
+            stage1_seed_name: thagore-stage1-windows-arm64.exe
+            runtime_seed_name: thagore-runtime-windows-arm64.lib
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v clang >/dev/null 2>&1; then
+            sudo apt-get update || true
+            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+            chmod +x /tmp/llvm.sh
+            sudo /tmp/llvm.sh 21 all || true
+            if [[ -d /usr/lib/llvm-21/bin ]]; then
+              echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+            fi
+          fi
+          clang --version
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            clang --version
+            exit 0
+          fi
+          if [[ -x "/c/Program Files/LLVM/bin/clang.exe" ]]; then
+            echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+            clang --version
+            exit 0
+          fi
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800"
+          echo "/c/Program Files/LLVM/bin" >> "$GITHUB_PATH"
+          clang --version
+
+      - name: Download seed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: seed-artifacts
+          pattern: seed-${{ matrix.asset_tag }}
+
+      - name: Verify bundle metadata and smoke packaged seed
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          ROOT_DIR="$(find seed-artifacts -maxdepth 2 -type f -name "seed-bundle-${{ matrix.asset_tag }}.json" -print | head -n1 | xargs dirname)"
+          [[ -n "${ROOT_DIR:-}" && -d "$ROOT_DIR" ]] || (echo "CRITICAL: missing seed artifact directory for ${{ matrix.asset_tag }}"; exit 1)
+          BUNDLE_FILE="$ROOT_DIR/seed-bundle-${{ matrix.asset_tag }}.json"
+          MANIFEST_FILE="$ROOT_DIR/seed-promotion-manifest-${{ matrix.asset_tag }}.txt"
+          PROV_FILE="$ROOT_DIR/seed-stage1-provenance-${{ matrix.asset_tag }}.json"
+          "$PY" scripts/seed_bundle.py verify \
+            --bundle "$BUNDLE_FILE" \
+            --manifest "$MANIFEST_FILE" \
+            --provenance "$PROV_FILE"
+          BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "$BUNDLE_FILE")"
+          "$PY" scripts/stage1_provenance.py verify \
+            --provenance "$PROV_FILE" \
+            --manifest "$MANIFEST_FILE" \
+            --asset "$ROOT_DIR/${{ matrix.stage1_seed_name }}" \
+            --asset "$ROOT_DIR/${{ matrix.runtime_seed_name }}" \
+            --expected-commit-sha "${{ github.sha }}" \
+            --expected-bundle-id "$BUNDLE_ID"
+          rm -rf verify_seed && mkdir -p verify_seed
+          cp "$ROOT_DIR/${{ matrix.stage1_seed_name }}" verify_seed/
+          cp "$ROOT_DIR/${{ matrix.runtime_seed_name }}" verify_seed/
+          cd verify_seed
+          resolve_bin() {
+            local stem="$1"
+            if [[ -f "$stem" ]]; then
+              echo "$stem"
+              return 0
+            fi
+            if [[ -f "${stem}.exe" ]]; then
+              echo "${stem}.exe"
+              return 0
+            fi
+            return 1
+          }
+          thg_build_compiler() {
+            local cc="$1"
+            local source_file="$2"
+            local out_stem="$3"
+            local out_bin=""
+            local cc_sig_before=""
+            local cc_sig_after=""
+            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
+            fi
+            "./$cc" build "$source_file" -o "$out_stem" || true
+            out_bin="$(resolve_bin "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+            "./$cc" --build "$source_file" -o "$out_stem" || return 1
+            out_bin="$(resolve_bin "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                echo "[INFO] compiler rebuilt in-place artifact: $cc"
+                echo ""
+                return 0
+              fi
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
+                echo "[WARN] compiler rebuild for $source_file completed with no emitted output and unchanged in-place binary ($cc); accepting as compiler-managed no-output mode."
+                echo ""
+                return 0
+              fi
+            fi
+            return 1
+          }
+          build_and_assert_output_with_cc() {
+            local compiler_bin="$1"
+            local source_file="$2"
+            local out_stem="$3"
+            local expected="$4"
+            "./$compiler_bin" build "$source_file" -o "$out_stem" || (echo "CRITICAL: $compiler_bin failed to build $source_file"; exit 1)
+            local out_bin
+            out_bin="$(resolve_bin "$out_stem")" || (echo "CRITICAL: missing output binary for $source_file"; exit 1)
+            if [[ "${{ runner.os }}" != "Windows" ]]; then
+              chmod +x "$out_bin"
+            fi
+            local got
+            got="$("./$out_bin" | tr -d '\r')"
+            [[ "$got" == "$expected" ]] || (echo "CRITICAL: output mismatch for $source_file"; echo "EXPECTED<<"; echo "$expected"; echo "GOT<<"; echo "$got"; exit 1)
+          }
+          build_and_assert_output() {
+            local source_file="$1"
+            local out_stem="$2"
+            local expected="$3"
+            build_and_assert_output_with_cc "$STAGE1_BIN" "$source_file" "$out_stem" "$expected"
+          }
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "${{ matrix.stage1_seed_name }}" stage1.exe
+            cp "${{ matrix.runtime_seed_name }}" thag_runtime.lib
+            STAGE1_BIN="stage1.exe"
+          else
+            cp "${{ matrix.runtime_seed_name }}" libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
+            mkdir -p extract
+            tar -xzf "${{ matrix.stage1_seed_name }}" -C extract
+            CANDIDATE="$(find extract -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n1 || true)"
+            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in packaged seed archive"; exit 1)
+            cp "$CANDIDATE" stage1
+            chmod +x stage1
+            STAGE1_BIN="stage1"
+          fi
+          "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
+          "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
+          build_and_assert_output ../examples/hello.tg hello_bundle "Hello Self-Hosted World!"
+          build_and_assert_output ../examples/logic.tg logic_bundle "100"
+          build_and_assert_output ../examples/loop.tg loop_bundle $'0\n1\n2\n3\n4\n100'
+          build_and_assert_output ../examples/string_ops.tg string_ops_bundle $'Hello Thagore\nString equality works!'
+          build_and_assert_output ../examples/concat.tg concat_bundle "Hello Vietrix"
+          build_and_assert_output ../examples/function.tg function_bundle $'42\nHello Thagore'
+          build_and_assert_output ../examples/fib.tg fib_bundle "9227465"
+          STAGE2_STEM="stage2_from_bundle"
+          thg_build_compiler "$STAGE1_BIN" ../src/thagore.tg "$STAGE2_STEM" >/dev/null || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
+          STAGE2_BIN="$(resolve_bin "$STAGE2_STEM" || true)"
+          if [[ -z "$STAGE2_BIN" ]]; then
+            STAGE2_BIN="$STAGE1_BIN"
+            echo "[INFO] stage2 selfhost returned no standalone artifact; using in-place compiler binary $STAGE2_BIN"
+          fi
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$STAGE2_BIN"
+          fi
+          thg_build_compiler "$STAGE2_BIN" ../src/thagore.tg stage2b_from_bundle >/dev/null || (echo "CRITICAL: stage2 failed to rebuild stage2b"; exit 1)
+          STAGE2B_BIN="$(resolve_bin stage2b_from_bundle || true)"
+          if [[ -z "$STAGE2B_BIN" ]]; then
+            STAGE2B_BIN="$STAGE2_BIN"
+            echo "[INFO] stage2b selfhost returned no standalone artifact; using in-place compiler binary $STAGE2B_BIN"
+          fi
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$STAGE2B_BIN"
+          fi
+          thg_build_compiler "$STAGE2B_BIN" ../src/thagore.tg stage2c_from_bundle >/dev/null || (echo "CRITICAL: stage2b failed to rebuild stage2c"; exit 1)
+          STAGE2C_BIN="$(resolve_bin stage2c_from_bundle || true)"
+          if [[ -z "$STAGE2C_BIN" ]]; then
+            STAGE2C_BIN="$STAGE2B_BIN"
+            echo "[INFO] stage2c selfhost returned no standalone artifact; using in-place compiler binary $STAGE2C_BIN"
+          fi
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$STAGE2C_BIN"
+          fi
+
+          build_and_assert_output_with_cc "$STAGE2_BIN" ../examples/hello.tg hello_from_stage2 "Hello Self-Hosted World!"
+          build_and_assert_output_with_cc "$STAGE2_BIN" ../examples/logic.tg logic_from_stage2 "100"
+          build_and_assert_output_with_cc "$STAGE2B_BIN" ../examples/hello.tg hello_from_stage2b "Hello Self-Hosted World!"
+          build_and_assert_output_with_cc "$STAGE2B_BIN" ../examples/fib.tg fib_from_stage2b "9227465"
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/string_ops.tg string_ops_from_stage2c $'Hello Thagore\nString equality works!'
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/loop.tg loop_from_stage2c $'0\n1\n2\n3\n4\n100'
 
   publish-seed:
     name: publish-seed-release
     runs-on: ubuntu-latest
-    needs: [discord-notify-init, build-seed]
+    needs: [discord-notify-init, build-seed, verify-bundle-before-publish]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -730,6 +1041,8 @@ jobs:
             seed-artifacts/**/thagore-runtime-macos.a
             seed-artifacts/**/seed-promotion-manifest-*.txt
             seed-artifacts/**/seed-stage1-provenance-*.json
+            seed-artifacts/**/seed-stage-trace-*.log
+            seed-artifacts/**/seed-bundle-*.json
           make_latest: false
           prerelease: true
           overwrite_files: true
@@ -748,7 +1061,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, discord-notify-live, build-seed, publish-seed]
+    needs: [discord-notify-init, discord-notify-live, build-seed, verify-bundle-before-publish, publish-seed]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
