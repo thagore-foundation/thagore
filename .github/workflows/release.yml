@@ -712,16 +712,6 @@ jobs:
             --expected-bundle-id "$BUNDLE_ID"
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
-      - name: Discord update - Download stage1 bootstrap asset
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Download stage1 bootstrap asset
-
       - name: Runtime ABI bootstrap-critical gate
         shell: bash
         run: |
@@ -1133,16 +1123,6 @@ jobs:
             exit 1
           fi
 
-      - name: Discord update - Build Stage2 -> Stage2 (mandatory)
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Build Stage2 -> Stage2 (mandatory)
-
       - name: Smoke CLI help/version
         shell: bash
         run: |
@@ -1474,16 +1454,6 @@ jobs:
           if [[ -f "thagore-setup-windows-${{ matrix.arch }}.exe" ]]; then
             $HASH_CMD "thagore-setup-windows-${{ matrix.arch }}.exe" >> "$CHECKSUM_FILE"
           fi
-
-      - name: Discord update - Package release payload
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Package release payload
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
