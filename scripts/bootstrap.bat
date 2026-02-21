@@ -1,9 +1,22 @@
 @echo off
 setlocal
 
+set STAGE1_BOOTSTRAP_BIN=%THAG_BOOTSTRAP_STAGE1_BIN%
+if "%STAGE1_BOOTSTRAP_BIN%"=="" (
+  if exist .tmp_seed_release\bin\stage1.exe (
+    set STAGE1_BOOTSTRAP_BIN=.tmp_seed_release\bin\stage1.exe
+  ) else (
+    set STAGE1_BOOTSTRAP_BIN=stage1.exe
+  )
+)
+
 if not exist stage1.exe (
   echo [FAIL] Missing stage1.exe bootstrap compiler.
   echo [HINT] Provide Stage1 seed binary first.
+  exit /b 1
+)
+if not exist "%STAGE1_BOOTSTRAP_BIN%" (
+  echo [FAIL] Missing selected bootstrap compiler: %STAGE1_BOOTSTRAP_BIN%
   exit /b 1
 )
 if not exist thag_runtime.lib (
@@ -20,8 +33,9 @@ if errorlevel 1 (
 )
 
 echo [1/4] Build stage2 from stage1...
+echo [INFO] bootstrap_stage1=%STAGE1_BOOTSTRAP_BIN%
 if exist stage2.exe del /f /q stage2.exe >nul 2>&1
-stage1.exe build src/thagore.tg -o stage2.exe
+"%STAGE1_BOOTSTRAP_BIN%" build src/thagore.tg -o stage2.exe
 if errorlevel 1 (
   echo [FAIL] Stage2 build failed.
   exit /b 1
