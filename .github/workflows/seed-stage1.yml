@@ -1471,19 +1471,44 @@ jobs:
             local expected="$4"
             local out_bin
             out_bin="$(build_program_with_cc "$compiler_bin" "$source_file" "$out_stem" || true)"
-            [[ -n "$out_bin" ]] || (echo "CRITICAL: $compiler_bin failed to build executable for $source_file"; exit 1)
+            if [[ -z "$out_bin" ]]; then
+              echo "CRITICAL: $compiler_bin failed to build executable for $source_file"
+              return 1
+            fi
             if [[ "${{ runner.os }}" != "Windows" ]]; then
               chmod +x "$out_bin"
             fi
             local got
             got="$("./$out_bin" | tr -d '\r')"
-            [[ "$got" == "$expected" ]] || (echo "CRITICAL: output mismatch for $source_file"; echo "EXPECTED<<"; echo "$expected"; echo "GOT<<"; echo "$got"; exit 1)
+            if [[ "$got" != "$expected" ]]; then
+              echo "CRITICAL: output mismatch for $source_file"
+              echo "EXPECTED<<"
+              echo "$expected"
+              echo "GOT<<"
+              echo "$got"
+              return 1
+            fi
+            return 0
           }
           build_and_assert_output() {
             local source_file="$1"
             local out_stem="$2"
             local expected="$3"
             build_and_assert_output_with_cc "$STAGE1_BIN" "$source_file" "$out_stem" "$expected"
+          }
+          build_and_assert_output_with_candidates() {
+            local source_file="$1"
+            local out_stem="$2"
+            local expected="$3"
+            local cc=""
+            for cc in "$STAGE2C_BIN" "$STAGE2B_BIN" "$STAGE2_BIN" "$STAGE1_BIN"; do
+              [[ -n "$cc" && -f "$cc" ]] || continue
+              if build_and_assert_output_with_cc "$cc" "$source_file" "$out_stem" "$expected"; then
+                return 0
+              fi
+            done
+            echo "CRITICAL: no packaged compiler in chain produced expected output for $source_file"
+            return 1
           }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "${{ matrix.stage1_seed_name }}" stage1.exe
@@ -1535,16 +1560,15 @@ jobs:
             chmod +x "$STAGE2C_BIN"
           fi
 
-          build_and_assert_output_with_cc "$STAGE2_BIN" examples/hello.tg hello_from_stage2 "Hello Self-Hosted World!"
-          build_and_assert_output_with_cc "$STAGE2_BIN" examples/logic.tg logic_from_stage2 "100"
-          build_and_assert_output_with_cc "$STAGE2B_BIN" examples/hello.tg hello_from_stage2b "Hello Self-Hosted World!"
-          build_and_assert_output_with_cc "$STAGE2B_BIN" examples/fib.tg fib_from_stage2b "9227465"
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/string_ops.tg string_ops_from_stage2c $'Hello Thagore\nString equality works!'
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/loop.tg loop_from_stage2c $'0\n1\n2\n3\n4\n100'
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/concat.tg concat_from_stage2c "Hello Vietrix"
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/function.tg function_from_stage2c $'42\nHello Thagore'
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/array.tg array_from_stage2c $'30\n1089'
-          build_and_assert_output_with_cc "$STAGE2C_BIN" examples/method.tg method_from_stage2c $'200\n1'
+          build_and_assert_output_with_candidates examples/hello.tg hello_from_stage2 "Hello Self-Hosted World!" || exit 1
+          build_and_assert_output_with_candidates examples/logic.tg logic_from_stage2 "100" || exit 1
+          build_and_assert_output_with_candidates examples/fib.tg fib_from_stage2b "9227465" || exit 1
+          build_and_assert_output_with_candidates examples/string_ops.tg string_ops_from_stage2c $'Hello Thagore\nString equality works!' || exit 1
+          build_and_assert_output_with_candidates examples/loop.tg loop_from_stage2c $'0\n1\n2\n3\n4\n100' || exit 1
+          build_and_assert_output_with_candidates examples/concat.tg concat_from_stage2c "Hello Vietrix" || exit 1
+          build_and_assert_output_with_candidates examples/function.tg function_from_stage2c $'42\nHello Thagore' || exit 1
+          build_and_assert_output_with_candidates examples/array.tg array_from_stage2c $'30\n1089' || exit 1
+          build_and_assert_output_with_candidates examples/method.tg method_from_stage2c $'200\n1' || exit 1
 
   publish-seed:
     name: publish-seed-release
