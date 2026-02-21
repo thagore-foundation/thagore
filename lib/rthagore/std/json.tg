@@ -1,9 +1,61 @@
-// json compat shim
+// json-lite compatibility helpers.
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_trim(text: String) -> String
+extern func __thg_str_replace(text: String, old: String, new: String) -> String
+
+func _first(text: String) -> String
+  if text == null
+    return ""
+  if __thg_cstr_len(text) <= 0
+    return ""
+  return __thg_str_substr(text, 0, 1)
+
+func _last(text: String) -> String
+  if text == null
+    return ""
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return ""
+  return __thg_str_substr(text, n - 1, 1)
+
+func _looks_json_scalar(text: String) -> bool
+  if text == "null"
+    return true
+  if text == "true"
+    return true
+  if text == "false"
+    return true
+  if _first(text) == "\""
+    return _last(text) == "\""
+  return __thg_cstr_len(text) > 0
 
 func parse(text: String) -> String
+  if text == null
+    return ""
+  let t = __thg_str_trim(text)
+  if __thg_cstr_len(t) <= 0
+    return ""
+  if (_first(t) == "{") and (_last(t) == "}")
+    return t
+  if (_first(t) == "[") and (_last(t) == "]")
+    return t
+  if _looks_json_scalar(t)
+    return t
   return ""
 
 func stringify(value: String) -> String
   if value == null
     return "null"
-  return "json"
+  let t = __thg_str_trim(value)
+  if __thg_cstr_len(t) <= 0
+    return "\"\""
+  if (_first(t) == "{") and (_last(t) == "}")
+    return t
+  if (_first(t) == "[") and (_last(t) == "]")
+    return t
+  if _looks_json_scalar(t)
+    return t
+  let escaped = __thg_str_replace(t, "\"", "\\\"")
+  return "\"" + escaped + "\""

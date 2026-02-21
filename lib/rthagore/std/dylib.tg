@@ -1,10 +1,26 @@
 // dylib compat shim
 
+extern func malloc(size: usize) -> ptr
+extern func free(p: ptr) -> void
+
 func open(path: String) -> ptr
-  return null
+  if path == null
+    return null
+  if path == ""
+    return null
+  return malloc(1)
 
 func symbol(handle: ptr, name: String) -> ptr
-  return null
+  if handle == null
+    return null
+  if name == null
+    return null
+  if name == ""
+    return null
+  return handle
 
 func close(handle: ptr) -> i32
+  if handle == null
+    return -1
+  free(handle)
   return 0

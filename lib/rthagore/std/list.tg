@@ -1,22 +1,111 @@
-// list compat shim
+// list stored as newline-delimited items.
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_compare(a: String, b: String) -> i32
+
+func _line_count(text: String) -> i32
+  if text == null
+    return 0
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return 0
+  let i = 0
+  let count = 1
+  while i < n
+    if __thg_str_substr(text, i, 1) == "\n"
+      count = count + 1
+    i = i + 1
+  return count
+
+func _line_at(text: String, index: i32) -> String
+  if index < 0
+    return ""
+  if text == null
+    return ""
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return ""
+  let line = 0
+  let start = 0
+  let i = 0
+  while i <= n
+    if (i == n) or (__thg_str_substr(text, i, 1) == "\n")
+      if line == index
+        return __thg_str_substr(text, start, i - start)
+      line = line + 1
+      start = i + 1
+    i = i + 1
+  return ""
+
+func _append_line(out: String, line: String) -> String
+  if out == ""
+    return line
+  return out + "\n" + line
+
+func _insert_sorted(sorted: String, value: String) -> String
+  let out = ""
+  let inserted = 0
+  let i = 0
+  let n = _line_count(sorted)
+  while i < n
+    let cur = _line_at(sorted, i)
+    if (inserted == 0) and (__thg_str_compare(value, cur) < 0)
+      out = _append_line(out, value)
+      inserted = 1
+    out = _append_line(out, cur)
+    i = i + 1
+  if inserted == 0
+    out = _append_line(out, value)
+  return out
 
 func map(items: String, fn) -> String
+  # Function values are not executable in current runtime shape.
   return items
 
 func filter(items: String, fn) -> String
+  # Function values are not executable in current runtime shape.
   return items
 
 func reduce(items: String, fn, init: String = "") -> String
+  # Function values are not executable in current runtime shape.
   return init
 
 func reverse(items: String) -> String
-  return items
+  let out = ""
+  let i = _line_count(items) - 1
+  while i >= 0
+    out = _append_line(out, _line_at(items, i))
+    i = i - 1
+  return out
 
 func is_null(value: String) -> bool
   return value == ""
 
 func slice(items: String, start: i32 = 0, end: i32 = 0, step: i32 = 1) -> String
-  return items
+  if step <= 0
+    return ""
+  let n = _line_count(items)
+  let s = start
+  let e = end
+  if s < 0
+    s = 0
+  if e <= 0 or e > n
+    e = n
+  if s >= e
+    return ""
+  let out = ""
+  let i = s
+  while i < e
+    out = _append_line(out, _line_at(items, i))
+    i = i + step
+  return out
 
 func sort(items: String) -> String
-  return items
+  let out = ""
+  let i = 0
+  let n = _line_count(items)
+  while i < n
+    out = _insert_sorted(out, _line_at(items, i))
+    i = i + 1
+  return out

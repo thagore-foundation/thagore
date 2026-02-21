@@ -4,6 +4,8 @@ use fs as fs
 use sys as sys
 
 extern func __io_read_line(prompt: String) -> String
+extern func malloc(size: usize) -> ptr
+extern func free(p: ptr) -> void
 
 func create_file(path: String, mode: String = "r") -> ptr
     return fs.open_binary(path, mode)
@@ -23,11 +25,14 @@ func mkdir(path: String) -> i32 = fs.mkdir(path)
 func list_dir(path: String) -> String = fs.list_dir(path)
 
 func virtual_alloc(size: i32) -> ptr
-    return null
+    if size <= 0
+        return null
+    return malloc(size)
 
 func virtual_free(mem: ptr) -> bool
     if mem == null
         return false
+    free(mem)
     return true
 
 func process_spawn(cmd: String, args: String = "") -> i32

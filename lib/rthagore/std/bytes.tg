@@ -1,17 +1,127 @@
-// bytes compat shim
+// bytes module backed by hex-encoded storage.
+// Public String value represents bytes as "A1FF00..." (2 hex chars per byte).
 
 extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_codepoint(ch: String) -> i32
+extern func __string_from_codepoint(cp: i32) -> String
 
 func set_backend(name: String) -> String
   return name
 
 func _use_pure() -> bool
-  return false
+  return true
+
+func _hex_char(value: i32) -> String
+  let v = value
+  if v < 0
+    v = 0
+  if v > 15
+    v = v % 16
+  if v < 10
+    return __string_from_codepoint(48 + v)
+  return __string_from_codepoint(55 + v)
+
+func _hex_value(ch: String) -> i32
+  if ch == null
+    return -1
+  if __thg_cstr_len(ch) <= 0
+    return -1
+  let cp = __string_codepoint(ch)
+  if cp < 0
+    return -1
+  if cp >= 48 and cp <= 57
+    return cp - 48
+  if cp >= 65 and cp <= 70
+    return cp - 55
+  if cp >= 97 and cp <= 102
+    return cp - 87
+  return -1
+
+func _slice_chars(text: String, start: i32, count: i32) -> String
+  if text == null
+    return ""
+  if count <= 0
+    return ""
+  if start < 0
+    return ""
+  let n = __thg_cstr_len(text)
+  if start >= n
+    return ""
+  let bounded = count
+  let remain = n - start
+  if bounded > remain
+    bounded = remain
+  if bounded <= 0
+    return ""
+  return __thg_str_substr(text, start, bounded)
+
+func _normalize_storage(self: String) -> String
+  if self == null
+    return ""
+  let out = ""
+  let i = 0
+  let n = __thg_cstr_len(self)
+  while i < n
+    let ch = __thg_str_substr(self, i, 1)
+    let hv = _hex_value(ch)
+    if hv >= 0
+      out = out + _hex_char(hv)
+    i = i + 1
+  let out_len = __thg_cstr_len(out)
+  if (out_len % 2) == 1
+    return __thg_str_substr(out, 0, out_len - 1)
+  return out
+
+func _normalize_byte(v: i32) -> i32
+  let n = v
+  if n < 0
+    n = 0
+  if n > 255
+    n = n % 256
+  return n
+
+func _byte_to_hex(v: i32) -> String
+  let n = _normalize_byte(v)
+  let hi = n / 16
+  let lo = n - (hi * 16)
+  return _hex_char(hi) + _hex_char(lo)
+
+func _byte_from_hex(data: String, byte_index: i32) -> i32
+  if byte_index < 0
+    return -1
+  let normalized = _normalize_storage(data)
+  let pos = byte_index * 2
+  let n = __thg_cstr_len(normalized)
+  if (pos + 1) >= n
+    return -1
+  let hi = _hex_value(__thg_str_substr(normalized, pos, 1))
+  let lo = _hex_value(__thg_str_substr(normalized, pos + 1, 1))
+  if hi < 0
+    return -1
+  if lo < 0
+    return -1
+  return (hi * 16) + lo
 
 func _new_storage(size: i32) -> String
   if size <= 0
     return ""
-  return ""
+  let out = ""
+  let i = 0
+  while i < size
+    out = out + "00"
+    i = i + 1
+  return out
+
+func _ensure_size(self: String, size: i32) -> String
+  let out = _normalize_storage(self)
+  if size <= 0
+    return out
+  let current = __thg_cstr_len(out) / 2
+  while current < size
+    out = out + "00"
+    current = current + 1
+  return out
 
 func new(size: i32 = 0) -> String
   return _new_storage(size)
@@ -19,104 +129,219 @@ func new(size: i32 = 0) -> String
 func from_raw(raw: String) -> String
   if raw == null
     return ""
-  return raw
+  let out = ""
+  let i = 0
+  let n = __thg_cstr_len(raw)
+  while i < n
+    let ch = __thg_str_substr(raw, i, 1)
+    let cp = __string_codepoint(ch)
+    out = out + _byte_to_hex(cp)
+    i = i + 1
+  return out
 
 func len(self: String) -> i32
-  if self == null
-    return 0
-  return __thg_cstr_len(self)
+  let data = _normalize_storage(self)
+  return __thg_cstr_len(data) / 2
 
 func is_empty(self: String) -> bool
   return len(self) == 0
 
 func get(self: String, index: i32) -> i32
-  return 0
+  return _byte_from_hex(self, index)
 
 func set(self: String, index: i32, byte: i32) -> String
-  return self
+  if index < 0
+    return _normalize_storage(self)
+  let data = _ensure_size(self, index + 1)
+  let left = _slice_chars(data, 0, index * 2)
+  let right_start = (index * 2) + 2
+  let right_count = __thg_cstr_len(data) - right_start
+  let right = _slice_chars(data, right_start, right_count)
+  return left + _byte_to_hex(byte) + right
 
 func push(self: String, byte: i32) -> String
-  return self
+  return _normalize_storage(self) + _byte_to_hex(byte)
 
 func extend_raw(self: String, raw: String) -> String
-  return self
+  return _normalize_storage(self) + from_raw(raw)
 
 func extend(self: String, other: String) -> String
-  return self
+  return _normalize_storage(self) + _normalize_storage(other)
 
 func push_u16_le(self: String, val: u16) -> String
-  return self
+  let out = push(self, val % 256)
+  return push(out, (val / 256) % 256)
 
 func push_u32_le(self: String, val: u32) -> String
-  return self
+  let out = self
+  let x = val
+  let i = 0
+  while i < 4
+    out = push(out, x % 256)
+    x = x / 256
+    i = i + 1
+  return out
 
 func push_u64_le(self: String, val: u64) -> String
-  return self
+  let out = self
+  let x = val
+  let i = 0
+  while i < 8
+    out = push(out, x % 256)
+    x = x / 256
+    i = i + 1
+  return out
 
 func clear(self: String) -> String
   return ""
 
 func clone(self: String) -> String
-  return self
+  return _normalize_storage(self)
 
 func concat(self: String, other: String) -> String
-  return self
+  return _normalize_storage(self) + _normalize_storage(other)
 
 func starts_with(self: String, prefix: String) -> bool
-  if self == prefix
-    return true
-  return false
+  let data = _normalize_storage(self)
+  let pre = _normalize_storage(prefix)
+  let pre_len = __thg_cstr_len(pre)
+  if pre_len > __thg_cstr_len(data)
+    return false
+  return _slice_chars(data, 0, pre_len) == pre
 
 func ends_with(self: String, suffix: String) -> bool
-  if self == suffix
-    return true
-  return false
+  let data = _normalize_storage(self)
+  let suf = _normalize_storage(suffix)
+  let data_len = __thg_cstr_len(data)
+  let suf_len = __thg_cstr_len(suf)
+  if suf_len > data_len
+    return false
+  return _slice_chars(data, data_len - suf_len, suf_len) == suf
 
 func index_of(self: String, byte: i32, start: i32 = 0) -> i32
+  let data = _normalize_storage(self)
+  let target = _normalize_byte(byte)
+  let i = start
+  let n = __thg_cstr_len(data) / 2
+  while i < n
+    if _byte_from_hex(data, i) == target
+      return i
+    i = i + 1
   return -1
 
 func to_list(self: String) -> String
-  return ""
+  let data = _normalize_storage(self)
+  let out = ""
+  let i = 0
+  let n = __thg_cstr_len(data) / 2
+  while i < n
+    if i > 0
+      out = out + "\n"
+    let b = _byte_from_hex(data, i)
+    out = out + _byte_to_hex(b)
+    i = i + 1
+  return out
 
 func read_u16_le(self: String, offset: i32 = 0) -> u16
-  return 0
+  let b0 = get(self, offset)
+  let b1 = get(self, offset + 1)
+  if b0 < 0
+    return 0
+  if b1 < 0
+    return 0
+  return b0 + (b1 * 256)
 
 func read_u32_le(self: String, offset: i32 = 0) -> u32
-  return 0
+  let acc = 0
+  let mul = 1
+  let i = 0
+  while i < 4
+    let b = get(self, offset + i)
+    if b < 0
+      return 0
+    acc = acc + (b * mul)
+    mul = mul * 256
+    i = i + 1
+  return acc
 
 func read_u64_le(self: String, offset: i32 = 0) -> u64
-  return 0
+  let acc = 0
+  let mul = 1
+  let i = 0
+  while i < 8
+    let b = get(self, offset + i)
+    if b < 0
+      return 0
+    acc = acc + (b * mul)
+    mul = mul * 256
+    i = i + 1
+  return acc
 
 func write_u16_le(self: String, offset: i32, value: u16) -> String
-  return self
+  let out = set(self, offset, value % 256)
+  return set(out, offset + 1, (value / 256) % 256)
 
 func write_u32_le(self: String, offset: i32, value: u32) -> String
-  return self
+  let out = self
+  let x = value
+  let i = 0
+  while i < 4
+    out = set(out, offset + i, x % 256)
+    x = x / 256
+    i = i + 1
+  return out
 
 func write_u64_le(self: String, offset: i32, value: u64) -> String
-  return self
+  let out = self
+  let x = value
+  let i = 0
+  while i < 8
+    out = set(out, offset + i, x % 256)
+    x = x / 256
+    i = i + 1
+  return out
 
 func to_hex(self: String) -> String
-  return ""
+  return _normalize_storage(self)
 
 func from_hex(text: String) -> String
-  return ""
+  return _normalize_storage(text)
 
 func slice(self: String, start: i32, end: i32) -> String
-  return self
+  let data = _normalize_storage(self)
+  let n = __thg_cstr_len(data) / 2
+  let s = start
+  let e = end
+  if s < 0
+    s = 0
+  if e < 0
+    e = 0
+  if s > n
+    s = n
+  if e > n
+    e = n
+  if e < s
+    return ""
+  return _slice_chars(data, s * 2, (e - s) * 2)
 
 func slice_from(self: String, start: i32) -> String
-  return self
+  return slice(self, start, len(self))
 
 func slice_to(self: String, end: i32) -> String
-  return self
+  return slice(self, 0, end)
 
 func slice_all(self: String) -> String
-  return self
+  return _normalize_storage(self)
 
 func raw(self: String) -> String
-  return self
-
-func _hex_value(ch: String) -> i32
-  return 0
-
+  let data = _normalize_storage(self)
+  let out = ""
+  let i = 0
+  let n = __thg_cstr_len(data) / 2
+  while i < n
+    let b = _byte_from_hex(data, i)
+    if b < 0
+      return out
+    out = out + __string_from_codepoint(b)
+    i = i + 1
+  return out

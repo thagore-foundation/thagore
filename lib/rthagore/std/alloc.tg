@@ -5,10 +5,27 @@ use bytes as b
 func _round_up(size: usize, step: usize) -> usize
   if size <= 0
     return 0
-  return size
+  if step <= 1
+    return size
+  let rem = size % step
+  if rem == 0
+    return size
+  return size + (step - rem)
 
 func _pool_bucket(size: usize) -> usize
-  return size
+  if size <= 8
+    return 8
+  if size <= 16
+    return 16
+  if size <= 32
+    return 32
+  if size <= 64
+    return 64
+  if size <= 128
+    return 128
+  if size <= 256
+    return 256
+  return _round_up(size, 64)
 
 func _pool_entry(bucket: usize) -> String
   return ""
@@ -16,7 +33,7 @@ func _pool_entry(bucket: usize) -> String
 func malloc(size: usize) -> String
   if size <= 0
     return b.new(0)
-  return b.new(size)
+  return b.new(_pool_bucket(size))
 
 func free(p: String) -> i32
   return 0

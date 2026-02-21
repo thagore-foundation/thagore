@@ -1,0 +1,82 @@
+import "lib/rthagore/std/bytes.tg" as bytes
+import "lib/rthagore/std/collections.tg" as collections
+import "lib/rthagore/std/json.tg" as json
+import "lib/rthagore/std/list.tg" as listmod
+import "lib/rthagore/std/map.tg" as mapmod
+import "lib/rthagore/std/math.tg" as math
+import "lib/rthagore/std/mem.tg" as mem
+import "lib/rthagore/std/regex.tg" as regex
+import "lib/rthagore/std/set.tg" as setmod
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_bool(label: String, got: bool, want: bool) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+
+    let b0 = bytes.new(2)
+    fails = fails + _expect_i32("bytes len", bytes.len(b0), 2)
+    let b1 = bytes.write_u16_le(b0, 0, 258)
+    fails = fails + _expect_i32("bytes get0", bytes.get(b1, 0), 2)
+    fails = fails + _expect_i32("bytes get1", bytes.get(b1, 1), 1)
+    fails = fails + _expect_i32("bytes read_u16", bytes.read_u16_le(b1, 0), 258)
+    fails = fails + _expect_str("bytes from_raw/raw", bytes.raw(bytes.from_raw("AZ")), "AZ")
+
+    let m = "a=1\nb=2"
+    fails = fails + _expect_str("map get a", mapmod.get_or(m, "a", "x"), "1")
+    fails = fails + _expect_str("map get missing", mapmod.get_or(m, "z", "x"), "x")
+
+    let s = setmod.add("", "x")
+    let s2 = setmod.add(s, "y")
+    fails = fails + _expect_bool("set has x", setmod.has(s2, "x"), true)
+    fails = fails + _expect_bool("set has z", setmod.has(s2, "z"), false)
+    fails = fails + _expect_bool("set intersection", setmod.has(setmod.intersection(s2, "y"), "y"), true)
+
+    fails = fails + _expect_str("list reverse", listmod.reverse("a\nb\nc"), "c\nb\na")
+    fails = fails + _expect_str("list slice", listmod.slice("a\nb\nc\nd", 1, 4, 2), "b\nd")
+
+    let hm = collections.hashmap_set(collections.hashmap_new(), "k", "v")
+    fails = fails + _expect_str("collections hashmap get", collections.hashmap_get(hm, "k", ""), "v")
+    let dq = collections.deque_push_back(collections.deque_new(), "a")
+    let dq2 = collections.deque_push_back(dq, "b")
+    fails = fails + _expect_str("collections deque front", collections.deque_peek_front(dq2), "a")
+    fails = fails + _expect_str("collections deque back", collections.deque_peek_back(dq2), "b")
+
+    fails = fails + _expect_i32("math sum", math.sum("1,2 3\n4"), 10)
+    fails = fails + _expect_i32("math mean", math.mean("2,4,6"), 4)
+
+    fails = fails + _expect_bool("regex prefix", regex.is_match("^ab", "abc"), true)
+    fails = fails + _expect_bool("regex suffix", regex.is_match("bc$", "abc"), true)
+    fails = fails + _expect_bool("regex wildcard", regex.is_match("a*c", "abbbc"), true)
+
+    fails = fails + _expect_str("json stringify scalar", json.stringify("hello"), "\"hello\"")
+    fails = fails + _expect_str("json parse object", json.parse("{\"a\":1}"), "{\"a\":1}")
+
+    let src = bytes.from_raw("HI")
+    let dst = mem.alloc(2)
+    let moved = mem.copy(dst, 0, src, 0, 2)
+    fails = fails + _expect_str("mem copy", bytes.raw(moved), "HI")
+
+    if (fails == 0):
+        print("PASS: rthagore std compat")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

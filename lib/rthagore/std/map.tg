@@ -1,13 +1,110 @@
-// map compat shim
+// map stored as newline-delimited "key=value" entries.
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _line_count(text: String) -> i32
+  if text == null
+    return 0
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return 0
+  let i = 0
+  let count = 1
+  while i < n
+    if __thg_str_substr(text, i, 1) == "\n"
+      count = count + 1
+    i = i + 1
+  return count
+
+func _line_at(text: String, index: i32) -> String
+  if index < 0
+    return ""
+  if text == null
+    return ""
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return ""
+  let line = 0
+  let start = 0
+  let i = 0
+  while i <= n
+    if (i == n) or (__thg_str_substr(text, i, 1) == "\n")
+      if line == index
+        return __thg_str_substr(text, start, i - start)
+      line = line + 1
+      start = i + 1
+    i = i + 1
+  return ""
+
+func _line_key(entry: String) -> String
+  if entry == null
+    return ""
+  let n = __thg_cstr_len(entry)
+  let i = 0
+  while i < n
+    if __thg_str_substr(entry, i, 1) == "="
+      return __thg_str_substr(entry, 0, i)
+    i = i + 1
+  return entry
+
+func _line_value(entry: String) -> String
+  if entry == null
+    return ""
+  let n = __thg_cstr_len(entry)
+  let i = 0
+  while i < n
+    if __thg_str_substr(entry, i, 1) == "="
+      return __thg_str_substr(entry, i + 1, n - i - 1)
+    i = i + 1
+  return ""
+
+func _append_line(out: String, line: String) -> String
+  if line == ""
+    return out
+  if out == ""
+    return line
+  return out + "\n" + line
 
 func keys(m: String) -> String
-  return ""
+  let out = ""
+  let i = 0
+  let n = _line_count(m)
+  while i < n
+    let entry = _line_at(m, i)
+    if entry != ""
+      out = _append_line(out, _line_key(entry))
+    i = i + 1
+  return out
 
 func values(m: String) -> String
-  return ""
+  let out = ""
+  let i = 0
+  let n = _line_count(m)
+  while i < n
+    let entry = _line_at(m, i)
+    if entry != ""
+      out = _append_line(out, _line_value(entry))
+    i = i + 1
+  return out
 
 func items(m: String) -> String
-  return ""
+  let out = ""
+  let i = 0
+  let n = _line_count(m)
+  while i < n
+    let entry = _line_at(m, i)
+    if entry != ""
+      out = _append_line(out, entry)
+    i = i + 1
+  return out
 
 func get_or(m: String, key: String, fallback: String) -> String
+  let i = 0
+  let n = _line_count(m)
+  while i < n
+    let entry = _line_at(m, i)
+    if _line_key(entry) == key
+      return _line_value(entry)
+    i = i + 1
   return fallback
