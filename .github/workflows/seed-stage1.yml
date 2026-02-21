@@ -413,10 +413,16 @@ jobs:
               fi
             done
             local discovered=""
-            discovered="$(find . -maxdepth 4 -type f \( -name "${preferred}*" -o -name "${base}*" \) \
+            discovered="$(
+              {
+                find . -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
+                find ./src -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
+                find ./examples -maxdepth 2 -type f -name "${preferred}*" 2>/dev/null
+              } \
               | sed 's|^\./||' \
               | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
-              | head -n1 || true)"
+              | head -n1 || true
+            )"
             if [[ -n "$discovered" ]]; then
               echo "$discovered"
               return 0
@@ -435,9 +441,15 @@ jobs:
               fi
             done
             local discovered=""
-            discovered="$(find . -maxdepth 4 -type f \( -name "${preferred}*.ll" -o -name "${base}*.ll" \) \
+            discovered="$(
+              {
+                find . -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
+                find ./src -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
+                find ./examples -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
+              } \
               | sed 's|^\./||' \
-              | head -n1 || true)"
+              | head -n1 || true
+            )"
             if [[ -n "$discovered" ]]; then
               echo "$discovered"
               return 0
