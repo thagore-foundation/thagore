@@ -1291,6 +1291,94 @@ jobs:
             exit 1
           fi
 
+      - name: Verify packaged payload smoke (atomic bundle gate)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          rm -rf verify_pkg
+          mkdir -p verify_pkg
+          tar -xzf "${{ matrix.package_name }}" -C verify_pkg
+          COMPILER_BIN="verify_pkg/bin/${{ matrix.output_bin }}"
+          HELPER_BIN="verify_pkg/bin/stage1"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            HELPER_BIN="verify_pkg/bin/stage1.exe"
+          fi
+          [[ -f "$COMPILER_BIN" ]] || (echo "CRITICAL: missing packaged compiler binary: $COMPILER_BIN"; exit 1)
+          [[ -f "$HELPER_BIN" ]] || (echo "CRITICAL: missing packaged helper binary: $HELPER_BIN"; exit 1)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$COMPILER_BIN" "$HELPER_BIN" || true
+          fi
+          PKG_VERSION_OUT="$("$COMPILER_BIN" --version 2>&1)"
+          PKG_HELP_OUT="$("$COMPILER_BIN" --help 2>&1)"
+          if [[ -z "$PKG_VERSION_OUT" || -z "$PKG_HELP_OUT" ]]; then
+            echo "CRITICAL: packaged compiler returned empty --version/--help output."
+            exit 1
+          fi
+          PKG_MERGED="$PKG_VERSION_OUT"$'\n'"$PKG_HELP_OUT"
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$PKG_MERGED"; then
+            echo "CRITICAL: packaged compiler output matches legacy/wrapper markers."
+            exit 1
+          fi
+          "$PY" - "$COMPILER_BIN" "$HELPER_BIN" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          comp = pathlib.Path(sys.argv[1]).read_bytes()
+          helper = pathlib.Path(sys.argv[2]).read_bytes()
+          rx = re.compile(rb"thagore [0-9]+\.[0-9]+\.[0-9]+")
+          m1 = rx.search(comp)
+          m2 = rx.search(helper)
+          if not m1 or not m2:
+              raise SystemExit("missing version marker in packaged compiler/helper binary")
+          if m1.group(0) != m2.group(0):
+              raise SystemExit(
+                  f"version marker mismatch compiler={m1.group(0).decode(errors='ignore')} helper={m2.group(0).decode(errors='ignore')}"
+              )
+          print("[OK] packaged compiler/helper version marker aligned")
+          PY
+          cat > verify_pkg/atomic_bundle_smoke.tg <<'TG'
+          func main() -> i32:
+              print("atomic package smoke")
+              return 0
+          TG
+          pushd verify_pkg >/dev/null
+          if [[ -f "lib/runtime.lib" ]]; then
+            cp "lib/runtime.lib" "runtime.lib"
+          fi
+          if [[ -f "lib/runtime.a" ]]; then
+            cp "lib/runtime.a" "runtime.a"
+          fi
+          THAG_HELPER_BIN="./bin/$(basename "$HELPER_BIN")" "./bin/${{ matrix.output_bin }}" --emit-llvm-internal atomic_bundle_smoke.tg -o atomic_bundle_smoke.ll
+          [[ -s atomic_bundle_smoke.ll ]] || (echo "CRITICAL: packaged helper emit produced empty LLVM IR."; exit 1)
+          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_OFFICIAL_TAG:-0}" != "1" ]]; then
+            echo "[WARN] packaged build/run smoke skipped on non-tag no-output lane."
+          else
+            OUT_BIN="atomic_bundle_smoke"
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              OUT_BIN="atomic_bundle_smoke.exe"
+            fi
+            THAG_HELPER_BIN="./bin/$(basename "$HELPER_BIN")" "./bin/${{ matrix.output_bin }}" build atomic_bundle_smoke.tg -o "$OUT_BIN"
+            [[ -f "$OUT_BIN" ]] || (echo "CRITICAL: packaged build smoke did not produce output binary."; exit 1)
+            OUT_TXT="$("./$OUT_BIN" 2>&1)"
+            if ! grep -Fq "atomic package smoke" <<<"$OUT_TXT"; then
+              echo "CRITICAL: packaged runtime smoke output mismatch."
+              echo "$OUT_TXT"
+              exit 1
+            fi
+          fi
+          popd >/dev/null
+          {
+            printf 'status=pass\n'
+            printf 'asset_tag=%s\n' "${{ matrix.asset_tag }}"
+            printf 'version=%s\n' "$PKG_VERSION_OUT"
+          } > "packaged-smoke-release-${{ matrix.asset_tag }}.txt"
+
       - name: Guard Windows package has no thag alias/wrapper
         if: runner.os == 'Windows'
         shell: bash
@@ -1419,6 +1507,7 @@ jobs:
             thagore-setup-windows-${{ matrix.arch }}.exe
             SHA256SUMS-${{ matrix.asset_tag }}.txt
             thagore-enduser-verified-${{ matrix.asset_tag }}.txt
+            packaged-smoke-release-${{ matrix.asset_tag }}.txt
 
       - name: Upload typed-ir audit artifact
         if: always()
