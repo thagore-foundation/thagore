@@ -388,7 +388,8 @@ jobs:
               return 1
             }
             if run_seed_compiler "$cc_bin" build __seed_probe_missing__.tg -o __seed_probe_missing__.out >/dev/null 2>&1; then
-              echo "[SEED][probe][WARN] $CURRENT_TAG: compiler returned success for missing input; continue bootstrap probe and enforce strict no-op gate on packaged output." | tee -a "$STAGE_TRACE_FILE"
+              echo "[SEED][probe] $CURRENT_TAG: compiler returned success for missing input (no-op behavior), reject bootstrap tag." | tee -a "$STAGE_TRACE_FILE"
+              return 1
             fi
             run_seed_compiler "$cc_bin" build "$probe_src" -o "$out_stem" >"$probe_build_log" 2>&1 || true
             out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
