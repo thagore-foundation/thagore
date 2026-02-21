@@ -2,14 +2,24 @@
 
 use bytes as bytes_mod
 
-func alloc(size: i32) -> String
+func alloc(size: usize) -> String
   return bytes_mod.new(size)
 
 func free(buffer: String) -> i32
   return 0
 
 func copy(dst: String, dst_offset: i32, src: String, src_offset: i32, length: i32) -> String
-  return dst
+  if length <= 0
+    return dst
+  let out = dst
+  let i = 0
+  while i < length
+    out = bytes_mod.set(out, dst_offset + i, bytes_mod.get(src, src_offset + i))
+    i = i + 1
+  return out
 
 func move(dst: String, dst_offset: i32, src: String, src_offset: i32, length: i32) -> String
-  return dst
+  if length <= 0
+    return dst
+  let tmp = bytes_mod.slice(src, src_offset, src_offset + length)
+  return copy(dst, dst_offset, tmp, 0, length)

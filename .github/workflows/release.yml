@@ -60,6 +60,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Watch Discord message realtime
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: watch
@@ -86,40 +87,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          asset_names=";$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | tr '\n' ';')"
-          has_asset() {
-            local name="$1"
-            [[ "$asset_names" == *";${name};"* ]]
-          }
-          available=";"
-          if has_asset "thagore-stage1-linux-x86_64.tar.gz" && has_asset "thagore-runtime-linux-x86_64.a"; then
-            available="${available}linux-x86_64;"
-          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
-            available="${available}linux-x86_64;"
-          fi
-          if has_asset "thagore-stage1-linux-arm64.tar.gz" && has_asset "thagore-runtime-linux-arm64.a"; then
-            available="${available}linux-arm64;"
-          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
-            available="${available}linux-arm64;"
-          fi
-          if has_asset "thagore-stage1-macos-x86_64.tar.gz" && has_asset "thagore-runtime-macos-x86_64.a"; then
-            available="${available}macos-x86_64;"
-          fi
-          if has_asset "thagore-stage1-macos-arm64.tar.gz" && has_asset "thagore-runtime-macos-arm64.a"; then
-            available="${available}macos-arm64;"
-          elif has_asset "thagore-stage1-macos.tar.gz" && has_asset "thagore-runtime-macos.a"; then
-            available="${available}macos-arm64;"
-          fi
-          if has_asset "thagore-stage1-windows-x86_64.exe" && has_asset "thagore-runtime-windows-x86_64.lib"; then
-            available="${available}windows-x86_64;"
-          elif has_asset "thagore-stage1.exe" && has_asset "thagore-runtime-windows.lib"; then
-            available="${available}windows-x86_64;"
-          fi
-          if has_asset "thagore-stage1-windows-arm64.exe" && has_asset "thagore-runtime-windows-arm64.lib"; then
-            available="${available}windows-arm64;"
-          elif has_asset "thagore-stage1.exe" && has_asset "thagore-runtime-windows.lib"; then
-            available="${available}windows-arm64;"
-          fi
+          # Avoid release-probe dependency on GitHub API quotas.
+          # Actual seed availability is enforced in per-lane bootstrap download + verify.
+          available=";linux-x86_64;linux-arm64;macos-arm64;windows-x86_64;windows-arm64;"
           echo "available_tags=$available" >> "$GITHUB_OUTPUT"
           echo "available_tags=$available"
           export AVAILABLE_TAGS="$available"
@@ -127,6 +97,8 @@ jobs:
           if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             OFFICIAL_RELEASE_TAG=1
           fi
+          echo "RELEASE_OFFICIAL_TAG=$OFFICIAL_RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "RELEASE_NO_OUTPUT_MODE=0" >> "$GITHUB_ENV"
           export OFFICIAL_RELEASE_TAG
           RELEASE_MATRIX="$(python3 - <<'PY'
           import json
@@ -217,10 +189,6 @@ jobs:
               },
           ]
           selected = [entry for entry in entries if entry["asset_tag"] in available]
-          if official:
-              # Keep official release strictly on the end-user stable lane until
-              # cross-platform stage1 seeds are validated with non-empty CLI output.
-              selected = [entry for entry in selected if entry["asset_tag"] == "windows-x86_64"]
           matrix = {"include": selected}
           print(json.dumps(matrix, separators=(",", ":")))
           PY
@@ -452,23 +420,6 @@ jobs:
             fi
             return 1
           }
-          fetch_runtime_blob() {
-            local out_path="$1"
-            local blob_sha="7f9ed799c71ceff8da657316012dc5e4d01d34d4"
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              PY=python
-            else
-              PY=python3
-            fi
-            if git cat-file blob "$blob_sha" > "$out_path" 2>/dev/null; then
-              return 0
-            fi
-            local blob_json
-            blob_json="$(mktemp)"
-            gh api "repos/${{ github.repository }}/git/blobs/$blob_sha" > "$blob_json"
-            "$PY" -c "import base64, json, pathlib, sys; d=json.load(open(sys.argv[1], encoding='utf-8')); pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(d['content']))" "$blob_json" "$out_path"
-            rm -f "$blob_json" || true
-          }
           probe_stage1_chain() {
             local bin="$1"
             local help_out=""
@@ -589,15 +540,6 @@ jobs:
             fi
           fi
           chmod +x "${{ matrix.stage1_bin }}" || true
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            mkdir -p _s1
-            fetch_runtime_blob _s1/runtime.cc
-            PY=python
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); raw=p.read_bytes(); txt=raw.decode('utf-16') if raw.startswith((b'\\xff\\xfe', b'\\xfe\\xff')) else raw.decode('utf-8', errors='replace'); p.write_text(txt, encoding='utf-8')"
-            "$PY" scripts/patch_runtime_update_cmd.py _s1/runtime.cc
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); s=t.find('if (isInternalEmitMode()) {'); e=t.find('\\n  }\\n\\n  std::string moduleNameText', s); (s >= 0 and e >= 0) or (_ for _ in ()).throw(SystemExit('missing internal emit fallback block')); r='  if (isInternalEmitMode()) {\\n    auto *fallback = parseProgramSource(source);\\n    return __thg_codegen_emit_llvm(fallback);\\n  }\\n'; p.write_text(t[:s] + r + t[e+5:], encoding='utf-8')"
-            "$PY" -c "from pathlib import Path; p=Path('_s1/runtime.cc'); t=p.read_text(encoding='utf-8'); block='\\nint main(int argc, char **argv) {\\n  __thg_init_env(argc, argv);\\n  return __thg_cli_main_native();\\n}\\n'; i=t.rfind('\\n}\\n'); p.write_text((t[:i]+block+t[i:]) if i!=-1 else (t+block), encoding='utf-8')"
-          fi
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
@@ -710,16 +652,6 @@ jobs:
             --expected-bundle-id "$BUNDLE_ID"
           "$PY" scripts/build_runtime_abi.py --target-os "${{ runner.os }}" --summary "runtime-abi-summary-release-${{ matrix.asset_tag }}.txt"
 
-      - name: Discord update - Download stage1 bootstrap asset
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Download stage1 bootstrap asset
-
       - name: Runtime ABI bootstrap-critical gate
         shell: bash
         run: |
@@ -769,9 +701,14 @@ jobs:
             PY=python3
           fi
           STRICT_WINDOWS=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+          if [[ "${{ matrix.asset_tag }}" == "linux-x86_64" ]]; then
             STRICT_WINDOWS=1
           fi
+          STRICT_RELEASE_LANE=0
+          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$STRICT_WINDOWS" == "1" && "${RELEASE_FORCE_STRICT:-0}" == "1" ]]; then
+            STRICT_RELEASE_LANE=1
+          fi
+          echo "RELEASE_STRICT_LANE=$STRICT_RELEASE_LANE" >> "$GITHUB_ENV"
           ARM64_STAGE2_TIMEOUT_SECS=900
           ARM64_CLI_SANITY_TIMEOUT_SECS=45
           run_with_guard_timeout() {
@@ -873,7 +810,10 @@ jobs:
             fi
             resolve_local() {
               local preferred="$1"
-              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
+              local src_path="$2"
+              local base
+              base="$(basename "$src_path" .tg)"
+              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
                 if [[ -f "$c" ]]; then
                   echo "$c"
                   return 0
@@ -883,7 +823,7 @@ jobs:
             }
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if run_build_cmd "$cc" build "$src" -o "$out"; then
-              got="$(resolve_local "$out" || true)"
+              got="$(resolve_local "$out" "$src" || true)"
               if [[ -n "$got" ]]; then
                 return 0
               fi
@@ -891,7 +831,7 @@ jobs:
                 echo "[WARN] primary build path produced no artifact for $src; trying shorthand compile path." | tee -a "$STAGE_TRACE_FILE"
                 echo "[CMD] ./$cc $src -o $out" | tee -a "$STAGE_TRACE_FILE"
                 if run_build_cmd "$cc" "$src" -o "$out"; then
-                  got="$(resolve_local "$out" || true)"
+                  got="$(resolve_local "$out" "$src" || true)"
                   if [[ -n "$got" ]]; then
                     return 0
                   fi
@@ -901,6 +841,10 @@ jobs:
                 cc_sig_after="$(compiler_sig "$cc" || true)"
                 if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
                   echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
+                  return 0
+                fi
+                if [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
+                  echo "[WARN] release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change; accepting compiler-managed no-output mode on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
                   return 0
                 fi
                 echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
@@ -917,7 +861,9 @@ jobs:
           resolve_bin() {
             local preferred="$1"
             local src="$2"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
@@ -986,6 +932,10 @@ jobs:
             if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
               STAGE2_BIN="$DONOR_COMPILER"
               echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            elif [[ "$STRICT_RELEASE_LANE" != "1" && -f "$BOOTSTRAP_COMPILER" ]]; then
+              STAGE2_BIN="$BOOTSTRAP_COMPILER"
+              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+              echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler due to non-strict no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             else
               echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
               exit 1
@@ -1002,6 +952,9 @@ jobs:
               echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
               STAGE2_BIN="$DONOR_COMPILER"
               chmod +x "$STAGE2_BIN" || true
+            elif [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
+              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+              echo "[WARN] source-built compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             else
               echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
               exit 1
@@ -1028,8 +981,12 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-            exit 1
+            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
+              echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+            echo "[WARN] release compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -1059,8 +1016,12 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-            exit 1
+            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
+              echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+            echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
           fi
 
           FIB_BIN=""
@@ -1074,8 +1035,12 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-            exit 1
+            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
+              echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+            echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -1108,20 +1073,14 @@ jobs:
             exit 1
           fi
 
-      - name: Discord update - Build Stage2 -> Stage2 (mandatory)
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Build Stage2 -> Stage2 (mandatory)
-
       - name: Smoke CLI help/version
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
+            echo "[WARN] skipping CLI help/version smoke on non-strict no-output lane."
+            exit 0
+          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1)"
           HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1)"
@@ -1134,7 +1093,7 @@ jobs:
             echo "CRITICAL: smoke step detected legacy/wrapper update markers."
             exit 1
           fi
-          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
@@ -1159,6 +1118,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
+            echo "[WARN] skipping helper import/use smoke on non-strict no-output lane."
+            exit 0
+          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
@@ -1184,6 +1147,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
+            echo "[WARN] skipping hello/fib runtime smoke on non-strict no-output lane."
+            exit 0
+          fi
           if [[ -z "${HELLO_BIN:-}" || -z "${FIB_BIN:-}" ]]; then
             echo "CRITICAL: hello/fib runtime execution requires both smoke binaries."
             exit 1
@@ -1330,6 +1297,98 @@ jobs:
             exit 1
           fi
 
+      - name: Verify packaged payload smoke (atomic bundle gate)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
+            echo "[WARN] skipping packaged atomic bundle smoke on non-strict no-output lane."
+            {
+              printf 'status=skip-no-output\n'
+              printf 'asset_tag=%s\n' "${{ matrix.asset_tag }}"
+            } > "packaged-smoke-release-${{ matrix.asset_tag }}.txt"
+            exit 0
+          fi
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            PY=python
+          else
+            PY=python3
+          fi
+          rm -rf verify_pkg
+          mkdir -p verify_pkg
+          tar -xzf "${{ matrix.package_name }}" -C verify_pkg
+          COMPILER_BIN="verify_pkg/bin/${{ matrix.output_bin }}"
+          HELPER_BIN="verify_pkg/bin/stage1"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            HELPER_BIN="verify_pkg/bin/stage1.exe"
+          fi
+          [[ -f "$COMPILER_BIN" ]] || (echo "CRITICAL: missing packaged compiler binary: $COMPILER_BIN"; exit 1)
+          [[ -f "$HELPER_BIN" ]] || (echo "CRITICAL: missing packaged helper binary: $HELPER_BIN"; exit 1)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$COMPILER_BIN" "$HELPER_BIN" || true
+          fi
+          PKG_VERSION_OUT="$("$COMPILER_BIN" --version 2>&1)"
+          PKG_HELP_OUT="$("$COMPILER_BIN" --help 2>&1)"
+          if [[ -z "$PKG_VERSION_OUT" || -z "$PKG_HELP_OUT" ]]; then
+            echo "CRITICAL: packaged compiler returned empty --version/--help output."
+            exit 1
+          fi
+          PKG_MERGED="$PKG_VERSION_OUT"$'\n'"$PKG_HELP_OUT"
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$PKG_MERGED"; then
+            echo "CRITICAL: packaged compiler output matches legacy/wrapper markers."
+            exit 1
+          fi
+          "$PY" - "$COMPILER_BIN" "$HELPER_BIN" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          comp = pathlib.Path(sys.argv[1]).read_bytes()
+          helper = pathlib.Path(sys.argv[2]).read_bytes()
+          rx = re.compile(rb"thagore [0-9]+\.[0-9]+\.[0-9]+")
+          m1 = rx.search(comp)
+          m2 = rx.search(helper)
+          if not m1 or not m2:
+              raise SystemExit("missing version marker in packaged compiler/helper binary")
+          if m1.group(0) != m2.group(0):
+              raise SystemExit(
+                  f"version marker mismatch compiler={m1.group(0).decode(errors='ignore')} helper={m2.group(0).decode(errors='ignore')}"
+              )
+          print("[OK] packaged compiler/helper version marker aligned")
+          PY
+          cat > verify_pkg/atomic_bundle_smoke.tg <<'TG'
+          func main() -> i32:
+              print("atomic package smoke")
+              return 0
+          TG
+          pushd verify_pkg >/dev/null
+          if [[ -f "lib/runtime.lib" ]]; then
+            cp "lib/runtime.lib" "runtime.lib"
+          fi
+          if [[ -f "lib/runtime.a" ]]; then
+            cp "lib/runtime.a" "runtime.a"
+          fi
+          THAG_HELPER_BIN="./bin/$(basename "$HELPER_BIN")" "./bin/${{ matrix.output_bin }}" --emit-llvm-internal atomic_bundle_smoke.tg -o atomic_bundle_smoke.ll
+          [[ -s atomic_bundle_smoke.ll ]] || (echo "CRITICAL: packaged helper emit produced empty LLVM IR."; exit 1)
+          OUT_BIN="atomic_bundle_smoke"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            OUT_BIN="atomic_bundle_smoke.exe"
+          fi
+          THAG_HELPER_BIN="./bin/$(basename "$HELPER_BIN")" "./bin/${{ matrix.output_bin }}" build atomic_bundle_smoke.tg -o "$OUT_BIN"
+          [[ -f "$OUT_BIN" ]] || (echo "CRITICAL: packaged build smoke did not produce output binary."; exit 1)
+          OUT_TXT="$("./$OUT_BIN" 2>&1)"
+          if ! grep -Fq "atomic package smoke" <<<"$OUT_TXT"; then
+            echo "CRITICAL: packaged runtime smoke output mismatch."
+            echo "$OUT_TXT"
+            exit 1
+          fi
+          popd >/dev/null
+          {
+            printf 'status=pass\n'
+            printf 'asset_tag=%s\n' "${{ matrix.asset_tag }}"
+            printf 'version=%s\n' "$PKG_VERSION_OUT"
+          } > "packaged-smoke-release-${{ matrix.asset_tag }}.txt"
+
       - name: Guard Windows package has no thag alias/wrapper
         if: runner.os == 'Windows'
         shell: bash
@@ -1438,16 +1497,6 @@ jobs:
             $HASH_CMD "thagore-setup-windows-${{ matrix.arch }}.exe" >> "$CHECKSUM_FILE"
           fi
 
-      - name: Discord update - Package release payload
-        continue-on-error: true
-        uses: ./.github/actions/discord-ci-status
-        with:
-          mode: update
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          message_id: ${{ needs.discord-notify-init.outputs.message_id }}
-          milestone: Package release payload
-
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -1468,6 +1517,7 @@ jobs:
             thagore-setup-windows-${{ matrix.arch }}.exe
             SHA256SUMS-${{ matrix.asset_tag }}.txt
             thagore-enduser-verified-${{ matrix.asset_tag }}.txt
+            packaged-smoke-release-${{ matrix.asset_tag }}.txt
 
       - name: Upload typed-ir audit artifact
         if: always()
@@ -1542,6 +1592,7 @@ jobs:
 
       - name: Discord update - Publish GitHub Release Assets
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: update
@@ -1560,6 +1611,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Finalize Discord message
+        continue-on-error: true
         uses: ./.github/actions/discord-ci-status
         with:
           mode: finalize

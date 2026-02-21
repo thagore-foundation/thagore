@@ -37,13 +37,13 @@ func _helper_exec_path(candidate_raw: String) -> String:
     return "./" + candidate
 
 func _configure_default_helper_bin() -> void:
-    if (strlen(_trim(env.get_var("THAG_HELPER_BIN"))) > 0):
-        return
+    let configured = _helper_exec_path(env.get_var("THAG_HELPER_BIN"))
+    if (strlen(configured) > 0):
+        if (fs.exists(configured) == 1):
+            env.set_var("THAG_HELPER_BIN", configured)
+            return
     let exe_path = _normalize_path(_trim(env.program_name()))
     if (strlen(exe_path) == 0):
-        return
-    if (fs.exists(exe_path) == 1):
-        env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
         return
     let exe_dir = _dir_name(exe_path)
     let stage1_name = "stage1"
@@ -57,6 +57,9 @@ func _configure_default_helper_bin() -> void:
     let under_bin = _normalize_path(parent + "/bin/" + stage1_name)
     if (fs.exists(under_bin) == 1):
         env.set_var("THAG_HELPER_BIN", _helper_exec_path(under_bin))
+        return
+    if (fs.exists(exe_path) == 1):
+        env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
 
 func main() -> i32:
     let argc = env.count()

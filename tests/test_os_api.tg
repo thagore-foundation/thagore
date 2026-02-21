@@ -17,6 +17,12 @@ func _expect_str(label: String, got: String, want: String) -> i32:
 func main() -> i32:
     let fails = 0
 
+    os.os_setenv("THAG_OS_ABI_MODE", "direct")
+    fails = fails + _expect_str("abi mode direct", os.os_abi_mode(), "direct")
+    os.os_setenv("THAG_OS_ABI_MODE", "native")
+    fails = fails + _expect_str("abi mode alias native", os.os_abi_mode(), "direct")
+    os.os_setenv("THAG_OS_ABI_MODE", "direct")
+
     fails = fails + _expect_i32("str len", os.os_str_len("abc"), 3)
     fails = fails + _expect_str("str trim", os.os_str_trim("  hi  "), "hi")
     fails = fails + _expect_i32("str contains", os.os_str_contains("thagore", "go"), 1)
@@ -43,13 +49,23 @@ func main() -> i32:
 
     let items = os.os_list_new()
     fails = fails + _expect_i32("list count default", os.os_list_count(items), 0)
-
     let m = os.os_map_new()
+    fails = fails + _expect_i32("list push map ptr", os.os_list_push(items, m), 1)
+    fails = fails + _expect_i32("list count after push", os.os_list_count(items), 1)
+    fails = fails + _expect_i32("list get pushed ptr", os.os_list_get(items, 0) == m, 1)
+
     let missing = os.os_map_get(m, "none")
     fails = fails + _expect_i32("map get missing null", os.os_map_is_null_ptr(missing), 1)
+    fails = fails + _expect_i32("map put", os.os_map_put(m, "k", items), 1)
+    fails = fails + _expect_i32("map get put ptr", os.os_map_get(m, "k") == items, 1)
 
     fails = fails + _expect_i32("time now positive-ish", os.os_time_now_ms() >= 0, 1)
     fails = fails + _expect_i32("sleep zero", os.os_time_sleep_ms(0), 0)
+    fails = fails + _expect_i32("sleep negative rejected", os.os_time_sleep_ms(-1), -1)
+    fails = fails + _expect_i32("process id non-negative", os.os_process_id() >= 0, 1)
+    if (os.os_is_windows() == 1):
+        fails = fails + _expect_i32("thread id non-negative", os.os_thread_id() >= 0, 1)
+    fails = fails + _expect_i32("debug print", os.os_debug_print("os api debug"), 0)
 
     if (fails == 0):
         print("PASS: os stdlib facade")

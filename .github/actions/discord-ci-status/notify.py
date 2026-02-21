@@ -383,4 +383,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except Exception as exc:
         print(f"discord notify failed: {exc}", file=sys.stderr)
-        raise
+        raise SystemExit(0)
