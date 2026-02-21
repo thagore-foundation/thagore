@@ -1510,6 +1510,29 @@ jobs:
             fi
             return 1
           }
+          resolve_compiler_bin() {
+            local out_stem="$1"
+            if [[ -f "$out_stem" ]]; then
+              echo "$out_stem"
+              return 0
+            fi
+            if [[ -f "${out_stem}.exe" ]]; then
+              echo "${out_stem}.exe"
+              return 0
+            fi
+            local discovered=""
+            discovered="$(
+              find . -maxdepth 2 -type f -name "${out_stem}*" 2>/dev/null \
+                | sed 's|^\./||' \
+                | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml|a|lib)$' \
+                | head -n1 || true
+            )"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
+            return 1
+          }
           build_program_with_cc() {
             local compiler_bin="$1"
             local source_file="$2"
@@ -1534,13 +1557,13 @@ jobs:
             fi
             # Compatibility path for legacy CLI forms that do not support build/--build subcommands.
             run_compiler_cmd "$compiler_bin" "$source_file" -o "$out_stem" || true
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
             run_compiler_cmd "$compiler_bin" "$source_file" || true
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
