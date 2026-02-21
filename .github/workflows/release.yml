@@ -424,6 +424,7 @@ jobs:
             local probe_src="stage1_probe_cli.tg"
             local probe_out="stage1_probe_cli"
             local probe_bin=""
+            local probe_ir=""
             help_out="$("./$bin" --help 2>&1)" || help_rc=$?
             ver_out="$("./$bin" --version 2>&1)" || ver_rc=$?
             merged="$ver_out"$'\n'"$help_out"
@@ -444,6 +445,24 @@ jobs:
               return 1
             fi
             probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
+            if [[ -z "${probe_bin:-}" ]]; then
+              if "./$bin" --emit-llvm-internal "$probe_src" -o "${probe_out}.ll"; then
+                if [[ -f "${probe_out}.ll" ]]; then
+                  probe_ir="${probe_out}.ll"
+                elif [[ -f "stage1_probe_cli.ll" ]]; then
+                  probe_ir="stage1_probe_cli.ll"
+                fi
+              fi
+              if [[ -n "${probe_ir:-}" ]]; then
+                if [[ -f libthag_runtime.a ]]; then
+                  clang "$probe_ir" -o "$probe_out" -Wno-override-module libthag_runtime.a || true
+                fi
+                if [[ -z "$(resolve_bin "$probe_out" "$probe_src" || true)" && -f thag_runtime.lib ]]; then
+                  clang "$probe_ir" -o "$probe_out" -Wno-override-module thag_runtime.lib || true
+                fi
+                probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
+              fi
+            fi
             if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
               echo "CRITICAL: selected stage1 bootstrap probe did not produce a non-empty artifact."
               return 1
