@@ -337,12 +337,34 @@ jobs:
           resolve_bin() {
             local preferred="$1"
             local src="$2"
-            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
               fi
             done
+            return 1
+          }
+          resolve_ir() {
+            local preferred="$1"
+            local src="$2"
+            local probe_dir="$3"
+            local base
+            base="$(basename "$src" .tg)"
+            for c in "$preferred" "${preferred%.ll}.ll" "$probe_dir/${base}.ll" "${base}.ll"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local found
+            found="$(find "$probe_dir" -maxdepth 2 -type f -name '*.ll' | head -n 1 || true)"
+            if [[ -n "$found" ]]; then
+              echo "$found"
+              return 0
+            fi
             return 1
           }
           download_asset() {
@@ -421,18 +443,24 @@ jobs:
             local help_rc=0
             local ver_rc=0
             local merged=""
-            local probe_src="stage1_probe_cli.tg"
-            local probe_out="stage1_probe_cli"
+            local probe_dir=""
+            local probe_src=""
+            local probe_out=""
             local probe_bin=""
             local probe_ir=""
+            probe_dir="$(mktemp -d)"
+            probe_src="$probe_dir/stage1_probe_cli.tg"
+            probe_out="$probe_dir/stage1_probe_cli"
             help_out="$("./$bin" --help 2>&1)" || help_rc=$?
             ver_out="$("./$bin" --version 2>&1)" || ver_rc=$?
             merged="$ver_out"$'\n'"$help_out"
             if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|No such file or directory|not recognized as an internal" <<<"$merged"; then
+              rm -rf "$probe_dir" || true
               return 1
             fi
             if [[ "$help_rc" -ne 0 && "$ver_rc" -ne 0 ]]; then
               echo "CRITICAL: selected stage1 failed --version and --help probe."
+              rm -rf "$probe_dir" || true
               return 1
             fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -442,17 +470,13 @@ jobs:
             rm -f "$probe_out" "${probe_out}.exe" "${probe_out%.exe}" a.out a.exe out out.exe || true
             if ! "./$bin" build "$probe_src" -o "$probe_out"; then
               echo "CRITICAL: selected stage1 failed fixture build in bootstrap probe."
+              rm -rf "$probe_dir" || true
               return 1
             fi
             probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
             if [[ -z "${probe_bin:-}" ]]; then
-              if "./$bin" --emit-llvm-internal "$probe_src" -o "${probe_out}.ll"; then
-                if [[ -f "${probe_out}.ll" ]]; then
-                  probe_ir="${probe_out}.ll"
-                elif [[ -f "stage1_probe_cli.ll" ]]; then
-                  probe_ir="stage1_probe_cli.ll"
-                fi
-              fi
+              "./$bin" --emit-llvm-internal "$probe_src" -o "${probe_out}.ll" || true
+              probe_ir="$(resolve_ir "${probe_out}.ll" "$probe_src" "$probe_dir" || true)"
               if [[ -n "${probe_ir:-}" ]]; then
                 if [[ -f libthag_runtime.a ]]; then
                   clang "$probe_ir" -o "$probe_out" -Wno-override-module libthag_runtime.a || true
@@ -465,8 +489,10 @@ jobs:
             fi
             if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
               echo "CRITICAL: selected stage1 bootstrap probe did not produce a non-empty artifact."
+              rm -rf "$probe_dir" || true
               return 1
             fi
+            rm -rf "$probe_dir" || true
             return 0
           }
           STAGE1_ASSET=""
