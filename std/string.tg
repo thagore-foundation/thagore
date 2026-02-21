@@ -11,10 +11,18 @@ func substring(text: String, start: i32, count: i32) -> String:
         return ""
     if (start < 0):
         return ""
+    if (text == null):
+        return ""
     let text_len = strlen(text)
     if (start >= text_len):
         return ""
-    return __thg_str_substr(text, start, count)
+    let available = text_len - start
+    let bounded = count
+    if (bounded > available):
+        bounded = available
+    if (bounded <= 0):
+        return ""
+    return __thg_str_substr(text, start, bounded)
 
 func char_at(text: String, index: i32) -> String:
     return substring(text, index, 1)

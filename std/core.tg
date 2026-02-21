@@ -17,17 +17,7 @@ func print_str(text: String) -> i32:
     return puts(text)
 
 func thg_str_add(a: String, b: String) -> String:
-    let len_a = strlen(a)
-    let len_b = strlen(b)
-    let total = len_a + len_b + 1
-    let buffer = malloc(total)
-    if (buffer == __thg_ptr_null()):
-        return ""
-
-    # TODO(pure-runtime): cần hỗ trợ ptr arithmetic để copy trực tiếp vào buffer.
-    memcpy(buffer, a, len_a)
-
-    # Tạm thời dùng phép cộng ngôn ngữ làm fallback cho bootstrap.
+    # Bootstrap-safe path: avoid temporary native allocation to prevent leaks.
     return a + b
 
 func ptr_set(base: ptr, index: i32, value: ptr) -> i32:
