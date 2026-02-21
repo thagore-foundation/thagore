@@ -230,7 +230,7 @@ jobs:
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+            STAGE1_CANDIDATES=("thagore-stage1-linux-x86_64.tar.gz" "${{ matrix.stage1_seed_name }}" "thagore-stage1-linux.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
