@@ -1071,26 +1071,29 @@ jobs:
           set -euxo pipefail
           : > "$STAGE_TRACE_FILE"
           mkdir -p bootstrap
-          gh release download "$BOOTSTRAP_STAGE1_TAG" \
-            --repo "${{ github.repository }}" \
-            --pattern "thagore-stage1-linux.tar.gz" \
-            -D bootstrap
+          download_asset() {
+            local pattern="$1"
+            local src="bootstrap/$pattern"
+            gh release download "$BOOTSTRAP_STAGE1_TAG" \
+              --repo "${{ github.repository }}" \
+              --pattern "$pattern" \
+              -D bootstrap || true
+            if [[ ! -f "$src" ]]; then
+              curl -fsSL -o "$src" "https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_STAGE1_TAG/$pattern" || true
+            fi
+            [[ -f "$src" ]]
+          }
+          download_asset "thagore-stage1-linux.tar.gz" || (echo "CRITICAL: missing stage1 linux seed asset"; exit 1)
           mkdir -p bootstrap/extract_stage1
           tar -xzf bootstrap/thagore-stage1-linux.tar.gz -C bootstrap/extract_stage1
           CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
           [[ -n "$CANDIDATE" && -f "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in linux seed asset"; exit 1)
           cp "$CANDIDATE" stage1
           chmod +x stage1
-          gh release download "$BOOTSTRAP_STAGE1_TAG" \
-            --repo "${{ github.repository }}" \
-            --pattern "thagore-runtime-linux.a" \
-            -D bootstrap
+          download_asset "thagore-runtime-linux.a" || (echo "CRITICAL: missing runtime linux seed asset"; exit 1)
           cp bootstrap/thagore-runtime-linux.a libthag_runtime.a
           cp libthag_runtime.a thag_runtime.lib
-          gh release download "$BOOTSTRAP_STAGE1_TAG" \
-            --repo "${{ github.repository }}" \
-            --pattern "seed-promotion-manifest-Linux.txt" \
-            -D bootstrap
+          download_asset "seed-promotion-manifest-Linux.txt" || (echo "CRITICAL: missing seed promotion manifest seed-promotion-manifest-Linux.txt"; exit 1)
           [[ -f "bootstrap/seed-promotion-manifest-Linux.txt" ]] || (echo "CRITICAL: missing seed promotion manifest seed-promotion-manifest-Linux.txt"; exit 1)
           echo "[SEED] manifest=seed-promotion-manifest-Linux.txt" | tee -a "$STAGE_TRACE_FILE"
           python3 scripts/build_runtime_abi.py --target-os "Linux" --summary "runtime-abi-summary-canary-linux.txt"
