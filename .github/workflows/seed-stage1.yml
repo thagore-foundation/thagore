@@ -1411,10 +1411,13 @@ jobs:
           run_compiler_cmd() {
             local cc="$1"
             shift
-            local helper="./stage1"
+            local helper="./$cc"
             local force_emit="${THAG_FORCE_INTERNAL_EMIT:-0}"
-            if [[ -f "./stage1.exe" ]]; then
-              helper="./stage1.exe"
+            if [[ ! -f "$helper" ]]; then
+              helper="./stage1"
+              if [[ -f "./stage1.exe" ]]; then
+                helper="./stage1.exe"
+              fi
             fi
             local -a common_env=()
             if [[ -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
