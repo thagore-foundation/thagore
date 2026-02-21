@@ -139,6 +139,57 @@ jobs:
           echo "SEED_PROVENANCE_PATH=bootstrap/$PROVENANCE_ASSET" >> "$GITHUB_ENV"
           python3 scripts/build_runtime_abi.py --target-os "Linux" --summary "runtime-abi-summary-bootstrap-seed-linux.txt"
 
+      - name: Enforce promotion gate policy (workflow config)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/enforce_seed_promotion_gate.py \
+            --workflow .github/workflows/seed-stage1.yml \
+            --report seed-promotion-gate-bootstrap.txt
+
+      - name: Verify atomic seed release bundle (all OS/arch)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p bootstrap/all
+          for ASSET in \
+            thagore-stage1-linux-x86_64.tar.gz \
+            thagore-runtime-linux-x86_64.a \
+            seed-promotion-manifest-linux-x86_64.txt \
+            seed-stage1-provenance-linux-x86_64.json \
+            seed-bundle-linux-x86_64.json \
+            thagore-stage1-linux-arm64.tar.gz \
+            thagore-runtime-linux-arm64.a \
+            seed-promotion-manifest-linux-arm64.txt \
+            seed-stage1-provenance-linux-arm64.json \
+            seed-bundle-linux-arm64.json \
+            thagore-stage1-macos-arm64.tar.gz \
+            thagore-runtime-macos-arm64.a \
+            seed-promotion-manifest-macos-arm64.txt \
+            seed-stage1-provenance-macos-arm64.json \
+            seed-bundle-macos-arm64.json \
+            thagore-stage1-windows-x86_64.exe \
+            thagore-runtime-windows-x86_64.lib \
+            seed-promotion-manifest-windows-x86_64.txt \
+            seed-stage1-provenance-windows-x86_64.json \
+            seed-bundle-windows-x86_64.json \
+            thagore-stage1-windows-arm64.exe \
+            thagore-runtime-windows-arm64.lib \
+            seed-promotion-manifest-windows-arm64.txt \
+            seed-stage1-provenance-windows-arm64.json \
+            seed-bundle-windows-arm64.json; do
+            gh release download "$BOOTSTRAP_STAGE1_TAG" \
+              --repo "${{ github.repository }}" \
+              --pattern "$ASSET" \
+              -D bootstrap/all >/dev/null 2>&1
+          done
+          python3 scripts/verify_seed_release_bundle.py \
+            --root bootstrap/all \
+            --expected-seed-tag "$BOOTSTRAP_STAGE1_TAG" \
+            --report seed-release-bundle-verify-bootstrap.txt
+
       - name: Discord update - Download stage1 seed asset
         uses: ./.github/actions/discord-ci-status
         with:
@@ -260,6 +311,8 @@ jobs:
             runtime-abi-inventory-bootstrap-seed-linux.txt
             bootstrap/seed-promotion-manifest-*.txt
             bootstrap/seed-stage1-provenance-*.json
+            seed-promotion-gate-bootstrap.txt
+            seed-release-bundle-verify-bootstrap.txt
 
       - name: Discord update - Verify Stage1 -> Stage2 -> Stage2
         uses: ./.github/actions/discord-ci-status
