@@ -497,6 +497,11 @@ jobs:
             local src="$2"
             local out="$3"
             local got=""
+            local cc_sig_before=""
+            local cc_sig_after=""
+            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_before="$(hash_file "$cc" || true)"
+            fi
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE" >&2
             if run_compiler "$cc" build "$src" -o "$out" 1>&2; then
               got="$(resolve_bin "$out" "$src" || true)"
@@ -509,6 +514,14 @@ jobs:
             got="$(resolve_bin "$out" "$src" || true)"
             if [[ -n "$got" ]]; then
               return 0
+            fi
+            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_after="$(hash_file "$cc" || true)"
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                cp "$cc" "$out"
+                echo "[INFO] compiler rebuilt in-place and was materialized as $out" | tee -a "$STAGE_TRACE_FILE" >&2
+                return 0
+              fi
             fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE" >&2
             return 1
@@ -1077,6 +1090,12 @@ jobs:
             local source_file="$2"
             local out_stem="$3"
             local out_bin=""
+            local cc_sig_before=""
+            local cc_sig_after=""
+            local materialized=""
+            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
+            fi
             THAG_HELPER_BIN="$cc" "./$cc" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
@@ -1088,6 +1107,18 @@ jobs:
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
+            fi
+            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
+              cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
+              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                materialized="$out_stem"
+                if [[ "$cc" == *.exe && "$materialized" != *.exe ]]; then
+                  materialized="${out_stem}.exe"
+                fi
+                cp "$cc" "$materialized"
+                echo "$materialized"
+                return 0
+              fi
             fi
             return 1
           }
