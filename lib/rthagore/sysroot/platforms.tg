@@ -1,14 +1,20 @@
-// sysroot platforms compat shim
+// sysroot platforms – platform metadata definitions
 
 func make_def(key: String, os: String, arch: String, target_triple: String, object_format: String, abi: String, lib_prefix: String, lib_ext: String, exe_ext: String, line_ending: String, path_sep: String, pointer_width: i32, endian: String) -> String
-  return key
+  return key + ";os=" + os + ";arch=" + arch + ";triple=" + target_triple + ";objfmt=" + object_format + ";abi=" + abi + ";libpfx=" + lib_prefix + ";libext=" + lib_ext + ";exeext=" + exe_ext + ";eol=" + line_ending + ";sep=" + path_sep + ";ptrw=" + endian + ";"
 
 func definitions() -> String
-  return ""
+  let defs = ""
+  defs = defs + make_def("windows-x86_64", "windows", "x86_64", "x86_64-pc-windows-msvc", "coff", "msvc", "", ".lib", ".exe", "crlf", "\\", 64, "little") + "\n"
+  defs = defs + make_def("windows-arm64", "windows", "arm64", "aarch64-pc-windows-msvc", "coff", "msvc", "", ".lib", ".exe", "crlf", "\\", 64, "little") + "\n"
+  defs = defs + make_def("linux-x86_64", "linux", "x86_64", "x86_64-unknown-linux-gnu", "elf", "sysv", "lib", ".a", "", "lf", "/", 64, "little") + "\n"
+  defs = defs + make_def("linux-arm64", "linux", "arm64", "aarch64-unknown-linux-gnu", "elf", "sysv", "lib", ".a", "", "lf", "/", 64, "little") + "\n"
+  defs = defs + make_def("macos-x86_64", "macos", "x86_64", "x86_64-apple-macosx11.0.0", "macho", "darwin", "lib", ".a", "", "lf", "/", 64, "little") + "\n"
+  defs = defs + make_def("macos-arm64", "macos", "arm64", "arm64-apple-macosx11.0.0", "macho", "darwin", "lib", ".a", "", "lf", "/", 64, "little") + "\n"
+  return defs
 
 func get(key: String) -> String
   return key
 
 func get_platform_arch(platform: String, arch: String) -> String
-  return platform
-
+  return platform + "-" + arch

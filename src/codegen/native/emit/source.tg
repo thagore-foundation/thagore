@@ -6,6 +6,182 @@ import "src/codegen/native/emit/stmtcore.tg"
 import "src/codegen/native/emit/stmtfn.tg"
 
 
+func _detect_host_os() -> String:
+    return "windows"
+
+func _detect_host_arch() -> String:
+    return "x86_64"
+
+func _target_triple_for(os: String, arch: String) -> String:
+    if (os == "windows"):
+        if (arch == "arm64"):
+            return "aarch64-pc-windows-msvc"
+        return "x86_64-pc-windows-msvc"
+    if (os == "macos"):
+        if (arch == "x86_64"):
+            return "x86_64-apple-macosx11.0.0"
+        return "arm64-apple-macosx11.0.0"
+    if (arch == "arm64"):
+        return "aarch64-unknown-linux-gnu"
+    return "x86_64-unknown-linux-gnu"
+
+func _target_datalayout_for(os: String, arch: String) -> String:
+    if (os == "windows"):
+        if (arch == "arm64"):
+            return "e-m:w-p:64:64-i32:32-i64:64-i128:128-n32:64-S128"
+        return "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+    if (os == "macos"):
+        if (arch == "x86_64"):
+            return "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+        return "e-m:o-i64:64-i128:128-n32:64-S128"
+    if (arch == "arm64"):
+        return "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+    return "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+
+func _emit_target_header(os: String, arch: String) -> String:
+    let dl = _target_datalayout_for(os, arch)
+    let tt = _target_triple_for(os, arch)
+    return _s6("target datalayout = ", _s3(__string_from_codepoint(34), dl, __string_from_codepoint(34)), "__NL__", "target triple = ", _s3(__string_from_codepoint(34), tt, __string_from_codepoint(34)), "__NL__")
+
+func _thg_type_to_llvm(ty: String) -> String:
+    let t = _trim_edges(ty)
+    if (t == "i32"):
+        return "i32"
+    if (t == "i64"):
+        return "i64"
+    if (t == "f32"):
+        return "float"
+    if (t == "f64"):
+        return "double"
+    if (t == "String"):
+        return "ptr"
+    if (t == "ptr"):
+        return "ptr"
+    if (t == "bool"):
+        return "i1"
+    if (t == "void"):
+        return "void"
+    return "i32"
+
+func _extract_extern_name(line: String) -> String:
+    let body = ""
+    if (_starts_with(line, "extern func ") == 1):
+        body = __thg_str_substr(line, 12, strlen(line) - 12)
+    else:
+        return ""
+    let lp = _find(body, "(")
+    if (lp < 0):
+        return _trim_edges(body)
+    return _trim_edges(__thg_str_substr(body, 0, lp))
+
+func _extract_extern_params_ir(line: String) -> String:
+    let lp = _find(line, "(")
+    let rp = _find(line, ")")
+    if (lp < 0):
+        return ""
+    if (rp <= lp):
+        return ""
+    let inside = _trim_edges(__thg_str_substr(line, lp + 1, rp - lp - 1))
+    if (inside.length() == 0):
+        return ""
+    let out = ""
+    let rest = inside
+    let done = 0
+    while (done == 0):
+        let comma = _find(rest, ",")
+        let part = ""
+        if (comma < 0):
+            part = _trim_edges(rest)
+            done = 1
+        else:
+            part = _trim_edges(__thg_str_substr(rest, 0, comma))
+            rest = _trim_edges(__thg_str_substr(rest, comma + 1, strlen(rest) - comma - 1))
+        let colon = _find(part, ":")
+        let ty_str = ""
+        if (colon >= 0):
+            ty_str = _trim_edges(__thg_str_substr(part, colon + 1, strlen(part) - colon - 1))
+        else:
+            ty_str = part
+        let llvm_ty = _thg_type_to_llvm(ty_str)
+        if (out.length() > 0):
+            out = _s3(out, ", ", llvm_ty)
+        else:
+            out = llvm_ty
+    return out
+
+func _extract_extern_ret_ir(line: String) -> String:
+    let arrow = _find(line, "->")
+    if (arrow < 0):
+        return "void"
+    let ret_part = _trim_edges(__thg_str_substr(line, arrow + 2, strlen(line) - arrow - 2))
+    return _thg_type_to_llvm(ret_part)
+
+func _is_runtime_symbol(name: String) -> i32:
+    if (name == "__thg_init_env"):
+        return 1
+    if (name == "__thg_cli_main_native"):
+        return 1
+    if (name == "__thg_input_i32"):
+        return 1
+    if (name == "__thg_print_i32"):
+        return 1
+    if (name == "__thg_print_str"):
+        return 1
+    return 0
+
+func _parse_annotation(line: String) -> String:
+    if (_starts_with(line, "@[") == 0):
+        return ""
+    let end = _find(line, "]")
+    if (end < 0):
+        return ""
+    let inside = __thg_str_substr(line, 2, end - 2)
+    let paren = _find(inside, "(")
+    if (paren >= 0):
+        return _trim_edges(__thg_str_substr(inside, 0, paren))
+    return _trim_edges(inside)
+
+func _parse_annotation_arg(line: String) -> String:
+    let lp = _find(line, "(")
+    let rp = _find(line, ")")
+    if ((lp < 0) or (rp <= lp)):
+        return ""
+    let raw = __thg_str_substr(line, lp + 1, rp - lp - 1)
+    let dq = __string_from_codepoint(34)
+    let s = _trim_edges(raw)
+    if ((_starts_with(s, dq) == 1) and (strlen(s) >= 2)):
+        return __thg_str_substr(s, 1, strlen(s) - 2)
+    return s
+
+func _cc_from_annotation(annotation: String) -> String:
+    if (annotation == "stdcall"):
+        return "x86_stdcallcc "
+    if (annotation == "fastcall"):
+        return "x86_fastcallcc "
+    if (annotation == "win64"):
+        return "win64cc "
+    if (annotation == "cdecl"):
+        return ""
+    return ""
+
+func _emit_extern_declare(line: String, cc: String, linkage: String) -> String:
+    let name = _extract_extern_name(line)
+    if (name.length() == 0):
+        return ""
+    if (_is_runtime_symbol(name) == 1):
+        return ""
+    let params = _extract_extern_params_ir(line)
+    let ret = _extract_extern_ret_ir(line)
+    let decl = "declare "
+    if (linkage.length() > 0):
+        decl = _s3(decl, linkage, " ")
+    if (cc.length() > 0):
+        decl = _s2(decl, cc)
+    decl = _s3(decl, ret, " @")
+    decl = _s2(decl, name)
+    decl = _s4(decl, "(", params, ")")
+    return _s2(decl, "__NL__")
+
 
 func _extract_body(source: String, header_idx: i32) -> String:
     let total = _line_count(source)
@@ -77,6 +253,8 @@ func _is_declaration_header(line: String) -> i32:
         return 1
     if (_starts_with(line, "pub ") == 1):
         return 1
+    if (_starts_with(line, "@[") == 1):
+        return 1
     return 0
 
 func _is_script_stmt_line(line: String) -> i32:
@@ -122,7 +300,10 @@ func _has_unsupported_func_signature(source: String) -> i32:
     return 0
 
 func _emit_runtime_wrapper_ir(module_name: String) -> String:
+    let os = _detect_host_os()
+    let arch = _detect_host_arch()
     let out = _s3("; ModuleID = '", module_name, "'__NL__")
+    out = _s2(out, _emit_target_header(os, arch))
     out = _s2(out, "declare void @__thg_init_env(i32, ptr)__NL__")
     out = _s2(out, "declare i32 @__thg_cli_main_native()__NL____NL__")
     out = _s2(out, "define i32 @main(i32 %argc, ptr %argv) {__NL__")
@@ -137,54 +318,105 @@ func _emit_program_from_core_source(source: String, module_name: String) -> Stri
     let src = _normalize_source_newlines(source)
     if (_is_runtime_wrapper_source(src) == 1):
         return _emit_runtime_wrapper_ir(module_name)
+    let os = _detect_host_os()
+    let arch = _detect_host_arch()
     let out = _s3("; ModuleID = '", module_name, "'__NL__")
+    out = _s2(out, _emit_target_header(os, arch))
     out = _s2(out, "declare void @__thg_init_env(i32, ptr)__NL__")
     out = _s2(out, "declare i32 @__thg_cli_main_native()__NL__")
     out = _s2(out, "declare i32 @__thg_input_i32()__NL__")
     out = _s2(out, "declare void @__thg_print_i32(i32)__NL__")
-    out = _s2(out, "declare void @__thg_print_str(ptr, i32)__NL____NL__")
-    out = _s2(out, _collect_string_globals(src))
+    out = _s2(out, "declare void @__thg_print_str(ptr, i32)__NL__")
     let total = _line_count(src)
     let i = 0
-    let has_main = 0
-    let script_body = ""
+    let pending_annotation = ""
+    let cc_map = ";"
+    let linkage_map = ";"
     while (i < total):
         let raw = _line_at(src, i)
         let line = _trim_edges(raw)
-        if (_starts_with(line, "func ") == 1):
-            let name = _extract_func_name(line)
-            let param = _extract_param_name(line)
-            let body = _extract_body(src, i)
-            let ret_i32 = _extract_ret_i32(line)
-            let is_main = 0
-            if (name == "main"):
-                is_main = 1
-                ret_i32 = 1
-                has_main = 1
-            let fn_ir = _emit_function_ir(name, param, body, ret_i32, is_main)
-            out = _s2(out, fn_ir)
-            out = _s2(out, "__NL__")
-            i = i + _line_count(body) + 1
+        if (_starts_with(line, "@[") == 1):
+            pending_annotation = line
+            i = i + 1
         else:
-            if (_leading_spaces(raw) == 0):
-                if ((_starts_with(line, "if (") == 1) or (_starts_with(line, "while (") == 1) or (_starts_with(line, "for ") == 1)):
-                    let block = _extract_body(src, i)
-                    script_body = script_body + raw
-                    if (block.length() > 0):
-                        script_body = script_body + "__NL__" + block
-                    script_body = script_body + "__NL__"
-                    i = i + _line_count(block) + 1
-                else:
-                    if (_is_script_stmt_line(line) == 1):
-                        script_body = script_body + raw + "__NL__"
-                    i = i + 1
-            else:
+            if (_starts_with(line, "extern func ") == 1):
+                let ann = ""
+                let cc = ""
+                let linkage = ""
+                if (pending_annotation.length() > 0):
+                    ann = _parse_annotation(pending_annotation)
+                    if ((ann == "stdcall") or (ann == "fastcall") or (ann == "win64") or (ann == "cdecl")):
+                        cc = _cc_from_annotation(ann)
+                    if (ann == "dllimport"):
+                        linkage = "dllimport"
+                    pending_annotation = ""
+                let ext_name = _extract_extern_name(line)
+                if (cc.length() > 0):
+                    cc_map = _map_set(cc_map, ext_name, cc)
+                if (linkage.length() > 0):
+                    linkage_map = _map_set(linkage_map, ext_name, linkage)
+                let decl = _emit_extern_declare(line, cc, linkage)
+                if (decl.length() > 0):
+                    out = _s2(out, decl)
                 i = i + 1
+            else:
+                pending_annotation = ""
+                i = i + 1
+    out = _s2(out, "__NL__")
+    out = _s2(out, _collect_string_globals(src))
+    let i2 = 0
+    let has_main = 0
+    let script_body = ""
+    let export_map = ";"
+    while (i2 < total):
+        let raw2 = _line_at(src, i2)
+        let line2 = _trim_edges(raw2)
+        if (_starts_with(line2, "@[") == 1):
+            let ann2 = _parse_annotation(line2)
+            if (ann2 == "dllexport"):
+                let next_idx = i2 + 1
+                if (next_idx < total):
+                    let next_line = _trim_edges(_line_at(src, next_idx))
+                    if (_starts_with(next_line, "func ") == 1):
+                        let fn_name = _extract_func_name(next_line)
+                        export_map = _map_set(export_map, fn_name, "dllexport")
+            i2 = i2 + 1
+        else:
+            if (_starts_with(line2, "func ") == 1):
+                let name = _extract_func_name(line2)
+                let param = _extract_param_name(line2)
+                let body = _extract_body(src, i2)
+                let ret_i32 = _extract_ret_i32(line2)
+                let is_main = 0
+                if (name == "main"):
+                    is_main = 1
+                    ret_i32 = 1
+                    has_main = 1
+                let fn_linkage = _map_get(export_map, name)
+                let fn_ir = _emit_function_ir_ex(name, param, body, ret_i32, is_main, cc_map, fn_linkage)
+                out = _s2(out, fn_ir)
+                out = _s2(out, "__NL__")
+                i2 = i2 + _line_count(body) + 1
+            else:
+                if (_leading_spaces(raw2) == 0):
+                    if ((_starts_with(line2, "if (") == 1) or (_starts_with(line2, "while (") == 1) or (_starts_with(line2, "for ") == 1)):
+                        let block = _extract_body(src, i2)
+                        script_body = script_body + raw2
+                        if (block.length() > 0):
+                            script_body = script_body + "__NL__" + block
+                        script_body = script_body + "__NL__"
+                        i2 = i2 + _line_count(block) + 1
+                    else:
+                        if (_is_script_stmt_line(line2) == 1):
+                            script_body = script_body + raw2 + "__NL__"
+                        i2 = i2 + 1
+                else:
+                    i2 = i2 + 1
     if (has_main == 0):
         let main_body = script_body
         if (_trim_edges(main_body).length() == 0):
             main_body = "    return 0"
-        let main_ir = _emit_function_ir("main", "", main_body, 1, 1)
+        let main_ir = _emit_function_ir_ex("main", "", main_body, 1, 1, cc_map, "")
         out = _s2(out, main_ir)
         out = _s2(out, "__NL__")
     return _finalize_ir(out)

@@ -315,3 +315,43 @@ func _emit_function_ir(func_name: String, params_text: String, body_lines: Strin
             ir = _s2(ir, "  ret i32 0__NL__")
     ir = _s2(ir, "}__NL__")
     return ir
+
+func _apply_cc_to_call(ir: String, func_name: String, cc: String) -> String:
+    let needle = _s3("call i32 @", func_name, "(")
+    let replacement = _s4("call ", cc, "i32 @", _s2(func_name, "("))
+    return _replace_all(ir, needle, replacement)
+
+func _apply_cc_map_to_ir(ir: String, cc_map: String) -> String:
+    let result = ir
+    let rest = cc_map
+    let done = 0
+    while (done == 0):
+        if (strlen(rest) <= 1):
+            done = 1
+        else:
+            let eq = _find(rest, "=")
+            if (eq < 0):
+                done = 1
+            else:
+                let key_start = 0
+                if (_char_at(rest, 0) == ";"):
+                    key_start = 1
+                let key = __thg_str_substr(rest, key_start, eq - key_start)
+                let after_eq = eq + 1
+                let semi = _find(__thg_str_substr(rest, after_eq, strlen(rest) - after_eq), ";")
+                if (semi < 0):
+                    done = 1
+                else:
+                    let val = __thg_str_substr(rest, after_eq, semi)
+                    rest = __thg_str_substr(rest, after_eq + semi + 1, strlen(rest) - after_eq - semi - 1)
+                    if ((key.length() > 0) and (val.length() > 0)):
+                        result = _apply_cc_to_call(result, key, val)
+    return result
+
+func _emit_function_ir_ex(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32, cc_map: String, linkage: String) -> String:
+    let ir = _emit_function_ir(func_name, params_text, body_lines, ret_i32, is_main)
+    if (linkage == "dllexport"):
+        ir = _replace_all(ir, _s3("define i32 @", func_name, "("), _s3("define dllexport i32 @", func_name, "("))
+    if (cc_map.length() > 1):
+        ir = _apply_cc_map_to_ir(ir, cc_map)
+    return ir

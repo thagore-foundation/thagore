@@ -1,0 +1,464 @@
+import "lib/string.tg" as str
+import "lib/io.tg" as io
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_replace(text: String, old: String, new: String) -> String
+extern func __thg_str_upper(text: String) -> String
+extern func __thg_str_lower(text: String) -> String
+extern func __thg_str_contains(text: String, needle: String) -> i32
+
+func char_at(text: String, index: i32) -> String:
+    return __thg_str_substr(text, index, 1)
+
+func is_upper_char(ch: String) -> i32:
+    let u = __thg_str_upper(ch)
+    let l = __thg_str_lower(ch)
+    if (u == l):
+        return 0
+    if (ch == u):
+        return 1
+    return 0
+
+func is_digit_char(ch: String) -> i32:
+    if (ch == "0"):
+        return 1
+    if (ch == "1"):
+        return 1
+    if (ch == "2"):
+        return 1
+    if (ch == "3"):
+        return 1
+    if (ch == "4"):
+        return 1
+    if (ch == "5"):
+        return 1
+    if (ch == "6"):
+        return 1
+    if (ch == "7"):
+        return 1
+    if (ch == "8"):
+        return 1
+    if (ch == "9"):
+        return 1
+    return 0
+
+func encode_alpha(ch: String) -> String:
+    let u = __thg_str_upper(ch)
+    if (u == "A"):
+        return "111"
+    if (u == "B"):
+        return "112"
+    if (u == "C"):
+        return "113"
+    if (u == "D"):
+        return "121"
+    if (u == "E"):
+        return "122"
+    if (u == "F"):
+        return "123"
+    if (u == "G"):
+        return "131"
+    if (u == "H"):
+        return "132"
+    if (u == "I"):
+        return "133"
+    if (u == "J"):
+        return "211"
+    if (u == "K"):
+        return "212"
+    if (u == "L"):
+        return "213"
+    if (u == "M"):
+        return "221"
+    if (u == "N"):
+        return "222"
+    if (u == "O"):
+        return "223"
+    if (u == "P"):
+        return "231"
+    if (u == "Q"):
+        return "232"
+    if (u == "R"):
+        return "233"
+    if (u == "S"):
+        return "311"
+    if (u == "T"):
+        return "312"
+    if (u == "U"):
+        return "313"
+    if (u == "V"):
+        return "321"
+    if (u == "W"):
+        return "322"
+    if (u == "X"):
+        return "323"
+    if (u == "Y"):
+        return "331"
+    if (u == "Z"):
+        return "332"
+    return ""
+
+func encode_symbol(ch: String) -> String:
+    if (ch == " "):
+        return "0"
+    if (ch == "."):
+        return "117"
+    if (ch == "?"):
+        return "227"
+    if (ch == "!"):
+        return "337"
+    if (ch == ","):
+        return "127"
+    if (ch == "-"):
+        return "217"
+    if (ch == ";"):
+        return "237"
+    if (ch == ":"):
+        return "317"
+    if (ch == "@"):
+        return "711"
+    if (ch == "#"):
+        return "712"
+    if (ch == "/"):
+        return "713"
+    if (ch == "%"):
+        return "721"
+    if (ch == "+"):
+        return "811"
+    if (ch == "_"):
+        return "812"
+    if (ch == "*"):
+        return "813"
+    if (ch == "="):
+        return "822"
+    if (ch == "^"):
+        return "823"
+    return ""
+
+func encode_digit_new(ch: String) -> String:
+    if (ch == "0"):
+        return "118"
+    if (ch == "1"):
+        return "181"
+    if (ch == "2"):
+        return "182"
+    if (ch == "3"):
+        return "183"
+    if (ch == "4"):
+        return "281"
+    if (ch == "5"):
+        return "282"
+    if (ch == "6"):
+        return "283"
+    if (ch == "7"):
+        return "381"
+    if (ch == "8"):
+        return "382"
+    if (ch == "9"):
+        return "383"
+    return ""
+
+func encode_digit_old(ch: String) -> String:
+    if (ch == "0"):
+        return "18"
+    if (ch == "1"):
+        return "118"
+    if (ch == "2"):
+        return "128"
+    if (ch == "3"):
+        return "138"
+    if (ch == "4"):
+        return "218"
+    if (ch == "5"):
+        return "228"
+    if (ch == "6"):
+        return "238"
+    if (ch == "7"):
+        return "318"
+    if (ch == "8"):
+        return "328"
+    if (ch == "9"):
+        return "338"
+    return ""
+
+func apply_rules(text: String) -> String:
+    let out = __thg_str_replace(text, "11", "4")
+    out = __thg_str_replace(out, "22", "5")
+    out = __thg_str_replace(out, "33", "6")
+    return out
+
+func reverse_rules(text: String) -> String:
+    let out = __thg_str_replace(text, "4", "11")
+    out = __thg_str_replace(out, "5", "22")
+    out = __thg_str_replace(out, "6", "33")
+    return out
+
+func encode(plain_text: String, use_old: i32) -> String:
+    let output = ""
+    let i = 0
+    let n = strlen(plain_text)
+    while (i < n):
+        let ch = char_at(plain_text, i)
+        if (is_upper_char(ch) == 1):
+            output = output + "717"
+        if (is_digit_char(ch) == 1):
+            if (use_old == 1):
+                output = output + encode_digit_old(ch)
+            else:
+                output = output + encode_digit_new(ch)
+        else:
+            let alpha = encode_alpha(ch)
+            if (strlen(alpha) > 0):
+                output = output + alpha
+            else:
+                let sym = encode_symbol(ch)
+                if (strlen(sym) > 0):
+                    output = output + sym
+        i = i + 1
+    return apply_rules(output)
+
+func decode_alpha_3(chunk: String) -> String:
+    if (chunk == "111"):
+        return "A"
+    if (chunk == "112"):
+        return "B"
+    if (chunk == "113"):
+        return "C"
+    if (chunk == "121"):
+        return "D"
+    if (chunk == "122"):
+        return "E"
+    if (chunk == "123"):
+        return "F"
+    if (chunk == "131"):
+        return "G"
+    if (chunk == "132"):
+        return "H"
+    if (chunk == "133"):
+        return "I"
+    if (chunk == "211"):
+        return "J"
+    if (chunk == "212"):
+        return "K"
+    if (chunk == "213"):
+        return "L"
+    if (chunk == "221"):
+        return "M"
+    if (chunk == "222"):
+        return "N"
+    if (chunk == "223"):
+        return "O"
+    if (chunk == "231"):
+        return "P"
+    if (chunk == "232"):
+        return "Q"
+    if (chunk == "233"):
+        return "R"
+    if (chunk == "311"):
+        return "S"
+    if (chunk == "312"):
+        return "T"
+    if (chunk == "313"):
+        return "U"
+    if (chunk == "321"):
+        return "V"
+    if (chunk == "322"):
+        return "W"
+    if (chunk == "323"):
+        return "X"
+    if (chunk == "331"):
+        return "Y"
+    if (chunk == "332"):
+        return "Z"
+    if (chunk == "117"):
+        return "."
+    if (chunk == "227"):
+        return "?"
+    if (chunk == "337"):
+        return "!"
+    if (chunk == "127"):
+        return ","
+    if (chunk == "217"):
+        return "-"
+    if (chunk == "237"):
+        return ";"
+    if (chunk == "317"):
+        return ":"
+    if (chunk == "711"):
+        return "@"
+    if (chunk == "712"):
+        return "#"
+    if (chunk == "713"):
+        return "/"
+    if (chunk == "721"):
+        return "%"
+    if (chunk == "811"):
+        return "+"
+    if (chunk == "812"):
+        return "_"
+    if (chunk == "813"):
+        return "*"
+    if (chunk == "822"):
+        return "="
+    if (chunk == "823"):
+        return "^"
+    return ""
+
+func decode_num_new_3(chunk: String) -> String:
+    if (chunk == "118"):
+        return "0"
+    if (chunk == "181"):
+        return "1"
+    if (chunk == "182"):
+        return "2"
+    if (chunk == "183"):
+        return "3"
+    if (chunk == "281"):
+        return "4"
+    if (chunk == "282"):
+        return "5"
+    if (chunk == "283"):
+        return "6"
+    if (chunk == "381"):
+        return "7"
+    if (chunk == "382"):
+        return "8"
+    if (chunk == "383"):
+        return "9"
+    return ""
+
+func decode_num_old_3(chunk: String) -> String:
+    if (chunk == "118"):
+        return "1"
+    if (chunk == "128"):
+        return "2"
+    if (chunk == "138"):
+        return "3"
+    if (chunk == "218"):
+        return "4"
+    if (chunk == "228"):
+        return "5"
+    if (chunk == "238"):
+        return "6"
+    if (chunk == "318"):
+        return "7"
+    if (chunk == "328"):
+        return "8"
+    if (chunk == "338"):
+        return "9"
+    return ""
+
+func decode_num_old_2(chunk: String) -> String:
+    if (chunk == "18"):
+        return "0"
+    return ""
+
+func try_decode_chunk(chunk: String, use_old: i32) -> String:
+    let n = strlen(chunk)
+    if (n == 3):
+        if (use_old == 1):
+            let d = decode_num_old_3(chunk)
+            if (strlen(d) > 0):
+                return d
+        else:
+            let d = decode_num_new_3(chunk)
+            if (strlen(d) > 0):
+                return d
+        let a = decode_alpha_3(chunk)
+        if (strlen(a) > 0):
+            return a
+    if (n == 2):
+        if (use_old == 1):
+            let d = decode_num_old_2(chunk)
+            if (strlen(d) > 0):
+                return d
+    return ""
+
+func decode(cipher_text: String, use_old: i32) -> String:
+    let raw = reverse_rules(cipher_text)
+    let decoded = ""
+    let i = 0
+    let n = strlen(raw)
+    let is_upper = 0
+    while (i < n):
+        let ch1 = char_at(raw, i)
+        if (ch1 == "0"):
+            decoded = decoded + " "
+            i = i + 1
+        else:
+            if ((i + 3) <= n):
+                let chunk3 = __thg_str_substr(raw, i, 3)
+                if (chunk3 == "717"):
+                    is_upper = 1
+                    i = i + 3
+                else:
+                    let result3 = try_decode_chunk(chunk3, use_old)
+                    if (strlen(result3) > 0):
+                        if (is_upper == 1):
+                            result3 = __thg_str_upper(result3)
+                            is_upper = 0
+                        else:
+                            result3 = __thg_str_lower(result3)
+                        decoded = decoded + result3
+                        i = i + 3
+                    else:
+                        if ((i + 2) <= n):
+                            let chunk2 = __thg_str_substr(raw, i, 2)
+                            let result2 = try_decode_chunk(chunk2, use_old)
+                            if (strlen(result2) > 0):
+                                if (is_upper == 1):
+                                    result2 = __thg_str_upper(result2)
+                                    is_upper = 0
+                                else:
+                                    result2 = __thg_str_lower(result2)
+                                decoded = decoded + result2
+                                i = i + 2
+                            else:
+                                i = i + 1
+                        else:
+                            i = i + 1
+            else:
+                if ((i + 2) <= n):
+                    let chunk2 = __thg_str_substr(raw, i, 2)
+                    let result2 = try_decode_chunk(chunk2, use_old)
+                    if (strlen(result2) > 0):
+                        if (is_upper == 1):
+                            result2 = __thg_str_upper(result2)
+                            is_upper = 0
+                        else:
+                            result2 = __thg_str_lower(result2)
+                        decoded = decoded + result2
+                        i = i + 2
+                    else:
+                        i = i + 1
+                else:
+                    i = i + 1
+    return decoded
+
+func main() -> i32:
+    print("Trinary Code Encoder/Decoder (312 Analysis)")
+    print("============================================")
+    print("")
+    print("Actions: encode / decode")
+    let action = str.trim(io.input_prompt("Action: "))
+    print("Versions: latest / old")
+    let version = str.trim(io.input_prompt("Version (default: latest): "))
+    if (strlen(version) == 0):
+        version = "latest"
+    let text = io.input_prompt("Text: ")
+    let use_old = 0
+    if (version == "old"):
+        use_old = 1
+    if (action == "encode"):
+        let result = encode(text, use_old)
+        print("Encoded (" + version + "): " + result)
+    else:
+        if (action == "decode"):
+            let result = decode(text, use_old)
+            print("Decoded (" + version + "): " + result)
+        else:
+            print("Unknown action: " + action)
+            print("Use 'encode' or 'decode'.")
+            return 1
+    return 0
