@@ -1294,7 +1294,6 @@ jobs:
             local cc="$1"
             shift
             local helper_env=()
-            local common_env=()
             if [[ -z "${THAG_HELPER_BIN:-}" ]]; then
               if [[ "${{ runner.os }}" == "Windows" ]]; then
                 if [[ -f stage1.exe ]]; then
@@ -1308,14 +1307,8 @@ jobs:
                 fi
               fi
             fi
-            if [[ -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
-              common_env+=(THAGORE_INTERNAL_EMIT=1)
-            fi
-            if [[ -z "${THAG_HELPER_DEPTH:-}" ]]; then
-              common_env+=(THAG_HELPER_DEPTH=1)
-            fi
-            if [[ "${#helper_env[@]}" -gt 0 || "${#common_env[@]}" -gt 0 ]]; then
-              env "${helper_env[@]}" "${common_env[@]}" "./$cc" "$@"
+            if [[ "${#helper_env[@]}" -gt 0 ]]; then
+              env "${helper_env[@]}" "./$cc" "$@"
             else
               "./$cc" "$@"
             fi
@@ -1416,7 +1409,11 @@ jobs:
               echo "$out_bin"
               return 0
             fi
-            run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            if [[ -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
+              THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            else
+              run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            fi
             emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             if [[ -z "$emitted_ll" ]]; then
               return 1
