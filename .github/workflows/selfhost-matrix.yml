@@ -315,6 +315,12 @@ jobs:
           else
             PY=python3
           fi
+          "$PY" -c "import json,sys; from pathlib import Path; b=Path(sys.argv[1]); data=json.loads(b.read_text(encoding='utf-8')); names=[str(e.get('name','')).strip() for e in data.get('artifacts', []) if str(e.get('name','')).strip()]; [print(n) for n in names]" "bootstrap/$BUNDLE_ASSET" bootstrap > bootstrap/bundle-assets.list
+          while IFS= read -r ASSET_NAME; do
+            [[ -n "${ASSET_NAME:-}" ]] || continue
+            [[ -f "bootstrap/$ASSET_NAME" ]] && continue
+            download_asset "$ASSET_NAME"
+          done < bootstrap/bundle-assets.list
           "$PY" scripts/seed_bundle.py verify \
             --bundle "bootstrap/$BUNDLE_ASSET" \
             --manifest "bootstrap/$MANIFEST_ASSET" \
