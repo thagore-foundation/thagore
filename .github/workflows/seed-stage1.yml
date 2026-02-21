@@ -251,17 +251,6 @@ jobs:
               break
             fi
           done
-          if [[ -z "$RUNTIME_ASSET" && "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            mkdir -p _rt
-            git cat-file blob 7f9ed799c71ceff8da657316012dc5e4d01d34d4 > _rt/runtime.cc
-            AR_BIN="llvm-ar"
-            if ! command -v "$AR_BIN" >/dev/null 2>&1; then
-              AR_BIN="ar"
-            fi
-            clang -std=c++17 -O2 -c _rt/runtime.cc -o _rt/runtime.o
-            "$AR_BIN" rcs "bootstrap/${{ matrix.runtime_seed_name }}" _rt/runtime.o
-            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
-          fi
           [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: runtime bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"

@@ -481,9 +481,15 @@ jobs:
               fi
             fi
             if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
-              echo "WARN: stage1 probe fixture did not produce a non-empty artifact; defer decision to mandatory Stage2 + smoke gates."
+              echo "CRITICAL: stage1 probe fixture did not produce a non-empty executable artifact."
               rm -rf "$probe_dir" || true
-              return 0
+              return 1
+            fi
+            chmod +x "$probe_bin" || true
+            if ! "$probe_bin" >/dev/null 2>&1; then
+              echo "CRITICAL: stage1 probe executable failed to run cleanly."
+              rm -rf "$probe_dir" || true
+              return 1
             fi
             rm -rf "$probe_dir" || true
             return 0
