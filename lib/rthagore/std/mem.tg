@@ -2,7 +2,7 @@
 
 use bytes as bytes_mod
 
-func alloc(size: i32) -> String
+func alloc(size: usize) -> String
   return bytes_mod.new(size)
 
 func free(buffer: String) -> i32

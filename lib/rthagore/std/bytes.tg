@@ -44,13 +44,13 @@ func extend_raw(self: String, raw: String) -> String
 func extend(self: String, other: String) -> String
   return self
 
-func push_u16_le(self: String, val: i32) -> String
+func push_u16_le(self: String, val: u16) -> String
   return self
 
-func push_u32_le(self: String, val: i32) -> String
+func push_u32_le(self: String, val: u32) -> String
   return self
 
-func push_u64_le(self: String, val: i32) -> String
+func push_u64_le(self: String, val: u64) -> String
   return self
 
 func clear(self: String) -> String
@@ -78,22 +78,22 @@ func index_of(self: String, byte: i32, start: i32 = 0) -> i32
 func to_list(self: String) -> String
   return ""
 
-func read_u16_le(self: String, offset: i32 = 0) -> i32
+func read_u16_le(self: String, offset: i32 = 0) -> u16
   return 0
 
-func read_u32_le(self: String, offset: i32 = 0) -> i32
+func read_u32_le(self: String, offset: i32 = 0) -> u32
   return 0
 
-func read_u64_le(self: String, offset: i32 = 0) -> i32
+func read_u64_le(self: String, offset: i32 = 0) -> u64
   return 0
 
-func write_u16_le(self: String, offset: i32, value: i32) -> String
+func write_u16_le(self: String, offset: i32, value: u16) -> String
   return self
 
-func write_u32_le(self: String, offset: i32, value: i32) -> String
+func write_u32_le(self: String, offset: i32, value: u32) -> String
   return self
 
-func write_u64_le(self: String, offset: i32, value: i32) -> String
+func write_u64_le(self: String, offset: i32, value: u64) -> String
   return self
 
 func to_hex(self: String) -> String

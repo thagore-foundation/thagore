@@ -27,6 +27,8 @@ func os_platform_name() -> String:
     if (os_name == "Windows_NT"):
         return "windows"
     let ostype = str.lower(env.get_var("OSTYPE"))
+    if (((str.contains(ostype, "win") == 1) or (str.contains(ostype, "msys") == 1)) or (str.contains(ostype, "cygwin") == 1)):
+        return "windows"
     if (str.contains(ostype, "linux") == 1):
         return "linux"
     if ((str.contains(ostype, "darwin") == 1) or (str.contains(ostype, "mac") == 1)):

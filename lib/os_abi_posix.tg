@@ -14,13 +14,26 @@ func _f_ok() -> i32:
 func _default_dir_mode() -> i32:
     return 493
 
+func _max_sleep_chunk_ms() -> i32:
+    # Keep usec conversion in signed i32 range.
+    return 2000000
+
 func abi_process_id() -> i32:
     return getpid()
 
 func abi_sleep_ms(ms: i32) -> i32:
     if (ms < 0):
         return -1
-    return usleep(ms * 1000)
+    let remaining = ms
+    while (remaining > 0):
+        let chunk = remaining
+        if (chunk > _max_sleep_chunk_ms()):
+            chunk = _max_sleep_chunk_ms()
+        let rc = usleep(chunk * 1000)
+        if (rc != 0):
+            return rc
+        remaining = remaining - chunk
+    return 0
 
 func abi_file_exists(path: String) -> i32:
     if (path == ""):
@@ -33,6 +46,9 @@ func abi_mkdir(path: String) -> i32:
     if (path == ""):
         return 0
     if (mkdir(path, _default_dir_mode()) == 0):
+        return 1
+    # Align with Windows wrapper behavior: existing path is treated as success.
+    if (access(path, _f_ok()) == 0):
         return 1
     return 0
 
