@@ -328,15 +328,7 @@ jobs:
             run_seed_compiler() {
               local cc="$1"
               shift
-              local helper_env=()
-              if [[ -z "${THAG_HELPER_BIN:-}" && -f "$cc" ]]; then
-                helper_env+=(THAG_HELPER_BIN="./$cc")
-              fi
-              if [[ "${#helper_env[@]}" -gt 0 ]]; then
-                env "${helper_env[@]}" "./$cc" "$@"
-              else
-                "./$cc" "$@"
-              fi
+              "./$cc" "$@"
             }
             hash_file() {
               local f="$1"
@@ -648,20 +640,6 @@ jobs:
           run_compiler() {
             local cc="$1"
             shift
-            local helper_env=()
-            if [[ -z "${THAG_HELPER_BIN:-}" ]]; then
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                if [[ -f stage1.exe ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
-                fi
-              else
-                if [[ -f stage1 ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1)
-                elif [[ -f stage1.exe ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
-                fi
-              fi
-            fi
             if [[ "${STAGE1_EMULATE_X86_64:-0}" == "1" && "$cc" == "stage1" ]]; then
               local qemu_bin=""
               if command -v qemu-x86_64-static >/dev/null 2>&1; then
@@ -673,14 +651,10 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              run_with_watchdog env "${helper_env[@]}" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            if [[ "${#helper_env[@]}" -gt 0 ]]; then
-              run_with_watchdog env "${helper_env[@]}" "./$cc" "$@"
-            else
-              run_with_watchdog "./$cc" "$@"
-            fi
+            run_with_watchdog "./$cc" "$@"
           }
           resolve_bin() {
             local preferred="$1"
@@ -1317,25 +1291,7 @@ jobs:
           run_compiler_cmd() {
             local cc="$1"
             shift
-            local helper_env=()
-            if [[ -z "${THAG_HELPER_BIN:-}" ]]; then
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                if [[ -f stage1.exe ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
-                fi
-              else
-                if [[ -f stage1 ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1)
-                elif [[ -f stage1.exe ]]; then
-                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
-                fi
-              fi
-            fi
-            if [[ "${#helper_env[@]}" -gt 0 ]]; then
-              env "${helper_env[@]}" "./$cc" "$@"
-            else
-              "./$cc" "$@"
-            fi
+            "./$cc" "$@"
           }
           resolve_program_bin() {
             local source_file="$1"
