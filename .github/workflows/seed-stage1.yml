@@ -412,6 +412,15 @@ jobs:
                 return 0
               fi
             done
+            local discovered=""
+            discovered="$(find . -maxdepth 4 -type f \( -name "${preferred}*" -o -name "${base}*" \) \
+              | sed 's|^\./||' \
+              | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
+              | head -n1 || true)"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
             return 1
           }
           resolve_ir() {
@@ -425,6 +434,14 @@ jobs:
                 return 0
               fi
             done
+            local discovered=""
+            discovered="$(find . -maxdepth 4 -type f \( -name "${preferred}*.ll" -o -name "${base}*.ll" \) \
+              | sed 's|^\./||' \
+              | head -n1 || true)"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
             return 1
           }
           link_ir_to_bin() {
