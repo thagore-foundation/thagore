@@ -433,8 +433,11 @@ jobs:
             local preferred="$1"
             local src="$2"
             local base
+            local stem
             base="$(basename "$src" .tg)"
-            for c in "$preferred" "${preferred}.ll" "${preferred%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll"; do
+            stem="${preferred%.ll}"
+            stem="${stem%.exe}"
+            for c in "$preferred" "${stem}.ll" "${stem%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
@@ -443,9 +446,9 @@ jobs:
             local discovered=""
             discovered="$(
               {
-                find . -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
-                find ./src -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
-                find ./examples -maxdepth 2 -type f -name "${preferred}*.ll" 2>/dev/null
+                find . -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
+                find ./src -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
+                find ./examples -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
               } \
               | sed 's|^\./||' \
               | head -n1 || true
