@@ -878,11 +878,36 @@ jobs:
           cp "$ROOT_DIR/${{ matrix.stage1_seed_name }}" verify_seed/
           cp "$ROOT_DIR/${{ matrix.runtime_seed_name }}" verify_seed/
           cd verify_seed
+          resolve_bin() {
+            local stem="$1"
+            if [[ -f "$stem" ]]; then
+              echo "$stem"
+              return 0
+            fi
+            if [[ -f "${stem}.exe" ]]; then
+              echo "${stem}.exe"
+              return 0
+            fi
+            return 1
+          }
+          build_and_assert_output() {
+            local source_file="$1"
+            local out_stem="$2"
+            local expected="$3"
+            "./$STAGE1_BIN" build "$source_file" -o "$out_stem" || (echo "CRITICAL: packaged stage1 failed to build $source_file"; exit 1)
+            local out_bin
+            out_bin="$(resolve_bin "$out_stem")" || (echo "CRITICAL: missing output binary for $source_file"; exit 1)
+            if [[ "${{ runner.os }}" != "Windows" ]]; then
+              chmod +x "$out_bin"
+            fi
+            local got
+            got="$("./$out_bin" | tr -d '\r')"
+            [[ "$got" == "$expected" ]] || (echo "CRITICAL: output mismatch for $source_file"; echo "EXPECTED<<"; echo "$expected"; echo "GOT<<"; echo "$got"; exit 1)
+          }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "${{ matrix.stage1_seed_name }}" stage1.exe
             cp "${{ matrix.runtime_seed_name }}" thag_runtime.lib
             STAGE1_BIN="stage1.exe"
-            HELLO_OUT="hello_bundle.exe"
           else
             cp "${{ matrix.runtime_seed_name }}" libthag_runtime.a
             cp libthag_runtime.a thag_runtime.lib
@@ -893,11 +918,31 @@ jobs:
             cp "$CANDIDATE" stage1
             chmod +x stage1
             STAGE1_BIN="stage1"
-            HELLO_OUT="hello_bundle"
           fi
           "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
-          "./$STAGE1_BIN" build ../examples/hello.tg -o "$HELLO_OUT" || (echo "CRITICAL: packaged stage1 failed to build hello sample"; exit 1)
+          build_and_assert_output ../examples/hello.tg hello_bundle "Hello Self-Hosted World!"
+          build_and_assert_output ../examples/logic.tg logic_bundle "100"
+          build_and_assert_output ../examples/loop.tg loop_bundle $'0\n1\n2\n3\n4\n100'
+          build_and_assert_output ../examples/string_ops.tg string_ops_bundle $'Hello Thagore\nString equality works!'
+          STAGE2_STEM="stage2_from_bundle"
+          "./$STAGE1_BIN" build ../src/thagore.tg -o "$STAGE2_STEM" || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
+          STAGE2_BIN="$(resolve_bin "$STAGE2_STEM")" || (echo "CRITICAL: missing stage2 binary from packaged seed selfhost"; exit 1)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$STAGE2_BIN"
+          fi
+          "./$STAGE2_BIN" build ../src/thagore.tg -o stage2b_from_bundle || (echo "CRITICAL: stage2 failed to rebuild stage2b"; exit 1)
+          STAGE2B_BIN="$(resolve_bin stage2b_from_bundle)" || (echo "CRITICAL: missing stage2b binary from packaged seed selfhost"; exit 1)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$STAGE2B_BIN"
+          fi
+          "./$STAGE2B_BIN" build ../examples/hello.tg -o hello_from_stage2b || (echo "CRITICAL: stage2b failed to build hello"; exit 1)
+          HELLO_STAGE2B_BIN="$(resolve_bin hello_from_stage2b)" || (echo "CRITICAL: missing hello binary from stage2b build"; exit 1)
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "$HELLO_STAGE2B_BIN"
+          fi
+          HELLO_STAGE2B_OUT="$("./$HELLO_STAGE2B_BIN" | tr -d '\r')"
+          [[ "$HELLO_STAGE2B_OUT" == "Hello Self-Hosted World!" ]] || (echo "CRITICAL: stage2b hello output mismatch"; exit 1)
 
   publish-seed:
     name: publish-seed-release
