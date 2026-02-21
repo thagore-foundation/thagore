@@ -701,7 +701,7 @@ jobs:
             PY=python3
           fi
           STRICT_WINDOWS=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+          if [[ "${{ matrix.asset_tag }}" == "linux-x86_64" ]]; then
             STRICT_WINDOWS=1
           fi
           STRICT_RELEASE_LANE=0
