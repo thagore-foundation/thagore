@@ -334,6 +334,21 @@ jobs:
                 return 0
               fi
             done
+            local discovered=""
+            discovered="$(
+              {
+                find . -maxdepth 4 -type f -name "${stem}*" 2>/dev/null
+                if [[ -n "$base" ]]; then
+                  find . -maxdepth 4 -type f -name "${base}*" 2>/dev/null
+                  find . -maxdepth 4 -type f -name "*${base}*_0_41*" 2>/dev/null
+                  find . -maxdepth 4 -type f -name "*${base}*.exe" 2>/dev/null
+                fi
+              } | sed 's|^\./||' | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml|a|lib)$' | head -n1 || true
+            )"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
             return 1
           }
           resolve_probe_ir() {
@@ -349,6 +364,20 @@ jobs:
                 return 0
               fi
             done
+            local discovered=""
+            discovered="$(
+              {
+                find . -maxdepth 4 -type f -name "${stem}*.ll" 2>/dev/null
+                if [[ -n "$base" ]]; then
+                  find . -maxdepth 4 -type f -name "${base}*.ll" 2>/dev/null
+                  find . -maxdepth 4 -type f -name "*${base}*.ll" 2>/dev/null
+                fi
+              } | head -n1 || true
+            )"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
             return 1
           }
           link_probe_ir() {
