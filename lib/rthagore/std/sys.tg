@@ -4,7 +4,9 @@ use env as env
 use process as process
 
 func run(cmd: String, args: String = "") -> i32
-    return process.run(cmd)
+    if args == ""
+        return process.run(cmd)
+    return process.exec(cmd, args)
 
 func exec(program: String, args_text: String = "") -> i32
     return process.exec(program, args_text)

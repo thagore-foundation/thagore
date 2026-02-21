@@ -1,0 +1,45 @@
+// sys_macos (thagore-compatible shim)
+
+use sys_bsd as bsd
+use sys_mach as mach
+
+func open(path: String, flags: String = "r") -> ptr = bsd.open(path, flags)
+
+func close(fd: ptr) -> i32 = bsd.close(fd)
+
+func read(fd: ptr, size: i32) -> String = bsd.read(fd, size)
+
+func write(fd: ptr, buffer: String) -> i32 = bsd.write(fd, buffer)
+
+func seek(fd: ptr, offset: i32, whence: i32 = 0) -> i32 = bsd.seek(fd, offset, whence)
+
+func exists(path: String) -> i32 = bsd.exists(path)
+
+func mkdir(path: String) -> i32 = bsd.mkdir(path)
+
+func list_dir(path: String) -> String = bsd.list_dir(path)
+
+func mmap(length: i32, prot: i32 = 0, flags: i32 = 0, fd: ptr = null, offset: i32 = 0) -> ptr
+    return bsd.mmap(length, prot, flags, fd, offset)
+
+func munmap(region: ptr) -> i32 = bsd.munmap(region)
+
+func mprotect(region: ptr, prot: i32) -> i32 = bsd.mprotect(region, prot)
+
+func exec(cmd: String, args: String = "") -> i32 = bsd.exec(cmd, args)
+
+func exit(code: i32 = 0) -> void
+    bsd.exit(code)
+    return
+
+func stat(path: String) -> i32 = bsd.stat(path)
+
+func fstat(handle: ptr) -> i32 = bsd.fstat(handle)
+
+func mach_port_create() -> ptr = mach.mach_port_create()
+
+func mach_port_send(port: ptr, message: String) -> i32 = mach.mach_port_send(port, message)
+
+func mach_port_recv(port: ptr) -> String = mach.mach_port_recv(port)
+
+func mach_port_destroy(port: ptr) -> i32 = mach.mach_port_destroy(port)

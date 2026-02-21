@@ -33,4 +33,5 @@ use process as process
 use sys_linux as sys_linux
 use sys_windows as sys_windows
 use sys_bsd as sys_bsd
+use sys_macos as sys_macos
 use sys_mach as sys_mach

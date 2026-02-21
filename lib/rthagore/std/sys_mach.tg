@@ -6,8 +6,11 @@ extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
 extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
 extern func __thg_ptr_null() -> ptr
 
+func _slot_bytes() -> usize
+    return 8
+
 func mach_port_create() -> ptr
-    let port = malloc(8)
+    let port = malloc(_slot_bytes())
     if port == null
         return null
     __thg_ptr_set(port, 0, __thg_ptr_null())

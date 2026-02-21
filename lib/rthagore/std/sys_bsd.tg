@@ -41,7 +41,7 @@ func mprotect(region: ptr, prot: i32) -> i32
     return 0
 
 func exec(cmd: String, args: String = "") -> i32
-    return sys.run(cmd, args)
+    return sys.exec(cmd, args)
 
 func exit(code: i32 = 0) -> void
     _exit(code)

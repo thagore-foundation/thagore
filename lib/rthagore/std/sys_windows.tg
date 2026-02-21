@@ -37,7 +37,7 @@ func virtual_free(mem: ptr) -> bool
     return true
 
 func process_spawn(cmd: String, args: String = "") -> i32
-    return sys.run(cmd, args)
+    return sys.exec(cmd, args)
 
 func process_exit(code: i32 = 0) -> void
     exit(code)

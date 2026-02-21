@@ -11,7 +11,7 @@ extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
 extern func __thg_ptr_null() -> ptr
 extern func __thg_cstr_len(s: String) -> i32
 
-func _slot_bytes() -> i32
+func _slot_bytes() -> usize
     return 8
 
 func open(path: String, flags: String = "r") -> ptr
@@ -51,7 +51,7 @@ func fork() -> i32
     return -1
 
 func exec(cmd: String, args: String = "") -> i32
-    return sys.run(cmd, args)
+    return sys.exec(cmd, args)
 
 func exit(code: i32 = 0) -> void
     _exit(code)
@@ -85,6 +85,9 @@ func socket_create() -> ptr
 func socket_send(sock: ptr, data: String) -> i32
     if sock == null
         return -1
+    if data == null
+        __thg_ptr_set(sock, 0, __thg_ptr_null())
+        return 0
     __thg_ptr_set(sock, 0, data)
     return __thg_cstr_len(data)
 
