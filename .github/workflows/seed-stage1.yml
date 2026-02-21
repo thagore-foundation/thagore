@@ -325,6 +325,19 @@ jobs:
               echo "[SEED] skip early smoke probe on linux-arm64 (kept in verify stage)." | tee -a "$STAGE_TRACE_FILE"
               return 0
             fi
+            run_seed_compiler() {
+              local cc="$1"
+              shift
+              local helper_env=()
+              if [[ -z "${THAG_HELPER_BIN:-}" && -f "$cc" ]]; then
+                helper_env+=(THAG_HELPER_BIN="./$cc")
+              fi
+              if [[ "${#helper_env[@]}" -gt 0 ]]; then
+                env "${helper_env[@]}" "./$cc" "$@"
+              else
+                "./$cc" "$@"
+              fi
+            }
             hash_file() {
               local f="$1"
               if command -v sha256sum >/dev/null 2>&1; then
@@ -358,18 +371,18 @@ jobs:
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cc_bin="stage1.exe"
             fi
-            "./$cc_bin" --version >/dev/null 2>&1 || {
+            run_seed_compiler "$cc_bin" --version >/dev/null 2>&1 || {
               echo "[SEED][probe] $CURRENT_TAG: '$cc_bin --version' failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             }
-            if "./$cc_bin" build __seed_probe_missing__.tg -o __seed_probe_missing__.out >/dev/null 2>&1; then
+            if run_seed_compiler "$cc_bin" build __seed_probe_missing__.tg -o __seed_probe_missing__.out >/dev/null 2>&1; then
               echo "[SEED][probe] $CURRENT_TAG: compiler returned success for missing input (no-op behavior)." | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
-            "./$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
+            run_seed_compiler "$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
             out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
             if [[ -z "$out_bin" ]]; then
-              "./$cc_bin" --emit-llvm-internal "$probe_src" -o "${out_stem}.ll" >/dev/null 2>&1 || true
+              run_seed_compiler "$cc_bin" --emit-llvm-internal "$probe_src" -o "${out_stem}.ll" >/dev/null 2>&1 || true
               out_ir="$(resolve_probe_ir "$out_stem" "$probe_src" || true)"
               if [[ -n "$out_ir" && -f "$out_ir" ]]; then
                 if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -391,7 +404,7 @@ jobs:
               return 1
             fi
             cc_sig_before="$(hash_file "$cc_bin" || true)"
-            if ! "./$cc_bin" build src/thagore.tg -o "$stage2_stem" >/dev/null 2>&1; then
+            if ! run_seed_compiler "$cc_bin" build src/thagore.tg -o "$stage2_stem" >/dev/null 2>&1; then
               echo "[SEED][probe] $CURRENT_TAG: build src/thagore.tg failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
@@ -402,7 +415,7 @@ jobs:
               echo "[SEED][probe] $CURRENT_TAG: stage2 artifact missing for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
-            "./$stage2_bin" --version >/dev/null 2>&1 || {
+            run_seed_compiler "$stage2_bin" --version >/dev/null 2>&1 || {
               echo "[SEED][probe] $CURRENT_TAG: stage2 --version failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             }
