@@ -624,10 +624,16 @@ jobs:
             shift
             local helper_env=()
             if [[ -z "${THAG_HELPER_BIN:-}" && "$cc" != "stage1" && "$cc" != "stage1.exe" ]]; then
-              if [[ -f stage1 ]]; then
-                helper_env+=(THAG_HELPER_BIN=./stage1)
-              elif [[ -f stage1.exe ]]; then
-                helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                if [[ -f stage1.exe ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+                fi
+              else
+                if [[ -f stage1 ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1)
+                elif [[ -f stage1.exe ]]; then
+                  helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+                fi
               fi
             fi
             if [[ "${STAGE1_EMULATE_X86_64:-0}" == "1" && "$cc" == "stage1" ]]; then
