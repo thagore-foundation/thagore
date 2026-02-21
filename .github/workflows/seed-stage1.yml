@@ -510,10 +510,6 @@ jobs:
             if [[ -n "$got" ]]; then
               return 0
             fi
-            if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
-              echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE" >&2
-              return 0
-            fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE" >&2
             return 1
           }
@@ -564,22 +560,14 @@ jobs:
           else
             thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
             STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
-            if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
-              STAGE2_BIN="$STAGE2_BIN_RESOLVED"
-            else
-              STAGE2_BIN="$STAGE1_BIN"
-              echo "[INFO] using in-place rebuilt compiler for stage2: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            fi
+            [[ -n "$STAGE2_BIN_RESOLVED" ]] || (echo "CRITICAL: stage1 produced no standalone stage2 artifact"; exit 1)
+            STAGE2_BIN="$STAGE2_BIN_RESOLVED"
             chmod +x "$STAGE2_BIN" || true
 
             thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
             STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-            if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
-              STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
-            else
-              STAGE2_REBUILD_BIN="$STAGE2_BIN"
-              echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-            fi
+            [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]] || (echo "CRITICAL: stage2 produced no standalone stage2_rebuild artifact"; exit 1)
+            STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
             chmod +x "$STAGE2_REBUILD_BIN" || true
 
             SEED_BIN="$STAGE2_REBUILD_BIN"
@@ -1091,11 +1079,6 @@ jobs:
             local source_file="$2"
             local out_stem="$3"
             local out_bin=""
-            local cc_sig_before=""
-            local cc_sig_after=""
-            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
-              cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
-            fi
             "./$cc" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
@@ -1107,19 +1090,6 @@ jobs:
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
-            fi
-            if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
-              cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
-              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
-                echo "[INFO] compiler rebuilt in-place artifact: $cc"
-                echo ""
-                return 0
-              fi
-              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
-                echo "[WARN] compiler rebuild for $source_file completed with no emitted output and unchanged in-place binary ($cc); accepting as compiler-managed no-output mode."
-                echo ""
-                return 0
-              fi
             fi
             return 1
           }
@@ -1159,43 +1129,26 @@ jobs:
             chmod +x stage1
             STAGE1_BIN="stage1"
           fi
-          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
-            echo "[WARN] verify-bundle linux-arm64 runs minimal packaged-seed gate (bundle/provenance/runtime presence) and skips executing packaged compiler."
-            exit 0
-          fi
           "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
           thg_build_compiler "$STAGE1_BIN" ../src/thagore.tg "$STAGE2_STEM" >/dev/null || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
           STAGE2_BIN="$(resolve_bin "$STAGE2_STEM" || true)"
-          if [[ -z "$STAGE2_BIN" ]]; then
-            STAGE2_BIN="$STAGE1_BIN"
-            echo "[INFO] stage2 selfhost returned no standalone artifact; using in-place compiler binary $STAGE2_BIN"
-          fi
+          [[ -n "$STAGE2_BIN" ]] || (echo "CRITICAL: packaged stage1 produced no standalone stage2 artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2_BIN"
           fi
           thg_build_compiler "$STAGE2_BIN" ../src/thagore.tg stage2b_from_bundle >/dev/null || (echo "CRITICAL: stage2 failed to rebuild stage2b"; exit 1)
           STAGE2B_BIN="$(resolve_bin stage2b_from_bundle || true)"
-          if [[ -z "$STAGE2B_BIN" ]]; then
-            STAGE2B_BIN="$STAGE2_BIN"
-            echo "[INFO] stage2b selfhost returned no standalone artifact; using in-place compiler binary $STAGE2B_BIN"
-          fi
+          [[ -n "$STAGE2B_BIN" ]] || (echo "CRITICAL: stage2 produced no standalone stage2b artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2B_BIN"
           fi
           thg_build_compiler "$STAGE2B_BIN" ../src/thagore.tg stage2c_from_bundle >/dev/null || (echo "CRITICAL: stage2b failed to rebuild stage2c"; exit 1)
           STAGE2C_BIN="$(resolve_bin stage2c_from_bundle || true)"
-          if [[ -z "$STAGE2C_BIN" ]]; then
-            STAGE2C_BIN="$STAGE2B_BIN"
-            echo "[INFO] stage2c selfhost returned no standalone artifact; using in-place compiler binary $STAGE2C_BIN"
-          fi
+          [[ -n "$STAGE2C_BIN" ]] || (echo "CRITICAL: stage2b produced no standalone stage2c artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2C_BIN"
-          fi
-          if [[ "$STAGE2_BIN" == "$STAGE1_BIN" && "$STAGE2B_BIN" == "$STAGE1_BIN" && "$STAGE2C_BIN" == "$STAGE1_BIN" ]]; then
-            echo "[WARN] packaged compiler selfhost completed in no-output mode; skipping executable sample assertions in verify-bundle."
-            exit 0
           fi
 
           build_and_assert_output_with_cc "$STAGE2_BIN" ../examples/hello.tg hello_from_stage2 "Hello Self-Hosted World!"
