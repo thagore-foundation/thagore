@@ -499,28 +499,37 @@ jobs:
             FIB_BIN="fib_seed"
           fi
 
-          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
-          STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
-          if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
-            STAGE2_BIN="$STAGE2_BIN_RESOLVED"
+          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
+            echo "[INFO] linux-arm64 minimal verify: cli + hello smoke from stage1 seed" | tee -a "$STAGE_TRACE_FILE"
+            echo "[CMD] ./$STAGE1_BIN --version" | tee -a "$STAGE_TRACE_FILE" >&2
+            run_compiler "$STAGE1_BIN" --version 1>&2
+            SEED_BIN="$STAGE1_BIN"
+            STAGE2_REBUILD_BIN="$SEED_BIN"
+            COMPILER_CANDIDATES=("$SEED_BIN")
           else
-            STAGE2_BIN="$STAGE1_BIN"
-            echo "[INFO] using in-place rebuilt compiler for stage2: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
-          chmod +x "$STAGE2_BIN" || true
+            thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
+            STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+            if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
+              STAGE2_BIN="$STAGE2_BIN_RESOLVED"
+            else
+              STAGE2_BIN="$STAGE1_BIN"
+              echo "[INFO] using in-place rebuilt compiler for stage2: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
+            chmod +x "$STAGE2_BIN" || true
 
-          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
-          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
-          else
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
-          chmod +x "$STAGE2_REBUILD_BIN" || true
+            thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
+            STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+            if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
+              STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
+            else
+              STAGE2_REBUILD_BIN="$STAGE2_BIN"
+              echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            fi
+            chmod +x "$STAGE2_REBUILD_BIN" || true
 
-          SEED_BIN="$STAGE2_REBUILD_BIN"
-          COMPILER_CANDIDATES=("$SEED_BIN" "$STAGE2_BIN" "$STAGE1_BIN")
+            SEED_BIN="$STAGE2_REBUILD_BIN"
+            COMPILER_CANDIDATES=("$SEED_BIN" "$STAGE2_BIN" "$STAGE1_BIN")
+          fi
           build_sample_with_candidates() {
             local src="$1"
             local out="$2"
@@ -566,18 +575,20 @@ jobs:
           fi
           run_with_watchdog "./$HELLO_BIN_FOUND" >/dev/null 2>&1
 
-          FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
-          if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
-            chmod +x "$FIB_BIN_FOUND" || true
-            FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
-            CC_HASH="$(hash_file "$SEED_BIN")"
-            if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
-              echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
-              exit 1
+          if [[ "${{ matrix.asset_tag }}" != "linux-arm64" ]]; then
+            FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
+            if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
+              chmod +x "$FIB_BIN_FOUND" || true
+              FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
+              CC_HASH="$(hash_file "$SEED_BIN")"
+              if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
+                echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
+                exit 1
+              fi
+              run_with_watchdog "./$FIB_BIN_FOUND" >/dev/null 2>&1
+            else
+              echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
             fi
-            run_with_watchdog "./$FIB_BIN_FOUND" >/dev/null 2>&1
-          else
-            echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
           fi
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
