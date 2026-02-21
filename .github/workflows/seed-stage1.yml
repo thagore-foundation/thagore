@@ -224,15 +224,87 @@ jobs:
           : > "$STAGE_TRACE_FILE"
           [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: base_seed_tag is required."; exit 1)
           mkdir -p bootstrap
-          download_optional() {
-            local pattern="$1"
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
-          }
+          CURRENT_TAG="$BOOTSTRAP_STAGE1_TAG"
           download_optional_from_tag() {
             local tag="$1"
             local pattern="$2"
             [[ -n "$tag" ]] || return 1
             gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
+          }
+          download_optional() {
+            local pattern="$1"
+            download_optional_from_tag "$CURRENT_TAG" "$pattern"
+          }
+          materialize_working_files() {
+            rm -rf bootstrap/extract_stage1 || true
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              cp "bootstrap/${{ matrix.stage1_seed_name }}" stage1.exe
+              chmod +x stage1.exe || true
+              cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
+              return 0
+            fi
+            cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
+            cp libthag_runtime.a thag_runtime.lib
+            mkdir -p bootstrap/extract_stage1
+            tar -xzf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/extract_stage1
+            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            [[ -n "$CANDIDATE" ]] || return 1
+            cp "$CANDIDATE" stage1
+            chmod +x stage1 || true
+            if [[ "${{ runner.os }}" == "Linux" ]]; then
+              STAGE1_FILE_INFO="$(file -b stage1 || true)"
+              if [[ "${{ matrix.arch }}" == "arm64" && "$STAGE1_FILE_INFO" == *"x86-64"* ]]; then
+                echo "STAGE1_EMULATE_X86_64=1" >> "$GITHUB_ENV"
+                echo "QEMU_LD_PREFIX=/usr/x86_64-linux-gnu" >> "$GITHUB_ENV"
+              else
+                echo "STAGE1_EMULATE_X86_64=0" >> "$GITHUB_ENV"
+              fi
+            fi
+            return 0
+          }
+          resolve_probe_bin() {
+            local stem="$1"
+            for c in "$stem" "${stem}.exe" "_seed_gate_probe" "_seed_gate_probe.exe"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            return 1
+          }
+          seed_smoke_probe() {
+            if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
+              echo "[SEED] skip early smoke probe on linux-arm64 (kept in verify stage)." | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
+            local cc_bin="stage1"
+            local out_stem="_seed_gate_probe_out"
+            local out_bin=""
+            local got=""
+            rm -f _seed_gate_probe.tg _seed_gate_probe_out _seed_gate_probe_out.exe _seed_gate_probe_out.ll _seed_gate_probe _seed_gate_probe.exe || true
+            printf 'func main():\n    print("seed gate probe ok")\n' > _seed_gate_probe.tg
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              cc_bin="stage1.exe"
+            fi
+            "./$cc_bin" --version >/dev/null 2>&1 || return 1
+            "./$cc_bin" build _seed_gate_probe.tg -o "$out_stem" >/dev/null 2>&1 || true
+            out_bin="$(resolve_probe_bin "$out_stem" || true)"
+            if [[ -z "$out_bin" ]]; then
+              "./$cc_bin" --emit-llvm-internal _seed_gate_probe.tg -o "${out_stem}.ll" >/dev/null 2>&1 || true
+              if [[ -f "${out_stem}.ll" ]] && grep -q "@main(" "${out_stem}.ll"; then
+                if [[ "${{ runner.os }}" == "Windows" ]]; then
+                  clang "${out_stem}.ll" -o "${out_stem}.exe" -Wno-override-module thag_runtime.lib >/dev/null 2>&1 || return 1
+                else
+                  clang "${out_stem}.ll" -o "${out_stem}" -Wno-override-module libthag_runtime.a >/dev/null 2>&1 || return 1
+                fi
+                out_bin="$(resolve_probe_bin "$out_stem" || true)"
+              fi
+            fi
+            [[ -n "$out_bin" && -f "$out_bin" ]] || return 1
+            chmod +x "$out_bin" || true
+            got="$("./$out_bin" | tr -d '\r' | tr -d '\n')"
+            [[ "$got" == "seed gate probe ok" ]] || return 1
+            return 0
           }
           materialize_from_release_package() {
             local package_asset="$1"
@@ -283,105 +355,107 @@ jobs:
             echo "[SEED] materialized seed assets from release package: $package_asset"
             return 0
           }
-          STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
-          RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
-          PACKAGE_CANDIDATES=()
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1.exe")
-            RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
-            PACKAGE_CANDIDATES+=("thagore-windows-x86_64.tar.gz")
-          elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1.exe")
-            RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
-            PACKAGE_CANDIDATES+=("thagore-windows-arm64.tar.gz")
-          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
-            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
-            PACKAGE_CANDIDATES+=("thagore-linux-x86_64.tar.gz")
-          elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES=("thagore-stage1-linux-x86_64.tar.gz" "${{ matrix.stage1_seed_name }}" "thagore-stage1-linux.tar.gz")
-            RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
-            PACKAGE_CANDIDATES+=("thagore-linux-arm64.tar.gz")
-          elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
-            STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
-            RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
-            PACKAGE_CANDIDATES+=("thagore-macos-arm64.tar.gz")
-          fi
-          STAGE1_ASSET=""
-          for ASSET in "${STAGE1_CANDIDATES[@]}"; do
-            if download_optional "$ASSET"; then
-              STAGE1_ASSET="$ASSET"
-              break
+          try_bootstrap_tag() {
+            local tag="$1"
+            CURRENT_TAG="$tag"
+            rm -rf bootstrap/* stage1 stage1.exe thag_runtime.lib libthag_runtime.a _seed_gate_probe* || true
+            mkdir -p bootstrap
+            STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
+            RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
+            PACKAGE_CANDIDATES=()
+            if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+              STAGE1_CANDIDATES+=("thagore-stage1.exe")
+              RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+              PACKAGE_CANDIDATES+=("thagore-windows-x86_64.tar.gz")
+            elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
+              STAGE1_CANDIDATES+=("thagore-stage1.exe")
+              RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+              PACKAGE_CANDIDATES+=("thagore-windows-arm64.tar.gz")
+            elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
+              STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+              RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+              PACKAGE_CANDIDATES+=("thagore-linux-x86_64.tar.gz")
+            elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+              STAGE1_CANDIDATES=("thagore-stage1-linux-x86_64.tar.gz" "${{ matrix.stage1_seed_name }}" "thagore-stage1-linux.tar.gz")
+              RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+              PACKAGE_CANDIDATES+=("thagore-linux-arm64.tar.gz")
+            elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
+              STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
+              RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
+              PACKAGE_CANDIDATES+=("thagore-macos-arm64.tar.gz")
             fi
-          done
-          RUNTIME_ASSET=""
-          for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
-            if download_optional "$ASSET"; then
-              RUNTIME_ASSET="$ASSET"
-              break
-            fi
-          done
-          if [[ -z "$STAGE1_ASSET" || -z "$RUNTIME_ASSET" ]]; then
-            for PKG in "${PACKAGE_CANDIDATES[@]}"; do
-              if materialize_from_release_package "$PKG"; then
+            STAGE1_ASSET=""
+            for ASSET in "${STAGE1_CANDIDATES[@]}"; do
+              if download_optional "$ASSET"; then
+                STAGE1_ASSET="$ASSET"
                 break
               fi
             done
-          fi
-          if [[ -z "$RUNTIME_ASSET" ]]; then
-            RUNTIME_FALLBACK_TAGS=("$BOOTSTRAP_STAGE1_TAG" "v0.3.25-stage1-seed")
-            for RT_TAG in "${RUNTIME_FALLBACK_TAGS[@]}"; do
-              [[ -n "$RT_TAG" ]] || continue
-              for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
-                if download_optional_from_tag "$RT_TAG" "$ASSET"; then
-                  RUNTIME_ASSET="$ASSET"
-                  echo "[SEED] runtime fallback asset=$ASSET tag=$RT_TAG"
+            RUNTIME_ASSET=""
+            for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
+              if download_optional "$ASSET"; then
+                RUNTIME_ASSET="$ASSET"
+                break
+              fi
+            done
+            if [[ -z "$STAGE1_ASSET" || -z "$RUNTIME_ASSET" ]]; then
+              for PKG in "${PACKAGE_CANDIDATES[@]}"; do
+                if materialize_from_release_package "$PKG"; then
                   break
                 fi
               done
-              if [[ -n "$RUNTIME_ASSET" ]]; then
-                break
-              fi
-            done
-          fi
-          [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: runtime bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
-          [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: stage1 bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
-          if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
-            cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
-          fi
-          if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
-            cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
-          fi
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "bootstrap/${{ matrix.stage1_seed_name }}" stage1.exe
-            chmod +x stage1.exe || true
-            cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
-          elif [[ "${{ runner.os }}" == "Linux" ]]; then
-            cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
-            cp libthag_runtime.a thag_runtime.lib
-            mkdir -p bootstrap/extract_stage1
-            tar -xzf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/extract_stage1
-            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
-            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary missing in Linux seed archive"; exit 1)
-            cp "$CANDIDATE" stage1
-            chmod +x stage1 || true
-            STAGE1_FILE_INFO="$(file -b stage1 || true)"
-            if [[ "${{ matrix.arch }}" == "arm64" && "$STAGE1_FILE_INFO" == *"x86-64"* ]]; then
-              echo "STAGE1_EMULATE_X86_64=1" >> "$GITHUB_ENV"
-              echo "QEMU_LD_PREFIX=/usr/x86_64-linux-gnu" >> "$GITHUB_ENV"
-            else
-              echo "STAGE1_EMULATE_X86_64=0" >> "$GITHUB_ENV"
             fi
-          else
-            cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
-            cp libthag_runtime.a thag_runtime.lib
-            mkdir -p bootstrap/extract_stage1
-            tar -xzf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/extract_stage1
-            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
-            [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: stage1 binary missing in macOS seed archive"; exit 1)
-            cp "$CANDIDATE" stage1
-            chmod +x stage1 || true
-          fi
+            if [[ -z "$RUNTIME_ASSET" ]]; then
+              RUNTIME_FALLBACK_TAGS=("$CURRENT_TAG" "$BOOTSTRAP_STAGE1_TAG" "v0.3.25-stage1-seed")
+              for RT_TAG in "${RUNTIME_FALLBACK_TAGS[@]}"; do
+                [[ -n "$RT_TAG" ]] || continue
+                for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
+                  if download_optional_from_tag "$RT_TAG" "$ASSET"; then
+                    RUNTIME_ASSET="$ASSET"
+                    echo "[SEED] runtime fallback asset=$ASSET tag=$RT_TAG"
+                    break
+                  fi
+                done
+                if [[ -n "$RUNTIME_ASSET" ]]; then
+                  break
+                fi
+              done
+            fi
+            [[ -n "$RUNTIME_ASSET" && -n "$STAGE1_ASSET" ]] || return 1
+            if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
+              cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
+            fi
+            if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
+              cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
+            fi
+            materialize_working_files
+            seed_smoke_probe
+          }
+          TAG_CANDIDATES=(
+            "$BOOTSTRAP_STAGE1_TAG"
+            "v0.3.61-foundation"
+            "v0.5.20"
+            "v0.5.13"
+            "v0.3.25-stage1-seed"
+          )
+          SELECTED_BOOTSTRAP_TAG=""
+          SEEN_TAGS=";"
+          for TAG in "${TAG_CANDIDATES[@]}"; do
+            [[ -n "$TAG" ]] || continue
+            if [[ "$SEEN_TAGS" == *";$TAG;"* ]]; then
+              continue
+            fi
+            SEEN_TAGS="${SEEN_TAGS}${TAG};"
+            echo "[SEED] trying bootstrap tag=$TAG for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+            if try_bootstrap_tag "$TAG"; then
+              SELECTED_BOOTSTRAP_TAG="$TAG"
+              echo "[SEED] selected bootstrap tag=$TAG for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+              break
+            fi
+            echo "[SEED] reject bootstrap tag=$TAG for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+          done
+          [[ -n "$SELECTED_BOOTSTRAP_TAG" ]] || (echo "CRITICAL: no bootstrap tag produced a valid seed bundle for ${{ matrix.asset_tag }}"; exit 1)
+          echo "SELECTED_BOOTSTRAP_TAG=$SELECTED_BOOTSTRAP_TAG" >> "$GITHUB_ENV"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
