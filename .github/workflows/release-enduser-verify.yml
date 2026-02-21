@@ -521,7 +521,6 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
           $env:THAGORE_BIN = Join-Path $extract "bin"
-          $env:THAG_HELPER_BIN = Join-Path $env:THAGORE_BIN "thagore.exe"
           & (Join-Path $env:THAGORE_BIN "thagore.exe") --version
           & (Join-Path $env:THAGORE_BIN "thagore.exe") --help
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/update-windows.ps1 check
@@ -534,12 +533,11 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
           $env:THAGORE_BIN = Join-Path $extract "bin"
           $thagore = Join-Path $env:THAGORE_BIN "thagore.exe"
-          $env:THAG_HELPER_BIN = Join-Path $env:THAGORE_BIN "thagore.exe"
           if (-not (Test-Path $thagore)) {
               throw "Missing CLI binary at $thagore"
           }
-          if (-not (Test-Path $env:THAG_HELPER_BIN)) {
-              throw "Missing helper binary at $env:THAG_HELPER_BIN"
+          if (-not (Test-Path (Join-Path $env:THAGORE_BIN "stage1.exe"))) {
+              throw "Missing helper binary at $(Join-Path $env:THAGORE_BIN 'stage1.exe')"
           }
 
           function Invoke-CliText {
