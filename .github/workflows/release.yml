@@ -700,14 +700,7 @@ jobs:
           else
             PY=python3
           fi
-          STRICT_WINDOWS=0
-          if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            STRICT_WINDOWS=1
-          fi
-          STRICT_RELEASE_LANE=0
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$STRICT_WINDOWS" == "1" ]]; then
-            STRICT_RELEASE_LANE=1
-          fi
+          STRICT_RELEASE_LANE=1
           echo "RELEASE_STRICT_LANE=$STRICT_RELEASE_LANE" >> "$GITHUB_ENV"
           ARM64_STAGE2_TIMEOUT_SECS=900
           ARM64_CLI_SANITY_TIMEOUT_SECS=45
