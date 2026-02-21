@@ -423,6 +423,7 @@ jobs:
                 } \
                 | sed 's|^\./||' \
                 | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
+                | grep -E '(^|/)[^/.]+(\.exe)?$' \
                 || true
               )"
             fi
@@ -437,6 +438,7 @@ jobs:
               } \
               | sed 's|^\./||' \
               | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
+              | grep -E '(^|/)[^/.]+(\.exe)?$' \
               | head -n1 || true
             )"
             if [[ -n "$discovered" ]]; then
