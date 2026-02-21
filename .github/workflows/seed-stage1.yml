@@ -72,18 +72,29 @@ jobs:
           set -euo pipefail
           asset_names_raw=""
           release_probe_err="_seed_base_probe_err.log"
+          probe_rate_limited=0
           for attempt in 1 2 3 4 5 6; do
             if asset_names_raw="$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' 2>"$release_probe_err")"; then
+              probe_rate_limited=0
               break
             fi
             if grep -qi 'rate limit' "$release_probe_err" && [[ $attempt -lt 6 ]]; then
+              probe_rate_limited=1
               sleep $((attempt * 5))
               continue
+            fi
+            if grep -qi 'rate limit' "$release_probe_err"; then
+              probe_rate_limited=1
+              break
             fi
             cat "$release_probe_err" >&2 || true
             exit 1
           done
           rm -f "$release_probe_err" || true
+          if [[ -z "$asset_names_raw" && $probe_rate_limited -eq 1 ]]; then
+            echo "[WARN] seed-base-probe hit GitHub API rate limit; continue with full matrix and let strict fetch gate validate assets."
+            asset_names_raw=$'thagore-stage1-linux-x86_64.tar.gz\nthagore-stage1-linux-arm64.tar.gz\nthagore-stage1-macos-arm64.tar.gz\nthagore-stage1-windows-x86_64.exe\nthagore-stage1-windows-arm64.exe'
+          fi
           asset_names=";$(printf '%s\n' "$asset_names_raw" | tr '\n' ';')"
           has_asset() {
             local name="$1"
