@@ -247,7 +247,13 @@ jobs:
             cp libthag_runtime.a thag_runtime.lib
             mkdir -p bootstrap/extract_stage1
             tar -xzf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/extract_stage1
-            CANDIDATE="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+            CANDIDATE="$(
+              {
+                find bootstrap/extract_stage1 -maxdepth 5 -type f -name thagore
+                find bootstrap/extract_stage1 -maxdepth 5 -type f -name stage1
+                find bootstrap/extract_stage1 -maxdepth 5 -type f -name thag
+              } | head -n 1 || true
+            )"
             [[ -n "$CANDIDATE" ]] || return 1
             cp "$CANDIDATE" stage1
             chmod +x stage1 || true
@@ -1361,16 +1367,26 @@ jobs:
             local cc_sig_before=""
             local cc_sig_after=""
             local materialized=""
+            local build_rc=0
+            local alt_build_rc=0
             if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
             fi
-            "./$cc" build "$source_file" -o "$out_stem" || true
+            if "./$cc" build "$source_file" -o "$out_stem"; then
+              build_rc=0
+            else
+              build_rc=$?
+            fi
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            "./$cc" --build "$source_file" -o "$out_stem" || return 1
+            if "./$cc" --build "$source_file" -o "$out_stem"; then
+              alt_build_rc=0
+            else
+              alt_build_rc=$?
+            fi
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
@@ -1378,7 +1394,7 @@ jobs:
             fi
             if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
-              if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+              if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
                 materialized="$out_stem"
                 if [[ "$cc" == *.exe && "$materialized" != *.exe ]]; then
                   materialized="${out_stem}.exe"
@@ -1420,7 +1436,13 @@ jobs:
             cp libthag_runtime.a thag_runtime.lib
             mkdir -p extract
             tar -xzf "${{ matrix.stage1_seed_name }}" -C extract
-            CANDIDATE="$(find extract -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n1 || true)"
+            CANDIDATE="$(
+              {
+                find extract -maxdepth 5 -type f -name thagore
+                find extract -maxdepth 5 -type f -name stage1
+                find extract -maxdepth 5 -type f -name thag
+              } | head -n1 || true
+            )"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in packaged seed archive"; exit 1)
             cp "$CANDIDATE" stage1
             chmod +x stage1
