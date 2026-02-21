@@ -1051,7 +1051,7 @@ jobs:
             local out_stem="$3"
             local tmp_ll="${out_stem}.ll"
             local out_bin=""
-            local linker="${CXX:-clang++}"
+            local linker="clang"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
             THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
@@ -1070,9 +1070,7 @@ jobs:
               return 1
             fi
             if ! command -v "$linker" >/dev/null 2>&1; then
-              if command -v clang++ >/dev/null 2>&1; then
-                linker="clang++"
-              elif command -v clang >/dev/null 2>&1; then
+              if command -v clang >/dev/null 2>&1; then
                 linker="clang"
               else
                 return 1
