@@ -15,7 +15,12 @@ func emit_program(root: ptr) -> String:
     return ""
 
 func emit_program_core(core: CoreProgram, module_name: String) -> String:
-    return native_codegen.emit_program_core(core, module_name)
+    let ir = native_codegen.emit_program_core(core, module_name)
+    let normalized = emittext._normalize_source_newlines(core.normalized_source)
+    if (_emit_contract_violation(normalized, ir) == 1):
+        print("CRITICAL: emitter contract violated: source semantics and emitted LLVM IR are inconsistent.")
+        return ""
+    return ir
 
 func _char_at(text: String, index: i32) -> String:
     return __thg_str_substr(text, index, 1)
@@ -39,6 +44,25 @@ func _looks_like_valid_llvm(ir: String) -> i32:
         return 0
     return 1
 
+func _has_flow_control_source(source: String) -> i32:
+    if (_contains(source, "if (") == 1):
+        return 1
+    if (_contains(source, "while (") == 1):
+        return 1
+    if ((_contains(source, "for ") == 1) and (_contains(source, "..") == 1)):
+        return 1
+    return 0
+
+func _emit_contract_violation(source: String, ir: String) -> i32:
+    if (_contains(source, "print(") == 1):
+        if ((_contains(ir, "@__thg_print_i32") == 0) and (_contains(ir, "@__thg_print_str") == 0)):
+            return 1
+    if (_has_flow_control_source(source) == 0):
+        return 0
+    if (_contains(ir, "br i1 ") == 1):
+        return 0
+    return 1
+
 func _is_runtime_wrapper_source(source: String) -> i32:
     if (_contains(source, "import ") == 0):
         return 0
@@ -57,6 +81,9 @@ func emit_object_core(core: CoreProgram, module_name: String, clang_bin: String,
         return llvmbuilder.__thg_llvm_builder_emit_cli_runtime_wrapper(module_name, object_path)
     let ir = emit_program_core(core, module_name)
     if (_looks_like_valid_llvm(ir) == 0):
+        return 2
+    if (_emit_contract_violation(normalized, ir) == 1):
+        print("CRITICAL: emitter contract violated: source semantics and emitted LLVM IR are inconsistent.")
         return 2
     return __thg_llvm_emit_object_from_ir(ir, module_name, object_path)
 
