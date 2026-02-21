@@ -240,11 +240,21 @@ jobs:
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cp "bootstrap/${{ matrix.stage1_seed_name }}" stage1.exe
               chmod +x stage1.exe || true
-              cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
+              if [[ -n "${RUNTIME_ASSET:-}" && -f "bootstrap/${{ matrix.runtime_seed_name }}" ]]; then
+                cp "bootstrap/${{ matrix.runtime_seed_name }}" thag_runtime.lib
+              else
+                rm -f thag_runtime.lib libthag_runtime.a || true
+                echo "[SEED] bootstrap runtime asset missing; relying on packaged/default runtime behavior for probe."
+              fi
               return 0
             fi
-            cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
-            cp libthag_runtime.a thag_runtime.lib
+            if [[ -n "${RUNTIME_ASSET:-}" && -f "bootstrap/${{ matrix.runtime_seed_name }}" ]]; then
+              cp "bootstrap/${{ matrix.runtime_seed_name }}" libthag_runtime.a
+              cp libthag_runtime.a thag_runtime.lib
+            else
+              rm -f libthag_runtime.a thag_runtime.lib || true
+              echo "[SEED] bootstrap runtime asset missing; relying on packaged/default runtime behavior for probe."
+            fi
             mkdir -p bootstrap/extract_stage1
             tar -xzf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/extract_stage1
             CANDIDATE="$(
@@ -357,7 +367,7 @@ jobs:
                 else
                   link_probe_ir "$out_ir" "${out_stem}" || return 1
                 fi
-                out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
+                  out_bin="$(resolve_probe_bin "$out_stem" || true)"
               fi
             fi
             if [[ -z "$out_bin" || ! -f "$out_bin" ]]; then
@@ -487,14 +497,17 @@ jobs:
                 fi
               done
             fi
-            if [[ -z "$RUNTIME_ASSET" || -z "$STAGE1_ASSET" ]]; then
-              echo "[SEED] reject tag=$CURRENT_TAG: missing atomic pair stage1/runtime for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
+            if [[ -z "$STAGE1_ASSET" ]]; then
+              echo "[SEED] reject tag=$CURRENT_TAG: missing stage1 asset for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
+            fi
+            if [[ -z "$RUNTIME_ASSET" ]]; then
+              echo "[SEED] tag=$CURRENT_TAG: runtime asset missing for ${{ matrix.asset_tag }}, continue with package/runtime-default probe." | tee -a "$STAGE_TRACE_FILE"
             fi
             if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
               cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
             fi
-            if [[ "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
+            if [[ -n "$RUNTIME_ASSET" && "$RUNTIME_ASSET" != "${{ matrix.runtime_seed_name }}" ]]; then
               cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
             fi
             materialize_working_files
