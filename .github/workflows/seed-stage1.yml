@@ -585,6 +585,10 @@ jobs:
             "v0.3.61-foundation"
             "v0.3.25-stage1-seed"
           )
+          while IFS= read -r EXTRA_TAG; do
+            [[ -n "$EXTRA_TAG" ]] || continue
+            TAG_CANDIDATES+=("$EXTRA_TAG")
+          done < <(gh release list --repo "${{ github.repository }}" --limit 40 --json tagName --jq '.[].tagName' 2>/dev/null || true)
           SELECTED_BOOTSTRAP_TAG=""
           SEEN_TAGS=";"
           for TAG in "${TAG_CANDIDATES[@]}"; do
