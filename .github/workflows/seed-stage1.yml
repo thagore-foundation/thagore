@@ -80,21 +80,31 @@ jobs:
             available="${available}linux-x86_64;"
           elif has_asset "thagore-stage1-linux.tar.gz"; then
             available="${available}linux-x86_64;"
+          elif has_asset "thagore-linux-x86_64.tar.gz"; then
+            available="${available}linux-x86_64;"
           fi
           if has_asset "thagore-stage1-linux-arm64.tar.gz"; then
+            available="${available}linux-arm64;"
+          elif has_asset "thagore-linux-arm64.tar.gz"; then
             available="${available}linux-arm64;"
           fi
           if has_asset "thagore-stage1-macos-arm64.tar.gz"; then
             available="${available}macos-arm64;"
           elif has_asset "thagore-stage1-macos.tar.gz"; then
             available="${available}macos-arm64;"
+          elif has_asset "thagore-macos-arm64.tar.gz"; then
+            available="${available}macos-arm64;"
           fi
           if has_asset "thagore-stage1-windows-x86_64.exe"; then
             available="${available}windows-x86_64;"
           elif has_asset "thagore-stage1.exe"; then
             available="${available}windows-x86_64;"
+          elif has_asset "thagore-windows-x86_64.tar.gz"; then
+            available="${available}windows-x86_64;"
           fi
           if has_asset "thagore-stage1-windows-arm64.exe"; then
+            available="${available}windows-arm64;"
+          elif has_asset "thagore-windows-arm64.tar.gz"; then
             available="${available}windows-arm64;"
           fi
           echo "available_tags=$available" >> "$GITHUB_OUTPUT"
@@ -218,23 +228,61 @@ jobs:
             local pattern="$1"
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
           }
+          materialize_from_release_package() {
+            local package_asset="$1"
+            local pkg_stage1=""
+            local pkg_runtime=""
+            rm -rf bootstrap/pkg_extract bootstrap/pkg_seed || true
+            mkdir -p bootstrap/pkg_extract bootstrap/pkg_seed/bin
+            if ! download_optional "$package_asset"; then
+              return 1
+            fi
+            tar -xzf "bootstrap/$package_asset" -C bootstrap/pkg_extract
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name stage1.exe | head -n 1 || true)"
+              pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name runtime.lib | head -n 1 || true)"
+              [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
+              cp "$pkg_stage1" "bootstrap/${{ matrix.stage1_seed_name }}"
+              cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+            else
+              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name stage1 -o -name stage1.exe \) | head -n 1 || true)"
+              pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name runtime.a -o -name runtime.lib \) | head -n 1 || true)"
+              [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
+              cp "$pkg_stage1" bootstrap/pkg_seed/bin/thagore
+              chmod +x bootstrap/pkg_seed/bin/thagore || true
+              cp "$pkg_stage1" bootstrap/pkg_seed/bin/thag || true
+              chmod +x bootstrap/pkg_seed/bin/thag || true
+              tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/pkg_seed .
+              cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+            fi
+            STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
+            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+            echo "[SEED] materialized seed assets from release package: $package_asset"
+            return 0
+          }
           STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
           RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
+          PACKAGE_CANDIDATES=()
           if [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1.exe")
             RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+            PACKAGE_CANDIDATES+=("thagore-windows-x86_64.tar.gz")
           elif [[ "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1.exe")
             RUNTIME_CANDIDATES+=("thagore-runtime-windows.lib")
+            PACKAGE_CANDIDATES+=("thagore-windows-arm64.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "x86_64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-linux.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+            PACKAGE_CANDIDATES+=("thagore-linux-x86_64.tar.gz")
           elif [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES=("thagore-stage1-linux-x86_64.tar.gz" "${{ matrix.stage1_seed_name }}" "thagore-stage1-linux.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-linux.a")
+            PACKAGE_CANDIDATES+=("thagore-linux-arm64.tar.gz")
           elif [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "arm64" ]]; then
             STAGE1_CANDIDATES+=("thagore-stage1-macos.tar.gz")
             RUNTIME_CANDIDATES+=("thagore-runtime-macos.a")
+            PACKAGE_CANDIDATES+=("thagore-macos-arm64.tar.gz")
           fi
           STAGE1_ASSET=""
           for ASSET in "${STAGE1_CANDIDATES[@]}"; do
@@ -243,7 +291,6 @@ jobs:
               break
             fi
           done
-          [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: stage1 bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
           RUNTIME_ASSET=""
           for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
             if download_optional "$ASSET"; then
@@ -251,7 +298,15 @@ jobs:
               break
             fi
           done
+          if [[ -z "$STAGE1_ASSET" || -z "$RUNTIME_ASSET" ]]; then
+            for PKG in "${PACKAGE_CANDIDATES[@]}"; do
+              if materialize_from_release_package "$PKG"; then
+                break
+              fi
+            done
+          fi
           [[ -n "$RUNTIME_ASSET" ]] || (echo "CRITICAL: runtime bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
+          [[ -n "$STAGE1_ASSET" ]] || (echo "CRITICAL: stage1 bootstrap asset missing for ${{ matrix.asset_tag }}"; exit 1)
           if [[ "$STAGE1_ASSET" != "${{ matrix.stage1_seed_name }}" ]]; then
             cp "bootstrap/$STAGE1_ASSET" "bootstrap/${{ matrix.stage1_seed_name }}"
           fi
