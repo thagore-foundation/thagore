@@ -270,43 +270,23 @@ jobs:
           }
           resolve_probe_bin() {
             local stem="$1"
-            local src="$2"
-            local base=""
-            base="$(basename "$src" .tg)"
-            for c in "$stem" "${stem}.exe" "${stem%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe"; do
+            for c in "$stem" "${stem}.exe" "${stem%.exe}"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
               fi
             done
-            {
-              find . -maxdepth 2 -type f -name "${stem}*" 2>/dev/null
-              find ./examples -maxdepth 2 -type f -name "${base}*" 2>/dev/null
-              find ./src -maxdepth 2 -type f -name "${base}*" 2>/dev/null
-            } \
-              | sed 's|^\./||' \
-              | grep -Ev '\.(tg|ll|o|obj|txt|log|json|md|yml|yaml)$' \
-              | grep -E '(^|/)[^/.]+(\.exe)?$' \
-              | head -n 1 || true
+            return 1
           }
           resolve_probe_ir() {
             local stem="$1"
-            local src="$2"
-            local base=""
-            base="$(basename "$src" .tg)"
-            for c in "${stem}.ll" "${stem%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll"; do
+            for c in "${stem}.ll" "${stem%.exe}.ll"; do
               if [[ -f "$c" ]]; then
                 echo "$c"
                 return 0
               fi
             done
-            {
-              find . -maxdepth 2 -type f -name "${stem}*.ll" 2>/dev/null
-              find ./examples -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
-              find ./src -maxdepth 2 -type f -name "${base}*.ll" 2>/dev/null
-            } \
-              | sed 's|^\./||' \
-              | head -n 1 || true
+            return 1
           }
           link_probe_ir() {
             local ir="$1"
@@ -348,7 +328,13 @@ jobs:
             local cc_sig_before=""
             local cc_sig_after=""
             local got=""
-            rm -f _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll hello hello.exe hello_0_41.ll _seed_gate_stage2 _seed_gate_stage2.exe || true
+            rm -f \
+              _seed_gate_hello _seed_gate_hello.exe _seed_gate_hello.ll \
+              _seed_gate_stage2 _seed_gate_stage2.exe \
+              hello hello.exe hello.ll hello_0_41.ll \
+              thagore thagore.exe thagore.ll src/thagore.ll \
+              __seed_probe_missing__* \
+              || true
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               cc_bin="stage1.exe"
             fi
@@ -356,11 +342,15 @@ jobs:
               echo "[SEED][probe] $CURRENT_TAG: '$cc_bin --version' failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             }
+            if "./$cc_bin" build __seed_probe_missing__.tg -o __seed_probe_missing__.out >/dev/null 2>&1; then
+              echo "[SEED][probe] $CURRENT_TAG: compiler returned success for missing input (no-op behavior)." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
             "./$cc_bin" build "$probe_src" -o "$out_stem" >/dev/null 2>&1 || true
-            out_bin="$(resolve_probe_bin "$out_stem" "$probe_src" || true)"
+            out_bin="$(resolve_probe_bin "$out_stem" || true)"
             if [[ -z "$out_bin" ]]; then
               "./$cc_bin" --emit-llvm-internal "$probe_src" -o "${out_stem}.ll" >/dev/null 2>&1 || true
-              out_ir="$(resolve_probe_ir "$out_stem" "$probe_src" || true)"
+              out_ir="$(resolve_probe_ir "$out_stem" || true)"
               if [[ -n "$out_ir" && -f "$out_ir" ]]; then
                 if [[ "${{ runner.os }}" == "Windows" ]]; then
                   link_probe_ir "$out_ir" "${out_stem}.exe" || return 1
@@ -385,19 +375,10 @@ jobs:
               echo "[SEED][probe] $CURRENT_TAG: build src/thagore.tg failed for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi
-            stage2_bin="$(resolve_probe_bin "$stage2_stem" "src/thagore.tg" || true)"
-            if [[ -z "$stage2_bin" ]]; then
-              cc_sig_after="$(hash_file "$cc_bin" || true)"
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                cp "$cc_bin" "${stage2_stem}.exe"
-                stage2_bin="${stage2_stem}.exe"
-              else
-                cp "$cc_bin" "$stage2_stem"
-                stage2_bin="$stage2_stem"
-              fi
-              echo "[SEED][probe] $CURRENT_TAG: materialized in-place stage2 from $cc_bin (hash_before=$cc_sig_before hash_after=$cc_sig_after)." | tee -a "$STAGE_TRACE_FILE"
-            fi
+            stage2_bin="$(resolve_probe_bin "$stage2_stem" || true)"
             if [[ -z "$stage2_bin" || ! -f "$stage2_bin" ]]; then
+              cc_sig_after="$(hash_file "$cc_bin" || true)"
+              echo "[SEED][probe] $CURRENT_TAG: stage2 artifact missing (hash_before=$cc_sig_before hash_after=$cc_sig_after)." | tee -a "$STAGE_TRACE_FILE"
               echo "[SEED][probe] $CURRENT_TAG: stage2 artifact missing for ${{ matrix.asset_tag }}" | tee -a "$STAGE_TRACE_FILE"
               return 1
             fi

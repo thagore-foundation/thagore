@@ -40,6 +40,7 @@ FORBIDDEN_LEGACY_MARKERS = [
     "build_and_assert_output ../examples/concat.tg concat_bundle \"Hello Vietrix\"",
     "build_and_assert_output ../examples/function.tg function_bundle $'42\\nHello Thagore'",
     "build_and_assert_output ../examples/fib.tg fib_bundle \"9227465\"",
+    "materialized in-place stage2 from",
 ]
 
 
