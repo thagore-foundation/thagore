@@ -355,6 +355,17 @@ jobs:
         timeout-minutes: 12
         run: |
           set -euxo pipefail
+          WATCHDOG_PID=""
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
+            (
+              sleep 720
+              echo "CRITICAL: verify watchdog exceeded 12 minutes on linux-arm64, terminating step." >&2
+              pkill -TERM -P "$$" || true
+              kill -TERM "$$" || true
+            ) &
+            WATCHDOG_PID="$!"
+            trap 'if [[ -n "${WATCHDOG_PID:-}" ]]; then kill "$WATCHDOG_PID" >/dev/null 2>&1 || true; fi' EXIT
+          fi
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             free -h || true
           fi
