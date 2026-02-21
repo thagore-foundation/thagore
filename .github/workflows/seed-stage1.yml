@@ -1540,7 +1540,7 @@ jobs:
             else
               build_rc=$?
             fi
-            out_bin="$(resolve_bin "$out_stem" || true)"
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
@@ -1550,7 +1550,7 @@ jobs:
             else
               alt_build_rc=$?
             fi
-            out_bin="$(resolve_bin "$out_stem" || true)"
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
@@ -1657,20 +1657,23 @@ jobs:
           run_compiler_cmd "$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           run_compiler_cmd "$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
-          thg_build_compiler "$STAGE1_BIN" src/thagore.tg "$STAGE2_STEM" >/dev/null || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
-          STAGE2_BIN="$(resolve_bin "$STAGE2_STEM" || true)"
+          STAGE2_BIN="$(thg_build_compiler "$STAGE1_BIN" src/thagore.tg "$STAGE2_STEM" || true)"
+          STAGE2_BIN="$(printf '%s\n' "$STAGE2_BIN" | tail -n1 | tr -d '\r')"
+          [[ -n "$STAGE2_BIN" ]] || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
           [[ -n "$STAGE2_BIN" ]] || (echo "CRITICAL: packaged stage1 produced no standalone stage2 artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2_BIN"
           fi
-          thg_build_compiler "$STAGE2_BIN" src/thagore.tg stage2b_from_bundle >/dev/null || (echo "CRITICAL: stage2 failed to rebuild stage2b"; exit 1)
-          STAGE2B_BIN="$(resolve_bin stage2b_from_bundle || true)"
+          STAGE2B_BIN="$(thg_build_compiler "$STAGE2_BIN" src/thagore.tg stage2b_from_bundle || true)"
+          STAGE2B_BIN="$(printf '%s\n' "$STAGE2B_BIN" | tail -n1 | tr -d '\r')"
+          [[ -n "$STAGE2B_BIN" ]] || (echo "CRITICAL: stage2 failed to rebuild stage2b"; exit 1)
           [[ -n "$STAGE2B_BIN" ]] || (echo "CRITICAL: stage2 produced no standalone stage2b artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2B_BIN"
           fi
-          thg_build_compiler "$STAGE2B_BIN" src/thagore.tg stage2c_from_bundle >/dev/null || (echo "CRITICAL: stage2b failed to rebuild stage2c"; exit 1)
-          STAGE2C_BIN="$(resolve_bin stage2c_from_bundle || true)"
+          STAGE2C_BIN="$(thg_build_compiler "$STAGE2B_BIN" src/thagore.tg stage2c_from_bundle || true)"
+          STAGE2C_BIN="$(printf '%s\n' "$STAGE2C_BIN" | tail -n1 | tr -d '\r')"
+          [[ -n "$STAGE2C_BIN" ]] || (echo "CRITICAL: stage2b failed to rebuild stage2c"; exit 1)
           [[ -n "$STAGE2C_BIN" ]] || (echo "CRITICAL: stage2b produced no standalone stage2c artifact"; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2C_BIN"
