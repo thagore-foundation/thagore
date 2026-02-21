@@ -153,22 +153,34 @@ jobs:
           }
           download_asset() {
             local pattern="$1"
-            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            download_release_asset "$pattern" ""
           }
           download_stage1_asset() {
             local pattern="$1"
-            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
-            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap
+            download_release_asset "$pattern" ""
           }
           download_runtime_asset() {
             local pattern="$1"
             local dest="$2"
-            if gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap; then
-              cp "bootstrap/$pattern" "$dest"
-              return 0
+            download_release_asset "$pattern" "$dest"
+          }
+          download_release_asset() {
+            local pattern="$1"
+            local dest="${2:-}"
+            [[ -n "$BOOTSTRAP_STAGE1_TAG" ]] || (echo "CRITICAL: BOOTSTRAP_STAGE1_TAG is required."; exit 1)
+            local src="bootstrap/$pattern"
+            rm -f "$src" || true
+            gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
+            if [[ ! -f "$src" ]]; then
+              curl -fsSL -o "$src" "https://github.com/${{ github.repository }}/releases/download/$BOOTSTRAP_STAGE1_TAG/$pattern" || true
             fi
-            return 1
+            if [[ ! -f "$src" ]]; then
+              return 1
+            fi
+            if [[ -n "$dest" && "$dest" != "$src" ]]; then
+              cp "$src" "$dest"
+            fi
+            return 0
           }
           probe_stage1_chain() {
             local bin="$1"
