@@ -87,40 +87,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          asset_names=";$(gh release view "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | tr '\n' ';')"
-          has_asset() {
-            local name="$1"
-            [[ "$asset_names" == *";${name};"* ]]
-          }
-          available=";"
-          if has_asset "thagore-stage1-linux-x86_64.tar.gz" && has_asset "thagore-runtime-linux-x86_64.a"; then
-            available="${available}linux-x86_64;"
-          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
-            available="${available}linux-x86_64;"
-          fi
-          if has_asset "thagore-stage1-linux-arm64.tar.gz" && has_asset "thagore-runtime-linux-arm64.a"; then
-            available="${available}linux-arm64;"
-          elif has_asset "thagore-stage1-linux.tar.gz" && has_asset "thagore-runtime-linux.a"; then
-            available="${available}linux-arm64;"
-          fi
-          if has_asset "thagore-stage1-macos-x86_64.tar.gz" && has_asset "thagore-runtime-macos-x86_64.a"; then
-            available="${available}macos-x86_64;"
-          fi
-          if has_asset "thagore-stage1-macos-arm64.tar.gz" && has_asset "thagore-runtime-macos-arm64.a"; then
-            available="${available}macos-arm64;"
-          elif has_asset "thagore-stage1-macos.tar.gz" && has_asset "thagore-runtime-macos.a"; then
-            available="${available}macos-arm64;"
-          fi
-          if has_asset "thagore-stage1-windows-x86_64.exe" && has_asset "thagore-runtime-windows-x86_64.lib"; then
-            available="${available}windows-x86_64;"
-          elif has_asset "thagore-stage1.exe" && has_asset "thagore-runtime-windows.lib"; then
-            available="${available}windows-x86_64;"
-          fi
-          if has_asset "thagore-stage1-windows-arm64.exe" && has_asset "thagore-runtime-windows-arm64.lib"; then
-            available="${available}windows-arm64;"
-          elif has_asset "thagore-stage1.exe" && has_asset "thagore-runtime-windows.lib"; then
-            available="${available}windows-arm64;"
-          fi
+          # Avoid release-probe dependency on GitHub API quotas.
+          # Actual seed availability is enforced in per-lane bootstrap download + verify.
+          available=";linux-x86_64;linux-arm64;macos-arm64;windows-x86_64;windows-arm64;"
           echo "available_tags=$available" >> "$GITHUB_OUTPUT"
           echo "available_tags=$available"
           export AVAILABLE_TAGS="$available"
