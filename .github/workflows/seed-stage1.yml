@@ -622,6 +622,14 @@ jobs:
           run_compiler() {
             local cc="$1"
             shift
+            local helper_env=()
+            if [[ -z "${THAG_HELPER_BIN:-}" && "$cc" != "stage1" && "$cc" != "stage1.exe" ]]; then
+              if [[ -f stage1 ]]; then
+                helper_env+=(THAG_HELPER_BIN=./stage1)
+              elif [[ -f stage1.exe ]]; then
+                helper_env+=(THAG_HELPER_BIN=./stage1.exe)
+              fi
+            fi
             if [[ "${STAGE1_EMULATE_X86_64:-0}" == "1" && "$cc" == "stage1" ]]; then
               local qemu_bin=""
               if command -v qemu-x86_64-static >/dev/null 2>&1; then
@@ -633,10 +641,14 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              run_with_watchdog env "${helper_env[@]}" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            run_with_watchdog "./$cc" "$@"
+            if [[ "${#helper_env[@]}" -gt 0 ]]; then
+              run_with_watchdog env "${helper_env[@]}" "./$cc" "$@"
+            else
+              run_with_watchdog "./$cc" "$@"
+            fi
           }
           resolve_bin() {
             local preferred="$1"
