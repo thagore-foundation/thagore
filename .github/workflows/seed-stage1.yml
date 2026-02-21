@@ -1318,11 +1318,39 @@ jobs:
             fi
             return 1
           }
+          resolve_program_ir() {
+            local source_file="$1"
+            local out_stem="$2"
+            local source_base=""
+            local source_dir_stem=""
+            source_base="$(basename "$source_file")"
+            source_base="${source_base%.tg}"
+            source_dir_stem="${source_file%.tg}"
+            for c in "${out_stem}.ll" "${out_stem%.exe}.ll" "${source_base}.ll" "${source_dir_stem}.ll"; do
+              if [[ -f "$c" ]]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            local discovered=""
+            discovered="$(
+              {
+                find . -maxdepth 2 -type f -name "${out_stem}*.ll" 2>/dev/null
+                find . -maxdepth 2 -type f -name "${source_base}*.ll" 2>/dev/null
+              } | head -n1 || true
+            )"
+            if [[ -n "$discovered" ]]; then
+              echo "$discovered"
+              return 0
+            fi
+            return 1
+          }
           build_program_with_cc() {
             local compiler_bin="$1"
             local source_file="$2"
             local out_stem="$3"
             local tmp_ll="${out_stem}.ll"
+            local emitted_ll=""
             local out_bin=""
             local linker="clang"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
@@ -1339,7 +1367,8 @@ jobs:
               return 0
             fi
             "./$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
-            if [[ ! -f "$tmp_ll" ]]; then
+            emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
+            if [[ -z "$emitted_ll" ]]; then
               return 1
             fi
             if ! command -v "$linker" >/dev/null 2>&1; then
@@ -1350,9 +1379,9 @@ jobs:
               fi
             fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              "$linker" "$tmp_ll" thag_runtime.lib -O2 -std=c++17 -o "${out_stem}.exe" || return 1
+              "$linker" "$emitted_ll" thag_runtime.lib -O2 -std=c++17 -o "${out_stem}.exe" || return 1
             else
-              "$linker" "$tmp_ll" libthag_runtime.a -O2 -std=c++17 -o "$out_stem" || return 1
+              "$linker" "$emitted_ll" libthag_runtime.a -O2 -std=c++17 -o "$out_stem" || return 1
             fi
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             [[ -n "$out_bin" ]] || return 1
