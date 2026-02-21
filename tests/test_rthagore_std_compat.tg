@@ -1,5 +1,7 @@
 import "lib/rthagore/std/bytes.tg" as bytes
 import "lib/rthagore/std/collections.tg" as collections
+import "lib/rthagore/std/dylib.tg" as dylib
+import "lib/rthagore/std/env.tg" as env
 import "lib/rthagore/std/json.tg" as json
 import "lib/rthagore/std/list.tg" as listmod
 import "lib/rthagore/std/map.tg" as mapmod
@@ -73,6 +75,14 @@ func main() -> i32:
     let dst = mem.alloc(2)
     let moved = mem.copy(dst, 0, src, 0, 2)
     fails = fails + _expect_str("mem copy", bytes.raw(moved), "HI")
+
+    let h = dylib.open("kernel32.dll")
+    fails = fails + _expect_i32("dylib open", h != null, 1)
+    if (env.get("OS") == "Windows_NT"):
+        fails = fails + _expect_i32("dylib symbol windows", dylib.symbol(h, "GetTickCount") != null, 1)
+    else:
+        fails = fails + _expect_i32("dylib symbol fallback", dylib.symbol(h, "noop") != null, 1)
+    fails = fails + _expect_i32("dylib close", dylib.close(h), 0)
 
     if (fails == 0):
         print("PASS: rthagore std compat")

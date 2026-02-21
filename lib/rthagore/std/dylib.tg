@@ -1,13 +1,23 @@
 // dylib compat shim
 
+use env as env
+
 extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
+extern func LoadLibraryA(path: String) -> ptr
+extern func GetProcAddress(module: ptr, name: String) -> ptr
+extern func FreeLibrary(module: ptr) -> i32
+
+func _is_windows() -> bool
+  return env.get("OS") == "Windows_NT"
 
 func open(path: String) -> ptr
   if path == null
     return null
   if path == ""
     return null
+  if _is_windows()
+    return LoadLibraryA(path)
   return malloc(1)
 
 func symbol(handle: ptr, name: String) -> ptr
@@ -17,10 +27,16 @@ func symbol(handle: ptr, name: String) -> ptr
     return null
   if name == ""
     return null
+  if _is_windows()
+    return GetProcAddress(handle, name)
   return handle
 
 func close(handle: ptr) -> i32
   if handle == null
+    return -1
+  if _is_windows()
+    if FreeLibrary(handle) != 0
+      return 0
     return -1
   free(handle)
   return 0
