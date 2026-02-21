@@ -155,17 +155,21 @@ jobs:
       - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
         shell: bash
+        timeout-minutes: 12
         run: |
           set -euo pipefail
+          apt_quick() {
+            timeout --signal=TERM --kill-after=30 6m "$@"
+          }
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-            sudo apt-get update || true
-            sudo apt-get install -y qemu-user qemu-user-static libc6-amd64-cross libstdc++6-amd64-cross libgcc-s1-amd64-cross
+            apt_quick sudo apt-get update || true
+            apt_quick sudo apt-get install -y qemu-user qemu-user-static libc6-amd64-cross libstdc++6-amd64-cross libgcc-s1-amd64-cross || true
           fi
           if ! command -v clang >/dev/null 2>&1; then
-            sudo apt-get update || true
+            apt_quick sudo apt-get update || true
             curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
             chmod +x /tmp/llvm.sh
-            sudo /tmp/llvm.sh 21 all || true
+            apt_quick sudo /tmp/llvm.sh 21 all || true
             if [[ -d /usr/lib/llvm-21/bin ]]; then
               echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
             fi
