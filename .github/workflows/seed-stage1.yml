@@ -504,10 +504,7 @@ jobs:
             echo "[INFO] linux-arm64 minimal verify: cli + hello smoke from stage1 seed" | tee -a "$STAGE_TRACE_FILE"
             echo "[CMD] ./$STAGE1_BIN --version" | tee -a "$STAGE_TRACE_FILE" >&2
             run_compiler "$STAGE1_BIN" --version 1>&2
-            cat > _seed_min_hello.tg <<'EOF'
-func main():
-    print("seed linux arm64 smoke")
-EOF
+            printf 'func main():\n    print("seed linux arm64 smoke")\n' > _seed_min_hello.tg
             SEED_BIN="$STAGE1_BIN"
             STAGE2_REBUILD_BIN="$SEED_BIN"
             COMPILER_CANDIDATES=("$SEED_BIN")
