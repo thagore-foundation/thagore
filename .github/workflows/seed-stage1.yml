@@ -1499,8 +1499,8 @@ jobs:
             fi
             if [[ -z "$emitted_ll" ]]; then
               if [[ -f "$emit_log" ]]; then
-                echo "[verify-bundle][emit-tail] $compiler_bin -> $source_file"
-                tail -n 20 "$emit_log" || true
+                echo "[verify-bundle][emit-tail] $compiler_bin -> $source_file" >&2
+                tail -n 20 "$emit_log" >&2 || true
               fi
               return 1
             fi
@@ -1575,6 +1575,7 @@ jobs:
             local expected="$4"
             local out_bin
             out_bin="$(build_program_with_cc "$compiler_bin" "$source_file" "$out_stem" || true)"
+            out_bin="$(printf '%s\n' "$out_bin" | tail -n1 | tr -d '\r')"
             if [[ -z "$out_bin" ]]; then
               echo "CRITICAL: $compiler_bin failed to build executable for $source_file"
               return 1
