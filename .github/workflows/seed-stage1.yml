@@ -334,19 +334,23 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if swapon --show=NAME --noheadings | grep -q .; then
-            echo "[INFO] swap already active"
-            swapon --show || true
-            free -h || true
-            exit 0
+          swap_total_bytes="$(swapon --bytes --show=SIZE --noheadings | awk '{sum+=$1} END {print sum+0}')"
+          min_swap_bytes=$((8 * 1024 * 1024 * 1024))
+          if (( swap_total_bytes < min_swap_bytes )); then
+            need_bytes=$((min_swap_bytes - swap_total_bytes))
+            # Round up to MiB for dd/fallocate sizing.
+            need_mib=$(( (need_bytes + 1024 * 1024 - 1) / (1024 * 1024) ))
+            [[ "$need_mib" -ge 2048 ]] || need_mib=2048
+            SWAPFILE=/swapfile_thagore
+            sudo swapoff "$SWAPFILE" >/dev/null 2>&1 || true
+            sudo rm -f "$SWAPFILE"
+            if ! sudo fallocate -l "${need_mib}M" "$SWAPFILE"; then
+              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count="$need_mib" status=progress
+            fi
+            sudo chmod 600 "$SWAPFILE"
+            sudo mkswap "$SWAPFILE"
+            sudo swapon "$SWAPFILE"
           fi
-          SWAPFILE=/swapfile
-          if ! sudo fallocate -l 6G "$SWAPFILE"; then
-            sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=6144 status=progress
-          fi
-          sudo chmod 600 "$SWAPFILE"
-          sudo mkswap "$SWAPFILE"
-          sudo swapon "$SWAPFILE"
           swapon --show
           free -h
 
