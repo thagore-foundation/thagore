@@ -1626,7 +1626,7 @@ jobs:
             else
               build_rc=$?
             fi
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
@@ -1636,7 +1636,7 @@ jobs:
             else
               alt_build_rc=$?
             fi
-            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
