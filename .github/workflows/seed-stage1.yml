@@ -498,6 +498,7 @@ jobs:
             HELLO_BIN="hello_seed"
             FIB_BIN="fib_seed"
           fi
+          export THAG_HELPER_BIN="$STAGE1_BIN"
 
           if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
             echo "[INFO] linux-arm64 minimal verify: cli + hello smoke from stage1 seed" | tee -a "$STAGE_TRACE_FILE"
