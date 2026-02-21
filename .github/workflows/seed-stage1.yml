@@ -1352,6 +1352,7 @@ jobs:
             local cc="$1"
             shift
             local helper="./stage1"
+            local force_emit="${THAG_FORCE_INTERNAL_EMIT:-0}"
             if [[ -f "./stage1.exe" ]]; then
               helper="./stage1.exe"
             fi
@@ -1359,10 +1360,10 @@ jobs:
             if [[ -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
               common_env+=(THAG_HELPER_BIN="$helper")
             fi
-            if [[ -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
+            if [[ "$force_emit" == "1" && -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
               common_env+=(THAGORE_INTERNAL_EMIT=1)
             fi
-            if [[ -z "${THAG_HELPER_DEPTH:-}" ]]; then
+            if [[ "$force_emit" == "1" && -z "${THAG_HELPER_DEPTH:-}" ]]; then
               common_env+=(THAG_HELPER_DEPTH=1)
             fi
             if [[ ${#common_env[@]} -gt 0 ]]; then
@@ -1483,18 +1484,18 @@ jobs:
             fi
 
             rm -f "$emit_log" || true
-            run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
+            THAG_FORCE_INTERNAL_EMIT=1 run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
             emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             if [[ -z "$emitted_ll" ]]; then
-              run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm-internal -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              THAG_FORCE_INTERNAL_EMIT=1 run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm-internal -o "$tmp_ll" >"$emit_log" 2>&1 || true
               emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             fi
             if [[ -z "$emitted_ll" ]]; then
-              run_compiler_cmd "$compiler_bin" --emit-llvm "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              THAG_FORCE_INTERNAL_EMIT=1 run_compiler_cmd "$compiler_bin" --emit-llvm "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
               emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             fi
             if [[ -z "$emitted_ll" ]]; then
-              run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              THAG_FORCE_INTERNAL_EMIT=1 run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm -o "$tmp_ll" >"$emit_log" 2>&1 || true
               emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             fi
             if [[ -z "$emitted_ll" ]]; then
