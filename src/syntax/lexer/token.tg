@@ -6,20 +6,36 @@ extern func __thg_token_new(kind: String, text: String) -> ptr
 extern func __thg_token_kind(tok: ptr) -> String
 extern func __thg_token_text(tok: ptr) -> String
 extern func __thg_token_free(tok: ptr) -> i32
+extern func __thg_ptr_null() -> ptr
+
+func _null_token() -> ptr:
+    return __thg_ptr_null()
 
 func new_token(k: String, t: String) -> Token:
     return Token(k, t)
 
 func new_handle(k: String, t: String) -> ptr:
-    return __thg_token_new(k, t)
+    let kind = k
+    let text = t
+    if (kind == null):
+        kind = ""
+    if (text == null):
+        text = ""
+    return __thg_token_new(kind, text)
 
 func kind_of(tok: ptr) -> String:
+    if (tok == _null_token()):
+        return ""
     return __thg_token_kind(tok)
 
 func text_of(tok: ptr) -> String:
+    if (tok == _null_token()):
+        return ""
     return __thg_token_text(tok)
 
 func free_handle(tok: ptr) -> i32:
+    if (tok == _null_token()):
+        return 0
     return __thg_token_free(tok)
 
 func tok_newline() -> String:
@@ -101,7 +117,7 @@ func tok_raw_string() -> String:
     return "RAW_STRING"
 
 func tok_lbrace() -> String:
-    return ""
+    return "LBRACE"
 
 func tok_rbrace() -> String:
-    return ""
+    return "RBRACE"

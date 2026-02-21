@@ -6,23 +6,43 @@ extern func __thg_tok_kind(stream: ptr, index: i32) -> String
 extern func __thg_tok_text(stream: ptr, index: i32) -> String
 extern func __thg_tok_tag(stream: ptr, index: i32) -> i32
 extern func __thg_tok_free_stream(stream: ptr) -> i32
+extern func __thg_ptr_null() -> ptr
+
+func _null_stream() -> ptr:
+    return __thg_ptr_null()
 
 func tokenize_stream(source: String) -> ptr:
     return __thg_lex_tokenize(source)
 
 func stream_count(stream: ptr) -> i32:
+    if (stream == _null_stream()):
+        return 0
     return __thg_tok_count(stream)
 
 func stream_kind(stream: ptr, index: i32) -> String:
+    if (stream == _null_stream()):
+        return ""
+    if (index < 0):
+        return ""
     return __thg_tok_kind(stream, index)
 
 func stream_text(stream: ptr, index: i32) -> String:
+    if (stream == _null_stream()):
+        return ""
+    if (index < 0):
+        return ""
     return __thg_tok_text(stream, index)
 
 func stream_tag(stream: ptr, index: i32) -> i32:
+    if (stream == _null_stream()):
+        return -1
+    if (index < 0):
+        return -1
     return __thg_tok_tag(stream, index)
 
 func stream_free(stream: ptr) -> i32:
+    if (stream == _null_stream()):
+        return 0
     return __thg_tok_free_stream(stream)
 
 func tokenize(source: String) -> i32:

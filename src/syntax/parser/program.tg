@@ -4,12 +4,18 @@ extern func __thg_parse_expr_from_tokens(stream: ptr) -> ptr
 extern func __thg_parse_stmt_from_source(source: String) -> ptr
 extern func __thg_parse_program_from_source(source: String) -> ptr
 extern func __thg_ast_free(node: ptr) -> i32
+extern func __thg_ptr_null() -> ptr
+
+func _null_ptr() -> ptr:
+    return __thg_ptr_null()
 
 struct Parser:
     stream: ptr
 
 impl Parser:
     func parse(self) -> ptr:
+        if (self.stream == _null_ptr()):
+            return _null_ptr()
         return __thg_parse_expr_from_tokens(self.stream)
 
 func new_parser(source: String) -> Parser:
@@ -19,7 +25,8 @@ func new_parser(source: String) -> Parser:
 func parse_expr(source: String) -> ptr:
     let p = new_parser(source)
     let out = p.parse()
-    lexer.stream_free(p.stream)
+    if (p.stream != _null_ptr()):
+        lexer.stream_free(p.stream)
     return out
 
 func parse_stmt(source: String) -> ptr:
@@ -29,4 +36,6 @@ func parse_program(source: String) -> ptr:
     return __thg_parse_program_from_source(source)
 
 func free_tree(node: ptr) -> i32:
+    if (node == _null_ptr()):
+        return 0
     return __thg_ast_free(node)

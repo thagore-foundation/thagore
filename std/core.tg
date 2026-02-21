@@ -21,10 +21,18 @@ func thg_str_add(a: String, b: String) -> String:
     return a + b
 
 func ptr_set(base: ptr, index: i32, value: ptr) -> i32:
+    if (base == __thg_ptr_null()):
+        return 0
+    if (index < 0):
+        return 0
     __thg_ptr_set(base, index, value)
     return 1
 
 func ptr_get(base: ptr, index: i32) -> ptr:
+    if (base == __thg_ptr_null()):
+        return __thg_ptr_null()
+    if (index < 0):
+        return __thg_ptr_null()
     return __thg_ptr_get(base, index)
 
 func ptr_null() -> ptr:
@@ -34,6 +42,8 @@ func str_substr(s: String, start: i32, len: i32) -> String:
     return __thg_str_substr(s, start, len)
 
 func mem_free(p: ptr) -> i32:
+    if (p == __thg_ptr_null()):
+        return 0
     free(p)
     return 1
 

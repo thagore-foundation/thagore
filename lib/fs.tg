@@ -49,7 +49,10 @@ func list_dir(path: String) -> String:
 func open_binary(path: String, mode: String) -> ptr:
     if (path == ""):
         return _null_handle()
-    return __fs_open_binary(path, mode)
+    let use_mode = mode
+    if (use_mode == ""):
+        use_mode = "r"
+    return __fs_open_binary(path, use_mode)
 
 func write_bytes(handle: ptr, buffer: String) -> i32:
     if (_is_null_handle(handle) == 1):
