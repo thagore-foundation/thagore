@@ -418,18 +418,20 @@ jobs:
             local bin="$1"
             local help_out=""
             local ver_out=""
+            local help_rc=0
+            local ver_rc=0
             local merged=""
             local probe_src="stage1_probe_cli.tg"
             local probe_out="stage1_probe_cli"
             local probe_bin=""
-            help_out="$("./$bin" --help 2>&1 || true)"
-            ver_out="$("./$bin" --version 2>&1 || true)"
+            help_out="$("./$bin" --help 2>&1)" || help_rc=$?
+            ver_out="$("./$bin" --version 2>&1)" || ver_rc=$?
             merged="$ver_out"$'\n'"$help_out"
             if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|No such file or directory|not recognized as an internal" <<<"$merged"; then
               return 1
             fi
-            if [[ -z "${merged//[[:space:]]/}" ]]; then
-              echo "CRITICAL: selected stage1 produced empty --version/--help output."
+            if [[ "$help_rc" -ne 0 && "$ver_rc" -ne 0 ]]; then
+              echo "CRITICAL: selected stage1 failed --version and --help probe."
               return 1
             fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
