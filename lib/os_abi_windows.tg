@@ -1,0 +1,79 @@
+# Direct Windows OS ABI bindings (no Thagore runtime C wrapper layer).
+# This module is Windows-only by design.
+
+extern func GetTickCount() -> i32
+extern func Sleep(milliseconds: i32) -> void
+extern func GetCurrentProcessId() -> i32
+extern func GetCurrentThreadId() -> i32
+extern func GetLastError() -> i32
+extern func CreateDirectoryA(path: String, security_attributes: ptr) -> i32
+extern func DeleteFileA(path: String) -> i32
+extern func MoveFileExA(src: String, dst: String, flags: i32) -> i32
+extern func GetFileAttributesA(path: String) -> i32
+extern func OutputDebugStringA(text: String) -> void
+
+func _null_ptr() -> ptr:
+    return null
+
+func _invalid_file_attrs() -> i32:
+    return -1
+
+func _already_exists_error() -> i32:
+    return 183
+
+func _movefile_replace_existing() -> i32:
+    return 1
+
+func _movefile_write_through() -> i32:
+    return 8
+
+func abi_time_now_ms() -> i32:
+    return GetTickCount()
+
+func abi_sleep_ms(ms: i32) -> i32:
+    if (ms < 0):
+        return -1
+    Sleep(ms)
+    return 0
+
+func abi_process_id() -> i32:
+    return GetCurrentProcessId()
+
+func abi_thread_id() -> i32:
+    return GetCurrentThreadId()
+
+func abi_debug_print(text: String) -> i32:
+    OutputDebugStringA(text)
+    return 0
+
+func abi_file_exists(path: String) -> i32:
+    if (path == ""):
+        return 0
+    if (GetFileAttributesA(path) == _invalid_file_attrs()):
+        return 0
+    return 1
+
+func abi_mkdir(path: String) -> i32:
+    if (path == ""):
+        return 0
+    let rc = CreateDirectoryA(path, _null_ptr())
+    if (rc != 0):
+        return 1
+    if (GetLastError() == _already_exists_error()):
+        return 1
+    return 0
+
+func abi_remove_file(path: String) -> i32:
+    if (path == ""):
+        return 0
+    if (DeleteFileA(path) != 0):
+        return 1
+    return 0
+
+func abi_move_file(src: String, dst: String) -> i32:
+    if ((src == "") or (dst == "")):
+        return 0
+    let flags = _movefile_replace_existing() + _movefile_write_through()
+    if (MoveFileExA(src, dst, flags) != 0):
+        return 1
+    return 0

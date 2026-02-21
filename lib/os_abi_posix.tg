@@ -1,0 +1,51 @@
+# Direct POSIX ABI bindings (no Thagore runtime C wrapper layer).
+# Intended for Linux/macOS/BSD.
+
+extern func getpid() -> i32
+extern func usleep(usec: i32) -> i32
+extern func access(path: String, mode: i32) -> i32
+extern func mkdir(path: String, mode: i32) -> i32
+extern func unlink(path: String) -> i32
+extern func rename(old_path: String, new_path: String) -> i32
+
+func _f_ok() -> i32:
+    return 0
+
+func _default_dir_mode() -> i32:
+    return 493
+
+func abi_process_id() -> i32:
+    return getpid()
+
+func abi_sleep_ms(ms: i32) -> i32:
+    if (ms < 0):
+        return -1
+    return usleep(ms * 1000)
+
+func abi_file_exists(path: String) -> i32:
+    if (path == ""):
+        return 0
+    if (access(path, _f_ok()) == 0):
+        return 1
+    return 0
+
+func abi_mkdir(path: String) -> i32:
+    if (path == ""):
+        return 0
+    if (mkdir(path, _default_dir_mode()) == 0):
+        return 1
+    return 0
+
+func abi_remove_file(path: String) -> i32:
+    if (path == ""):
+        return 0
+    if (unlink(path) == 0):
+        return 1
+    return 0
+
+func abi_move_file(src: String, dst: String) -> i32:
+    if ((src == "") or (dst == "")):
+        return 0
+    if (rename(src, dst) == 0):
+        return 1
+    return 0
