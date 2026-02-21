@@ -1558,13 +1558,16 @@ jobs:
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
               if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
-                materialized="$out_stem"
-                if [[ "$cc" == *.exe && "$materialized" != *.exe ]]; then
-                  materialized="${out_stem}.exe"
+                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
+                  materialized="$out_stem"
+                  if [[ "$cc" == *.exe && "$materialized" != *.exe ]]; then
+                    materialized="${out_stem}.exe"
+                  fi
+                  cp "$cc" "$materialized"
+                  echo "$materialized"
+                  return 0
                 fi
-                cp "$cc" "$materialized"
-                echo "$materialized"
-                return 0
+                echo "[verify-bundle] compiler returned success without output and without binary mutation: $cc -> $out_stem" >&2
               fi
             fi
             return 1
