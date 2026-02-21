@@ -805,7 +805,11 @@ jobs:
             local out="$2"
             local base
             base="$(basename "$src" .tg)"
-            rm -f "$out" "${out}.exe" "${out%.exe}" "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" "a.out" "a.exe" "out" "out.exe" || true
+            rm -f \
+              "$out" "${out}.exe" "${out%.exe}" \
+              "$base" "$base.exe" "examples/$base" "examples/$base.exe" "src/$base" "src/$base.exe" \
+              "${out}.ll" "${out%.exe}.ll" "$base.ll" "examples/$base.ll" "src/$base.ll" \
+              "a.out" "a.exe" "out" "out.exe" || true
           }
           hash_file() {
             local f="$1"
@@ -843,6 +847,10 @@ jobs:
             STAGE2_REBUILD_BIN="$SEED_BIN"
             COMPILER_CANDIDATES=("$SEED_BIN")
           else
+            if run_compiler "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
+              echo "CRITICAL: seed compiler returned success for missing input (no-op behavior)."
+              exit 1
+            fi
             thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
             STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
             [[ -n "$STAGE2_BIN_RESOLVED" ]] || (echo "CRITICAL: stage1 produced no standalone stage2 artifact"; exit 1)
@@ -1548,6 +1556,10 @@ jobs:
           if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
             echo "[WARN] linux-arm64 verify-bundle uses metadata/provenance gate only; executable smoke remains covered in build-seed lane."
             exit 0
+          fi
+          if run_compiler_cmd "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
+            echo "CRITICAL: packaged stage1 returns success for missing input (no-op behavior)."
+            exit 1
           fi
           cp -R ../src ./src
           cp -R ../examples ./examples
