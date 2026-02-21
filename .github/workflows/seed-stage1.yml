@@ -348,6 +348,7 @@ jobs:
 
       - name: Verify Stage1 -> Stage2 -> Stage2 -> samples
         shell: bash
+        timeout-minutes: 35
         run: |
           set -euxo pipefail
           if [[ "${{ runner.os }}" == "Linux" ]]; then
@@ -411,12 +412,12 @@ jobs:
             local ir="$1"
             local out="$2"
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
-              clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
+              run_with_watchdog clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
+              run_with_watchdog clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
               return 1
             fi
-            clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
-            clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
+            run_with_watchdog clang "$ir" -o "$out" -Wno-override-module libthag_runtime.a && return 0
+            run_with_watchdog clang "$ir" -o "$out" -Wno-override-module thag_runtime.lib && return 0
             return 1
           }
           thg_build() {
@@ -544,7 +545,7 @@ jobs:
             echo "CRITICAL: hello output binary unexpectedly equals compiler binary hash."
             exit 1
           fi
-          "./$HELLO_BIN_FOUND" >/dev/null 2>&1
+          run_with_watchdog "./$HELLO_BIN_FOUND" >/dev/null 2>&1
 
           FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
           if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
@@ -555,7 +556,7 @@ jobs:
               echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
               exit 1
             fi
-            "./$FIB_BIN_FOUND" >/dev/null 2>&1
+            run_with_watchdog "./$FIB_BIN_FOUND" >/dev/null 2>&1
           else
             echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
           fi
