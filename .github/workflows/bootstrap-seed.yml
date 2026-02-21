@@ -160,26 +160,31 @@ jobs:
             seed-promotion-manifest-linux-x86_64.txt \
             seed-stage1-provenance-linux-x86_64.json \
             seed-bundle-linux-x86_64.json \
+            seed-stage-trace-linux-x86_64.log \
             thagore-stage1-linux-arm64.tar.gz \
             thagore-runtime-linux-arm64.a \
             seed-promotion-manifest-linux-arm64.txt \
             seed-stage1-provenance-linux-arm64.json \
             seed-bundle-linux-arm64.json \
+            seed-stage-trace-linux-arm64.log \
             thagore-stage1-macos-arm64.tar.gz \
             thagore-runtime-macos-arm64.a \
             seed-promotion-manifest-macos-arm64.txt \
             seed-stage1-provenance-macos-arm64.json \
             seed-bundle-macos-arm64.json \
+            seed-stage-trace-macos-arm64.log \
             thagore-stage1-windows-x86_64.exe \
             thagore-runtime-windows-x86_64.lib \
             seed-promotion-manifest-windows-x86_64.txt \
             seed-stage1-provenance-windows-x86_64.json \
             seed-bundle-windows-x86_64.json \
+            seed-stage-trace-windows-x86_64.log \
             thagore-stage1-windows-arm64.exe \
             thagore-runtime-windows-arm64.lib \
             seed-promotion-manifest-windows-arm64.txt \
             seed-stage1-provenance-windows-arm64.json \
-            seed-bundle-windows-arm64.json; do
+            seed-bundle-windows-arm64.json \
+            seed-stage-trace-windows-arm64.log; do
             gh release download "$BOOTSTRAP_STAGE1_TAG" \
               --repo "${{ github.repository }}" \
               --pattern "$ASSET" \
