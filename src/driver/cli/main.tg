@@ -93,6 +93,9 @@ func _configure_default_helper_bin() -> void:
     if (strlen(exe_path) == 0):
         return
     let exe_dir = _dir_name(exe_path)
+    if (fs.exists(exe_path) == 1):
+        env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
+        return
     let stage1_name = "stage1"
     if (_update_detect_os() == "windows"):
         stage1_name = "stage1.exe"
@@ -105,8 +108,6 @@ func _configure_default_helper_bin() -> void:
     if (fs.exists(under_bin) == 1):
         env.set_var("THAG_HELPER_BIN", _helper_exec_path(under_bin))
         return
-    if (fs.exists(exe_path) == 1):
-        env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
 
 func main() -> i32:
     let argc = env.count()

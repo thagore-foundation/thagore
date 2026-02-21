@@ -396,10 +396,10 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              run_with_watchdog env THAG_HELPER_BIN="$cc" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            run_with_watchdog "./$cc" "$@"
+            run_with_watchdog env THAG_HELPER_BIN="$cc" "./$cc" "$@"
           }
           resolve_bin() {
             local preferred="$1"
@@ -547,8 +547,6 @@ jobs:
             HELLO_BIN="hello_seed"
             FIB_BIN="fib_seed"
           fi
-          export THAG_HELPER_BIN="$STAGE1_BIN"
-
           if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
             echo "[INFO] linux-arm64 minimal verify: cli + hello smoke from stage1 seed" | tee -a "$STAGE_TRACE_FILE"
             echo "[CMD] ./$STAGE1_BIN --version" | tee -a "$STAGE_TRACE_FILE" >&2
@@ -1079,13 +1077,13 @@ jobs:
             local source_file="$2"
             local out_stem="$3"
             local out_bin=""
-            "./$cc" build "$source_file" -o "$out_stem" || true
+            THAG_HELPER_BIN="$cc" "./$cc" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            "./$cc" --build "$source_file" -o "$out_stem" || return 1
+            THAG_HELPER_BIN="$cc" "./$cc" --build "$source_file" -o "$out_stem" || return 1
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
