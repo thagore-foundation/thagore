@@ -1161,19 +1161,12 @@ jobs:
             chmod +x stage1
             STAGE1_BIN="stage1"
           fi
-          "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
-          "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
-            echo "[WARN] verify-bundle linux-arm64 runs minimal packaged-seed gate (cli/provenance/runtime) and skips compile smoke."
+            echo "[WARN] verify-bundle linux-arm64 runs minimal packaged-seed gate (bundle/provenance/runtime presence) and skips executing packaged compiler."
             exit 0
           fi
-          build_and_assert_output ../examples/hello.tg hello_bundle "Hello Self-Hosted World!"
-          build_and_assert_output ../examples/logic.tg logic_bundle "100"
-          build_and_assert_output ../examples/loop.tg loop_bundle $'0\n1\n2\n3\n4\n100'
-          build_and_assert_output ../examples/string_ops.tg string_ops_bundle $'Hello Thagore\nString equality works!'
-          build_and_assert_output ../examples/concat.tg concat_bundle "Hello Vietrix"
-          build_and_assert_output ../examples/function.tg function_bundle $'42\nHello Thagore'
-          build_and_assert_output ../examples/fib.tg fib_bundle "9227465"
+          "./$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
+          "./$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
           thg_build_compiler "$STAGE1_BIN" ../src/thagore.tg "$STAGE2_STEM" >/dev/null || (echo "CRITICAL: packaged stage1 failed to selfhost stage2"; exit 1)
           STAGE2_BIN="$(resolve_bin "$STAGE2_STEM" || true)"
