@@ -1206,6 +1206,10 @@ jobs:
           build_and_assert_output_with_cc "$STAGE2B_BIN" ../examples/fib.tg fib_from_stage2b "9227465"
           build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/string_ops.tg string_ops_from_stage2c $'Hello Thagore\nString equality works!'
           build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/loop.tg loop_from_stage2c $'0\n1\n2\n3\n4\n100'
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/concat.tg concat_from_stage2c "Hello Vietrix"
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/function.tg function_from_stage2c $'42\nHello Thagore'
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/array.tg array_from_stage2c $'30\n1089'
+          build_and_assert_output_with_cc "$STAGE2C_BIN" ../examples/method.tg method_from_stage2c $'200\n1'
 
   publish-seed:
     name: publish-seed-release
