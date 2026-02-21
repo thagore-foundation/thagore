@@ -239,13 +239,19 @@ jobs:
             fi
             tar -xzf "bootstrap/$package_asset" -C bootstrap/pkg_extract
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name stage1.exe | head -n 1 || true)"
+              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name thagore.exe | head -n 1 || true)"
+              if [[ -z "$pkg_stage1" ]]; then
+                pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name stage1.exe | head -n 1 || true)"
+              fi
               pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name runtime.lib | head -n 1 || true)"
               [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
               cp "$pkg_stage1" "bootstrap/${{ matrix.stage1_seed_name }}"
               cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
             else
-              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name stage1 -o -name stage1.exe \) | head -n 1 || true)"
+              pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name thagore | head -n 1 || true)"
+              if [[ -z "$pkg_stage1" ]]; then
+                pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name stage1 -o -name stage1.exe \) | head -n 1 || true)"
+              fi
               pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name runtime.a -o -name runtime.lib \) | head -n 1 || true)"
               [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
               cp "$pkg_stage1" bootstrap/pkg_seed/bin/thagore
