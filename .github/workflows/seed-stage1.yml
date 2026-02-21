@@ -253,8 +253,26 @@ jobs:
           download_optional_from_tag() {
             local tag="$1"
             local pattern="$2"
+            local err_file="_seed_download_err.log"
+            local attempt=1
             [[ -n "$tag" ]] || return 1
-            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
+            while [[ $attempt -le 5 ]]; do
+              if gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap 2>"$err_file"; then
+                rm -f "$err_file" || true
+                return 0
+              fi
+              if grep -qi 'rate limit' "$err_file" 2>/dev/null; then
+                sleep $((attempt * 4))
+                attempt=$((attempt + 1))
+                continue
+              fi
+              break
+            done
+            if [[ -f "$err_file" ]]; then
+              tail -n 5 "$err_file" | sed "s/^/[SEED][download][$tag][$pattern] /" | tee -a "$STAGE_TRACE_FILE" >&2 || true
+              rm -f "$err_file" || true
+            fi
+            return 1
           }
           download_optional() {
             local pattern="$1"
