@@ -228,6 +228,12 @@ jobs:
             local pattern="$1"
             gh release download "$BOOTSTRAP_STAGE1_TAG" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
           }
+          download_optional_from_tag() {
+            local tag="$1"
+            local pattern="$2"
+            [[ -n "$tag" ]] || return 1
+            gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap >/dev/null 2>&1
+          }
           materialize_from_release_package() {
             local package_asset="$1"
             local pkg_stage1=""
@@ -244,9 +250,12 @@ jobs:
                 pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name stage1.exe | head -n 1 || true)"
               fi
               pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name runtime.lib -o -name runtime.a -o -name thag_runtime.lib -o -name libthag_runtime.a \) | head -n 1 || true)"
-              [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
+              [[ -n "$pkg_stage1" ]] || return 1
               cp "$pkg_stage1" "bootstrap/${{ matrix.stage1_seed_name }}"
-              cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+              if [[ -n "$pkg_runtime" ]]; then
+                cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+                RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+              fi
             else
               pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f -name thagore | head -n 1 || true)"
               if [[ -z "$pkg_stage1" ]]; then
@@ -256,16 +265,21 @@ jobs:
                 pkg_stage1="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name stage1 -o -name stage1.exe \) | head -n 1 || true)"
               fi
               pkg_runtime="$(find bootstrap/pkg_extract -maxdepth 6 -type f \( -name runtime.a -o -name runtime.lib -o -name thag_runtime.lib -o -name libthag_runtime.a \) | head -n 1 || true)"
-              [[ -n "$pkg_stage1" && -n "$pkg_runtime" ]] || return 1
+              [[ -n "$pkg_stage1" ]] || return 1
               cp "$pkg_stage1" bootstrap/pkg_seed/bin/thagore
               chmod +x bootstrap/pkg_seed/bin/thagore || true
               cp "$pkg_stage1" bootstrap/pkg_seed/bin/thag || true
               chmod +x bootstrap/pkg_seed/bin/thag || true
               tar -czf "bootstrap/${{ matrix.stage1_seed_name }}" -C bootstrap/pkg_seed .
-              cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+              if [[ -n "$pkg_runtime" ]]; then
+                cp "$pkg_runtime" "bootstrap/${{ matrix.runtime_seed_name }}"
+                RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+              fi
             fi
             STAGE1_ASSET="${{ matrix.stage1_seed_name }}"
-            RUNTIME_ASSET="${{ matrix.runtime_seed_name }}"
+            if [[ -z "${RUNTIME_ASSET:-}" ]]; then
+              echo "[SEED] package has no runtime asset, runtime fallback is required."
+            fi
             echo "[SEED] materialized seed assets from release package: $package_asset"
             return 0
           }
@@ -310,6 +324,22 @@ jobs:
           if [[ -z "$STAGE1_ASSET" || -z "$RUNTIME_ASSET" ]]; then
             for PKG in "${PACKAGE_CANDIDATES[@]}"; do
               if materialize_from_release_package "$PKG"; then
+                break
+              fi
+            done
+          fi
+          if [[ -z "$RUNTIME_ASSET" ]]; then
+            RUNTIME_FALLBACK_TAGS=("$BOOTSTRAP_STAGE1_TAG" "v0.3.25-stage1-seed")
+            for RT_TAG in "${RUNTIME_FALLBACK_TAGS[@]}"; do
+              [[ -n "$RT_TAG" ]] || continue
+              for ASSET in "${RUNTIME_CANDIDATES[@]}"; do
+                if download_optional_from_tag "$RT_TAG" "$ASSET"; then
+                  RUNTIME_ASSET="$ASSET"
+                  echo "[SEED] runtime fallback asset=$ASSET tag=$RT_TAG"
+                  break
+                fi
+              done
+              if [[ -n "$RUNTIME_ASSET" ]]; then
                 break
               fi
             done
