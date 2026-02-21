@@ -328,7 +328,18 @@ jobs:
             run_seed_compiler() {
               local cc="$1"
               shift
-              "./$cc" "$@"
+              if "./$cc" "$@"; then
+                return 0
+              fi
+              local rc=$?
+              if THAG_ALLOW_SELF_HELPER=1 "./$cc" "$@"; then
+                if [[ "${seed_helper_fallback_used:-0}" == "0" ]]; then
+                  echo "[SEED][probe][compat] $CURRENT_TAG: enabled THAG_ALLOW_SELF_HELPER=1 fallback for bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+                  seed_helper_fallback_used=1
+                fi
+                return 0
+              fi
+              return $rc
             }
             hash_file() {
               local f="$1"
@@ -353,6 +364,7 @@ jobs:
             local cc_sig_before=""
             local cc_sig_after=""
             local got=""
+            local seed_helper_fallback_used=0
             local probe_build_log="_seed_probe_build.log"
             local probe_emit_log="_seed_probe_emit.log"
             rm -f \
