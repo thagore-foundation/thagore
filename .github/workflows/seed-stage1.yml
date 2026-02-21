@@ -348,7 +348,7 @@ jobs:
 
       - name: Verify Stage1 -> Stage2 -> Stage2 -> samples
         shell: bash
-        timeout-minutes: 35
+        timeout-minutes: 12
         run: |
           set -euxo pipefail
           if [[ "${{ runner.os }}" == "Linux" ]]; then
@@ -357,7 +357,7 @@ jobs:
           run_with_watchdog() {
             if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
               if command -v timeout >/dev/null 2>&1; then
-                timeout --signal=TERM --kill-after=120 25m "$@"
+                timeout --signal=TERM --kill-after=60 8m "$@"
                 return $?
               fi
             fi
