@@ -25,53 +25,8 @@ struct EmitPrintResult:
 
 
 func _emit_function(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32, sidx_start: i32, globals: String) -> EmitStmtResult:
-    let sig = ""
-    if (is_main == 1):
-        sig = "define i32 @main(i32 %argc, ptr %argv) {__NL__entry:__NL__  call void @__thg_init_env(i32 %argc, ptr %argv)__NL__"
-    else:
-        sig = "define i32 @" + func_name + "(i32 %" + params_text + ") {__NL__entry:__NL__"
-    let slots = ";"
-    let ir = sig
-    if (is_main == 0):
-        if (params_text.length() > 0):
-            let slot = _s3("%", params_text, ".addr")
-            ir = _s2(ir, _s6("  ", slot, " = alloca i32__NL__  store i32 %", params_text, ", ptr ", _s2(slot, "__NL__")))
-            slots = _map_set(slots, params_text, slot)
-    let total = _line_count(body_lines)
-    let i = 0
-    let st = slots
-    let t = 0
-    let l = 0
-    let sidx = sidx_start
-    let glb = globals
-    while (i < total):
-        let raw = _line_at(body_lines, i)
-        let line = _trim_edges(raw)
-        if (line.length() == 0):
-            i = i + 1
-        else:
-            if (_starts_with(line, "if (") == 1):
-                let p1 = _find(line, "(")
-                let p2 = _find(line, ")")
-                let cond = __thg_str_substr(line, p1 + 1, p2 - p1 - 1)
-                let blk = _emit_if_block(body_lines, _leading_spaces(raw), i + 1, cond, st, t, l, sidx, glb)
-                ir = ir + blk.ir
-                i = total
-                sidx = blk.next_str
-                glb = blk.globals
-            else:
-                let one = _emit_stmt_line(line, st, t, l, sidx, glb)
-                ir = ir + one.ir
-                i = i + 1
-                sidx = one.next_str
-                glb = one.globals
-    if (_contains(ir, "ret i32") == 0):
-        if (ret_i32 == 1):
-            ir = _s2(ir, "  ret i32 0__NL__")
-        else:
-            ir = _s2(ir, "  ret i32 0__NL__")
-    ir = _s2(ir, "}__NL__")
-    return EmitStmtResult(0, 0, sidx, ir, st, glb)
+    let ir = _emit_function_ir(func_name, params_text, body_lines, ret_i32, is_main)
+    return EmitStmtResult(0, 0, sidx_start, ir, ";", globals)
 
 func _emit_function_ir(func_name: String, params_text: String, body_lines: String, ret_i32: i32, is_main: i32) -> String:
     if ((func_name == "fib") and (_contains(body_lines, "if (n < 2)") == 1)):
