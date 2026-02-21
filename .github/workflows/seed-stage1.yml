@@ -479,10 +479,10 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              run_with_watchdog env THAG_HELPER_BIN="$cc" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            run_with_watchdog env THAG_HELPER_BIN="$cc" "./$cc" "$@"
+            run_with_watchdog "./$cc" "$@"
           }
           resolve_bin() {
             local preferred="$1"
@@ -1135,19 +1135,19 @@ jobs:
             local out_bin=""
             local linker="clang"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
-            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" build "$source_file" -o "$out_stem" || true
+            "./$compiler_bin" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" --build "$source_file" -o "$out_stem" || true
+            "./$compiler_bin" --build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            THAG_HELPER_BIN="$compiler_bin" "./$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            "./$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
             if [[ ! -f "$tmp_ll" ]]; then
               return 1
             fi
@@ -1179,13 +1179,13 @@ jobs:
             if [[ "$source_file" == "../src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
             fi
-            THAG_HELPER_BIN="$cc" "./$cc" build "$source_file" -o "$out_stem" || true
+            "./$cc" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
-            THAG_HELPER_BIN="$cc" "./$cc" --build "$source_file" -o "$out_stem" || return 1
+            "./$cc" --build "$source_file" -o "$out_stem" || return 1
             out_bin="$(resolve_bin "$out_stem" || true)"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
