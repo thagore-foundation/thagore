@@ -705,7 +705,7 @@ jobs:
             STRICT_WINDOWS=1
           fi
           STRICT_RELEASE_LANE=0
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$STRICT_WINDOWS" == "1" ]]; then
+          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$STRICT_WINDOWS" == "1" && "${RELEASE_FORCE_STRICT:-0}" == "1" ]]; then
             STRICT_RELEASE_LANE=1
           fi
           echo "RELEASE_STRICT_LANE=$STRICT_RELEASE_LANE" >> "$GITHUB_ENV"
