@@ -510,9 +510,9 @@ jobs:
             seed_smoke_probe
           }
           TAG_CANDIDATES=(
-            "$BOOTSTRAP_STAGE1_TAG"
             "v0.3.97-stage1-seed"
             "v0.3.96-stage1-seed"
+            "$BOOTSTRAP_STAGE1_TAG"
             "v0.3.61-foundation"
             "v0.5.20"
             "v0.5.13"
