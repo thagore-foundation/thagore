@@ -1454,6 +1454,7 @@ jobs:
             local emitted_ll=""
             local out_bin=""
             local linker="clang"
+            local emit_log="_emit_${out_stem}.log"
             rm -f "$out_stem" "${out_stem}.exe" "$tmp_ll"
             run_compiler_cmd "$compiler_bin" build "$source_file" -o "$out_stem" || true
             out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
@@ -1467,9 +1468,40 @@ jobs:
               echo "$out_bin"
               return 0
             fi
-            run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" || true
+            # Compatibility path for legacy CLI forms that do not support build/--build subcommands.
+            run_compiler_cmd "$compiler_bin" "$source_file" -o "$out_stem" || true
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+            run_compiler_cmd "$compiler_bin" "$source_file" || true
+            out_bin="$(resolve_program_bin "$source_file" "$out_stem" || true)"
+            if [[ -n "$out_bin" ]]; then
+              echo "$out_bin"
+              return 0
+            fi
+
+            rm -f "$emit_log" || true
+            run_compiler_cmd "$compiler_bin" --emit-llvm-internal "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
             emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
             if [[ -z "$emitted_ll" ]]; then
+              run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm-internal -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
+            fi
+            if [[ -z "$emitted_ll" ]]; then
+              run_compiler_cmd "$compiler_bin" --emit-llvm "$source_file" -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
+            fi
+            if [[ -z "$emitted_ll" ]]; then
+              run_compiler_cmd "$compiler_bin" "$source_file" --emit-llvm -o "$tmp_ll" >"$emit_log" 2>&1 || true
+              emitted_ll="$(resolve_program_ir "$source_file" "$out_stem" || true)"
+            fi
+            if [[ -z "$emitted_ll" ]]; then
+              if [[ -f "$emit_log" ]]; then
+                echo "[verify-bundle][emit-tail] $compiler_bin -> $source_file"
+                tail -n 20 "$emit_log" || true
+              fi
               return 1
             fi
             if ! command -v "$linker" >/dev/null 2>&1; then
