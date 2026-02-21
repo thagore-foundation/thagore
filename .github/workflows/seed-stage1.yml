@@ -325,10 +325,34 @@ jobs:
             --fail-on-missing \
             --write "runtime-abi-inventory-seed-${{ matrix.asset_tag }}.txt"
 
+      - name: Provision swap for linux-arm64 verify lane
+        if: runner.os == 'Linux' && matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if swapon --show=NAME --noheadings | grep -q .; then
+            echo "[INFO] swap already active"
+            swapon --show || true
+            free -h || true
+            exit 0
+          fi
+          SWAPFILE=/swapfile
+          if ! sudo fallocate -l 6G "$SWAPFILE"; then
+            sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=6144 status=progress
+          fi
+          sudo chmod 600 "$SWAPFILE"
+          sudo mkswap "$SWAPFILE"
+          sudo swapon "$SWAPFILE"
+          swapon --show
+          free -h
+
       - name: Verify Stage1 -> Stage2 -> Stage2 -> samples
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            free -h || true
+          fi
           run_compiler() {
             local cc="$1"
             shift
