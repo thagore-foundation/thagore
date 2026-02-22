@@ -1492,6 +1492,7 @@ jobs:
             local source_file="$2"
             local out_stem="$3"
             local out_bin=""
+            local strict_out_bin=""
             local cc_sig_before=""
             local cc_sig_after=""
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
@@ -1499,9 +1500,14 @@ jobs:
             fi
             out_bin="$(build_program_with_cc "$cc" "$source_file" "$out_stem" || true)"
             out_bin="$(printf '%s\n' "$out_bin" | tail -n1 | tr -d '\r')"
-            if [[ -n "$out_bin" ]]; then
-              echo "$out_bin"
+            strict_out_bin="$(resolve_compiler_bin "$out_stem" || true)"
+            strict_out_bin="$(printf '%s\n' "$strict_out_bin" | tail -n1 | tr -d '\r')"
+            if [[ -n "$strict_out_bin" ]]; then
+              echo "$strict_out_bin"
               return 0
+            fi
+            if [[ -n "$out_bin" ]]; then
+              echo "[verify-bundle] reject non-strict compiler artifact: $out_bin (expected prefix: $out_stem)" >&2
             fi
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
