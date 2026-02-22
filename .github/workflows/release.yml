@@ -971,7 +971,14 @@ jobs:
             BOOTSTRAP_COMPILER="$DONOR_COMPILER"
           fi
           if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
-            exit 1
+            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
+              echo "[WARN] stage2 rebuild failed; falling back to donor compiler binary for this lane: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
+              BOOTSTRAP_COMPAT_MODE=1
+              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
+              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+            else
+              exit 1
+            fi
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
           if [[ -z "${STAGE2_BIN:-}" ]]; then
