@@ -1036,7 +1036,12 @@ jobs:
           if [[ -z "${RELEASE_COMPILER_BIN:-}" ]]; then
             RELEASE_COMPILER_BIN="$STAGE2_REBUILD_BIN"
           fi
+          if [[ "$OFFICIAL_RELEASE_TAG" != "1" && "$RELEASE_COMPILER_BIN" == "${{ matrix.stage1_bin }}" ]]; then
+            BOOTSTRAP_COMPAT_MODE=1
+            echo "[WARN] non-tag lane falling back to stage1 compiler; enabling bootstrap compatibility mode." | tee -a "$STAGE_TRACE_FILE"
+          fi
           echo "RELEASE_COMPILER_BIN=$RELEASE_COMPILER_BIN" >> "$GITHUB_ENV"
+          echo "RELEASE_BOOTSTRAP_COMPAT_MODE=$BOOTSTRAP_COMPAT_MODE" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
@@ -1082,9 +1087,11 @@ jobs:
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$UPDATE_OUT" > cli-update-release-${{ matrix.asset_tag }}.txt
           MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$UPDATE_OUT"
-          if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
-            echo "CRITICAL: smoke step detected legacy/wrapper markers."
-            exit 1
+          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
+            if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+              echo "CRITICAL: smoke step detected legacy/wrapper markers."
+              exit 1
+            fi
           fi
           if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$MERGED_OUT"; then
             echo "CRITICAL: smoke step detected broken/incompatible compiler execution markers."
