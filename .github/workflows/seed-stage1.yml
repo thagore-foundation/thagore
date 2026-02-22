@@ -961,14 +961,7 @@ jobs:
           rm -rf seed
           mkdir -p seed/dist/bin
           SEED_CANDIDATE="${SEED_BIN:-$STAGE2_REBUILD_BIN}"
-          HELPER_CANDIDATE=""
-          if [[ -n "${HELPER_COMPANION_BIN:-}" && -f "${HELPER_COMPANION_BIN#./}" ]]; then
-            HELPER_CANDIDATE="${HELPER_COMPANION_BIN}"
-          elif [[ -f stage1_helper.exe ]]; then
-            HELPER_CANDIDATE="stage1_helper.exe"
-          elif [[ -f stage1_helper ]]; then
-            HELPER_CANDIDATE="stage1_helper"
-          fi
+          HELPER_CANDIDATE="$SEED_CANDIDATE"
           [[ -n "$SEED_CANDIDATE" && -f "$SEED_CANDIDATE" ]] || (echo "CRITICAL: missing seed compiler binary"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$SEED_CANDIDATE" "${{ matrix.stage1_seed_name }}"
@@ -978,11 +971,7 @@ jobs:
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
               exit 1
             fi
-            if [[ -n "$HELPER_CANDIDATE" ]]; then
-              cp "$HELPER_CANDIDATE" "${{ matrix.helper_seed_name }}"
-            else
-              cp "$SEED_CANDIDATE" "${{ matrix.helper_seed_name }}"
-            fi
+            cp "$HELPER_CANDIDATE" "${{ matrix.helper_seed_name }}"
             [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing thag_runtime.lib for seed runtime asset"; exit 1)
             cp thag_runtime.lib "${{ matrix.runtime_seed_name }}"
             if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" ]]; then
@@ -993,11 +982,7 @@ jobs:
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             cp "$SEED_CANDIDATE" seed/dist/bin/thag
-            if [[ -n "$HELPER_CANDIDATE" ]]; then
-              cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
-            else
-              cp "$SEED_CANDIDATE" seed/dist/bin/stage1_helper
-            fi
+            cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
             chmod +x seed/dist/bin/stage1_helper || true
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
@@ -1017,11 +1002,7 @@ jobs:
           else
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             cp "$SEED_CANDIDATE" seed/dist/bin/thag
-            if [[ -n "$HELPER_CANDIDATE" ]]; then
-              cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
-            else
-              cp "$SEED_CANDIDATE" seed/dist/bin/stage1_helper
-            fi
+            cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
             chmod +x seed/dist/bin/stage1_helper || true
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
@@ -1358,7 +1339,7 @@ jobs:
             fi
             local force_emit="${THAG_FORCE_INTERNAL_EMIT:-0}"
             local -a common_env=()
-            if [[ -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
+            if [[ "$force_emit" == "1" && -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
               common_env+=(THAG_HELPER_BIN="$helper")
             fi
             if [[ "$force_emit" == "1" && -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
@@ -1671,6 +1652,8 @@ jobs:
           cp -R ../src ./src
           cp -R ../examples ./examples
           cp -R ../lib ./lib
+          [[ -f src/thagore.tg ]] || (echo "CRITICAL: verify bundle missing src/thagore.tg"; exit 1)
+          [[ -f examples/hello.tg ]] || (echo "CRITICAL: verify bundle missing examples/hello.tg"; exit 1)
           run_compiler_cmd "$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           run_compiler_cmd "$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
