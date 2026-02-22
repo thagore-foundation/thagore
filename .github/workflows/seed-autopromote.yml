@@ -8,7 +8,6 @@ on:
 permissions:
   actions: read
   contents: write
-  workflows: write
 
 jobs:
   promote-tag:
