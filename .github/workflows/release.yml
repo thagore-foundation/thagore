@@ -855,7 +855,7 @@ jobs:
                     return 0
                   fi
                 fi
-                echo "[WARN] no standalone compiler artifact from direct build paths; trying internal emit+link fallback." | tee -a "$STAGE_TRACE_FILE"
+                echo "[WARN] no artifact from direct build; try emit+link." | tee -a "$STAGE_TRACE_FILE"
                 rm -f "$ir_out" "${out}" "${out}.exe" || true
                 echo "[CMD] THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN=$cc_cmd $cc_cmd --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
                 if THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN="$cc_cmd" "$cc_cmd" --emit-llvm-internal "$src" -o "$ir_out"; then
@@ -880,10 +880,10 @@ jobs:
                   echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                   return 0
                 fi
-                echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
+                echo "CRITICAL: no compiler artifact for $src (out=$out), in-place unchanged." | tee -a "$STAGE_TRACE_FILE"
                 return 1
               fi
-              echo "CRITICAL: release build produced no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
+              echo "CRITICAL: no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
               return 1
             else
               rc=$?
@@ -974,7 +974,7 @@ jobs:
           fi
           if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
             if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              echo "[WARN] stage2 rebuild failed; falling back to donor compiler binary for this lane: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
+              echo "[WARN] stage2 rebuild failed; fallback donor=$DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
               BOOTSTRAP_COMPAT_MODE=1
               echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
               echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
