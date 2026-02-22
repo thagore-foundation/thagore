@@ -905,34 +905,64 @@ jobs:
           USE_DONOR_BIN=0
           STAGE2_FROM_BOOTSTRAP_FALLBACK=0
           DONOR_COMPILER=""
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
+          DONOR_TAG="${THAGORE_DONOR_TAG:-}"
+          if [[ -z "$DONOR_TAG" ]]; then
             DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
-            if [[ -n "$DONOR_TAG" ]]; then
-              DONOR_ARCHIVE="donor/thagore-windows-x86_64.tar.gz"
+          fi
+          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && -z "$DONOR_TAG" ]]; then
+            DONOR_TAG="v0.3.61-foundation"
+          fi
+          if [[ -n "$DONOR_TAG" ]]; then
+            DONOR_ARCHIVE_BASENAME=""
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              DONOR_ARCHIVE_BASENAME="thagore-windows-${{ matrix.arch }}.tar.gz"
+            elif [[ "${{ runner.os }}" == "Linux" ]]; then
+              DONOR_ARCHIVE_BASENAME="thagore-linux-${{ matrix.arch }}.tar.gz"
+            elif [[ "${{ runner.os }}" == "macOS" ]]; then
+              DONOR_ARCHIVE_BASENAME="thagore-macos-${{ matrix.arch }}.tar.gz"
+            fi
+            if [[ -n "$DONOR_ARCHIVE_BASENAME" ]]; then
+              DONOR_ARCHIVE="donor/$DONOR_ARCHIVE_BASENAME"
               DONOR_EXTRACT_DIR="donor/extract"
-              rm -rf donor donor_thagore.exe || true
+              DONOR_LOCAL_BIN="donor_thagore"
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                DONOR_LOCAL_BIN="donor_thagore.exe"
+              fi
+              rm -rf donor "$DONOR_LOCAL_BIN" || true
               mkdir -p "$DONOR_EXTRACT_DIR"
-              echo "[INFO] trying donor compiler from tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
-              gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "thagore-windows-x86_64.tar.gz" -D donor || true
+              echo "[INFO] trying donor compiler from tag=$DONOR_TAG asset=$DONOR_ARCHIVE_BASENAME" | tee -a "$STAGE_TRACE_FILE"
+              gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "$DONOR_ARCHIVE_BASENAME" -D donor || true
               if [[ -f "$DONOR_ARCHIVE" ]]; then
                 if tar -xzf "$DONOR_ARCHIVE" -C "$DONOR_EXTRACT_DIR"; then
                   DONOR_SRC=""
-                  for candidate in "$DONOR_EXTRACT_DIR/bin/thagore.exe" "$DONOR_EXTRACT_DIR/thagore.exe"; do
-                    if [[ -f "$candidate" ]]; then
-                      DONOR_SRC="$candidate"
-                      break
+                  if [[ "${{ runner.os }}" == "Windows" ]]; then
+                    for candidate in "$DONOR_EXTRACT_DIR/bin/thagore.exe" "$DONOR_EXTRACT_DIR/thagore.exe"; do
+                      if [[ -f "$candidate" ]]; then
+                        DONOR_SRC="$candidate"
+                        break
+                      fi
+                    done
+                    if [[ -z "$DONOR_SRC" ]]; then
+                      DONOR_SRC="$("$PY" -c "import pathlib; root=pathlib.Path('$DONOR_EXTRACT_DIR'); cands=sorted(root.rglob('thagore.exe')) if root.exists() else []; print(cands[0].as_posix() if cands else '')")"
                     fi
-                  done
-                  if [[ -z "$DONOR_SRC" ]]; then
-                    DONOR_SRC="$("$PY" -c "import pathlib; roots=[pathlib.Path('$DONOR_EXTRACT_DIR')]; cands=[]; [cands.extend(sorted(r.rglob('thagore.exe'))) for r in roots if r.exists()]; print(cands[0].as_posix() if cands else '')")"
+                  else
+                    for candidate in "$DONOR_EXTRACT_DIR/bin/thagore" "$DONOR_EXTRACT_DIR/thagore"; do
+                      if [[ -f "$candidate" ]]; then
+                        DONOR_SRC="$candidate"
+                        break
+                      fi
+                    done
+                    if [[ -z "$DONOR_SRC" ]]; then
+                      DONOR_SRC="$("$PY" -c "import pathlib; root=pathlib.Path('$DONOR_EXTRACT_DIR'); cands=sorted(root.rglob('thagore')) if root.exists() else []; print(cands[0].as_posix() if cands else '')")"
+                    fi
                   fi
                   if [[ -n "$DONOR_SRC" && -f "$DONOR_SRC" ]]; then
-                    cp "$DONOR_SRC" donor_thagore.exe
-                    chmod +x donor_thagore.exe || true
-                    if cli_sanity_ok donor_thagore.exe; then
+                    cp "$DONOR_SRC" "$DONOR_LOCAL_BIN"
+                    chmod +x "$DONOR_LOCAL_BIN" || true
+                    if cli_sanity_ok "$DONOR_LOCAL_BIN"; then
                       USE_DONOR_BIN=1
-                      DONOR_COMPILER="donor_thagore.exe"
-                      echo "[INFO] official Windows lane uses donor compiler bootstrap from $DONOR_TAG at $DONOR_SRC." | tee -a "$STAGE_TRACE_FILE"
+                      DONOR_COMPILER="$DONOR_LOCAL_BIN"
+                      echo "[INFO] donor compiler bootstrap enabled: tag=$DONOR_TAG src=$DONOR_SRC local=$DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
                     else
                       echo "[WARN] donor compiler failed CLI sanity: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
                     fi
@@ -944,7 +974,7 @@ jobs:
                   echo "[WARN] failed to extract donor archive: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
                 fi
               else
-                echo "[WARN] donor archive not downloaded for tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
+                echo "[WARN] donor archive not downloaded for tag=$DONOR_TAG asset=$DONOR_ARCHIVE_BASENAME" | tee -a "$STAGE_TRACE_FILE"
               fi
             fi
           fi
