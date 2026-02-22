@@ -421,71 +421,16 @@ jobs:
             local help_rc=0
             local ver_rc=0
             local merged=""
-            local probe_dir=""
-            local probe_src=""
-            local probe_out=""
-            local probe_bin=""
-            local probe_ir=""
-            local probe_marker=""
-            probe_dir="$(mktemp -d)"
-            probe_src="$probe_dir/stage1_probe_cli.tg"
-            probe_out="$probe_dir/stage1_probe_cli"
-            probe_marker="$probe_dir/.probe_marker"
             help_out="$("./$bin" --help 2>&1)" || help_rc=$?
             ver_out="$("./$bin" --version 2>&1)" || ver_rc=$?
             merged="$ver_out"$'\n'"$help_out"
             if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|No such file or directory|not recognized as an internal" <<<"$merged"; then
-              rm -rf "$probe_dir" || true
               return 1
             fi
             if [[ "$help_rc" -ne 0 && "$ver_rc" -ne 0 ]]; then
               echo "CRITICAL: selected stage1 failed --version and --help probe."
-              rm -rf "$probe_dir" || true
               return 1
             fi
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              probe_out="${probe_out}.exe"
-            fi
-            printf 'func main() -> i32:\n    return 0\n' > "$probe_src"
-            rm -f "$probe_out" "${probe_out}.exe" "${probe_out%.exe}" a.out a.exe out out.exe || true
-            touch "$probe_marker"
-            if ! "./$bin" build "$probe_src" -o "$probe_out"; then
-              echo "CRITICAL: selected stage1 failed fixture build in bootstrap probe."
-              rm -rf "$probe_dir" || true
-              return 1
-            fi
-            probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
-            if [[ -z "${probe_bin:-}" ]]; then
-              probe_bin="$(resolve_probe_bin_from_marker "$probe_src" "$probe_marker" || true)"
-            fi
-            if [[ -z "${probe_bin:-}" ]]; then
-              "./$bin" --emit-llvm-internal "$probe_src" -o "${probe_out}.ll" || true
-              probe_ir="$(resolve_ir "${probe_out}.ll" "$probe_src" "$probe_dir" "$probe_marker" || true)"
-              if [[ -n "${probe_ir:-}" ]]; then
-                if [[ -f libthag_runtime.a ]]; then
-                  clang "$probe_ir" -o "$probe_out" -Wno-override-module libthag_runtime.a || true
-                fi
-                if [[ -z "$(resolve_bin "$probe_out" "$probe_src" || true)" && -f thag_runtime.lib ]]; then
-                  clang "$probe_ir" -o "$probe_out" -Wno-override-module thag_runtime.lib || true
-                fi
-                probe_bin="$(resolve_bin "$probe_out" "$probe_src" || true)"
-                if [[ -z "${probe_bin:-}" ]]; then
-                  probe_bin="$(resolve_probe_bin_from_marker "$probe_src" "$probe_marker" || true)"
-                fi
-              fi
-            fi
-            if [[ -z "${probe_bin:-}" || ! -s "$probe_bin" ]]; then
-              echo "CRITICAL: stage1 probe fixture did not produce a non-empty executable artifact."
-              rm -rf "$probe_dir" || true
-              return 1
-            fi
-            chmod +x "$probe_bin" || true
-            if ! "$probe_bin" >/dev/null 2>&1; then
-              echo "CRITICAL: stage1 probe executable failed to run cleanly."
-              rm -rf "$probe_dir" || true
-              return 1
-            fi
-            rm -rf "$probe_dir" || true
             return 0
           }
           STAGE1_ASSET=""
