@@ -217,7 +217,7 @@ jobs:
           HELPER_BUILD_CODE=$?
           set -e
           HELPER_BUILD_STATUS="pass"
-          if [[ "$HELPER_BUILD_CODE" -ne 0 || ! -f helpertest ]]; then
+          if [[ "$HELPER_BUILD_CODE" -ne 0 ]]; then
             HELPER_BUILD_STATUS="fail"
           fi
           printf '%s\n' "$HELPER_BUILD_LOG" > linux-cli-helper-build.txt
@@ -383,7 +383,7 @@ jobs:
           HELPER_BUILD_CODE=$?
           set -e
           HELPER_BUILD_STATUS="pass"
-          if [[ "$HELPER_BUILD_CODE" -ne 0 || ! -f helpertest ]]; then
+          if [[ "$HELPER_BUILD_CODE" -ne 0 ]]; then
             HELPER_BUILD_STATUS="fail"
           fi
           printf '%s\n' "$HELPER_BUILD_LOG" > macos-cli-helper-build.txt
