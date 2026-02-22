@@ -728,6 +728,18 @@ jobs:
             fi
             return 1
           }
+          resolve_exact_bin() {
+            local out_stem="$1"
+            if [[ -f "$out_stem" ]]; then
+              echo "$out_stem"
+              return 0
+            fi
+            if [[ -f "${out_stem}.exe" ]]; then
+              echo "${out_stem}.exe"
+              return 0
+            fi
+            return 1
+          }
           resolve_ir() {
             local preferred="$1"
             local src="$2"
@@ -843,6 +855,20 @@ jobs:
             echo "CRITICAL: compiler build did not materialize strict output ($out) from $src using $cc." | tee -a "$STAGE_TRACE_FILE" >&2
             return 1
           }
+          thg_build_sample_strict() {
+            local cc="$1"
+            local src="$2"
+            local out="$3"
+            local got=""
+            thg_build "$cc" "$src" "$out" || return 1
+            got="$(resolve_exact_bin "$out" || true)"
+            if [[ -n "$got" ]]; then
+              echo "$got"
+              return 0
+            fi
+            echo "CRITICAL: sample build did not materialize strict output ($out) from $src using $cc." | tee -a "$STAGE_TRACE_FILE" >&2
+            return 1
+          }
           purge_outputs() {
             local src="$1"
             local out="$2"
@@ -909,12 +935,12 @@ jobs:
             local found=""
             local ir_out="${out}.ll"
             local found_ir=""
-            purge_outputs "$src" "$out"
             LAST_SUCCESS_COMPILER=""
             for cc in "${COMPILER_CANDIDATES[@]}"; do
               [[ -n "$cc" && -f "$cc" ]] || continue
+              purge_outputs "$src" "$out"
               if thg_build "$cc" "$src" "$out"; then
-                found="$(resolve_bin "$out" "$src" || true)"
+                found="$(resolve_exact_bin "$out" || true)"
                 if [[ -n "$found" ]]; then
                   LAST_SUCCESS_COMPILER="$cc"
                   echo "$found"
@@ -927,7 +953,7 @@ jobs:
                 if [[ -n "$found_ir" ]] && grep -q "@main(" "$found_ir"; then
                   echo "[CMD] clang $found_ir -> $out" | tee -a "$STAGE_TRACE_FILE" >&2
                   if link_ir_to_bin "$found_ir" "$out"; then
-                    found="$(resolve_bin "$out" "$src" || true)"
+                    found="$(resolve_exact_bin "$out" || true)"
                     if [[ -n "$found" ]]; then
                       LAST_SUCCESS_COMPILER="$cc"
                       echo "$found"
@@ -943,8 +969,11 @@ jobs:
           HELLO_SRC="examples/hello.tg"
           HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
           [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
-          purge_outputs "$HELLO_SRC" "${HELLO_BIN}_seed"
-          thg_build "$SEED_BIN" "$HELLO_SRC" "${HELLO_BIN}_seed" || (echo "CRITICAL: selected seed compiler $SEED_BIN cannot build hello sample"; exit 1)
+          HELLO_SEED_OUT="${HELLO_BIN}_seed"
+          purge_outputs "$HELLO_SRC" "$HELLO_SEED_OUT"
+          HELLO_SEED_BIN_FOUND="$(thg_build_sample_strict "$SEED_BIN" "$HELLO_SRC" "$HELLO_SEED_OUT" || true)"
+          HELLO_SEED_BIN_FOUND="$(printf '%s\n' "$HELLO_SEED_BIN_FOUND" | tail -n1 | tr -d '\r')"
+          [[ -n "$HELLO_SEED_BIN_FOUND" && -f "$HELLO_SEED_BIN_FOUND" ]] || (echo "CRITICAL: selected seed compiler $SEED_BIN cannot materialize strict hello sample output."; exit 1)
           chmod +x "$HELLO_BIN_FOUND" || true
           HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
           CC_HASH="$(hash_file "$SEED_BIN")"
