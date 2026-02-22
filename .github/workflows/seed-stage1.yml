@@ -973,6 +973,18 @@ jobs:
           purge_outputs "$HELLO_SRC" "$HELLO_SEED_OUT"
           HELLO_SEED_BIN_FOUND="$(thg_build_sample_strict "$SEED_BIN" "$HELLO_SRC" "$HELLO_SEED_OUT" || true)"
           HELLO_SEED_BIN_FOUND="$(printf '%s\n' "$HELLO_SEED_BIN_FOUND" | tail -n1 | tr -d '\r')"
+          if [[ -z "$HELLO_SEED_BIN_FOUND" || ! -f "$HELLO_SEED_BIN_FOUND" ]]; then
+            FALLBACK_SEED_BIN="${LAST_SUCCESS_COMPILER:-}"
+            if [[ -n "$FALLBACK_SEED_BIN" && -f "$FALLBACK_SEED_BIN" && "$FALLBACK_SEED_BIN" != "$SEED_BIN" ]]; then
+              echo "[WARN] selected seed compiler $SEED_BIN cannot materialize strict hello sample output; fallback to working compiler $FALLBACK_SEED_BIN."
+              purge_outputs "$HELLO_SRC" "$HELLO_SEED_OUT"
+              HELLO_SEED_BIN_FOUND="$(thg_build_sample_strict "$FALLBACK_SEED_BIN" "$HELLO_SRC" "$HELLO_SEED_OUT" || true)"
+              HELLO_SEED_BIN_FOUND="$(printf '%s\n' "$HELLO_SEED_BIN_FOUND" | tail -n1 | tr -d '\r')"
+              if [[ -n "$HELLO_SEED_BIN_FOUND" && -f "$HELLO_SEED_BIN_FOUND" ]]; then
+                SEED_BIN="$FALLBACK_SEED_BIN"
+              fi
+            fi
+          fi
           [[ -n "$HELLO_SEED_BIN_FOUND" && -f "$HELLO_SEED_BIN_FOUND" ]] || (echo "CRITICAL: selected seed compiler $SEED_BIN cannot materialize strict hello sample output."; exit 1)
           chmod +x "$HELLO_BIN_FOUND" || true
           HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
