@@ -897,9 +897,8 @@ jobs:
           HELLO_SRC="examples/hello.tg"
           HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
           [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
-          if [[ -n "${LAST_SUCCESS_COMPILER:-}" && -f "$LAST_SUCCESS_COMPILER" ]]; then
-            SEED_BIN="$LAST_SUCCESS_COMPILER"
-          fi
+          purge_outputs "$HELLO_SRC" "${HELLO_BIN}_seed"
+          thg_build "$SEED_BIN" "$HELLO_SRC" "${HELLO_BIN}_seed" || (echo "CRITICAL: selected seed compiler $SEED_BIN cannot build hello sample"; exit 1)
           chmod +x "$HELLO_BIN_FOUND" || true
           HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
           CC_HASH="$(hash_file "$SEED_BIN")"
