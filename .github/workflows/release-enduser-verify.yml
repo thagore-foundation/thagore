@@ -527,6 +527,8 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP "thagore-release"
           $env:THAGORE_BIN = Join-Path $extract "bin"
           $thagore = Join-Path $env:THAGORE_BIN "thagore.exe"
+          $runtimeCompat = Join-Path (Get-Location) "thag_runtime.lib"
+          Copy-Item -Force (Join-Path $extract "lib\\runtime.lib") $runtimeCompat
           if (-not (Test-Path $thagore)) {
               throw "Missing CLI binary at $thagore"
           }
