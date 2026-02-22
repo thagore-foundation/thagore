@@ -704,14 +704,19 @@ jobs:
             local help=""
             local update_out=""
             local merged=""
+            local primary=""
             chmod +x "$bin" || true
             ver="$(run_capture_with_guard_timeout "./$bin" --version)"
             help="$(run_capture_with_guard_timeout "./$bin" --help)"
             update_out="$(run_capture_with_guard_timeout "./$bin" update check)"
             merged="$ver"$'\n'"$help"$'\n'"$update_out"
-            if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$merged"; then
+            primary="$ver"$'\n'"$help"
+            if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$primary"; then
               echo "[COMPAT] $bin rejected: output matches legacy/wrapper failure markers." | tee -a "$STAGE_TRACE_FILE"
               return 1
+            fi
+            if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'" <<<"$update_out"; then
+              echo "[COMPAT] $bin note: update command is unsupported in donor compatibility mode; continuing." | tee -a "$STAGE_TRACE_FILE"
             fi
             if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$merged"; then
               echo "[COMPAT] $bin rejected: binary execution markers indicate broken/incompatible compiler." | tee -a "$STAGE_TRACE_FILE"
