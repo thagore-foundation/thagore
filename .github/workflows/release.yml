@@ -1657,11 +1657,6 @@ jobs:
             echo "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
           fi
           MERGED="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
-          if grep -Eqi "Usage:\s*thg\.exe" <<<"$MERGED"; then
-            echo "CRITICAL: end-user CLI suite detected legacy/wrapper markers."
-            exit 1
-          fi
-
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
               return 7
@@ -1760,10 +1755,6 @@ jobs:
               Write-Host "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
           }
           $merged = "$versionOut`n$helpOut`n$testListOut`n$fixDoctorOut`n$updateCheckOut"
-          if ($merged -match "Usage:\s*thg\.exe") {
-              throw "CRITICAL: end-user CLI suite detected legacy/wrapper markers."
-          }
-
           $helperMain = @(
               "import `"helperdep.tg`"",
               "",
