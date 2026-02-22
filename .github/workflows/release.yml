@@ -936,25 +936,9 @@ jobs:
                 if tar -xzf "$DONOR_ARCHIVE" -C "$DONOR_EXTRACT_DIR"; then
                   DONOR_SRC=""
                   if [[ "${{ runner.os }}" == "Windows" ]]; then
-                    for candidate in "$DONOR_EXTRACT_DIR/bin/thagore.exe" "$DONOR_EXTRACT_DIR/thagore.exe"; do
-                      if [[ -f "$candidate" ]]; then
-                        DONOR_SRC="$candidate"
-                        break
-                      fi
-                    done
-                    if [[ -z "$DONOR_SRC" ]]; then
-                      DONOR_SRC="$("$PY" -c "import pathlib; root=pathlib.Path('$DONOR_EXTRACT_DIR'); cands=sorted(root.rglob('thagore.exe')) if root.exists() else []; print(cands[0].as_posix() if cands else '')")"
-                    fi
+                    DONOR_SRC="$(find "$DONOR_EXTRACT_DIR" -type f -name 'thagore.exe' | head -n 1 || true)"
                   else
-                    for candidate in "$DONOR_EXTRACT_DIR/bin/thagore" "$DONOR_EXTRACT_DIR/thagore"; do
-                      if [[ -f "$candidate" ]]; then
-                        DONOR_SRC="$candidate"
-                        break
-                      fi
-                    done
-                    if [[ -z "$DONOR_SRC" ]]; then
-                      DONOR_SRC="$("$PY" -c "import pathlib; root=pathlib.Path('$DONOR_EXTRACT_DIR'); cands=sorted(root.rglob('thagore')) if root.exists() else []; print(cands[0].as_posix() if cands else '')")"
-                    fi
+                    DONOR_SRC="$(find "$DONOR_EXTRACT_DIR" -type f -name 'thagore' | head -n 1 || true)"
                   fi
                   if [[ -n "$DONOR_SRC" && -f "$DONOR_SRC" ]]; then
                     cp "$DONOR_SRC" "$DONOR_LOCAL_BIN"
