@@ -260,11 +260,13 @@ jobs:
           download_optional_from_tag() {
             local tag="$1"
             local pattern="$2"
+            local out_dir="${3:-bootstrap}"
             local err_file="_seed_download_err.log"
             local attempt=1
             [[ -n "$tag" ]] || return 1
+            mkdir -p "$out_dir"
             while [[ $attempt -le 5 ]]; do
-              if gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap 2>"$err_file"; then
+              if gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D "$out_dir" 2>"$err_file"; then
                 rm -f "$err_file" || true
                 return 0
               fi
@@ -331,7 +333,7 @@ jobs:
           materialize_helper_companion() {
             HELPER_COMPANION_BIN=""
             [[ -n "${HELPER_COMPANION_TAG:-}" ]] || return 0
-            rm -rf bootstrap/extract_helper || true
+            rm -rf bootstrap/extract_helper bootstrap/helper || true
             HELPER_CANDIDATES=("${{ matrix.stage1_seed_name }}")
             if [[ "${{ runner.os }}" == "Windows" ]]; then
               HELPER_CANDIDATES+=("thagore-stage1.exe")
@@ -342,7 +344,7 @@ jobs:
             fi
             HELPER_STAGE1_ASSET=""
             for H_ASSET in "${HELPER_CANDIDATES[@]}"; do
-              if download_optional_from_tag "$HELPER_COMPANION_TAG" "$H_ASSET"; then
+              if download_optional_from_tag "$HELPER_COMPANION_TAG" "$H_ASSET" "bootstrap/helper"; then
                 HELPER_STAGE1_ASSET="$H_ASSET"
                 break
               fi
@@ -352,12 +354,12 @@ jobs:
               return 0
             fi
             if [[ "${{ runner.os }}" == "Windows" ]]; then
-              cp "bootstrap/$HELPER_STAGE1_ASSET" stage1_helper.exe
+              cp "bootstrap/helper/$HELPER_STAGE1_ASSET" stage1_helper.exe
               chmod +x stage1_helper.exe || true
               HELPER_COMPANION_BIN="./stage1_helper.exe"
             else
               mkdir -p bootstrap/extract_helper
-              tar -xzf "bootstrap/$HELPER_STAGE1_ASSET" -C bootstrap/extract_helper
+              tar -xzf "bootstrap/helper/$HELPER_STAGE1_ASSET" -C bootstrap/extract_helper
               HELPER_CANDIDATE="$(
                 {
                   find bootstrap/extract_helper -maxdepth 6 -type f -name stage1
@@ -499,6 +501,9 @@ jobs:
             seed_smoke_probe
           }
           TAG_CANDIDATES=("$BOOTSTRAP_STAGE1_TAG")
+          if [[ -n "${HELPER_COMPANION_TAG:-}" ]]; then
+            TAG_CANDIDATES+=("$HELPER_COMPANION_TAG")
+          fi
           SELECTED_BOOTSTRAP_TAG=""
           SEEN_TAGS=";"
           for TAG in "${TAG_CANDIDATES[@]}"; do
