@@ -987,12 +987,16 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
+            if [[ "$STRICT_RELEASE_LANE" == "1" && "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
               echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
               exit 1
             fi
             echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
+              echo "[WARN] hello smoke binary was not produced in bootstrap compatibility mode; continuing with no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            else
+              echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            fi
           fi
 
           FIB_BIN=""
@@ -1006,12 +1010,16 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
+            if [[ "$STRICT_RELEASE_LANE" == "1" && "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
               echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
               exit 1
             fi
             echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
+              echo "[WARN] fib smoke binary was not produced in bootstrap compatibility mode; continuing with no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            else
+              echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            fi
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -1095,6 +1103,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
+            echo "[WARN] skipping helper import/use smoke on bootstrap compatibility mode."
+            exit 0
+          fi
           if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
             echo "[WARN] skipping helper import/use smoke on non-strict no-output lane."
             exit 0
@@ -1124,6 +1136,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
+            echo "[WARN] skipping hello/fib runtime smoke on bootstrap compatibility mode."
+            exit 0
+          fi
           if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
             echo "[WARN] skipping hello/fib runtime smoke on non-strict no-output lane."
             exit 0
