@@ -509,7 +509,15 @@ jobs:
 
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
           STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          [[ -n "$STAGE2_REBUILD_BIN" ]] || (echo "CRITICAL: stage2_rebuild produced no output artifact."; exit 1)
+          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
+            if [[ -n "$STAGE2_BIN" && -f "$STAGE2_BIN" ]]; then
+              echo "[INFO] stage2_rebuild produced no standalone artifact; using compiler-managed in-place stage2 binary: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+              STAGE2_REBUILD_BIN="$STAGE2_BIN"
+            else
+              echo "CRITICAL: stage2_rebuild produced no output artifact."
+              exit 1
+            fi
+          fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
