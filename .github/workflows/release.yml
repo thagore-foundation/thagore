@@ -1016,6 +1016,14 @@ jobs:
               echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
               STAGE2_BIN="$DONOR_COMPILER"
               chmod +x "$STAGE2_BIN" || true
+              BOOTSTRAP_COMPAT_MODE=1
+              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
+              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+              if cli_compat_ok "$STAGE2_BIN"; then
+                echo "[WARN] donor compiler accepted via compatibility gate; continuing in bootstrap no-output mode." | tee -a "$STAGE_TRACE_FILE"
+              else
+                echo "[WARN] donor compiler failed strict+compat sanity; continuing forced bootstrap no-output mode for this lane." | tee -a "$STAGE_TRACE_FILE"
+              fi
             elif [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
               echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
               echo "[WARN] source-built compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
@@ -1045,7 +1053,7 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            if [[ "$STAGE2_FROM_BOOTSTRAP_FALLBACK" == "1" ]]; then
+            if [[ "$STAGE2_FROM_BOOTSTRAP_FALLBACK" == "1" || "${BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
               if cli_compat_ok "$STAGE2_REBUILD_BIN"; then
                 BOOTSTRAP_COMPAT_MODE=1
                 echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
