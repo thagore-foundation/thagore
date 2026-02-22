@@ -454,6 +454,9 @@ install_payload_with_prefix() {
   local link_dir="$HOME/.local/bin"
   mkdir -p "$link_dir"
   ln -sf "$payload_prefix/bin/thagore" "$link_dir/thagore"
+  if [[ -x "$payload_prefix/bin/stage1" ]]; then
+    ln -sf "$payload_prefix/bin/stage1" "$link_dir/stage1"
+  fi
   validate_cli_install "$link_dir/thagore"
 
   ensure_local_llvm_layout "$payload_prefix"
