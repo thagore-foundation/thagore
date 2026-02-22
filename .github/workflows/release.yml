@@ -1647,7 +1647,7 @@ jobs:
           export THAGORE_ROOT="$PAYLOAD"
           bash scripts/install/install.sh --mode "${{ matrix.install_mode }}" --skip-llvm --yes --prefix "$PREFIX"
           THAG="$HOME/.local/bin/thagore"
-          unset THAG_HELPER_BIN
+          export THAG_HELPER_BIN="$THAG"
           VERSION_OUT="$("$THAG" --version 2>&1 || true)"
           HELP_OUT="$("$THAG" --help 2>&1 || true)"
           TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
@@ -1745,7 +1745,7 @@ jobs:
           if (-not (Test-Path (Join-Path $payload "lib\runtime.lib"))) { throw "Missing payload runtime lib" }
 
           $env:THAGORE_BIN = Join-Path $payload "bin"
-          Remove-Item Env:THAG_HELPER_BIN -ErrorAction SilentlyContinue
+          $env:THAG_HELPER_BIN = $thagore
           $versionOut = [string]((& $thagore --version 2>&1 | Out-String))
           $helpOut = [string]((& $thagore --help 2>&1 | Out-String))
           $testListOut = [string]((& $thagore test --list --workspace 2>&1 | Out-String))
