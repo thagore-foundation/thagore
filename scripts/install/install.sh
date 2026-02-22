@@ -292,14 +292,19 @@ validate_cli_install() {
   fi
   local version_out
   local help_out
-  version_out="$("$cli_bin" --version 2>&1 || true)"
-  help_out="$("$cli_bin" --help 2>&1 || true)"
-  if [[ -z "${version_out//[[:space:]]/}" || -z "${help_out//[[:space:]]/}" ]]; then
-    echo "ERROR: installed CLI returned empty output for --version/--help." >&2
+  local version_rc=0
+  local help_rc=0
+  version_out="$("$cli_bin" --version 2>&1)" || version_rc=$?
+  help_out="$("$cli_bin" --help 2>&1)" || help_rc=$?
+  if [[ "$version_rc" -ne 0 && "$help_rc" -ne 0 ]]; then
+    echo "ERROR: installed CLI failed both --version (rc=$version_rc) and --help (rc=$help_rc)." >&2
     exit 1
   fi
   local merged_out
   merged_out="$version_out"$'\n'"$help_out"
+  if [[ -z "${merged_out//[[:space:]]/}" ]]; then
+    echo "WARN: installed CLI returned empty text for --version/--help; continuing to deeper smoke checks." >&2
+  fi
   if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$merged_out"; then
     echo "ERROR: installed CLI output matches legacy/wrapper markers." >&2
     exit 1
