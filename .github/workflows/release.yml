@@ -1090,14 +1090,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-            echo "[WARN] skipping helper import/use smoke on bootstrap compatibility mode."
-            exit 0
-          fi
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping helper import/use smoke on non-strict no-output lane."
-            exit 0
-          fi
           chmod +x "$RELEASE_COMPILER_BIN" || true
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
@@ -1123,14 +1115,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-            echo "[WARN] skipping hello/fib runtime smoke on bootstrap compatibility mode."
-            exit 0
-          fi
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping hello/fib runtime smoke on non-strict no-output lane."
-            exit 0
-          fi
           if [[ -z "${HELLO_BIN:-}" || -z "${FIB_BIN:-}" ]]; then
             echo "CRITICAL: hello/fib runtime execution requires both smoke binaries."
             exit 1
@@ -1533,9 +1517,8 @@ jobs:
           TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
           FIX_DOCTOR_OUT="$("$THAG" fix doctor examples/hello.tg --json 2>&1 || true)"
           UPDATE_CHECK_OUT="$("$THAG" update check 2>&1 || true)"
-          if [[ -z "${VERSION_OUT//[[:space:]]/}" || -z "${HELP_OUT//[[:space:]]/}" ]]; then
-            echo "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
-          fi
+          [[ -n "${VERSION_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: installed CLI --version returned empty output."; exit 1)
+          [[ -n "${HELP_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: installed CLI --help returned empty output."; exit 1)
           MERGED="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
@@ -1550,20 +1533,12 @@ jobs:
           HELPER_BUILD_OUT="$("$THAG" build helpermain.tg -o helper-enduser 2>&1 || true)"
           printf '%s\n' "$HELPER_BUILD_OUT"
           if [[ ! -f helper-enduser && ! -f helper-enduser.exe ]]; then
-            if [[ -f helpermain ]]; then cp helpermain helper-enduser; fi
-            if [[ -f helpermain.exe ]]; then cp helpermain.exe helper-enduser.exe; fi
-          fi
-          if [[ ! -f helper-enduser && ! -f helper-enduser.exe ]]; then
             ls -la
             echo "CRITICAL: helper-enduser binary missing"
             exit 1
           fi
           HELLO_BUILD_OUT="$("$THAG" build examples/hello.tg -o hello-enduser 2>&1 || true)"
           printf '%s\n' "$HELLO_BUILD_OUT"
-          if [[ ! -f hello-enduser && ! -f hello-enduser.exe ]]; then
-            if [[ -f hello ]]; then cp hello hello-enduser; fi
-            if [[ -f hello.exe ]]; then cp hello.exe hello-enduser.exe; fi
-          fi
           if [[ ! -f hello-enduser && ! -f hello-enduser.exe ]]; then
             ls -la
             echo "CRITICAL: hello-enduser binary missing"
@@ -1633,9 +1608,8 @@ jobs:
           $testListOut = [string]((& $thagore test --list --workspace 2>&1 | Out-String))
           $fixDoctorOut = [string]((& $thagore fix doctor examples/hello.tg --json 2>&1 | Out-String))
           $updateCheckOut = [string]((& $thagore update check 2>&1 | Out-String))
-          if ([string]::IsNullOrWhiteSpace($versionOut) -or [string]::IsNullOrWhiteSpace($helpOut)) {
-              Write-Host "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
-          }
+          if ([string]::IsNullOrWhiteSpace($versionOut)) { throw "CRITICAL: installed CLI --version returned empty output." }
+          if ([string]::IsNullOrWhiteSpace($helpOut)) { throw "CRITICAL: installed CLI --help returned empty output." }
           $merged = "$versionOut`n$helpOut`n$testListOut`n$fixDoctorOut`n$updateCheckOut"
           $helperMain = @(
               "import `"helperdep.tg`"",
@@ -1652,19 +1626,11 @@ jobs:
           $helperBuildOut = [string]((& $thagore build helpermain.tg -o helper-enduser.exe 2>&1 | Out-String))
           Write-Host $helperBuildOut
           if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser")) {
-              if (Test-Path "helpermain.exe") { Copy-Item -Force "helpermain.exe" "helper-enduser.exe" }
-              if (Test-Path "helpermain") { Copy-Item -Force "helpermain" "helper-enduser" }
-          }
-          if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser")) {
               Get-ChildItem -Force
               throw "CRITICAL: helper-enduser binary missing."
           }
           $helloBuildOut = [string]((& $thagore build examples/hello.tg -o hello-enduser.exe 2>&1 | Out-String))
           Write-Host $helloBuildOut
-          if (-not (Test-Path "hello-enduser.exe") -and -not (Test-Path "hello-enduser")) {
-              if (Test-Path "hello.exe") { Copy-Item -Force "hello.exe" "hello-enduser.exe" }
-              if (Test-Path "hello") { Copy-Item -Force "hello" "hello-enduser" }
-          }
           if (-not (Test-Path "hello-enduser.exe") -and -not (Test-Path "hello-enduser")) {
               Get-ChildItem -Force
               throw "CRITICAL: hello-enduser binary missing."

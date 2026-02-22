@@ -503,19 +503,13 @@ jobs:
 
           thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
           STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_BIN" ]]; then
-            STAGE2_BIN="$STAGE1_BIN"
-            echo "[INFO] using in-place rebuilt stage2 compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
+          [[ -n "$STAGE2_BIN" ]] || (echo "CRITICAL: stage2 build produced no output artifact."; exit 1)
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
 
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
           STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-          if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
+          [[ -n "$STAGE2_REBUILD_BIN" ]] || (echo "CRITICAL: stage2_rebuild produced no output artifact."; exit 1)
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
 
@@ -526,40 +520,14 @@ jobs:
           HELLO_MODE="binary"
           FIB_MODE="binary"
 
-          HELLO_BIN=""
-          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
-            [[ -n "$cc" && -f "$cc" ]] || continue
-            if thg_build "$cc" examples/hello.tg "$HELLO_TARGET"; then
-              HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
-              if [[ -n "$HELLO_BIN" ]]; then
-                break
-              fi
-            fi
-          done
-          if [[ -z "$HELLO_BIN" ]]; then
-            HELLO_MODE="source"
-            HELLO_BIN="$STAGE2_REBUILD_BIN"
-            [[ -n "$HELLO_BIN" && -f "$HELLO_BIN" ]] || HELLO_BIN="$STAGE1_BIN"
-            echo "[INFO] hello fallback to source execution via compiler: $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
+          thg_build "$STAGE2_REBUILD_BIN" examples/hello.tg "$HELLO_TARGET"
+          HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
+          [[ -n "$HELLO_BIN" ]] || (echo "CRITICAL: hello smoke binary missing after stage2_rebuild build."; exit 1)
           test -f "$HELLO_BIN"
 
-          FIB_BIN=""
-          for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
-            [[ -n "$cc" && -f "$cc" ]] || continue
-            if thg_build "$cc" examples/fib.tg "$FIB_TARGET"; then
-              FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
-              if [[ -n "$FIB_BIN" ]]; then
-                break
-              fi
-            fi
-          done
-          if [[ -z "$FIB_BIN" ]]; then
-            FIB_MODE="source"
-            FIB_BIN="$STAGE2_REBUILD_BIN"
-            [[ -n "$FIB_BIN" && -f "$FIB_BIN" ]] || FIB_BIN="$STAGE1_BIN"
-            echo "[INFO] fib fallback to source execution via compiler: $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
-          fi
+          thg_build "$STAGE2_REBUILD_BIN" examples/fib.tg "$FIB_TARGET"
+          FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
+          [[ -n "$FIB_BIN" ]] || (echo "CRITICAL: fib smoke binary missing after stage2_rebuild build."; exit 1)
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -664,13 +632,7 @@ jobs:
               built=1
             fi
             if [[ "$built" -eq 1 ]]; then
-              echo "[INFO] $cc built $test_src without artifact; fallback to source execution." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            if "./$cc" "$test_src" >/dev/null 2>&1; then
-              BUILT_BIN=""
-              USED_CC="$cc"
-              RUN_MODE="source"
-              return 0
+              echo "CRITICAL: $cc built $test_src without materialized artifact." | tee -a "$STAGE_TRACE_FILE"
             fi
             return 1
           }
@@ -862,19 +824,19 @@ jobs:
             fi
           done
           if [[ "$ok" -ne 1 ]]; then
-            echo "WARN: comptime LLVM output not found; continuing."
+            echo "CRITICAL: comptime LLVM output not found."
             ls -la || true
-            exit 0
+            exit 1
           fi
           if [[ ! -f "$TEST_LL" ]]; then
-            echo "WARN: comptime LLVM file missing after emit; continuing."
+            echo "CRITICAL: comptime LLVM file missing after emit."
             ls -la || true
-            exit 0
+            exit 1
           fi
           if ! grep -Eq "define .*@main\\(" "$TEST_LL"; then
-            echo "WARN: comptime LLVM output missing @main; continuing."
+            echo "CRITICAL: comptime LLVM output missing @main."
             cat "$TEST_LL" || true
-            exit 0
+            exit 1
           fi
 
       - name: Assert no stage0 fallback markers

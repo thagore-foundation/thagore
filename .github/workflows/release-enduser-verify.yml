@@ -105,8 +105,6 @@ jobs:
     name: linux-enduser-smoke
     runs-on: ubuntu-latest
     needs: [discord-notify-init, syntax-gate]
-    env:
-      SKIP_LINUX_SMOKE: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -148,16 +146,8 @@ jobs:
           PAYLOAD_DIR="$RUNNER_TEMP/release-payload"
           rm -rf "$PAYLOAD_DIR"
           mkdir -p "$PAYLOAD_DIR"
-          if ! curl -fsSL "$BASE/$ASSET" -o "$ASSET"; then
-            echo "No Linux payload for tag $TAG, skip linux-enduser-smoke."
-            echo "SKIP_LINUX_SMOKE=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          if ! curl -fsSL "$BASE/$SUMS" -o "$SUMS"; then
-            echo "No Linux checksum file for tag $TAG, skip linux-enduser-smoke."
-            echo "SKIP_LINUX_SMOKE=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
+          curl -fsSL "$BASE/$ASSET" -o "$ASSET"
+          curl -fsSL "$BASE/$SUMS" -o "$SUMS"
           EXPECTED="$(awk -v target="$ASSET" '$2 == target {print $1; exit}' "$SUMS")"
           [[ -n "$EXPECTED" ]] || (echo "Missing checksum for $ASSET in $SUMS"; exit 1)
           ACTUAL="$(sha256sum "$ASSET" | awk '{print $1}')"
@@ -181,7 +171,6 @@ jobs:
           milestone: Linux payload checksum and layout verified
 
       - name: Smoke test install.sh and CLI
-        if: env.SKIP_LINUX_SMOKE != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -191,7 +180,6 @@ jobs:
           "$HOME/.local/bin/thagore" --help
 
       - name: Run Linux CLI command suite (syntax + commands)
-        if: env.SKIP_LINUX_SMOKE != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -271,8 +259,6 @@ jobs:
     name: macos-enduser-smoke
     runs-on: macos-14
     needs: [discord-notify-init, syntax-gate]
-    env:
-      SKIP_MACOS_SMOKE: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -314,16 +300,8 @@ jobs:
           PAYLOAD_DIR="$RUNNER_TEMP/release-payload"
           rm -rf "$PAYLOAD_DIR"
           mkdir -p "$PAYLOAD_DIR"
-          if ! curl -fsSL "$BASE/$ASSET" -o "$ASSET"; then
-            echo "No macOS payload for tag $TAG, skip macos-enduser-smoke."
-            echo "SKIP_MACOS_SMOKE=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          if ! curl -fsSL "$BASE/$SUMS" -o "$SUMS"; then
-            echo "No macOS checksum file for tag $TAG, skip macos-enduser-smoke."
-            echo "SKIP_MACOS_SMOKE=1" >> "$GITHUB_ENV"
-            exit 0
-          fi
+          curl -fsSL "$BASE/$ASSET" -o "$ASSET"
+          curl -fsSL "$BASE/$SUMS" -o "$SUMS"
           EXPECTED="$(awk -v target="$ASSET" '$2 == target {print $1; exit}' "$SUMS")"
           [[ -n "$EXPECTED" ]] || (echo "Missing checksum for $ASSET in $SUMS"; exit 1)
           ACTUAL="$(shasum -a 256 "$ASSET" | awk '{print $1}')"
@@ -347,7 +325,6 @@ jobs:
           milestone: macOS payload checksum and layout verified
 
       - name: Smoke test install.sh and CLI
-        if: env.SKIP_MACOS_SMOKE != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -357,7 +334,6 @@ jobs:
           "$HOME/.local/bin/thagore" --help
 
       - name: Run macOS CLI command suite (syntax + commands)
-        if: env.SKIP_MACOS_SMOKE != '1'
         shell: bash
         run: |
           set -euo pipefail
