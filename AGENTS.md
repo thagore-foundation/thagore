@@ -20,7 +20,7 @@
 
 ## Bootstrap & Release Policy
 - CI/Release is **Stage1-only bootstrap** on all OS. Do not add Stage0 fallback branches.
-- Seed tag for bootstrap assets: `v0.3.25-stage1-seed`.
+- Seed tag for bootstrap assets: `v0.3.168-stage1-seed`.
 - Stage1 seed archives must support both binaries:
   - `bin/thagore`
   - `bin/thag` (compatible path used by existing macOS seed tar).

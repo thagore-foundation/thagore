@@ -71,7 +71,7 @@
 |------|---------|---------|
 | **LLVM / Clang** | 21.x | Compiler backend & linker |
 | **Python** | 3.x | Scripting, Python bridge (optional) |
-| **Stage1 seed** | `v0.3.25-stage1-seed` | Bootstrap seed binary |
+| **Stage1 seed** | `v0.3.168-stage1-seed` | Bootstrap seed binary |
 | **Runtime ABI** | — | `thag_runtime.lib` / `libthag_runtime.a` |
 
 > **Windows users:** Download the LLVM 21 release archive and ensure `clang`, `clang++`, and `llvm-link` are on your `PATH`.
