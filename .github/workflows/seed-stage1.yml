@@ -899,12 +899,7 @@ jobs:
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(hash_file "$cc" || true)"
               if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
-                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
-                  cp "$cc" "$out"
-                  echo "[INFO] compiler rebuilt in-place and was materialized as $out (hash_before=$cc_sig_before hash_after=$cc_sig_after)" | tee -a "$STAGE_TRACE_FILE" >&2
-                  return 0
-                fi
-                echo "CRITICAL: compiler $cc returned success for $src but produced no output and did not mutate binary." | tee -a "$STAGE_TRACE_FILE" >&2
+                echo "CRITICAL: compiler $cc returned success for $src but produced no materialized artifact (hash_before=$cc_sig_before hash_after=$cc_sig_after)." | tee -a "$STAGE_TRACE_FILE" >&2
                 return 1
               fi
             fi
@@ -949,49 +944,28 @@ jobs:
             HELLO_BIN="hello_seed"
             FIB_BIN="fib_seed"
           fi
-          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
-            echo "[INFO] linux-arm64 minimal verify: cli + hello smoke from stage1 seed" | tee -a "$STAGE_TRACE_FILE"
-            echo "[CMD] ./$STAGE1_BIN --version" | tee -a "$STAGE_TRACE_FILE" >&2
-            run_compiler "$STAGE1_BIN" --version 1>&2
-            printf 'func main():\n    print("seed linux arm64 smoke")\n' > _seed_min_hello.tg
-            SEED_BIN="$STAGE1_BIN"
-            STAGE2_REBUILD_BIN="$SEED_BIN"
-            COMPILER_CANDIDATES=("$SEED_BIN")
-          else
-            if run_compiler "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
-              if [[ -f "__thagore_seed_missing_out__" || -f "__thagore_seed_missing_out__.exe" ]]; then
-                echo "CRITICAL: seed compiler produced output for missing input (hard no-op behavior)."
-                exit 1
-              fi
-              echo "[WARN] seed compiler returned success for missing input but produced no output; continuing with strict positive gates."
+          if run_compiler "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
+            if [[ -f "__thagore_seed_missing_out__" || -f "__thagore_seed_missing_out__.exe" ]]; then
+              echo "CRITICAL: seed compiler produced output for missing input (hard no-op behavior)."
+              exit 1
             fi
-            if ! thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"; then
-              echo "[WARN] stage1 selfhost returned no standalone stage2 artifact; probing fallback chain."
-            fi
-            STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
-            if [[ -n "$STAGE2_BIN_RESOLVED" ]]; then
-              STAGE2_BIN="$STAGE2_BIN_RESOLVED"
-            else
-              STAGE2_BIN="$STAGE1_BIN"
-              echo "[WARN] stage1 selfhost produced no standalone stage2 artifact; using $STAGE2_BIN as fallback compiler."
-            fi
-            chmod +x "$STAGE2_BIN" || true
-
-            if ! thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"; then
-              echo "[WARN] stage2 selfhost returned no standalone stage2_rebuild artifact; probing fallback chain."
-            fi
-            STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
-            if [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]]; then
-              STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
-            else
-              STAGE2_REBUILD_BIN="$STAGE2_BIN"
-              echo "[WARN] stage2 selfhost produced no standalone stage2_rebuild artifact; using $STAGE2_REBUILD_BIN as fallback compiler."
-            fi
-            chmod +x "$STAGE2_REBUILD_BIN" || true
-
-            SEED_BIN="$STAGE2_REBUILD_BIN"
-            COMPILER_CANDIDATES=("$SEED_BIN" "$STAGE2_BIN" "$STAGE1_BIN")
+            echo "[WARN] seed compiler returned success for missing input but produced no output; continuing with strict positive gates."
           fi
+
+          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN" || (echo "CRITICAL: stage1 selfhost failed to materialize stage2 artifact."; exit 1)
+          STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          [[ -n "$STAGE2_BIN_RESOLVED" ]] || (echo "CRITICAL: missing stage2 artifact after stage1 selfhost."; exit 1)
+          STAGE2_BIN="$STAGE2_BIN_RESOLVED"
+          chmod +x "$STAGE2_BIN" || true
+
+          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN" || (echo "CRITICAL: stage2 selfhost failed to materialize stage2_rebuild artifact."; exit 1)
+          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]] || (echo "CRITICAL: missing stage2_rebuild artifact after stage2 selfhost."; exit 1)
+          STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
+          chmod +x "$STAGE2_REBUILD_BIN" || true
+
+          SEED_BIN="$STAGE2_REBUILD_BIN"
+          COMPILER_CANDIDATES=("$SEED_BIN" "$STAGE2_BIN" "$STAGE1_BIN")
           build_sample_with_candidates() {
             local src="$1"
             local out="$2"
@@ -1030,35 +1004,31 @@ jobs:
           }
 
           HELLO_SRC="examples/hello.tg"
-          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
-            echo "[WARN] linux-arm64 verify lane uses CLI/runtime/provenance gate only; compile smoke is skipped because current seed baseline may return no artifact on this lane."
-          else
-            HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
-            [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
-            if [[ -n "${LAST_SUCCESS_COMPILER:-}" && -f "$LAST_SUCCESS_COMPILER" ]]; then
-              SEED_BIN="$LAST_SUCCESS_COMPILER"
-            fi
-            chmod +x "$HELLO_BIN_FOUND" || true
-            HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
+          HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
+          [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
+          if [[ -n "${LAST_SUCCESS_COMPILER:-}" && -f "$LAST_SUCCESS_COMPILER" ]]; then
+            SEED_BIN="$LAST_SUCCESS_COMPILER"
+          fi
+          chmod +x "$HELLO_BIN_FOUND" || true
+          HELLO_HASH="$(hash_file "$HELLO_BIN_FOUND")"
+          CC_HASH="$(hash_file "$SEED_BIN")"
+          if [[ -n "$HELLO_HASH" && -n "$CC_HASH" && "$HELLO_HASH" == "$CC_HASH" ]]; then
+            echo "CRITICAL: hello output binary unexpectedly equals compiler binary hash."
+            exit 1
+          fi
+          run_with_watchdog "./$HELLO_BIN_FOUND" >/dev/null 2>&1
+          FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
+          if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
+            chmod +x "$FIB_BIN_FOUND" || true
+            FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
             CC_HASH="$(hash_file "$SEED_BIN")"
-            if [[ -n "$HELLO_HASH" && -n "$CC_HASH" && "$HELLO_HASH" == "$CC_HASH" ]]; then
-              echo "CRITICAL: hello output binary unexpectedly equals compiler binary hash."
+            if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
+              echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
               exit 1
             fi
-            run_with_watchdog "./$HELLO_BIN_FOUND" >/dev/null 2>&1
-            FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
-            if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
-              chmod +x "$FIB_BIN_FOUND" || true
-              FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
-              CC_HASH="$(hash_file "$SEED_BIN")"
-              if [[ -n "$FIB_HASH" && -n "$CC_HASH" && "$FIB_HASH" == "$CC_HASH" ]]; then
-                echo "CRITICAL: fib output binary unexpectedly equals compiler binary hash."
-                exit 1
-              fi
-              run_with_watchdog "./$FIB_BIN_FOUND" >/dev/null 2>&1
-            else
-              echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
-            fi
+            run_with_watchdog "./$FIB_BIN_FOUND" >/dev/null 2>&1
+          else
+            echo "[WARN] unable to emit fib sample with stage1/stage2 compiler chain; hello smoke already passed."
           fi
 
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -1635,7 +1605,6 @@ jobs:
             local out_bin=""
             local cc_sig_before=""
             local cc_sig_after=""
-            local materialized=""
             local build_rc=0
             local alt_build_rc=0
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
@@ -1664,16 +1633,7 @@ jobs:
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
               if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
-                if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" != "$cc_sig_after" ]]; then
-                  materialized="$out_stem"
-                  if [[ "$cc" == *.exe && "$materialized" != *.exe ]]; then
-                    materialized="${out_stem}.exe"
-                  fi
-                  cp "$cc" "$materialized"
-                  echo "$materialized"
-                  return 0
-                fi
-                echo "[verify-bundle] compiler returned success without output and without binary mutation: $cc -> $out_stem" >&2
+                echo "[verify-bundle] compiler returned success without output artifact: $cc -> $out_stem (before=$cc_sig_before after=$cc_sig_after)" >&2
               fi
             fi
             return 1
@@ -1746,10 +1706,6 @@ jobs:
             chmod +x stage1
             STAGE1_BIN="stage1"
           fi
-          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
-            echo "[WARN] linux-arm64 verify-bundle uses metadata/provenance gate only; executable smoke remains covered in build-seed lane."
-            exit 0
-          fi
           if run_compiler_cmd "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
             if [[ -f "__thagore_seed_missing_out__" || -f "__thagore_seed_missing_out__.exe" ]]; then
               echo "CRITICAL: packaged stage1 produced output for missing input (hard no-op behavior)."
@@ -1765,34 +1721,21 @@ jobs:
           STAGE2_STEM="stage2_from_bundle"
           STAGE2_BIN="$(thg_build_compiler "$STAGE1_BIN" src/thagore.tg "$STAGE2_STEM" || true)"
           STAGE2_BIN="$(printf '%s\n' "$STAGE2_BIN" | tail -n1 | tr -d '\r')"
-          if [[ -z "$STAGE2_BIN" ]]; then
-            STAGE2_BIN="$STAGE1_BIN"
-            echo "[WARN] packaged stage1 selfhost produced no standalone stage2 artifact; using $STAGE2_BIN as fallback compiler."
-          fi
+          [[ -n "$STAGE2_BIN" && -f "$STAGE2_BIN" ]] || (echo "CRITICAL: packaged stage1 selfhost did not materialize stage2 artifact."; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2_BIN"
           fi
           STAGE2B_BIN="$(thg_build_compiler "$STAGE2_BIN" src/thagore.tg stage2b_from_bundle || true)"
           STAGE2B_BIN="$(printf '%s\n' "$STAGE2B_BIN" | tail -n1 | tr -d '\r')"
-          if [[ -z "$STAGE2B_BIN" ]]; then
-            STAGE2B_BIN="$STAGE2_BIN"
-            echo "[WARN] stage2 selfhost produced no standalone stage2b artifact; using $STAGE2B_BIN as fallback compiler."
-          fi
+          [[ -n "$STAGE2B_BIN" && -f "$STAGE2B_BIN" ]] || (echo "CRITICAL: packaged stage2 selfhost did not materialize stage2b artifact."; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2B_BIN"
           fi
           STAGE2C_BIN="$(thg_build_compiler "$STAGE2B_BIN" src/thagore.tg stage2c_from_bundle || true)"
           STAGE2C_BIN="$(printf '%s\n' "$STAGE2C_BIN" | tail -n1 | tr -d '\r')"
-          if [[ -z "$STAGE2C_BIN" ]]; then
-            STAGE2C_BIN="$STAGE2B_BIN"
-            echo "[WARN] stage2b selfhost produced no standalone stage2c artifact; using $STAGE2C_BIN as fallback compiler."
-          fi
+          [[ -n "$STAGE2C_BIN" && -f "$STAGE2C_BIN" ]] || (echo "CRITICAL: packaged stage2b selfhost did not materialize stage2c artifact."; exit 1)
           if [[ "${{ runner.os }}" != "Windows" ]]; then
             chmod +x "$STAGE2C_BIN"
-          fi
-          if [[ "$STAGE2_BIN" == "$STAGE1_BIN" && "$STAGE2B_BIN" == "$STAGE1_BIN" && "$STAGE2C_BIN" == "$STAGE1_BIN" ]]; then
-            echo "[WARN] packaged compiler selfhost completed in no-output mode; skipping executable sample assertions."
-            exit 0
           fi
 
           build_and_assert_output_with_candidates examples/hello.tg hello_from_stage2 "Hello Self-Hosted World!" || exit 1
