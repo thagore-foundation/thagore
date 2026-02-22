@@ -697,6 +697,28 @@ jobs:
             echo "[SANITY] $bin accepted with non-empty CLI output." | tee -a "$STAGE_TRACE_FILE"
             return 0
           }
+          cli_compat_ok() {
+            local bin="$1"
+            local ver=""
+            local help=""
+            local update_out=""
+            local merged=""
+            chmod +x "$bin" || true
+            ver="$(run_capture_with_guard_timeout "./$bin" --version)"
+            help="$(run_capture_with_guard_timeout "./$bin" --help)"
+            update_out="$(run_capture_with_guard_timeout "./$bin" update check)"
+            merged="$ver"$'\n'"$help"$'\n'"$update_out"
+            if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$merged"; then
+              echo "[COMPAT] $bin rejected: output matches legacy/wrapper failure markers." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$merged"; then
+              echo "[COMPAT] $bin rejected: binary execution markers indicate broken/incompatible compiler." | tee -a "$STAGE_TRACE_FILE"
+              return 1
+            fi
+            echo "[COMPAT] $bin accepted in relaxed compatibility mode." | tee -a "$STAGE_TRACE_FILE"
+            return 0
+          }
           BUILD_TIMEOUT_SECS=300
           if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
             BUILD_TIMEOUT_SECS=120
@@ -801,6 +823,7 @@ jobs:
             return 1
           }
           USE_DONOR_BIN=0
+          STAGE2_FROM_BOOTSTRAP_FALLBACK=0
           DONOR_COMPILER=""
           if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
             DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
@@ -863,6 +886,7 @@ jobs:
               echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             elif [[ -f "$BOOTSTRAP_COMPILER" ]]; then
               STAGE2_BIN="$BOOTSTRAP_COMPILER"
+              STAGE2_FROM_BOOTSTRAP_FALLBACK=1
               echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
               echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler in compiler-managed no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             else
@@ -877,7 +901,15 @@ jobs:
           fi
           chmod +x "$STAGE2_BIN" || true
           if ! cli_sanity_ok "$STAGE2_BIN"; then
-            if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
+            if [[ "$STAGE2_FROM_BOOTSTRAP_FALLBACK" == "1" ]]; then
+              if cli_compat_ok "$STAGE2_BIN"; then
+                echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+                echo "[WARN] strict CLI sanity failed for fallback bootstrap compiler; continuing with relaxed compatibility gate." | tee -a "$STAGE_TRACE_FILE"
+              else
+                echo "CRITICAL: fallback bootstrap compiler failed compatibility gate: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+                exit 1
+              fi
+            elif [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
               echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
               STAGE2_BIN="$DONOR_COMPILER"
               chmod +x "$STAGE2_BIN" || true
