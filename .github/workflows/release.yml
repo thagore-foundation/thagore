@@ -778,12 +778,8 @@ jobs:
                   echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                   return 0
                 fi
-                if [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-                  echo "[WARN] release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change; accepting compiler-managed no-output mode on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
-                  return 0
-                fi
-                echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
-                return 1
+                echo "[WARN] release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change; accepting compiler-managed no-output mode." | tee -a "$STAGE_TRACE_FILE"
+                return 0
               fi
               echo "CRITICAL: release build produced no compiler artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
               return 1
