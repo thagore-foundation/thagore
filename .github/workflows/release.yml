@@ -843,10 +843,6 @@ jobs:
                   echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                   return 0
                 fi
-                if [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-                  echo "[WARN] release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change; accepting compiler-managed no-output mode on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
-                  return 0
-                fi
                 echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
                 return 1
               fi
@@ -952,9 +948,6 @@ jobs:
               echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
               STAGE2_BIN="$DONOR_COMPILER"
               chmod +x "$STAGE2_BIN" || true
-            elif [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] source-built compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             else
               echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
               exit 1
@@ -981,12 +974,8 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] release compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -1016,12 +1005,8 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           FIB_BIN=""
@@ -1035,12 +1020,8 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
