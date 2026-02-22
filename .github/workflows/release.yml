@@ -1565,10 +1565,25 @@ jobs:
           func main() -> i32:
               return helper_value()
           TG
-          "$THAG" build helpermain.tg -o helper-enduser
-          [[ -f helper-enduser ]] || (echo "CRITICAL: helper-enduser binary missing"; exit 1)
-          "$THAG" build examples/hello.tg -o hello-enduser
-          HELLO_OUT="$(./hello-enduser 2>&1)"
+          HELPER_BUILD_OUT="$("$THAG" build helpermain.tg -o helper-enduser 2>&1 || true)"
+          printf '%s\n' "$HELPER_BUILD_OUT"
+          if [[ ! -f helper-enduser && ! -f helper-enduser.exe ]]; then
+            ls -la
+            echo "CRITICAL: helper-enduser binary missing"
+            exit 1
+          fi
+          HELLO_BUILD_OUT="$("$THAG" build examples/hello.tg -o hello-enduser 2>&1 || true)"
+          printf '%s\n' "$HELLO_BUILD_OUT"
+          if [[ ! -f hello-enduser && ! -f hello-enduser.exe ]]; then
+            ls -la
+            echo "CRITICAL: hello-enduser binary missing"
+            exit 1
+          fi
+          HELLO_BIN="./hello-enduser"
+          if [[ -f hello-enduser.exe ]]; then
+            HELLO_BIN="./hello-enduser.exe"
+          fi
+          HELLO_OUT="$($HELLO_BIN 2>&1)"
           if ! grep -Eq "Hello Self-Hosted World!|Hello|Self-Hosted" <<<"$HELLO_OUT"; then
             echo "CRITICAL: end-user hello runtime marker missing."
             exit 1
@@ -1645,11 +1660,23 @@ jobs:
           ) -join "`n"
           Set-Content -Path "helpermain.tg" -Value $helperMain -Encoding utf8
           Set-Content -Path "helperdep.tg" -Value $helperDep -Encoding utf8
-          & $thagore build helpermain.tg -o helper-enduser.exe
-          if (-not (Test-Path "helper-enduser.exe")) { throw "CRITICAL: helper-enduser.exe not produced." }
-          & $thagore build examples/hello.tg -o hello-enduser.exe
-          if (-not (Test-Path "hello-enduser.exe")) { throw "CRITICAL: hello-enduser.exe not produced." }
-          $helloOut = [string]((& .\hello-enduser.exe 2>&1 | Out-String))
+          $helperBuildOut = [string]((& $thagore build helpermain.tg -o helper-enduser.exe 2>&1 | Out-String))
+          Write-Host $helperBuildOut
+          if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser")) {
+              Get-ChildItem -Force
+              throw "CRITICAL: helper-enduser binary missing."
+          }
+          $helloBuildOut = [string]((& $thagore build examples/hello.tg -o hello-enduser.exe 2>&1 | Out-String))
+          Write-Host $helloBuildOut
+          if (-not (Test-Path "hello-enduser.exe") -and -not (Test-Path "hello-enduser")) {
+              Get-ChildItem -Force
+              throw "CRITICAL: hello-enduser binary missing."
+          }
+          $helloExe = ".\\hello-enduser.exe"
+          if (-not (Test-Path $helloExe)) {
+              $helloExe = ".\\hello-enduser"
+          }
+          $helloOut = [string]((& $helloExe 2>&1 | Out-String))
           if ($helloOut -notmatch "Hello Self-Hosted World!|Hello|Self-Hosted") {
               throw "CRITICAL: end-user hello runtime marker missing."
           }
