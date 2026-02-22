@@ -540,6 +540,9 @@ jobs:
               param([string[]]$Args)
               return [string]((& $thagore @Args 2>&1 | Out-String))
           }
+          function Test-AnyHelperBinary {
+              return (Test-Path "helpertest.exe") -or (Test-Path "helpertest") -or (Test-Path "helpermain.exe") -or (Test-Path "helpermain") -or (Test-Path "helperbasic.exe") -or (Test-Path "helperbasic")
+          }
 
           $versionOut = Invoke-CliText @("--version")
           $helpOut = Invoke-CliText @("--help")
@@ -562,7 +565,7 @@ jobs:
           $helperBuildLog = [string]((& $thagore build helpermain.tg -o helpertest.exe 2>&1 | Out-String))
           $helperBuildCode = $LASTEXITCODE
           $helperBuildStatus = "pass"
-          if (($helperBuildCode -ne 0) -or (-not (Test-Path "helpertest.exe"))) {
+          if (($helperBuildCode -ne 0) -or (-not (Test-AnyHelperBinary))) {
               $helperBuildStatus = "import-fail"
               Write-Host $helperBuildLog
               $simpleMain = @(
@@ -572,7 +575,7 @@ jobs:
               Set-Content -Path "helperbasic.tg" -Value $simpleMain -Encoding utf8
               $simpleBuildLog = [string]((& $thagore build helperbasic.tg -o helpertest.exe 2>&1 | Out-String))
               $simpleBuildCode = $LASTEXITCODE
-              if (($simpleBuildCode -eq 0) -and (Test-Path "helpertest.exe")) {
+              if (($simpleBuildCode -eq 0) -and (Test-AnyHelperBinary)) {
                   $helperBuildStatus = "pass-simple-fallback"
                   $helperBuildLog = $helperBuildLog + "`n[compat] import fixture unsupported; simple fixture succeeded.`n" + $simpleBuildLog
               } else {

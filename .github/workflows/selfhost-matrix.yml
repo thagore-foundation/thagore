@@ -939,7 +939,7 @@ jobs:
               cp "$fallback_ll" "$TEST_LL"
               return 0
             fi
-            return 0
+            return 1
           }
 
           ok=0

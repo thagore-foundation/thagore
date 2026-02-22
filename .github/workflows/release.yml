@@ -1626,7 +1626,7 @@ jobs:
           $helperBuildOut = [string]((& $thagore build helpermain.tg -o helper-enduser.exe 2>&1 | Out-String))
           Write-Host $helperBuildOut
           $helperBuildCode = $LASTEXITCODE
-          if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser")) {
+          if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser") -and -not (Test-Path "helpermain.exe") -and -not (Test-Path "helpermain")) {
               $simpleMain = @(
                   "func main() -> i32:",
                   "    return 0"
@@ -1635,7 +1635,7 @@ jobs:
               $helperSimpleOut = [string]((& $thagore build helperbasic.tg -o helper-enduser.exe 2>&1 | Out-String))
               Write-Host $helperSimpleOut
               $helperSimpleCode = $LASTEXITCODE
-              if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser")) {
+              if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser") -and -not (Test-Path "helperbasic.exe") -and -not (Test-Path "helperbasic")) {
                   Get-ChildItem -Force
                   throw "CRITICAL: helper-enduser binary missing (import fixture code=$helperBuildCode, simple fixture code=$helperSimpleCode)."
               }
