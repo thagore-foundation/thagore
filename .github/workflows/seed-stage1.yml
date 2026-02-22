@@ -757,6 +757,19 @@ jobs:
           run_compiler() {
             local cc="$1"
             shift
+            local helper_bin=""
+            if [[ -n "${THAG_HELPER_BIN:-}" ]]; then
+              helper_bin="${THAG_HELPER_BIN}"
+            elif [[ -n "${STAGE1_BIN:-}" && -f "${STAGE1_BIN}" ]]; then
+              helper_bin="${STAGE1_BIN}"
+            elif [[ -f "./stage1.exe" ]]; then
+              helper_bin="./stage1.exe"
+            elif [[ -f "./stage1" ]]; then
+              helper_bin="./stage1"
+            fi
+            if [[ -n "$helper_bin" && "$helper_bin" != /* && "$helper_bin" != ./* ]]; then
+              helper_bin="./$helper_bin"
+            fi
             if [[ "${STAGE1_EMULATE_X86_64:-0}" == "1" && "$cc" == "stage1" ]]; then
               local qemu_bin=""
               if command -v qemu-x86_64-static >/dev/null 2>&1; then
@@ -768,7 +781,15 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
+              if [[ -n "$helper_bin" ]]; then
+                run_with_watchdog env THAG_HELPER_BIN="$helper_bin" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+                return $?
+              fi
               run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
+              return $?
+            fi
+            if [[ -n "$helper_bin" ]]; then
+              run_with_watchdog env THAG_HELPER_BIN="$helper_bin" "./$cc" "$@"
               return $?
             fi
             run_with_watchdog "./$cc" "$@"
@@ -1401,14 +1422,13 @@ jobs:
           run_compiler_cmd() {
             local cc="$1"
             shift
-            local helper="./$cc"
-            local force_emit="${THAG_FORCE_INTERNAL_EMIT:-0}"
-            if [[ ! -f "$helper" ]]; then
-              helper="./stage1"
-              if [[ -f "./stage1.exe" ]]; then
-                helper="./stage1.exe"
-              fi
+            local helper="./stage1"
+            if [[ -f "./stage1.exe" ]]; then
+              helper="./stage1.exe"
+            elif [[ ! -f "$helper" ]]; then
+              helper="./$cc"
             fi
+            local force_emit="${THAG_FORCE_INTERNAL_EMIT:-0}"
             local -a common_env=()
             if [[ -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
               common_env+=(THAG_HELPER_BIN="$helper")
