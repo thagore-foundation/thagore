@@ -762,9 +762,51 @@ jobs:
             local rc=0
             local cc_sig_before=""
             local cc_sig_after=""
+            local cc_cmd="$cc"
+            local ir_out="${out}.ll"
+            local linked=0
+            if [[ "$cc_cmd" != */* && "$cc_cmd" != *\\* ]]; then
+              cc_cmd="./$cc_cmd"
+            fi
             compiler_sig() {
               local bin_path="$1"
               "$PY" -c "import hashlib, pathlib, sys; p=pathlib.Path(sys.argv[1]); print('' if not p.exists() else f'{p.stat().st_size}:{hashlib.sha256(p.read_bytes()).hexdigest()}')" "$bin_path"
+            }
+            resolve_ir_local() {
+              local preferred="$1"
+              for c in "$preferred" "${preferred%.ll}.ll" "${out}.ll" "out.ll"; do
+                if [[ -f "$c" ]]; then
+                  echo "$c"
+                  return 0
+                fi
+              done
+              return 1
+            }
+            link_ir_to_bin_local() {
+              local ir_path="$1"
+              local out_path="$2"
+              local clang_bin="clang"
+              local runtime=""
+              if ! command -v "$clang_bin" >/dev/null 2>&1; then
+                if command -v clang++ >/dev/null 2>&1; then
+                  clang_bin="clang++"
+                elif [[ -x "/usr/bin/clang" ]]; then
+                  clang_bin="/usr/bin/clang"
+                elif [[ -x "/usr/local/bin/clang" ]]; then
+                  clang_bin="/usr/local/bin/clang"
+                elif [[ -x "C:/Progra~1/LLVM/bin/clang.exe" ]]; then
+                  clang_bin="C:/Progra~1/LLVM/bin/clang.exe"
+                fi
+              fi
+              for lib in runtime.lib runtime.a thag_runtime.lib libthag_runtime.a; do
+                if [[ -f "$lib" ]]; then
+                  runtime="$lib"
+                  break
+                fi
+              done
+              [[ -n "$runtime" ]] || return 1
+              echo "[CMD] $clang_bin $ir_path -o $out_path -Wno-override-module $runtime" | tee -a "$STAGE_TRACE_FILE"
+              "$clang_bin" "$ir_path" -o "$out_path" -Wno-override-module "$runtime"
             }
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(compiler_sig "$cc" || true)"
@@ -789,6 +831,24 @@ jobs:
                 echo "[WARN] primary build path produced no artifact for $src; trying shorthand compile path." | tee -a "$STAGE_TRACE_FILE"
                 echo "[CMD] ./$cc $src -o $out" | tee -a "$STAGE_TRACE_FILE"
                 if run_build_cmd "$cc" "$src" -o "$out"; then
+                  got="$(resolve_local "$out" || true)"
+                  if [[ -n "$got" ]]; then
+                    return 0
+                  fi
+                fi
+                echo "[WARN] no standalone compiler artifact from direct build paths; trying internal emit+link fallback." | tee -a "$STAGE_TRACE_FILE"
+                rm -f "$ir_out" "${out}" "${out}.exe" || true
+                echo "[CMD] THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN=$cc_cmd $cc_cmd --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
+                if THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN="$cc_cmd" "$cc_cmd" --emit-llvm-internal "$src" -o "$ir_out"; then
+                  local resolved_ir=""
+                  resolved_ir="$(resolve_ir_local "$ir_out" || true)"
+                  if [[ -n "$resolved_ir" && -f "$resolved_ir" ]]; then
+                    if link_ir_to_bin_local "$resolved_ir" "$out"; then
+                      linked=1
+                    fi
+                  fi
+                fi
+                if [[ "$linked" == "1" ]]; then
                   got="$(resolve_local "$out" || true)"
                   if [[ -n "$got" ]]; then
                     return 0
