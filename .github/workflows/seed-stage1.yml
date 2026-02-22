@@ -935,15 +935,13 @@ jobs:
             local found=""
             local ir_out="${out}.ll"
             local found_ir=""
-            LAST_SUCCESS_COMPILER=""
             for cc in "${COMPILER_CANDIDATES[@]}"; do
               [[ -n "$cc" && -f "$cc" ]] || continue
               purge_outputs "$src" "$out"
               if thg_build "$cc" "$src" "$out"; then
                 found="$(resolve_exact_bin "$out" || true)"
                 if [[ -n "$found" ]]; then
-                  LAST_SUCCESS_COMPILER="$cc"
-                  echo "$found"
+                  printf '%s\t%s\n' "$found" "$cc"
                   return 0
                 fi
               fi
@@ -955,8 +953,7 @@ jobs:
                   if link_ir_to_bin "$found_ir" "$out"; then
                     found="$(resolve_exact_bin "$out" || true)"
                     if [[ -n "$found" ]]; then
-                      LAST_SUCCESS_COMPILER="$cc"
-                      echo "$found"
+                      printf '%s\t%s\n' "$found" "$cc"
                       return 0
                     fi
                   fi
@@ -967,7 +964,9 @@ jobs:
           }
 
           HELLO_SRC="examples/hello.tg"
-          HELLO_BIN_FOUND="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
+          HELLO_CANDIDATE_RECORD="$(build_sample_with_candidates "$HELLO_SRC" "$HELLO_BIN" || true)"
+          HELLO_BIN_FOUND="$(printf '%s\n' "$HELLO_CANDIDATE_RECORD" | tail -n1 | cut -f1 | tr -d '\r')"
+          LAST_SUCCESS_COMPILER="$(printf '%s\n' "$HELLO_CANDIDATE_RECORD" | tail -n1 | cut -f2 | tr -d '\r')"
           [[ -n "$HELLO_BIN_FOUND" && -f "$HELLO_BIN_FOUND" ]] || (echo "CRITICAL: unable to emit required smoke sample with stage1/stage2 compiler chain"; exit 1)
           HELLO_SEED_OUT="${HELLO_BIN}_seed"
           purge_outputs "$HELLO_SRC" "$HELLO_SEED_OUT"
@@ -994,7 +993,8 @@ jobs:
             exit 1
           fi
           run_with_watchdog "./$HELLO_BIN_FOUND" >/dev/null 2>&1
-          FIB_BIN_FOUND="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
+          FIB_CANDIDATE_RECORD="$(build_sample_with_candidates "examples/fib.tg" "$FIB_BIN" || true)"
+          FIB_BIN_FOUND="$(printf '%s\n' "$FIB_CANDIDATE_RECORD" | tail -n1 | cut -f1 | tr -d '\r')"
           if [[ -n "$FIB_BIN_FOUND" && -f "$FIB_BIN_FOUND" ]]; then
             chmod +x "$FIB_BIN_FOUND" || true
             FIB_HASH="$(hash_file "$FIB_BIN_FOUND")"
