@@ -1495,36 +1495,18 @@ jobs:
             local out_bin=""
             local cc_sig_before=""
             local cc_sig_after=""
-            local build_rc=0
-            local alt_build_rc=0
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(cksum "$cc" 2>/dev/null || true)"
             fi
-            if run_compiler_cmd "$cc" build "$source_file" -o "$out_stem"; then
-              build_rc=0
-            else
-              build_rc=$?
-            fi
-            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
-            if [[ -n "$out_bin" ]]; then
-              echo "$out_bin"
-              return 0
-            fi
-            if run_compiler_cmd "$cc" --build "$source_file" -o "$out_stem"; then
-              alt_build_rc=0
-            else
-              alt_build_rc=$?
-            fi
-            out_bin="$(resolve_compiler_bin "$out_stem" || true)"
+            out_bin="$(build_program_with_cc "$cc" "$source_file" "$out_stem" || true)"
+            out_bin="$(printf '%s\n' "$out_bin" | tail -n1 | tr -d '\r')"
             if [[ -n "$out_bin" ]]; then
               echo "$out_bin"
               return 0
             fi
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
-              if [[ $build_rc -eq 0 || $alt_build_rc -eq 0 ]]; then
-                echo "[verify-bundle] compiler returned success without output artifact: $cc -> $out_stem (before=$cc_sig_before after=$cc_sig_after)" >&2
-              fi
+              echo "[verify-bundle] compiler did not materialize output artifact: $cc -> $out_stem (before=$cc_sig_before after=$cc_sig_after)" >&2
             fi
             return 1
           }
