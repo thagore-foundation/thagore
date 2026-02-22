@@ -979,8 +979,8 @@ jobs:
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
-          BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${{ matrix.stage1_bin }}")
-          RELEASE_COMPILER_BIN=""
+          BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}")
+          RELEASE_COMPILER_BIN="$STAGE2_REBUILD_BIN"
 
           HELLO_BIN=""
           for cc in "${BUILD_COMPILERS[@]}"; do
@@ -994,16 +994,8 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" && "${BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
-              echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            if [[ "${BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-              echo "[WARN] hello smoke binary was not produced in bootstrap compatibility mode; continuing with no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            fi
+            echo "CRITICAL: hello smoke binary was not produced by stage2 compiler on this lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           FIB_BIN=""
@@ -1020,26 +1012,11 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" && "${BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
-              echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            if [[ "${BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-              echo "[WARN] fib smoke binary was not produced in bootstrap compatibility mode; continuing with no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            fi
+            echo "CRITICAL: fib smoke binary was not produced by stage2 compiler on this lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
-          if [[ -z "${RELEASE_COMPILER_BIN:-}" ]]; then
-            RELEASE_COMPILER_BIN="$STAGE2_REBUILD_BIN"
-          fi
-          if [[ "$OFFICIAL_RELEASE_TAG" != "1" && "$RELEASE_COMPILER_BIN" == "${{ matrix.stage1_bin }}" ]]; then
-            BOOTSTRAP_COMPAT_MODE=1
-            echo "[WARN] non-tag lane falling back to stage1 compiler; enabling bootstrap compatibility mode." | tee -a "$STAGE_TRACE_FILE"
-          fi
           echo "RELEASE_COMPILER_BIN=$RELEASE_COMPILER_BIN" >> "$GITHUB_ENV"
           echo "RELEASE_BOOTSTRAP_COMPAT_MODE=$BOOTSTRAP_COMPAT_MODE" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
@@ -1075,10 +1052,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping CLI help/version smoke on non-strict no-output lane."
-            exit 0
-          fi
           chmod +x "$RELEASE_COMPILER_BIN" || true
           VERSION_OUT="$(./$RELEASE_COMPILER_BIN --version 2>&1)"
           HELP_OUT="$(./$RELEASE_COMPILER_BIN --help 2>&1)"
@@ -1087,23 +1060,19 @@ jobs:
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$UPDATE_OUT" > cli-update-release-${{ matrix.asset_tag }}.txt
           MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$UPDATE_OUT"
-          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
-            if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
-              echo "CRITICAL: smoke step detected legacy/wrapper markers."
-              exit 1
-            fi
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+            echo "CRITICAL: smoke step detected legacy/wrapper markers."
+            exit 1
           fi
           if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$MERGED_OUT"; then
             echo "CRITICAL: smoke step detected broken/incompatible compiler execution markers."
             exit 1
           fi
-          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-            echo "[WARN] bootstrap compatibility mode: allowing empty --version/--help output because compiler passed strict compatibility gate."
-          elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
-            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-              echo "CRITICAL: official release lane requires non-empty --version and --help output."
-              exit 1
-            fi
+          if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+            echo "CRITICAL: release lane requires non-empty --version and --help output."
+            exit 1
+          fi
+          if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$RELEASE_COMPILER_BIN" == donor_* ]]; then
@@ -1113,15 +1082,9 @@ jobs:
                 exit 1
               fi
             fi
-          else
-            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-              echo "WARN: non-tag release lane has empty --version/--help output; continue to strict helper/runtime smoke."
-            fi
           fi
           PROOF_FILE="thagore-enduser-verified-${{ matrix.asset_tag }}.txt"
-          if [[ -n "$VERSION_OUT" && -n "$HELP_OUT" ]]; then
-            printf 'status=pass\ntag=%s\nasset_tag=%s\nversion=%s\n' "${GITHUB_REF_NAME:-}" "${{ matrix.asset_tag }}" "$VERSION_OUT" > "$PROOF_FILE"
-          fi
+          printf 'status=pass\ntag=%s\nasset_tag=%s\nversion=%s\ncompiler=%s\n' "${GITHUB_REF_NAME:-}" "${{ matrix.asset_tag }}" "$VERSION_OUT" "$RELEASE_COMPILER_BIN" > "$PROOF_FILE"
 
       - name: Smoke helper import/use
         shell: bash
@@ -1663,6 +1626,8 @@ jobs:
 
           $env:THAGORE_BIN = Join-Path $payload "bin"
           $env:THAG_HELPER_BIN = $thagore
+          $runtimeCompat = Join-Path (Get-Location) "thag_runtime.lib"
+          Copy-Item -Force (Join-Path $payload "lib\\runtime.lib") $runtimeCompat
           $versionOut = [string]((& $thagore --version 2>&1 | Out-String))
           $helpOut = [string]((& $thagore --help 2>&1 | Out-String))
           $testListOut = [string]((& $thagore test --list --workspace 2>&1 | Out-String))
