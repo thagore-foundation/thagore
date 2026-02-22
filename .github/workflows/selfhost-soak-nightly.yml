@@ -10,7 +10,7 @@ on:
       bootstrap_stage1_tag:
         description: "Bootstrap seed tag"
         required: false
-        default: "v0.3.168-stage1-seed"
+        default: "v0.3.193-stage1-seed"
   schedule:
     - cron: "0 2 * * *"
 
@@ -23,4 +23,4 @@ jobs:
     uses: ./.github/workflows/selfhost-longhaul.yml
     with:
       longhaul_rounds: ${{ github.event.inputs.longhaul_rounds || '3' }}
-      bootstrap_stage1_tag: ${{ github.event.inputs.bootstrap_stage1_tag || 'v0.3.168-stage1-seed' }}
+      bootstrap_stage1_tag: ${{ github.event.inputs.bootstrap_stage1_tag || 'v0.3.193-stage1-seed' }}
