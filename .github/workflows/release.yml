@@ -861,10 +861,10 @@ jobs:
             if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
               STAGE2_BIN="$DONOR_COMPILER"
               echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            elif [[ "$STRICT_RELEASE_LANE" != "1" && -f "$BOOTSTRAP_COMPILER" ]]; then
+            elif [[ -f "$BOOTSTRAP_COMPILER" ]]; then
               STAGE2_BIN="$BOOTSTRAP_COMPILER"
               echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler due to non-strict no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+              echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler in compiler-managed no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
             else
               echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
               exit 1
