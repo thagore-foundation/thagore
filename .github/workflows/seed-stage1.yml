@@ -898,8 +898,8 @@ jobs:
             STAGE1_BIN="stage1.exe"
             STAGE2_BIN="stage2.exe"
             STAGE2_REBUILD_BIN="stage2_rebuild.exe"
-            HELLO_BIN="hello_seed.exe"
-            FIB_BIN="fib_seed.exe"
+            HELLO_BIN="hello_seed"
+            FIB_BIN="fib_seed"
           else
             STAGE1_BIN="stage1"
             STAGE2_BIN="stage2"
