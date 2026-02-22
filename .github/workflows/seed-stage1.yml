@@ -500,7 +500,11 @@ jobs:
             materialize_helper_companion
             seed_smoke_probe
           }
-          TAG_CANDIDATES=("$BOOTSTRAP_STAGE1_TAG")
+          TAG_CANDIDATES=()
+          if [[ -n "${HELPER_COMPANION_TAG:-}" && ( "${{ matrix.asset_tag }}" == "windows-x86_64" || "${{ matrix.asset_tag }}" == "linux-arm64" ) ]]; then
+            TAG_CANDIDATES+=("$HELPER_COMPANION_TAG")
+          fi
+          TAG_CANDIDATES+=("$BOOTSTRAP_STAGE1_TAG")
           if [[ -n "${HELPER_COMPANION_TAG:-}" ]]; then
             TAG_CANDIDATES+=("$HELPER_COMPANION_TAG")
           fi
