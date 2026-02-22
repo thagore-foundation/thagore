@@ -449,6 +449,51 @@ jobs:
               done
               return 1
             }
+            resolve_ir() {
+              local preferred="$1"
+              local src_base="$2"
+              for c in "$preferred" "${preferred%.exe}.ll" "${src_base}.ll" "examples/${src_base}.ll" "src/${src_base}.ll"; do
+                if [[ -f "$c" ]]; then
+                  echo "$c"
+                  return 0
+                fi
+              done
+              return 1
+            }
+            link_ir() {
+              local ir="$1"
+              local out_path="$2"
+              local linker=""
+              local runtime=""
+              local linked=1
+              for candidate in clang clang++; do
+                if command -v "$candidate" >/dev/null 2>&1; then
+                  linker="$candidate"
+                  break
+                fi
+              done
+              [[ -n "$linker" ]] || return 1
+              if [[ "${{ runner.os }}" == "Windows" ]]; then
+                for runtime in thag_runtime.lib runtime.lib; do
+                  [[ -f "$runtime" ]] || continue
+                  echo "[CMD] $linker $ir -o $out_path -Wno-override-module $runtime" | tee -a "$STAGE_TRACE_FILE"
+                  if "$linker" "$ir" -o "$out_path" -Wno-override-module "$runtime" -O2 -std=c++17; then
+                    linked=0
+                    break
+                  fi
+                done
+              else
+                for runtime in libthag_runtime.a thag_runtime.lib runtime.a runtime.lib; do
+                  [[ -f "$runtime" ]] || continue
+                  echo "[CMD] $linker $ir -o $out_path -Wno-override-module $runtime" | tee -a "$STAGE_TRACE_FILE"
+                  if "$linker" "$ir" -o "$out_path" -Wno-override-module "$runtime" -O2 -std=c++17; then
+                    linked=0
+                    break
+                  fi
+                done
+              fi
+              return "$linked"
+            }
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if "./$cc" build "$src" -o "$out"; then
               got="$(resolve_local "$out" "$base" || true)"
@@ -461,6 +506,24 @@ jobs:
             got="$(resolve_local "$out" "$base" || true)"
             if [[ -n "$got" ]]; then
               return 0
+            fi
+            local ir_out="${out}.ll"
+            local got_ir=""
+            echo "[CMD] ./$cc --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
+            "./$cc" --emit-llvm-internal "$src" -o "$ir_out" || true
+            got_ir="$(resolve_ir "$ir_out" "$base" || true)"
+            if [[ -z "$got_ir" ]]; then
+              echo "[CMD] ./$cc $src --emit-llvm-internal -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
+              "./$cc" "$src" --emit-llvm-internal -o "$ir_out" || true
+              got_ir="$(resolve_ir "$ir_out" "$base" || true)"
+            fi
+            if [[ -n "$got_ir" ]] && grep -Eq "@main\\(" "$got_ir"; then
+              if link_ir "$got_ir" "$out"; then
+                got="$(resolve_local "$out" "$base" || true)"
+                if [[ -n "$got" ]]; then
+                  return 0
+                fi
+              fi
             fi
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
