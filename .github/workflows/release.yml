@@ -980,18 +980,7 @@ jobs:
           HELLO_TARGET="${{ matrix.hello_bin }}"
           FIB_TARGET="${{ matrix.fib_bin }}"
           BUILD_COMPILERS=("$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${{ matrix.stage1_bin }}")
-          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.arch }}" == "arm64" ]]; then
-            BUILD_COMPILERS=()
-            if [[ -n "${STAGE2_REBUILD_BIN:-}" ]]; then
-              BUILD_COMPILERS+=("$STAGE2_REBUILD_BIN")
-            fi
-            if [[ -n "${STAGE2_BIN:-}" && "${STAGE2_BIN:-}" != "${STAGE2_REBUILD_BIN:-}" ]]; then
-              BUILD_COMPILERS+=("$STAGE2_BIN")
-            fi
-            if [[ "${#BUILD_COMPILERS[@]}" -eq 0 ]]; then
-              BUILD_COMPILERS=("${{ matrix.stage1_bin }}")
-            fi
-          fi
+          RELEASE_COMPILER_BIN=""
 
           HELLO_BIN=""
           for cc in "${BUILD_COMPILERS[@]}"; do
@@ -999,6 +988,7 @@ jobs:
             if thg_build "$cc" examples/hello.tg "$HELLO_TARGET"; then
               HELLO_BIN="$(resolve_bin "$HELLO_TARGET" "examples/hello.tg" || true)"
               if [[ -n "$HELLO_BIN" ]]; then
+                RELEASE_COMPILER_BIN="$cc"
                 break
               fi
             fi
@@ -1022,6 +1012,9 @@ jobs:
             if thg_build "$cc" examples/fib.tg "$FIB_TARGET"; then
               FIB_BIN="$(resolve_bin "$FIB_TARGET" "examples/fib.tg" || true)"
               if [[ -n "$FIB_BIN" ]]; then
+                if [[ -z "${RELEASE_COMPILER_BIN:-}" ]]; then
+                  RELEASE_COMPILER_BIN="$cc"
+                fi
                 break
               fi
             fi
@@ -1040,6 +1033,10 @@ jobs:
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
+          if [[ -z "${RELEASE_COMPILER_BIN:-}" ]]; then
+            RELEASE_COMPILER_BIN="$STAGE2_REBUILD_BIN"
+          fi
+          echo "RELEASE_COMPILER_BIN=$RELEASE_COMPILER_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
 
@@ -1077,10 +1074,10 @@ jobs:
             echo "[WARN] skipping CLI help/version smoke on non-strict no-output lane."
             exit 0
           fi
-          chmod +x "$STAGE2_REBUILD_BIN" || true
-          VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1)"
-          HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1)"
-          UPDATE_OUT="$(./$STAGE2_REBUILD_BIN update check 2>&1 || true)"
+          chmod +x "$RELEASE_COMPILER_BIN" || true
+          VERSION_OUT="$(./$RELEASE_COMPILER_BIN --version 2>&1)"
+          HELP_OUT="$(./$RELEASE_COMPILER_BIN --help 2>&1)"
+          UPDATE_OUT="$(./$RELEASE_COMPILER_BIN update check 2>&1 || true)"
           printf '%s\n' "$VERSION_OUT" > cli-version-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$UPDATE_OUT" > cli-update-release-${{ matrix.asset_tag }}.txt
@@ -1102,7 +1099,7 @@ jobs:
             fi
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
-              if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
+              if [[ "$RELEASE_COMPILER_BIN" == donor_* ]]; then
                 echo "WARN: donor compiler reports version '$VERSION_OUT' (expected tag $GITHUB_REF_NAME); continuing official lane."
               else
                 echo "CRITICAL: --version output does not match official release tag semver $GITHUB_REF_NAME."
@@ -1131,7 +1128,7 @@ jobs:
             echo "[WARN] skipping helper import/use smoke on non-strict no-output lane."
             exit 0
           fi
-          chmod +x "$STAGE2_REBUILD_BIN" || true
+          chmod +x "$RELEASE_COMPILER_BIN" || true
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
               return 7
@@ -1146,7 +1143,7 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             HELPER_OUT="helper-smoke.exe"
           fi
-          THAG_HELPER_BIN="./$STAGE2_REBUILD_BIN" "./$STAGE2_REBUILD_BIN" build helpermain.tg -o "$HELPER_OUT"
+          THAG_HELPER_BIN="./$RELEASE_COMPILER_BIN" "./$RELEASE_COMPILER_BIN" build helpermain.tg -o "$HELPER_OUT"
           if [[ ! -f "$HELPER_OUT" ]]; then
             echo "CRITICAL: helper import/use smoke did not produce output binary: $HELPER_OUT"
             exit 1
@@ -1232,11 +1229,11 @@ jobs:
           rm -rf dist
           mkdir -p dist/bin dist/lib
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1.exe"
+            cp "$RELEASE_COMPILER_BIN" "dist/bin/${{ matrix.output_bin }}"
+            cp "$RELEASE_COMPILER_BIN" "dist/bin/stage1.exe"
           else
-            cp "$STAGE2_REBUILD_BIN" "dist/bin/${{ matrix.output_bin }}"
-            cp "$STAGE2_REBUILD_BIN" "dist/bin/stage1"
+            cp "$RELEASE_COMPILER_BIN" "dist/bin/${{ matrix.output_bin }}"
+            cp "$RELEASE_COMPILER_BIN" "dist/bin/stage1"
           fi
           cp -R std "dist/lib/std"
           if [[ ! -d "dist/bin" ]]; then
