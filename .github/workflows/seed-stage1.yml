@@ -1377,12 +1377,6 @@ jobs:
             if [[ "$force_emit" == "1" && -z "${THAG_HELPER_BIN:-}" && -f "$helper" ]]; then
               common_env+=(THAG_HELPER_BIN="$helper")
             fi
-            if [[ "$force_emit" == "1" && -z "${THAGORE_INTERNAL_EMIT:-}" ]]; then
-              common_env+=(THAGORE_INTERNAL_EMIT=1)
-            fi
-            if [[ "$force_emit" == "1" && -z "${THAG_HELPER_DEPTH:-}" ]]; then
-              common_env+=(THAG_HELPER_DEPTH=1)
-            fi
             if [[ ${#common_env[@]} -gt 0 ]]; then
               env "${common_env[@]}" "./$cc" "$@"
               return $?
