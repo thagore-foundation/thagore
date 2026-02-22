@@ -1599,6 +1599,10 @@ jobs:
             out_bin="$(printf '%s\n' "$out_bin" | tail -n1 | tr -d '\r')"
             if [[ -z "$out_bin" ]]; then
               echo "CRITICAL: $compiler_bin failed to build executable for $source_file"
+              echo "[verify-bundle][debug] file snapshot after failed build:"
+              {
+                find . -maxdepth 4 -type f 2>/dev/null | sed 's|^\./||' | sort | head -n 200
+              } || true
               return 1
             fi
             if [[ "${{ runner.os }}" != "Windows" ]]; then
@@ -1683,6 +1687,12 @@ jobs:
           cp -R ../lib ./lib
           [[ -f src/thagore.tg ]] || (echo "CRITICAL: verify bundle missing src/thagore.tg"; exit 1)
           [[ -f examples/hello.tg ]] || (echo "CRITICAL: verify bundle missing examples/hello.tg"; exit 1)
+          echo "[verify-bundle][debug] compiler checksums:"
+          cksum "$STAGE1_BIN" || true
+          if [[ -f stage1_helper || -f stage1_helper.exe ]]; then
+            cksum stage1_helper 2>/dev/null || true
+            cksum stage1_helper.exe 2>/dev/null || true
+          fi
           run_compiler_cmd "$STAGE1_BIN" --version >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --version failed"; exit 1)
           run_compiler_cmd "$STAGE1_BIN" --help >/dev/null 2>&1 || (echo "CRITICAL: packaged stage1 --help failed"; exit 1)
           STAGE2_STEM="stage2_from_bundle"
