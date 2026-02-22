@@ -813,7 +813,26 @@ jobs:
             fi
             resolve_local() {
               local preferred="$1"
-              for c in "$preferred" "${preferred}.exe" "${preferred%.exe}" "a.out" "a.exe" "out" "out.exe"; do
+              local src_path="$2"
+              local src_base=""
+              local src_stem=""
+              if [[ -n "$src_path" ]]; then
+                src_base="$(basename "$src_path")"
+                src_stem="${src_base%.*}"
+              fi
+              for c in \
+                "$preferred" \
+                "${preferred}.exe" \
+                "${preferred%.exe}" \
+                "a.out" \
+                "a.exe" \
+                "out" \
+                "out.exe" \
+                "$src_stem" \
+                "${src_stem}.exe" \
+                "${src_path%.*}" \
+                "${src_path%.*}.exe"; do
+                [[ -n "$c" ]] || continue
                 if [[ -f "$c" ]]; then
                   echo "$c"
                   return 0
@@ -823,7 +842,7 @@ jobs:
             }
             echo "[CMD] ./$cc build $src -o $out" | tee -a "$STAGE_TRACE_FILE"
             if run_build_cmd "$cc" build "$src" -o "$out"; then
-              got="$(resolve_local "$out" || true)"
+              got="$(resolve_local "$out" "$src" || true)"
               if [[ -n "$got" ]]; then
                 return 0
               fi
@@ -831,7 +850,7 @@ jobs:
                 echo "[WARN] primary build path produced no artifact for $src; trying shorthand compile path." | tee -a "$STAGE_TRACE_FILE"
                 echo "[CMD] ./$cc $src -o $out" | tee -a "$STAGE_TRACE_FILE"
                 if run_build_cmd "$cc" "$src" -o "$out"; then
-                  got="$(resolve_local "$out" || true)"
+                  got="$(resolve_local "$out" "$src" || true)"
                   if [[ -n "$got" ]]; then
                     return 0
                   fi
@@ -849,7 +868,7 @@ jobs:
                   fi
                 fi
                 if [[ "$linked" == "1" ]]; then
-                  got="$(resolve_local "$out" || true)"
+                  got="$(resolve_local "$out" "$src" || true)"
                   if [[ -n "$got" ]]; then
                     return 0
                   fi
