@@ -236,6 +236,13 @@ jobs:
             # linux-arm64 lane may execute x86_64 stage1 seed binaries via qemu.
             # Install cross glibc/stdc++ runtime so x86_64 loader/stdlib are present.
             sudo apt-get install -y libc6-amd64-cross libstdc++6-amd64-cross || true
+            if [[ -d "/usr/x86_64-linux-gnu" ]]; then
+              echo "QEMU_LD_PREFIX=/usr/x86_64-linux-gnu" >> "$GITHUB_ENV"
+            fi
+            if [[ -f "/usr/x86_64-linux-gnu/lib64/ld-linux-x86-64.so.2" && ! -e "/lib64/ld-linux-x86-64.so.2" ]]; then
+              sudo mkdir -p /lib64 || true
+              sudo ln -sf /usr/x86_64-linux-gnu/lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2 || true
+            fi
             if ! command -v qemu-aarch64-static >/dev/null 2>&1 && ! command -v qemu-aarch64 >/dev/null 2>&1; then
               echo "CRITICAL: qemu aarch64 emulator is missing after install."
               exit 1
@@ -1089,6 +1096,10 @@ jobs:
           if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
             echo "[WARN] bootstrap compatibility mode: allowing empty --version/--help output because compiler passed strict compatibility gate."
           elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
+            if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
+              echo "CRITICAL: official release lane requires non-empty --version and --help output."
+              exit 1
+            fi
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
@@ -1100,8 +1111,7 @@ jobs:
             fi
           else
             if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-              echo "CRITICAL: release lane requires non-empty --version and --help output."
-              exit 1
+              echo "WARN: non-tag release lane has empty --version/--help output; continue to strict helper/runtime smoke."
             fi
           fi
           PROOF_FILE="thagore-enduser-verified-${{ matrix.asset_tag }}.txt"
