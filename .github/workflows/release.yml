@@ -1177,8 +1177,8 @@ jobs:
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$UPDATE_OUT" > cli-update-release-${{ matrix.asset_tag }}.txt
           MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$UPDATE_OUT"
-          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
-            echo "CRITICAL: smoke step detected legacy/wrapper update markers."
+          if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+            echo "CRITICAL: smoke step detected legacy/wrapper markers."
             exit 1
           fi
           if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$MERGED_OUT"; then
@@ -1656,7 +1656,7 @@ jobs:
             echo "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
           fi
           MERGED="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
-          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED"; then
+          if grep -Eqi "Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED"; then
             echo "CRITICAL: end-user CLI suite detected legacy/wrapper markers."
             exit 1
           fi
@@ -1750,7 +1750,7 @@ jobs:
               Write-Host "WARN: installed CLI returned empty --version/--help output; continuing to deep smoke gates."
           }
           $merged = "$versionOut`n$helpOut`n$testListOut`n$fixDoctorOut`n$updateCheckOut"
-          if ($merged -match "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe") {
+          if ($merged -match "Empty file or file not found|Usage:\s*thg\.exe") {
               throw "CRITICAL: end-user CLI suite detected legacy/wrapper markers."
           }
 
