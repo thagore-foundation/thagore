@@ -618,6 +618,16 @@ jobs:
             local cc="$1"
             shift
             local helper_bin=""
+            local needs_helper=0
+            local arg=""
+            for arg in "$@"; do
+              case "$arg" in
+                --emit-llvm|--emit-llvm-internal)
+                  needs_helper=1
+                  break
+                  ;;
+              esac
+            done
             if [[ -n "${HELPER_COMPANION_BIN:-}" && -f "${HELPER_COMPANION_BIN#./}" ]]; then
               helper_bin="${HELPER_COMPANION_BIN}"
             elif [[ -f "./stage1_helper.exe" ]]; then
@@ -647,14 +657,14 @@ jobs:
                 echo "CRITICAL: qemu x86_64 emulator is missing on linux-arm64 seed lane." >&2
                 return 127
               fi
-              if [[ -n "$helper_bin" ]]; then
+              if [[ "$needs_helper" == "1" && -n "$helper_bin" ]]; then
                 run_with_watchdog env THAG_HELPER_BIN="$helper_bin" QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
                 return $?
               fi
               run_with_watchdog env QEMU_LD_PREFIX="${QEMU_LD_PREFIX:-/usr/x86_64-linux-gnu}" "$qemu_bin" "./$cc" "$@"
               return $?
             fi
-            if [[ -n "$helper_bin" ]]; then
+            if [[ "$needs_helper" == "1" && -n "$helper_bin" ]]; then
               run_with_watchdog env THAG_HELPER_BIN="$helper_bin" "./$cc" "$@"
               return $?
             fi
@@ -702,6 +712,18 @@ jobs:
             )"
             if [[ -n "$discovered" ]]; then
               echo "$discovered"
+              return 0
+            fi
+            return 1
+          }
+          resolve_compiler_bin() {
+            local out_stem="$1"
+            if [[ -f "$out_stem" ]]; then
+              echo "$out_stem"
+              return 0
+            fi
+            if [[ -f "${out_stem}.exe" ]]; then
+              echo "${out_stem}.exe"
               return 0
             fi
             return 1
@@ -808,6 +830,19 @@ jobs:
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE" >&2
             return 1
           }
+          thg_build_compiler_strict() {
+            local cc="$1"
+            local src="$2"
+            local out="$3"
+            local got=""
+            thg_build "$cc" "$src" "$out" || return 1
+            got="$(resolve_compiler_bin "$out" || true)"
+            if [[ -n "$got" ]]; then
+              return 0
+            fi
+            echo "CRITICAL: compiler build did not materialize strict output ($out) from $src using $cc." | tee -a "$STAGE_TRACE_FILE" >&2
+            return 1
+          }
           purge_outputs() {
             local src="$1"
             local out="$2"
@@ -854,14 +889,14 @@ jobs:
             echo "[WARN] seed compiler returned success for missing input but produced no output; continuing with strict positive gates."
           fi
 
-          thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN" || (echo "CRITICAL: stage1 selfhost failed to materialize stage2 artifact."; exit 1)
-          STAGE2_BIN_RESOLVED="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
+          thg_build_compiler_strict "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN" || (echo "CRITICAL: stage1 selfhost failed to materialize stage2 artifact."; exit 1)
+          STAGE2_BIN_RESOLVED="$(resolve_compiler_bin "$STAGE2_BIN" || true)"
           [[ -n "$STAGE2_BIN_RESOLVED" ]] || (echo "CRITICAL: missing stage2 artifact after stage1 selfhost."; exit 1)
           STAGE2_BIN="$STAGE2_BIN_RESOLVED"
           chmod +x "$STAGE2_BIN" || true
 
-          thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN" || (echo "CRITICAL: stage2 selfhost failed to materialize stage2_rebuild artifact."; exit 1)
-          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
+          thg_build_compiler_strict "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN" || (echo "CRITICAL: stage2 selfhost failed to materialize stage2_rebuild artifact."; exit 1)
+          STAGE2_REBUILD_BIN_RESOLVED="$(resolve_compiler_bin "$STAGE2_REBUILD_BIN" || true)"
           [[ -n "$STAGE2_REBUILD_BIN_RESOLVED" ]] || (echo "CRITICAL: missing stage2_rebuild artifact after stage2 selfhost."; exit 1)
           STAGE2_REBUILD_BIN="$STAGE2_REBUILD_BIN_RESOLVED"
           chmod +x "$STAGE2_REBUILD_BIN" || true
