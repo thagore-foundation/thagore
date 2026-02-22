@@ -155,6 +155,7 @@ jobs:
             asset_tag: linux-x86_64
             allow_failure: false
             stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
+            helper_seed_name: thagore-stage1-helper-linux-x86_64.exe
             runtime_seed_name: thagore-runtime-linux-x86_64.a
           - runner: ubuntu-24.04-arm
             os_name: Linux
@@ -162,6 +163,7 @@ jobs:
             asset_tag: linux-arm64
             allow_failure: false
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
+            helper_seed_name: thagore-stage1-helper-linux-arm64.exe
             runtime_seed_name: thagore-runtime-linux-arm64.a
           - runner: macos-latest
             os_name: macOS
@@ -169,6 +171,7 @@ jobs:
             asset_tag: macos-arm64
             allow_failure: false
             stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
+            helper_seed_name: thagore-stage1-helper-macos-arm64.exe
             runtime_seed_name: thagore-runtime-macos-arm64.a
           - runner: windows-latest
             os_name: Windows
@@ -176,6 +179,7 @@ jobs:
             asset_tag: windows-x86_64
             allow_failure: false
             stage1_seed_name: thagore-stage1-windows-x86_64.exe
+            helper_seed_name: thagore-stage1-helper-windows-x86_64.exe
             runtime_seed_name: thagore-runtime-windows-x86_64.lib
           - runner: windows-11-arm
             os_name: Windows
@@ -183,6 +187,7 @@ jobs:
             asset_tag: windows-arm64
             allow_failure: false
             stage1_seed_name: thagore-stage1-windows-arm64.exe
+            helper_seed_name: thagore-stage1-helper-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
       BOOTSTRAP_STAGE1_TAG: ${{ github.event.inputs.base_seed_tag }}
@@ -613,7 +618,13 @@ jobs:
             local cc="$1"
             shift
             local helper_bin=""
-            if [[ -n "${THAG_HELPER_BIN:-}" ]]; then
+            if [[ -n "${HELPER_COMPANION_BIN:-}" && -f "${HELPER_COMPANION_BIN#./}" ]]; then
+              helper_bin="${HELPER_COMPANION_BIN}"
+            elif [[ -f "./stage1_helper.exe" ]]; then
+              helper_bin="./stage1_helper.exe"
+            elif [[ -f "./stage1_helper" ]]; then
+              helper_bin="./stage1_helper"
+            elif [[ -n "${THAG_HELPER_BIN:-}" ]]; then
               helper_bin="${THAG_HELPER_BIN}"
             elif [[ -n "${STAGE1_BIN:-}" && -f "${STAGE1_BIN}" ]]; then
               helper_bin="${STAGE1_BIN}"
@@ -950,6 +961,14 @@ jobs:
           rm -rf seed
           mkdir -p seed/dist/bin
           SEED_CANDIDATE="${SEED_BIN:-$STAGE2_REBUILD_BIN}"
+          HELPER_CANDIDATE=""
+          if [[ -n "${HELPER_COMPANION_BIN:-}" && -f "${HELPER_COMPANION_BIN#./}" ]]; then
+            HELPER_CANDIDATE="${HELPER_COMPANION_BIN}"
+          elif [[ -f stage1_helper.exe ]]; then
+            HELPER_CANDIDATE="stage1_helper.exe"
+          elif [[ -f stage1_helper ]]; then
+            HELPER_CANDIDATE="stage1_helper"
+          fi
           [[ -n "$SEED_CANDIDATE" && -f "$SEED_CANDIDATE" ]] || (echo "CRITICAL: missing seed compiler binary"; exit 1)
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "$SEED_CANDIDATE" "${{ matrix.stage1_seed_name }}"
@@ -959,18 +978,31 @@ jobs:
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
               exit 1
             fi
+            if [[ -n "$HELPER_CANDIDATE" ]]; then
+              cp "$HELPER_CANDIDATE" "${{ matrix.helper_seed_name }}"
+            else
+              cp "$SEED_CANDIDATE" "${{ matrix.helper_seed_name }}"
+            fi
             [[ -f thag_runtime.lib ]] || (echo "CRITICAL: missing thag_runtime.lib for seed runtime asset"; exit 1)
             cp thag_runtime.lib "${{ matrix.runtime_seed_name }}"
             if [[ "${{ matrix.asset_tag }}" == "windows-x86_64" ]]; then
               cp "${{ matrix.stage1_seed_name }}" thagore-stage1.exe
+              cp "${{ matrix.helper_seed_name }}" thagore-stage1-helper-windows.exe
               cp "${{ matrix.runtime_seed_name }}" thagore-runtime-windows.lib
             fi
           elif [[ "${{ runner.os }}" == "Linux" ]]; then
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             cp "$SEED_CANDIDATE" seed/dist/bin/thag
+            if [[ -n "$HELPER_CANDIDATE" ]]; then
+              cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
+            else
+              cp "$SEED_CANDIDATE" seed/dist/bin/stage1_helper
+            fi
+            chmod +x seed/dist/bin/stage1_helper || true
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thag"
+            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/stage1_helper"
             bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
             if [[ "${bytes:-0}" -lt 512 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
@@ -985,9 +1017,16 @@ jobs:
           else
             cp "$SEED_CANDIDATE" seed/dist/bin/thagore
             cp "$SEED_CANDIDATE" seed/dist/bin/thag
+            if [[ -n "$HELPER_CANDIDATE" ]]; then
+              cp "$HELPER_CANDIDATE" seed/dist/bin/stage1_helper
+            else
+              cp "$SEED_CANDIDATE" seed/dist/bin/stage1_helper
+            fi
+            chmod +x seed/dist/bin/stage1_helper || true
             tar -czf "${{ matrix.stage1_seed_name }}" -C seed dist
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thagore"
             tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/thag"
+            tar -tzf "${{ matrix.stage1_seed_name }}" | grep -F "dist/bin/stage1_helper"
             bytes="$(wc -c < "${{ matrix.stage1_seed_name }}" | tr -d '[:space:]')"
             if [[ "${bytes:-0}" -lt 512 ]]; then
               echo "CRITICAL: ${{ matrix.stage1_seed_name }} unexpectedly tiny ($bytes bytes), abort publish."
@@ -1040,7 +1079,7 @@ jobs:
           echo "run_id=${{ github.run_id }}" >> "$OUT"
           echo "run_attempt=${{ github.run_attempt }}" >> "$OUT"
           echo "commit_sha=${{ github.sha }}" >> "$OUT"
-          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
+          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.helper_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-helper-windows.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a; do
             if [[ -f "$f" ]]; then
               h="$(hash_file "$f" || true)"
               echo "artifact=$f" >> "$OUT"
@@ -1083,7 +1122,7 @@ jobs:
           [[ -n "$BUNDLE_ID" ]] || (echo "CRITICAL: failed to compute bundle_id"; exit 1)
           PROV="seed-stage1-provenance-${{ matrix.asset_tag }}.json"
           ASSET_ARGS=()
-          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a "$TRACE_ASSET"; do
+          for f in "${{ matrix.stage1_seed_name }}" "${{ matrix.helper_seed_name }}" "${{ matrix.runtime_seed_name }}" thagore-stage1.exe thagore-stage1-helper-windows.exe thagore-stage1-linux.tar.gz thagore-stage1-macos.tar.gz thagore-runtime-windows.lib thagore-runtime-linux.a thagore-runtime-macos.a "$TRACE_ASSET"; do
             if [[ -f "$f" ]]; then
               ASSET_ARGS+=(--asset "$f")
             fi
@@ -1136,8 +1175,10 @@ jobs:
           name: seed-${{ matrix.asset_tag }}
           path: |
             ${{ matrix.stage1_seed_name }}
+            ${{ matrix.helper_seed_name }}
             ${{ matrix.runtime_seed_name }}
             thagore-stage1.exe
+            thagore-stage1-helper-windows.exe
             thagore-stage1-linux.tar.gz
             thagore-stage1-macos.tar.gz
             thagore-runtime-windows.lib
@@ -1167,30 +1208,35 @@ jobs:
             arch: x86_64
             asset_tag: linux-x86_64
             stage1_seed_name: thagore-stage1-linux-x86_64.tar.gz
+            helper_seed_name: thagore-stage1-helper-linux-x86_64.exe
             runtime_seed_name: thagore-runtime-linux-x86_64.a
           - runner: ubuntu-24.04-arm
             os_name: Linux
             arch: arm64
             asset_tag: linux-arm64
             stage1_seed_name: thagore-stage1-linux-arm64.tar.gz
+            helper_seed_name: thagore-stage1-helper-linux-arm64.exe
             runtime_seed_name: thagore-runtime-linux-arm64.a
           - runner: macos-latest
             os_name: macOS
             arch: arm64
             asset_tag: macos-arm64
             stage1_seed_name: thagore-stage1-macos-arm64.tar.gz
+            helper_seed_name: thagore-stage1-helper-macos-arm64.exe
             runtime_seed_name: thagore-runtime-macos-arm64.a
           - runner: windows-latest
             os_name: Windows
             arch: x86_64
             asset_tag: windows-x86_64
             stage1_seed_name: thagore-stage1-windows-x86_64.exe
+            helper_seed_name: thagore-stage1-helper-windows-x86_64.exe
             runtime_seed_name: thagore-runtime-windows-x86_64.lib
           - runner: windows-11-arm
             os_name: Windows
             arch: arm64
             asset_tag: windows-arm64
             stage1_seed_name: thagore-stage1-windows-arm64.exe
+            helper_seed_name: thagore-stage1-helper-windows-arm64.exe
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     steps:
       - name: Checkout
@@ -1265,15 +1311,24 @@ jobs:
             --manifest "$MANIFEST_FILE" \
             --provenance "$PROV_FILE"
           BUNDLE_ID="$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['metadata']['bundle_id'])" "$BUNDLE_FILE")"
+          VERIFY_ASSETS=(
+            --asset "$ROOT_DIR/${{ matrix.stage1_seed_name }}"
+            --asset "$ROOT_DIR/${{ matrix.runtime_seed_name }}"
+          )
+          if [[ -f "$ROOT_DIR/${{ matrix.helper_seed_name }}" ]]; then
+            VERIFY_ASSETS+=(--asset "$ROOT_DIR/${{ matrix.helper_seed_name }}")
+          fi
           "$PY" scripts/stage1_provenance.py verify \
             --provenance "$PROV_FILE" \
             --manifest "$MANIFEST_FILE" \
-            --asset "$ROOT_DIR/${{ matrix.stage1_seed_name }}" \
-            --asset "$ROOT_DIR/${{ matrix.runtime_seed_name }}" \
+            "${VERIFY_ASSETS[@]}" \
             --expected-commit-sha "${{ github.sha }}" \
             --expected-bundle-id "$BUNDLE_ID"
           rm -rf verify_seed && mkdir -p verify_seed
           cp "$ROOT_DIR/${{ matrix.stage1_seed_name }}" verify_seed/
+          if [[ -f "$ROOT_DIR/${{ matrix.helper_seed_name }}" ]]; then
+            cp "$ROOT_DIR/${{ matrix.helper_seed_name }}" verify_seed/
+          fi
           cp "$ROOT_DIR/${{ matrix.runtime_seed_name }}" verify_seed/
           cd verify_seed
           resolve_bin() {
@@ -1292,7 +1347,11 @@ jobs:
             local cc="$1"
             shift
             local helper="./stage1"
-            if [[ -f "./stage1.exe" ]]; then
+            if [[ -f "./stage1_helper.exe" ]]; then
+              helper="./stage1_helper.exe"
+            elif [[ -f "./stage1_helper" ]]; then
+              helper="./stage1_helper"
+            elif [[ -f "./stage1.exe" ]]; then
               helper="./stage1.exe"
             elif [[ ! -f "$helper" ]]; then
               helper="./$cc"
@@ -1569,6 +1628,10 @@ jobs:
           }
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             cp "${{ matrix.stage1_seed_name }}" stage1.exe
+            if [[ -f "${{ matrix.helper_seed_name }}" ]]; then
+              cp "${{ matrix.helper_seed_name }}" stage1_helper.exe
+              chmod +x stage1_helper.exe || true
+            fi
             cp "${{ matrix.runtime_seed_name }}" thag_runtime.lib
             STAGE1_BIN="stage1.exe"
           else
@@ -1583,9 +1646,19 @@ jobs:
                 find extract -maxdepth 5 -type f -name thag
               } | head -n1 || true
             )"
+            HELPER_CANDIDATE="$(
+              {
+                find extract -maxdepth 5 -type f -name stage1_helper
+                find extract -maxdepth 5 -type f -name thagore_helper
+              } | head -n1 || true
+            )"
             [[ -n "$CANDIDATE" ]] || (echo "CRITICAL: missing stage1 binary in packaged seed archive"; exit 1)
             cp "$CANDIDATE" stage1
             chmod +x stage1
+            if [[ -n "$HELPER_CANDIDATE" ]]; then
+              cp "$HELPER_CANDIDATE" stage1_helper
+              chmod +x stage1_helper
+            fi
             STAGE1_BIN="stage1"
           fi
           if run_compiler_cmd "$STAGE1_BIN" build __thagore_seed_missing__.tg -o __thagore_seed_missing_out__ >/dev/null 2>&1; then
@@ -1662,12 +1735,14 @@ jobs:
           name: Stage1 Seed ${{ github.event.inputs.seed_tag }}
           files: |
             seed-artifacts/**/thagore-stage1-windows-*.exe
+            seed-artifacts/**/thagore-stage1-helper-windows-*.exe
             seed-artifacts/**/thagore-stage1-linux-*.tar.gz
             seed-artifacts/**/thagore-stage1-macos-*.tar.gz
             seed-artifacts/**/thagore-runtime-windows-*.lib
             seed-artifacts/**/thagore-runtime-linux-*.a
             seed-artifacts/**/thagore-runtime-macos-*.a
             seed-artifacts/**/thagore-stage1.exe
+            seed-artifacts/**/thagore-stage1-helper-windows.exe
             seed-artifacts/**/thagore-stage1-linux.tar.gz
             seed-artifacts/**/thagore-stage1-macos.tar.gz
             seed-artifacts/**/thagore-runtime-windows.lib
