@@ -12,6 +12,10 @@ on:
         description: "Existing stage1 seed tag used for bootstrap"
         required: true
         default: "v0.3.168-stage1-seed"
+      helper_seed_tag:
+        description: "Companion seed/release tag providing bootstrap helper binary"
+        required: true
+        default: "v0.3.32-verify-stage1-release"
 
 permissions:
   actions: read
@@ -182,6 +186,7 @@ jobs:
             runtime_seed_name: thagore-runtime-windows-arm64.lib
     env:
       BOOTSTRAP_STAGE1_TAG: ${{ github.event.inputs.base_seed_tag }}
+      HELPER_COMPANION_TAG: ${{ github.event.inputs.helper_seed_tag }}
       STAGE_TRACE_FILE: seed-stage-trace-${{ matrix.asset_tag }}.log
     steps:
       - name: Checkout
@@ -321,6 +326,56 @@ jobs:
             fi
             return 0
           }
+          materialize_helper_companion() {
+            HELPER_COMPANION_BIN=""
+            [[ -n "${HELPER_COMPANION_TAG:-}" ]] || return 0
+            rm -rf bootstrap/extract_helper || true
+            HELPER_CANDIDATES=("${{ matrix.stage1_seed_name }}")
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              HELPER_CANDIDATES+=("thagore-stage1.exe")
+            elif [[ "${{ runner.os }}" == "Linux" ]]; then
+              HELPER_CANDIDATES+=("thagore-stage1-linux.tar.gz")
+            elif [[ "${{ runner.os }}" == "macOS" ]]; then
+              HELPER_CANDIDATES+=("thagore-stage1-macos.tar.gz")
+            fi
+            HELPER_STAGE1_ASSET=""
+            for H_ASSET in "${HELPER_CANDIDATES[@]}"; do
+              if download_optional_from_tag "$HELPER_COMPANION_TAG" "$H_ASSET"; then
+                HELPER_STAGE1_ASSET="$H_ASSET"
+                break
+              fi
+            done
+            if [[ -z "$HELPER_STAGE1_ASSET" ]]; then
+              echo "[SEED] helper companion not found on tag=$HELPER_COMPANION_TAG for ${{ matrix.asset_tag }}; continue without companion helper." | tee -a "$STAGE_TRACE_FILE"
+              return 0
+            fi
+            if [[ "${{ runner.os }}" == "Windows" ]]; then
+              cp "bootstrap/$HELPER_STAGE1_ASSET" stage1_helper.exe
+              chmod +x stage1_helper.exe || true
+              HELPER_COMPANION_BIN="./stage1_helper.exe"
+            else
+              mkdir -p bootstrap/extract_helper
+              tar -xzf "bootstrap/$HELPER_STAGE1_ASSET" -C bootstrap/extract_helper
+              HELPER_CANDIDATE="$(
+                {
+                  find bootstrap/extract_helper -maxdepth 6 -type f -name stage1
+                  find bootstrap/extract_helper -maxdepth 6 -type f -name thagore
+                  find bootstrap/extract_helper -maxdepth 6 -type f -name thag
+                } | head -n1 || true
+              )"
+              if [[ -n "$HELPER_CANDIDATE" ]]; then
+                cp "$HELPER_CANDIDATE" stage1_helper
+                chmod +x stage1_helper || true
+                HELPER_COMPANION_BIN="./stage1_helper"
+              fi
+            fi
+            if [[ -n "$HELPER_COMPANION_BIN" ]]; then
+              echo "[SEED] helper companion active: tag=$HELPER_COMPANION_TAG bin=$HELPER_COMPANION_BIN" | tee -a "$STAGE_TRACE_FILE"
+            else
+              echo "[SEED] helper companion asset fetched but no executable materialized (tag=$HELPER_COMPANION_TAG)." | tee -a "$STAGE_TRACE_FILE"
+            fi
+            return 0
+          }
           resolve_probe_bin() {
             local stem="$1"
             local src="${2:-}"
@@ -400,10 +455,30 @@ jobs:
             run_seed_compiler() {
               local cc="$1"
               shift
-              if "./$cc" "$@"; then
-                return 0
+              local helper_bin=""
+              if [[ -n "${HELPER_COMPANION_BIN:-}" && -f "${HELPER_COMPANION_BIN#./}" ]]; then
+                helper_bin="$HELPER_COMPANION_BIN"
+              fi
+              if [[ -n "$helper_bin" ]]; then
+                if env THAG_HELPER_BIN="$helper_bin" "./$cc" "$@"; then
+                  return 0
+                fi
+              else
+                if "./$cc" "$@"; then
+                  return 0
+                fi
               fi
               local rc=$?
+              if [[ -n "$helper_bin" ]]; then
+                if env THAG_HELPER_BIN="$helper_bin" THAG_ALLOW_SELF_HELPER=1 "./$cc" "$@"; then
+                  if [[ "${seed_helper_fallback_used:-0}" == "0" ]]; then
+                    echo "[SEED][probe][compat] $CURRENT_TAG: enabled THAG_ALLOW_SELF_HELPER=1 fallback with helper=$helper_bin for bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
+                    seed_helper_fallback_used=1
+                  fi
+                  return 0
+                fi
+                return $rc
+              fi
               if THAG_ALLOW_SELF_HELPER=1 "./$cc" "$@"; then
                 if [[ "${seed_helper_fallback_used:-0}" == "0" ]]; then
                   echo "[SEED][probe][compat] $CURRENT_TAG: enabled THAG_ALLOW_SELF_HELPER=1 fallback for bootstrap probe." | tee -a "$STAGE_TRACE_FILE"
@@ -589,7 +664,7 @@ jobs:
           try_bootstrap_tag() {
             local tag="$1"
             CURRENT_TAG="$tag"
-            rm -rf bootstrap/* stage1 stage1.exe thag_runtime.lib libthag_runtime.a _seed_gate_probe* || true
+            rm -rf bootstrap/* stage1 stage1.exe stage1_helper stage1_helper.exe thag_runtime.lib libthag_runtime.a _seed_gate_probe* || true
             mkdir -p bootstrap
             STAGE1_CANDIDATES=("${{ matrix.stage1_seed_name }}")
             RUNTIME_CANDIDATES=("${{ matrix.runtime_seed_name }}")
@@ -650,6 +725,7 @@ jobs:
               cp "bootstrap/$RUNTIME_ASSET" "bootstrap/${{ matrix.runtime_seed_name }}"
             fi
             materialize_working_files
+            materialize_helper_companion
             seed_smoke_probe
           }
           TAG_CANDIDATES=("$BOOTSTRAP_STAGE1_TAG")
