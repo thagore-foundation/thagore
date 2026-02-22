@@ -76,7 +76,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.167-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
       STAGE_TRACE_FILE: stage-trace.log
     steps:
       - name: Checkout
@@ -1040,7 +1040,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [discord-notify-init, verify-selfhost]
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.167-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
       STAGE_TRACE_FILE: canary-stage-trace.log
     steps:
       - name: Checkout
