@@ -905,99 +905,22 @@ jobs:
           USE_DONOR_BIN=0
           STAGE2_FROM_BOOTSTRAP_FALLBACK=0
           DONOR_COMPILER=""
-          DONOR_TAG="${THAGORE_DONOR_TAG:-}"
-          if [[ -z "$DONOR_TAG" ]]; then
-            DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
-          fi
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && -z "$DONOR_TAG" ]]; then
-            DONOR_TAG="v0.3.61-foundation"
-          fi
-          if [[ -n "$DONOR_TAG" ]]; then
-            DONOR_ARCHIVE_BASENAME=""
-            if [[ "${{ runner.os }}" == "Windows" ]]; then
-              DONOR_ARCHIVE_BASENAME="thagore-windows-${{ matrix.arch }}.tar.gz"
-            elif [[ "${{ runner.os }}" == "Linux" ]]; then
-              DONOR_ARCHIVE_BASENAME="thagore-linux-${{ matrix.arch }}.tar.gz"
-            elif [[ "${{ runner.os }}" == "macOS" ]]; then
-              DONOR_ARCHIVE_BASENAME="thagore-macos-${{ matrix.arch }}.tar.gz"
-            fi
-            if [[ -n "$DONOR_ARCHIVE_BASENAME" ]]; then
-              DONOR_ARCHIVE="donor/$DONOR_ARCHIVE_BASENAME"
-              DONOR_EXTRACT_DIR="donor/extract"
-              DONOR_LOCAL_BIN="donor_thagore"
-              if [[ "${{ runner.os }}" == "Windows" ]]; then
-                DONOR_LOCAL_BIN="donor_thagore.exe"
-              fi
-              rm -rf donor "$DONOR_LOCAL_BIN" || true
-              mkdir -p "$DONOR_EXTRACT_DIR"
-              echo "[INFO] trying donor compiler from tag=$DONOR_TAG asset=$DONOR_ARCHIVE_BASENAME" | tee -a "$STAGE_TRACE_FILE"
-              gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "$DONOR_ARCHIVE_BASENAME" -D donor || true
-              if [[ -f "$DONOR_ARCHIVE" ]]; then
-                if tar -xzf "$DONOR_ARCHIVE" -C "$DONOR_EXTRACT_DIR"; then
-                  DONOR_SRC=""
-                  if [[ "${{ runner.os }}" == "Windows" ]]; then
-                    DONOR_SRC="$(find "$DONOR_EXTRACT_DIR" -type f -name 'thagore.exe' | head -n 1 || true)"
-                  else
-                    DONOR_SRC="$(find "$DONOR_EXTRACT_DIR" -type f -name 'thagore' | head -n 1 || true)"
-                  fi
-                  if [[ -n "$DONOR_SRC" && -f "$DONOR_SRC" ]]; then
-                    cp "$DONOR_SRC" "$DONOR_LOCAL_BIN"
-                    chmod +x "$DONOR_LOCAL_BIN" || true
-                    if cli_sanity_ok "$DONOR_LOCAL_BIN"; then
-                      USE_DONOR_BIN=1
-                      DONOR_COMPILER="$DONOR_LOCAL_BIN"
-                      echo "[INFO] donor compiler bootstrap enabled: tag=$DONOR_TAG src=$DONOR_SRC local=$DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
-                    else
-                      USE_DONOR_BIN=1
-                      DONOR_COMPILER="$DONOR_LOCAL_BIN"
-                      echo "[WARN] donor compiler failed strict sanity; enabling compat-only donor mode: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
-                    fi
-                  else
-                    echo "[WARN] donor compiler binary not found after extract: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
-                    ls -la "$DONOR_EXTRACT_DIR" | tee -a "$STAGE_TRACE_FILE" || true
-                  fi
-                else
-                  echo "[WARN] failed to extract donor archive: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
-                fi
-              else
-                echo "[WARN] donor archive not downloaded for tag=$DONOR_TAG asset=$DONOR_ARCHIVE_BASENAME" | tee -a "$STAGE_TRACE_FILE"
-              fi
-            fi
+          if [[ -n "${THAGORE_DONOR_TAG:-}" || -n "${THAGORE_WINDOWS_DONOR_TAG:-}" ]]; then
+            echo "[INFO] donor fallback tags detected but ignored by strict release policy." | tee -a "$STAGE_TRACE_FILE"
           fi
           if [[ "${{ runner.os }}" == "Linux" && -f "${{ matrix.stage1_bin }}" ]]; then
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
           BOOTSTRAP_COMPILER="${{ matrix.stage1_bin }}"
-          if [[ "$USE_DONOR_BIN" == "1" && -n "$DONOR_COMPILER" ]]; then
-            BOOTSTRAP_COMPILER="$DONOR_COMPILER"
-          fi
           if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
-            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              echo "[WARN] stage2 rebuild failed; fallback donor=$DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
-              BOOTSTRAP_COMPAT_MODE=1
-              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            else
-              exit 1
-            fi
+            echo "CRITICAL: stage2 rebuild failed from stage1 bootstrap compiler." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
           if [[ -z "${STAGE2_BIN:-}" ]]; then
-            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              STAGE2_BIN="$DONOR_COMPILER"
-              echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            elif [[ -f "$BOOTSTRAP_COMPILER" ]]; then
-              STAGE2_BIN="$BOOTSTRAP_COMPILER"
-              STAGE2_FROM_BOOTSTRAP_FALLBACK=1
-              BOOTSTRAP_COMPAT_MODE=1
-              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler in compiler-managed no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: stage2 artifact missing after source build; no fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$STAGE2_BIN"
           if [[ ! -s "$STAGE2_BIN" ]]; then
@@ -1006,40 +929,8 @@ jobs:
           fi
           chmod +x "$STAGE2_BIN" || true
           if ! cli_sanity_ok "$STAGE2_BIN"; then
-            if [[ "$STAGE2_FROM_BOOTSTRAP_FALLBACK" == "1" ]]; then
-              if cli_compat_ok "$STAGE2_BIN"; then
-                echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-                echo "[WARN] strict CLI sanity failed for fallback bootstrap compiler; continuing with relaxed compatibility gate." | tee -a "$STAGE_TRACE_FILE"
-              else
-                echo "CRITICAL: fallback bootstrap compiler failed compatibility gate: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-                exit 1
-              fi
-            elif [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
-              STAGE2_BIN="$DONOR_COMPILER"
-              chmod +x "$STAGE2_BIN" || true
-              BOOTSTRAP_COMPAT_MODE=1
-              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] donor compiler forced into bootstrap-compat no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            elif [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] source-built compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-          fi
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$USE_DONOR_BIN" == "1" && "$STAGE2_BIN" == "$DONOR_COMPILER" ]]; then
-            TAG_SEMVER="${GITHUB_REF_NAME#v}"
-            export TAG_SEMVER
-            if ! "$PY" -c "import os, pathlib, re, sys; p=pathlib.Path(sys.argv[1]); data=p.read_bytes(); target=('thagore '+os.environ['TAG_SEMVER']).encode('ascii','strict'); m=re.search(rb'thagore [0-9]+\\.[0-9]+\\.[0-9]+', data); orig=(data[m.start():m.end()] if m else None); (m is not None) or (_ for _ in ()).throw(SystemExit('missing version marker in donor binary')); (len(orig)==len(target)) or (_ for _ in ()).throw(SystemExit('version marker length mismatch: '+orig.decode(errors='ignore')+' -> '+target.decode())); p.write_bytes(data[:m.start()]+target+data[m.end():]); print('[INFO] patched donor version marker '+orig.decode(errors='ignore')+' -> '+target.decode())" "$STAGE2_BIN"; then
-              echo "[WARN] donor version marker patch skipped; continuing with donor-reported version." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            if ! cli_sanity_ok "$STAGE2_BIN"; then
-              echo "CRITICAL: donor compiler failed CLI sanity after version patch: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           STAGE2_REBUILD_BIN="$STAGE2_BIN"
@@ -1051,22 +942,8 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            if [[ "$STAGE2_FROM_BOOTSTRAP_FALLBACK" == "1" || "${BOOTSTRAP_COMPAT_MODE:-0}" == "1" ]]; then
-              if cli_compat_ok "$STAGE2_REBUILD_BIN"; then
-                BOOTSTRAP_COMPAT_MODE=1
-                echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
-                echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-                echo "[WARN] release compiler strict CLI sanity failed in bootstrap fallback mode; accepted by compatibility gate." | tee -a "$STAGE_TRACE_FILE"
-              else
-                echo "CRITICAL: release compiler failed compatibility gate in bootstrap fallback mode: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-                exit 1
-              fi
-            elif [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] release compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -1631,7 +1508,9 @@ jobs:
           else
             ACTUAL="$(shasum -a 256 "$PKG" | awk '{print $1}')"
           fi
-          [[ "${ACTUAL,,}" == "${EXPECTED,,}" ]] || (echo "CRITICAL: checksum mismatch for ${{ matrix.package_name }}"; exit 1)
+          ACTUAL_LC="$(printf '%s' "$ACTUAL" | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_LC="$(printf '%s' "$EXPECTED" | tr '[:upper:]' '[:lower:]')"
+          [[ "$ACTUAL_LC" == "$EXPECTED_LC" ]] || (echo "CRITICAL: checksum mismatch for ${{ matrix.package_name }}"; exit 1)
 
           PAYLOAD="$RUNNER_TEMP/enduser-payload-${{ matrix.asset_tag }}"
           PREFIX="$RUNNER_TEMP/enduser-install-${{ matrix.asset_tag }}"
