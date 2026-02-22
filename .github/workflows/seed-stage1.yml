@@ -745,6 +745,8 @@ jobs:
             local cc_sig_after=""
             local build_rc=0
             local alt_build_rc=0
+            local ir_out="${out}.ll"
+            local got_ir=""
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_before="$(hash_file "$cc" || true)"
             fi
@@ -767,6 +769,19 @@ jobs:
             got="$(resolve_bin "$out" "$src" || true)"
             if [[ -n "$got" ]]; then
               return 0
+            fi
+            echo "[CMD] ./$cc --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE" >&2
+            if run_compiler "$cc" --emit-llvm-internal "$src" -o "$ir_out" 1>&2; then
+              got_ir="$(resolve_ir "$ir_out" "$src" || true)"
+              if [[ -n "$got_ir" ]] && grep -q "@main(" "$got_ir"; then
+                echo "[CMD] clang $got_ir -> $out" | tee -a "$STAGE_TRACE_FILE" >&2
+                if link_ir_to_bin "$got_ir" "$out"; then
+                  got="$(resolve_bin "$out" "$src" || true)"
+                  if [[ -n "$got" ]]; then
+                    return 0
+                  fi
+                fi
+              fi
             fi
             if [[ "$src" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(hash_file "$cc" || true)"
