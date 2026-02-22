@@ -774,12 +774,35 @@ jobs:
             }
             resolve_ir_local() {
               local preferred="$1"
-              for c in "$preferred" "${preferred%.ll}.ll" "${out}.ll" "out.ll"; do
+              local src_path="$2"
+              local marker="$3"
+              local src_base=""
+              local src_stem=""
+              if [[ -n "$src_path" ]]; then
+                src_base="$(basename "$src_path")"
+                src_stem="${src_base%.*}"
+              fi
+              for c in \
+                "$preferred" \
+                "${preferred%.ll}.ll" \
+                "${out}.ll" \
+                "out.ll" \
+                "${src_stem}.ll" \
+                "${src_stem}_0_41.ll" \
+                "${src_stem}_0_41_0_41.ll"; do
                 if [[ -f "$c" ]]; then
                   echo "$c"
                   return 0
                 fi
               done
+              if [[ -n "$marker" && -f "$marker" ]]; then
+                local discovered=""
+                discovered="$(find . -type f -name '*.ll' -newer "$marker" | head -n 1 || true)"
+                if [[ -n "$discovered" && -f "$discovered" ]]; then
+                  echo "$discovered"
+                  return 0
+                fi
+              fi
               return 1
             }
             link_ir_to_bin_local() {
@@ -857,16 +880,19 @@ jobs:
                 fi
                 echo "[WARN] no artifact from direct build; try emit+link." | tee -a "$STAGE_TRACE_FILE"
                 rm -f "$ir_out" "${out}" "${out}.exe" || true
+                local emit_marker=".thagore-emit-marker-${RANDOM}-$$"
+                : > "$emit_marker"
                 echo "[CMD] THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN=$cc_cmd $cc_cmd --emit-llvm-internal $src -o $ir_out" | tee -a "$STAGE_TRACE_FILE"
                 if THAGORE_INTERNAL_EMIT=1 THAG_HELPER_DEPTH=1 THAG_HELPER_BIN="$cc_cmd" "$cc_cmd" --emit-llvm-internal "$src" -o "$ir_out"; then
                   local resolved_ir=""
-                  resolved_ir="$(resolve_ir_local "$ir_out" || true)"
+                  resolved_ir="$(resolve_ir_local "$ir_out" "$src" "$emit_marker" || true)"
                   if [[ -n "$resolved_ir" && -f "$resolved_ir" ]]; then
                     if link_ir_to_bin_local "$resolved_ir" "$out"; then
                       linked=1
                     fi
                   fi
                 fi
+                rm -f "$emit_marker" || true
                 if [[ "$linked" == "1" ]]; then
                   got="$(resolve_local "$out" "$src" || true)"
                   if [[ -n "$got" ]]; then
