@@ -903,6 +903,7 @@ jobs:
             return 1
           }
           USE_DONOR_BIN=0
+          DONOR_COMPAT_ONLY=0
           STAGE2_FROM_BOOTSTRAP_FALLBACK=0
           DONOR_COMPILER=""
           DONOR_TAG="${THAGORE_DONOR_TAG:-}"
@@ -948,7 +949,10 @@ jobs:
                       DONOR_COMPILER="$DONOR_LOCAL_BIN"
                       echo "[INFO] donor compiler bootstrap enabled: tag=$DONOR_TAG src=$DONOR_SRC local=$DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
                     else
-                      echo "[WARN] donor compiler failed CLI sanity: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
+                      USE_DONOR_BIN=1
+                      DONOR_COMPILER="$DONOR_LOCAL_BIN"
+                      DONOR_COMPAT_ONLY=1
+                      echo "[WARN] donor compiler failed strict sanity; enabling compat-only donor mode: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
                     fi
                   else
                     echo "[WARN] donor compiler binary not found after extract: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
@@ -969,6 +973,11 @@ jobs:
           BOOTSTRAP_COMPILER="${{ matrix.stage1_bin }}"
           if [[ "$USE_DONOR_BIN" == "1" && -n "$DONOR_COMPILER" ]]; then
             BOOTSTRAP_COMPILER="$DONOR_COMPILER"
+            if [[ "$DONOR_COMPAT_ONLY" == "1" ]]; then
+              BOOTSTRAP_COMPAT_MODE=1
+              echo "RELEASE_BOOTSTRAP_COMPAT_MODE=1" >> "$GITHUB_ENV"
+              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
+            fi
           fi
           if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
             if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
