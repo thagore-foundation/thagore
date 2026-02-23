@@ -311,6 +311,49 @@ validate_cli_install() {
   fi
 }
 
+validate_helper_bundle_install() {
+  local cli_bin="$1"
+  local payload_prefix="$2"
+  local helper_bin="$payload_prefix/bin/stage1"
+  if [[ ! -x "$helper_bin" ]]; then
+    echo "ERROR: installed payload missing executable helper: $helper_bin" >&2
+    exit 1
+  fi
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  cat > "$tmpdir/atomic_bundle_smoke.tg" <<'TG'
+func main() -> i32:
+    print("atomic package smoke")
+    return 0
+TG
+  (
+    set -euo pipefail
+    cd "$tmpdir"
+    if [[ -f "$payload_prefix/lib/runtime.lib" ]]; then
+      cp "$payload_prefix/lib/runtime.lib" ./runtime.lib
+    fi
+    if [[ -f "$payload_prefix/lib/runtime.a" ]]; then
+      cp "$payload_prefix/lib/runtime.a" ./runtime.a
+    fi
+    THAG_HELPER_BIN="$helper_bin" "$cli_bin" --emit-llvm-internal atomic_bundle_smoke.tg -o atomic_bundle_smoke.ll >/dev/null 2>&1
+    if [[ ! -s atomic_bundle_smoke.ll ]]; then
+      echo "ERROR: helper smoke failed: --emit-llvm-internal did not produce non-empty LLVM IR." >&2
+      exit 1
+    fi
+    THAG_HELPER_BIN="$helper_bin" "$cli_bin" build atomic_bundle_smoke.tg -o atomic_bundle_smoke >/dev/null 2>&1
+    if [[ ! -x atomic_bundle_smoke ]]; then
+      echo "ERROR: helper smoke failed: build did not produce executable output." >&2
+      exit 1
+    fi
+    out="$(./atomic_bundle_smoke 2>&1 || true)"
+    if ! grep -Fq "atomic package smoke" <<<"$out"; then
+      echo "ERROR: helper smoke failed: runtime output mismatch." >&2
+      exit 1
+    fi
+  )
+  rm -rf "$tmpdir"
+}
+
 confirm_install() {
   if [[ "$ASSUME_YES" -eq 1 ]]; then
     return
@@ -458,6 +501,7 @@ install_payload_with_prefix() {
     ln -sf "$payload_prefix/bin/stage1" "$link_dir/stage1"
   fi
   validate_cli_install "$link_dir/thagore"
+  validate_helper_bundle_install "$link_dir/thagore" "$payload_prefix"
 
   ensure_local_llvm_layout "$payload_prefix"
   if [[ "$MODE" == "portable" && -d "$LLVM_PREFIX/bin" ]]; then

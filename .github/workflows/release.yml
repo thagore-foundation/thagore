@@ -78,7 +78,7 @@ jobs:
       available_tags: ${{ steps.probe.outputs.available_tags }}
       release_matrix: ${{ steps.probe.outputs.release_matrix }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.193-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
     steps:
       - name: Probe stage1/runtime seed assets
         id: probe
@@ -205,7 +205,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.seed-asset-probe.outputs.release_matrix) }}
     env:
-      BOOTSTRAP_STAGE1_TAG: "v0.3.193-stage1-seed"
+      BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
       THAGORE_WINDOWS_DONOR_TAG: "v0.3.61-foundation"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
@@ -1001,19 +1001,8 @@ jobs:
               fi
             fi
           done
-          if [[ -z "${HELLO_BIN:-}" ]]; then
-            HELLO_MODE="source"
-            for cc in "${BUILD_COMPILERS[@]}" "$BOOTSTRAP_COMPILER"; do
-              [[ -n "$cc" && -f "$cc" ]] || continue
-              if "./$cc" "$HELLO_SRC" >/dev/null 2>&1; then
-                HELLO_BIN="$cc"
-                RELEASE_COMPILER_BIN="$cc"
-                break
-              fi
-            done
-          fi
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            echo "CRITICAL: hello smoke could not run in both binary/source modes on this lane." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: hello smoke build did not produce output artifact on this lane." | tee -a "$STAGE_TRACE_FILE"
             exit 1
           fi
 
@@ -1030,21 +1019,8 @@ jobs:
               fi
             fi
           done
-          if [[ -z "${FIB_BIN:-}" ]]; then
-            FIB_MODE="source"
-            for cc in "${BUILD_COMPILERS[@]}" "$BOOTSTRAP_COMPILER"; do
-              [[ -n "$cc" && -f "$cc" ]] || continue
-              if "./$cc" "$FIB_SRC" >/dev/null 2>&1; then
-                FIB_BIN="$cc"
-                if [[ -z "${RELEASE_COMPILER_BIN:-}" ]]; then
-                  RELEASE_COMPILER_BIN="$cc"
-                fi
-                break
-              fi
-            done
-          fi
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            echo "CRITICAL: fib smoke could not run in both binary/source modes on this lane." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: fib smoke build did not produce output artifact on this lane." | tee -a "$STAGE_TRACE_FILE"
             exit 1
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
@@ -1104,20 +1080,13 @@ jobs:
             echo "CRITICAL: smoke step detected broken/incompatible compiler execution markers."
             exit 1
           fi
-          VERSION_PRESENT=1
-          HELP_PRESENT=1
-          if [[ -z "$VERSION_OUT" ]]; then
-            VERSION_PRESENT=0
-          fi
-          if [[ -z "$HELP_OUT" ]]; then
-            HELP_PRESENT=0
-          fi
           if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
-            echo "WARN: compiler reported empty --version/--help in compatibility lane; continuing because hard-failure markers are absent." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: release lane requires non-empty --version and --help output."
+            exit 1
           fi
           if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
-            if [[ "$VERSION_PRESENT" == "1" ]] && ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
+            if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$RELEASE_COMPILER_BIN" == donor_* ]]; then
                 echo "WARN: donor compiler reports version '$VERSION_OUT' (expected tag $GITHUB_REF_NAME); continuing official lane."
               else
@@ -1156,12 +1125,12 @@ jobs:
             HELPER_BUILD_OK=1
           fi
           if [[ ! -f "$HELPER_OUT" ]]; then
-            if [[ "$HELPER_BUILD_OK" == "1" ]]; then
-              echo "WARN: helper import/use build completed without output artifact; accepting compiler-managed no-output mode." | tee -a "$STAGE_TRACE_FILE"
-            else
+            if [[ "$HELPER_BUILD_OK" != "1" ]]; then
               echo "CRITICAL: helper import/use smoke failed and produced no output binary: $HELPER_OUT"
               exit 1
             fi
+            echo "CRITICAL: helper import/use build completed but produced no output binary: $HELPER_OUT"
+            exit 1
           fi
 
       - name: Run hello + fib
@@ -1173,39 +1142,17 @@ jobs:
             exit 1
           fi
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          if [[ "${HELLO_MODE:-binary}" == "source" ]]; then
-            HELLO_OUT="$(./$HELLO_BIN "$HELLO_SRC" 2>&1)"
-          else
-            HELLO_OUT="$(./$HELLO_BIN 2>&1)"
-          fi
-          if [[ "${FIB_MODE:-binary}" == "source" ]]; then
-            FIB_OUT="$(./$FIB_BIN "$FIB_SRC" 2>&1)"
-          else
-            FIB_OUT="$(./$FIB_BIN 2>&1)"
-          fi
+          HELLO_OUT="$(./$HELLO_BIN 2>&1)"
+          FIB_OUT="$(./$FIB_BIN 2>&1)"
           printf '%s\n' "$HELLO_OUT" > hello-output-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$FIB_OUT" > fib-output-release-${{ matrix.asset_tag }}.txt
-          CHECK_HELLO_MARKER=1
-          CHECK_FIB_MARKER=1
-          if [[ "${HELLO_MODE:-binary}" == "source" && -z "$HELLO_OUT" ]]; then
-            CHECK_HELLO_MARKER=0
-            echo "WARN: source-mode hello runtime returned empty stdout; accepting command-exit smoke." | tee -a "$STAGE_TRACE_FILE"
+          if ! grep -Eq "Hello Self-Hosted World!|Hello|Self-Hosted" hello-output-release-${{ matrix.asset_tag }}.txt; then
+            echo "CRITICAL: hello output marker not found for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
-          if [[ "${FIB_MODE:-binary}" == "source" && -z "$FIB_OUT" ]]; then
-            CHECK_FIB_MARKER=0
-            echo "WARN: source-mode fib runtime returned empty stdout; accepting command-exit smoke." | tee -a "$STAGE_TRACE_FILE"
-          fi
-          if [[ "$CHECK_HELLO_MARKER" == "1" ]]; then
-            if ! grep -Eq "Hello Self-Hosted World!|Hello|Self-Hosted" hello-output-release-${{ matrix.asset_tag }}.txt; then
-              echo "CRITICAL: hello output marker not found for ${{ matrix.asset_tag }}." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-          fi
-          if [[ "$CHECK_FIB_MARKER" == "1" ]]; then
-            if ! grep -E "(^|[^0-9])9227465([^0-9]|$)" fib-output-release-${{ matrix.asset_tag }}.txt; then
-              echo "CRITICAL: fib marker 9227465 not found on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+          if ! grep -E "(^|[^0-9])9227465([^0-9]|$)" fib-output-release-${{ matrix.asset_tag }}.txt; then
+            echo "CRITICAL: fib marker 9227465 not found on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
       - name: Guard no legacy bootstrap and IR fallback markers
@@ -1592,14 +1539,8 @@ jobs:
           TEST_LIST_OUT="$("$THAG" test --list --workspace 2>&1 || true)"
           FIX_DOCTOR_OUT="$("$THAG" fix doctor examples/hello.tg --json 2>&1 || true)"
           UPDATE_CHECK_OUT="$("$THAG" update check 2>&1 || true)"
-          if [[ -z "${VERSION_OUT//[[:space:]]/}" ]]; then
-            echo "WARN: installed CLI --version returned empty output (compat no-output lane)."
-            VERSION_OUT="<empty-cli-output>"
-          fi
-          if [[ -z "${HELP_OUT//[[:space:]]/}" ]]; then
-            echo "WARN: installed CLI --help returned empty output (compat no-output lane)."
-            HELP_OUT="<empty-cli-output>"
-          fi
+          [[ -n "${VERSION_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: installed CLI --version returned empty output."; exit 1)
+          [[ -n "${HELP_OUT//[[:space:]]/}" ]] || (echo "CRITICAL: installed CLI --help returned empty output."; exit 1)
           MERGED="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$TEST_LIST_OUT"$'\n'"$FIX_DOCTOR_OUT"$'\n'"$UPDATE_CHECK_OUT"
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
@@ -1614,28 +1555,22 @@ jobs:
           HELPER_BUILD_OUT="$("$THAG" build helpermain.tg -o helper-enduser 2>&1 || true)"
           printf '%s\n' "$HELPER_BUILD_OUT"
           if [[ ! -f helper-enduser && ! -f helper-enduser.exe ]]; then
-            echo "WARN: helper-enduser binary missing (compat no-output lane); continuing."
+            echo "CRITICAL: helper-enduser binary missing."
+            exit 1
           fi
-          HELLO_MODE="binary"
           HELLO_BUILD_OUT="$("$THAG" build examples/hello.tg -o hello-enduser 2>&1 || true)"
           printf '%s\n' "$HELLO_BUILD_OUT"
           if [[ ! -f hello-enduser && ! -f hello-enduser.exe ]]; then
-            echo "WARN: hello-enduser binary missing; fallback to source-mode smoke."
-            HELLO_MODE="source"
+            echo "CRITICAL: hello-enduser binary missing."
+            exit 1
           fi
-          if [[ "$HELLO_MODE" == "binary" ]]; then
-            HELLO_BIN="./hello-enduser"
-            if [[ -f hello-enduser.exe ]]; then
-              HELLO_BIN="./hello-enduser.exe"
-            fi
-            HELLO_OUT="$($HELLO_BIN 2>&1 || true)"
-          else
-            HELLO_OUT="$("$THAG" examples/hello.tg 2>&1 || true)"
+          HELLO_BIN="./hello-enduser"
+          if [[ -f hello-enduser.exe ]]; then
+            HELLO_BIN="./hello-enduser.exe"
           fi
+          HELLO_OUT="$($HELLO_BIN 2>&1 || true)"
           if grep -Eq "Hello Self-Hosted World!|Hello|Self-Hosted" <<<"$HELLO_OUT"; then
             :
-          elif [[ "$HELLO_MODE" == "source" && -z "${HELLO_OUT//[[:space:]]/}" ]]; then
-            echo "WARN: source-mode hello output empty; accepting command-exit smoke."
           else
             echo "CRITICAL: end-user hello runtime marker missing."
             exit 1
@@ -1695,14 +1630,8 @@ jobs:
           $testListOut = [string]((& $thagore test --list --workspace 2>&1 | Out-String))
           $fixDoctorOut = [string]((& $thagore fix doctor examples/hello.tg --json 2>&1 | Out-String))
           $updateCheckOut = [string]((& $thagore update check 2>&1 | Out-String))
-          if ([string]::IsNullOrWhiteSpace($versionOut)) {
-              Write-Host "WARN: installed CLI --version returned empty output (compat no-output lane)."
-              $versionOut = "<empty-cli-output>"
-          }
-          if ([string]::IsNullOrWhiteSpace($helpOut)) {
-              Write-Host "WARN: installed CLI --help returned empty output (compat no-output lane)."
-              $helpOut = "<empty-cli-output>"
-          }
+          if ([string]::IsNullOrWhiteSpace($versionOut)) { throw "CRITICAL: installed CLI --version returned empty output." }
+          if ([string]::IsNullOrWhiteSpace($helpOut)) { throw "CRITICAL: installed CLI --help returned empty output." }
           $merged = "$versionOut`n$helpOut`n$testListOut`n$fixDoctorOut`n$updateCheckOut"
           $helperMain = @(
               "import `"helperdep.tg`"",
@@ -1718,42 +1647,20 @@ jobs:
           Set-Content -Path "helperdep.tg" -Value $helperDep -Encoding utf8
           $helperBuildOut = [string]((& $thagore build helpermain.tg -o helper-enduser.exe 2>&1 | Out-String))
           Write-Host $helperBuildOut
-          $helperBuildCode = $LASTEXITCODE
           if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser") -and -not (Test-Path "helpermain.exe") -and -not (Test-Path "helpermain")) {
-              $simpleMain = @(
-                  "func main() -> i32:",
-                  "    return 0"
-              ) -join "`n"
-              Set-Content -Path "helperbasic.tg" -Value $simpleMain -Encoding utf8
-              $helperSimpleOut = [string]((& $thagore build helperbasic.tg -o helper-enduser.exe 2>&1 | Out-String))
-              Write-Host $helperSimpleOut
-              $helperSimpleCode = $LASTEXITCODE
-              if (-not (Test-Path "helper-enduser.exe") -and -not (Test-Path "helper-enduser") -and -not (Test-Path "helperbasic.exe") -and -not (Test-Path "helperbasic")) {
-                  Write-Host "WARN: helper-enduser binary missing (import fixture code=$helperBuildCode, simple fixture code=$helperSimpleCode); continuing compatibility lane."
-              }
-              if ((Test-Path "helper-enduser.exe") -or (Test-Path "helper-enduser") -or (Test-Path "helperbasic.exe") -or (Test-Path "helperbasic")) {
-                  Write-Host "[compat] import helper fixture failed; accepted simple helper fixture fallback."
-              }
+              throw "CRITICAL: helper-enduser binary missing."
           }
-          $helloMode = "binary"
           $helloBuildOut = [string]((& $thagore build examples/hello.tg -o hello-enduser.exe 2>&1 | Out-String))
           Write-Host $helloBuildOut
           if (-not (Test-Path "hello-enduser.exe") -and -not (Test-Path "hello-enduser")) {
-              Write-Host "WARN: hello-enduser binary missing; fallback to source-mode smoke."
-              $helloMode = "source"
+              throw "CRITICAL: hello-enduser binary missing."
           }
-          if ($helloMode -eq "binary") {
-              $helloExe = ".\\hello-enduser.exe"
-              if (-not (Test-Path $helloExe)) {
-                  $helloExe = ".\\hello-enduser"
-              }
-              $helloOut = [string]((& $helloExe 2>&1 | Out-String))
-          } else {
-              $helloOut = [string]((& $thagore examples/hello.tg 2>&1 | Out-String))
+          $helloExe = ".\\hello-enduser.exe"
+          if (-not (Test-Path $helloExe)) {
+              $helloExe = ".\\hello-enduser"
           }
+          $helloOut = [string]((& $helloExe 2>&1 | Out-String))
           if ($helloOut -match "Hello Self-Hosted World!|Hello|Self-Hosted") {
-          } elseif ($helloMode -eq "source" -and [string]::IsNullOrWhiteSpace($helloOut)) {
-              Write-Host "WARN: source-mode hello output empty; accepting command-exit smoke."
           } else {
               throw "CRITICAL: end-user hello runtime marker missing."
           }
