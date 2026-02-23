@@ -255,6 +255,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if command -v clang >/dev/null 2>&1; then
+            echo "Using preinstalled clang on macOS:"
+            clang --version
+            exit 0
+          fi
           brew update
           if ! brew list llvm@21 >/dev/null 2>&1; then
             brew install llvm@21
