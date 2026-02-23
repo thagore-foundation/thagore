@@ -8,7 +8,64 @@ extern func __http_download_file(url: String, out_path: String) -> i32
 extern func __archive_unzip(zip_path: String, out_dir: String) -> i32
 extern func __fs_move(src: String, dst: String) -> i32
 
+func _has_injection_patterns(cmd: String) -> i32:
+    # Check for command chaining
+    if str.contains(cmd, "; "):
+        return 1
+    if str.contains(cmd, "&& "):
+        return 1
+    if str.contains(cmd, "|| "):
+        return 1
+    # Check for pipe injection
+    if str.contains(cmd, "| "):
+        return 1
+    # Check for command substitution
+    if str.contains(cmd, "$("):
+        return 1
+    if str.contains(cmd, "`"):
+        return 1
+    # Check for newline injection
+    if str.contains(cmd, "\n"):
+        return 1
+    # Check for background execution
+    if str.contains(cmd, " &"):
+        return 1
+    return 0
+
+func _is_allowed_command(cmd: String) -> i32:
+    if str.starts_with(cmd, "curl "):
+        return 1
+    if str.starts_with(cmd, "tar "):
+        return 1
+    if str.starts_with(cmd, "powershell "):
+        return 1
+    if str.starts_with(cmd, "move "):
+        return 1
+    if str.starts_with(cmd, "start "):
+        return 1
+    if str.starts_with(cmd, "mkdir "):
+        return 1
+    if str.starts_with(cmd, "cp "):
+        return 1
+    if str.starts_with(cmd, "rm "):
+        return 1
+    return 0
+
+func shell_escape(text: String) -> String:
+    let result = str.replace(text, "\\", "\\\\")
+    result = str.replace(result, "\"", "\\\"")
+    result = str.replace(result, "$", "\\$")
+    result = str.replace(result, "`", "\\`")
+    result = str.replace(result, "!", "\\!")
+    return result
+
 func run(cmd: String) -> i32:
+    # Check for injection patterns
+    if _has_injection_patterns(cmd) == 1:
+        return -1
+    # Check whitelist
+    if _is_allowed_command(cmd) == 0:
+        return -2
     return __process_run(cmd)
 
 func exec(program: String, args_text: String) -> i32:
@@ -30,7 +87,7 @@ func argv_sep() -> String:
     return __string_from_codepoint(10)
 
 func quote(text: String) -> String:
-    return _dq() + text + _dq()
+    return _dq() + shell_escape(text) + _dq()
 
 func open_path(path: String) -> i32:
     let p = str.replace(path, "/", "\\")
