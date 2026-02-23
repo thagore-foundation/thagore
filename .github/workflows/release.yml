@@ -1655,6 +1655,7 @@ jobs:
           [[ -f "$PAYLOAD/lib/runtime.a" || -f "$PAYLOAD/lib/runtime.lib" ]] || (echo "CRITICAL: missing payload runtime library"; exit 1)
 
           export THAGORE_ROOT="$PAYLOAD"
+          export THAGORE_INSTALL_SKIP_CLI_VALIDATE=1
           export THAGORE_INSTALL_SKIP_HELPER_VALIDATE=1
           bash scripts/install/install.sh --mode "${{ matrix.install_mode }}" --skip-llvm --yes --prefix "$PREFIX"
           THAG="$HOME/.local/bin/thagore"

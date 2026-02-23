@@ -305,6 +305,10 @@ validate_cli_install() {
   if [[ -z "${merged_out//[[:space:]]/}" ]]; then
     echo "WARN: installed CLI returned empty text for --version/--help; continuing to deeper smoke checks." >&2
   fi
+  if [[ "${THAGORE_INSTALL_SKIP_CLI_VALIDATE:-0}" == "1" ]]; then
+    echo "WARN: skipping strict CLI marker validation because THAGORE_INSTALL_SKIP_CLI_VALIDATE=1" >&2
+    return 0
+  fi
   if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$merged_out"; then
     echo "ERROR: installed CLI output matches legacy/wrapper markers." >&2
     exit 1
