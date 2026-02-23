@@ -314,6 +314,10 @@ validate_cli_install() {
 validate_helper_bundle_install() {
   local cli_bin="$1"
   local payload_prefix="$2"
+  if [[ "${THAGORE_INSTALL_SKIP_HELPER_VALIDATE:-0}" == "1" ]]; then
+    echo "WARN: skipping helper bundle validation because THAGORE_INSTALL_SKIP_HELPER_VALIDATE=1" >&2
+    return 0
+  fi
   local helper_bin="$payload_prefix/bin/stage1"
   if [[ ! -x "$helper_bin" ]]; then
     echo "ERROR: installed payload missing executable helper: $helper_bin" >&2
