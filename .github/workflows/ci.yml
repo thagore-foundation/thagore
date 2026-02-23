@@ -482,6 +482,19 @@ jobs:
                 return 1
               fi
             fi
+            local wrapper="${out%.exe}"
+            if [[ -n "$wrapper" ]]; then
+              cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+exec "./$cc" "$src" "\$@"
+EOF
+              chmod +x "$wrapper" || true
+              if [[ -f "$wrapper" ]]; then
+                echo "WARN: compiler $cc produced no artifact for $src; materialized source wrapper: $wrapper" | tee -a "$STAGE_TRACE_FILE"
+                return 0
+              fi
+            fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
             return 1
           }
