@@ -98,7 +98,6 @@ jobs:
             OFFICIAL_RELEASE_TAG=1
           fi
           echo "RELEASE_OFFICIAL_TAG=$OFFICIAL_RELEASE_TAG" >> "$GITHUB_ENV"
-          echo "RELEASE_NO_OUTPUT_MODE=0" >> "$GITHUB_ENV"
           export OFFICIAL_RELEASE_TAG
           RELEASE_MATRIX="$(python3 - <<'PY'
           import json
@@ -206,7 +205,6 @@ jobs:
       matrix: ${{ fromJson(needs.seed-asset-probe.outputs.release_matrix) }}
     env:
       BOOTSTRAP_STAGE1_TAG: "v0.3.25-stage1-seed"
-      THAGORE_WINDOWS_DONOR_TAG: "v0.3.61-foundation"
       STAGE_TRACE_FILE: ${{ matrix.stage_trace_file }}
     steps:
       - name: Checkout
@@ -700,14 +698,7 @@ jobs:
           else
             PY=python3
           fi
-          STRICT_WINDOWS=0
-          if [[ "${{ matrix.asset_tag }}" == "linux-x86_64" ]]; then
-            STRICT_WINDOWS=1
-          fi
-          STRICT_RELEASE_LANE=0
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$STRICT_WINDOWS" == "1" && "${RELEASE_FORCE_STRICT:-0}" == "1" ]]; then
-            STRICT_RELEASE_LANE=1
-          fi
+          STRICT_RELEASE_LANE=1
           echo "RELEASE_STRICT_LANE=$STRICT_RELEASE_LANE" >> "$GITHUB_ENV"
           ARM64_STAGE2_TIMEOUT_SECS=900
           ARM64_CLI_SANITY_TIMEOUT_SECS=45
@@ -843,10 +834,6 @@ jobs:
                   echo "[INFO] compiler rebuilt in-place artifact: $cc" | tee -a "$STAGE_TRACE_FILE"
                   return 0
                 fi
-                if [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-                  echo "[WARN] release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change; accepting compiler-managed no-output mode on non-strict lane." | tee -a "$STAGE_TRACE_FILE"
-                  return 0
-                fi
                 echo "CRITICAL: release build produced no compiler artifact for $src (out=$out) and in-place compiler did not change." | tee -a "$STAGE_TRACE_FILE"
                 return 1
               fi
@@ -871,75 +858,18 @@ jobs:
             done
             return 1
           }
-          USE_DONOR_BIN=0
-          DONOR_COMPILER=""
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "${{ runner.os }}" == "Windows" && "${{ matrix.arch }}" == "x86_64" ]]; then
-            DONOR_TAG="${THAGORE_WINDOWS_DONOR_TAG:-}"
-            if [[ -n "$DONOR_TAG" ]]; then
-              DONOR_ARCHIVE="donor/thagore-windows-x86_64.tar.gz"
-              DONOR_EXTRACT_DIR="donor/extract"
-              rm -rf donor donor_thagore.exe || true
-              mkdir -p "$DONOR_EXTRACT_DIR"
-              echo "[INFO] trying donor compiler from tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
-              gh release download "$DONOR_TAG" --repo "${{ github.repository }}" --pattern "thagore-windows-x86_64.tar.gz" -D donor || true
-              if [[ -f "$DONOR_ARCHIVE" ]]; then
-                if tar -xzf "$DONOR_ARCHIVE" -C "$DONOR_EXTRACT_DIR"; then
-                  DONOR_SRC=""
-                  for candidate in "$DONOR_EXTRACT_DIR/bin/thagore.exe" "$DONOR_EXTRACT_DIR/thagore.exe"; do
-                    if [[ -f "$candidate" ]]; then
-                      DONOR_SRC="$candidate"
-                      break
-                    fi
-                  done
-                  if [[ -z "$DONOR_SRC" ]]; then
-                    DONOR_SRC="$("$PY" -c "import pathlib; roots=[pathlib.Path('$DONOR_EXTRACT_DIR')]; cands=[]; [cands.extend(sorted(r.rglob('thagore.exe'))) for r in roots if r.exists()]; print(cands[0].as_posix() if cands else '')")"
-                  fi
-                  if [[ -n "$DONOR_SRC" && -f "$DONOR_SRC" ]]; then
-                    cp "$DONOR_SRC" donor_thagore.exe
-                    chmod +x donor_thagore.exe || true
-                    if cli_sanity_ok donor_thagore.exe; then
-                      USE_DONOR_BIN=1
-                      DONOR_COMPILER="donor_thagore.exe"
-                      echo "[INFO] official Windows lane uses donor compiler bootstrap from $DONOR_TAG at $DONOR_SRC." | tee -a "$STAGE_TRACE_FILE"
-                    else
-                      echo "[WARN] donor compiler failed CLI sanity: $DONOR_SRC" | tee -a "$STAGE_TRACE_FILE"
-                    fi
-                  else
-                    echo "[WARN] donor compiler binary not found after extract: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
-                    ls -la "$DONOR_EXTRACT_DIR" | tee -a "$STAGE_TRACE_FILE" || true
-                  fi
-                else
-                  echo "[WARN] failed to extract donor archive: $DONOR_ARCHIVE" | tee -a "$STAGE_TRACE_FILE"
-                fi
-              else
-                echo "[WARN] donor archive not downloaded for tag=$DONOR_TAG" | tee -a "$STAGE_TRACE_FILE"
-              fi
-            fi
-          fi
           if [[ "${{ runner.os }}" == "Linux" && -f "${{ matrix.stage1_bin }}" ]]; then
             cp -f "${{ matrix.stage1_bin }}" "${{ matrix.stage1_bin }}.exe"
             chmod +x "${{ matrix.stage1_bin }}.exe" || true
           fi
           BOOTSTRAP_COMPILER="${{ matrix.stage1_bin }}"
-          if [[ "$USE_DONOR_BIN" == "1" && -n "$DONOR_COMPILER" ]]; then
-            BOOTSTRAP_COMPILER="$DONOR_COMPILER"
-          fi
           if ! thg_build "$BOOTSTRAP_COMPILER" src/thagore.tg "${{ matrix.stage2_bin }}"; then
             exit 1
           fi
           STAGE2_BIN="$(resolve_bin "${{ matrix.stage2_bin }}" "src/thagore.tg" || true)"
           if [[ -z "${STAGE2_BIN:-}" ]]; then
-            if [[ "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              STAGE2_BIN="$DONOR_COMPILER"
-              echo "[INFO] using in-place rebuilt compiler from donor path: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            elif [[ "$STRICT_RELEASE_LANE" != "1" && -f "$BOOTSTRAP_COMPILER" ]]; then
-              STAGE2_BIN="$BOOTSTRAP_COMPILER"
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] stage2 artifact missing after source build; using bootstrap compiler due to non-strict no-output mode: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "CRITICAL: stage2 artifact missing after source build; no stage1 fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: stage2 artifact missing after source build; no fallback is allowed." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$STAGE2_BIN"
           if [[ ! -s "$STAGE2_BIN" ]]; then
@@ -948,28 +878,8 @@ jobs:
           fi
           chmod +x "$STAGE2_BIN" || true
           if ! cli_sanity_ok "$STAGE2_BIN"; then
-            if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$USE_DONOR_BIN" == "1" && -f "$DONOR_COMPILER" ]]; then
-              echo "[WARN] source-built compiler failed CLI sanity; falling back to donor compiler: $DONOR_COMPILER" | tee -a "$STAGE_TRACE_FILE"
-              STAGE2_BIN="$DONOR_COMPILER"
-              chmod +x "$STAGE2_BIN" || true
-            elif [[ "$STRICT_RELEASE_LANE" != "1" ]]; then
-              echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-              echo "[WARN] source-built compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-            else
-              echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-          fi
-          if [[ "$OFFICIAL_RELEASE_TAG" == "1" && "$USE_DONOR_BIN" == "1" && "$STAGE2_BIN" == "$DONOR_COMPILER" ]]; then
-            TAG_SEMVER="${GITHUB_REF_NAME#v}"
-            export TAG_SEMVER
-            if ! "$PY" -c "import os, pathlib, re, sys; p=pathlib.Path(sys.argv[1]); data=p.read_bytes(); target=('thagore '+os.environ['TAG_SEMVER']).encode('ascii','strict'); m=re.search(rb'thagore [0-9]+\\.[0-9]+\\.[0-9]+', data); orig=(data[m.start():m.end()] if m else None); (m is not None) or (_ for _ in ()).throw(SystemExit('missing version marker in donor binary')); (len(orig)==len(target)) or (_ for _ in ()).throw(SystemExit('version marker length mismatch: '+orig.decode(errors='ignore')+' -> '+target.decode())); p.write_bytes(data[:m.start()]+target+data[m.end():]); print('[INFO] patched donor version marker '+orig.decode(errors='ignore')+' -> '+target.decode())" "$STAGE2_BIN"; then
-              echo "[WARN] donor version marker patch skipped; continuing with donor-reported version." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            if ! cli_sanity_ok "$STAGE2_BIN"; then
-              echo "CRITICAL: donor compiler failed CLI sanity after version patch: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
+            echo "CRITICAL: source-built compiler failed CLI sanity: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           STAGE2_REBUILD_BIN="$STAGE2_BIN"
@@ -981,12 +891,8 @@ jobs:
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] release compiler failed CLI sanity on non-strict lane; continuing in no-output mode with compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -1016,12 +922,8 @@ jobs:
             fi
           done
           if [[ -z "${HELLO_BIN:-}" || ! -f "$HELLO_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] hello smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: hello smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
 
           FIB_BIN=""
@@ -1035,12 +937,8 @@ jobs:
             fi
           done
           if [[ -z "${FIB_BIN:-}" || ! -f "$FIB_BIN" ]]; then
-            if [[ "$STRICT_RELEASE_LANE" == "1" ]]; then
-              echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
-              exit 1
-            fi
-            echo "RELEASE_NO_OUTPUT_MODE=1" >> "$GITHUB_ENV"
-            echo "[WARN] fib smoke binary was not produced; continuing non-strict lane in no-output mode." | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: fib smoke binary was not produced on this bootstrap lane." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
@@ -1077,10 +975,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping CLI help/version smoke on non-strict no-output lane."
-            exit 0
-          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           VERSION_OUT="$(./$STAGE2_REBUILD_BIN --version 2>&1)"
           HELP_OUT="$(./$STAGE2_REBUILD_BIN --help 2>&1)"
@@ -1096,12 +990,8 @@ jobs:
           if [[ "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
-              if [[ "$STAGE2_REBUILD_BIN" == donor_* ]]; then
-                echo "WARN: donor compiler reports version '$VERSION_OUT' (expected tag $GITHUB_REF_NAME); continuing official lane."
-              else
-                echo "CRITICAL: --version output does not match official release tag semver $GITHUB_REF_NAME."
-                exit 1
-              fi
+              echo "CRITICAL: --version output does not match official release tag semver $GITHUB_REF_NAME."
+              exit 1
             fi
           else
             if [[ -z "$VERSION_OUT" || -z "$HELP_OUT" ]]; then
@@ -1118,10 +1008,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping helper import/use smoke on non-strict no-output lane."
-            exit 0
-          fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
           cat > helperdep.tg <<'TG'
           func helper_value() -> i32:
@@ -1147,10 +1033,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping hello/fib runtime smoke on non-strict no-output lane."
-            exit 0
-          fi
           if [[ -z "${HELLO_BIN:-}" || -z "${FIB_BIN:-}" ]]; then
             echo "CRITICAL: hello/fib runtime execution requires both smoke binaries."
             exit 1
@@ -1301,14 +1183,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${RELEASE_NO_OUTPUT_MODE:-0}" == "1" && "${RELEASE_STRICT_LANE:-0}" != "1" ]]; then
-            echo "[WARN] skipping packaged atomic bundle smoke on non-strict no-output lane."
-            {
-              printf 'status=skip-no-output\n'
-              printf 'asset_tag=%s\n' "${{ matrix.asset_tag }}"
-            } > "packaged-smoke-release-${{ matrix.asset_tag }}.txt"
-            exit 0
-          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             PY=python
           else
@@ -1562,10 +1436,34 @@ jobs:
             echo "is_official_tag=false" >> "$GITHUB_OUTPUT"
           fi
 
+  release-proof-gate:
+    name: release-proof-gate
+    runs-on: ubuntu-latest
+    needs: [discord-notify-init, release]
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Validate strict release proofs
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_tags=(linux-x86_64 linux-arm64 macos-arm64 windows-x86_64 windows-arm64)
+          for tag in "${required_tags[@]}"; do
+            smoke_file="$(find artifacts -type f -name "packaged-smoke-release-${tag}.txt" | head -n 1 || true)"
+            verify_file="$(find artifacts -type f -name "thagore-enduser-verified-${tag}.txt" | head -n 1 || true)"
+            [[ -n "$smoke_file" && -f "$smoke_file" ]] || (echo "CRITICAL: missing packaged smoke proof for ${tag}"; exit 1)
+            [[ -n "$verify_file" && -f "$verify_file" ]] || (echo "CRITICAL: missing end-user verify proof for ${tag}"; exit 1)
+            grep -Eq '^status=pass$' "$smoke_file" || (echo "CRITICAL: packaged smoke did not pass for ${tag}"; cat "$smoke_file"; exit 1)
+            grep -Eq '^status=pass$' "$verify_file" || (echo "CRITICAL: end-user verify did not pass for ${tag}"; cat "$verify_file"; exit 1)
+          done
+
   public-release:
     name: public-release
     runs-on: ubuntu-latest
-    needs: [discord-notify-init, release, official-tag-gate]
+    needs: [discord-notify-init, release, official-tag-gate, release-proof-gate]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !(github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true')
     steps:
       - name: Checkout
@@ -1605,7 +1503,7 @@ jobs:
     name: discord-notify-finalize
     runs-on: ubuntu-latest
     if: always()
-    needs: [discord-notify-init, discord-notify-live, release, official-tag-gate, public-release]
+    needs: [discord-notify-init, discord-notify-live, release, official-tag-gate, release-proof-gate, public-release]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

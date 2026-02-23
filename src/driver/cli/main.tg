@@ -36,19 +36,66 @@ func _helper_exec_path(candidate_raw: String) -> String:
         return cwd + "/" + candidate
     return "./" + candidate
 
+func _helper_path_from_dir(dir_raw: String, helper_name: String) -> String:
+    if (strlen(helper_name) == 0):
+        return ""
+    let dir_norm = _normalize_path(_trim(dir_raw))
+    if (strlen(dir_norm) == 0):
+        dir_norm = "."
+    let candidate = dir_norm
+    if ((_ends_with(dir_norm, "/") == 0) and (_ends_with(dir_norm, "\\") == 0)):
+        candidate = dir_norm + "/" + helper_name
+    else:
+        candidate = dir_norm + helper_name
+    let target = _normalize_path(candidate)
+    if (fs.exists(target) == 1):
+        return target
+    return ""
+
+func _find_helper_in_path(candidate_raw: String) -> String:
+    let candidate = _trim(candidate_raw)
+    if (strlen(candidate) == 0):
+        return ""
+    if ((_contains(candidate, "/") == 1) or (_contains(candidate, "\\") == 1) or (_contains(candidate, ":") == 1)):
+        return ""
+    let delim = (if (_update_detect_os() == "windows") then ";" else ":")
+    let path_list = env.get_var("PATH")
+    let segment = ""
+    let i = 0
+    while (i < strlen(path_list)):
+        let ch = _char_at(path_list, i)
+        if (ch == delim):
+            let found = _helper_path_from_dir(segment, candidate)
+            if (strlen(found) > 0):
+                return found
+            segment = ""
+        else:
+            segment = segment + ch
+        i = i + 1
+    let final = _helper_path_from_dir(segment, candidate)
+    if (strlen(final) > 0):
+        return final
+    return ""
+
 func _configure_default_helper_bin() -> void:
-    let configured = _helper_exec_path(env.get_var("THAG_HELPER_BIN"))
+    let configured = _trim(env.get_var("THAG_HELPER_BIN"))
     if (strlen(configured) > 0):
-        if (fs.exists(configured) == 1):
-            env.set_var("THAG_HELPER_BIN", configured)
+        let normalized = _helper_exec_path(configured)
+        if (fs.exists(normalized) == 1):
+            env.set_var("THAG_HELPER_BIN", normalized)
             return
+        let from_path = _find_helper_in_path(configured)
+        if (strlen(from_path) > 0):
+            env.set_var("THAG_HELPER_BIN", from_path)
+            return
+        return
     let exe_path = _normalize_path(_trim(env.program_name()))
     if (strlen(exe_path) == 0):
         return
-    let exe_dir = _dir_name(exe_path)
     let stage1_name = "stage1"
     if (_update_detect_os() == "windows"):
         stage1_name = "stage1.exe"
+    let exe_dir = _dir_name(exe_path)
     let direct = _normalize_path(exe_dir + "/" + stage1_name)
     if (fs.exists(direct) == 1):
         env.set_var("THAG_HELPER_BIN", _helper_exec_path(direct))
@@ -60,6 +107,7 @@ func _configure_default_helper_bin() -> void:
         return
     if (fs.exists(exe_path) == 1):
         env.set_var("THAG_HELPER_BIN", _helper_exec_path(exe_path))
+        return
 
 func main() -> i32:
     let argc = env.count()

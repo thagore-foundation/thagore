@@ -12,8 +12,9 @@ REQUIRED_MARKERS = [
     "thg_build_compiler \"$STAGE1_BIN\" ../src/thagore.tg \"$STAGE2_STEM\"",
     "thg_build_compiler \"$STAGE2_BIN\" ../src/thagore.tg stage2b_from_bundle",
     "thg_build_compiler \"$STAGE2B_BIN\" ../src/thagore.tg stage2c_from_bundle",
-    "if [[ \"$STAGE2_BIN\" == \"$STAGE1_BIN\" && \"$STAGE2B_BIN\" == \"$STAGE1_BIN\" && \"$STAGE2C_BIN\" == \"$STAGE1_BIN\" ]]; then",
-    "echo \"[WARN] packaged compiler selfhost completed in no-output mode; skipping executable sample assertions in verify-bundle.\"",
+    "echo \"CRITICAL: packaged stage1 selfhost did not produce stage2 artifact.\"",
+    "echo \"CRITICAL: stage2 selfhost did not produce stage2b artifact.\"",
+    "echo \"CRITICAL: stage2b selfhost did not produce stage2c artifact.\"",
     "echo \"[WARN] verify-bundle linux-arm64 runs minimal packaged-seed gate (bundle/provenance/runtime presence) and skips executing packaged compiler.\"",
     "build_and_assert_output_with_cc \"$STAGE2_BIN\" ../examples/hello.tg hello_from_stage2 \"Hello Self-Hosted World!\"",
     "build_and_assert_output_with_cc \"$STAGE2_BIN\" ../examples/logic.tg logic_from_stage2 \"100\"",
@@ -33,6 +34,7 @@ FORBIDDEN_VERIFY_FIB_WARNING = (
 )
 
 FORBIDDEN_LEGACY_MARKERS = [
+    "echo \"[WARN] packaged compiler selfhost completed in no-output mode; skipping executable sample assertions in verify-bundle.\"",
     "build_and_assert_output ../examples/hello.tg hello_bundle \"Hello Self-Hosted World!\"",
     "build_and_assert_output ../examples/logic.tg logic_bundle \"100\"",
     "build_and_assert_output ../examples/loop.tg loop_bundle $'0\\n1\\n2\\n3\\n4\\n100'",

@@ -469,8 +469,8 @@ jobs:
                 return 0
               fi
               if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
-                echo "[WARN] compiler rebuild for $src completed with no emitted output and unchanged in-place binary ($cc); accepting as compiler-managed no-output mode." | tee -a "$STAGE_TRACE_FILE"
-                return 0
+                echo "CRITICAL: compiler rebuild for $src produced no emitted output and left in-place binary unchanged ($cc)." | tee -a "$STAGE_TRACE_FILE"
+                return 1
               fi
             fi
             echo "CRITICAL: compiler $cc succeeded but produced no artifact for $src (out=$out)." | tee -a "$STAGE_TRACE_FILE"
@@ -504,8 +504,8 @@ jobs:
           thg_build "$STAGE1_BIN" src/thagore.tg "$STAGE2_BIN"
           STAGE2_BIN="$(resolve_bin "$STAGE2_BIN" "src/thagore.tg" || true)"
           if [[ -z "$STAGE2_BIN" ]]; then
-            STAGE2_BIN="$STAGE1_BIN"
-            echo "[INFO] using in-place rebuilt stage2 compiler: $STAGE2_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: stage2 build produced no artifact for src/thagore.tg." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$STAGE2_BIN"
           chmod +x "$STAGE2_BIN" || true
@@ -513,8 +513,8 @@ jobs:
           thg_build "$STAGE2_BIN" src/thagore.tg "$STAGE2_REBUILD_BIN"
           STAGE2_REBUILD_BIN="$(resolve_bin "$STAGE2_REBUILD_BIN" "src/thagore.tg" || true)"
           if [[ -z "$STAGE2_REBUILD_BIN" ]]; then
-            STAGE2_REBUILD_BIN="$STAGE2_BIN"
-            echo "[INFO] using in-place rebuilt compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: stage2 rebuild produced no artifact for src/thagore.tg." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$STAGE2_REBUILD_BIN"
           chmod +x "$STAGE2_REBUILD_BIN" || true
@@ -523,9 +523,6 @@ jobs:
           FIB_TARGET="$FIB_BIN"
           HELLO_SRC="examples/hello.tg"
           FIB_SRC="examples/fib.tg"
-          HELLO_MODE="binary"
-          FIB_MODE="binary"
-
           HELLO_BIN=""
           for cc in "$STAGE2_REBUILD_BIN" "${STAGE2_BIN:-}" "${STAGE1_BIN:-}"; do
             [[ -n "$cc" && -f "$cc" ]] || continue
@@ -537,10 +534,8 @@ jobs:
             fi
           done
           if [[ -z "$HELLO_BIN" ]]; then
-            HELLO_MODE="source"
-            HELLO_BIN="$STAGE2_REBUILD_BIN"
-            [[ -n "$HELLO_BIN" && -f "$HELLO_BIN" ]] || HELLO_BIN="$STAGE1_BIN"
-            echo "[INFO] hello fallback to source execution via compiler: $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: failed to produce hello binary artifact on selfhost chain." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$HELLO_BIN"
 
@@ -555,20 +550,14 @@ jobs:
             fi
           done
           if [[ -z "$FIB_BIN" ]]; then
-            FIB_MODE="source"
-            FIB_BIN="$STAGE2_REBUILD_BIN"
-            [[ -n "$FIB_BIN" && -f "$FIB_BIN" ]] || FIB_BIN="$STAGE1_BIN"
-            echo "[INFO] fib fallback to source execution via compiler: $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "CRITICAL: failed to produce fib binary artifact on selfhost chain." | tee -a "$STAGE_TRACE_FILE"
+            exit 1
           fi
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
           echo "STAGE2_REBUILD_BIN=$STAGE2_REBUILD_BIN" >> "$GITHUB_ENV"
           echo "HELLO_BIN=$HELLO_BIN" >> "$GITHUB_ENV"
           echo "FIB_BIN=$FIB_BIN" >> "$GITHUB_ENV"
-          echo "HELLO_MODE=$HELLO_MODE" >> "$GITHUB_ENV"
-          echo "FIB_MODE=$FIB_MODE" >> "$GITHUB_ENV"
-          echo "HELLO_SRC=$HELLO_SRC" >> "$GITHUB_ENV"
-          echo "FIB_SRC=$FIB_SRC" >> "$GITHUB_ENV"
 
       - name: Deterministic bootstrap hash
         shell: bash
@@ -615,16 +604,8 @@ jobs:
         run: |
           set -euxo pipefail
           chmod +x "$HELLO_BIN" "$FIB_BIN" || true
-          if [[ "${HELLO_MODE:-binary}" == "source" ]]; then
-            "./$HELLO_BIN" "$HELLO_SRC"
-          else
-            "./$HELLO_BIN"
-          fi
-          if [[ "${FIB_MODE:-binary}" == "source" ]]; then
-            "./$FIB_BIN" "$FIB_SRC"
-          else
-            "./$FIB_BIN"
-          fi
+          "./$HELLO_BIN"
+          "./$FIB_BIN"
 
       - name: Run syntax matrix (15 features)
         shell: bash
@@ -664,13 +645,7 @@ jobs:
               built=1
             fi
             if [[ "$built" -eq 1 ]]; then
-              echo "[INFO] $cc built $test_src without artifact; fallback to source execution." | tee -a "$STAGE_TRACE_FILE"
-            fi
-            if "./$cc" "$test_src" >/dev/null 2>&1; then
-              BUILT_BIN=""
-              USED_CC="$cc"
-              RUN_MODE="source"
-              return 0
+              echo "CRITICAL: $cc built $test_src without output artifact." | tee -a "$STAGE_TRACE_FILE"
             fi
             return 1
           }
@@ -710,16 +685,11 @@ jobs:
               echo "CRITICAL: failed to compile syntax matrix test $TEST_SRC."
               exit 1
             fi
-            if [[ "$RUN_MODE" == "binary" ]]; then
-              RUN_BIN="$BUILT_BIN"
-              test -f "$RUN_BIN"
-              chmod +x "$RUN_BIN" || true
-              "./$RUN_BIN"
-              echo "PASS|$TEST_SRC|compiler=$USED_CC|mode=binary|binary=$RUN_BIN" >> "$REPORT"
-            else
-              "./$USED_CC" "$TEST_SRC"
-              echo "PASS|$TEST_SRC|compiler=$USED_CC|mode=source" >> "$REPORT"
-            fi
+            RUN_BIN="$BUILT_BIN"
+            test -f "$RUN_BIN"
+            chmod +x "$RUN_BIN" || true
+            "./$RUN_BIN"
+            echo "PASS|$TEST_SRC|compiler=$USED_CC|mode=binary|binary=$RUN_BIN" >> "$REPORT"
           done
           cat "$REPORT" | tee -a "$STAGE_TRACE_FILE"
 
