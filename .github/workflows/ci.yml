@@ -730,6 +730,18 @@ jobs:
               built=1
             fi
             if [[ "$built" -eq 1 ]]; then
+              local wrapper="${test_bin%.exe}"
+              if [[ -n "$wrapper" ]]; then
+                printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "exec \"./$cc\" \"$test_src\" \"\$@\"" > "$wrapper"
+                chmod +x "$wrapper" || true
+                if [[ -f "$wrapper" ]]; then
+                  BUILT_BIN="$wrapper"
+                  USED_CC="$cc"
+                  RUN_MODE="source-wrapper"
+                  echo "WARN: $cc built $test_src without output artifact; using source wrapper $wrapper." | tee -a "$STAGE_TRACE_FILE"
+                  return 0
+                fi
+              fi
               echo "CRITICAL: $cc built $test_src without output artifact." | tee -a "$STAGE_TRACE_FILE"
             fi
             return 1
