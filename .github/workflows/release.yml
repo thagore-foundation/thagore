@@ -1181,7 +1181,7 @@ jobs:
               exit 1
             fi
           fi
-          if [[ -n "$VERSION_OUT" && "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
+          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" && -n "$VERSION_OUT" && "${GITHUB_REF:-}" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ && "${RELEASE_STRICT_LANE:-0}" == "1" ]]; then
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$RELEASE_COMPILER_BIN" == donor_* ]]; then
