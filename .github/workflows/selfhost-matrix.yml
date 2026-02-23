@@ -484,11 +484,7 @@ jobs:
             fi
             local wrapper="${out%.exe}"
             if [[ -n "$wrapper" ]]; then
-              cat > "$wrapper" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-exec "./$cc" "$src" "\$@"
-EOF
+              printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "exec \"./$cc\" \"$src\" \"\$@\"" > "$wrapper"
               chmod +x "$wrapper" || true
               if [[ -f "$wrapper" ]]; then
                 echo "WARN: compiler $cc produced no artifact for $src; materialized source wrapper: $wrapper" | tee -a "$STAGE_TRACE_FILE"
