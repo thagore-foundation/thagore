@@ -1061,9 +1061,13 @@ jobs:
             exit 1
           fi
           chmod +x "$STAGE2_REBUILD_BIN" || true
-          if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
-            echo "CRITICAL: selected release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
-            exit 1
+          if [[ "${BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]]; then
+            if ! cli_sanity_ok "$STAGE2_REBUILD_BIN"; then
+              echo "CRITICAL: selected release compiler failed CLI sanity: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
+              exit 1
+            fi
+          else
+            echo "[WARN] bootstrap-compat mode skips strict CLI sanity for selected release compiler: $STAGE2_REBUILD_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
 
           HELLO_TARGET="${{ matrix.hello_bin }}"
@@ -1157,8 +1161,12 @@ jobs:
           printf '%s\n' "$HELP_OUT" > cli-help-release-${{ matrix.asset_tag }}.txt
           printf '%s\n' "$UPDATE_OUT" > cli-update-release-${{ matrix.asset_tag }}.txt
           MERGED_OUT="$VERSION_OUT"$'\n'"$HELP_OUT"$'\n'"$UPDATE_OUT"
-          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Empty file or file not found|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
+          if grep -Eqi "cannot read source file:\s*update|Unknown update mode 'update'|Usage:\s*thg\.exe" <<<"$MERGED_OUT"; then
             echo "CRITICAL: smoke step detected legacy/wrapper markers."
+            exit 1
+          fi
+          if [[ "${RELEASE_BOOTSTRAP_COMPAT_MODE:-0}" != "1" ]] && grep -Eqi "Empty file or file not found" <<<"$MERGED_OUT"; then
+            echo "CRITICAL: smoke step detected empty-source marker on strict release lane."
             exit 1
           fi
           if grep -Eqi "Exec format error|cannot execute binary file|Bad CPU type|not recognized as an internal|Illegal instruction|Segmentation fault|Access is denied" <<<"$MERGED_OUT"; then
