@@ -10,7 +10,7 @@ on:
       bootstrap_stage1_tag:
         required: false
         type: string
-        default: "v0.3.193-stage1-seed"
+        default: "v0.3.168-stage1-seed"
   workflow_dispatch:
     inputs:
       longhaul_rounds:
@@ -20,7 +20,7 @@ on:
       bootstrap_stage1_tag:
         description: "Bootstrap seed tag"
         required: false
-        default: "v0.3.193-stage1-seed"
+        default: "v0.3.168-stage1-seed"
   schedule:
     - cron: "0 */6 * * *"
 
@@ -42,7 +42,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     env:
-      BOOTSTRAP_STAGE1_TAG: ${{ inputs.bootstrap_stage1_tag || github.event.inputs.bootstrap_stage1_tag || 'v0.3.193-stage1-seed' }}
+      BOOTSTRAP_STAGE1_TAG: ${{ inputs.bootstrap_stage1_tag || github.event.inputs.bootstrap_stage1_tag || 'v0.3.168-stage1-seed' }}
       STAGE_TRACE_FILE: selfhost-longhaul-trace.log
       SOAK_REPORT_FILE: selfhost-longhaul-report.txt
       LONGHAUL_ROUNDS: ${{ inputs.longhaul_rounds || github.event.inputs.longhaul_rounds || '10' }}
