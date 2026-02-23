@@ -1,0 +1,28 @@
+import "lib/os_abi_windows.tg" as abi
+
+func main() -> i32:
+    let pid = abi.abi_process_id()
+    let tid = abi.abi_thread_id()
+    let now = abi.abi_time_now_ms()
+
+    print("windows abi direct:")
+    print("pid:")
+    print(pid)
+    print("tid:")
+    print(tid)
+    print("tick(ms):")
+    print(now)
+
+    let dir = ".tmp_os_abi_demo"
+    let file_a = dir + "\\a.txt"
+    let file_b = dir + "\\b.txt"
+
+    abi.abi_mkdir(dir)
+    if (abi.abi_file_exists(file_a) == 1):
+        abi.abi_remove_file(file_a)
+    if (abi.abi_file_exists(file_b) == 1):
+        abi.abi_remove_file(file_b)
+
+    abi.abi_debug_print("thagore os abi direct demo")
+    abi.abi_sleep_ms(1)
+    return 0

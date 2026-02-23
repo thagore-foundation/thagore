@@ -107,18 +107,21 @@ func _emit_stmt_line(line_raw: String, slots: String, t: i32, l: i32, sidx: i32,
     return EmitStmtResult(call_only.next_temp, l, call_only.next_str, call_only.ir, slots, call_only.globals)
 
 func _emit_if_block(lines: String, base_indent: i32, start_idx: i32, cond_text: String, slots: String, t: i32, l: i32, sidx: i32, globals: String) -> EmitStmtResult:
-    let cond = _emit_expr(cond_text, slots, t, sidx, globals)
+    let cond_pack = _emit_cond_i1(cond_text, slots, t)
+    let cond_ir = _unpack_part(cond_pack, 0)
+    let cond_val = _unpack_part(cond_pack, 1)
+    let cond_t = _parse_i32(_unpack_part(cond_pack, 2))
     let then_label = _s2("if.then.", _tag(l))
     let else_label = _s2("if.else.", _tag(l))
     let end_label = _s2("if.end.", _tag(l))
-    let ir = _s2(cond.ir, _s6("  br i1 ", cond.value, ", label %", then_label, ", label %", _s2(else_label, "__NL__")))
+    let ir = _s2(cond_ir, _s6("  br i1 ", cond_val, ", label %", then_label, ", label %", _s2(else_label, "__NL__")))
     ir = _s3(ir, then_label, ":__NL__")
     let i = start_idx
     let total = _line_count(lines)
     let st = slots
-    let tt = cond.next_temp
-    let ss = cond.next_str
-    let gg = cond.globals
+    let tt = cond_t
+    let ss = sidx
+    let gg = globals
     while (i < total):
         let raw = _line_at(lines, i)
         let indent = _leading_spaces(raw)
@@ -145,4 +148,3 @@ func _emit_if_block(lines: String, base_indent: i32, start_idx: i32, cond_text: 
     ir = _s2(ir, _s3("  br label %", end_label, "__NL__"))
     ir = _s3(ir, end_label, ":__NL__")
     return EmitStmtResult(tt, l + 10, ss, ir, st, gg)
-

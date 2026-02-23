@@ -3,6 +3,10 @@ extern func __thg_interp_eval_expr(interp: ptr, node: ptr) -> i32
 extern func __thg_interp_exec_stmt(interp: ptr, node: ptr) -> i32
 extern func __thg_interp_free(interp: ptr) -> i32
 extern func __thg_interp_set_strict(interp: ptr, strict_mode: i32) -> i32
+extern func __thg_ptr_null() -> ptr
+
+func _null_interp() -> ptr:
+    return __thg_ptr_null()
 
 struct Interpreter:
     handle: ptr
@@ -11,13 +15,25 @@ func new() -> Interpreter:
     return Interpreter(__thg_interp_new())
 
 func eval_expr(interpreter: Interpreter, node: ptr) -> i32:
+    if (interpreter.handle == _null_interp()):
+        return -1
+    if (node == _null_interp()):
+        return -1
     return __thg_interp_eval_expr(interpreter.handle, node)
 
 func exec_stmt(interpreter: Interpreter, node: ptr) -> i32:
+    if (interpreter.handle == _null_interp()):
+        return -1
+    if (node == _null_interp()):
+        return -1
     return __thg_interp_exec_stmt(interpreter.handle, node)
 
 func set_strict(interpreter: Interpreter, strict_mode: i32) -> i32:
+    if (interpreter.handle == _null_interp()):
+        return -1
     return __thg_interp_set_strict(interpreter.handle, strict_mode)
 
 func dispose(interpreter: Interpreter) -> i32:
+    if (interpreter.handle == _null_interp()):
+        return 0
     return __thg_interp_free(interpreter.handle)

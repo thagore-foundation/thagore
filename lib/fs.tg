@@ -12,6 +12,14 @@ extern func __fs_read_bytes(handle: ptr, size: i32) -> String
 extern func __fs_seek(handle: ptr, offset: i32, whence: i32) -> i32
 extern func __fs_close(handle: ptr) -> i32
 
+func _null_handle() -> ptr:
+    return __thg_ptr_null()
+
+func _is_null_handle(handle: ptr) -> i32:
+    if (handle == _null_handle()):
+        return 1
+    return 0
+
 func read_text(path: String) -> String:
     let text = __thg_fs_read_text(path)
     if (text == null):
@@ -20,6 +28,9 @@ func read_text(path: String) -> String:
 
 func write_text(path: String, text: String) -> i32:
     return __thg_fs_write_text(path, text)
+
+func remove(path: String) -> i32:
+    return __thg_fs_remove(path)
 
 func exists(path: String) -> i32:
     return __fs_exists(path)
@@ -39,21 +50,36 @@ func list_dir(path: String) -> String:
     return listing
 
 func open_binary(path: String, mode: String) -> ptr:
-    return __fs_open_binary(path, mode)
+    if (path == ""):
+        return _null_handle()
+    let use_mode = mode
+    if (use_mode == ""):
+        use_mode = "r"
+    return __fs_open_binary(path, use_mode)
 
 func write_bytes(handle: ptr, buffer: String) -> i32:
+    if (_is_null_handle(handle) == 1):
+        return -1
     return __fs_write_bytes(handle, buffer)
 
 func read_bytes(handle: ptr, size: i32) -> String:
+    if (_is_null_handle(handle) == 1):
+        return ""
+    if (size <= 0):
+        return ""
     let data = __fs_read_bytes(handle, size)
     if (data == null):
         return ""
     return data
 
 func seek(handle: ptr, offset: i32, whence: i32) -> i32:
+    if (_is_null_handle(handle) == 1):
+        return -1
     return __fs_seek(handle, offset, whence)
 
 func close(handle: ptr) -> i32:
+    if (_is_null_handle(handle) == 1):
+        return 0
     return __fs_close(handle)
 
 func open_write(path: String) -> ptr:

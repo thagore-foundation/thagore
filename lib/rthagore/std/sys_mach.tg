@@ -1,7 +1,10 @@
 // sys_mach (thagore-compatible shim)
 
+extern func malloc(size: usize) -> ptr
+extern func free(p: ptr) -> void
+
 func mach_port_create() -> ptr
-    return null
+    return malloc(1)
 
 func mach_port_send(port: ptr, message: String) -> i32
     if port == null
@@ -16,4 +19,5 @@ func mach_port_recv(port: ptr) -> String
 func mach_port_destroy(port: ptr) -> i32
     if port == null
         return -1
+    free(port)
     return 0

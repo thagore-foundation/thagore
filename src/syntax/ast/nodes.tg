@@ -32,6 +32,10 @@ extern func __thg_ast_func_param_at(node: ptr, index: i32) -> String
 extern func __thg_ast_call_arg_count(node: ptr) -> i32
 extern func __thg_ast_call_arg_at(node: ptr, index: i32) -> ptr
 extern func __thg_ast_debug(node: ptr) -> String
+extern func __thg_ptr_null() -> ptr
+
+func _null_node() -> ptr:
+    return __thg_ptr_null()
 
 struct Expr:
     kind: String
@@ -41,106 +45,195 @@ struct Expr:
     right: ptr
 
 func new_literal(val: String) -> ptr:
+    if (val == null):
+        return _null_node()
     return __thg_ast_new_literal(val)
 
 func new_binary(op: String, left: ptr, right: ptr) -> ptr:
+    if (op == null):
+        return _null_node()
+    if (left == _null_node()):
+        return _null_node()
+    if (right == _null_node()):
+        return _null_node()
     return __thg_ast_new_binary(op, left, right)
 
 func new_var(name: String) -> ptr:
+    if (name == null):
+        return _null_node()
     return __thg_ast_new_var(name)
 
 func new_let(name: String, expr: ptr) -> ptr:
+    if (name == null):
+        return _null_node()
+    if (expr == _null_node()):
+        return _null_node()
     return __thg_ast_new_let(name, expr)
 
 func new_assign(name: String, expr: ptr) -> ptr:
+    if (name == null):
+        return _null_node()
+    if (expr == _null_node()):
+        return _null_node()
     return __thg_ast_new_assign(name, expr)
 
 func new_block() -> ptr:
     return __thg_ast_new_block()
 
 func block_push(block: ptr, stmt: ptr) -> i32:
-    __thg_ast_block_push(block, stmt)
-    return 0
+    if (block == _null_node()):
+        return -1
+    if (stmt == _null_node()):
+        return -1
+    return __thg_ast_block_push(block, stmt)
 
 func new_if(condition: ptr, then_block: ptr, else_block: ptr) -> ptr:
+    if (condition == _null_node()):
+        return _null_node()
+    if (then_block == _null_node()):
+        return _null_node()
     return __thg_ast_new_if(condition, then_block, else_block)
 
 func new_while(condition: ptr, body: ptr) -> ptr:
+    if (condition == _null_node()):
+        return _null_node()
+    if (body == _null_node()):
+        return _null_node()
     return __thg_ast_new_while(condition, body)
 
 func new_func(name: String, body: ptr) -> ptr:
+    if (name == null):
+        return _null_node()
+    if (body == _null_node()):
+        return _null_node()
     return __thg_ast_new_func(name, body)
 
 func func_add_param(func_node: ptr, param_name: String) -> i32:
+    if (func_node == _null_node()):
+        return -1
+    if (param_name == null):
+        return -1
     return __thg_ast_func_add_param(func_node, param_name)
 
 func new_call(name: String) -> ptr:
+    if (name == null):
+        return _null_node()
     return __thg_ast_new_call(name)
 
 func call_add_arg(call_node: ptr, arg: ptr) -> i32:
+    if (call_node == _null_node()):
+        return -1
+    if (arg == _null_node()):
+        return -1
     return __thg_ast_call_add_arg(call_node, arg)
 
 func new_return(expr: ptr) -> ptr:
     return __thg_ast_new_return(expr)
 
 func kind_of(node: ptr) -> String:
+    if (node == _null_node()):
+        return ""
     return __thg_ast_kind(node)
 
 func kind_tag(node: ptr) -> i32:
+    if (node == _null_node()):
+        return -1
     return __thg_ast_kind_tag(node)
 
 func op_of(node: ptr) -> String:
+    if (node == _null_node()):
+        return ""
     return __thg_ast_op(node)
 
 func op_tag(node: ptr) -> i32:
+    if (node == _null_node()):
+        return -1
     return __thg_ast_op_tag(node)
 
 func value_of(node: ptr) -> String:
+    if (node == _null_node()):
+        return ""
     return __thg_ast_value(node)
 
 func name_of(node: ptr) -> String:
+    if (node == _null_node()):
+        return ""
     return __thg_ast_name(node)
 
 func left_of(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_left(node)
 
 func right_of(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_right(node)
 
 func condition(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_condition(node)
 
 func then_block(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_then(node)
 
 func else_block(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_else(node)
 
 func body(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_body(node)
 
 func block_count(node: ptr) -> i32:
+    if (node == _null_node()):
+        return 0
     return __thg_ast_block_count(node)
 
 func block_stmt(node: ptr, index: i32) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
+    if (index < 0):
+        return _null_node()
     return __thg_ast_block_get_stmt(node, index)
 
 func func_body(node: ptr) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
     return __thg_ast_func_body(node)
 
 func func_param_count(node: ptr) -> i32:
+    if (node == _null_node()):
+        return 0
     return __thg_ast_func_param_count(node)
 
 func func_param_at(node: ptr, index: i32) -> String:
+    if (node == _null_node()):
+        return ""
+    if (index < 0):
+        return ""
     return __thg_ast_func_param_at(node, index)
 
 func call_arg_count(node: ptr) -> i32:
+    if (node == _null_node()):
+        return 0
     return __thg_ast_call_arg_count(node)
 
 func call_arg_at(node: ptr, index: i32) -> ptr:
+    if (node == _null_node()):
+        return _null_node()
+    if (index < 0):
+        return _null_node()
     return __thg_ast_call_arg_at(node, index)
 
 func debug(node: ptr) -> String:
+    if (node == _null_node()):
+        return ""
     return __thg_ast_debug(node)
 
 func expr_literal() -> i32:

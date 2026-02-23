@@ -1,6 +1,72 @@
-// regex compat shim
+// regex-lite compatibility:
+// supports exact match, contains, ^prefix, suffix$, and '*' wildcard.
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_str_contains(text: String, needle: String) -> i32
+extern func __thg_str_starts_with(text: String, prefix: String) -> i32
+extern func __thg_str_ends_with(text: String, suffix: String) -> i32
+
+func _slice(text: String, start: i32, count: i32) -> String
+  if text == null
+    return ""
+  if count <= 0
+    return ""
+  if start < 0
+    return ""
+  let n = __thg_cstr_len(text)
+  if start >= n
+    return ""
+  let bounded = count
+  if bounded > (n - start)
+    bounded = n - start
+  return __thg_str_substr(text, start, bounded)
 
 func is_match(pat: String, text: String) -> bool
-  if pat == text
+  if pat == null
+    return text == ""
+  if text == null
+    return pat == ""
+  if pat == "*"
     return true
-  return false
+
+  let n = __thg_cstr_len(pat)
+  if n <= 0
+    return text == ""
+
+  if (__thg_str_substr(pat, 0, 1) == "^") and (__thg_str_substr(pat, n - 1, 1) == "$") and (n >= 2)
+    let core = _slice(pat, 1, n - 2)
+    return text == core
+  if (__thg_str_substr(pat, 0, 1) == "^") and (n >= 1)
+    let core = _slice(pat, 1, n - 1)
+    return __thg_str_starts_with(text, core) != 0
+  if (__thg_str_substr(pat, n - 1, 1) == "$") and (n >= 1)
+    let core = _slice(pat, 0, n - 1)
+    return __thg_str_ends_with(text, core) != 0
+
+  if __thg_str_contains(pat, "*") != 0
+    let split_at = -1
+    let i = 0
+    while i < n
+      if __thg_str_substr(pat, i, 1) == "*"
+        split_at = i
+        i = n
+      else
+        i = i + 1
+    if split_at < 0
+      return __thg_str_contains(text, pat) != 0
+    let left = _slice(pat, 0, split_at)
+    let right = _slice(pat, split_at + 1, n - split_at - 1)
+    if (__thg_cstr_len(left) > 0) and (__thg_str_starts_with(text, left) == 0)
+      return false
+    if (__thg_cstr_len(right) > 0) and (__thg_str_ends_with(text, right) == 0)
+      return false
+    if (__thg_cstr_len(left) == 0) and (__thg_cstr_len(right) == 0)
+      return true
+    if (__thg_str_contains(text, left) != 0) and (__thg_str_contains(text, right) != 0)
+      return true
+    return __thg_str_contains(text, pat) != 0
+
+  if text == pat
+    return true
+  return __thg_str_contains(text, pat) != 0

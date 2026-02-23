@@ -1,4 +1,4 @@
-extern func malloc(size: i32) -> ptr
+extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
 extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
 extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
@@ -15,8 +15,27 @@ func _ptr_size() -> i32:
 func _initial_capacity() -> i32:
     return 4
 
+func _max_capacity_entries() -> i32:
+    # Keep multiplication `capacity * 8` within signed i32.
+    return 268435455
+
+func _is_valid_layout(self: List) -> i32:
+    if (self.size < 0):
+        return 0
+    if (self.capacity < 0):
+        return 0
+    if (self.size > self.capacity):
+        return 0
+    if (self.capacity > _max_capacity_entries()):
+        return 0
+    if ((self.size > 0) and (self.data == __thg_ptr_null())):
+        return 0
+    return 1
+
 func _alloc_data(capacity: i32) -> ptr:
     if (capacity <= 0):
+        return __thg_ptr_null()
+    if (capacity > _max_capacity_entries()):
         return __thg_ptr_null()
     let data = malloc(capacity * _ptr_size())
     if (data == __thg_ptr_null()):
@@ -28,6 +47,8 @@ func _alloc_data(capacity: i32) -> ptr:
     return data
 
 func _copy_data(dst: ptr, src: ptr, count: i32) -> i32:
+    if (count <= 0):
+        return 1
     if (dst == __thg_ptr_null()):
         return 0
     if (src == __thg_ptr_null()):
@@ -48,6 +69,8 @@ func len(self: List) -> i32:
     return self.size
 
 func push(self: List, item: ptr) -> List:
+    if (_is_valid_layout(self) == 0):
+        return List(__thg_ptr_null(), 0, 0)
     let data = self.data
     let size = self.size
     let capacity = self.capacity
@@ -57,17 +80,25 @@ func push(self: List, item: ptr) -> List:
         data = _alloc_data(capacity)
         if (data == __thg_ptr_null()):
             return List(__thg_ptr_null(), 0, 0)
+    else:
+        if (data == __thg_ptr_null()):
+            return List(__thg_ptr_null(), 0, 0)
 
     if (size >= capacity):
+        if (capacity > (_max_capacity_entries() / 2)):
+            return List(data, size, capacity)
         let next_capacity = capacity * 2
         let next_data = _alloc_data(next_capacity)
         if (next_data == __thg_ptr_null()):
             return List(data, size, capacity)
         _copy_data(next_data, data, size)
-        free(data)
+        if (data != __thg_ptr_null()):
+            free(data)
         data = next_data
         capacity = next_capacity
 
+    if (data == __thg_ptr_null()):
+        return List(__thg_ptr_null(), 0, 0)
     __thg_ptr_set(data, size, item)
     return List(data, size + 1, capacity)
 
@@ -76,6 +107,8 @@ func get(self: List, index: i32) -> ptr:
         return __thg_ptr_null()
     if (index >= self.size):
         return __thg_ptr_null()
+    if (self.data == __thg_ptr_null()):
+        return __thg_ptr_null()
     return __thg_ptr_get(self.data, index)
 
 func set(self: List, index: i32, val: ptr) -> List:
@@ -83,11 +116,13 @@ func set(self: List, index: i32, val: ptr) -> List:
         return self
     if (index >= self.size):
         return self
+    if (self.data == __thg_ptr_null()):
+        return self
     __thg_ptr_set(self.data, index, val)
     return self
 
 func dispose(self: List) -> i32:
-    if (self.data != __thg_ptr_null()):
+    if ((self.data != __thg_ptr_null()) and (self.capacity > 0)):
         free(self.data)
     return 1
 

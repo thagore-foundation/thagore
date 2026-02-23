@@ -1,6 +1,6 @@
-extern func malloc(size: i32) -> ptr
+extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
-extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
+extern func memcpy(dst: ptr, src: ptr, size: usize) -> ptr
 extern func strlen(s: String) -> i32
 extern func printf(fmt: String, value: i32) -> i32
 extern func puts(text: String) -> i32
@@ -17,24 +17,22 @@ func print_str(text: String) -> i32:
     return puts(text)
 
 func thg_str_add(a: String, b: String) -> String:
-    let len_a = strlen(a)
-    let len_b = strlen(b)
-    let total = len_a + len_b + 1
-    let buffer = malloc(total)
-    if (buffer == __thg_ptr_null()):
-        return ""
-
-    # TODO(pure-runtime): cần hỗ trợ ptr arithmetic để copy trực tiếp vào buffer.
-    memcpy(buffer, a, len_a)
-
-    # Tạm thời dùng phép cộng ngôn ngữ làm fallback cho bootstrap.
+    # Bootstrap-safe path: avoid temporary native allocation to prevent leaks.
     return a + b
 
 func ptr_set(base: ptr, index: i32, value: ptr) -> i32:
+    if (base == __thg_ptr_null()):
+        return 0
+    if (index < 0):
+        return 0
     __thg_ptr_set(base, index, value)
     return 1
 
 func ptr_get(base: ptr, index: i32) -> ptr:
+    if (base == __thg_ptr_null()):
+        return __thg_ptr_null()
+    if (index < 0):
+        return __thg_ptr_null()
     return __thg_ptr_get(base, index)
 
 func ptr_null() -> ptr:
@@ -44,6 +42,8 @@ func str_substr(s: String, start: i32, len: i32) -> String:
     return __thg_str_substr(s, start, len)
 
 func mem_free(p: ptr) -> i32:
+    if (p == __thg_ptr_null()):
+        return 0
     free(p)
     return 1
 

@@ -1,0 +1,58 @@
+extern func malloc(size: usize) -> ptr
+extern func free(p: ptr) -> void
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _id_i64(v: i64) -> i64:
+    return v
+
+func _id_u64(v: u64) -> u64:
+    return v
+
+func _id_u32(v: u32) -> u32:
+    return v
+
+func _id_u16(v: u16) -> u16:
+    return v
+
+func _id_u8(v: u8) -> u8:
+    return v
+
+func _id_usize(v: usize) -> usize:
+    return v
+
+func main() -> i32:
+    let fails = 0
+
+    let a: i64 = _id_i64(11)
+    let b: u64 = _id_u64(22)
+    let c: u32 = _id_u32(33)
+    let d: u16 = _id_u16(44)
+    let e: u8 = _id_u8(55)
+    let n: usize = _id_usize(64)
+
+    fails = fails + _expect_i32("i64 value", a, 11)
+    fails = fails + _expect_i32("u64 value", b, 22)
+    fails = fails + _expect_i32("u32 value", c, 33)
+    fails = fails + _expect_i32("u16 value", d, 44)
+    fails = fails + _expect_i32("u8 value", e, 55)
+    fails = fails + _expect_i32("usize value", n, 64)
+
+    let p = malloc(_id_usize(8))
+    if (p == null):
+        fails = fails + 1
+        print("FAIL: malloc(usize) returned null")
+    else:
+        free(p)
+
+    if (fails == 0):
+        print("PASS: integer type surface + usize malloc")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

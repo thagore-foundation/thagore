@@ -1,4 +1,8 @@
-// math compat shim
+// math helpers
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __string_codepoint(ch: String) -> i32
 
 func abs(x: i32) -> i32
   if x < 0
@@ -12,11 +16,79 @@ func clamp(x: i32, lo: i32, hi: i32) -> i32
     return hi
   return x
 
+func _is_sep(ch: String) -> bool
+  return (ch == "\n") or (ch == ",") or ((ch == " ") or (ch == "\t"))
+
+func _parse_i32(text: String) -> i32
+  if text == null
+    return 0
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return 0
+  let sign = 1
+  let i = 0
+  if __thg_str_substr(text, 0, 1) == "-"
+    sign = -1
+    i = 1
+  let out = 0
+  while i < n
+    let ch = __thg_str_substr(text, i, 1)
+    let cp = __string_codepoint(ch)
+    if (cp >= 48) and (cp <= 57)
+      out = (out * 10) + (cp - 48)
+    i = i + 1
+  return out * sign
+
 func sum(iterable: String) -> i32
-  return 0
+  if iterable == null
+    return 0
+  let total = 0
+  let token = ""
+  let i = 0
+  let n = __thg_cstr_len(iterable)
+  while i <= n
+    if i == n
+      if token != ""
+        total = total + _parse_i32(token)
+      return total
+    let ch = __thg_str_substr(iterable, i, 1)
+    if _is_sep(ch)
+      if token != ""
+        total = total + _parse_i32(token)
+        token = ""
+    else
+      token = token + ch
+    i = i + 1
+  return total
 
 func mean(iterable: String) -> i32
-  return 0
+  if iterable == null
+    return 0
+  let total = 0
+  let count = 0
+  let token = ""
+  let i = 0
+  let n = __thg_cstr_len(iterable)
+  while i <= n
+    if i == n
+      if token != ""
+        total = total + _parse_i32(token)
+        count = count + 1
+      if count <= 0
+        return 0
+      return total / count
+    let ch = __thg_str_substr(iterable, i, 1)
+    if _is_sep(ch)
+      if token != ""
+        total = total + _parse_i32(token)
+        count = count + 1
+        token = ""
+    else
+      token = token + ch
+    i = i + 1
+  if count <= 0
+    return 0
+  return total / count
 
 func pow_int(base: i32, exp: i32) -> i32
   if exp < 0
@@ -30,4 +102,3 @@ func pow_int(base: i32, exp: i32) -> i32
 
 func pow(base: i32, exp: i32) -> i32
   return pow_int(base, exp)
-

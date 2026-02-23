@@ -1,73 +1,183 @@
-// collections compat shim
+// collections helpers over newline-encoded strings.
+
+use map as map_mod
+use set as set_mod
+
+extern func __thg_cstr_len(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _line_count(text: String) -> i32
+  if text == null
+    return 0
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return 0
+  let i = 0
+  let count = 1
+  while i < n
+    if __thg_str_substr(text, i, 1) == "\n"
+      count = count + 1
+    i = i + 1
+  return count
+
+func _line_at(text: String, index: i32) -> String
+  if index < 0
+    return ""
+  if text == null
+    return ""
+  let n = __thg_cstr_len(text)
+  if n <= 0
+    return ""
+  let line = 0
+  let start = 0
+  let i = 0
+  while i <= n
+    if (i == n) or (__thg_str_substr(text, i, 1) == "\n")
+      if line == index
+        return __thg_str_substr(text, start, i - start)
+      line = line + 1
+      start = i + 1
+    i = i + 1
+  return ""
+
+func _append_line(out: String, line: String) -> String
+  if line == ""
+    return out
+  if out == ""
+    return line
+  return out + "\n" + line
+
+func _entry_key(entry: String) -> String
+  let i = 0
+  let n = __thg_cstr_len(entry)
+  while i < n
+    if __thg_str_substr(entry, i, 1) == "="
+      return __thg_str_substr(entry, 0, i)
+    i = i + 1
+  return entry
+
+func _entry_value(entry: String) -> String
+  let i = 0
+  let n = __thg_cstr_len(entry)
+  while i < n
+    if __thg_str_substr(entry, i, 1) == "="
+      return __thg_str_substr(entry, i + 1, n - i - 1)
+    i = i + 1
+  return ""
+
+func _map_set(m: String, key: String, value: String) -> String
+  let out = ""
+  let replaced = 0
+  let i = 0
+  let n = _line_count(m)
+  while i < n
+    let entry = _line_at(m, i)
+    if _entry_key(entry) == key
+      out = _append_line(out, key + "=" + value)
+      replaced = 1
+    else
+      out = _append_line(out, entry)
+    i = i + 1
+  if replaced == 0
+    out = _append_line(out, key + "=" + value)
+  return out
 
 func hashmap_new() -> String
   return ""
 
 func hashmap_len(self: String) -> i32
-  return 0
+  return _line_count(map_mod.items(self))
 
 func hashmap_contains(self: String, key: String) -> bool
-  return false
+  let sentinel = "__thg_missing__"
+  return map_mod.get_or(self, key, sentinel) != sentinel
 
 func hashmap_get(self: String, key: String, default: String = "") -> String
-  return default
+  return map_mod.get_or(self, key, default)
 
 func hashmap_set(self: String, key: String, value: String) -> String
-  return self
+  return _map_set(self, key, value)
 
 func hashmap_keys(self: String) -> String
-  return ""
+  return map_mod.keys(self)
 
 func hashmap_values(self: String) -> String
-  return ""
+  return map_mod.values(self)
 
 func ordereddict_new() -> String
   return ""
 
 func ordereddict_len(self: String) -> i32
-  return 0
+  return hashmap_len(self)
 
 func ordereddict_contains(self: String, key: String) -> bool
-  return false
+  return hashmap_contains(self, key)
 
 func ordereddict_get(self: String, key: String, default: String = "") -> String
-  return default
+  return hashmap_get(self, key, default)
 
 func ordereddict_set(self: String, key: String, value: String) -> String
-  return self
+  return hashmap_set(self, key, value)
 
 func ordereddict_keys_list(self: String) -> String
-  return ""
+  return hashmap_keys(self)
 
 func ordereddict_values_list(self: String) -> String
-  return ""
+  return hashmap_values(self)
 
 func ordereddict_items(self: String) -> String
-  return ""
+  return map_mod.items(self)
 
 func deque_new() -> String
   return ""
 
 func deque_len(self: String) -> i32
-  return 0
+  return _line_count(self)
 
 func deque_is_empty(self: String) -> bool
-  return true
+  return deque_len(self) == 0
 
 func deque_push_back(self: String, value: String) -> String
-  return self
+  return _append_line(self, value)
 
 func deque_push_front(self: String, value: String) -> String
-  return self
+  if value == ""
+    return self
+  if self == ""
+    return value
+  return value + "\n" + self
 
 func deque_pop_front(self: String) -> String
-  return ""
+  let n = _line_count(self)
+  if n <= 0
+    return ""
+  if n == 1
+    return ""
+  let out = ""
+  let i = 1
+  while i < n
+    out = _append_line(out, _line_at(self, i))
+    i = i + 1
+  return out
 
 func deque_pop_back(self: String) -> String
-  return ""
+  let n = _line_count(self)
+  if n <= 1
+    return ""
+  let out = ""
+  let i = 0
+  while i < (n - 1)
+    out = _append_line(out, _line_at(self, i))
+    i = i + 1
+  return out
 
 func deque_peek_front(self: String) -> String
-  return ""
+  if deque_len(self) <= 0
+    return ""
+  return _line_at(self, 0)
 
 func deque_peek_back(self: String) -> String
-  return ""
+  let n = deque_len(self)
+  if n <= 0
+    return ""
+  return _line_at(self, n - 1)

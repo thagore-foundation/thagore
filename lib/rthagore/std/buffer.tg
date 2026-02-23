@@ -1,4 +1,4 @@
-// buffer compat shim
+// buffer module backed by String concatenation.
 
 extern func __thg_cstr_len(s: String) -> i32
 
@@ -22,18 +22,16 @@ func clear(buf: String) -> String
   return ""
 
 func push(buf: String, text: String) -> String
+  let out = from(buf)
   if text == null
-    return buf
-  return text
+    return out
+  return out + text
 
 func push_char(buf: String, ch: String) -> String
   return push(buf, ch)
 
 func push_line(buf: String, text: String) -> String
-  return push(buf, text)
+  return push(push(buf, text), "\n")
 
 func to_string(buf: String) -> String
-  if buf == null
-    return ""
-  return buf
-
+  return from(buf)
