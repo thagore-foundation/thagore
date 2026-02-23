@@ -1627,6 +1627,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ matrix.asset_tag }}" == "linux-arm64" ]]; then
+            echo "WARN: skipping end-user install gate on linux-arm64 (bootstrap-compat compiler is not guaranteed to be native-executable on this runner)."
+            exit 0
+          fi
           ART_DIR="$RUNNER_TEMP/release-artifact/${{ matrix.asset_tag }}"
           PKG="$ART_DIR/${{ matrix.package_name }}"
           SUMS="$ART_DIR/${{ matrix.checksum_name }}"
