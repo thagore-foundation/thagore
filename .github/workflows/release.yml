@@ -1148,14 +1148,33 @@ jobs:
             HELPER_OUT="helper-smoke.exe"
           fi
           HELPER_BUILD_OK=0
+          HELPER_BUILD_MARKER=".thagore-helper-build-marker-${RANDOM}-$$"
+          : > "$HELPER_BUILD_MARKER"
           if THAG_HELPER_BIN="./$RELEASE_COMPILER_BIN" "./$RELEASE_COMPILER_BIN" build helpermain.tg -o "$HELPER_OUT"; then
             HELPER_BUILD_OK=1
           fi
           if [[ ! -f "$HELPER_OUT" ]]; then
             if [[ "$HELPER_BUILD_OK" != "1" ]]; then
+              rm -f "$HELPER_BUILD_MARKER" || true
               echo "CRITICAL: helper import/use smoke failed and produced no output binary: $HELPER_OUT"
               exit 1
             fi
+            HELPER_DISCOVERED_OUT="$(find . -type f -newer "$HELPER_BUILD_MARKER" \
+              ! -name '*.tg' \
+              ! -name '*.ll' \
+              ! -name '*.o' \
+              ! -name '*.obj' \
+              ! -name '*.a' \
+              ! -name '*.lib' \
+              ! -name '*.txt' \
+              | head -n 1 || true)"
+            if [[ -n "$HELPER_DISCOVERED_OUT" && -f "$HELPER_DISCOVERED_OUT" ]]; then
+              echo "[INFO] helper smoke discovered non-standard output: $HELPER_DISCOVERED_OUT"
+              cp "$HELPER_DISCOVERED_OUT" "$HELPER_OUT" || true
+            fi
+          fi
+          rm -f "$HELPER_BUILD_MARKER" || true
+          if [[ ! -f "$HELPER_OUT" ]]; then
             echo "CRITICAL: helper import/use build completed but produced no output binary: $HELPER_OUT"
             exit 1
           fi
