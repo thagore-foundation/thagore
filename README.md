@@ -8,9 +8,9 @@
 <p><strong>A statically-typed, self-hosted compiled language powered by LLVM</strong></p>
 
 <p>
-  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/ci.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/selfhost-matrix.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/selfhost-matrix.yml/badge.svg" alt="Selfhost Matrix"></a>
-  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/release.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/core-ci.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/core-ci.yml/badge.svg" alt="Core CI"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/core-selfhost.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/core-selfhost.yml/badge.svg" alt="Core Selfhost Matrix"></a>
+  <a href="https://github.com/thagore-foundation/thagore/actions/workflows/core-release.yml"><img src="https://github.com/thagore-foundation/thagore/actions/workflows/core-release.yml/badge.svg" alt="Core Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/LLVM-21.x-orange.svg" alt="LLVM 21">
   <img src="https://img.shields.io/badge/stage-self--hosted-brightgreen.svg" alt="Self-Hosted">
@@ -240,7 +240,7 @@ thagore/
 ├── 📁 docs/                  Documentation (Starlight/Astro)
 ├── 📁 runtime/               Runtime library sources
 ├── 📁 .github/
-│   ├── workflows/            CI, Selfhost, Release, Seed pipelines
+│   ├── workflows/            Core CI/Selfhost/Release/Seed/Docs/Policy pipelines
 │   ├── ISSUE_TEMPLATE/       Bug report & feature request templates
 │   ├── CONTRIBUTING.md       Contribution guide
 │   ├── CODE_OF_CONDUCT.md    Community standards
@@ -289,7 +289,7 @@ python scripts/certify_bootstrap_100.py --window 3
 python scripts/run_bootstrap_rounds.py --rounds 3
 ```
 
-> For CI-side certification, trigger the **Bootstrap Certify** workflow manually.
+> For CI-side certification, run `python scripts/certify_bootstrap_100.py` against the `Core CI`, `Core Selfhost Matrix`, and `Core Release` workflows.
 
 ---
 
@@ -356,16 +356,16 @@ Thagore enforces a **strict Stage1-only bootstrap policy** across all platforms:
 - ❌ **No implicit fallback** (`allow_missing_output`, hidden Stage0 branches)
 - ✅ **Tracked-file gate** blocks reintroduction of `legacy/`, runtime C++ sources, CMake/vcxproj artifacts
 - ✅ **Runtime linking is fail-hard** when the runtime ABI library is missing
-- ✅ **Merge gate** requires **3 consecutive green runs**: `CI` + `Selfhost Matrix` + `Release` (dry-run on `main`)
-- ✅ **Stability audit** requires per-run artifact sets across 3 OS
+- ✅ **Merge gate** requires **3 consecutive green runs**: `Core CI` + `Core Selfhost Matrix` + `Core Release` (dry-run on `main`)
+- ✅ **Core workflow suite**: `core-policy-no-stage0`, `core-ci`, `core-selfhost`, `core-release`, `core-seed-stage1`, `core-docs-pages`
 
 ### Seed Rotation
 
-Seed tags are promoted only via a successful `Seed Stage1 Assets` run. After promotion, update `BOOTSTRAP_STAGE1_TAG` in:
-- `.github/workflows/ci.yml`
-- `.github/workflows/selfhost-matrix.yml`
-- `.github/workflows/release.yml`
-- `.github/workflows/bootstrap-seed.yml`
+Seed tags are promoted only via a successful `Core Seed Stage1` run. After promotion, update `BOOTSTRAP_STAGE1_TAG` in:
+- `.github/workflows/core-ci.yml`
+- `.github/workflows/core-selfhost.yml`
+- `.github/workflows/core-release.yml`
+- `.github/workflows/core-seed-stage1.yml`
 
 ---
 

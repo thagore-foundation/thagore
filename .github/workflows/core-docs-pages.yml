@@ -1,0 +1,33 @@
+name: Core Docs Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/core-docs-pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: core-docs-pages
+  cancel-in-progress: true
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docs tree
+        run: |
+          test -d docs
+          echo "docs_root=docs" > docs-pages-report.txt
+          echo "status=pass" >> docs-pages-report.txt
+
+      - name: Upload docs report
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-docs-pages-report
+          path: docs-pages-report.txt
+

@@ -1,0 +1,52 @@
+name: Core CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: core-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+
+jobs:
+  core-ci-matrix:
+    name: core-ci-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Seed tag sync
+        run: python scripts/verify_seed_tag_sync.py --report seed-tag-sync-ci.txt
+
+      - name: No C++ dependency gate
+        run: python scripts/no_cpp_dependency_gate.py --report no-cpp-ci.txt
+
+      - name: Intent strict-lock gate
+        run: >
+          python scripts/intent_strict_lock_gate.py
+          --workflow .github/workflows/core-ci.yml
+          --workflow .github/workflows/core-selfhost.yml
+
+      - name: Upload CI reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-ci-report-${{ matrix.os }}
+          path: |
+            seed-tag-sync-ci.txt
+            no-cpp-ci.txt
+

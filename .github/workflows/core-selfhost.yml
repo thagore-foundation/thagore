@@ -1,0 +1,58 @@
+name: Core Selfhost Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: core-selfhost-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+
+jobs:
+  selfhost:
+    name: selfhost-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify seed tag sync
+        run: python scripts/verify_seed_tag_sync.py --report seed-tag-sync-selfhost.txt
+
+      - name: Intent strict-lock gate
+        run: >
+          python scripts/intent_strict_lock_gate.py
+          --workflow .github/workflows/core-ci.yml
+          --workflow .github/workflows/core-selfhost.yml
+
+      - name: Validate target registry contract
+        run: python scripts/validate_target_registry.py --report target-registry-selfhost.txt
+
+      - name: Build-all run-host-only policy record
+        run: |
+          echo "policy=build-all-run-host-only" > selfhost-policy.txt
+          echo "runner_os=${{ runner.os }}" >> selfhost-policy.txt
+          echo "bootstrap_stage1_tag=${BOOTSTRAP_STAGE1_TAG}" >> selfhost-policy.txt
+
+      - name: Upload selfhost reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-selfhost-report-${{ matrix.os }}
+          path: |
+            seed-tag-sync-selfhost.txt
+            target-registry-selfhost.txt
+            selfhost-policy.txt

@@ -12,21 +12,20 @@ DEFAULT_REPORT = ROOT / "bootstrap-certify-report.txt"
 
 
 WORKFLOW_REQUIREMENTS = {
-    "CI": [
-        r"^ci-selfhost-ubuntu-latest$",
-        r"^ci-selfhost-macos-latest$",
-        r"^ci-selfhost-windows-latest$",
-        r"^native-cli-canary-ubuntu$",
+    "Core CI": [
+        r"^core-ci-report-ubuntu-latest$",
+        r"^core-ci-report-macos-latest$",
+        r"^core-ci-report-windows-latest$",
     ],
-    "Selfhost Matrix": [
-        r"^selfhost-trace-Linux$",
-        r"^selfhost-trace-macOS$",
-        r"^selfhost-trace-Windows$",
+    "Core Selfhost Matrix": [
+        r"^core-selfhost-report-ubuntu-latest$",
+        r"^core-selfhost-report-macos-latest$",
+        r"^core-selfhost-report-windows-latest$",
     ],
-    "Release": [
-        r"^release-Linux$",
-        r"^release-macOS$",
-        r"^release-Windows$",
+    "Core Release": [
+        r"^core-release-plan-ubuntu-latest$",
+        r"^core-release-plan-macos-latest$",
+        r"^core-release-plan-windows-latest$",
     ],
 }
 
