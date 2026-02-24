@@ -152,6 +152,7 @@ thagore target list
 thagore target installed
 thagore target add x86_64-unknown-linux-gnu
 thagore target ensure x86_64-unknown-linux-gnu
+thagore target ensure all
 thagore target doctor x86_64-unknown-linux-gnu
 thagore target doctor all
 thagore target remove x86_64-unknown-linux-gnu

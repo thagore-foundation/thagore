@@ -682,6 +682,23 @@ func target_remove(triple: String) -> i32:
 func target_ensure(triple: String) -> i32:
     let t = _trim(triple)
     let cfg = _config_read()
+    if (t == "all"):
+        let any_fail = 0
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (target_ensure(token) != 0):
+                        any_fail = 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (any_fail == 1):
+            return 2
+        return 0
     if (_set_contains(cfg.installed_set, t) == 0):
         print("missing=" + t)
         return 2
