@@ -1,0 +1,117 @@
+import "src/v0/parser/ast.tg"
+import "src/v0/parser/errors.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _ch(text: String, i: i32) -> String:
+    return __thg_str_substr(text, i, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _find(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 0
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return i
+        i = i + 1
+    return -1
+
+func _trim(text: String) -> String:
+    let n = strlen(text)
+    if (n == 0):
+        return ""
+    let l = 0
+    while ((l < n) and ((_ch(text, l) == " ") or (_ch(text, l) == "\n") or (_ch(text, l) == "\r") or (_ch(text, l) == "\t"))):
+        l = l + 1
+    let r = n - 1
+    while ((r >= l) and ((_ch(text, r) == " ") or (_ch(text, r) == "\n") or (_ch(text, r) == "\r") or (_ch(text, r) == "\t"))):
+        r = r - 1
+    if (r < l):
+        return ""
+    return __thg_str_substr(text, l, r - l + 1)
+
+func _split_stmt_rows(text: String) -> String:
+    let out = ";"
+    let n = strlen(text)
+    let i = 0
+    let cur = ""
+    while (i < n):
+        let c = _ch(text, i)
+        if (c == ";"):
+            let stmt = _trim(cur)
+            if (strlen(stmt) > 0):
+                out = out + stmt + ";"
+            cur = ""
+        else:
+            cur = cur + c
+        i = i + 1
+    let tail = _trim(cur)
+    if (strlen(tail) > 0):
+        out = out + tail + ";"
+    return out
+
+func _parse_stmt(stmt: String) -> String:
+    if (_contains(stmt, "print(") == 1):
+        let lp = _find(stmt, "\"")
+        let rp = -1
+        if (lp >= 0):
+            let i = lp + 1
+            while (i < strlen(stmt)):
+                if (_ch(stmt, i) == "\""):
+                    rp = i
+                    i = strlen(stmt)
+                else:
+                    i = i + 1
+        if ((lp >= 0) and (rp > lp)):
+            let lit = __thg_str_substr(stmt, lp + 1, rp - lp - 1)
+            return "call|print|string|" + lit
+        return "err"
+    if (_contains(stmt, "return ") == 1):
+        let p = _find(stmt, "return ")
+        let v = _trim(__thg_str_substr(stmt, p + 7, strlen(stmt) - p - 7))
+        return "ret|int|" + v
+    return "err"
+
+func v0_parse(source: String) -> V0AstProgram:
+    if (_contains(source, "fn ") == 0):
+        return v0_ast_program_error(V0_EPARSE_MISSING_FN, "expected at least one fn declaration")
+    if (_contains(source, "fn main") == 0):
+        return v0_ast_program_error(V0_EPARSE_MISSING_MAIN, "expected fn main() -> i32")
+    let lb = _find(source, "{")
+    let rb = _find(source, "}")
+    if ((lb < 0) or (rb <= lb)):
+        return v0_ast_program_error(V0_EPARSE_MISSING_BLOCK, "expected function body block")
+    let body = __thg_str_substr(source, lb + 1, rb - lb - 1)
+    let rows = _split_stmt_rows(body)
+    let ast = v0_ast_program_new()
+    let out_stmts = ";"
+    let i = 0
+    let token = ""
+    while (i < strlen(rows)):
+        let c = _ch(rows, i)
+        if (c == ";"):
+            if (strlen(token) > 0):
+                let parsed = _parse_stmt(token)
+                if (parsed == "err"):
+                    return v0_ast_program_error(V0_EPARSE_BAD_STMT, "unsupported statement in fn body")
+                out_stmts = out_stmts + parsed + ";"
+                token = ""
+        else:
+            token = token + c
+        i = i + 1
+    return V0AstProgram(";fn|main|i32;", out_stmts, 0, "", "")

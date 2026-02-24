@@ -1,0 +1,12 @@
+struct V0AstProgram:
+    funcs: String
+    stmts: String
+    error_count: i32
+    error_code: String
+    error_message: String
+
+func v0_ast_program_new() -> V0AstProgram:
+    return V0AstProgram(";", ";", 0, "", "")
+
+func v0_ast_program_error(code: String, message: String) -> V0AstProgram:
+    return V0AstProgram(";", ";", 1, code, message)

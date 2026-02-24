@@ -1,0 +1,9 @@
+import "lib/fs.tg" as fs
+import "src/v0/parser/parser.tg"
+
+func main() -> i32:
+    let src = fs.read_text("examples/v0/hello_fn.tg")
+    let ast = v0_parse(src)
+    if (ast.error_count > 0):
+        return 1
+    return 0
