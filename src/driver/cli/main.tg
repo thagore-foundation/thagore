@@ -25,7 +25,7 @@ func _print_help() -> void:
     print("  " + cli + " intent <doctor|explain|lock> <entry.tg> [flags]")
     print("  " + cli + " state <doctor|explain> <entry.tg> [--mode off|on|strict] [--json] [-o report.json]")
     print("  " + cli + " install toolchain [--yes]")
-    print("  " + cli + " target <list|installed|add|remove|ensure> [triple]")
+    print("  " + cli + " target <list|installed|add|remove|ensure|doctor> [triple]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
 func _helper_exec_path(candidate_raw: String) -> String:
@@ -127,13 +127,18 @@ func main() -> i32:
         return 0
     if (cmd == "target"):
         if (argc <= 2):
-            print("ERROR: missing target subcommand (list|installed|add|remove|ensure).")
+            print("ERROR: missing target subcommand (list|installed|add|remove|ensure|doctor).")
             return 1
         let sub_target = _trim(env.get(2))
         if (sub_target == "list"):
             return targetctl.target_list()
         if (sub_target == "installed"):
             return targetctl.target_installed()
+        if (sub_target == "doctor"):
+            let triple_doc = ""
+            if (argc > 3):
+                triple_doc = _trim(env.get(3))
+            return targetctl.target_doctor(triple_doc)
         if ((sub_target == "add") or (sub_target == "remove") or (sub_target == "ensure")):
             if (argc <= 3):
                 print("ERROR: missing target triple for '" + sub_target + "'.")

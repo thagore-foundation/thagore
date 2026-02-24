@@ -428,6 +428,75 @@ func target_link_driver(target_raw: String) -> String:
     let text = fs.read_text(manifest_path)
     return _trim(_extract_manifest_string(text, "link_driver"))
 
+func _pack_driver_path(pack: String, driver_name: String) -> String:
+    let d = _trim(driver_name)
+    if (strlen(d) == 0):
+        return ""
+    let direct = pack + "/llvm/bin/" + d
+    if (fs.exists(direct) == 1):
+        return direct
+    if (_ends_with(d, ".exe") == 0):
+        let with_exe = direct + ".exe"
+        if (fs.exists(with_exe) == 1):
+            return with_exe
+    return ""
+
+func _set_count_entries(set_text: String) -> i32:
+    let token = ""
+    let i = 0
+    let c = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                c = c + 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return c
+
+func target_doctor(triple_raw: String) -> i32:
+    let cfg = _config_read()
+    let t_in = _trim(triple_raw)
+    let t = t_in
+    if (strlen(t) == 0):
+        t = _trim(cfg.default_target)
+    if (strlen(t) == 0):
+        print("ERROR: target doctor requires a triple or configured default_target.")
+        return 1
+    let pack = _toolchain_pack_root() + "/" + t
+    let manifest_path = pack + "/manifest.json"
+    let driver_name = target_link_driver(t)
+    let driver_path = _pack_driver_path(pack, driver_name)
+    let runtimes = target_runtime_candidates(t)
+    let runtime_count = _set_count_entries(runtimes)
+    let clang_ok = 0
+    if ((fs.exists(pack + "/llvm/bin/clang") == 1) or (fs.exists(pack + "/llvm/bin/clang.exe") == 1)):
+        clang_ok = 1
+    print("target=" + t)
+    print("pack=" + pack)
+    print("manifest_exists=" + _to_string_i32(fs.exists(manifest_path)))
+    print("installed=" + _to_string_i32(_set_contains(cfg.installed_set, t)))
+    print("link_driver_name=" + driver_name)
+    if (strlen(driver_path) > 0):
+        print("link_driver_path=" + driver_path)
+    else:
+        print("link_driver_path=")
+    print("llvm_clang_present=" + _to_string_i32(clang_ok))
+    print("runtime_candidates_count=" + _to_string_i32(runtime_count))
+    if (_set_contains(cfg.installed_set, t) == 0):
+        return 2
+    if (fs.exists(pack) == 0):
+        return 2
+    if (fs.exists(manifest_path) == 0):
+        return 2
+    if (clang_ok == 0):
+        return 2
+    if (runtime_count <= 0):
+        return 2
+    return 0
+
 func _write_config(cfg: ToolchainConfig) -> i32:
     let path = _toolchain_config_path()
     _ensure_dir_chain(_dir_name(path))
