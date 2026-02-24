@@ -1839,6 +1839,7 @@ jobs:
             artifacts/**/release-stage-trace-*.log
             artifacts/**/SHA256SUMS-*.txt
             artifacts/**/thagore-enduser-verified-*.txt
+            scripts/install/thagup-init.sh
 
       - name: Discord update - Publish GitHub Release Assets
         if: always()

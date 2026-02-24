@@ -76,6 +76,26 @@
 
 > **Windows users:** Download the LLVM 21 release archive and ensure `clang`, `clang++`, and `llvm-link` are on your `PATH`.
 
+### One-Command Installer (`thagup`)
+
+Install with a single bootstrap script (Rustup-style):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash
+```
+
+Pin a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash -s -- --tag v0.5.30
+```
+
+Windows PowerShell (existing setup bootstrap):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install/install-windows.ps1 -yes
+```
+
 ### Bootstrap
 
 Run the full bootstrap cycle (Stage1 → Stage2 → Stage2b):
