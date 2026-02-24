@@ -71,6 +71,13 @@ jobs:
             echo "$FALLBACK_HITS"
             exit 1
           fi
+          STRICT_TARGETS=".github/workflows/ci.yml .github/workflows/selfhost-matrix.yml .github/workflows/seed-stage1.yml .github/workflows/release.yml"
+          NO_FAKE_PASS_HITS="$(grep -REn "no-output mode|non-strict lane|fallback to source execution|donor compiler|skip(ping)? (CLI|helper|hello|fib|packaged).*smoke|accepting compiler-managed no-output|without artifact; fallback" $STRICT_TARGETS || true)"
+          if [[ -n "$NO_FAKE_PASS_HITS" ]]; then
+            echo "CRITICAL: fake-pass fallback markers are forbidden in strict workflows."
+            echo "$NO_FAKE_PASS_HITS"
+            exit 1
+          fi
           RELEASE_FALLBACK_HITS="$(grep -REn "RELEASE_OPTIONAL_SKIP|build_runtime_fallback|build_stage1_blob_native|fallback smoke binaries|non-strict lane|continue with bootstrap chain|USE_SNAPSHOT_STAGE2|prepare_snapshot_ir|link_from_snapshot_ir|_snapshot_thagore\\.ll|snapshot-linked stage2|snapshot compiler failed to build smoke examples" .github/workflows/release.yml || true)"
           if [[ -n "$RELEASE_FALLBACK_HITS" ]]; then
             echo "CRITICAL: release fallback markers are forbidden (including snapshot IR executable lane)."

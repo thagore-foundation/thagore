@@ -23,6 +23,7 @@ Core module graph currently targeted by the compiler-first port:
 - `std/sys_linux.tg`
 - `std/sys_windows.tg`
 - `std/sys_bsd.tg`
+- `std/sys_macos.tg`
 - `std/sys_mach.tg`
 
 Broader `rthagore/*` modules are now wired as compatibility surfaces so they can

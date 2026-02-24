@@ -1,0 +1,55 @@
+import "lib/rthagore/std/sys_macos.tg" as sys_macos
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func main() -> i32:
+    let fails = 0
+    let root = ".tmp_std_sys_macos"
+    let file = root + "/note.txt"
+
+    sys_macos.mkdir(root)
+    let h = sys_macos.open(file, "w")
+    if (h == null):
+        fails = fails + 1
+        print("FAIL: open write")
+    else:
+        fails = fails + _expect_i32("write bytes", sys_macos.write(h, "ok"), 2)
+        fails = fails + _expect_i32("close write", sys_macos.close(h), 0)
+
+    let hr = sys_macos.open(file, "r")
+    if (hr == null):
+        fails = fails + 1
+        print("FAIL: open read")
+    else:
+        fails = fails + _expect_str("read bytes", sys_macos.read(hr, 2), "ok")
+        fails = fails + _expect_i32("close read", sys_macos.close(hr), 0)
+
+    let p = sys_macos.mmap(16)
+    fails = fails + _expect_i32("mmap non-null", p != null, 1)
+    fails = fails + _expect_i32("mprotect", sys_macos.mprotect(p, 0), 0)
+    fails = fails + _expect_i32("munmap", sys_macos.munmap(p), 0)
+
+    let port = sys_macos.mach_port_create()
+    fails = fails + _expect_i32("mach port create", port != null, 1)
+    fails = fails + _expect_i32("mach port send", sys_macos.mach_port_send(port, "ping"), 0)
+    fails = fails + _expect_str("mach port recv", sys_macos.mach_port_recv(port), "ping")
+    fails = fails + _expect_i32("mach port destroy", sys_macos.mach_port_destroy(port), 0)
+
+    if (fails == 0):
+        print("PASS: std sys_macos shim")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

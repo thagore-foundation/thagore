@@ -1,0 +1,90 @@
+import "lib/rthagore/std/env.tg" as env
+import "lib/rthagore/std/sys_platform.tg" as sys_platform
+
+func _expect_i32(label: String, got: i32, want: i32) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _expect_str(label: String, got: String, want: String) -> i32:
+    if (got == want):
+        return 0
+    print("FAIL: " + label)
+    print(got)
+    return 1
+
+func _exercise_shim(id: String) -> i32:
+    env.set("THAGORE_PLATFORM", id)
+    let root = ".tmp_std_platform_" + id
+    let file = root + "/note.txt"
+    sys_platform.file_mkdir(root)
+    let h = sys_platform.file_open(file, "w")
+    if (h == null):
+        return 1
+    if (sys_platform.file_write(h, "ok") < 0):
+        sys_platform.file_close(h)
+        return 1
+    sys_platform.file_close(h)
+    let hr = sys_platform.file_open(file, "r")
+    if (hr == null):
+        return 1
+    let got = sys_platform.file_read(hr, 2)
+    sys_platform.file_close(hr)
+    if (got != "ok"):
+        return 1
+    let region = sys_platform.mem_map(16)
+    if (region == null):
+        return 1
+    if (sys_platform.mem_protect(region, 0) == false):
+        sys_platform.mem_unmap(region)
+        return 1
+    if (sys_platform.mem_unmap(region) == false):
+        return 1
+    return 0
+
+func main() -> i32:
+    let fails = 0
+    let old_override = env.get("THAGORE_PLATFORM")
+    let old_os = env.get("OS")
+    let old_ostype = env.get("OSTYPE")
+
+    env.set("THAGORE_PLATFORM", "windows")
+    fails = fails + _expect_str("override windows", sys_platform.platform_id(), "windows")
+    env.set("THAGORE_PLATFORM", "linux")
+    fails = fails + _expect_str("override linux", sys_platform.platform_id(), "linux")
+    env.set("THAGORE_PLATFORM", "mac")
+    fails = fails + _expect_str("override mac alias", sys_platform.platform_id(), "macos")
+    env.set("THAGORE_PLATFORM", "freebsd")
+    fails = fails + _expect_str("override bsd alias", sys_platform.platform_id(), "bsd")
+
+    env.set("THAGORE_PLATFORM", "")
+    env.set("OS", "Windows_NT")
+    env.set("OSTYPE", "")
+    fails = fails + _expect_str("detect windows by OS", sys_platform.platform_id(), "windows")
+
+    env.set("OS", "")
+    env.set("OSTYPE", "darwin23.4.0")
+    fails = fails + _expect_str("detect macos by OSTYPE", sys_platform.platform_id(), "macos")
+    env.set("OSTYPE", "freebsd13.2")
+    fails = fails + _expect_str("detect bsd by OSTYPE", sys_platform.platform_id(), "bsd")
+    env.set("OSTYPE", "linux-gnu")
+    fails = fails + _expect_str("detect linux by OSTYPE", sys_platform.platform_id(), "linux")
+    env.set("OSTYPE", "mingw64")
+    fails = fails + _expect_str("detect windows by OSTYPE", sys_platform.platform_id(), "windows")
+
+    fails = fails + _expect_i32("exercise linux shim", _exercise_shim("linux"), 0)
+    fails = fails + _expect_i32("exercise macos shim", _exercise_shim("macos"), 0)
+    fails = fails + _expect_i32("exercise bsd shim", _exercise_shim("bsd"), 0)
+
+    env.set("THAGORE_PLATFORM", old_override)
+    env.set("OS", old_os)
+    env.set("OSTYPE", old_ostype)
+
+    if (fails == 0):
+        print("PASS: std platform matrix")
+        return 0
+    print("TOTAL FAILS:")
+    print(fails)
+    return 1

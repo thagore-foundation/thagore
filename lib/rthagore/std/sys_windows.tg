@@ -6,6 +6,7 @@ use sys as sys
 extern func __io_read_line(prompt: String) -> String
 extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
+extern func exit(code: i32) -> void
 
 func create_file(path: String, mode: String = "r") -> ptr
     return fs.open_binary(path, mode)
@@ -36,10 +37,11 @@ func virtual_free(mem: ptr) -> bool
     return true
 
 func process_spawn(cmd: String, args: String = "") -> i32
-    return sys.run(cmd, args)
+    return sys.exec(cmd, args)
 
 func process_exit(code: i32 = 0) -> void
-    throw "process exit"
+    exit(code)
+    return
 
 func console_write(text: String) -> i32
     print(text)

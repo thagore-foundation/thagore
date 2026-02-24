@@ -5,6 +5,7 @@ use sys as sys
 
 extern func malloc(size: usize) -> ptr
 extern func free(p: ptr) -> void
+extern func _exit(code: i32) -> void
 
 func open(path: String, flags: String = "r") -> ptr
     return fs.open_binary(path, flags)
@@ -40,7 +41,11 @@ func mprotect(region: ptr, prot: i32) -> i32
     return 0
 
 func exec(cmd: String, args: String = "") -> i32
-    return sys.run(cmd, args)
+    return sys.exec(cmd, args)
+
+func exit(code: i32 = 0) -> void
+    _exit(code)
+    return
 
 func stat(path: String) -> i32
     if fs.exists(path) == 0
