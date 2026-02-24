@@ -557,6 +557,9 @@ func target_ensure(triple: String) -> i32:
     let llvm_bin = pack + "/llvm/bin"
     if ((fs.exists(llvm_bin + "/clang") == 0) and (fs.exists(llvm_bin + "/clang.exe") == 0)):
         _seed_pack_llvm_binaries(pack)
+    if ((fs.exists(llvm_bin + "/clang") == 0) and (fs.exists(llvm_bin + "/clang.exe") == 0)):
+        print("missing=" + t)
+        return 2
     print("ok=" + t)
     return 0
 

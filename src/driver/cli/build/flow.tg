@@ -22,6 +22,14 @@ func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
             return env_ok
     let manifest_driver = _trim(targetctl.target_link_driver(target))
     if (strlen(manifest_driver) > 0):
+        if (strlen(target) > 0):
+            let target_pack_for_manifest = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+            let pack_driver = _probe_link_driver(target_pack_for_manifest + "/" + manifest_driver)
+            if (strlen(pack_driver) > 0):
+                return pack_driver
+            let pack_driver_exe = _probe_link_driver(target_pack_for_manifest + "/" + manifest_driver + ".exe")
+            if (strlen(pack_driver_exe) > 0):
+                return pack_driver_exe
         let manifest_ok = _probe_link_driver(manifest_driver)
         if (strlen(manifest_ok) > 0):
             return manifest_ok
@@ -40,6 +48,7 @@ func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
         let target_clang_exe = _probe_link_driver(target_pack + "/clang.exe")
         if (strlen(target_clang_exe) > 0):
             return target_clang_exe
+        return ""
     let home = _trim(env.get_var("HOME"))
     if (strlen(home) > 0):
         let local_llvm_bin = _normalize_path(home + "/.thagc/llvm-21.1.8/bin")
