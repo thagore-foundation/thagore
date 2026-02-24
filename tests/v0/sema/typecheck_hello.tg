@@ -1,0 +1,11 @@
+import "lib/fs.tg" as fs
+import "src/v0/parser/parser.tg"
+import "src/v0/sema/sema.tg"
+
+func main() -> i32:
+    let src = fs.read_text("examples/v0/hello_fn.tg")
+    let ast = v0_parse(src)
+    let sema = v0_typecheck_and_lower(ast)
+    if (sema.error_count > 0):
+        return 1
+    return 0

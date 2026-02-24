@@ -1,0 +1,3 @@
+let V0_TYPE_I32 = "i32"
+let V0_TYPE_STRING = "string"
+let V0_TYPE_VOID = "void"

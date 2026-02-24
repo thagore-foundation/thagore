@@ -1,0 +1,2 @@
+func v0_builtin_symbols() -> String:
+    return ";fn|print|string|void;fn|main||i32;"
