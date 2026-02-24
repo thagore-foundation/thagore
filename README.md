@@ -161,6 +161,11 @@ Build with explicit target:
 ```bash
 thagore build examples/hello.tg -o hello --target x86_64-unknown-linux-gnu
 ```
+
+Release artifacts are packaged as:
+- `thagc-core-<host>.tar.gz`
+- `thagc-target-<triple>-<host>.tar.gz`
+- `SHA256SUMS-thagc-<host>.txt`
     return 0
 ```
 

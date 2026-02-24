@@ -43,9 +43,21 @@ jobs:
           --dry-run "${{ github.event.inputs.dry_run || 'true' }}"
           --report release-plan-${{ runner.os }}.txt
 
+      - name: Package release assets
+        run: >
+          python scripts/package_release_assets.py
+          --host-os "${{ runner.os }}"
+          --version "${{ github.ref_name }}"
+          --out-dir "dist/release/${{ runner.os }}"
+          --report release-assets-${{ runner.os }}.txt
+
       - name: Upload release plan
         uses: actions/upload-artifact@v4
         with:
-          name: core-release-plan-${{ matrix.os }}
-          path: release-plan-${{ runner.os }}.txt
-
+          name: core-release-assets-${{ matrix.os }}
+          path: |
+            release-plan-${{ runner.os }}.txt
+            release-assets-${{ runner.os }}.txt
+            dist/release/${{ runner.os }}/thagc-core-*.tar.gz
+            dist/release/${{ runner.os }}/thagc-target-*.tar.gz
+            dist/release/${{ runner.os }}/SHA256SUMS-thagc-*.txt

@@ -23,9 +23,9 @@ WORKFLOW_REQUIREMENTS = {
         r"^core-selfhost-report-windows-latest$",
     ],
     "Core Release": [
-        r"^core-release-plan-ubuntu-latest$",
-        r"^core-release-plan-macos-latest$",
-        r"^core-release-plan-windows-latest$",
+        r"^core-release-assets-ubuntu-latest$",
+        r"^core-release-assets-macos-latest$",
+        r"^core-release-assets-windows-latest$",
     ],
 }
 
