@@ -47,6 +47,7 @@ jobs:
           echo "policy=build-all-run-host-only" > selfhost-policy.txt
           echo "runner_os=${{ runner.os }}" >> selfhost-policy.txt
           echo "bootstrap_stage1_tag=${BOOTSTRAP_STAGE1_TAG}" >> selfhost-policy.txt
+          echo "target_link_lane=strict-embedded-lld" >> selfhost-policy.txt
 
       - name: Upload selfhost reports
         uses: actions/upload-artifact@v4
