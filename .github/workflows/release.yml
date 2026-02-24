@@ -853,9 +853,7 @@ jobs:
               local clang_bin="clang"
               local runtime=""
               if ! command -v "$clang_bin" >/dev/null 2>&1; then
-                if command -v clang++ >/dev/null 2>&1; then
-                  clang_bin="clang++"
-                elif [[ -x "/usr/bin/clang" ]]; then
+                if [[ -x "/usr/bin/clang" ]]; then
                   clang_bin="/usr/bin/clang"
                 elif [[ -x "/usr/local/bin/clang" ]]; then
                   clang_bin="/usr/local/bin/clang"

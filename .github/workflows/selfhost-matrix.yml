@@ -477,7 +477,7 @@ jobs:
               local linker=""
               local runtime=""
               local linked=1
-              for candidate in clang clang++; do
+              for candidate in clang; do
                 if command -v "$candidate" >/dev/null 2>&1; then
                   linker="$candidate"
                   break
