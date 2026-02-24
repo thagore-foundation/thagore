@@ -10,7 +10,7 @@
 - `lib/`: standard library modules used by compiler/runtime (`env`, `fs`, `process`, etc.).
 - `examples/`: runnable Thagore programs (`hello.tg`, `fib.tg`, etc.).
 - `scripts/`: automation utilities (`bootstrap.bat`, `benchmark_fib.py`).
-- `.github/workflows/`: CI, selfhost matrix, release, and bootstrap seed pipelines.
+- `.github/workflows/`: core CI, selfhost matrix, release, seed, docs, and policy pipelines.
 
 ## Build, Test, and Development Commands
 - `cmd /c scripts\bootstrap.bat`: full bootstrap cycle (Stage1 -> Stage2 -> Stage2b -> hello_v2).
@@ -28,17 +28,17 @@
 
 ## Bootstrap Governance (Mandatory)
 - Any change touching `.github/workflows/` that impacts bootstrap must pass all:
-  - `Policy No Stage0`,
-  - `Stability Policy`,
-  - `CI` (3 OS),
-  - `Selfhost Matrix` (3 OS).
+  - `Core Policy No Stage0`,
+  - `Core CI` (3 OS),
+  - `Core Selfhost Matrix` (3 OS),
+  - `Core Release` (dry-run).
 - Never reintroduce implicit fallback logic:
   - no `gh release download` without explicit `BOOTSTRAP_STAGE1_TAG`,
   - no hidden Stage0 branch in CI/Release jobs,
   - no compiler-output fallback path (`fallback to existing compiler binary`, `fallback to previous stage2 binary`, `allow_missing_output`).
 - Seed rotation rule:
-  - promote seed tag only via successful `Seed Stage1 Assets` run,
-  - then update `BOOTSTRAP_STAGE1_TAG` in `ci.yml`, `selfhost-matrix.yml`, `release.yml`, and `bootstrap-seed.yml`.
+  - promote seed tag only via successful `Core Seed Stage1` run,
+  - then update `BOOTSTRAP_STAGE1_TAG` in `core-ci.yml`, `core-selfhost.yml`, `core-release.yml`, and `core-seed-stage1.yml`.
 - Release discipline:
   - release build must consume Stage1 seed asset of the active seed tag,
   - generated stage trace artifact is required for audit.
@@ -70,6 +70,6 @@
 ## Architecture Notes
 - All new language features (e.g., new syntax/control flow) must be implemented in self-hosted Thagore under `src/`.
 - CI must pass both:
-  - `Stability Policy` workflow,
-  - `CI` workflow (all matrix OS),
-  - `Selfhost Matrix` workflow (Stage1 -> Stage2 -> Stage2).
+  - `Core Policy No Stage0` workflow,
+  - `Core CI` workflow (all matrix OS),
+  - `Core Selfhost Matrix` workflow (build-all, run-host-only policy).

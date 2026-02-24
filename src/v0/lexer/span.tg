@@ -1,0 +1,5 @@
+struct V0Span:
+    start: i32
+    end: i32
+    line: i32
+    col: i32

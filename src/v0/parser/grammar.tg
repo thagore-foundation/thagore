@@ -1,0 +1,2 @@
+func v0_grammar_summary() -> String:
+    return "program := fn_decl*; fn_decl := 'fn' ident '(' ')' '->' 'i32' block; stmt := call ';' | return ';'"

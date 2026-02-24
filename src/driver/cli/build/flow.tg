@@ -1,36 +1,168 @@
 import "src/driver/cli/common/core.tg"
+import "src/v0/driver/pipeline.tg" as v0pipe
+import "src/driver/cli/target/flow.tg" as targetctl
 
 extern func __thg_fs_remove(path: String) -> i32
 
-func _probe_clang_driver(candidate: String) -> String:
+func _probe_link_driver(candidate: String) -> String:
     if (process.run(candidate + " --version > thagore_clang_probe.log 2>&1") == 0):
         return candidate
     return ""
 
-func _detect_clang_driver(prefer_cxx: i32) -> String:
+func _driver_supports_gpp_mode(driver: String) -> i32:
+    if (_contains(driver, "clang") == 1):
+        return 1
+    return 0
+
+func _is_windows_target(target: String) -> i32:
+    if (_contains(target, "windows") == 1):
+        return 1
+    if (_contains(target, "msvc") == 1):
+        return 1
+    return 0
+
+func _detect_lld_driver(target: String) -> String:
+    let manifest_lld = _trim(targetctl.target_lld_driver(target))
+    if (strlen(target) > 0):
+        let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+        if (strlen(manifest_lld) > 0):
+            let manifest_pack = _probe_link_driver(target_pack + "/" + manifest_lld)
+            if (strlen(manifest_pack) > 0):
+                return manifest_pack
+            let manifest_pack_exe = _probe_link_driver(target_pack + "/" + manifest_lld + ".exe")
+            if (strlen(manifest_pack_exe) > 0):
+                return manifest_pack_exe
+        if (_is_windows_target(target) == 1):
+            let lld_win = _probe_link_driver(target_pack + "/lld-link.exe")
+            if (strlen(lld_win) > 0):
+                return lld_win
+        let lld_ld = _probe_link_driver(target_pack + "/ld.lld")
+        if (strlen(lld_ld) > 0):
+            return lld_ld
+        let lld_ld_exe = _probe_link_driver(target_pack + "/ld.lld.exe")
+        if (strlen(lld_ld_exe) > 0):
+            return lld_ld_exe
+        let lld_plain = _probe_link_driver(target_pack + "/lld")
+        if (strlen(lld_plain) > 0):
+            return lld_plain
+        if (strlen(manifest_lld) > 0):
+            let manifest_global = _probe_link_driver(manifest_lld)
+            if (strlen(manifest_global) > 0):
+                return manifest_global
+        return ""
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_llvm_bin = _normalize_path(home + "/.thagc/llvm-21.1.8/bin")
+        let local_lld = _probe_link_driver(local_llvm_bin + "/ld.lld")
+        if (strlen(local_lld) > 0):
+            return local_lld
+        let local_lld_alt = _probe_link_driver(local_llvm_bin + "/lld")
+        if (strlen(local_lld_alt) > 0):
+            return local_lld_alt
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_bin = _normalize_path(profile + "/.thagc/llvm-21.1.8/bin")
+        let win_lld = _probe_link_driver(win_bin + "/lld-link.exe")
+        if (strlen(win_lld) > 0):
+            return win_lld
+    let path_ld = _probe_link_driver("ld.lld")
+    if (strlen(path_ld) > 0):
+        return path_ld
+    let path_lld = _probe_link_driver("lld")
+    if (strlen(path_lld) > 0):
+        return path_lld
+    let win_pf = _probe_link_driver("C:/Progra~1/LLVM/bin/lld-link.exe")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
+    let env_driver = _trim(env.get_var("THAG_LINK_DRIVER"))
+    if (strlen(env_driver) > 0):
+        let env_ok = _probe_link_driver(env_driver)
+        if (strlen(env_ok) > 0):
+            return env_ok
+    let manifest_driver = _trim(targetctl.target_link_driver(target))
+    if (strlen(manifest_driver) > 0):
+        if (strlen(target) > 0):
+            let target_pack_for_manifest = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+            let pack_driver = _probe_link_driver(target_pack_for_manifest + "/" + manifest_driver)
+            if (strlen(pack_driver) > 0):
+                return pack_driver
+            let pack_driver_exe = _probe_link_driver(target_pack_for_manifest + "/" + manifest_driver + ".exe")
+            if (strlen(pack_driver_exe) > 0):
+                return pack_driver_exe
+        else:
+            let manifest_ok = _probe_link_driver(manifest_driver)
+            if (strlen(manifest_ok) > 0):
+                return manifest_ok
+    if (strlen(target) > 0):
+        let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+        if (prefer_cxx == 1):
+            let target_cxx = _probe_link_driver(target_pack + "/clang++")
+            if (strlen(target_cxx) > 0):
+                return target_cxx
+            let target_cxx_exe = _probe_link_driver(target_pack + "/clang++.exe")
+            if (strlen(target_cxx_exe) > 0):
+                return target_cxx_exe
+        let target_clang = _probe_link_driver(target_pack + "/clang")
+        if (strlen(target_clang) > 0):
+            return target_clang
+        let target_clang_exe = _probe_link_driver(target_pack + "/clang.exe")
+        if (strlen(target_clang_exe) > 0):
+            return target_clang_exe
+        return ""
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_llvm_bin = _normalize_path(home + "/.thagc/llvm-21.1.8/bin")
+        if (prefer_cxx == 1):
+            let local_cxx = _probe_link_driver(local_llvm_bin + "/clang++")
+            if (strlen(local_cxx) > 0):
+                return local_cxx
+        let local_clang = _probe_link_driver(local_llvm_bin + "/clang")
+        if (strlen(local_clang) > 0):
+            return local_clang
+        let generic_llvm_bin = _normalize_path(home + "/.thagc/llvm/bin")
+        if (prefer_cxx == 1):
+            let generic_cxx = _probe_link_driver(generic_llvm_bin + "/clang++")
+            if (strlen(generic_cxx) > 0):
+                return generic_cxx
+        let generic_clang = _probe_link_driver(generic_llvm_bin + "/clang")
+        if (strlen(generic_clang) > 0):
+            return generic_clang
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_bin = _normalize_path(profile + "/.thagc/llvm-21.1.8/bin")
+        if (prefer_cxx == 1):
+            let win_cxx = _probe_link_driver(win_bin + "/clang++.exe")
+            if (strlen(win_cxx) > 0):
+                return win_cxx
+        let win_clang = _probe_link_driver(win_bin + "/clang.exe")
+        if (strlen(win_clang) > 0):
+            return win_clang
     if (prefer_cxx == 1):
-        let candidate = _probe_clang_driver("clang++")
+        let candidate = _probe_link_driver("clang++")
         if (candidate.length() > 0):
             return candidate
-        let candidate_win = _probe_clang_driver("C:/Progra~1/LLVM/bin/clang++.exe")
+        let candidate_win = _probe_link_driver("C:/Progra~1/LLVM/bin/clang++.exe")
         if (candidate_win.length() > 0):
             return candidate_win
-        let candidate_usr = _probe_clang_driver("/usr/bin/clang++")
+        let candidate_usr = _probe_link_driver("/usr/bin/clang++")
         if (candidate_usr.length() > 0):
             return candidate_usr
-        let candidate_usr_local = _probe_clang_driver("/usr/local/bin/clang++")
+        let candidate_usr_local = _probe_link_driver("/usr/local/bin/clang++")
         if (candidate_usr_local.length() > 0):
             return candidate_usr_local
-    let fallback = _probe_clang_driver("clang")
+    let fallback = _probe_link_driver("clang")
     if (fallback.length() > 0):
         return fallback
-    let fallback_win = _probe_clang_driver("C:/Progra~1/LLVM/bin/clang.exe")
+    let fallback_win = _probe_link_driver("C:/Progra~1/LLVM/bin/clang.exe")
     if (fallback_win.length() > 0):
         return fallback_win
-    let fallback_usr = _probe_clang_driver("/usr/bin/clang")
+    let fallback_usr = _probe_link_driver("/usr/bin/clang")
     if (fallback_usr.length() > 0):
         return fallback_usr
-    let fallback_usr_local = _probe_clang_driver("/usr/local/bin/clang")
+    let fallback_usr_local = _probe_link_driver("/usr/local/bin/clang")
     if (fallback_usr_local.length() > 0):
         return fallback_usr_local
     return ""
@@ -51,14 +183,126 @@ func _host_prefers_clangxx() -> i32:
         return 1
     return 0
 
-func _link_with_runtime(clang_bin: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32) -> i32:
+func _target_flag() -> String:
+    let triple = _trim(env.get_var("THAG_BUILD_TARGET"))
+    if (strlen(triple) == 0):
+        return ""
+    return " --target=" + triple
+
+func _toolchain_config_path() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/config.toml")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/config.toml")
+    return ".thagc/config.toml"
+
+func _toolchain_pack_root() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/targets")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/targets")
+    return ".thagc/targets"
+
+func _config_line_value(text: String, key: String) -> String:
+    let total = _line_count(text)
+    let i = 0
+    let prefix = key + " ="
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if (_starts_with(line, prefix) == 1):
+            return _trim(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+        i = i + 1
+    return ""
+
+func _config_default_target(text: String) -> String:
+    let raw = _config_line_value(text, "default_target")
+    if (strlen(raw) < 2):
+        return ""
+    if ((_starts_with(raw, "\"") == 1) and (_ends_with(raw, "\"") == 1)):
+        return __thg_str_substr(raw, 1, strlen(raw) - 2)
+    return raw
+
+func _config_has_installed_target(text: String, triple: String) -> i32:
+    let list_raw = _config_line_value(text, "installed_targets")
+    if (strlen(list_raw) == 0):
+        return 0
+    if (_contains(list_raw, "\"" + triple + "\"") == 1):
+        return 1
+    return 0
+
+func _ensure_target_ready() -> i32:
+    let requested = _trim(env.get_var("THAG_BUILD_TARGET"))
+    let cfg_path = _toolchain_config_path()
+    if (fs.exists(cfg_path) == 0):
+        if (strlen(requested) > 0):
+            print("ERROR: target '" + requested + "' requested but toolchain config is missing: " + cfg_path)
+            print("HINT: run thagup init or 'thagore target add " + requested + "' first.")
+            return 1
+        return 0
+    let cfg = fs.read_text(cfg_path)
+    if (strlen(requested) == 0):
+        requested = _trim(_config_default_target(cfg))
+    if (strlen(requested) == 0):
+        return 0
+    if (_config_has_installed_target(cfg, requested) == 0):
+        print("ERROR: target '" + requested + "' is not installed in " + cfg_path)
+        print("HINT: run 'thagore target add " + requested + "' or reinstall with thagup profile.")
+        return 1
+    let pack_path = _toolchain_pack_root() + "/" + requested
+    if (fs.exists(pack_path) == 0):
+        print("ERROR: target pack directory is missing: " + pack_path)
+        print("HINT: run 'thagore target add " + requested + "' to install target pack files.")
+        return 1
+    let ensure_rc = targetctl.target_ensure(requested)
+    if (ensure_rc != 0):
+        print("ERROR: target ensure failed for " + requested)
+        print("HINT: run 'thagore target add " + requested + "' to reinstall target pack and embedded llvm lane.")
+        return 1
+    env.set_var("THAG_BUILD_TARGET", requested)
+    return 0
+
+func _link_with_runtime(link_driver: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32, lld_driver: String, target: String) -> i32:
     if (fs.exists(runtime_lib) == 0):
         return -1
     let mode_flag = ""
-    if ((force_cxx_mode == 1) and (_contains(clang_bin, "clang++") == 0)):
+    let target_flag = _target_flag()
+    let lld_flag = ""
+    if ((force_cxx_mode == 1) and (_contains(link_driver, "clang++") == 0) and (_driver_supports_gpp_mode(link_driver) == 1)):
         mode_flag = " --driver-mode=g++"
-    let cmd = clang_bin + mode_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
+    if ((strlen(target) > 0) and (strlen(lld_driver) > 0) and (_contains(link_driver, "clang") == 1)):
+        lld_flag = " -fuse-ld=lld"
+    let cmd = link_driver + mode_flag + lld_flag + target_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
     return process.run(cmd)
+
+func _link_with_runtime_lld(lld_driver: String, runtime_lib: String, input_path: String, out_path: String, target: String) -> i32:
+    if (strlen(lld_driver) == 0):
+        return -1
+    if (fs.exists(runtime_lib) == 0):
+        return -1
+    let cmd = ""
+    if ((_contains(lld_driver, "lld-link") == 1) or (_is_windows_target(target) == 1)):
+        cmd = lld_driver + " /nologo /out:" + _quote(out_path) + " " + _quote(input_path) + " " + _quote(runtime_lib)
+    else:
+        let target_flag = ""
+        if (strlen(target) > 0):
+            target_flag = " --target=" + target
+        cmd = lld_driver + target_flag + " -o " + _quote(out_path) + " " + _quote(input_path) + " " + _quote(runtime_lib)
+    return process.run(cmd)
+
+func _prefer_clang_lld_bridge(target: String, link_driver: String, strict_embedded: i32) -> i32:
+    if (strlen(link_driver) == 0):
+        return 0
+    if (_contains(link_driver, "clang") == 0):
+        return 0
+    if (_is_windows_target(target) == 1):
+        return 0
+    if (strict_embedded == 1):
+        return 1
+    return 0
 
 func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (total_fixed > 0):
@@ -72,24 +316,86 @@ func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (strlen(report_path) > 0):
         print("[autofix] report: " + report_path)
 
-func _link_exe(input_path: String, out_path: String, clang_bin: String, prefer_cxx: i32) -> i32:
+func _try_link_with_candidates(cand_set: String, input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32, target: String, strict_embedded: i32) -> i32:
+    let tok = ""
+    let i = 0
+    while (i < strlen(cand_set)):
+        let ch = _char_at(cand_set, i)
+        if (ch == ";"):
+            if (strlen(tok) > 0):
+                if (_prefer_clang_lld_bridge(target, link_driver, strict_embedded) == 1):
+                    if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                        return 0
+                    if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
+                        return 0
+                else:
+                    if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
+                        return 0
+                    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+                        if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                            return 0
+                tok = ""
+        else:
+            tok = tok + ch
+        i = i + 1
+    return 1
+
+func _link_exe(input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32) -> i32:
     let first_lib = "runtime.lib"
     let second_lib = "runtime.a"
     let third_lib = "thag_runtime.lib"
     let fourth_lib = "libthag_runtime.a"
+    let target = _trim(env.get_var("THAG_BUILD_TARGET"))
+    let strict_embedded = 0
+    if (strlen(target) > 0):
+        strict_embedded = 1
     if (prefer_cxx == 1):
         first_lib = "runtime.a"
         second_lib = "runtime.lib"
         third_lib = "libthag_runtime.a"
         fourth_lib = "thag_runtime.lib"
-    if (_link_with_runtime(clang_bin, first_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
-    if (_link_with_runtime(clang_bin, second_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
-    if (_link_with_runtime(clang_bin, third_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
-    if (_link_with_runtime(clang_bin, fourth_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
+    if (strlen(target) > 0):
+        let cand_set = targetctl.target_runtime_candidates(target)
+        if (_try_link_with_candidates(cand_set, input_path, out_path, lld_driver, link_driver, prefer_cxx, target, strict_embedded) == 0):
+            return 0
+    if (_prefer_clang_lld_bridge(target, link_driver, strict_embedded) == 1):
+        if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+            return 0
+        if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
+            return 0
+        if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+            return 0
+        if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
+            return 0
+        if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+            return 0
+        if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
+            return 0
+        if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+            return 0
+        if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
+            return 0
+    else:
+        if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
     print("CRITICAL: runtime library not found (expected runtime.lib/runtime.a).")
     return 1
 
@@ -128,6 +434,14 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 11
+    if (_ensure_target_ready() != 0):
+        return 1
+    let target = _trim(env.get_var("THAG_BUILD_TARGET"))
+    if (v0pipe.v0_is_source(source) == 1):
+        if (emit_only == 1):
+            print("ERROR: --emit-llvm is not yet supported for v0 fn-syntax path.")
+            return 1
+        return v0pipe.v0_build(input_path, out_path)
     let typed = typechecker.typecheck_to_typed(source)
     if (typed.error_count > 0):
         if (typed.error_code.length() > 0):
@@ -160,18 +474,26 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         print(ir_path)
         return 0
     let prefer_cxx = _host_prefers_clangxx()
-    let clang_bin = _detect_clang_driver(prefer_cxx)
-    if (clang_bin.length() == 0):
-        print("CRITICAL: Clang not found via PATH or standard locations. Please install LLVM.")
+    let lld_driver = _detect_lld_driver(target)
+    if ((strlen(target) > 0) and (strlen(lld_driver) == 0)):
+        print("CRITICAL: embedded lld is missing for target '" + target + "'.")
+        print("HINT: run 'thagore target ensure " + target + "' or reinstall target pack.")
         return 1
+    let link_driver = ""
+    link_driver = _detect_link_driver(target, prefer_cxx)
+    if ((strlen(target) == 0) and (link_driver.length() == 0)):
+        print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
+        return 1
+    if ((strlen(target) > 0) and (link_driver.length() == 0)):
+        print("WARN: embedded clang driver not found in target pack; using direct lld lane only.")
     let object_path = out_path + ".o"
-    if (emitter.emit_object_core(core, module_name, clang_bin, object_path) != 0):
+    if (emitter.emit_object_core(core, module_name, link_driver, object_path) != 0):
         if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
             return 1
         print("CRITICAL: native object backend emission failed.")
         print("CRITICAL: IR text executable lane is disabled; no fallback path is available.")
         return 1
-    if (_link_exe(object_path, out_path, clang_bin, prefer_cxx) != 0):
+    if (_link_exe(object_path, out_path, lld_driver, link_driver, prefer_cxx) != 0):
         if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
             return 1
         print("ERROR: link failed.")
@@ -274,4 +596,3 @@ func _test_message_format_mode(raw: String) -> i32:
     if ((m == "human") or (m == "pretty") or (m == "text")):
         return 0
     return -1
-

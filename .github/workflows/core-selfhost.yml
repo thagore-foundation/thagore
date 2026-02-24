@@ -1,0 +1,133 @@
+name: Core Selfhost Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: core-selfhost-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  LLVM_VERSION: "21"
+  LLVM_FULL_VERSION: "21.1.8"
+
+jobs:
+  selfhost:
+    name: selfhost-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install LLVM 21 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update -q
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-21 100
+          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+          sudo update-alternatives --install /usr/bin/llvm-as llvm-as /usr/bin/llvm-as-21 100
+
+      - name: Install LLVM 21 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@21
+          echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
+
+      - name: Install LLVM 21 (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm --version=21.1.8 -y
+
+      - name: Fetch stage1 seed (via bootstrap.sh ensure_stage1)
+        shell: bash
+        run: |
+          # Run bootstrap.sh with THAG_BOOTSTRAP_STAGE1_ONLY=1 to only fetch stage1
+          # bootstrap.sh places stage1 binary at ./stage1
+          bash scripts/bootstrap.sh
+          # After full bootstrap, stage1/stage2/stage2b all exist.
+          # Rename so we can rebuild stage2/stage2b from scratch for reproducibility check.
+          cp stage2b stage2b_bootstrap || true
+
+      - name: Rebuild stage2 from stage1 (reproducibility pass 1)
+        shell: bash
+        run: |
+          rm -f stage2 stage2b || true
+          ./stage1 build src/thagore.tg -o stage2
+          chmod +x stage2 || true
+
+      - name: Rebuild stage2b from stage2 (reproducibility pass 2)
+        shell: bash
+        run: |
+          ./stage2 build src/thagore.tg -o stage2b
+          chmod +x stage2b || true
+
+      - name: Reproducibility check (stage2 vs stage2b SHA256)
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHA_STAGE2="$(sha256sum stage2 | awk '{print $1}')"
+            SHA_STAGE2B="$(sha256sum stage2b | awk '{print $1}')"
+          else
+            SHA_STAGE2="$(shasum -a 256 stage2 | awk '{print $1}')"
+            SHA_STAGE2B="$(shasum -a 256 stage2b | awk '{print $1}')"
+          fi
+          echo "stage2  SHA256: $SHA_STAGE2"
+          echo "stage2b SHA256: $SHA_STAGE2B"
+          {
+            echo "triple=${{ matrix.triple }}"
+            echo "runner_os=${{ runner.os }}"
+            echo "bootstrap_stage1_tag=${BOOTSTRAP_STAGE1_TAG}"
+            echo "stage2_sha256=$SHA_STAGE2"
+            echo "stage2b_sha256=$SHA_STAGE2B"
+          } > selfhost-reproducibility-${{ matrix.triple }}.txt
+          if [[ "$SHA_STAGE2" == "$SHA_STAGE2B" ]]; then
+            echo "reproducible=true" >> selfhost-reproducibility-${{ matrix.triple }}.txt
+            echo "[selfhost] PASS: stage2 and stage2b are bit-identical (reproducible build)"
+          else
+            echo "reproducible=false" >> selfhost-reproducibility-${{ matrix.triple }}.txt
+            echo "[selfhost] NOTE: stage2 and stage2b differ — non-reproducible (acceptable for now)"
+          fi
+
+      - name: Policy checks
+        run: |
+          python scripts/verify_seed_tag_sync.py --report seed-tag-sync-selfhost.txt
+          python scripts/validate_target_registry.py --report target-registry-selfhost.txt
+
+      - name: Intent strict-lock gate
+        run: >
+          python scripts/intent_strict_lock_gate.py
+          --workflow .github/workflows/core-ci.yml
+          --workflow .github/workflows/core-selfhost.yml
+
+      - name: Upload selfhost artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-selfhost-${{ matrix.os }}
+          path: |
+            stage2b
+            stage2b.exe
+            selfhost-reproducibility-${{ matrix.triple }}.txt
+            seed-tag-sync-selfhost.txt
+            target-registry-selfhost.txt

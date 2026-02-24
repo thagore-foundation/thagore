@@ -1,0 +1,126 @@
+import "lib/fs.tg" as fs
+import "lib/process.tg" as process
+import "src/v0/lexer/lexer.tg" as v0lex
+import "src/v0/parser/parser.tg" as v0parser
+import "src/v0/sema/sema.tg" as v0sema
+import "src/v0/ir/verify.tg" as v0irverify
+import "src/v0/codegen/llvm/emit.tg" as v0emit
+import "src/v0/codegen/llvm/link.tg" as v0link
+import "src/v0/driver/diagnostics.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _starts_with(text: String, prefix: String) -> i32:
+    let n = strlen(prefix)
+    if (strlen(text) < n):
+        return 0
+    if (__thg_str_substr(text, 0, n) == prefix):
+        return 1
+    return 0
+
+func _replace_all(text: String, old_frag: String, new_frag: String) -> String:
+    if (strlen(old_frag) == 0):
+        return text
+    let out = ""
+    let i = 0
+    let n = strlen(text)
+    let k = strlen(old_frag)
+    while (i < n):
+        if ((i + k) <= n):
+            if (__thg_str_substr(text, i, k) == old_frag):
+                out = out + new_frag
+                i = i + k
+            else:
+                out = out + __thg_str_substr(text, i, 1)
+                i = i + 1
+        else:
+            out = out + __thg_str_substr(text, i, 1)
+            i = i + 1
+    return out
+
+func _base_name(path: String) -> String:
+    let p = _replace_all(path, "\\", "/")
+    let n = strlen(p)
+    let i = n - 1
+    while (i >= 0):
+        if (__thg_str_substr(p, i, 1) == "/"):
+            return __thg_str_substr(p, i + 1, n - i - 1)
+        i = i - 1
+    return p
+
+func _strip_ext(path: String) -> String:
+    let n = strlen(path)
+    let i = n - 1
+    while (i >= 0):
+        if (__thg_str_substr(path, i, 1) == "."):
+            return __thg_str_substr(path, 0, i)
+        i = i - 1
+    return path
+
+func v0_is_source(source: String) -> i32:
+    if ((_contains(source, "fn ") == 1) and (_contains(source, "-> i32") == 1) and (_contains(source, "{") == 1) and (_contains(source, "}") == 1)):
+        return 1
+    return 0
+
+func v0_is_file(path: String) -> i32:
+    let src = fs.read_text(path)
+    if (strlen(src) == 0):
+        return 0
+    return v0_is_source(src)
+
+func v0_default_output(input_path: String) -> String:
+    let base = _base_name(input_path)
+    return _strip_ext(base)
+
+func v0_build(input_path: String, out_path: String) -> i32:
+    let source = fs.read_text(input_path)
+    if (strlen(source) == 0):
+        v0_print_diag("driver", "EIO_SOURCE_READ", "cannot read source file: " + input_path)
+        return 1
+    let lexed = v0lex.v0_lex(source)
+    if (lexed.error_count > 0):
+        v0_print_diag("lexer", lexed.error_code, lexed.error_message)
+        return 1
+    let ast = v0parser.v0_parse(source)
+    if (ast.error_count > 0):
+        v0_print_diag("parser", ast.error_code, ast.error_message)
+        return 1
+    let sema = v0sema.v0_typecheck_and_lower(ast)
+    if (sema.error_count > 0):
+        v0_print_diag("sema", sema.error_code, sema.error_message)
+        return 1
+    let verified = v0irverify.v0_ir_verify(sema.module)
+    if (verified.error_count > 0):
+        v0_print_diag("ir", verified.error_code, verified.error_message)
+        return 1
+    let module_name = _strip_ext(_base_name(input_path))
+    let obj = out_path + ".o"
+    if (v0emit.v0_emit_object(verified, module_name, obj) != 0):
+        v0_print_diag("codegen", "ELLVM_EMIT_OBJECT", "failed to emit LLVM object")
+        return 1
+    let clang_bin = v0link.v0_detect_clang()
+    if (strlen(clang_bin) == 0):
+        v0_print_diag("link", "ELLVM_CLANG_NOT_FOUND", "clang is not available")
+        return 1
+    if (v0link.v0_link_exe(clang_bin, obj, out_path) != 0):
+        v0_print_diag("link", "ELLVM_LINK", "failed to link executable")
+        return 1
+    return 0
+
+func v0_run(input_path: String, out_path: String) -> i32:
+    if (v0_build(input_path, out_path) != 0):
+        return 1
+    return process.run("./" + out_path)

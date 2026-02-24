@@ -1,0 +1,6 @@
+import "src/v0/driver/pipeline.tg" as v0pipe
+
+func main() -> i32:
+    if (v0pipe.v0_build("examples/v0/hello_fn.tg", "_v0_test_hello") != 0):
+        return 1
+    return 0

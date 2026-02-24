@@ -1,0 +1,37 @@
+{
+  "schema": "thagc.targets.registry.v1",
+  "standard_profile": [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin"
+  ],
+  "targets": [
+    {
+      "triple": "x86_64-unknown-linux-gnu",
+      "pack": "targets/packs/x86_64-unknown-linux-gnu",
+      "runtime_artifact": "thagc-target-x86_64-unknown-linux-gnu-runtime.a"
+    },
+    {
+      "triple": "x86_64-pc-windows-msvc",
+      "pack": "targets/packs/x86_64-pc-windows-msvc",
+      "runtime_artifact": "thagc-target-x86_64-pc-windows-msvc-runtime.lib"
+    },
+    {
+      "triple": "aarch64-apple-darwin",
+      "pack": "targets/packs/aarch64-apple-darwin",
+      "runtime_artifact": "thagc-target-aarch64-apple-darwin-runtime.a"
+    },
+    {
+      "triple": "aarch64-unknown-linux-gnu",
+      "pack": "targets/packs/aarch64-unknown-linux-gnu",
+      "runtime_artifact": "thagc-target-aarch64-unknown-linux-gnu-runtime.a"
+    },
+    {
+      "triple": "x86_64-apple-darwin",
+      "pack": "targets/packs/x86_64-apple-darwin",
+      "runtime_artifact": "thagc-target-x86_64-apple-darwin-runtime.a"
+    }
+  ]
+}

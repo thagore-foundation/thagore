@@ -8,9 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 WORKFLOWS = [
-    ("CI", []),
-    ("Selfhost Matrix", []),
-    ("Release", ["-f", "dry_run=true"]),
+    ("Core CI", []),
+    ("Core Selfhost Matrix", []),
+    ("Core Release", ["-f", "dry_run=true"]),
 ]
 
 
@@ -91,7 +91,9 @@ def _wait_run(run_id: int, timeout_sec: int = 7200) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Dispatch CI/Selfhost/Release dry-run rounds and certify results.")
+    parser = argparse.ArgumentParser(
+        description="Dispatch Core CI/Core Selfhost/Core Release dry-run rounds and certify results."
+    )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--branch", default="")
     parser.add_argument("--skip-local-cert", action="store_true")

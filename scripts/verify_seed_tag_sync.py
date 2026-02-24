@@ -5,14 +5,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = [
-    ".github/workflows/ci.yml",
-    ".github/workflows/selfhost-matrix.yml",
-    ".github/workflows/release.yml",
-    ".github/workflows/bootstrap-seed.yml",
-    ".github/workflows/selfhost-longhaul.yml",
-    ".github/workflows/selfhost-soak-nightly.yml",
-    ".github/workflows/seed-stage1.yml",
-    ".github/workflows/seed-runtime-assets.yml",
+    ".github/workflows/core-ci.yml",
+    ".github/workflows/core-selfhost.yml",
+    ".github/workflows/core-release.yml",
+    ".github/workflows/core-seed-stage1.yml",
 ]
 
 

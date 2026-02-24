@@ -1,0 +1,5 @@
+import "src/v0/ir/module.tg"
+import "src/v0/codegen/llvm/emit.tg"
+
+func v0_lower_ir_to_llvm(module: V0IrModule, module_name: String) -> String:
+    return v0_emit_llvm_ir(module, module_name)

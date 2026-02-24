@@ -1,0 +1,122 @@
+import "src/v0/lexer/token.tg"
+import "src/v0/lexer/errors.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _ch(text: String, i: i32) -> String:
+    return __thg_str_substr(text, i, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _is_alpha(ch: String) -> i32:
+    if (_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch) == 1):
+        return 1
+    return 0
+
+func _is_digit(ch: String) -> i32:
+    if (_contains("0123456789", ch) == 1):
+        return 1
+    return 0
+
+func _is_alnum(ch: String) -> i32:
+    if ((_is_alpha(ch) == 1) or (_is_digit(ch) == 1)):
+        return 1
+    return 0
+
+func _is_space(ch: String) -> i32:
+    if ((ch == " ") or (ch == "\t") or (ch == "\r") or (ch == "\n")):
+        return 1
+    return 0
+
+func _token_add(tokens: String, kind: String, lexeme: String, start: i32, stop: i32) -> String:
+    return tokens + kind + "|" + lexeme + "|" + _to_i32(start) + "|" + _to_i32(stop) + ";"
+
+func _to_i32(v: i32) -> String:
+    if (v == 0):
+        return "0"
+    let out = ""
+    let x = v
+    while (x > 0):
+        let q = x / 10
+        let d = x - (q * 10)
+        out = __thg_str_substr("0123456789", d, 1) + out
+        x = q
+    return out
+
+func v0_lex(source: String) -> V0LexResult:
+    let n = strlen(source)
+    let i = 0
+    let tokens = ";"
+    while (i < n):
+        let c = _ch(source, i)
+        if (_is_space(c) == 1):
+            i = i + 1
+        else:
+            if (c == "\""):
+                let j = i + 1
+                let done = 0
+                while (j < n):
+                    if (_ch(source, j) == "\""):
+                        done = 1
+                        j = n
+                    else:
+                        j = j + 1
+                if (done == 0):
+                    return v0_lex_result_error(V0_ELEX_UNTERMINATED_STRING, "unterminated string literal")
+                let k = i + 1
+                while (k < n):
+                    if (_ch(source, k) == "\""):
+                        let lit = __thg_str_substr(source, i + 1, k - i - 1)
+                        tokens = _token_add(tokens, "STRING", lit, i, k + 1)
+                        i = k + 1
+                        k = n
+                    else:
+                        k = k + 1
+            else:
+                if (_is_alpha(c) == 1):
+                    let j2 = i + 1
+                    while (j2 < n):
+                        if (_is_alnum(_ch(source, j2)) == 1):
+                            j2 = j2 + 1
+                        else:
+                            let word = __thg_str_substr(source, i, j2 - i)
+                            tokens = _token_add(tokens, "IDENT", word, i, j2)
+                            i = j2
+                            j2 = n
+                    if (i < n):
+                        let tail = __thg_str_substr(source, i, n - i)
+                        if (strlen(tail) > 0):
+                            tokens = _token_add(tokens, "IDENT", tail, i, n)
+                            i = n
+                else:
+                    if (_is_digit(c) == 1):
+                        let j3 = i + 1
+                        while (j3 < n):
+                            if (_is_digit(_ch(source, j3)) == 1):
+                                j3 = j3 + 1
+                            else:
+                                let num = __thg_str_substr(source, i, j3 - i)
+                                tokens = _token_add(tokens, "INT", num, i, j3)
+                                i = j3
+                                j3 = n
+                        if (i < n):
+                            let num_tail = __thg_str_substr(source, i, n - i)
+                            if (strlen(num_tail) > 0):
+                                tokens = _token_add(tokens, "INT", num_tail, i, n)
+                                i = n
+                    else:
+                        tokens = _token_add(tokens, "PUNC", c, i, i + 1)
+                        i = i + 1
+    tokens = tokens + "EOF||" + _to_i32(n) + "|" + _to_i32(n) + ";"
+    return v0_lex_result_new(tokens)

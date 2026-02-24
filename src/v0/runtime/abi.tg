@@ -1,0 +1,2 @@
+func v0_runtime_abi_name() -> String:
+    return "__thg_print_str(ptr,i32)"

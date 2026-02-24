@@ -1,0 +1,778 @@
+import "src/driver/cli/common/core.tg"
+
+struct ToolchainConfig:
+    channel: String
+    version: String
+    default_target: String
+    profile: String
+    installed_set: String
+
+func _supported_set() -> String:
+    return ";x86_64-unknown-linux-gnu;x86_64-pc-windows-msvc;aarch64-apple-darwin;aarch64-unknown-linux-gnu;x86_64-apple-darwin;"
+
+func _standard_set() -> String:
+    return _supported_set()
+
+func _toolchain_config_path() -> String:
+    let env_cfg = _trim(env.get_var("THAGC_CONFIG"))
+    if (strlen(env_cfg) > 0):
+        return _normalize_path(env_cfg)
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/config.toml")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/config.toml")
+    return ".thagc/config.toml"
+
+func _toolchain_pack_root() -> String:
+    let env_root = _trim(env.get_var("THAGC_TARGET_ROOT"))
+    if (strlen(env_root) > 0):
+        return _normalize_path(env_root)
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/targets")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/targets")
+    return ".thagc/targets"
+
+func _cfg_line_value(text: String, key: String) -> String:
+    let total = _line_count(text)
+    let i = 0
+    let prefix = key + " ="
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if (_starts_with(line, prefix) == 1):
+            return _trim(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+        i = i + 1
+    return ""
+
+func _cfg_unquote(text: String) -> String:
+    let t = _trim(text)
+    if (strlen(t) < 2):
+        return t
+    if ((_starts_with(t, "\"") == 1) and (_ends_with(t, "\"") == 1)):
+        return __thg_str_substr(t, 1, strlen(t) - 2)
+    return t
+
+func _cfg_list_to_set(raw: String) -> String:
+    let list = _trim(raw)
+    if (strlen(list) == 0):
+        return ";"
+    let body = list
+    if ((_starts_with(body, "[") == 1) and (_ends_with(body, "]") == 1)):
+        body = __thg_str_substr(body, 1, strlen(body) - 2)
+    let out = ";"
+    let token = ""
+    let i = 0
+    while (i < strlen(body)):
+        let ch = _char_at(body, i)
+        if (ch == ","):
+            let item = _cfg_unquote(_trim(token))
+            if (strlen(item) > 0):
+                out = _set_add_unique(out, item)
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let item_last = _cfg_unquote(_trim(token))
+    if (strlen(item_last) > 0):
+        out = _set_add_unique(out, item_last)
+    return out
+
+func _config_read() -> ToolchainConfig:
+    let path = _toolchain_config_path()
+    if (fs.exists(path) == 0):
+        return ToolchainConfig("stable", "", "", "standard", ";")
+    let text = fs.read_text(path)
+    let channel = _cfg_unquote(_cfg_line_value(text, "channel"))
+    let version = _cfg_unquote(_cfg_line_value(text, "toolchain_version"))
+    let default_target = _cfg_unquote(_cfg_line_value(text, "default_target"))
+    let profile = _cfg_unquote(_cfg_line_value(text, "profile"))
+    let installed_set = _cfg_list_to_set(_cfg_line_value(text, "installed_targets"))
+    let use_channel = channel
+    if (strlen(use_channel) == 0):
+        use_channel = "stable"
+    let use_profile = profile
+    if (strlen(use_profile) == 0):
+        use_profile = "standard"
+    return ToolchainConfig(use_channel, version, default_target, use_profile, installed_set)
+
+func _set_to_csv(set_text: String) -> String:
+    let out = ""
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + token
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out
+
+func _set_to_quoted_list(set_text: String) -> String:
+    let out = ""
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + "\"" + token + "\""
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out
+
+func _ensure_dir_chain(path_raw: String) -> i32:
+    let path = _normalize_path(_trim(path_raw))
+    if (strlen(path) == 0):
+        return 1
+    let current = ""
+    let start_i = 0
+    if ((strlen(path) >= 2) and (_char_at(path, 1) == ":")):
+        current = __thg_str_substr(path, 0, 2)
+        start_i = 2
+    if ((_starts_with(path, "/") == 1) and (strlen(current) == 0)):
+        current = "/"
+        start_i = 1
+    let token = ""
+    let i = start_i
+    while (i < strlen(path)):
+        let ch = _char_at(path, i)
+        if (ch == "/"):
+            if (strlen(token) > 0):
+                if ((strlen(current) > 0) and (_ends_with(current, "/") == 0)):
+                    current = current + "/" + token
+                else:
+                    current = current + token
+                if (fs.exists(current) == 0):
+                    fs.mkdir(current)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if ((strlen(current) > 0) and (_ends_with(current, "/") == 0)):
+            current = current + "/" + token
+        else:
+            current = current + token
+        if (fs.exists(current) == 0):
+            fs.mkdir(current)
+    return 1
+
+func _copy_file(src: String, dst: String) -> i32:
+    if (fs.exists(src) == 0):
+        return 0
+    _ensure_dir_chain(_dir_name(dst))
+    let fin = fs.open_read(src)
+    if (fin == null):
+        return 0
+    let fout = fs.open_write(dst)
+    if (fout == null):
+        fs.close(fin)
+        return 0
+    while (1 == 1):
+        let chunk = fs.read_bytes(fin, 4096)
+        if (strlen(chunk) == 0):
+            break
+        if (fs.write_bytes(fout, chunk) != 0):
+            fs.close(fin)
+            fs.close(fout)
+            return 0
+    fs.close(fin)
+    fs.close(fout)
+    return 1
+
+func _probe_tool(candidate_raw: String, version_arg: String) -> String:
+    let candidate = _trim(candidate_raw)
+    if (strlen(candidate) == 0):
+        return ""
+    if (process.run(_quote(candidate) + " " + version_arg + " > thagore_target_tool_probe.log 2>&1") == 0):
+        return candidate
+    return ""
+
+func _resolve_host_clang() -> String:
+    let env_driver = _trim(env.get_var("THAG_LINK_DRIVER"))
+    let probe_env = _probe_tool(env_driver, "--version")
+    if (strlen(probe_env) > 0):
+        return probe_env
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/clang"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/clang"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_local = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/clang.exe"), "--version")
+        if (strlen(win_local) > 0):
+            return win_local
+        let win_generic = _probe_tool(_normalize_path(profile + "/.thagc/llvm/bin/clang.exe"), "--version")
+        if (strlen(win_generic) > 0):
+            return win_generic
+    let path_plain = _probe_tool("clang", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let usr = _probe_tool("/usr/bin/clang", "--version")
+    if (strlen(usr) > 0):
+        return usr
+    let usr_local = _probe_tool("/usr/local/bin/clang", "--version")
+    if (strlen(usr_local) > 0):
+        return usr_local
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/clang.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _resolve_host_clangxx() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/clang++"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/clang++"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_local = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/clang++.exe"), "--version")
+        if (strlen(win_local) > 0):
+            return win_local
+        let win_generic = _probe_tool(_normalize_path(profile + "/.thagc/llvm/bin/clang++.exe"), "--version")
+        if (strlen(win_generic) > 0):
+            return win_generic
+    let path_plain = _probe_tool("clang++", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let usr = _probe_tool("/usr/bin/clang++", "--version")
+    if (strlen(usr) > 0):
+        return usr
+    let usr_local = _probe_tool("/usr/local/bin/clang++", "--version")
+    if (strlen(usr_local) > 0):
+        return usr_local
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/clang++.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _resolve_host_lld() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_ld = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/ld.lld"), "--version")
+        if (strlen(local_ld) > 0):
+            return local_ld
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/lld"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic_ld = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/ld.lld"), "--version")
+        if (strlen(generic_ld) > 0):
+            return generic_ld
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/lld"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_link = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/lld-link.exe"), "--version")
+        if (strlen(win_link) > 0):
+            return win_link
+    let ld = _probe_tool("ld.lld", "--version")
+    if (strlen(ld) > 0):
+        return ld
+    let path_plain = _probe_tool("lld", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/lld-link.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _seed_pack_llvm_binaries(pack: String) -> i32:
+    let bin = pack + "/llvm/bin"
+    _ensure_dir_chain(bin)
+    let clang = _resolve_host_clang()
+    let clangxx = _resolve_host_clangxx()
+    let lld = _resolve_host_lld()
+    let clang_copy_ok = 0
+    let lld_copy_ok = 0
+    if (strlen(clang) > 0):
+        if (_ends_with(clang, ".exe") == 1):
+            if (_copy_file(clang, bin + "/clang.exe") == 1):
+                clang_copy_ok = 1
+        else:
+            if (_copy_file(clang, bin + "/clang") == 1):
+                clang_copy_ok = 1
+    if (strlen(clangxx) > 0):
+        if (_ends_with(clangxx, ".exe") == 1):
+            _copy_file(clangxx, bin + "/clang++.exe")
+        else:
+            _copy_file(clangxx, bin + "/clang++")
+    if (strlen(lld) > 0):
+        if (_ends_with(lld, "lld-link.exe") == 1):
+            if (_copy_file(lld, bin + "/lld-link.exe") == 1):
+                lld_copy_ok = 1
+        else:
+            if (_ends_with(lld, ".exe") == 1):
+                if (_copy_file(lld, bin + "/ld.lld.exe") == 1):
+                    lld_copy_ok = 1
+            else:
+                if (_copy_file(lld, bin + "/ld.lld") == 1):
+                    lld_copy_ok = 1
+    if ((clang_copy_ok == 0) and (fs.exists(bin + "/clang") == 1)):
+        clang_copy_ok = 1
+    if ((clang_copy_ok == 0) and (fs.exists(bin + "/clang.exe") == 1)):
+        clang_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/ld.lld") == 1)):
+        lld_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/ld.lld.exe") == 1)):
+        lld_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/lld-link.exe") == 1)):
+        lld_copy_ok = 1
+    if ((clang_copy_ok == 1) and (lld_copy_ok == 1)):
+        return 1
+    return 0
+
+func _install_pack_files(target: String) -> i32:
+    let root = _toolchain_pack_root()
+    let pack = root + "/" + target
+    _ensure_dir_chain(pack)
+    _ensure_dir_chain(pack + "/runtime")
+    let src_root = "targets/packs/" + target
+    _copy_file(src_root + "/manifest.json", pack + "/manifest.json")
+    _copy_file(src_root + "/README.md", pack + "/README.md")
+    _copy_file("libthag_runtime.a", pack + "/runtime/libthag_runtime.a")
+    _copy_file("runtime.a", pack + "/runtime/runtime.a")
+    _copy_file("runtime.lib", pack + "/runtime/runtime.lib")
+    _copy_file("thag_runtime.lib", pack + "/runtime/thag_runtime.lib")
+    if (_seed_pack_llvm_binaries(pack) != 1):
+        print("ERROR: unable to materialize embedded llvm lane for target pack: " + target)
+        return 0
+    return 1
+
+func _remove_pack_files(target: String) -> i32:
+    let pack = _toolchain_pack_root() + "/" + target
+    fs.remove(pack + "/runtime/libthag_runtime.a")
+    fs.remove(pack + "/runtime/runtime.a")
+    fs.remove(pack + "/runtime/runtime.lib")
+    fs.remove(pack + "/runtime/thag_runtime.lib")
+    fs.remove(pack + "/runtime")
+    fs.remove(pack + "/llvm/bin/clang")
+    fs.remove(pack + "/llvm/bin/clang++")
+    fs.remove(pack + "/llvm/bin/ld.lld")
+    fs.remove(pack + "/llvm/bin/clang.exe")
+    fs.remove(pack + "/llvm/bin/clang++.exe")
+    fs.remove(pack + "/llvm/bin/lld-link.exe")
+    fs.remove(pack + "/llvm/bin/ld.lld.exe")
+    fs.remove(pack + "/llvm/bin")
+    fs.remove(pack + "/llvm")
+    fs.remove(pack + "/manifest.json")
+    fs.remove(pack + "/README.md")
+    fs.remove(pack)
+    return 1
+
+func _candidate_add_if_exists(set_text: String, path: String) -> String:
+    if (fs.exists(path) == 1):
+        return _set_add_unique(set_text, path)
+    return set_text
+
+func target_runtime_candidates(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ";"
+    let pack = _toolchain_pack_root() + "/" + target
+    let runtime_dir = pack + "/runtime"
+    let manifest_path = pack + "/manifest.json"
+    let out = ";"
+    let manifest = ""
+    if (fs.exists(manifest_path) == 1):
+        manifest = fs.read_text(manifest_path)
+    if ((_contains(manifest, "runtime/libthag_runtime.a") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/libthag_runtime.a")
+    if ((_contains(manifest, "runtime/runtime.a") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/runtime.a")
+    if ((_contains(manifest, "runtime/thag_runtime.lib") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/thag_runtime.lib")
+    if ((_contains(manifest, "runtime/runtime.lib") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/runtime.lib")
+    return out
+
+func _extract_manifest_string(text: String, key: String) -> String:
+    let needle = "\"" + key + "\""
+    let p = _find(text, needle)
+    if (p < 0):
+        return ""
+    let after_key = p + strlen(needle)
+    let colon = _find(__thg_str_substr(text, after_key, strlen(text) - after_key), ":")
+    if (colon < 0):
+        return ""
+    let start = after_key + colon + 1
+    while (start < strlen(text)):
+        let ws = _char_at(text, start)
+        if ((ws == " ") or (ws == "\t") or (ws == "\r") or (ws == "\n")):
+            start = start + 1
+        else:
+            if (ws != "\""):
+                return ""
+            let i = start + 1
+            let out = ""
+            while (i < strlen(text)):
+                let c = _char_at(text, i)
+                if (c == "\""):
+                    return out
+                out = out + c
+                i = i + 1
+            return ""
+    return ""
+
+func target_link_driver(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ""
+    let manifest_path = _toolchain_pack_root() + "/" + target + "/manifest.json"
+    if (fs.exists(manifest_path) == 0):
+        return ""
+    let text = fs.read_text(manifest_path)
+    return _trim(_extract_manifest_string(text, "link_driver"))
+
+func target_lld_driver(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ""
+    let manifest_path = _toolchain_pack_root() + "/" + target + "/manifest.json"
+    if (fs.exists(manifest_path) == 0):
+        return ""
+    let text = fs.read_text(manifest_path)
+    return _trim(_extract_manifest_string(text, "lld_driver"))
+
+func _pack_driver_path(pack: String, driver_name: String) -> String:
+    let d = _trim(driver_name)
+    if (strlen(d) == 0):
+        return ""
+    let direct = pack + "/llvm/bin/" + d
+    if (fs.exists(direct) == 1):
+        return direct
+    if (_ends_with(d, ".exe") == 0):
+        let with_exe = direct + ".exe"
+        if (fs.exists(with_exe) == 1):
+            return with_exe
+    return ""
+
+func _set_count_entries(set_text: String) -> i32:
+    let token = ""
+    let i = 0
+    let c = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                c = c + 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return c
+
+func target_doctor(triple_raw: String) -> i32:
+    let cfg = _config_read()
+    let t_in = _trim(triple_raw)
+    if (t_in == "all"):
+        let any_fail = 0
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (target_doctor(token) != 0):
+                        any_fail = 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (any_fail == 1):
+            return 2
+        return 0
+    let t = t_in
+    if (strlen(t) == 0):
+        t = _trim(cfg.default_target)
+    if (strlen(t) == 0):
+        print("ERROR: target doctor requires a triple or configured default_target.")
+        return 1
+    let pack = _toolchain_pack_root() + "/" + t
+    let manifest_path = pack + "/manifest.json"
+    let driver_name = target_link_driver(t)
+    let driver_path = _pack_driver_path(pack, driver_name)
+    let lld_name = target_lld_driver(t)
+    let lld_path = _pack_driver_path(pack, lld_name)
+    let runtimes = target_runtime_candidates(t)
+    let runtime_count = _set_count_entries(runtimes)
+    let clang_ok = 0
+    let lld_ok = 0
+    if ((fs.exists(pack + "/llvm/bin/clang") == 1) or (fs.exists(pack + "/llvm/bin/clang.exe") == 1)):
+        clang_ok = 1
+    if ((fs.exists(pack + "/llvm/bin/ld.lld") == 1) or (fs.exists(pack + "/llvm/bin/ld.lld.exe") == 1) or (fs.exists(pack + "/llvm/bin/lld-link.exe") == 1)):
+        lld_ok = 1
+    print("target=" + t)
+    print("pack=" + pack)
+    print("manifest_exists=" + _to_string_i32(fs.exists(manifest_path)))
+    print("installed=" + _to_string_i32(_set_contains(cfg.installed_set, t)))
+    print("link_driver_name=" + driver_name)
+    if (strlen(driver_path) > 0):
+        print("link_driver_path=" + driver_path)
+    else:
+        print("link_driver_path=")
+    print("lld_driver_name=" + lld_name)
+    if (strlen(lld_path) > 0):
+        print("lld_driver_path=" + lld_path)
+    else:
+        print("lld_driver_path=")
+    print("llvm_clang_present=" + _to_string_i32(clang_ok))
+    print("llvm_lld_present=" + _to_string_i32(lld_ok))
+    print("runtime_candidates_count=" + _to_string_i32(runtime_count))
+    if (_set_contains(cfg.installed_set, t) == 0):
+        return 2
+    if (fs.exists(pack) == 0):
+        return 2
+    if (fs.exists(manifest_path) == 0):
+        return 2
+    if (clang_ok == 0):
+        return 2
+    if (lld_ok == 0):
+        return 2
+    if ((strlen(driver_name) > 0) and (strlen(driver_path) == 0)):
+        return 2
+    if ((strlen(lld_name) > 0) and (strlen(lld_path) == 0)):
+        return 2
+    if (runtime_count <= 0):
+        return 2
+    return 0
+
+func _write_config(cfg: ToolchainConfig) -> i32:
+    let path = _toolchain_config_path()
+    _ensure_dir_chain(_dir_name(path))
+    let text = "channel = \"" + cfg.channel + "\"\n"
+    text = text + "toolchain_version = \"" + cfg.version + "\"\n"
+    text = text + "default_target = \"" + cfg.default_target + "\"\n"
+    text = text + "installed_targets = [" + _set_to_quoted_list(cfg.installed_set) + "]\n"
+    text = text + "profile = \"" + cfg.profile + "\"\n"
+    return fs.write_text(path, text)
+
+func _is_supported_target(triple: String) -> i32:
+    if (_set_contains(_supported_set(), triple) == 1):
+        return 1
+    return 0
+
+func _default_target_for_host(os_name: String, arch: String) -> String:
+    if (os_name == "macos"):
+        if (arch == "arm64"):
+            return "aarch64-apple-darwin"
+        return "x86_64-apple-darwin"
+    if ((os_name == "linux") or (os_name == "ubuntu") or (os_name == "portable")):
+        if (arch == "arm64"):
+            return "aarch64-unknown-linux-gnu"
+        return "x86_64-unknown-linux-gnu"
+    return "x86_64-unknown-linux-gnu"
+
+func _parse_targets_csv_set(csv: String) -> String:
+    let out = ";"
+    let token = ""
+    let i = 0
+    while (i < strlen(csv)):
+        let ch = _char_at(csv, i)
+        if (ch == ","):
+            let item = _trim(token)
+            if (strlen(item) > 0):
+                out = _set_add_unique(out, item)
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let item_last = _trim(token)
+    if (strlen(item_last) > 0):
+        out = _set_add_unique(out, item_last)
+    return out
+
+func target_list() -> i32:
+    let sup = _supported_set()
+    let std = _standard_set()
+    let token = ""
+    let i = 0
+    while (i < strlen(sup)):
+        let ch = _char_at(sup, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(std, token) == 1):
+                    print(token + "\tstandard")
+                else:
+                    print(token + "\toptional")
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return 0
+
+func target_installed() -> i32:
+    let cfg = _config_read()
+    let token = ""
+    let i = 0
+    while (i < strlen(cfg.installed_set)):
+        let ch = _char_at(cfg.installed_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                print(token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return 0
+
+func target_add(triple: String) -> i32:
+    let t = _trim(triple)
+    if (_is_supported_target(t) == 0):
+        print("ERROR: unsupported target triple: " + t)
+        return 1
+    let cfg = _config_read()
+    cfg.installed_set = _set_add_unique(cfg.installed_set, t)
+    if (strlen(cfg.default_target) == 0):
+        cfg.default_target = t
+    if (_install_pack_files(t) == 0):
+        return 1
+    _write_config(cfg)
+    print("added=" + t)
+    return 0
+
+func target_remove(triple: String) -> i32:
+    let t = _trim(triple)
+    let cfg = _config_read()
+    cfg.installed_set = _set_difference(cfg.installed_set, ";" + t + ";")
+    if (cfg.default_target == t):
+        cfg.default_target = ""
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    cfg.default_target = token
+                    i = strlen(cfg.installed_set)
+                token = ""
+            else:
+                token = token + ch
+            i = i + 1
+    _remove_pack_files(t)
+    _write_config(cfg)
+    print("removed=" + t)
+    return 0
+
+func target_ensure(triple: String) -> i32:
+    let t = _trim(triple)
+    let cfg = _config_read()
+    if (t == "all"):
+        let any_fail = 0
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (target_ensure(token) != 0):
+                        any_fail = 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (any_fail == 1):
+            return 2
+        return 0
+    if (_set_contains(cfg.installed_set, t) == 0):
+        print("missing=" + t)
+        return 2
+    if (fs.exists(_toolchain_pack_root() + "/" + t) == 0):
+        print("missing=" + t)
+        return 2
+    let pack = _toolchain_pack_root() + "/" + t
+    let llvm_bin = pack + "/llvm/bin"
+    let has_clang = ((fs.exists(llvm_bin + "/clang") == 1) or (fs.exists(llvm_bin + "/clang.exe") == 1))
+    let has_lld = ((fs.exists(llvm_bin + "/ld.lld") == 1) or (fs.exists(llvm_bin + "/ld.lld.exe") == 1) or (fs.exists(llvm_bin + "/lld-link.exe") == 1))
+    if ((has_clang == 0) or (has_lld == 0)):
+        _seed_pack_llvm_binaries(pack)
+    let has_clang_after = ((fs.exists(llvm_bin + "/clang") == 1) or (fs.exists(llvm_bin + "/clang.exe") == 1))
+    let has_lld_after = ((fs.exists(llvm_bin + "/ld.lld") == 1) or (fs.exists(llvm_bin + "/ld.lld.exe") == 1) or (fs.exists(llvm_bin + "/lld-link.exe") == 1))
+    if ((has_clang_after == 0) or (has_lld_after == 0)):
+        print("missing=" + t)
+        return 2
+    print("ok=" + t)
+    return 0
+
+func install_apply_profile(profile_raw: String, targets_raw: String, detected_os: String, detected_arch: String, version: String, channel: String) -> i32:
+    let profile = _trim(profile_raw)
+    let cfg = _config_read()
+    let use_profile = profile
+    if (strlen(use_profile) == 0):
+        use_profile = "standard"
+    let target_set = ";"
+    if (use_profile == "standard"):
+        target_set = _standard_set()
+    else:
+        if (use_profile != "custom"):
+            print("ERROR: --profile must be standard or custom.")
+            return 1
+        target_set = _parse_targets_csv_set(targets_raw)
+        if (_set_count(target_set) <= 0):
+            print("ERROR: custom profile requires --targets.")
+            return 1
+    let token = ""
+    let i = 0
+    while (i < strlen(target_set)):
+        let ch = _char_at(target_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_is_supported_target(token) == 0):
+                    print("ERROR: unsupported target triple: " + token)
+                    return 1
+                if (_install_pack_files(token) == 0):
+                    return 1
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    cfg.channel = channel
+    cfg.version = version
+    cfg.profile = use_profile
+    cfg.installed_set = target_set
+    cfg.default_target = _default_target_for_host(detected_os, detected_arch)
+    if (_set_contains(cfg.installed_set, cfg.default_target) == 0):
+        cfg.default_target = ""
+        let token2 = ""
+        let j = 0
+        while (j < strlen(cfg.installed_set)):
+            let ch2 = _char_at(cfg.installed_set, j)
+            if (ch2 == ";"):
+                if (strlen(token2) > 0):
+                    cfg.default_target = token2
+                    j = strlen(cfg.installed_set)
+                token2 = ""
+            else:
+                token2 = token2 + ch2
+            j = j + 1
+    _write_config(cfg)
+    print("config=" + _toolchain_config_path())
+    print("profile=" + cfg.profile)
+    print("default_target=" + cfg.default_target)
+    print("installed_targets=" + _set_to_csv(cfg.installed_set))
+    return 0

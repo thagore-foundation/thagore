@@ -1,0 +1,68 @@
+import "src/v0/parser/ast.tg"
+import "src/v0/sema/errors.tg"
+import "src/v0/ir/module.tg"
+import "src/v0/ir/builder.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+struct V0SemaResult:
+    module: V0IrModule
+    error_count: i32
+    error_code: String
+    error_message: String
+
+func _ch(text: String, i: i32) -> String:
+    return __thg_str_substr(text, i, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _parse_stmt_row(module: V0IrModule, row: String) -> V0SemaResult:
+    if (_contains(row, "call|print|string|") == 1):
+        let lit = __thg_str_substr(row, 18, strlen(row) - 18)
+        let with_str = v0_ir_add_string(module, "s0", lit)
+        let with_call = v0_ir_add_instr(with_str, "main", "entry", "call_print", "s0", "", "void")
+        return V0SemaResult(with_call, 0, "", "")
+    if (_contains(row, "ret|int|") == 1):
+        let v = __thg_str_substr(row, 8, strlen(row) - 8)
+        let with_ret = v0_ir_add_instr(module, "main", "entry", "ret", v, "", "i32")
+        return V0SemaResult(with_ret, 0, "", "")
+    if (_contains(row, "call|print|") == 1):
+        return V0SemaResult(module, 1, V0_ESEMA_BAD_PRINT_ARG, "print expects string literal argument")
+    return V0SemaResult(module, 1, V0_ESEMA_BAD_RETURN, "unsupported statement in semantic phase")
+
+func v0_typecheck_and_lower(ast: V0AstProgram) -> V0SemaResult:
+    if (ast.error_count > 0):
+        return V0SemaResult(v0_ir_module_new(), 1, ast.error_code, ast.error_message)
+    let module = v0_ir_module_new()
+    let m1 = v0_ir_add_function(module, "main", "i32")
+    let m2 = v0_ir_add_block(m1, "main", "entry")
+    let i = 0
+    let n = strlen(ast.stmts)
+    let token = ""
+    let cur = m2
+    while (i < n):
+        let c = _ch(ast.stmts, i)
+        if (c == ";"):
+            if (strlen(token) > 0):
+                let step = _parse_stmt_row(cur, token)
+                if (step.error_count > 0):
+                    return step
+                cur = step.module
+                token = ""
+        else:
+            token = token + c
+        i = i + 1
+    if (_contains(cur.instrs, "|main|entry|ret|") == 0):
+        return V0SemaResult(cur, 1, V0_ESEMA_BAD_RETURN, "main must return i32")
+    return V0SemaResult(cur, 0, "", "")

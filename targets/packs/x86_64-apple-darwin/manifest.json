@@ -1,0 +1,18 @@
+{
+  "schema": "thagc.target.pack.v1",
+  "target": "x86_64-apple-darwin",
+  "link_driver": "clang",
+  "lld_driver": "ld.lld",
+  "runtime_candidates": [
+    "runtime/libthag_runtime.a",
+    "runtime/runtime.a"
+  ],
+  "llvm_bundle": {
+    "version": "21.1.8",
+    "embedded": true,
+    "bin_dir": "llvm/bin",
+    "lib_dir": "llvm/lib",
+    "link_driver": "llvm/bin/clang",
+    "lld_driver": "llvm/bin/ld.lld"
+  }
+}

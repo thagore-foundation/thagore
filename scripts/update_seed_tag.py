@@ -5,23 +5,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_FILES = [
-    ".github/workflows/ci.yml",
-    ".github/workflows/selfhost-matrix.yml",
-    ".github/workflows/release.yml",
-    ".github/workflows/bootstrap-seed.yml",
-    ".github/workflows/selfhost-longhaul.yml",
-    ".github/workflows/selfhost-soak-nightly.yml",
-    ".github/workflows/seed-stage1.yml",
+    ".github/workflows/core-ci.yml",
+    ".github/workflows/core-selfhost.yml",
+    ".github/workflows/core-release.yml",
+    ".github/workflows/core-seed-stage1.yml",
 ]
 
 
 def _current_seed_tag() -> str:
-    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    ci = (ROOT / ".github/workflows/core-ci.yml").read_text(encoding="utf-8")
     m = re.search(r'BOOTSTRAP_STAGE1_TAG:\s*"([^"]+)"', ci)
     if not m:
         m = re.search(r"BOOTSTRAP_STAGE1_TAG:\s*([vV][0-9A-Za-z._-]+)", ci)
     if not m:
-        raise RuntimeError("Cannot detect current BOOTSTRAP_STAGE1_TAG from .github/workflows/ci.yml")
+        raise RuntimeError("Cannot detect current BOOTSTRAP_STAGE1_TAG from .github/workflows/core-ci.yml")
     return m.group(1)
 
 

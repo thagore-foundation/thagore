@@ -1,0 +1,51 @@
+name: Core Seed Stage1
+
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap_stage1_tag:
+        description: "Stage1 seed tag to verify/publish metadata for."
+        required: true
+        default: "v0.3.168-stage1-seed"
+
+concurrency:
+  group: core-seed-stage1-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+
+jobs:
+  seed-contract:
+    name: seed-contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Enforce promotion gate policy
+        run: >
+          python scripts/enforce_seed_promotion_gate.py
+          --workflow .github/workflows/core-seed-stage1.yml
+          --report seed-promotion-gate-core.txt
+
+      - name: Emit seed metadata
+        run: |
+          echo "name=core-seed-stage1" > core-seed-stage1-metadata.txt
+          echo "bootstrap_stage1_tag=${{ github.event.inputs.bootstrap_stage1_tag }}" >> core-seed-stage1-metadata.txt
+          echo "workflow_bootstrap_stage1_tag=${BOOTSTRAP_STAGE1_TAG}" >> core-seed-stage1-metadata.txt
+          echo "requires=thagc-core-*,thagc-target-*" >> core-seed-stage1-metadata.txt
+
+      - name: Upload seed metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-seed-stage1-report
+          path: |
+            seed-promotion-gate-core.txt
+            core-seed-stage1-metadata.txt
+

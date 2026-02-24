@@ -1,0 +1,19 @@
+struct V0Token:
+    kind: String
+    lexeme: String
+    start: i32
+    end: i32
+    line: i32
+    col: i32
+
+struct V0LexResult:
+    tokens: String
+    error_count: i32
+    error_code: String
+    error_message: String
+
+func v0_lex_result_new(tokens: String) -> V0LexResult:
+    return V0LexResult(tokens, 0, "", "")
+
+func v0_lex_result_error(code: String, message: String) -> V0LexResult:
+    return V0LexResult(";", 1, code, message)

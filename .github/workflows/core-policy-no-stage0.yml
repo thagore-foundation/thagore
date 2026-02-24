@@ -1,0 +1,43 @@
+name: Core Policy No Stage0
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: core-policy-no-stage0-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enforce workflow policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          HITS="$(grep -REn \"stage0|THAG_STAGE0_HELPER|ALLOW_STAGE0_BOOTSTRAP\" .github/workflows | grep -Ev \"core-policy-no-stage0.yml\" || true)"
+          if [[ -n "$HITS" ]]; then
+            echo "CRITICAL: Stage0 markers are forbidden in workflows."
+            echo "$HITS"
+            exit 1
+          fi
+          FALLBACK_HITS="$(grep -REn \"fallback to existing compiler binary|fallback to previous stage2 binary|allow_missing_output\" .github/workflows || true)"
+          if [[ -n "$FALLBACK_HITS" ]]; then
+            echo "CRITICAL: compiler-output fallback paths are forbidden in workflows."
+            echo "$FALLBACK_HITS"
+            exit 1
+          fi
+          echo "Policy OK: no Stage0 markers in workflows." > policy-no-stage0-report.txt
+
+      - name: Upload policy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-policy-no-stage0-report
+          path: policy-no-stage0-report.txt
+

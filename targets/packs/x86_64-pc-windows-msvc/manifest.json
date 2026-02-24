@@ -1,0 +1,18 @@
+{
+  "schema": "thagc.target.pack.v1",
+  "target": "x86_64-pc-windows-msvc",
+  "link_driver": "clang",
+  "lld_driver": "lld-link",
+  "runtime_candidates": [
+    "runtime/runtime.lib",
+    "runtime/thag_runtime.lib"
+  ],
+  "llvm_bundle": {
+    "version": "21.1.8",
+    "embedded": true,
+    "bin_dir": "llvm/bin",
+    "lib_dir": "llvm/lib",
+    "link_driver": "llvm/bin/clang.exe",
+    "lld_driver": "llvm/bin/lld-link.exe"
+  }
+}

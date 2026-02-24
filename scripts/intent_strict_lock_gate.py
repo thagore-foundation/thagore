@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INTENT_SUITE = ROOT / "scripts" / "intent_suite.py"
 DEFAULT_WORKFLOWS = [
-    ROOT / ".github" / "workflows" / "ci.yml",
-    ROOT / ".github" / "workflows" / "selfhost-matrix.yml",
+    ROOT / ".github" / "workflows" / "core-ci.yml",
+    ROOT / ".github" / "workflows" / "core-selfhost.yml",
 ]
 GATE_SCRIPT_REF = "scripts/intent_strict_lock_gate.py"
 
@@ -95,7 +95,7 @@ def main() -> int:
         "--workflow",
         action="append",
         default=None,
-        help="Workflow file to check (repeatable). Defaults: ci.yml + selfhost-matrix.yml",
+        help="Workflow file to check (repeatable). Defaults: core-ci.yml + core-selfhost.yml",
     )
     args = parser.parse_args()
 

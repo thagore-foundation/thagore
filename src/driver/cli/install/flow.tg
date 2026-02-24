@@ -2,6 +2,7 @@ import "src/driver/cli/common/core.tg"
 import "src/driver/cli/install/args.tg"
 import "src/driver/cli/install/platform.tg"
 import "src/driver/cli/install/prompt.tg"
+import "src/driver/cli/target/flow.tg" as targetctl
 
 func _install_has_llvm(expected_version: String) -> i32:
     if (process.run("clang --version > thagore_install_clang.log 2>&1") != 0):
@@ -16,19 +17,110 @@ func _install_has_llvm(expected_version: String) -> i32:
             return 1
     return 0
 
-func _install_build_command(os_name: String, arch: String, llvm_version: String, yes: i32) -> String:
-    let yes_flag = ""
-    if (yes == 1):
-        yes_flag = " --yes"
+func _install_run_step(cmd: String, dry_run: i32) -> i32:
+    print("[install] cmd=" + cmd)
+    if (dry_run == 1):
+        return 0
+    let rc = process.run(cmd)
+    if (rc != 0):
+        print("ERROR: install command failed with code=" + _to_string_i32(rc))
+        return rc
+    return 0
+
+func _install_has_cmd_unix(name: String) -> i32:
+    if (process.run("command -v " + name + " > thagore_install_probe_cmd.log 2>&1") == 0):
+        return 1
+    return 0
+
+func _install_has_cmd_windows(name: String) -> i32:
+    if (process.run("cmd /c where " + name + " > thagore_install_probe_cmd.log 2>&1") == 0):
+        return 1
+    return 0
+
+func _install_run_ubuntu(llvm_version: String, dry_run: i32) -> i32:
+    if (_install_run_step("sudo apt-get update", dry_run) != 0):
+        return 1
+    if (_install_run_step("curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh", dry_run) != 0):
+        return 1
+    if (_install_run_step("chmod +x /tmp/llvm.sh", dry_run) != 0):
+        return 1
+    if (_install_run_step("sudo /tmp/llvm.sh 21 all", dry_run) != 0):
+        return 1
+    return 0
+
+func _install_run_linux(llvm_version: String, dry_run: i32) -> i32:
+    if (_install_has_cmd_unix("apt-get") == 1):
+        return _install_run_ubuntu(llvm_version, dry_run)
+    if (_install_has_cmd_unix("dnf") == 1):
+        return _install_run_step("sudo dnf install -y clang lld llvm llvm-devel", dry_run)
+    if (_install_has_cmd_unix("yum") == 1):
+        return _install_run_step("sudo yum install -y clang lld llvm llvm-devel", dry_run)
+    if (_install_has_cmd_unix("pacman") == 1):
+        return _install_run_step("sudo pacman -Sy --noconfirm clang lld llvm", dry_run)
+    if (_install_has_cmd_unix("zypper") == 1):
+        return _install_run_step("sudo zypper --non-interactive install clang llvm lld", dry_run)
+    if (_install_has_cmd_unix("apk") == 1):
+        return _install_run_step("sudo apk add llvm clang lld", dry_run)
+    print("ERROR: unsupported Linux package manager for auto LLVM install.")
+    return 1
+
+func _install_run_macos(llvm_version: String, dry_run: i32) -> i32:
+    if (_install_has_cmd_unix("brew") == 0):
+        print("ERROR: Homebrew is required to install LLVM automatically on macOS.")
+        return 1
+    if (_install_run_step("brew update", dry_run) != 0):
+        return 1
+    _install_run_step("brew tap thagore-foundation/llvm || true", dry_run)
+    if (_install_run_step("brew list llvm@21 >/dev/null 2>&1 || brew install llvm@21 || brew install llvm", dry_run) != 0):
+        return 1
+    return 0
+
+func _install_run_windows(llvm_version: String, dry_run: i32) -> i32:
+    if (_install_has_cmd_windows("winget.exe") == 1):
+        return _install_run_step("winget install --id LLVM.LLVM --version 21.1.8 --silent --accept-package-agreements --accept-source-agreements", dry_run)
+    if (_install_has_cmd_windows("choco.exe") == 1):
+        return _install_run_step("choco install llvm --version=21.1.8 --no-progress -y --execution-timeout=1800", dry_run)
+    print("ERROR: Windows installer requires winget or choco.")
+    return 1
+
+func _portable_llvm_prefix() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/llvm-21.1.8")
+    return ".thagc/llvm-21.1.8"
+
+func _install_run_portable(llvm_version: String, dry_run: i32) -> i32:
+    let prefix = _portable_llvm_prefix()
+    if (_install_has_cmd_unix("git") == 0):
+        print("ERROR: portable mode requires git + cmake + ninja.")
+        return 1
+    if (_install_has_cmd_unix("cmake") == 0):
+        print("ERROR: portable mode requires git + cmake + ninja.")
+        return 1
+    if (_install_has_cmd_unix("ninja") == 0):
+        print("ERROR: portable mode requires git + cmake + ninja.")
+        return 1
+    let workdir = ".thagore-portable-llvm-src"
+    if (_install_run_step("rm -rf " + workdir, dry_run) != 0):
+        return 1
+    if (_install_run_step("git clone --depth 1 --branch llvmorg-21.1.8 https://github.com/llvm/llvm-project " + workdir, dry_run) != 0):
+        return 1
+    if (_install_run_step("cmake -S " + workdir + "/llvm -B " + workdir + "/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=" + _quote(prefix) + " -DLLVM_ENABLE_PROJECTS=clang\\;lld -DLLVM_TARGETS_TO_BUILD=AArch64\\;X86", dry_run) != 0):
+        return 1
+    if (_install_run_step("cmake --build " + workdir + "/build --target install -j2", dry_run) != 0):
+        return 1
+    return 0
+
+func _install_run_native_toolchain(os_name: String, llvm_version: String, dry_run: i32) -> i32:
     if (os_name == "windows"):
-        return "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/windows.ps1 --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+        return _install_run_windows(llvm_version, dry_run)
     if (os_name == "ubuntu"):
-        return "bash scripts/install/ubuntu.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+        return _install_run_ubuntu(llvm_version, dry_run)
     if (os_name == "macos"):
-        return "bash scripts/install/macos.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+        return _install_run_macos(llvm_version, dry_run)
     if (os_name == "linux"):
-        return "bash scripts/install/linux.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
-    return "bash scripts/install/portable.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+        return _install_run_linux(llvm_version, dry_run)
+    return _install_run_portable(llvm_version, dry_run)
 
 func _install_toolchain(argc: i32, start: i32) -> i32:
     let parsed = _install_parse_toolchain_args(argc, start)
@@ -51,22 +143,21 @@ func _install_toolchain(argc: i32, start: i32) -> i32:
         print("ERROR: unsupported --arch: " + parsed.arch)
         return 1
     if (_install_has_llvm(parsed.llvm_version) == 1):
-        print("LLVM " + parsed.llvm_version + " already available.")
-        return 0
-    if (_install_confirm_install(parsed.yes, target_os, target_arch, parsed.llvm_version) == 0):
-        print("Install aborted.")
-        return 1
-    let cmd = _install_build_command(target_os, target_arch, parsed.llvm_version, parsed.yes)
-    print("[install] target_os=" + target_os + " arch=" + target_arch + " llvm=" + parsed.llvm_version)
-    print("[install] cmd=" + cmd)
+        print("LLVM " + parsed.llvm_version + " already available. Continue to configure toolchain profile.")
+    else:
+        if (_install_confirm_install(parsed.yes, target_os, target_arch, parsed.llvm_version) == 0):
+            print("Install aborted.")
+            return 1
+    print("[install] target_os=" + target_os + " arch=" + target_arch + " llvm=" + parsed.llvm_version + " profile=" + parsed.profile)
+    let rc = _install_run_native_toolchain(target_os, parsed.llvm_version, parsed.dry_run)
+    if (rc != 0):
+        return rc
     if (parsed.dry_run == 1):
         return 0
-    let rc = process.run(cmd)
-    if (rc != 0):
-        print("ERROR: install command failed with code=" + _to_string_i32(rc))
-        return rc
     if (_install_has_llvm(parsed.llvm_version) == 0):
         print("ERROR: LLVM verification failed after install.")
+        return 1
+    if (targetctl.install_apply_profile(parsed.profile, parsed.targets, target_os, target_arch, "local", "stable") != 0):
         return 1
     print("LLVM toolchain ready.")
     return 0

@@ -1,0 +1,10 @@
+struct V0IrInstr:
+    func_name: String
+    block_name: String
+    op: String
+    arg0: String
+    arg1: String
+    result_type: String
+
+func v0_ir_instr(func_name: String, block_name: String, op: String, arg0: String, arg1: String, result_type: String) -> V0IrInstr:
+    return V0IrInstr(func_name, block_name, op, arg0, arg1, result_type)
