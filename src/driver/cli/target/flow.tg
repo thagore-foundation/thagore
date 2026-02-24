@@ -249,6 +249,44 @@ func target_runtime_candidates(target_raw: String) -> String:
         out = _candidate_add_if_exists(out, runtime_dir + "/runtime.lib")
     return out
 
+func _extract_manifest_string(text: String, key: String) -> String:
+    let needle = "\"" + key + "\""
+    let p = _find(text, needle)
+    if (p < 0):
+        return ""
+    let after_key = p + strlen(needle)
+    let colon = _find(__thg_str_substr(text, after_key, strlen(text) - after_key), ":")
+    if (colon < 0):
+        return ""
+    let start = after_key + colon + 1
+    while (start < strlen(text)):
+        let ws = _char_at(text, start)
+        if ((ws == " ") or (ws == "\t") or (ws == "\r") or (ws == "\n")):
+            start = start + 1
+        else:
+            if (ws != "\""):
+                return ""
+            let i = start + 1
+            let out = ""
+            while (i < strlen(text)):
+                let c = _char_at(text, i)
+                if (c == "\""):
+                    return out
+                out = out + c
+                i = i + 1
+            return ""
+    return ""
+
+func target_link_driver(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ""
+    let manifest_path = _toolchain_pack_root() + "/" + target + "/manifest.json"
+    if (fs.exists(manifest_path) == 0):
+        return ""
+    let text = fs.read_text(manifest_path)
+    return _trim(_extract_manifest_string(text, "link_driver"))
+
 func _write_config(cfg: ToolchainConfig) -> i32:
     let path = _toolchain_config_path()
     _ensure_dir_chain(_dir_name(path))
