@@ -1,0 +1,116 @@
+import "src/v0/ir/module.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+extern func __thg_llvm_emit_object_from_ir(ir_text: String, module_name: String, object_path: String) -> i32
+
+func _ch(text: String, i: i32) -> String:
+    return __thg_str_substr(text, i, 1)
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _to_i32(v: i32) -> String:
+    if (v == 0):
+        return "0"
+    let out = ""
+    let x = v
+    while (x > 0):
+        let q = x / 10
+        let d = x - (q * 10)
+        out = __thg_str_substr("0123456789", d, 1) + out
+        x = q
+    return out
+
+func _escape_llvm_string(s: String) -> String:
+    let out = ""
+    let i = 0
+    while (i < strlen(s)):
+        let c = _ch(s, i)
+        if (c == "\\"):
+            out = out + "\\5C"
+        else:
+            if (c == "\""):
+                out = out + "\\22"
+            else:
+                if (c == "\n"):
+                    out = out + "\\0A"
+                else:
+                    out = out + c
+        i = i + 1
+    return out
+
+func _extract_first_string(module: V0IrModule) -> String:
+    let rows = module.strings
+    let i = 0
+    let token = ""
+    while (i < strlen(rows)):
+        let c = _ch(rows, i)
+        if (c == ";"):
+            if (strlen(token) > 0):
+                if (_contains(token, "str|s0|") == 1):
+                    return __thg_str_substr(token, 7, strlen(token) - 7)
+                token = ""
+        else:
+            token = token + c
+        i = i + 1
+    return ""
+
+func _extract_return(module: V0IrModule) -> String:
+    let rows = module.instrs
+    let i = 0
+    let token = ""
+    while (i < strlen(rows)):
+        let c = _ch(rows, i)
+        if (c == ";"):
+            if (strlen(token) > 0):
+                if (_contains(token, "|ret|") == 1):
+                    let p = 0
+                    let last = 0
+                    while (p < strlen(token)):
+                        if (_ch(token, p) == "|"):
+                            last = p
+                        p = p + 1
+                    let q = last - 1
+                    while ((q >= 0) and (_ch(token, q) != "|")):
+                        q = q - 1
+                    if (q >= 0):
+                        return __thg_str_substr(token, q + 1, last - q - 1)
+                token = ""
+        else:
+            token = token + c
+        i = i + 1
+    return "0"
+
+func v0_emit_llvm_ir(module: V0IrModule, module_name: String) -> String:
+    let s = _extract_first_string(module)
+    let escaped = _escape_llvm_string(s)
+    let n = strlen(s) + 1
+    let retv = _extract_return(module)
+    let ir = "; ModuleID = '" + module_name + "'\n"
+    ir = ir + "declare void @__thg_print_str(ptr, i32)\n"
+    ir = ir + "@.str0 = private unnamed_addr constant [" + _to_i32(n) + " x i8] c\"" + escaped + "\\00\"\n"
+    ir = ir + "define i32 @main() {\n"
+    if (strlen(s) > 0):
+        ir = ir + "entry:\n"
+        ir = ir + "  %p = getelementptr inbounds [" + _to_i32(n) + " x i8], ptr @.str0, i64 0, i64 0\n"
+        ir = ir + "  call void @__thg_print_str(ptr %p, i32 " + _to_i32(strlen(s)) + ")\n"
+        ir = ir + "  ret i32 " + retv + "\n"
+    else:
+        ir = ir + "entry:\n"
+        ir = ir + "  ret i32 " + retv + "\n"
+    ir = ir + "}\n"
+    return ir
+
+func v0_emit_object(module: V0IrModule, module_name: String, object_path: String) -> i32:
+    let ir = v0_emit_llvm_ir(module, module_name)
+    return __thg_llvm_emit_object_from_ir(ir, module_name, object_path)

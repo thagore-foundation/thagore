@@ -1,0 +1,40 @@
+import "lib/fs.tg" as fs
+import "lib/process.tg" as process
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _q(path: String) -> String:
+    return "\"" + path + "\""
+
+func v0_detect_clang() -> String:
+    if (process.run("clang --version > /tmp/thagore_v0_clang_probe.log 2>&1") == 0):
+        return "clang"
+    if (process.run("clang++ --version > /tmp/thagore_v0_clang_probe.log 2>&1") == 0):
+        return "clang++"
+    return ""
+
+func v0_link_exe(clang_bin: String, object_path: String, out_path: String) -> i32:
+    let runtime = "libthag_runtime.a"
+    if (fs.exists(runtime) == 0):
+        runtime = "thag_runtime.lib"
+    if (fs.exists(runtime) == 0):
+        print("ERROR: missing runtime library (libthag_runtime.a or thag_runtime.lib)")
+        return 1
+    let mode = ""
+    if ((_contains(clang_bin, "clang++") == 0) and (_contains(runtime, ".a") == 1)):
+        mode = " --driver-mode=g++"
+    let cmd = clang_bin + mode + " " + _q(object_path) + " -o " + _q(out_path) + " " + _q(runtime)
+    return process.run(cmd)
