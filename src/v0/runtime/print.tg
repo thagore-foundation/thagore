@@ -1,0 +1,4 @@
+import "src/v0/runtime/abi.tg"
+
+func v0_runtime_print_contract() -> String:
+    return "runtime uses " + v0_runtime_abi_name()
