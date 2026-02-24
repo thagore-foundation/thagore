@@ -197,6 +197,137 @@ func _copy_file(src: String, dst: String) -> i32:
     fs.close(fout)
     return 1
 
+func _probe_tool(candidate_raw: String, version_arg: String) -> String:
+    let candidate = _trim(candidate_raw)
+    if (strlen(candidate) == 0):
+        return ""
+    if (process.run(_quote(candidate) + " " + version_arg + " > thagore_target_tool_probe.log 2>&1") == 0):
+        return candidate
+    return ""
+
+func _resolve_host_clang() -> String:
+    let env_driver = _trim(env.get_var("THAG_LINK_DRIVER"))
+    let probe_env = _probe_tool(env_driver, "--version")
+    if (strlen(probe_env) > 0):
+        return probe_env
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/clang"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/clang"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_local = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/clang.exe"), "--version")
+        if (strlen(win_local) > 0):
+            return win_local
+        let win_generic = _probe_tool(_normalize_path(profile + "/.thagc/llvm/bin/clang.exe"), "--version")
+        if (strlen(win_generic) > 0):
+            return win_generic
+    let path_plain = _probe_tool("clang", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let usr = _probe_tool("/usr/bin/clang", "--version")
+    if (strlen(usr) > 0):
+        return usr
+    let usr_local = _probe_tool("/usr/local/bin/clang", "--version")
+    if (strlen(usr_local) > 0):
+        return usr_local
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/clang.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _resolve_host_clangxx() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/clang++"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/clang++"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_local = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/clang++.exe"), "--version")
+        if (strlen(win_local) > 0):
+            return win_local
+        let win_generic = _probe_tool(_normalize_path(profile + "/.thagc/llvm/bin/clang++.exe"), "--version")
+        if (strlen(win_generic) > 0):
+            return win_generic
+    let path_plain = _probe_tool("clang++", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let usr = _probe_tool("/usr/bin/clang++", "--version")
+    if (strlen(usr) > 0):
+        return usr
+    let usr_local = _probe_tool("/usr/local/bin/clang++", "--version")
+    if (strlen(usr_local) > 0):
+        return usr_local
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/clang++.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _resolve_host_lld() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_ld = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/ld.lld"), "--version")
+        if (strlen(local_ld) > 0):
+            return local_ld
+        let local = _probe_tool(_normalize_path(home + "/.thagc/llvm-21.1.8/bin/lld"), "--version")
+        if (strlen(local) > 0):
+            return local
+        let generic_ld = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/ld.lld"), "--version")
+        if (strlen(generic_ld) > 0):
+            return generic_ld
+        let generic = _probe_tool(_normalize_path(home + "/.thagc/llvm/bin/lld"), "--version")
+        if (strlen(generic) > 0):
+            return generic
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_link = _probe_tool(_normalize_path(profile + "/.thagc/llvm-21.1.8/bin/lld-link.exe"), "--version")
+        if (strlen(win_link) > 0):
+            return win_link
+    let ld = _probe_tool("ld.lld", "--version")
+    if (strlen(ld) > 0):
+        return ld
+    let path_plain = _probe_tool("lld", "--version")
+    if (strlen(path_plain) > 0):
+        return path_plain
+    let win_pf = _probe_tool("C:/Progra~1/LLVM/bin/lld-link.exe", "--version")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
+func _seed_pack_llvm_binaries(pack: String) -> i32:
+    let bin = pack + "/llvm/bin"
+    _ensure_dir_chain(bin)
+    let clang = _resolve_host_clang()
+    let clangxx = _resolve_host_clangxx()
+    let lld = _resolve_host_lld()
+    if (strlen(clang) > 0):
+        if (_ends_with(clang, ".exe") == 1):
+            _copy_file(clang, bin + "/clang.exe")
+        else:
+            _copy_file(clang, bin + "/clang")
+    if (strlen(clangxx) > 0):
+        if (_ends_with(clangxx, ".exe") == 1):
+            _copy_file(clangxx, bin + "/clang++.exe")
+        else:
+            _copy_file(clangxx, bin + "/clang++")
+    if (strlen(lld) > 0):
+        if (_ends_with(lld, "lld-link.exe") == 1):
+            _copy_file(lld, bin + "/lld-link.exe")
+        else:
+            if (_ends_with(lld, ".exe") == 1):
+                _copy_file(lld, bin + "/ld.lld.exe")
+            else:
+                _copy_file(lld, bin + "/ld.lld")
+    return 1
+
 func _install_pack_files(target: String) -> i32:
     let root = _toolchain_pack_root()
     let pack = root + "/" + target
@@ -209,6 +340,7 @@ func _install_pack_files(target: String) -> i32:
     _copy_file("runtime.a", pack + "/runtime/runtime.a")
     _copy_file("runtime.lib", pack + "/runtime/runtime.lib")
     _copy_file("thag_runtime.lib", pack + "/runtime/thag_runtime.lib")
+    _seed_pack_llvm_binaries(pack)
     return 1
 
 func _remove_pack_files(target: String) -> i32:
@@ -218,6 +350,15 @@ func _remove_pack_files(target: String) -> i32:
     fs.remove(pack + "/runtime/runtime.lib")
     fs.remove(pack + "/runtime/thag_runtime.lib")
     fs.remove(pack + "/runtime")
+    fs.remove(pack + "/llvm/bin/clang")
+    fs.remove(pack + "/llvm/bin/clang++")
+    fs.remove(pack + "/llvm/bin/ld.lld")
+    fs.remove(pack + "/llvm/bin/clang.exe")
+    fs.remove(pack + "/llvm/bin/clang++.exe")
+    fs.remove(pack + "/llvm/bin/lld-link.exe")
+    fs.remove(pack + "/llvm/bin/ld.lld.exe")
+    fs.remove(pack + "/llvm/bin")
+    fs.remove(pack + "/llvm")
     fs.remove(pack + "/manifest.json")
     fs.remove(pack + "/README.md")
     fs.remove(pack)
@@ -412,6 +553,10 @@ func target_ensure(triple: String) -> i32:
     if (fs.exists(_toolchain_pack_root() + "/" + t) == 0):
         print("missing=" + t)
         return 2
+    let pack = _toolchain_pack_root() + "/" + t
+    let llvm_bin = pack + "/llvm/bin"
+    if ((fs.exists(llvm_bin + "/clang") == 0) and (fs.exists(llvm_bin + "/clang.exe") == 0)):
+        _seed_pack_llvm_binaries(pack)
     print("ok=" + t)
     return 0
 
