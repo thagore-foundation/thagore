@@ -185,6 +185,11 @@ func _ensure_target_ready() -> i32:
         print("ERROR: target pack directory is missing: " + pack_path)
         print("HINT: run 'thagore target add " + requested + "' to install target pack files.")
         return 1
+    let ensure_rc = targetctl.target_ensure(requested)
+    if (ensure_rc != 0):
+        print("ERROR: target ensure failed for " + requested)
+        print("HINT: run 'thagore target add " + requested + "' to reinstall target pack and embedded llvm lane.")
+        return 1
     env.set_var("THAG_BUILD_TARGET", requested)
     return 0
 
