@@ -308,11 +308,15 @@ func _seed_pack_llvm_binaries(pack: String) -> i32:
     let clang = _resolve_host_clang()
     let clangxx = _resolve_host_clangxx()
     let lld = _resolve_host_lld()
+    let clang_copy_ok = 0
+    let lld_copy_ok = 0
     if (strlen(clang) > 0):
         if (_ends_with(clang, ".exe") == 1):
-            _copy_file(clang, bin + "/clang.exe")
+            if (_copy_file(clang, bin + "/clang.exe") == 1):
+                clang_copy_ok = 1
         else:
-            _copy_file(clang, bin + "/clang")
+            if (_copy_file(clang, bin + "/clang") == 1):
+                clang_copy_ok = 1
     if (strlen(clangxx) > 0):
         if (_ends_with(clangxx, ".exe") == 1):
             _copy_file(clangxx, bin + "/clang++.exe")
@@ -320,13 +324,28 @@ func _seed_pack_llvm_binaries(pack: String) -> i32:
             _copy_file(clangxx, bin + "/clang++")
     if (strlen(lld) > 0):
         if (_ends_with(lld, "lld-link.exe") == 1):
-            _copy_file(lld, bin + "/lld-link.exe")
+            if (_copy_file(lld, bin + "/lld-link.exe") == 1):
+                lld_copy_ok = 1
         else:
             if (_ends_with(lld, ".exe") == 1):
-                _copy_file(lld, bin + "/ld.lld.exe")
+                if (_copy_file(lld, bin + "/ld.lld.exe") == 1):
+                    lld_copy_ok = 1
             else:
-                _copy_file(lld, bin + "/ld.lld")
-    return 1
+                if (_copy_file(lld, bin + "/ld.lld") == 1):
+                    lld_copy_ok = 1
+    if ((clang_copy_ok == 0) and (fs.exists(bin + "/clang") == 1)):
+        clang_copy_ok = 1
+    if ((clang_copy_ok == 0) and (fs.exists(bin + "/clang.exe") == 1)):
+        clang_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/ld.lld") == 1)):
+        lld_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/ld.lld.exe") == 1)):
+        lld_copy_ok = 1
+    if ((lld_copy_ok == 0) and (fs.exists(bin + "/lld-link.exe") == 1)):
+        lld_copy_ok = 1
+    if ((clang_copy_ok == 1) and (lld_copy_ok == 1)):
+        return 1
+    return 0
 
 func _install_pack_files(target: String) -> i32:
     let root = _toolchain_pack_root()
@@ -340,7 +359,9 @@ func _install_pack_files(target: String) -> i32:
     _copy_file("runtime.a", pack + "/runtime/runtime.a")
     _copy_file("runtime.lib", pack + "/runtime/runtime.lib")
     _copy_file("thag_runtime.lib", pack + "/runtime/thag_runtime.lib")
-    _seed_pack_llvm_binaries(pack)
+    if (_seed_pack_llvm_binaries(pack) != 1):
+        print("ERROR: unable to materialize embedded llvm lane for target pack: " + target)
+        return 0
     return 1
 
 func _remove_pack_files(target: String) -> i32:
@@ -591,7 +612,8 @@ func target_add(triple: String) -> i32:
     cfg.installed_set = _set_add_unique(cfg.installed_set, t)
     if (strlen(cfg.default_target) == 0):
         cfg.default_target = t
-    _install_pack_files(t)
+    if (_install_pack_files(t) == 0):
+        return 1
     _write_config(cfg)
     print("added=" + t)
     return 0
@@ -630,9 +652,13 @@ func target_ensure(triple: String) -> i32:
         return 2
     let pack = _toolchain_pack_root() + "/" + t
     let llvm_bin = pack + "/llvm/bin"
-    if ((fs.exists(llvm_bin + "/clang") == 0) and (fs.exists(llvm_bin + "/clang.exe") == 0)):
+    let has_clang = ((fs.exists(llvm_bin + "/clang") == 1) or (fs.exists(llvm_bin + "/clang.exe") == 1))
+    let has_lld = ((fs.exists(llvm_bin + "/ld.lld") == 1) or (fs.exists(llvm_bin + "/ld.lld.exe") == 1) or (fs.exists(llvm_bin + "/lld-link.exe") == 1))
+    if ((has_clang == 0) or (has_lld == 0)):
         _seed_pack_llvm_binaries(pack)
-    if ((fs.exists(llvm_bin + "/clang") == 0) and (fs.exists(llvm_bin + "/clang.exe") == 0)):
+    let has_clang_after = ((fs.exists(llvm_bin + "/clang") == 1) or (fs.exists(llvm_bin + "/clang.exe") == 1))
+    let has_lld_after = ((fs.exists(llvm_bin + "/ld.lld") == 1) or (fs.exists(llvm_bin + "/ld.lld.exe") == 1) or (fs.exists(llvm_bin + "/lld-link.exe") == 1))
+    if ((has_clang_after == 0) or (has_lld_after == 0)):
         print("missing=" + t)
         return 2
     print("ok=" + t)
@@ -664,7 +690,8 @@ func install_apply_profile(profile_raw: String, targets_raw: String, detected_os
                 if (_is_supported_target(token) == 0):
                     print("ERROR: unsupported target triple: " + token)
                     return 1
-                _install_pack_files(token)
+                if (_install_pack_files(token) == 0):
+                    return 1
                 token = ""
         else:
             token = token + ch
