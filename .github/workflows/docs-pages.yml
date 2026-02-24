@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "docs/starlight/**"
+      - "scripts/install/thagup-init.sh"
       - ".github/workflows/docs-pages.yml"
   workflow_dispatch:
 
@@ -80,6 +81,55 @@ jobs:
       - name: Build Starlight docs
         working-directory: docs/starlight
         run: npm run build
+
+      - name: Publish thagup.sh + thagup.exe endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIST_DIR="docs/starlight/dist"
+          mkdir -p "$DIST_DIR"
+
+          cat > "$DIST_DIR/thagup.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash -s -- "$@"
+          SH
+          chmod +x "$DIST_DIR/thagup.sh"
+
+          PY_BIN=python3
+          if ! command -v "$PY_BIN" >/dev/null 2>&1; then
+            PY_BIN=python
+          fi
+          RELEASE_JSON="$("$PY_BIN" - <<'PY'
+          import json
+          import re
+          import urllib.request
+
+          api = "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=100"
+          req = urllib.request.Request(api, headers={"User-Agent": "thagore-docs-pages"})
+          releases = json.load(urllib.request.urlopen(req))
+          tag_re = re.compile(r"^v\d+\.\d+\.\d+$")
+
+          for rel in releases:
+              if rel.get("draft") or rel.get("prerelease"):
+                  continue
+              tag = str(rel.get("tag_name", "")).strip()
+              if not tag_re.match(tag):
+                  continue
+              assets = {str(a.get("name", "")): str(a.get("browser_download_url", "")) for a in rel.get("assets", [])}
+              if "thagore-setup-windows-x86_64.exe" in assets:
+                  print(json.dumps({"tag": tag, "url": assets["thagore-setup-windows-x86_64.exe"]}))
+                  break
+          PY
+          )"
+          THAGUP_EXE_URL="$("$PY_BIN" -c 'import json,sys; print(json.loads(sys.argv[1])["url"])' "$RELEASE_JSON")"
+          THAGUP_EXE_TAG="$("$PY_BIN" -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$RELEASE_JSON")"
+          if [[ -z "${THAGUP_EXE_URL:-}" || -z "${THAGUP_EXE_TAG:-}" ]]; then
+            echo "CRITICAL: unable to resolve stable release asset thagore-setup-windows-x86_64.exe"
+            exit 1
+          fi
+          echo "[docs-pages] thagup.exe source tag: $THAGUP_EXE_TAG"
+          curl -fsSL "$THAGUP_EXE_URL" -o "$DIST_DIR/thagup.exe"
 
       - name: Discord update - Build Starlight docs
         uses: ./.github/actions/discord-ci-status

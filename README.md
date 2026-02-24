@@ -84,6 +84,12 @@ Install with a single bootstrap script (Rustup-style):
 curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash
 ```
 
+Canonical shortcut URL:
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash
+```
+
 Pin a specific release:
 
 ```bash
@@ -95,6 +101,10 @@ Windows PowerShell (existing setup bootstrap):
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/install/install-windows.ps1 -yes
 ```
+
+Direct Windows bootstrap binary URL:
+
+`https://thagore.org/thagup.exe`
 
 ### Bootstrap
 
