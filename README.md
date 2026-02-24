@@ -156,6 +156,8 @@ thagore target doctor x86_64-unknown-linux-gnu
 thagore target remove x86_64-unknown-linux-gnu
 ```
 
+`target doctor` validates manifest + embedded LLVM lane (`clang`, `lld`) + runtime candidates for the selected target pack.
+
 Target packs are stored under `~/.thagc/targets/<triple>`.
 For target builds, the linker lane is resolved from the target pack (`~/.thagc/targets/<triple>/llvm/bin`) and uses embedded `lld` in strict mode (no system-linker fallback).
 Toolchain target management (`thagore target ...`, `thagup-init`) is shell-native and does not require Python.
