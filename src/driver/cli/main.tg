@@ -16,7 +16,7 @@ func _print_help() -> void:
     print("Usage:")
     print("  " + cli + " --help")
     print("  " + cli + " --version")
-    print("  " + cli + " build <input.tg> [-o output]")
+    print("  " + cli + " build <input.tg> [-o output] [--target <triple>]")
     print("  " + cli + " run <input.tg> [-o output]")
     print("  " + cli + " <input.tg> [-o output]")
     print("  " + cli + " test [filter] [--workspace|--all] [--json]")
@@ -648,6 +648,7 @@ func main() -> i32:
     let intent_fallback_build = ""
     let intent_lock_path_build = ""
     let intent_strict_lock_build = -1
+    let target_triple = ""
     let input_path = ""
     let out_path = ""
     let i = 1
@@ -674,123 +675,132 @@ func main() -> i32:
             i = 2
     while (i < argc):
         let arg = _trim(env.get(i))
-        if (arg == "--emit-llvm"):
-            emit_only = 1
+        if (_starts_with(arg, "--target=") == 1):
+            target_triple = _trim(_value_after_prefix(arg, "--target="))
         else:
-            if (_starts_with(arg, "--autofix=") == 1):
-                autofix_mode = _value_after_prefix(arg, "--autofix=")
+            if ((arg == "--target") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                target_triple = _trim(env.get(i + 1))
+                i = i + 1
             else:
-                if (arg == "--autofix"):
-                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                        autofix_mode = _trim(env.get(i + 1))
-                        i = i + 1
-                    else:
-                        autofix_mode = "safe"
+                if (arg == "--emit-llvm"):
+                    emit_only = 1
                 else:
-                    if (_starts_with(arg, "--autofix-lock=") == 1):
-                        autofix_lock = _trim(_value_after_prefix(arg, "--autofix-lock="))
+                    if (_starts_with(arg, "--autofix=") == 1):
+                        autofix_mode = _value_after_prefix(arg, "--autofix=")
                     else:
-                        if ((arg == "--autofix-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                            autofix_lock = _trim(env.get(i + 1))
-                            i = i + 1
-                        else:
-                            if (arg == "--autofix-lock"):
-                                autofix_lock = "thagore.fix.lock"
+                        if (arg == "--autofix"):
+                            if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                autofix_mode = _trim(env.get(i + 1))
+                                i = i + 1
                             else:
-                                if (arg == "--autofix-lock-strict"):
-                                    autofix_lock_strict = 1
+                                autofix_mode = "safe"
+                        else:
+                            if (_starts_with(arg, "--autofix-lock=") == 1):
+                                autofix_lock = _trim(_value_after_prefix(arg, "--autofix-lock="))
+                            else:
+                                if ((arg == "--autofix-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                    autofix_lock = _trim(env.get(i + 1))
+                                    i = i + 1
                                 else:
-                                    if (arg == "--autofix-locked"):
-                                        autofix_lock_locked = 1
+                                    if (arg == "--autofix-lock"):
+                                        autofix_lock = "thagore.fix.lock"
                                     else:
-                                        if (_starts_with(arg, "--autofix-max-iterations=") == 1):
-                                            autofix_max_iterations = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-iterations="), autofix_max_iterations)
+                                        if (arg == "--autofix-lock-strict"):
+                                            autofix_lock_strict = 1
                                         else:
-                                            if ((arg == "--autofix-max-iterations") and ((i + 1) < argc)):
-                                                autofix_max_iterations = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_iterations)
-                                                i = i + 1
+                                            if (arg == "--autofix-locked"):
+                                                autofix_lock_locked = 1
                                             else:
-                                                if (_starts_with(arg, "--autofix-max-files=") == 1):
-                                                    autofix_max_files = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-files="), autofix_max_files)
+                                                if (_starts_with(arg, "--autofix-max-iterations=") == 1):
+                                                    autofix_max_iterations = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-iterations="), autofix_max_iterations)
                                                 else:
-                                                    if ((arg == "--autofix-max-files") and ((i + 1) < argc)):
-                                                        autofix_max_files = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_files)
+                                                    if ((arg == "--autofix-max-iterations") and ((i + 1) < argc)):
+                                                        autofix_max_iterations = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_iterations)
                                                         i = i + 1
                                                     else:
-                                                        if (_starts_with(arg, "--autofix-exclude=") == 1):
-                                                            autofix_exclude_csv = _trim(_value_after_prefix(arg, "--autofix-exclude="))
+                                                        if (_starts_with(arg, "--autofix-max-files=") == 1):
+                                                            autofix_max_files = _parse_i32_default(_value_after_prefix(arg, "--autofix-max-files="), autofix_max_files)
                                                         else:
-                                                            if ((arg == "--autofix-exclude") and ((i + 1) < argc)):
-                                                                autofix_exclude_csv = _trim(env.get(i + 1))
+                                                            if ((arg == "--autofix-max-files") and ((i + 1) < argc)):
+                                                                autofix_max_files = _parse_i32_default(_trim(env.get(i + 1)), autofix_max_files)
                                                                 i = i + 1
                                                             else:
-                                                                if (arg == "--autofix-workspace"):
-                                                                    autofix_workspace = 1
+                                                                if (_starts_with(arg, "--autofix-exclude=") == 1):
+                                                                    autofix_exclude_csv = _trim(_value_after_prefix(arg, "--autofix-exclude="))
                                                                 else:
-                                                                    if (_starts_with(arg, "--intent=") == 1):
-                                                                        intent_mode_build = intentctl.normalize_intent_mode(_trim(_value_after_prefix(arg, "--intent=")))
+                                                                    if ((arg == "--autofix-exclude") and ((i + 1) < argc)):
+                                                                        autofix_exclude_csv = _trim(env.get(i + 1))
+                                                                        i = i + 1
                                                                     else:
-                                                                        if (arg == "--intent"):
-                                                                            if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                intent_mode_build = intentctl.normalize_intent_mode(_trim(env.get(i + 1)))
-                                                                                i = i + 1
-                                                                            else:
-                                                                                intent_mode_build = "max"
+                                                                        if (arg == "--autofix-workspace"):
+                                                                            autofix_workspace = 1
                                                                         else:
-                                                                            if (_starts_with(arg, "--intent-policy=") == 1):
-                                                                                intent_policy_build = intentctl.normalize_intent_policy(_trim(_value_after_prefix(arg, "--intent-policy=")))
+                                                                            if (_starts_with(arg, "--intent=") == 1):
+                                                                                intent_mode_build = intentctl.normalize_intent_mode(_trim(_value_after_prefix(arg, "--intent=")))
                                                                             else:
-                                                                                if ((arg == "--intent-policy") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                    intent_policy_build = intentctl.normalize_intent_policy(_trim(env.get(i + 1)))
-                                                                                    i = i + 1
-                                                                                else:
-                                                                                    if (_starts_with(arg, "--intent-fallback=") == 1):
-                                                                                        intent_fallback_build = intentctl.normalize_intent_fallback(_trim(_value_after_prefix(arg, "--intent-fallback=")))
+                                                                                if (arg == "--intent"):
+                                                                                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                        intent_mode_build = intentctl.normalize_intent_mode(_trim(env.get(i + 1)))
+                                                                                        i = i + 1
                                                                                     else:
-                                                                                        if ((arg == "--intent-fallback") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                            intent_fallback_build = intentctl.normalize_intent_fallback(_trim(env.get(i + 1)))
+                                                                                        intent_mode_build = "max"
+                                                                                else:
+                                                                                    if (_starts_with(arg, "--intent-policy=") == 1):
+                                                                                        intent_policy_build = intentctl.normalize_intent_policy(_trim(_value_after_prefix(arg, "--intent-policy=")))
+                                                                                    else:
+                                                                                        if ((arg == "--intent-policy") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                            intent_policy_build = intentctl.normalize_intent_policy(_trim(env.get(i + 1)))
                                                                                             i = i + 1
                                                                                         else:
-                                                                                            if (_starts_with(arg, "--intent-lock=") == 1):
-                                                                                                intent_lock_path_build = _trim(_value_after_prefix(arg, "--intent-lock="))
+                                                                                            if (_starts_with(arg, "--intent-fallback=") == 1):
+                                                                                                intent_fallback_build = intentctl.normalize_intent_fallback(_trim(_value_after_prefix(arg, "--intent-fallback=")))
                                                                                             else:
-                                                                                                if ((arg == "--intent-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                                    intent_lock_path_build = _trim(env.get(i + 1))
+                                                                                                if ((arg == "--intent-fallback") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                    intent_fallback_build = intentctl.normalize_intent_fallback(_trim(env.get(i + 1)))
                                                                                                     i = i + 1
                                                                                                 else:
-                                                                                                    if (arg == "--strict-lock"):
-                                                                                                        intent_strict_lock_build = 1
+                                                                                                    if (_starts_with(arg, "--intent-lock=") == 1):
+                                                                                                        intent_lock_path_build = _trim(_value_after_prefix(arg, "--intent-lock="))
                                                                                                     else:
-                                                                                                        if (arg == "--no-strict-lock"):
-                                                                                                            intent_strict_lock_build = 0
+                                                                                                        if ((arg == "--intent-lock") and ((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                            intent_lock_path_build = _trim(env.get(i + 1))
+                                                                                                            i = i + 1
                                                                                                         else:
-                                                                                                            if (_starts_with(arg, "--flow=") == 1):
-                                                                                                                flow_mode_build = flowctl.normalize_flow_mode(_value_after_prefix(arg, "--flow="))
+                                                                                                            if (arg == "--strict-lock"):
+                                                                                                                intent_strict_lock_build = 1
                                                                                                             else:
-                                                                                                                if (arg == "--flow"):
-                                                                                                                    if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                                                        flow_mode_build = flowctl.normalize_flow_mode(_trim(env.get(i + 1)))
-                                                                                                                        i = i + 1
-                                                                                                                    else:
-                                                                                                                        flow_mode_build = "on"
+                                                                                                                if (arg == "--no-strict-lock"):
+                                                                                                                    intent_strict_lock_build = 0
                                                                                                                 else:
-                                                                                                                    if (arg == "--flow-strip-debug"):
-                                                                                                                        flow_strip_debug = 1
+                                                                                                                    if (_starts_with(arg, "--flow=") == 1):
+                                                                                                                        flow_mode_build = flowctl.normalize_flow_mode(_value_after_prefix(arg, "--flow="))
                                                                                                                     else:
-                                                                                                                        if (_starts_with(arg, "--state=") == 1):
-                                                                                                                            state_mode_build = statectl.normalize_state_mode(_value_after_prefix(arg, "--state="))
-                                                                                                                        else:
-                                                                                                                            if (arg == "--state"):
-                                                                                                                                if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
-                                                                                                                                    state_mode_build = statectl.normalize_state_mode(_trim(env.get(i + 1)))
-                                                                                                                                    i = i + 1
-                                                                                                                                else:
-                                                                                                                                    state_mode_build = "on"
+                                                                                                                        if (arg == "--flow"):
+                                                                                                                            if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                                                flow_mode_build = flowctl.normalize_flow_mode(_trim(env.get(i + 1)))
+                                                                                                                                i = i + 1
                                                                                                                             else:
-                                                                                                                                if ((arg == "-o") and ((i + 1) < argc)):
-                                                                                                                                    out_path = _trim(env.get(i + 1))
-                                                                                                                                    i = i + 1
+                                                                                                                                flow_mode_build = "on"
+                                                                                                                        else:
+                                                                                                                            if (arg == "--flow-strip-debug"):
+                                                                                                                                flow_strip_debug = 1
+                                                                                                                            else:
+                                                                                                                                if (_starts_with(arg, "--state=") == 1):
+                                                                                                                                    state_mode_build = statectl.normalize_state_mode(_value_after_prefix(arg, "--state="))
+                                                                                                                                else:
+                                                                                                                                    if (arg == "--state"):
+                                                                                                                                        if (((i + 1) < argc) and (_starts_with(_trim(env.get(i + 1)), "--") == 0)):
+                                                                                                                                            state_mode_build = statectl.normalize_state_mode(_trim(env.get(i + 1)))
+                                                                                                                                            i = i + 1
+                                                                                                                                        else:
+                                                                                                                                            state_mode_build = "on"
+                                                                                                                                    else:
+                                                                                                                                        if ((arg == "-o") and ((i + 1) < argc)):
+                                                                                                                                            out_path = _trim(env.get(i + 1))
+                                                                                                                                            i = i + 1
         i = i + 1
+    if (strlen(target_triple) > 0):
+        env.set_var("THAG_BUILD_TARGET", target_triple)
     if (out_path.length() == 0):
         out_path = _default_output(input_path)
     let intent_policy_effective = intentctl.normalize_intent_policy(intent_policy_build)

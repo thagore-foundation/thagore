@@ -52,13 +52,20 @@ func _host_prefers_clangxx() -> i32:
         return 1
     return 0
 
+func _target_flag() -> String:
+    let triple = _trim(env.get_var("THAG_BUILD_TARGET"))
+    if (strlen(triple) == 0):
+        return ""
+    return " --target=" + triple
+
 func _link_with_runtime(clang_bin: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32) -> i32:
     if (fs.exists(runtime_lib) == 0):
         return -1
     let mode_flag = ""
+    let target_flag = _target_flag()
     if ((force_cxx_mode == 1) and (_contains(clang_bin, "clang++") == 0)):
         mode_flag = " --driver-mode=g++"
-    let cmd = clang_bin + mode_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
+    let cmd = clang_bin + mode_flag + target_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
     return process.run(cmd)
 
 func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
