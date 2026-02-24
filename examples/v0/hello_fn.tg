@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    print("Hello World from Thagore v0");
+    return 0;
+}

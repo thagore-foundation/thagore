@@ -1,0 +1,4 @@
+import "src/v0/driver/pipeline.tg" as v0pipe
+
+func v0_build_command(input_path: String, out_path: String) -> i32:
+    return v0pipe.v0_build(input_path, out_path)

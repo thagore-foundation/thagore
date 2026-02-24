@@ -1,0 +1,2 @@
+func v0_print_diag(stage: String, code: String, message: String) -> void:
+    print("[v0:" + stage + "] " + code + ": " + message)

@@ -17,6 +17,7 @@ func _print_help() -> void:
     print("  " + cli + " --help")
     print("  " + cli + " --version")
     print("  " + cli + " build <input.tg> [-o output]")
+    print("  " + cli + " run <input.tg> [-o output]")
     print("  " + cli + " <input.tg> [-o output]")
     print("  " + cli + " test [filter] [--workspace|--all] [--json]")
     print("  " + cli + " fix <doctor|dry-run|apply|explain|rollback> ...")
@@ -600,6 +601,36 @@ func main() -> i32:
         return 1
     if (cmd == "update"):
         return _update_dispatch(argc, 2)
+    if (cmd == "run"):
+        if (argc <= 2):
+            print("ERROR: missing input path.")
+            return 1
+        let run_input = _trim(env.get(2))
+        let run_out = _default_output(run_input)
+        let i_run = 3
+        while (i_run < argc):
+            let arg_run = _trim(env.get(i_run))
+            if ((arg_run == "-o") and ((i_run + 1) < argc)):
+                run_out = _trim(env.get(i_run + 1))
+                i_run = i_run + 1
+            else:
+                if (_starts_with(arg_run, "--") == 1):
+                    print("ERROR: unknown run flag: " + arg_run)
+                    return 1
+            i_run = i_run + 1
+        let rc_build = _build(run_input, run_out, 0, "off", "", 0, 0, 1, 1, 0, ";")
+        if (rc_build != 0):
+            return rc_build
+        let run_cmd = run_out
+        if (fs.exists(run_cmd) == 0):
+            if (fs.exists(run_cmd + ".exe") == 1):
+                run_cmd = run_cmd + ".exe"
+        if (fs.exists(run_cmd) == 0):
+            print("ERROR: built artifact not found: " + run_out)
+            return 1
+        if ((_starts_with(run_cmd, "./") == 0) and (_starts_with(run_cmd, "/") == 0) and (_contains(run_cmd, ":") == 0)):
+            run_cmd = "./" + run_cmd
+        return process.run(run_cmd)
     let emit_only = 0
     let autofix_mode = "off"
     let autofix_lock = ""

@@ -1,4 +1,5 @@
 import "src/driver/cli/common/core.tg"
+import "src/v0/driver/pipeline.tg" as v0pipe
 
 extern func __thg_fs_remove(path: String) -> i32
 
@@ -128,6 +129,11 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 11
+    if (v0pipe.v0_is_source(source) == 1):
+        if (emit_only == 1):
+            print("ERROR: --emit-llvm is not yet supported for v0 fn-syntax path.")
+            return 1
+        return v0pipe.v0_build(input_path, out_path)
     let typed = typechecker.typecheck_to_typed(source)
     if (typed.error_count > 0):
         if (typed.error_code.length() > 0):
@@ -274,4 +280,3 @@ func _test_message_format_mode(raw: String) -> i32:
     if ((m == "human") or (m == "pretty") or (m == "text")):
         return 0
     return -1
-
