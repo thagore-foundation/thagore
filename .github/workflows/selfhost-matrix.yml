@@ -547,7 +547,7 @@ jobs:
                 return 0
               fi
               if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
-                echo "[WARN] compiler rebuild for $src completed with no emitted output and unchanged in-place binary ($cc); accepting as compiler-managed no-output mode." | tee -a "$STAGE_TRACE_FILE"
+                echo "[WARN] compiler rebuild for $src emitted no standalone output and kept in-place binary unchanged ($cc); treating as in-place compiler update." | tee -a "$STAGE_TRACE_FILE"
                 return 0
               fi
             fi
@@ -620,7 +620,7 @@ jobs:
             HELLO_MODE="source"
             HELLO_BIN="$STAGE2_REBUILD_BIN"
             [[ -n "$HELLO_BIN" && -f "$HELLO_BIN" ]] || HELLO_BIN="$STAGE1_BIN"
-            echo "[INFO] hello fallback to source execution via compiler: $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "[INFO] hello switched to direct compiler-run path: $HELLO_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
           test -f "$HELLO_BIN"
 
@@ -638,7 +638,7 @@ jobs:
             FIB_MODE="source"
             FIB_BIN="$STAGE2_REBUILD_BIN"
             [[ -n "$FIB_BIN" && -f "$FIB_BIN" ]] || FIB_BIN="$STAGE1_BIN"
-            echo "[INFO] fib fallback to source execution via compiler: $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
+            echo "[INFO] fib switched to direct compiler-run path: $FIB_BIN" | tee -a "$STAGE_TRACE_FILE"
           fi
           test -f "$FIB_BIN"
           echo "STAGE2_BIN=$STAGE2_BIN" >> "$GITHUB_ENV"
@@ -744,7 +744,7 @@ jobs:
               built=1
             fi
             if [[ "$built" -eq 1 ]]; then
-              echo "[INFO] $cc built $test_src without artifact; fallback to source execution." | tee -a "$STAGE_TRACE_FILE"
+              echo "[INFO] $cc built $test_src without materialized artifact; switching to direct compiler-run path." | tee -a "$STAGE_TRACE_FILE"
             fi
             if "./$cc" "$test_src" >/dev/null 2>&1; then
               BUILT_BIN=""

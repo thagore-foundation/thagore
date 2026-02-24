@@ -1660,7 +1660,7 @@ jobs:
             if [[ "$source_file" == "src/thagore.tg" && -f "$cc" ]]; then
               cc_sig_after="$(cksum "$cc" 2>/dev/null || true)"
               if [[ -n "$cc_sig_before" && -n "$cc_sig_after" && "$cc_sig_before" == "$cc_sig_after" ]]; then
-                echo "[verify-bundle] compiler selfhost completed in no-output mode; reusing in-place compiler: $cc" >&2
+                echo "[verify-bundle] compiler selfhost completed without standalone output; reusing in-place compiler: $cc" >&2
                 echo ""
                 return 0
               fi

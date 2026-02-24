@@ -1185,7 +1185,7 @@ jobs:
             TAG_SEMVER="${GITHUB_REF_NAME#v}"
             if ! grep -Fq "$GITHUB_REF_NAME" <<<"$VERSION_OUT" && ! grep -Fq "$TAG_SEMVER" <<<"$VERSION_OUT"; then
               if [[ "$RELEASE_COMPILER_BIN" == donor_* ]]; then
-                echo "WARN: donor compiler reports version '$VERSION_OUT' (expected tag $GITHUB_REF_NAME); continuing official lane."
+                echo "WARN: external bootstrap compiler reports version '$VERSION_OUT' (expected tag $GITHUB_REF_NAME); continuing official lane."
               else
                 echo "CRITICAL: --version output does not match official release tag semver $GITHUB_REF_NAME."
                 exit 1
