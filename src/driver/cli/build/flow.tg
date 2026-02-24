@@ -25,6 +25,49 @@ func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
         let manifest_ok = _probe_link_driver(manifest_driver)
         if (strlen(manifest_ok) > 0):
             return manifest_ok
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_llvm_bin = _normalize_path(home + "/.thagc/llvm-21.1.8/bin")
+        if (prefer_cxx == 1):
+            let local_cxx = _probe_link_driver(local_llvm_bin + "/clang++")
+            if (strlen(local_cxx) > 0):
+                return local_cxx
+        let local_clang = _probe_link_driver(local_llvm_bin + "/clang")
+        if (strlen(local_clang) > 0):
+            return local_clang
+        let generic_llvm_bin = _normalize_path(home + "/.thagc/llvm/bin")
+        if (prefer_cxx == 1):
+            let generic_cxx = _probe_link_driver(generic_llvm_bin + "/clang++")
+            if (strlen(generic_cxx) > 0):
+                return generic_cxx
+        let generic_clang = _probe_link_driver(generic_llvm_bin + "/clang")
+        if (strlen(generic_clang) > 0):
+            return generic_clang
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_bin = _normalize_path(profile + "/.thagc/llvm-21.1.8/bin")
+        if (prefer_cxx == 1):
+            let win_cxx = _probe_link_driver(win_bin + "/clang++.exe")
+            if (strlen(win_cxx) > 0):
+                return win_cxx
+        let win_clang = _probe_link_driver(win_bin + "/clang.exe")
+        if (strlen(win_clang) > 0):
+            return win_clang
+    if (strlen(target) > 0):
+        let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+        if (prefer_cxx == 1):
+            let target_cxx = _probe_link_driver(target_pack + "/clang++")
+            if (strlen(target_cxx) > 0):
+                return target_cxx
+            let target_cxx_exe = _probe_link_driver(target_pack + "/clang++.exe")
+            if (strlen(target_cxx_exe) > 0):
+                return target_cxx_exe
+        let target_clang = _probe_link_driver(target_pack + "/clang")
+        if (strlen(target_clang) > 0):
+            return target_clang
+        let target_clang_exe = _probe_link_driver(target_pack + "/clang.exe")
+        if (strlen(target_clang_exe) > 0):
+            return target_clang_exe
     if (prefer_cxx == 1):
         let candidate = _probe_link_driver("clang++")
         if (candidate.length() > 0):
