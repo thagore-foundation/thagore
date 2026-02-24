@@ -440,10 +440,12 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         print("CRITICAL: embedded lld is missing for target '" + target + "'.")
         print("HINT: run 'thagore target ensure " + target + "' or reinstall target pack.")
         return 1
-    let link_driver = _detect_link_driver(target, prefer_cxx)
-    if (link_driver.length() == 0):
-        print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
-        return 1
+    let link_driver = ""
+    if (strlen(target) == 0):
+        link_driver = _detect_link_driver(target, prefer_cxx)
+        if (link_driver.length() == 0):
+            print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
+            return 1
     let object_path = out_path + ".o"
     if (emitter.emit_object_core(core, module_name, link_driver, object_path) != 0):
         if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
