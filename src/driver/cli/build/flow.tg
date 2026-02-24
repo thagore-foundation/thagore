@@ -14,6 +14,56 @@ func _driver_supports_gpp_mode(driver: String) -> i32:
         return 1
     return 0
 
+func _is_windows_target(target: String) -> i32:
+    if (_contains(target, "windows") == 1):
+        return 1
+    if (_contains(target, "msvc") == 1):
+        return 1
+    return 0
+
+func _detect_lld_driver(target: String) -> String:
+    if (strlen(target) > 0):
+        let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+        if (_is_windows_target(target) == 1):
+            let lld_win = _probe_link_driver(target_pack + "/lld-link.exe")
+            if (strlen(lld_win) > 0):
+                return lld_win
+        let lld_ld = _probe_link_driver(target_pack + "/ld.lld")
+        if (strlen(lld_ld) > 0):
+            return lld_ld
+        let lld_ld_exe = _probe_link_driver(target_pack + "/ld.lld.exe")
+        if (strlen(lld_ld_exe) > 0):
+            return lld_ld_exe
+        let lld_plain = _probe_link_driver(target_pack + "/lld")
+        if (strlen(lld_plain) > 0):
+            return lld_plain
+        return ""
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        let local_llvm_bin = _normalize_path(home + "/.thagc/llvm-21.1.8/bin")
+        let local_lld = _probe_link_driver(local_llvm_bin + "/ld.lld")
+        if (strlen(local_lld) > 0):
+            return local_lld
+        let local_lld_alt = _probe_link_driver(local_llvm_bin + "/lld")
+        if (strlen(local_lld_alt) > 0):
+            return local_lld_alt
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        let win_bin = _normalize_path(profile + "/.thagc/llvm-21.1.8/bin")
+        let win_lld = _probe_link_driver(win_bin + "/lld-link.exe")
+        if (strlen(win_lld) > 0):
+            return win_lld
+    let path_ld = _probe_link_driver("ld.lld")
+    if (strlen(path_ld) > 0):
+        return path_ld
+    let path_lld = _probe_link_driver("lld")
+    if (strlen(path_lld) > 0):
+        return path_lld
+    let win_pf = _probe_link_driver("C:/Progra~1/LLVM/bin/lld-link.exe")
+    if (strlen(win_pf) > 0):
+        return win_pf
+    return ""
+
 func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
     let env_driver = _trim(env.get_var("THAG_LINK_DRIVER"))
     if (strlen(env_driver) > 0):
@@ -212,6 +262,21 @@ func _link_with_runtime(link_driver: String, runtime_lib: String, input_path: St
     let cmd = link_driver + mode_flag + target_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
     return process.run(cmd)
 
+func _link_with_runtime_lld(lld_driver: String, runtime_lib: String, input_path: String, out_path: String, target: String) -> i32:
+    if (strlen(lld_driver) == 0):
+        return -1
+    if (fs.exists(runtime_lib) == 0):
+        return -1
+    let cmd = ""
+    if ((_contains(lld_driver, "lld-link") == 1) or (_is_windows_target(target) == 1)):
+        cmd = lld_driver + " /nologo /out:" + _quote(out_path) + " " + _quote(input_path) + " " + _quote(runtime_lib)
+    else:
+        let target_flag = ""
+        if (strlen(target) > 0):
+            target_flag = " --target=" + target
+        cmd = lld_driver + target_flag + " -o " + _quote(out_path) + " " + _quote(input_path) + " " + _quote(runtime_lib)
+    return process.run(cmd)
+
 func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (total_fixed > 0):
         print("[autofix] rebuild=failed after fixes_applied=" + _to_string_i32(total_fixed))
@@ -224,7 +289,24 @@ func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (strlen(report_path) > 0):
         print("[autofix] report: " + report_path)
 
-func _link_exe(input_path: String, out_path: String, link_driver: String, prefer_cxx: i32) -> i32:
+func _try_link_with_candidates(cand_set: String, input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32, target: String) -> i32:
+    let tok = ""
+    let i = 0
+    while (i < strlen(cand_set)):
+        let ch = _char_at(cand_set, i)
+        if (ch == ";"):
+            if (strlen(tok) > 0):
+                if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
+                    return 0
+                if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx) == 0):
+                    return 0
+                tok = ""
+        else:
+            tok = tok + ch
+        i = i + 1
+    return 1
+
+func _link_exe(input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32) -> i32:
     let first_lib = "runtime.lib"
     let second_lib = "runtime.a"
     let third_lib = "thag_runtime.lib"
@@ -237,23 +319,21 @@ func _link_exe(input_path: String, out_path: String, link_driver: String, prefer
         fourth_lib = "thag_runtime.lib"
     if (strlen(target) > 0):
         let cand_set = targetctl.target_runtime_candidates(target)
-        let tok = ""
-        let i = 0
-        while (i < strlen(cand_set)):
-            let ch = _char_at(cand_set, i)
-            if (ch == ";"):
-                if (strlen(tok) > 0):
-                    if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx) == 0):
-                        return 0
-                    tok = ""
-            else:
-                tok = tok + ch
-            i = i + 1
+        if (_try_link_with_candidates(cand_set, input_path, out_path, lld_driver, link_driver, prefer_cxx, target) == 0):
+            return 0
+    if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
+        return 0
     if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
         return 0
     if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx) == 0):
         return 0
+    if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
+        return 0
     if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx) == 0):
+        return 0
+    if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
         return 0
     if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx) == 0):
         return 0
@@ -335,6 +415,7 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         print(ir_path)
         return 0
     let prefer_cxx = _host_prefers_clangxx()
+    let lld_driver = _detect_lld_driver(target)
     let link_driver = _detect_link_driver(target, prefer_cxx)
     if (link_driver.length() == 0):
         print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
@@ -346,7 +427,7 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         print("CRITICAL: native object backend emission failed.")
         print("CRITICAL: IR text executable lane is disabled; no fallback path is available.")
         return 1
-    if (_link_exe(object_path, out_path, link_driver, prefer_cxx) != 0):
+    if (_link_exe(object_path, out_path, lld_driver, link_driver, prefer_cxx) != 0):
         if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):
             return 1
         print("ERROR: link failed.")

@@ -472,8 +472,11 @@ func target_doctor(triple_raw: String) -> i32:
     let runtimes = target_runtime_candidates(t)
     let runtime_count = _set_count_entries(runtimes)
     let clang_ok = 0
+    let lld_ok = 0
     if ((fs.exists(pack + "/llvm/bin/clang") == 1) or (fs.exists(pack + "/llvm/bin/clang.exe") == 1)):
         clang_ok = 1
+    if ((fs.exists(pack + "/llvm/bin/ld.lld") == 1) or (fs.exists(pack + "/llvm/bin/ld.lld.exe") == 1) or (fs.exists(pack + "/llvm/bin/lld-link.exe") == 1)):
+        lld_ok = 1
     print("target=" + t)
     print("pack=" + pack)
     print("manifest_exists=" + _to_string_i32(fs.exists(manifest_path)))
@@ -484,6 +487,7 @@ func target_doctor(triple_raw: String) -> i32:
     else:
         print("link_driver_path=")
     print("llvm_clang_present=" + _to_string_i32(clang_ok))
+    print("llvm_lld_present=" + _to_string_i32(lld_ok))
     print("runtime_candidates_count=" + _to_string_i32(runtime_count))
     if (_set_contains(cfg.installed_set, t) == 0):
         return 2
@@ -492,6 +496,8 @@ func target_doctor(triple_raw: String) -> i32:
     if (fs.exists(manifest_path) == 0):
         return 2
     if (clang_ok == 0):
+        return 2
+    if (lld_ok == 0):
         return 2
     if (runtime_count <= 0):
         return 2
