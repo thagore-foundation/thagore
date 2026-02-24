@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  BOOTSTRAP_STAGE1_TAG: "v0.3.193-stage1-seed"
   LLVM_VERSION: "21"
   LLVM_FULL_VERSION: "21.1.8"
 
@@ -40,9 +40,10 @@ jobs:
           - os: macos-latest
             triple: aarch64-apple-darwin
             os_slug: macos
-          - os: windows-latest
-            triple: x86_64-pc-windows-msvc
-            os_slug: windows
+          # Windows bootstrap requires native bat/ps1 — not yet supported in bootstrap.sh
+          # - os: windows-latest
+          #   triple: x86_64-pc-windows-msvc
+          #   os_slug: windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,6 +77,8 @@ jobs:
 
       - name: Bootstrap (stage1 download + build stage2b = thagc compiler binary)
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/bootstrap.sh
 
       - name: Determine release version
@@ -196,16 +199,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          # Collect all available release assets (Windows excluded until bootstrap.sh supports it)
+          ASSETS=()
+          for f in \
+            dist/release/thagc-core-linux.tar.gz \
+            dist/release/thagc-core-macos.tar.gz \
+            dist/release/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
+            dist/release/thagc-target-aarch64-apple-darwin-macos.tar.gz \
+            dist/release/SHA256SUMS-thagc-linux.txt \
+            dist/release/SHA256SUMS-thagc-macos.txt; do
+            [[ -f "$f" ]] && ASSETS+=("$f")
+          done
+          echo "Uploading ${#ASSETS[@]} assets..."
           gh release create "$VERSION" \
             --title "Thagore $VERSION" \
             --generate-notes \
-            dist/release/thagc-core-linux.tar.gz \
-            dist/release/thagc-core-macos.tar.gz \
-            dist/release/thagc-core-windows.tar.gz \
-            dist/release/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
-            dist/release/thagc-target-aarch64-apple-darwin-macos.tar.gz \
-            dist/release/thagc-target-x86_64-pc-windows-msvc-windows.tar.gz \
-            dist/release/SHA256SUMS-thagc-linux.txt \
-            dist/release/SHA256SUMS-thagc-macos.txt \
-            dist/release/SHA256SUMS-thagc-windows.txt \
-            || echo "Release may already exist or assets missing — check above"
+            "${ASSETS[@]}" \
+            || echo "Release may already exist — trying to upload assets only" && \
+          gh release upload "$VERSION" "${ASSETS[@]}" --clobber || true

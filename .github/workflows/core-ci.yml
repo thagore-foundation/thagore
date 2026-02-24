@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  BOOTSTRAP_STAGE1_TAG: "v0.3.193-stage1-seed"
   LLVM_VERSION: "21"
   LLVM_FULL_VERSION: "21.1.8"
 
@@ -27,8 +27,6 @@ jobs:
             triple: x86_64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
-          - os: windows-latest
-            triple: x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,6 +65,8 @@ jobs:
 
       - name: Bootstrap (stage1 download + build stage2 + stage2b)
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/bootstrap.sh
 
       - name: Run test suite

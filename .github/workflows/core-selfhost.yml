@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  BOOTSTRAP_STAGE1_TAG: "v0.3.193-stage1-seed"
   LLVM_VERSION: "21"
   LLVM_FULL_VERSION: "21.1.8"
 
@@ -27,8 +27,6 @@ jobs:
             triple: x86_64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
-          - os: windows-latest
-            triple: x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,9 +60,10 @@ jobs:
 
       - name: Fetch stage1 seed (via bootstrap.sh ensure_stage1)
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Run bootstrap.sh with THAG_BOOTSTRAP_STAGE1_ONLY=1 to only fetch stage1
-          # bootstrap.sh places stage1 binary at ./stage1
+          # bootstrap.sh handles stage1 download and builds stage2+stage2b
           bash scripts/bootstrap.sh
           # After full bootstrap, stage1/stage2/stage2b all exist.
           # Rename so we can rebuild stage2/stage2b from scratch for reproducibility check.
