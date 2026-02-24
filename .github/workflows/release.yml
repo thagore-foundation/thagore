@@ -108,7 +108,7 @@ jobs:
           official = os.environ.get("OFFICIAL_RELEASE_TAG", "0") == "1"
           entries = [
               {
-                  "runner": "ubuntu-latest",
+                  "runner": "ubuntu-22.04",
                   "os_name": "Linux",
                   "arch": "x86_64",
                   "asset_tag": "linux-x86_64",
@@ -1585,7 +1585,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             asset_tag: linux-x86_64
             package_name: thagore-linux-x86_64.tar.gz
             checksum_name: SHA256SUMS-linux-x86_64.txt
