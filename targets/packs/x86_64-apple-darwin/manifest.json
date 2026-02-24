@@ -6,5 +6,13 @@
   "runtime_candidates": [
     "runtime/libthag_runtime.a",
     "runtime/runtime.a"
-  ]
+  ],
+  "llvm_bundle": {
+    "version": "21.1.8",
+    "embedded": true,
+    "bin_dir": "llvm/bin",
+    "lib_dir": "llvm/lib",
+    "link_driver": "llvm/bin/clang",
+    "lld_driver": "llvm/bin/ld.lld"
+  }
 }

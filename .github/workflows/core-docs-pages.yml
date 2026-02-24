@@ -13,21 +13,79 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  docs-check:
+  build-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate docs tree
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Detect docs framework
+        id: detect
+        run: |
+          if [[ -f docs/astro.config.mjs || -f docs/astro.config.ts ]]; then
+            echo "framework=astro" >> "$GITHUB_OUTPUT"
+          elif [[ -f docs/package.json ]]; then
+            echo "framework=node" >> "$GITHUB_OUTPUT"
+          else
+            echo "framework=static" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install docs dependencies
+        if: steps.detect.outputs.framework == 'astro' || steps.detect.outputs.framework == 'node'
+        working-directory: docs
+        run: npm ci
+
+      - name: Build docs (Astro/Starlight)
+        if: steps.detect.outputs.framework == 'astro' || steps.detect.outputs.framework == 'node'
+        working-directory: docs
+        run: npm run build
+
+      - name: Validate static docs tree
+        if: steps.detect.outputs.framework == 'static'
         run: |
           test -d docs
           echo "docs_root=docs" > docs-pages-report.txt
+          echo "framework=static" >> docs-pages-report.txt
           echo "status=pass" >> docs-pages-report.txt
 
-      - name: Upload docs report
+      - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: core-docs-pages-report
-          path: docs-pages-report.txt
+          name: docs-build
+          path: |
+            docs/dist/
+            docs-pages-report.txt
 
+  deploy-pages:
+    needs: build-docs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-build
+          path: docs-out
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-out/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

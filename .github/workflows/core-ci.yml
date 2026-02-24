@@ -12,10 +12,91 @@ concurrency:
 
 env:
   BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  LLVM_VERSION: "21"
+  LLVM_FULL_VERSION: "21.1.8"
 
 jobs:
-  core-ci-matrix:
-    name: core-ci-${{ matrix.os }}
+  build-test:
+    name: build-test-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install LLVM 21 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update -q
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-21 100
+          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+          sudo update-alternatives --install /usr/bin/llvm-as llvm-as /usr/bin/llvm-as-21 100
+          clang --version
+          ld.lld --version
+
+      - name: Install LLVM 21 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@21
+          echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix llvm@21)/bin/clang" --version
+
+      - name: Install LLVM 21 (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install llvm --version=21.1.8 -y
+          clang --version
+
+      - name: Bootstrap (stage1 download + build stage2 + stage2b)
+        shell: bash
+        run: bash scripts/bootstrap.sh
+
+      - name: Run test suite
+        shell: bash
+        run: |
+          if [[ -f "./stage2b" ]]; then
+            THAGC=./stage2b
+          elif [[ -f "./stage2b.exe" ]]; then
+            THAGC=./stage2b.exe
+          else
+            echo "ERROR: stage2b binary not found after bootstrap" >&2
+            exit 1
+          fi
+          if [[ -d tests/ ]]; then
+            "$THAGC" test tests/ 2>&1 | tee test-report-${{ matrix.triple }}.txt
+          else
+            echo "No tests/ directory — skipping test suite" | tee test-report-${{ matrix.triple }}.txt
+          fi
+
+      - name: Upload stage2b + test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2b-${{ matrix.os }}
+          path: |
+            stage2b
+            stage2b.exe
+            test-report-${{ matrix.triple }}.txt
+
+  policy:
+    name: policy-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,10 +126,10 @@ jobs:
           --workflow .github/workflows/core-ci.yml
           --workflow .github/workflows/core-selfhost.yml
 
-      - name: Upload CI reports
+      - name: Upload policy reports
         uses: actions/upload-artifact@v4
         with:
-          name: core-ci-report-${{ matrix.os }}
+          name: policy-report-${{ matrix.os }}
           path: |
             seed-tag-sync-ci.txt
             no-cpp-ci.txt

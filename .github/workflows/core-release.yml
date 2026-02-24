@@ -10,7 +10,12 @@ on:
         type: boolean
         required: false
         default: true
-        description: "Skip publishing and only build release plan artifacts."
+        description: "Skip publishing GitHub Release — only build and upload artifacts."
+      tag_override:
+        type: string
+        required: false
+        default: ""
+        description: "Override release tag (default: git tag from push event)."
 
 concurrency:
   group: core-release-${{ github.ref }}
@@ -18,15 +23,26 @@ concurrency:
 
 env:
   BOOTSTRAP_STAGE1_TAG: "v0.3.168-stage1-seed"
+  LLVM_VERSION: "21"
+  LLVM_FULL_VERSION: "21.1.8"
 
 jobs:
-  release-plan:
-    name: release-plan-${{ matrix.os }}
+  build-release:
+    name: build-release-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+            os_slug: linux
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+            os_slug: macos
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            os_slug: windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,28 +52,160 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Generate release bundle plan
-        run: >
-          python scripts/release_bundle_plan.py
-          --host-os "${{ runner.os }}"
-          --dry-run "${{ github.event.inputs.dry_run || 'true' }}"
-          --report release-plan-${{ runner.os }}.txt
+      - name: Install LLVM 21 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update -q
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-21 100
+          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+          sudo update-alternatives --install /usr/bin/llvm-as llvm-as /usr/bin/llvm-as-21 100
+
+      - name: Install LLVM 21 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@21
+          echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
+
+      - name: Install LLVM 21 (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm --version=21.1.8 -y
+
+      - name: Bootstrap (stage1 download + build stage2b = thagc compiler binary)
+        shell: bash
+        run: bash scripts/bootstrap.sh
+
+      - name: Determine release version
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.tag_override }}" ]]; then
+            VERSION="${{ github.event.inputs.tag_override }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION"
+
+      - name: Download LLVM prebuilt for target pack
+        shell: bash
+        run: |
+          python scripts/fetch_llvm_prebuilt.py \
+            --triple "${{ matrix.triple }}" \
+            --llvm-version "${LLVM_FULL_VERSION}" \
+            --out-dir "targets/packs/${{ matrix.triple }}/llvm"
 
       - name: Package release assets
-        run: >
-          python scripts/package_release_assets.py
-          --host-os "${{ runner.os }}"
-          --version "${{ github.ref_name }}"
-          --out-dir "dist/release/${{ runner.os }}"
-          --report release-assets-${{ runner.os }}.txt
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          OS_SLUG="${{ matrix.os_slug }}"
+          TRIPLE="${{ matrix.triple }}"
+          mkdir -p dist/release
 
-      - name: Upload release plan
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            THAGC_BIN="stage2b.exe"
+            THAGC_DEST="thagc.exe"
+          else
+            THAGC_BIN="stage2b"
+            THAGC_DEST="thagc"
+          fi
+
+          # Core bundle: thagc binary + thagup-init.sh + target registry
+          CORE_STAGE="dist/release/core-staging"
+          mkdir -p "$CORE_STAGE/bin" "$CORE_STAGE/targets/registry"
+          cp "$THAGC_BIN" "$CORE_STAGE/bin/$THAGC_DEST"
+          cp scripts/install/thagup-init.sh "$CORE_STAGE/"
+          if [[ -d scripts/install/thagup ]]; then
+            cp scripts/install/thagup "$CORE_STAGE/"
+          fi
+          cp -r targets/registry/. "$CORE_STAGE/targets/registry/" 2>/dev/null || true
+
+          CORE_TARBALL="dist/release/thagc-core-${OS_SLUG}.tar.gz"
+          tar -czf "$CORE_TARBALL" -C "$CORE_STAGE" .
+          echo "Packaged core: $CORE_TARBALL"
+
+          # Target pack: manifest + LLVM prebuilt + runtime
+          TARGET_STAGE="dist/release/target-staging-${TRIPLE}"
+          mkdir -p "$TARGET_STAGE"
+          cp -r "targets/packs/${TRIPLE}/." "$TARGET_STAGE/"
+
+          TARGET_TARBALL="dist/release/thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz"
+          tar -czf "$TARGET_TARBALL" -C "$TARGET_STAGE" .
+          echo "Packaged target: $TARGET_TARBALL"
+
+          # Checksums
+          cd dist/release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum \
+              "thagc-core-${OS_SLUG}.tar.gz" \
+              "thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz" \
+              > "SHA256SUMS-thagc-${OS_SLUG}.txt"
+          else
+            shasum -a 256 \
+              "thagc-core-${OS_SLUG}.tar.gz" \
+              "thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz" \
+              > "SHA256SUMS-thagc-${OS_SLUG}.txt"
+          fi
+          cat "SHA256SUMS-thagc-${OS_SLUG}.txt"
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: core-release-assets-${{ matrix.os }}
+          name: release-assets-${{ matrix.os }}
           path: |
-            release-plan-${{ runner.os }}.txt
-            release-assets-${{ runner.os }}.txt
-            dist/release/${{ runner.os }}/thagc-core-*.tar.gz
-            dist/release/${{ runner.os }}/thagc-target-*.tar.gz
-            dist/release/${{ runner.os }}/SHA256SUMS-thagc-*.txt
+            dist/release/thagc-core-${{ matrix.os_slug }}.tar.gz
+            dist/release/thagc-target-${{ matrix.triple }}-${{ matrix.os_slug }}.tar.gz
+            dist/release/SHA256SUMS-thagc-${{ matrix.os_slug }}.txt
+
+  publish-release:
+    name: publish-release
+    needs: build-release
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'false' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find dist/release -type f | sort
+
+      - name: Determine release version
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.tag_override }}" ]]; then
+            VERSION="${{ github.event.inputs.tag_override }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "$VERSION" \
+            --title "Thagore $VERSION" \
+            --generate-notes \
+            dist/release/thagc-core-linux.tar.gz \
+            dist/release/thagc-core-macos.tar.gz \
+            dist/release/thagc-core-windows.tar.gz \
+            dist/release/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
+            dist/release/thagc-target-aarch64-apple-darwin-macos.tar.gz \
+            dist/release/thagc-target-x86_64-pc-windows-msvc-windows.tar.gz \
+            dist/release/SHA256SUMS-thagc-linux.txt \
+            dist/release/SHA256SUMS-thagc-macos.txt \
+            dist/release/SHA256SUMS-thagc-windows.txt \
+            || echo "Release may already exist or assets missing — check above"

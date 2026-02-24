@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+# thagup — Thagore toolchain self-updater
+# Usage: thagup <command> [options]
+set -euo pipefail
+
+REPO_OWNER="thagore-foundation"
+REPO_NAME="thagore"
+API_BASE="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
+THAGORE_HOME="${THAGORE_HOME:-${HOME}/.thagore}"
+TOOLCHAIN_DIR="${THAGORE_HOME}/toolchains/stable"
+BIN_DIR="${THAGORE_HOME}/bin"
+
+SUPPORTED_TARGETS=(
+  "x86_64-unknown-linux-gnu"
+  "x86_64-pc-windows-msvc"
+  "aarch64-apple-darwin"
+  "aarch64-unknown-linux-gnu"
+  "x86_64-apple-darwin"
+)
+
+print_help() {
+  cat <<'EOF'
+thagup — Thagore toolchain manager
+
+USAGE:
+    thagup <COMMAND> [OPTIONS]
+
+COMMANDS:
+    update                  Update thagc to the latest stable release
+    install <tag>           Install a specific release tag
+    target add <triple>     Add (install) a target pack
+    target remove <triple>  Remove an installed target pack
+    target list             List installed targets
+    self-update             Update thagup itself to the latest version
+    show                    Show current installed version
+    help                    Print this help message
+
+EXAMPLES:
+    thagup update
+    thagup install v0.5.31
+    thagup target add aarch64-unknown-linux-gnu
+    thagup target list
+    thagup self-update
+EOF
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $1" >&2
+    exit 1
+  fi
+}
+
+detect_os_slug() {
+  local os_name
+  os_name="$(uname -s || true)"
+  case "$os_name" in
+    Darwin) echo "macos" ;;
+    Linux)  echo "linux" ;;
+    *)      echo "linux" ;;
+  esac
+}
+
+fetch_latest_tag() {
+  curl -fsSL "${API_BASE}/releases/latest" \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | head -n 1
+}
+
+current_version() {
+  if command -v thagc >/dev/null 2>&1; then
+    thagc --version 2>/dev/null | head -n 1 || echo "(unknown)"
+  elif [[ -f "$BIN_DIR/thagc" ]]; then
+    "$BIN_DIR/thagc" --version 2>/dev/null | head -n 1 || echo "(unknown)"
+  else
+    echo "(not installed)"
+  fi
+}
+
+verify_checksum() {
+  local archive="$1" checksum_file="$2" asset="$3"
+  local expected actual
+  expected="$(awk -v t="$asset" '{n=$2; sub(/^\*/,"",n); if(n==t){print $1;exit}}' "$checksum_file")"
+  if [[ -z "$expected" ]]; then
+    echo "WARN: no checksum entry for $asset in $checksum_file — skipping verification" >&2
+    return 0
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$archive" | awk '{print $1}')"
+  else
+    actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
+  fi
+  if [[ "${expected,,}" != "${actual,,}" ]]; then
+    echo "ERROR: checksum mismatch for $asset" >&2
+    echo "  expected: $expected" >&2
+    echo "  actual:   $actual" >&2
+    exit 1
+  fi
+}
+
+do_install_release() {
+  local tag="$1"
+  local os_slug
+  os_slug="$(detect_os_slug)"
+  local core_asset="thagc-core-${os_slug}.tar.gz"
+  local sum_asset="SHA256SUMS-thagc-${os_slug}.txt"
+  local base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}"
+
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  echo "[thagup] Installing Thagore $tag (${os_slug})..."
+  curl -fsSL "${base_url}/${core_asset}" -o "$tmp/$core_asset"
+  curl -fsSL "${base_url}/${sum_asset}" -o "$tmp/$sum_asset"
+  verify_checksum "$tmp/$core_asset" "$tmp/$sum_asset" "$core_asset"
+
+  mkdir -p "$TOOLCHAIN_DIR/bin"
+  tar -xzf "$tmp/$core_asset" -C "$TOOLCHAIN_DIR"
+
+  # Update symlink
+  for candidate in "$TOOLCHAIN_DIR/bin/thagc" "$TOOLCHAIN_DIR/bin/thagc.exe"; do
+    if [[ -f "$candidate" ]]; then
+      mkdir -p "$BIN_DIR"
+      ln -sf "$candidate" "$BIN_DIR/thagc" 2>/dev/null || cp "$candidate" "$BIN_DIR/thagc"
+      chmod +x "$BIN_DIR/thagc" || true
+      break
+    fi
+  done
+
+  echo "[thagup] Installed Thagore $tag to $TOOLCHAIN_DIR"
+  trap - EXIT
+  rm -rf "$tmp"
+}
+
+cmd_update() {
+  local latest
+  latest="$(fetch_latest_tag)"
+  if [[ -z "$latest" ]]; then
+    echo "ERROR: cannot resolve latest release tag" >&2
+    exit 1
+  fi
+  echo "[thagup] Latest release: $latest"
+  local cur
+  cur="$(current_version)"
+  echo "[thagup] Currently installed: $cur"
+  do_install_release "$latest"
+  echo "[thagup] Update complete. Run: thagc --version"
+}
+
+cmd_install() {
+  local tag="${1:-}"
+  if [[ -z "$tag" ]]; then
+    echo "ERROR: specify a tag, e.g.: thagup install v0.5.31" >&2
+    exit 1
+  fi
+  do_install_release "$tag"
+}
+
+cmd_target_add() {
+  local triple="${1:-}"
+  if [[ -z "$triple" ]]; then
+    echo "ERROR: specify a target triple, e.g.: thagup target add x86_64-unknown-linux-gnu" >&2
+    exit 1
+  fi
+  local valid=0
+  for t in "${SUPPORTED_TARGETS[@]}"; do
+    [[ "$t" == "$triple" ]] && valid=1 && break
+  done
+  if [[ "$valid" == "0" ]]; then
+    echo "ERROR: unsupported target triple: $triple" >&2
+    echo "Supported: ${SUPPORTED_TARGETS[*]}" >&2
+    exit 1
+  fi
+
+  local tag
+  tag="$(fetch_latest_tag)"
+  [[ -n "$tag" ]] || { echo "ERROR: cannot resolve latest tag" >&2; exit 1; }
+
+  local os_slug
+  os_slug="$(detect_os_slug)"
+  local target_asset="thagc-target-${triple}-${os_slug}.tar.gz"
+  local sum_asset="SHA256SUMS-thagc-${os_slug}.txt"
+  local base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}"
+
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  echo "[thagup] Adding target $triple ($tag)..."
+  curl -fsSL "${base_url}/${target_asset}" -o "$tmp/$target_asset"
+  curl -fsSL "${base_url}/${sum_asset}" -o "$tmp/$sum_asset"
+  verify_checksum "$tmp/$target_asset" "$tmp/$sum_asset" "$target_asset"
+
+  local pack_dir="$TOOLCHAIN_DIR/targets/${triple}"
+  mkdir -p "$pack_dir"
+  tar -xzf "$tmp/$target_asset" -C "$pack_dir"
+
+  echo "[thagup] Target installed: $triple -> $pack_dir"
+  trap - EXIT
+  rm -rf "$tmp"
+}
+
+cmd_target_remove() {
+  local triple="${1:-}"
+  if [[ -z "$triple" ]]; then
+    echo "ERROR: specify a target triple" >&2
+    exit 1
+  fi
+  local pack_dir="$TOOLCHAIN_DIR/targets/${triple}"
+  if [[ -d "$pack_dir" ]]; then
+    rm -rf "$pack_dir"
+    echo "[thagup] Removed target: $triple"
+  else
+    echo "[thagup] Target not installed: $triple"
+  fi
+}
+
+cmd_target_list() {
+  local targets_dir="$TOOLCHAIN_DIR/targets"
+  if [[ ! -d "$targets_dir" ]]; then
+    echo "(no targets installed)"
+    return
+  fi
+  local found=0
+  for d in "$targets_dir"/*/; do
+    [[ -d "$d" ]] || continue
+    echo "  $(basename "$d")"
+    found=1
+  done
+  [[ "$found" == "1" ]] || echo "(no targets installed)"
+}
+
+cmd_self_update() {
+  local tag
+  tag="$(fetch_latest_tag)"
+  [[ -n "$tag" ]] || { echo "ERROR: cannot resolve latest tag" >&2; exit 1; }
+
+  local os_slug
+  os_slug="$(detect_os_slug)"
+  local thagup_url="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/refs/tags/${tag}/scripts/install/thagup"
+  local tmp
+  tmp="$(mktemp)"
+  echo "[thagup] Downloading thagup self-updater from $tag..."
+  curl -fsSL "$thagup_url" -o "$tmp"
+  chmod +x "$tmp"
+  cp "$tmp" "${BASH_SOURCE[0]}"
+  rm -f "$tmp"
+  echo "[thagup] Self-update complete."
+}
+
+cmd_show() {
+  echo "thagup — Thagore toolchain manager"
+  echo "  THAGORE_HOME: $THAGORE_HOME"
+  echo "  Toolchain:    $TOOLCHAIN_DIR"
+  echo "  thagc:        $(current_version)"
+  echo "  Installed targets:"
+  cmd_target_list | sed 's/^/    /'
+}
+
+require_cmd curl
+require_cmd tar
+
+COMMAND="${1:-help}"
+shift || true
+
+case "$COMMAND" in
+  update)       cmd_update ;;
+  install)      cmd_install "$@" ;;
+  target)
+    SUBCMD="${1:-list}"
+    shift || true
+    case "$SUBCMD" in
+      add)    cmd_target_add "$@" ;;
+      remove) cmd_target_remove "$@" ;;
+      list)   cmd_target_list ;;
+      *)
+        echo "ERROR: unknown target subcommand: $SUBCMD" >&2
+        echo "Usage: thagup target <add|remove|list>" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  self-update)  cmd_self_update ;;
+  show)         cmd_show ;;
+  help|--help|-h) print_help ;;
+  *)
+    echo "ERROR: unknown command: $COMMAND" >&2
+    print_help
+    exit 1
+    ;;
+esac
