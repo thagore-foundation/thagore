@@ -3,6 +3,7 @@ import "src/driver/cli/fix/flow.tg"
 import "src/driver/cli/test/flow.tg"
 import "src/driver/cli/build/flow.tg"
 import "src/driver/cli/install/flow.tg"
+import "src/driver/cli/target/flow.tg" as targetctl
 import "src/driver/cli/update/flow.tg"
 import "src/driver/cli/update/platform.tg"
 import "src/driver/cli/update/version.tg"
@@ -26,10 +27,6 @@ func _print_help() -> void:
     print("  " + cli + " install toolchain [--yes]")
     print("  " + cli + " target <list|installed|add|remove> [triple]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
-
-func _run_toolchain_ctl(args: String) -> i32:
-    let script = _quote("scripts/toolchainctl.sh")
-    return process.run("bash " + script + " " + args)
 
 func _helper_exec_path(candidate_raw: String) -> String:
     let candidate = _normalize_path(_trim(candidate_raw))
@@ -134,17 +131,17 @@ func main() -> i32:
             return 1
         let sub_target = _trim(env.get(2))
         if (sub_target == "list"):
-            return _run_toolchain_ctl("list-targets")
+            return targetctl.target_list()
         if (sub_target == "installed"):
-            return _run_toolchain_ctl("installed")
+            return targetctl.target_installed()
         if ((sub_target == "add") or (sub_target == "remove")):
             if (argc <= 3):
                 print("ERROR: missing target triple for '" + sub_target + "'.")
                 return 1
             let triple = _trim(env.get(3))
             if (sub_target == "add"):
-                return _run_toolchain_ctl("add --target " + _quote(triple))
-            return _run_toolchain_ctl("remove --target " + _quote(triple))
+                return targetctl.target_add(triple)
+            return targetctl.target_remove(triple)
         print("ERROR: unknown target subcommand: " + sub_target)
         return 1
     _update_auto_notify_if_needed(cmd)

@@ -2,6 +2,7 @@ import "src/driver/cli/common/core.tg"
 import "src/driver/cli/install/args.tg"
 import "src/driver/cli/install/platform.tg"
 import "src/driver/cli/install/prompt.tg"
+import "src/driver/cli/target/flow.tg" as targetctl
 
 func _install_has_llvm(expected_version: String) -> i32:
     if (process.run("clang --version > thagore_install_clang.log 2>&1") != 0):
@@ -16,20 +17,19 @@ func _install_has_llvm(expected_version: String) -> i32:
             return 1
     return 0
 
-func _install_build_command(os_name: String, arch: String, llvm_version: String, yes: i32, profile: String, targets: String) -> String:
-    let mode = os_name
-    if (os_name == "windows"):
-        mode = "portable"
-    let cmd = "bash scripts/install/thagup-init.sh --mode " + mode + " --arch " + arch + " --llvm-version " + llvm_version
+func _install_build_command(os_name: String, arch: String, llvm_version: String, yes: i32) -> String:
+    let yes_flag = ""
     if (yes == 1):
-        cmd = cmd + " --yes"
-    else:
-        cmd = cmd + " --interactive"
-    if (strlen(profile) > 0):
-        cmd = cmd + " --profile " + profile
-    if (strlen(targets) > 0):
-        cmd = cmd + " --targets " + _quote(targets)
-    return cmd
+        yes_flag = " --yes"
+    if (os_name == "windows"):
+        return "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install/windows.ps1 --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "ubuntu"):
+        return "bash scripts/install/ubuntu.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "macos"):
+        return "bash scripts/install/macos.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    if (os_name == "linux"):
+        return "bash scripts/install/linux.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
+    return "bash scripts/install/portable.sh --llvm-version " + llvm_version + " --arch " + arch + yes_flag
 
 func _install_toolchain(argc: i32, start: i32) -> i32:
     let parsed = _install_parse_toolchain_args(argc, start)
@@ -57,7 +57,7 @@ func _install_toolchain(argc: i32, start: i32) -> i32:
         if (_install_confirm_install(parsed.yes, target_os, target_arch, parsed.llvm_version) == 0):
             print("Install aborted.")
             return 1
-    let cmd = _install_build_command(target_os, target_arch, parsed.llvm_version, parsed.yes, parsed.profile, parsed.targets)
+    let cmd = _install_build_command(target_os, target_arch, parsed.llvm_version, parsed.yes)
     print("[install] target_os=" + target_os + " arch=" + target_arch + " llvm=" + parsed.llvm_version + " profile=" + parsed.profile)
     print("[install] cmd=" + cmd)
     if (parsed.dry_run == 1):
@@ -68,6 +68,8 @@ func _install_toolchain(argc: i32, start: i32) -> i32:
         return rc
     if (_install_has_llvm(parsed.llvm_version) == 0):
         print("ERROR: LLVM verification failed after install.")
+        return 1
+    if (targetctl.install_apply_profile(parsed.profile, parsed.targets, target_os, target_arch, "local", "stable") != 0):
         return 1
     print("LLVM toolchain ready.")
     return 0

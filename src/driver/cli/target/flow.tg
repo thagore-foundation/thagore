@@ -1,0 +1,409 @@
+import "src/driver/cli/common/core.tg"
+
+struct ToolchainConfig:
+    channel: String
+    version: String
+    default_target: String
+    profile: String
+    installed_set: String
+
+func _supported_set() -> String:
+    return ";x86_64-unknown-linux-gnu;x86_64-pc-windows-msvc;aarch64-apple-darwin;aarch64-unknown-linux-gnu;x86_64-apple-darwin;"
+
+func _standard_set() -> String:
+    return _supported_set()
+
+func _toolchain_config_path() -> String:
+    let env_cfg = _trim(env.get_var("THAGC_CONFIG"))
+    if (strlen(env_cfg) > 0):
+        return _normalize_path(env_cfg)
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/config.toml")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/config.toml")
+    return ".thagc/config.toml"
+
+func _toolchain_pack_root() -> String:
+    let env_root = _trim(env.get_var("THAGC_TARGET_ROOT"))
+    if (strlen(env_root) > 0):
+        return _normalize_path(env_root)
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/targets")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/targets")
+    return ".thagc/targets"
+
+func _cfg_line_value(text: String, key: String) -> String:
+    let total = _line_count(text)
+    let i = 0
+    let prefix = key + " ="
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if (_starts_with(line, prefix) == 1):
+            return _trim(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+        i = i + 1
+    return ""
+
+func _cfg_unquote(text: String) -> String:
+    let t = _trim(text)
+    if (strlen(t) < 2):
+        return t
+    if ((_starts_with(t, "\"") == 1) and (_ends_with(t, "\"") == 1)):
+        return __thg_str_substr(t, 1, strlen(t) - 2)
+    return t
+
+func _cfg_list_to_set(raw: String) -> String:
+    let list = _trim(raw)
+    if (strlen(list) == 0):
+        return ";"
+    let body = list
+    if ((_starts_with(body, "[") == 1) and (_ends_with(body, "]") == 1)):
+        body = __thg_str_substr(body, 1, strlen(body) - 2)
+    let out = ";"
+    let token = ""
+    let i = 0
+    while (i < strlen(body)):
+        let ch = _char_at(body, i)
+        if (ch == ","):
+            let item = _cfg_unquote(_trim(token))
+            if (strlen(item) > 0):
+                out = _set_add_unique(out, item)
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let item_last = _cfg_unquote(_trim(token))
+    if (strlen(item_last) > 0):
+        out = _set_add_unique(out, item_last)
+    return out
+
+func _config_read() -> ToolchainConfig:
+    let path = _toolchain_config_path()
+    if (fs.exists(path) == 0):
+        return ToolchainConfig("stable", "", "", "standard", ";")
+    let text = fs.read_text(path)
+    let channel = _cfg_unquote(_cfg_line_value(text, "channel"))
+    let version = _cfg_unquote(_cfg_line_value(text, "toolchain_version"))
+    let default_target = _cfg_unquote(_cfg_line_value(text, "default_target"))
+    let profile = _cfg_unquote(_cfg_line_value(text, "profile"))
+    let installed_set = _cfg_list_to_set(_cfg_line_value(text, "installed_targets"))
+    let use_channel = channel
+    if (strlen(use_channel) == 0):
+        use_channel = "stable"
+    let use_profile = profile
+    if (strlen(use_profile) == 0):
+        use_profile = "standard"
+    return ToolchainConfig(use_channel, version, default_target, use_profile, installed_set)
+
+func _set_to_csv(set_text: String) -> String:
+    let out = ""
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + token
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out
+
+func _set_to_quoted_list(set_text: String) -> String:
+    let out = ""
+    let first = 1
+    let token = ""
+    let i = 0
+    while (i < strlen(set_text)):
+        let ch = _char_at(set_text, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (first == 0):
+                    out = out + ","
+                out = out + "\"" + token + "\""
+                first = 0
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return out
+
+func _ensure_dir_chain(path_raw: String) -> i32:
+    let path = _normalize_path(_trim(path_raw))
+    if (strlen(path) == 0):
+        return 1
+    let current = ""
+    let start_i = 0
+    if ((strlen(path) >= 2) and (_char_at(path, 1) == ":")):
+        current = __thg_str_substr(path, 0, 2)
+        start_i = 2
+    if ((_starts_with(path, "/") == 1) and (strlen(current) == 0)):
+        current = "/"
+        start_i = 1
+    let token = ""
+    let i = start_i
+    while (i < strlen(path)):
+        let ch = _char_at(path, i)
+        if (ch == "/"):
+            if (strlen(token) > 0):
+                if ((strlen(current) > 0) and (_ends_with(current, "/") == 0)):
+                    current = current + "/" + token
+                else:
+                    current = current + token
+                if (fs.exists(current) == 0):
+                    fs.mkdir(current)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    if (strlen(token) > 0):
+        if ((strlen(current) > 0) and (_ends_with(current, "/") == 0)):
+            current = current + "/" + token
+        else:
+            current = current + token
+        if (fs.exists(current) == 0):
+            fs.mkdir(current)
+    return 1
+
+func _copy_file(src: String, dst: String) -> i32:
+    if (fs.exists(src) == 0):
+        return 0
+    _ensure_dir_chain(_dir_name(dst))
+    let fin = fs.open_read(src)
+    if (fin == null):
+        return 0
+    let fout = fs.open_write(dst)
+    if (fout == null):
+        fs.close(fin)
+        return 0
+    while (1 == 1):
+        let chunk = fs.read_bytes(fin, 4096)
+        if (strlen(chunk) == 0):
+            break
+        if (fs.write_bytes(fout, chunk) != 0):
+            fs.close(fin)
+            fs.close(fout)
+            return 0
+    fs.close(fin)
+    fs.close(fout)
+    return 1
+
+func _install_pack_files(target: String) -> i32:
+    let root = _toolchain_pack_root()
+    let pack = root + "/" + target
+    _ensure_dir_chain(pack)
+    _ensure_dir_chain(pack + "/runtime")
+    let src_root = "targets/packs/" + target
+    _copy_file(src_root + "/manifest.json", pack + "/manifest.json")
+    _copy_file(src_root + "/README.md", pack + "/README.md")
+    _copy_file("libthag_runtime.a", pack + "/runtime/libthag_runtime.a")
+    _copy_file("runtime.a", pack + "/runtime/runtime.a")
+    _copy_file("runtime.lib", pack + "/runtime/runtime.lib")
+    _copy_file("thag_runtime.lib", pack + "/runtime/thag_runtime.lib")
+    return 1
+
+func _remove_pack_files(target: String) -> i32:
+    let pack = _toolchain_pack_root() + "/" + target
+    fs.remove(pack + "/runtime/libthag_runtime.a")
+    fs.remove(pack + "/runtime/runtime.a")
+    fs.remove(pack + "/runtime/runtime.lib")
+    fs.remove(pack + "/runtime/thag_runtime.lib")
+    fs.remove(pack + "/runtime")
+    fs.remove(pack + "/manifest.json")
+    fs.remove(pack + "/README.md")
+    fs.remove(pack)
+    return 1
+
+func _write_config(cfg: ToolchainConfig) -> i32:
+    let path = _toolchain_config_path()
+    _ensure_dir_chain(_dir_name(path))
+    let text = "channel = \"" + cfg.channel + "\"\n"
+    text = text + "toolchain_version = \"" + cfg.version + "\"\n"
+    text = text + "default_target = \"" + cfg.default_target + "\"\n"
+    text = text + "installed_targets = [" + _set_to_quoted_list(cfg.installed_set) + "]\n"
+    text = text + "profile = \"" + cfg.profile + "\"\n"
+    return fs.write_text(path, text)
+
+func _is_supported_target(triple: String) -> i32:
+    if (_set_contains(_supported_set(), triple) == 1):
+        return 1
+    return 0
+
+func _default_target_for_host(os_name: String, arch: String) -> String:
+    if (os_name == "macos"):
+        if (arch == "arm64"):
+            return "aarch64-apple-darwin"
+        return "x86_64-apple-darwin"
+    if ((os_name == "linux") or (os_name == "ubuntu") or (os_name == "portable")):
+        if (arch == "arm64"):
+            return "aarch64-unknown-linux-gnu"
+        return "x86_64-unknown-linux-gnu"
+    return "x86_64-unknown-linux-gnu"
+
+func _parse_targets_csv_set(csv: String) -> String:
+    let out = ";"
+    let token = ""
+    let i = 0
+    while (i < strlen(csv)):
+        let ch = _char_at(csv, i)
+        if (ch == ","):
+            let item = _trim(token)
+            if (strlen(item) > 0):
+                out = _set_add_unique(out, item)
+            token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    let item_last = _trim(token)
+    if (strlen(item_last) > 0):
+        out = _set_add_unique(out, item_last)
+    return out
+
+func target_list() -> i32:
+    let sup = _supported_set()
+    let std = _standard_set()
+    let token = ""
+    let i = 0
+    while (i < strlen(sup)):
+        let ch = _char_at(sup, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_set_contains(std, token) == 1):
+                    print(token + "\tstandard")
+                else:
+                    print(token + "\toptional")
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return 0
+
+func target_installed() -> i32:
+    let cfg = _config_read()
+    let token = ""
+    let i = 0
+    while (i < strlen(cfg.installed_set)):
+        let ch = _char_at(cfg.installed_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                print(token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    return 0
+
+func target_add(triple: String) -> i32:
+    let t = _trim(triple)
+    if (_is_supported_target(t) == 0):
+        print("ERROR: unsupported target triple: " + t)
+        return 1
+    let cfg = _config_read()
+    cfg.installed_set = _set_add_unique(cfg.installed_set, t)
+    if (strlen(cfg.default_target) == 0):
+        cfg.default_target = t
+    _install_pack_files(t)
+    _write_config(cfg)
+    print("added=" + t)
+    return 0
+
+func target_remove(triple: String) -> i32:
+    let t = _trim(triple)
+    let cfg = _config_read()
+    cfg.installed_set = _set_difference(cfg.installed_set, ";" + t + ";")
+    if (cfg.default_target == t):
+        cfg.default_target = ""
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    cfg.default_target = token
+                    i = strlen(cfg.installed_set)
+                token = ""
+            else:
+                token = token + ch
+            i = i + 1
+    _remove_pack_files(t)
+    _write_config(cfg)
+    print("removed=" + t)
+    return 0
+
+func target_ensure(triple: String) -> i32:
+    let t = _trim(triple)
+    let cfg = _config_read()
+    if (_set_contains(cfg.installed_set, t) == 0):
+        print("missing=" + t)
+        return 2
+    if (fs.exists(_toolchain_pack_root() + "/" + t) == 0):
+        print("missing=" + t)
+        return 2
+    print("ok=" + t)
+    return 0
+
+func install_apply_profile(profile_raw: String, targets_raw: String, detected_os: String, detected_arch: String, version: String, channel: String) -> i32:
+    let profile = _trim(profile_raw)
+    let cfg = _config_read()
+    let use_profile = profile
+    if (strlen(use_profile) == 0):
+        use_profile = "standard"
+    let target_set = ";"
+    if (use_profile == "standard"):
+        target_set = _standard_set()
+    else:
+        if (use_profile != "custom"):
+            print("ERROR: --profile must be standard or custom.")
+            return 1
+        target_set = _parse_targets_csv_set(targets_raw)
+        if (_set_count(target_set) <= 0):
+            print("ERROR: custom profile requires --targets.")
+            return 1
+    let token = ""
+    let i = 0
+    while (i < strlen(target_set)):
+        let ch = _char_at(target_set, i)
+        if (ch == ";"):
+            if (strlen(token) > 0):
+                if (_is_supported_target(token) == 0):
+                    print("ERROR: unsupported target triple: " + token)
+                    return 1
+                _install_pack_files(token)
+                token = ""
+        else:
+            token = token + ch
+        i = i + 1
+    cfg.channel = channel
+    cfg.version = version
+    cfg.profile = use_profile
+    cfg.installed_set = target_set
+    cfg.default_target = _default_target_for_host(detected_os, detected_arch)
+    if (_set_contains(cfg.installed_set, cfg.default_target) == 0):
+        cfg.default_target = ""
+        let token2 = ""
+        let j = 0
+        while (j < strlen(cfg.installed_set)):
+            let ch2 = _char_at(cfg.installed_set, j)
+            if (ch2 == ";"):
+                if (strlen(token2) > 0):
+                    cfg.default_target = token2
+                    j = strlen(cfg.installed_set)
+                token2 = ""
+            else:
+                token2 = token2 + ch2
+            j = j + 1
+    _write_config(cfg)
+    print("config=" + _toolchain_config_path())
+    print("profile=" + cfg.profile)
+    print("default_target=" + cfg.default_target)
+    print("installed_targets=" + _set_to_csv(cfg.installed_set))
+    return 0
