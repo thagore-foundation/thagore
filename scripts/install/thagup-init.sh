@@ -10,8 +10,26 @@ REQUESTED_MODE="auto"
 REQUESTED_ARCH="auto"
 REQUESTED_PREFIX=""
 REQUESTED_LLVM_VERSION="21.1.8"
+REQUESTED_PROFILE=""
+REQUESTED_TARGETS=""
 SKIP_LLVM=0
 ASSUME_YES=1
+
+SUPPORTED_TARGETS=(
+  "x86_64-unknown-linux-gnu"
+  "x86_64-pc-windows-msvc"
+  "aarch64-apple-darwin"
+  "aarch64-unknown-linux-gnu"
+  "x86_64-apple-darwin"
+)
+
+STANDARD_TARGETS=(
+  "x86_64-unknown-linux-gnu"
+  "x86_64-pc-windows-msvc"
+  "aarch64-apple-darwin"
+  "aarch64-unknown-linux-gnu"
+  "x86_64-apple-darwin"
+)
 
 print_help() {
   cat <<'EOF'
@@ -21,19 +39,22 @@ Usage:
   thagup-init.sh [options]
 
 Options:
-  --tag <vX.Y.Z>             Install a specific release tag (default: latest stable)
+  --tag <vX.Y.Z>                    Install a specific release tag (default: latest stable)
   --mode <auto|linux|ubuntu|macos|portable>
   --arch <auto|x86_64|arm64>
-  --prefix <path>            Install prefix for toolchain payload
-  --llvm-version <21.1.8>    LLVM version expected by installer
-  --skip-llvm                Skip LLVM provisioning
-  --interactive              Ask for confirmation (default: non-interactive)
-  --yes                      Force non-interactive install
+  --prefix <path>                   Install prefix for toolchain payload
+  --llvm-version <21.1.8>           LLVM version expected by installer
+  --profile <standard|custom>       Target profile
+  --targets <triple,triple,...>     Target triples for custom profile
+  --skip-llvm                       Skip LLVM provisioning
+  --interactive                     Ask for confirmation/profile selection
+  --yes                             Force non-interactive install
   --help
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash
-  bash thagup-init.sh --tag v0.5.30 --mode linux --arch x86_64
+  bash thagup-init.sh --tag v0.5.30 --mode linux --arch x86_64 --profile standard
+  bash thagup-init.sh --profile custom --targets x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 EOF
 }
 
@@ -193,6 +214,146 @@ verify_checksum() {
   fi
 }
 
+join_by_comma() {
+  local out=""
+  local first=1
+  local item=""
+  for item in "$@"; do
+    if [[ "$first" == "1" ]]; then
+      out="$item"
+      first=0
+    else
+      out="$out,$item"
+    fi
+  done
+  echo "$out"
+}
+
+is_supported_target() {
+  local needle="$1"
+  local t=""
+  for t in "${SUPPORTED_TARGETS[@]}"; do
+    if [[ "$t" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+normalize_targets_csv() {
+  local raw="$1"
+  local cleaned="${raw// /}"
+  local IFS=','
+  local parts=()
+  read -r -a parts <<< "$cleaned"
+  local out=()
+  local p=""
+  for p in "${parts[@]}"; do
+    [[ -n "$p" ]] || continue
+    if ! is_supported_target "$p"; then
+      echo "ERROR: unsupported target triple: $p" >&2
+      exit 1
+    fi
+    out+=("$p")
+  done
+  if [[ "${#out[@]}" -eq 0 ]]; then
+    echo "ERROR: target list is empty." >&2
+    exit 1
+  fi
+  join_by_comma "${out[@]}"
+}
+
+print_supported_targets() {
+  local t=""
+  for t in "${SUPPORTED_TARGETS[@]}"; do
+    echo "  - $t"
+  done
+}
+
+default_target_for_host() {
+  local mode="$1"
+  local arch="$2"
+  if [[ "$mode" == "macos" ]]; then
+    if [[ "$arch" == "arm64" ]]; then
+      echo "aarch64-apple-darwin"
+      return
+    fi
+    echo "x86_64-apple-darwin"
+    return
+  fi
+  if [[ "$mode" == "linux" || "$mode" == "ubuntu" || "$mode" == "portable" ]]; then
+    if [[ "$arch" == "arm64" ]]; then
+      echo "aarch64-unknown-linux-gnu"
+      return
+    fi
+    echo "x86_64-unknown-linux-gnu"
+    return
+  fi
+  echo "x86_64-unknown-linux-gnu"
+}
+
+resolve_profile_and_targets() {
+  local mode="$1"
+  local arch="$2"
+  local selected_profile="$REQUESTED_PROFILE"
+  local selected_targets="$REQUESTED_TARGETS"
+
+  if [[ -z "$selected_profile" ]]; then
+    if [[ "$ASSUME_YES" == "1" ]]; then
+      selected_profile="standard"
+    else
+      echo "[thagup] Choose install profile:"
+      echo "  1) standard (recommended)"
+      echo "  2) custom"
+      read -r -p "Profile [1/2]: " choice
+      if [[ "$choice" == "2" ]]; then
+        selected_profile="custom"
+      else
+        selected_profile="standard"
+      fi
+    fi
+  fi
+
+  if [[ "$selected_profile" != "standard" && "$selected_profile" != "custom" ]]; then
+    echo "ERROR: --profile must be standard or custom." >&2
+    exit 1
+  fi
+
+  if [[ "$selected_profile" == "standard" ]]; then
+    selected_targets="$(join_by_comma "${STANDARD_TARGETS[@]}")"
+  else
+    if [[ -z "$selected_targets" ]]; then
+      if [[ "$ASSUME_YES" == "1" ]]; then
+        echo "ERROR: custom profile requires --targets in non-interactive mode." >&2
+        exit 1
+      fi
+      echo "[thagup] Supported targets:"
+      print_supported_targets
+      read -r -p "Enter comma-separated targets: " selected_targets
+    fi
+    selected_targets="$(normalize_targets_csv "$selected_targets")"
+  fi
+
+  REQUESTED_PROFILE="$selected_profile"
+  REQUESTED_TARGETS="$selected_targets"
+  REQUESTED_DEFAULT_TARGET="$(default_target_for_host "$mode" "$arch")"
+}
+
+write_user_config() {
+  local release_tag="$1"
+  local config_dir="$HOME/.thagc"
+  local config_file="$config_dir/config.toml"
+  mkdir -p "$config_dir"
+  cat > "$config_file" <<EOF
+channel = "stable"
+toolchain_version = "${release_tag}"
+default_target = "${REQUESTED_DEFAULT_TARGET}"
+installed_targets = [$(printf '"%s"' "${REQUESTED_TARGETS//,/\",\"}")]
+profile = "${REQUESTED_PROFILE}"
+EOF
+  echo "[thagup] wrote config: $config_file"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag)
@@ -213,6 +374,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --llvm-version)
       REQUESTED_LLVM_VERSION="${2:-}"
+      shift 2
+      ;;
+    --profile)
+      REQUESTED_PROFILE="${2:-}"
+      shift 2
+      ;;
+    --targets)
+      REQUESTED_TARGETS="${2:-}"
       shift 2
       ;;
     --skip-llvm)
@@ -261,6 +430,8 @@ if [[ "$ARCH" == "auto" ]]; then
 fi
 ARCH="$(normalize_arch "$ARCH")"
 
+resolve_profile_and_targets "$MODE" "$ARCH"
+
 ASSET="$(resolve_asset_for_mode "$MODE" "$ARCH")"
 ASSET_TAG="${ASSET#thagore-}"
 ASSET_TAG="${ASSET_TAG%.tar.gz}"
@@ -287,6 +458,7 @@ CHECKSUM_PATH="$TMP_DIR/$CHECKSUM_ASSET"
 PAYLOAD_DIR="$TMP_DIR/payload"
 
 echo "[thagup] release=$RELEASE_TAG mode=$MODE arch=$ARCH asset=$ASSET"
+echo "[thagup] profile=$REQUESTED_PROFILE targets=$REQUESTED_TARGETS default_target=$REQUESTED_DEFAULT_TARGET"
 echo "[thagup] downloading payload..."
 curl -fsSL "$ASSET_URL" -o "$ARCHIVE_PATH"
 echo "[thagup] downloading checksum..."
@@ -314,4 +486,5 @@ fi
 export THAGORE_ROOT="$PAYLOAD_DIR"
 echo "[thagup] running installer..."
 "${INSTALL_CMD[@]}"
+write_user_config "$RELEASE_TAG"
 echo "[thagup] done."
