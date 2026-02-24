@@ -397,11 +397,29 @@ jobs:
             [[ -n "$tag" ]] || return 1
             gh release download "$tag" --repo "${{ github.repository }}" --pattern "$pattern" -D bootstrap || true
             if [[ ! -f "bootstrap/$pattern" ]]; then
-              curl -fsSL -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
+              curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused -o "bootstrap/$pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$pattern" || true
             fi
             if [[ -f "bootstrap/$pattern" ]]; then
               echo "[SEED] stage1 asset=$pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
               return 0
+            fi
+            local fallback_pattern=""
+            if [[ "$pattern" == "thagore-stage1-linux.tar.gz" ]]; then
+              fallback_pattern="thagore-stage1-linux-x86_64.tar.gz"
+            elif [[ "$pattern" == "thagore-stage1-linux-x86_64.tar.gz" ]]; then
+              fallback_pattern="thagore-stage1-linux.tar.gz"
+            fi
+            if [[ -n "$fallback_pattern" ]]; then
+              rm -f "bootstrap/$fallback_pattern" || true
+              gh release download "$tag" --repo "${{ github.repository }}" --pattern "$fallback_pattern" -D bootstrap || true
+              if [[ ! -f "bootstrap/$fallback_pattern" ]]; then
+                curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused -o "bootstrap/$fallback_pattern" "https://github.com/${{ github.repository }}/releases/download/$tag/$fallback_pattern" || true
+              fi
+              if [[ -f "bootstrap/$fallback_pattern" ]]; then
+                cp "bootstrap/$fallback_pattern" "bootstrap/$pattern"
+                echo "[SEED] stage1 asset fallback=$fallback_pattern tag=$tag" | tee -a "$STAGE_TRACE_FILE"
+                return 0
+              fi
             fi
             rm -f "bootstrap/$pattern" || true
             if [[ ! -f "bootstrap/$pattern" ]]; then
