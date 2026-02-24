@@ -119,7 +119,7 @@ jobs:
                   "hello_bin": "hello_release",
                   "fib_bin": "fib_release",
                   "package_name": "thagore-linux-x86_64.tar.gz",
-                  "stage1_seed_name": "thagore-stage1-linux-x86_64.tar.gz",
+                  "stage1_seed_name": "thagore-stage1-linux.tar.gz",
                   "runtime_seed_name": "thagore-runtime-linux-x86_64.a",
                   "stage_trace_file": "release-stage-trace-linux-x86_64.log",
               },
