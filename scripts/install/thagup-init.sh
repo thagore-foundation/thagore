@@ -357,6 +357,32 @@ write_user_config() {
     --channel "stable"
 }
 
+install_target_packs() {
+  local store="$HOME/.thagc/targets"
+  local manager="$PAYLOAD_DIR/scripts/target_pack_store.py"
+  if [[ ! -f "$manager" ]]; then
+    manager="$PWD/scripts/target_pack_store.py"
+  fi
+  if [[ ! -f "$manager" ]]; then
+    echo "ERROR: missing target pack store script." >&2
+    exit 1
+  fi
+  local source_root="$PAYLOAD_DIR/targets/packs"
+  if [[ ! -d "$source_root" ]]; then
+    source_root="$PWD/targets/packs"
+  fi
+  if [[ ! -d "$source_root" ]]; then
+    echo "ERROR: missing source target packs directory." >&2
+    exit 1
+  fi
+  IFS=',' read -r -a targets_arr <<< "$REQUESTED_TARGETS"
+  local t=""
+  for t in "${targets_arr[@]}"; do
+    [[ -n "$t" ]] || continue
+    "$PY_BIN" "$manager" --store-root "$store" install --target "$t" --source-root "$source_root"
+  done
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag)
@@ -490,4 +516,5 @@ export THAGORE_ROOT="$PAYLOAD_DIR"
 echo "[thagup] running installer..."
 "${INSTALL_CMD[@]}"
 write_user_config "$RELEASE_TAG"
+install_target_packs
 echo "[thagup] done."

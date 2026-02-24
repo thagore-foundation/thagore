@@ -67,6 +67,15 @@ func _toolchain_config_path() -> String:
         return _normalize_path(profile + "/.thagc/config.toml")
     return ".thagc/config.toml"
 
+func _toolchain_pack_root() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/targets")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/targets")
+    return ".thagc/targets"
+
 func _config_line_value(text: String, key: String) -> String:
     let total = _line_count(text)
     let i = 0
@@ -111,6 +120,11 @@ func _ensure_target_ready() -> i32:
     if (_config_has_installed_target(cfg, requested) == 0):
         print("ERROR: target '" + requested + "' is not installed in " + cfg_path)
         print("HINT: run 'thagore target add " + requested + "' or reinstall with thagup profile.")
+        return 1
+    let pack_path = _toolchain_pack_root() + "/" + requested
+    if (fs.exists(pack_path) == 0):
+        print("ERROR: target pack directory is missing: " + pack_path)
+        print("HINT: run 'thagore target add " + requested + "' to install target pack files.")
         return 1
     env.set_var("THAG_BUILD_TARGET", requested)
     return 0

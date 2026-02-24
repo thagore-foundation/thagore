@@ -154,6 +154,8 @@ thagore target add x86_64-unknown-linux-gnu
 thagore target remove x86_64-unknown-linux-gnu
 ```
 
+Target packs are stored under `~/.thagc/targets/<triple>`.
+
 Build with explicit target:
 
 ```bash
