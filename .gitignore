@@ -11,3 +11,5 @@ LLVM-*.exe
 *.ll
 thag_runtime.lib
 libthag_runtime.a
+__pycache__/
+*.pyc
