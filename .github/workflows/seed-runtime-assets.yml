@@ -6,7 +6,7 @@ on:
       seed_tag:
         description: "Deprecated. Runtime seed is now published only via atomic seed bundle."
         required: false
-        default: "v0.3.25-stage1-seed"
+        default: "v0.3.193-stage1-seed"
 
 permissions:
   contents: read

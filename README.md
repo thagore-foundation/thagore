@@ -71,10 +71,40 @@
 |------|---------|---------|
 | **LLVM / Clang** | 21.x | Compiler backend & linker |
 | **Python** | 3.x | Scripting, Python bridge (optional) |
-| **Stage1 seed** | `v0.3.25-stage1-seed` | Bootstrap seed binary |
+| **Stage1 seed** | `v0.3.168-stage1-seed` | Bootstrap seed binary |
 | **Runtime ABI** | — | `thag_runtime.lib` / `libthag_runtime.a` |
 
 > **Windows users:** Download the LLVM 21 release archive and ensure `clang`, `clang++`, and `llvm-link` are on your `PATH`.
+
+### One-Command Installer (`thagup`)
+
+Install with a single bootstrap script (Rustup-style):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash
+```
+
+Canonical shortcut URL:
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash
+```
+
+Pin a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash -s -- --tag v0.5.30
+```
+
+Windows PowerShell (existing setup bootstrap):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install/install-windows.ps1 -yes
+```
+
+Direct Windows bootstrap binary URL:
+
+`https://thagore.org/thagup.exe`
 
 ### Bootstrap
 

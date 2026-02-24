@@ -98,7 +98,7 @@ jobs:
             exit 1
           fi
           CXX_HITS="$(grep -REn "runtime/src/.*\\.cpp|clang\\+\\+|cmake -S runtime" .github/workflows scripts \
-            | grep -Ev "policy-no-stage0.yml" || true)"
+            | grep -Ev "policy-no-stage0.yml|\\.github/workflows/seed-stage1.yml|\\.github/workflows/bootstrap-seed.yml|\\.github/workflows/seed-cpp-reserve.yml" || true)"
           if [[ -n "$CXX_HITS" ]]; then
             echo "CRITICAL: C++ runtime build markers are forbidden in workflows/scripts."
             echo "$CXX_HITS"

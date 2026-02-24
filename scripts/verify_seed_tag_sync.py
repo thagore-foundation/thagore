@@ -12,6 +12,7 @@ WORKFLOWS = [
     ".github/workflows/selfhost-longhaul.yml",
     ".github/workflows/selfhost-soak-nightly.yml",
     ".github/workflows/seed-stage1.yml",
+    ".github/workflows/seed-runtime-assets.yml",
 ]
 
 
