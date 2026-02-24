@@ -109,18 +109,32 @@ jobs:
           TRIPLE="${{ matrix.triple }}"
           mkdir -p dist/release
 
+          # Prefer stage2b > stage2 > stage1 as the released compiler binary.
+          # stage1 (= stage1_helper backend) is always functional; stage2/stage2b
+          # are CLI wrappers that also work but require stage1_helper alongside them.
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            THAGC_BIN="stage2b.exe"
             THAGC_DEST="thagc.exe"
+            if [[ -f "stage2b.exe" ]]; then THAGC_BIN="stage2b.exe"
+            elif [[ -f "stage2.exe" ]]; then THAGC_BIN="stage2.exe"
+            else THAGC_BIN="stage1.exe"; fi
           else
-            THAGC_BIN="stage2b"
             THAGC_DEST="thagc"
+            if [[ -f "stage2b" ]]; then THAGC_BIN="stage2b"
+            elif [[ -f "stage2" ]]; then THAGC_BIN="stage2"
+            else THAGC_BIN="stage1"; fi
           fi
+          echo "Using compiler binary: $THAGC_BIN"
 
-          # Core bundle: thagc binary + thagup-init.sh + target registry
+          # Core bundle: thagc binary + stage1_helper + thagup-init.sh + target registry
           CORE_STAGE="dist/release/core-staging"
           mkdir -p "$CORE_STAGE/bin" "$CORE_STAGE/targets/registry"
           cp "$THAGC_BIN" "$CORE_STAGE/bin/$THAGC_DEST"
+          # Also bundle stage1 (= stage1_helper backend) so CLI wrapper can find it
+          if [[ -f "stage1" && "$THAGC_BIN" != "stage1" ]]; then
+            cp stage1 "$CORE_STAGE/bin/stage1_helper"
+          elif [[ -f "stage1.exe" && "$THAGC_BIN" != "stage1.exe" ]]; then
+            cp stage1.exe "$CORE_STAGE/bin/stage1_helper.exe"
+          fi
           cp scripts/install/thagup-init.sh "$CORE_STAGE/"
           if [[ -d scripts/install/thagup ]]; then
             cp scripts/install/thagup "$CORE_STAGE/"
