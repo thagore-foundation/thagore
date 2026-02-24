@@ -92,9 +92,10 @@ func _detect_link_driver(target: String, prefer_cxx: i32) -> String:
             let pack_driver_exe = _probe_link_driver(target_pack_for_manifest + "/" + manifest_driver + ".exe")
             if (strlen(pack_driver_exe) > 0):
                 return pack_driver_exe
-        let manifest_ok = _probe_link_driver(manifest_driver)
-        if (strlen(manifest_ok) > 0):
-            return manifest_ok
+        else:
+            let manifest_ok = _probe_link_driver(manifest_driver)
+            if (strlen(manifest_ok) > 0):
+                return manifest_ok
     if (strlen(target) > 0):
         let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
         if (prefer_cxx == 1):
@@ -264,14 +265,17 @@ func _ensure_target_ready() -> i32:
     env.set_var("THAG_BUILD_TARGET", requested)
     return 0
 
-func _link_with_runtime(link_driver: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32) -> i32:
+func _link_with_runtime(link_driver: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32, lld_driver: String, target: String) -> i32:
     if (fs.exists(runtime_lib) == 0):
         return -1
     let mode_flag = ""
     let target_flag = _target_flag()
+    let lld_flag = ""
     if ((force_cxx_mode == 1) and (_contains(link_driver, "clang++") == 0) and (_driver_supports_gpp_mode(link_driver) == 1)):
         mode_flag = " --driver-mode=g++"
-    let cmd = link_driver + mode_flag + target_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
+    if ((strlen(target) > 0) and (strlen(lld_driver) > 0) and (_contains(link_driver, "clang") == 1)):
+        lld_flag = " -fuse-ld=lld"
+    let cmd = link_driver + mode_flag + lld_flag + target_flag + " " + _quote(input_path) + " -o " + _quote(out_path) + " -Wno-override-module " + _quote(runtime_lib)
     return process.run(cmd)
 
 func _link_with_runtime_lld(lld_driver: String, runtime_lib: String, input_path: String, out_path: String, target: String) -> i32:
@@ -310,8 +314,8 @@ func _try_link_with_candidates(cand_set: String, input_path: String, out_path: S
             if (strlen(tok) > 0):
                 if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
                     return 0
-                if (strict_embedded == 0):
-                    if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx) == 0):
+                if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+                    if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
                         return 0
                 tok = ""
         else:
@@ -339,23 +343,23 @@ func _link_exe(input_path: String, out_path: String, lld_driver: String, link_dr
             return 0
     if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
         return 0
-    if (strict_embedded == 0):
-        if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx) == 0):
+    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
     if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
         return 0
-    if (strict_embedded == 0):
-        if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx) == 0):
+    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
     if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
         return 0
-    if (strict_embedded == 0):
-        if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx) == 0):
+    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
     if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
         return 0
-    if (strict_embedded == 0):
-        if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx) == 0):
+    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
     print("CRITICAL: runtime library not found (expected runtime.lib/runtime.a).")
     return 1
@@ -441,11 +445,12 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         print("HINT: run 'thagore target ensure " + target + "' or reinstall target pack.")
         return 1
     let link_driver = ""
-    if (strlen(target) == 0):
-        link_driver = _detect_link_driver(target, prefer_cxx)
-        if (link_driver.length() == 0):
-            print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
-            return 1
+    link_driver = _detect_link_driver(target, prefer_cxx)
+    if ((strlen(target) == 0) and (link_driver.length() == 0)):
+        print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
+        return 1
+    if ((strlen(target) > 0) and (link_driver.length() == 0)):
+        print("WARN: embedded clang driver not found in target pack; using direct lld lane only.")
     let object_path = out_path + ".o"
     if (emitter.emit_object_core(core, module_name, link_driver, object_path) != 0):
         if (_assert_no_legacy_ir_fallback_artifact(tmp_ll_path) != 0):

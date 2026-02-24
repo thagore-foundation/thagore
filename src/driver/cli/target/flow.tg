@@ -554,6 +554,10 @@ func target_doctor(triple_raw: String) -> i32:
         return 2
     if (lld_ok == 0):
         return 2
+    if ((strlen(driver_name) > 0) and (strlen(driver_path) == 0)):
+        return 2
+    if ((strlen(lld_name) > 0) and (strlen(lld_path) == 0)):
+        return 2
     if (runtime_count <= 0):
         return 2
     return 0
