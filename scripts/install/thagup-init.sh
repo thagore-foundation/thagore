@@ -341,17 +341,20 @@ resolve_profile_and_targets() {
 
 write_user_config() {
   local release_tag="$1"
-  local config_dir="$HOME/.thagc"
-  local config_file="$config_dir/config.toml"
-  mkdir -p "$config_dir"
-  cat > "$config_file" <<EOF
-channel = "stable"
-toolchain_version = "${release_tag}"
-default_target = "${REQUESTED_DEFAULT_TARGET}"
-installed_targets = [$(printf '"%s"' "${REQUESTED_TARGETS//,/\",\"}")]
-profile = "${REQUESTED_PROFILE}"
-EOF
-  echo "[thagup] wrote config: $config_file"
+  local manager="$PAYLOAD_DIR/scripts/toolchain_config.py"
+  if [[ ! -f "$manager" ]]; then
+    manager="$PWD/scripts/toolchain_config.py"
+  fi
+  if [[ ! -f "$manager" ]]; then
+    echo "ERROR: missing toolchain config manager script." >&2
+    exit 1
+  fi
+  "$PY_BIN" "$manager" init \
+    --profile "$REQUESTED_PROFILE" \
+    --targets "$REQUESTED_TARGETS" \
+    --default-target "$REQUESTED_DEFAULT_TARGET" \
+    --toolchain-version "$release_tag" \
+    --channel "stable"
 }
 
 while [[ $# -gt 0 ]]; do

@@ -4,9 +4,10 @@ import "lib/io.tg" as io
 func _install_print_help() -> void:
     print("thagore install toolchain")
     print("Usage:")
-    print("  thagore install toolchain [--yes] [--dry-run]")
+    print("  thagore install toolchain [--yes|--interactive] [--dry-run]")
     print("       [--llvm-version 21.1.8] [--target-os auto|windows|ubuntu|macos|linux|portable]")
     print("       [--arch auto|amd64|x86_64|arm64|aarch64]")
+    print("       [--profile standard|custom] [--targets t1,t2,...]")
 
 func _install_confirm_install(yes: i32, os_name: String, arch: String, llvm_version: String) -> i32:
     if (yes == 1):
@@ -15,4 +16,3 @@ func _install_confirm_install(yes: i32, os_name: String, arch: String, llvm_vers
     if ((strlen(answer) == 0) or (answer == "y") or (answer == "Y") or (answer == "yes") or (answer == "YES")):
         return 1
     return 0
-

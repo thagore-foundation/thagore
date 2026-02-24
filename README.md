@@ -82,6 +82,10 @@ Install with a single bootstrap script (Rustup-style):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash
+
+# choose profile/targets explicitly
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash -s -- \
+  --profile custom --targets x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
 ```
 
 Canonical shortcut URL:
@@ -138,6 +142,23 @@ Runtime ABI artifacts are consumed from seed assets (not built from C++):
 # examples/hello.tg
 func main() -> i32:
     print("Hello Self-Hosted World!")
+
+### Target Packs
+
+Manage installed targets from CLI:
+
+```bash
+thagore target list
+thagore target installed
+thagore target add x86_64-unknown-linux-gnu
+thagore target remove x86_64-unknown-linux-gnu
+```
+
+Build with explicit target:
+
+```bash
+thagore build examples/hello.tg -o hello --target x86_64-unknown-linux-gnu
+```
     return 0
 ```
 

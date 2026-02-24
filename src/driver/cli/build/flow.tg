@@ -58,6 +58,63 @@ func _target_flag() -> String:
         return ""
     return " --target=" + triple
 
+func _toolchain_config_path() -> String:
+    let home = _trim(env.get_var("HOME"))
+    if (strlen(home) > 0):
+        return _normalize_path(home + "/.thagc/config.toml")
+    let profile = _trim(env.get_var("USERPROFILE"))
+    if (strlen(profile) > 0):
+        return _normalize_path(profile + "/.thagc/config.toml")
+    return ".thagc/config.toml"
+
+func _config_line_value(text: String, key: String) -> String:
+    let total = _line_count(text)
+    let i = 0
+    let prefix = key + " ="
+    while (i < total):
+        let line = _trim(_line_at(text, i))
+        if (_starts_with(line, prefix) == 1):
+            return _trim(__thg_str_substr(line, strlen(prefix), strlen(line) - strlen(prefix)))
+        i = i + 1
+    return ""
+
+func _config_default_target(text: String) -> String:
+    let raw = _config_line_value(text, "default_target")
+    if (strlen(raw) < 2):
+        return ""
+    if ((_starts_with(raw, "\"") == 1) and (_ends_with(raw, "\"") == 1)):
+        return __thg_str_substr(raw, 1, strlen(raw) - 2)
+    return raw
+
+func _config_has_installed_target(text: String, triple: String) -> i32:
+    let list_raw = _config_line_value(text, "installed_targets")
+    if (strlen(list_raw) == 0):
+        return 0
+    if (_contains(list_raw, "\"" + triple + "\"") == 1):
+        return 1
+    return 0
+
+func _ensure_target_ready() -> i32:
+    let requested = _trim(env.get_var("THAG_BUILD_TARGET"))
+    let cfg_path = _toolchain_config_path()
+    if (fs.exists(cfg_path) == 0):
+        if (strlen(requested) > 0):
+            print("ERROR: target '" + requested + "' requested but toolchain config is missing: " + cfg_path)
+            print("HINT: run thagup init or 'thagore target add " + requested + "' first.")
+            return 1
+        return 0
+    let cfg = fs.read_text(cfg_path)
+    if (strlen(requested) == 0):
+        requested = _trim(_config_default_target(cfg))
+    if (strlen(requested) == 0):
+        return 0
+    if (_config_has_installed_target(cfg, requested) == 0):
+        print("ERROR: target '" + requested + "' is not installed in " + cfg_path)
+        print("HINT: run 'thagore target add " + requested + "' or reinstall with thagup profile.")
+        return 1
+    env.set_var("THAG_BUILD_TARGET", requested)
+    return 0
+
 func _link_with_runtime(clang_bin: String, runtime_lib: String, input_path: String, out_path: String, force_cxx_mode: i32) -> i32:
     if (fs.exists(runtime_lib) == 0):
         return -1
@@ -136,6 +193,8 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
     if (source.length() == 0):
         print("ERROR: cannot read source file: " + input_path)
         return 11
+    if (_ensure_target_ready() != 0):
+        return 1
     if (v0pipe.v0_is_source(source) == 1):
         if (emit_only == 1):
             print("ERROR: --emit-llvm is not yet supported for v0 fn-syntax path.")
