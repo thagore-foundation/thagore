@@ -295,7 +295,7 @@ verify_checksum "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$ASSET"
 
 mkdir -p "$PAYLOAD_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$PAYLOAD_DIR"
-if [[ ! -x "$PAYLOAD_DIR/installer/install.sh" ]]; then
+if [[ ! -f "$PAYLOAD_DIR/installer/install.sh" ]]; then
   echo "ERROR: payload missing installer script: installer/install.sh" >&2
   exit 1
 fi
