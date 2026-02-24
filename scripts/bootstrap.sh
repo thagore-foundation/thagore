@@ -239,9 +239,11 @@ echo "[INFO] stage2b_bin=$STAGE2B_BIN"
 
 echo "[3/4] Build hello_v2 from stage2b..."
 rm -f hello_v2 hello_v2.exe || true
-# If stage2b == stage2 (fallback), use stage1 for validation instead
-if [[ "$STAGE2B_BIN" == "$STAGE2_BIN" && "$STAGE2_BIN" == "$STAGE1_BOOTSTRAP_BIN" ]]; then
-  echo "[INFO] Using stage1 directly for hello validation (single-stage mode)"
+# If stage2b == stage2 (self-compile fallback), use stage1 for validation.
+# stage2 is a CLI wrapper binary that cannot independently compile .tg files;
+# only stage1 (= stage1_helper, the actual backend) can.
+if [[ "$STAGE2B_BIN" == "$STAGE2_BIN" ]]; then
+  echo "[INFO] stage2b is same as stage2 (single-stage mode) — using stage1 for hello validation"
   VALIDATE_BIN="$STAGE1_BOOTSTRAP_BIN"
 else
   VALIDATE_BIN="$STAGE2B_BIN"
