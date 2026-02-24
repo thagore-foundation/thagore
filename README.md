@@ -155,6 +155,7 @@ thagore target remove x86_64-unknown-linux-gnu
 ```
 
 Target packs are stored under `~/.thagc/targets/<triple>`.
+Toolchain target management (`thagore target ...`, `thagup-init`) is shell-native and does not require Python.
 
 Build with explicit target:
 

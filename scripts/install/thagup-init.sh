@@ -144,47 +144,19 @@ fetch_release_meta() {
   local asset="$1"
   local checksum="$2"
   local tag="$3"
-  local py_bin="$4"
-  "$py_bin" - "$API_BASE" "$asset" "$checksum" "$tag" <<'PY'
-import json
-import re
-import sys
-import urllib.request
-
-api_base, asset_name, checksum_name, requested_tag = sys.argv[1:5]
-headers = {"User-Agent": "thagup-init"}
-tag_re = re.compile(r"^v\d+\.\d+\.\d+$")
-
-def load_json(url: str):
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)
-
-def emit_if_valid(rel: dict):
-    if rel.get("draft") or rel.get("prerelease"):
-        return False
-    tag = str(rel.get("tag_name", "")).strip()
-    if not tag_re.match(tag):
-        return False
-    assets = rel.get("assets", [])
-    by_name = {str(a.get("name", "")): str(a.get("browser_download_url", "")) for a in assets}
-    if asset_name not in by_name or checksum_name not in by_name:
-        return False
-    print(f"{tag}|{by_name[asset_name]}|{by_name[checksum_name]}")
-    return True
-
-if requested_tag:
-    rel = load_json(f"{api_base}/releases/tags/{requested_tag}")
-    if not emit_if_valid(rel):
-        raise SystemExit(f"ERROR: release {requested_tag} missing required assets: {asset_name}, {checksum_name}")
-    raise SystemExit(0)
-
-rels = load_json(f"{api_base}/releases?per_page=100")
-for rel in rels:
-    if emit_if_valid(rel):
-        raise SystemExit(0)
-raise SystemExit(f"ERROR: no stable release found with assets: {asset_name}, {checksum_name}")
-PY
+  local release_tag="$tag"
+  if [[ -z "$release_tag" ]]; then
+    local latest
+    latest="$(curl -fsSL "${API_BASE}/releases/latest" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 || true)"
+    [[ -n "$latest" ]] || {
+      echo "ERROR: cannot resolve latest release tag from GitHub API." >&2
+      exit 1
+    }
+    release_tag="$latest"
+  fi
+  local asset_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${release_tag}/${asset}"
+  local checksum_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${release_tag}/${checksum}"
+  echo "${release_tag}|${asset_url}|${checksum_url}"
 }
 
 verify_checksum() {
@@ -341,15 +313,15 @@ resolve_profile_and_targets() {
 
 write_user_config() {
   local release_tag="$1"
-  local manager="$PAYLOAD_DIR/scripts/toolchain_config.py"
-  if [[ ! -f "$manager" ]]; then
-    manager="$PWD/scripts/toolchain_config.py"
+  local ctl="$PAYLOAD_DIR/scripts/toolchainctl.sh"
+  if [[ ! -f "$ctl" ]]; then
+    ctl="$PWD/scripts/toolchainctl.sh"
   fi
-  if [[ ! -f "$manager" ]]; then
-    echo "ERROR: missing toolchain config manager script." >&2
+  if [[ ! -f "$ctl" ]]; then
+    echo "ERROR: missing toolchainctl script." >&2
     exit 1
   fi
-  "$PY_BIN" "$manager" init \
+  bash "$ctl" init \
     --profile "$REQUESTED_PROFILE" \
     --targets "$REQUESTED_TARGETS" \
     --default-target "$REQUESTED_DEFAULT_TARGET" \
@@ -358,29 +330,7 @@ write_user_config() {
 }
 
 install_target_packs() {
-  local store="$HOME/.thagc/targets"
-  local manager="$PAYLOAD_DIR/scripts/target_pack_store.py"
-  if [[ ! -f "$manager" ]]; then
-    manager="$PWD/scripts/target_pack_store.py"
-  fi
-  if [[ ! -f "$manager" ]]; then
-    echo "ERROR: missing target pack store script." >&2
-    exit 1
-  fi
-  local source_root="$PAYLOAD_DIR/targets/packs"
-  if [[ ! -d "$source_root" ]]; then
-    source_root="$PWD/targets/packs"
-  fi
-  if [[ ! -d "$source_root" ]]; then
-    echo "ERROR: missing source target packs directory." >&2
-    exit 1
-  fi
-  IFS=',' read -r -a targets_arr <<< "$REQUESTED_TARGETS"
-  local t=""
-  for t in "${targets_arr[@]}"; do
-    [[ -n "$t" ]] || continue
-    "$PY_BIN" "$manager" --store-root "$store" install --target "$t" --source-root "$source_root"
-  done
+  :
 }
 
 while [[ $# -gt 0 ]]; do
@@ -440,14 +390,6 @@ done
 require_cmd curl
 require_cmd tar
 require_cmd mktemp
-if command -v python3 >/dev/null 2>&1; then
-  PY_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-  PY_BIN="python"
-else
-  echo "ERROR: python3/python is required for GitHub release metadata lookup." >&2
-  exit 1
-fi
 
 MODE="$REQUESTED_MODE"
 if [[ "$MODE" == "auto" ]]; then
@@ -466,7 +408,7 @@ ASSET_TAG="${ASSET#thagore-}"
 ASSET_TAG="${ASSET_TAG%.tar.gz}"
 CHECKSUM_ASSET="SHA256SUMS-${ASSET_TAG}.txt"
 
-RELEASE_META="$(fetch_release_meta "$ASSET" "$CHECKSUM_ASSET" "$REQUESTED_TAG" "$PY_BIN")"
+RELEASE_META="$(fetch_release_meta "$ASSET" "$CHECKSUM_ASSET" "$REQUESTED_TAG")"
 RELEASE_TAG=""
 ASSET_URL=""
 CHECKSUM_URL=""

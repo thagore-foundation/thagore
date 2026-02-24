@@ -53,16 +53,18 @@ def _build_core_bundle(host: str, out_dir: Path, version: str) -> Path:
         "version": version,
         "artifacts": [
             "scripts/install/thagup-init.sh",
-            "scripts/toolchain_config.py",
-            "scripts/target_pack_store.py",
+            "scripts/toolchainctl.sh",
             "targets/registry/targets.json",
+            "targets/registry/supported.txt",
+            "targets/registry/standard.txt",
         ],
     }
     _write_json(stage_dir / "manifest.json", meta)
     _copy_if_exists(ROOT / "scripts" / "install" / "thagup-init.sh", stage_dir / "scripts" / "install" / "thagup-init.sh")
-    _copy_if_exists(ROOT / "scripts" / "toolchain_config.py", stage_dir / "scripts" / "toolchain_config.py")
-    _copy_if_exists(ROOT / "scripts" / "target_pack_store.py", stage_dir / "scripts" / "target_pack_store.py")
+    _copy_if_exists(ROOT / "scripts" / "toolchainctl.sh", stage_dir / "scripts" / "toolchainctl.sh")
     _copy_if_exists(ROOT / "targets" / "registry" / "targets.json", stage_dir / "targets" / "registry" / "targets.json")
+    _copy_if_exists(ROOT / "targets" / "registry" / "supported.txt", stage_dir / "targets" / "registry" / "supported.txt")
+    _copy_if_exists(ROOT / "targets" / "registry" / "standard.txt", stage_dir / "targets" / "registry" / "standard.txt")
 
     compiler_candidates = [
         ROOT / "stage2",

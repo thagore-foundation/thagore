@@ -1,0 +1,9 @@
+{
+  "schema": "thagc.target.pack.v1",
+  "target": "x86_64-pc-windows-msvc",
+  "link_driver": "clang",
+  "runtime_candidates": [
+    "runtime/runtime.lib",
+    "runtime/thag_runtime.lib"
+  ]
+}

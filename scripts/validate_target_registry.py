@@ -49,6 +49,11 @@ def main() -> int:
                 errors.append(f"{triple}: pack path missing on disk: {pack}")
             else:
                 rows.append(f"target={triple}|pack={pack}")
+                manifest = pack_path / "manifest.json"
+                if not manifest.exists():
+                    errors.append(f"{triple}: missing manifest.json in pack")
+                else:
+                    rows.append(f"manifest={triple}")
 
         standard = data.get("standard_profile", [])
         if not isinstance(standard, list):

@@ -1,0 +1,9 @@
+{
+  "schema": "thagc.target.pack.v1",
+  "target": "aarch64-apple-darwin",
+  "link_driver": "clang",
+  "runtime_candidates": [
+    "runtime/libthag_runtime.a",
+    "runtime/runtime.a"
+  ]
+}

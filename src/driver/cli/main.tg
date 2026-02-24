@@ -27,25 +27,9 @@ func _print_help() -> void:
     print("  " + cli + " target <list|installed|add|remove> [triple]")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
-func _run_toolchain_py(args: String) -> i32:
-    let script = _quote("scripts/toolchain_config.py")
-    let py_env = _trim(env.get_var("THAG_PYTHON"))
-    if (strlen(py_env) > 0):
-        return process.run(py_env + " " + script + " " + args)
-    let rc = process.run("python3 " + script + " " + args)
-    if (rc == 0):
-        return 0
-    return process.run("python " + script + " " + args)
-
-func _run_pack_store_py(args: String) -> i32:
-    let script = _quote("scripts/target_pack_store.py")
-    let py_env = _trim(env.get_var("THAG_PYTHON"))
-    if (strlen(py_env) > 0):
-        return process.run(py_env + " " + script + " " + args)
-    let rc = process.run("python3 " + script + " " + args)
-    if (rc == 0):
-        return 0
-    return process.run("python " + script + " " + args)
+func _run_toolchain_ctl(args: String) -> i32:
+    let script = _quote("scripts/toolchainctl.sh")
+    return process.run("bash " + script + " " + args)
 
 func _helper_exec_path(candidate_raw: String) -> String:
     let candidate = _normalize_path(_trim(candidate_raw))
@@ -150,23 +134,17 @@ func main() -> i32:
             return 1
         let sub_target = _trim(env.get(2))
         if (sub_target == "list"):
-            return _run_toolchain_py("list-targets")
+            return _run_toolchain_ctl("list-targets")
         if (sub_target == "installed"):
-            return _run_toolchain_py("installed")
+            return _run_toolchain_ctl("installed")
         if ((sub_target == "add") or (sub_target == "remove")):
             if (argc <= 3):
                 print("ERROR: missing target triple for '" + sub_target + "'.")
                 return 1
             let triple = _trim(env.get(3))
             if (sub_target == "add"):
-                let rc_pack_add = _run_pack_store_py("install --target " + _quote(triple))
-                if (rc_pack_add != 0):
-                    return rc_pack_add
-                return _run_toolchain_py("add --target " + _quote(triple))
-            let rc_cfg_rm = _run_toolchain_py("remove --target " + _quote(triple))
-            if (rc_cfg_rm != 0):
-                return rc_cfg_rm
-            return _run_pack_store_py("remove --target " + _quote(triple))
+                return _run_toolchain_ctl("add --target " + _quote(triple))
+            return _run_toolchain_ctl("remove --target " + _quote(triple))
         print("ERROR: unknown target subcommand: " + sub_target)
         return 1
     _update_auto_notify_if_needed(cmd)
