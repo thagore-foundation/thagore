@@ -1,0 +1,34 @@
+import "src/v0/ir/module.tg"
+import "src/v0/ir/errors.tg"
+
+extern func strlen(s: String) -> i32
+extern func __thg_str_substr(s: String, start: i32, len: i32) -> String
+
+func _v0_contains(text: String, needle: String) -> i32:
+    let n = strlen(text)
+    let m = strlen(needle)
+    if (m == 0):
+        return 1
+    let i = 0
+    while ((i + m) <= n):
+        if (__thg_str_substr(text, i, m) == needle):
+            return 1
+        i = i + 1
+    return 0
+
+func _v0_has_main(functions: String) -> i32:
+    if (_v0_contains(functions, ";fn|main|i32;") == 1):
+        return 1
+    return 0
+
+func _v0_main_has_terminator(instrs: String) -> i32:
+    if (_v0_contains(instrs, "|main|entry|ret|") == 1):
+        return 1
+    return 0
+
+func v0_ir_verify(module: V0IrModule) -> V0IrModule:
+    if (_v0_has_main(module.functions) == 0):
+        return v0_ir_module_set_error(module, V0_EIR_MISSING_MAIN, "missing main() -> i32")
+    if (_v0_main_has_terminator(module.instrs) == 0):
+        return v0_ir_module_set_error(module, V0_EIR_MISSING_TERMINATOR, "main entry block missing return terminator")
+    return module

@@ -1,0 +1,15 @@
+import "src/v0/ir/module.tg"
+import "src/v0/ir/builder.tg"
+import "src/v0/ir/verify.tg"
+import "src/v0/ir/errors.tg"
+
+func main() -> i32:
+    let m0 = v0_ir_module_new()
+    let m1 = v0_ir_add_function(m0, "main", "i32")
+    let m2 = v0_ir_add_block(m1, "main", "entry")
+    let mv = v0_ir_verify(m2)
+    if (mv.error_count <= 0):
+        return 1
+    if (mv.error_code != V0_EIR_MISSING_TERMINATOR):
+        return 2
+    return 0

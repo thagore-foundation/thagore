@@ -1,0 +1,14 @@
+struct V0IrModule:
+    functions: String
+    blocks: String
+    instrs: String
+    strings: String
+    error_count: i32
+    error_code: String
+    error_message: String
+
+func v0_ir_module_new() -> V0IrModule:
+    return V0IrModule(";", ";", ";", ";", 0, "", "")
+
+func v0_ir_module_set_error(module: V0IrModule, code: String, message: String) -> V0IrModule:
+    return V0IrModule(module.functions, module.blocks, module.instrs, module.strings, module.error_count + 1, code, message)
