@@ -289,7 +289,7 @@ func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (strlen(report_path) > 0):
         print("[autofix] report: " + report_path)
 
-func _try_link_with_candidates(cand_set: String, input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32, target: String) -> i32:
+func _try_link_with_candidates(cand_set: String, input_path: String, out_path: String, lld_driver: String, link_driver: String, prefer_cxx: i32, target: String, strict_embedded: i32) -> i32:
     let tok = ""
     let i = 0
     while (i < strlen(cand_set)):
@@ -298,8 +298,9 @@ func _try_link_with_candidates(cand_set: String, input_path: String, out_path: S
             if (strlen(tok) > 0):
                 if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
                     return 0
-                if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx) == 0):
-                    return 0
+                if (strict_embedded == 0):
+                    if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx) == 0):
+                        return 0
                 tok = ""
         else:
             tok = tok + ch
@@ -312,6 +313,9 @@ func _link_exe(input_path: String, out_path: String, lld_driver: String, link_dr
     let third_lib = "thag_runtime.lib"
     let fourth_lib = "libthag_runtime.a"
     let target = _trim(env.get_var("THAG_BUILD_TARGET"))
+    let strict_embedded = 0
+    if (strlen(target) > 0):
+        strict_embedded = 1
     if (prefer_cxx == 1):
         first_lib = "runtime.a"
         second_lib = "runtime.lib"
@@ -319,24 +323,28 @@ func _link_exe(input_path: String, out_path: String, lld_driver: String, link_dr
         fourth_lib = "thag_runtime.lib"
     if (strlen(target) > 0):
         let cand_set = targetctl.target_runtime_candidates(target)
-        if (_try_link_with_candidates(cand_set, input_path, out_path, lld_driver, link_driver, prefer_cxx, target) == 0):
+        if (_try_link_with_candidates(cand_set, input_path, out_path, lld_driver, link_driver, prefer_cxx, target, strict_embedded) == 0):
             return 0
     if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
         return 0
-    if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
+    if (strict_embedded == 0):
+        if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx) == 0):
+            return 0
     if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
         return 0
-    if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
+    if (strict_embedded == 0):
+        if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx) == 0):
+            return 0
     if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
         return 0
-    if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
+    if (strict_embedded == 0):
+        if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx) == 0):
+            return 0
     if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
         return 0
-    if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx) == 0):
-        return 0
+    if (strict_embedded == 0):
+        if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx) == 0):
+            return 0
     print("CRITICAL: runtime library not found (expected runtime.lib/runtime.a).")
     return 1
 
@@ -416,6 +424,10 @@ func _build_once(input_path: String, out_path: String, emit_only: i32) -> i32:
         return 0
     let prefer_cxx = _host_prefers_clangxx()
     let lld_driver = _detect_lld_driver(target)
+    if ((strlen(target) > 0) and (strlen(lld_driver) == 0)):
+        print("CRITICAL: embedded lld is missing for target '" + target + "'.")
+        print("HINT: run 'thagore target ensure " + target + "' or reinstall target pack.")
+        return 1
     let link_driver = _detect_link_driver(target, prefer_cxx)
     if (link_driver.length() == 0):
         print("CRITICAL: link driver not found (manifest/env/clang fallback). Please install LLVM toolchain.")
