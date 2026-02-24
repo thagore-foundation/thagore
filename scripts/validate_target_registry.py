@@ -53,6 +53,17 @@ def main() -> int:
                 if not manifest.exists():
                     errors.append(f"{triple}: missing manifest.json in pack")
                 else:
+                    try:
+                        m = json.loads(manifest.read_text(encoding="utf-8"))
+                    except Exception as exc:
+                        errors.append(f"{triple}: invalid manifest.json ({exc})")
+                        m = {}
+                    schema = str(m.get("schema", "")).strip()
+                    if schema != "thagc.target.pack.v1":
+                        errors.append(f"{triple}: unexpected manifest schema: {schema}")
+                    runtime_candidates = m.get("runtime_candidates", [])
+                    if not isinstance(runtime_candidates, list) or len(runtime_candidates) == 0:
+                        errors.append(f"{triple}: runtime_candidates missing in manifest")
                     rows.append(f"manifest={triple}")
 
         standard = data.get("standard_profile", [])

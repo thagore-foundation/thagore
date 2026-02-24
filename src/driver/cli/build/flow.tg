@@ -1,5 +1,6 @@
 import "src/driver/cli/common/core.tg"
 import "src/v0/driver/pipeline.tg" as v0pipe
+import "src/driver/cli/target/flow.tg" as targetctl
 
 extern func __thg_fs_remove(path: String) -> i32
 
@@ -157,26 +158,25 @@ func _link_exe(input_path: String, out_path: String, clang_bin: String, prefer_c
     let third_lib = "thag_runtime.lib"
     let fourth_lib = "libthag_runtime.a"
     let target = _trim(env.get_var("THAG_BUILD_TARGET"))
-    let pack_root = _toolchain_pack_root()
-    let pack_runtime = pack_root + "/" + target + "/runtime"
-    let pack_runtime_win = pack_runtime + "/runtime.lib"
-    let pack_runtime_win_alt = pack_runtime + "/thag_runtime.lib"
-    let pack_runtime_unix = pack_runtime + "/runtime.a"
-    let pack_runtime_unix_alt = pack_runtime + "/libthag_runtime.a"
     if (prefer_cxx == 1):
         first_lib = "runtime.a"
         second_lib = "runtime.lib"
         third_lib = "libthag_runtime.a"
         fourth_lib = "thag_runtime.lib"
     if (strlen(target) > 0):
-        if (_link_with_runtime(clang_bin, pack_runtime_unix_alt, input_path, out_path, prefer_cxx) == 0):
-            return 0
-        if (_link_with_runtime(clang_bin, pack_runtime_unix, input_path, out_path, prefer_cxx) == 0):
-            return 0
-        if (_link_with_runtime(clang_bin, pack_runtime_win_alt, input_path, out_path, prefer_cxx) == 0):
-            return 0
-        if (_link_with_runtime(clang_bin, pack_runtime_win, input_path, out_path, prefer_cxx) == 0):
-            return 0
+        let cand_set = targetctl.target_runtime_candidates(target)
+        let tok = ""
+        let i = 0
+        while (i < strlen(cand_set)):
+            let ch = _char_at(cand_set, i)
+            if (ch == ";"):
+                if (strlen(tok) > 0):
+                    if (_link_with_runtime(clang_bin, tok, input_path, out_path, prefer_cxx) == 0):
+                        return 0
+                    tok = ""
+            else:
+                tok = tok + ch
+            i = i + 1
     if (_link_with_runtime(clang_bin, first_lib, input_path, out_path, prefer_cxx) == 0):
         return 0
     if (_link_with_runtime(clang_bin, second_lib, input_path, out_path, prefer_cxx) == 0):

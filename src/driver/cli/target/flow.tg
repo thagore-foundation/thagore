@@ -223,6 +223,32 @@ func _remove_pack_files(target: String) -> i32:
     fs.remove(pack)
     return 1
 
+func _candidate_add_if_exists(set_text: String, path: String) -> String:
+    if (fs.exists(path) == 1):
+        return _set_add_unique(set_text, path)
+    return set_text
+
+func target_runtime_candidates(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ";"
+    let pack = _toolchain_pack_root() + "/" + target
+    let runtime_dir = pack + "/runtime"
+    let manifest_path = pack + "/manifest.json"
+    let out = ";"
+    let manifest = ""
+    if (fs.exists(manifest_path) == 1):
+        manifest = fs.read_text(manifest_path)
+    if ((_contains(manifest, "runtime/libthag_runtime.a") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/libthag_runtime.a")
+    if ((_contains(manifest, "runtime/runtime.a") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/runtime.a")
+    if ((_contains(manifest, "runtime/thag_runtime.lib") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/thag_runtime.lib")
+    if ((_contains(manifest, "runtime/runtime.lib") == 1) or (strlen(manifest) == 0)):
+        out = _candidate_add_if_exists(out, runtime_dir + "/runtime.lib")
+    return out
+
 func _write_config(cfg: ToolchainConfig) -> i32:
     let path = _toolchain_config_path()
     _ensure_dir_chain(_dir_name(path))
