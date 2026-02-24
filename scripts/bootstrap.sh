@@ -176,8 +176,8 @@ ensure_runtime_abi() {
   cp libthag_runtime.a thag_runtime.lib
 }
 
-ensure_stage1
 ensure_runtime_abi
+ensure_stage1
 
 if [[ "$OS_NAME" == "Linux" ]]; then
   python3 scripts/build_runtime_abi.py --target-os Linux --summary runtime-abi-summary-local.txt
