@@ -148,15 +148,32 @@ ensure_stage1() {
   rm -rf bootstrap/extract_stage1 || true
   mkdir -p bootstrap/extract_stage1
   tar -xzf "bootstrap/$asset" -C bootstrap/extract_stage1
+  # Prefer stage1_helper (actual compiler backend) over thagore/thag (CLI wrapper).
+  # The thagore wrapper binary needs stage1_helper as THAG_HELPER_BIN; if we
+  # accidentally set stage1 = thagore wrapper, it loops back to itself and silently
+  # returns 0 without producing any output.
   local candidate
-  candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+  candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f -name stage1_helper | head -n 1 || true)"
   if [[ -z "$candidate" ]]; then
-    echo "[FAIL] Stage1 tarball did not contain bin/thagore or bin/thag."
+    candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
+  fi
+  if [[ -z "$candidate" ]]; then
+    echo "[FAIL] Stage1 tarball did not contain stage1_helper, bin/thagore, or bin/thag."
     exit 1
   fi
+  echo "[bootstrap] using stage1 candidate: $candidate"
 
   cp "$candidate" stage1
   chmod +x stage1 || true
+  # Also copy stage1_helper alongside stage1 so the thagore wrapper (stage2) can
+  # find it when it looks for THAG_HELPER_BIN in the same directory.
+  local helper_bin
+  helper_bin="$(find bootstrap/extract_stage1 -maxdepth 5 -type f -name stage1_helper | head -n 1 || true)"
+  if [[ -n "$helper_bin" && "$helper_bin" != "$candidate" ]]; then
+    cp "$helper_bin" stage1_helper
+    chmod +x stage1_helper || true
+    echo "[bootstrap] installed stage1_helper alongside stage1"
+  fi
   STAGE1_BOOTSTRAP_BIN="stage1"
   if ! compiler_can_emit_hello "$STAGE1_BOOTSTRAP_BIN"; then
     echo "[FAIL] Downloaded Stage1 seed is not healthy (cannot emit hello binary)."
