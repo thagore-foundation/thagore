@@ -36,6 +36,9 @@ jobs:
       - name: No C++ dependency gate
         run: python scripts/no_cpp_dependency_gate.py --report no-cpp-ci.txt
 
+      - name: Validate target registry contract
+        run: python scripts/validate_target_registry.py --report target-registry-ci.txt
+
       - name: Intent strict-lock gate
         run: >
           python scripts/intent_strict_lock_gate.py
@@ -49,4 +52,4 @@ jobs:
           path: |
             seed-tag-sync-ci.txt
             no-cpp-ci.txt
-
+            target-registry-ci.txt
