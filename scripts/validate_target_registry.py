@@ -69,6 +69,13 @@ def main() -> int:
                     if not lld_driver:
                         errors.append(f"{triple}: lld_driver missing in manifest")
                     rows.append(f"lld_driver={triple}|{lld_driver}")
+                    triple_is_windows = ("windows" in triple) or ("msvc" in triple)
+                    if triple_is_windows:
+                        if "lld-link" not in lld_driver:
+                            errors.append(f"{triple}: lld_driver should be lld-link for Windows targets (got {lld_driver})")
+                    else:
+                        if ("ld.lld" not in lld_driver) and (lld_driver != "lld"):
+                            errors.append(f"{triple}: lld_driver should be ld.lld/lld for non-Windows targets (got {lld_driver})")
                     runtime_candidates = m.get("runtime_candidates", [])
                     if not isinstance(runtime_candidates, list) or len(runtime_candidates) == 0:
                         errors.append(f"{triple}: runtime_candidates missing in manifest")
