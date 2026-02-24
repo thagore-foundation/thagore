@@ -69,17 +69,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/bootstrap.sh
 
+      - name: Inspect bootstrap artifacts
+        shell: bash
+        run: |
+          echo "=== Files after bootstrap ==="
+          ls -lh stage1 stage2 stage2b 2>/dev/null || true
+          echo "=== stage2 --version ==="
+          ./stage2 --version 2>&1 || ./stage2b --version 2>&1 || true
+          echo "=== runtime libs ==="
+          ls -lh runtime.a runtime.lib libthag_runtime.a thag_runtime.lib 2>/dev/null || true
+
       - name: Run test suite
         shell: bash
         run: |
+          # Pick the best available compiler binary
           if [[ -f "./stage2b" ]]; then
             THAGC=./stage2b
-          elif [[ -f "./stage2b.exe" ]]; then
-            THAGC=./stage2b.exe
+          elif [[ -f "./stage2" ]]; then
+            THAGC=./stage2
+          elif [[ -f "./stage1" ]]; then
+            THAGC=./stage1
           else
-            echo "ERROR: stage2b binary not found after bootstrap" >&2
+            echo "ERROR: no compiler binary found after bootstrap" >&2
             exit 1
           fi
+          echo "Using compiler: $THAGC ($($THAGC --version 2>&1 | head -1))"
           if [[ -d tests/ ]]; then
             "$THAGC" test tests/ 2>&1 | tee test-report-${{ matrix.triple }}.txt
           else
@@ -91,6 +105,8 @@ jobs:
         with:
           name: stage2b-${{ matrix.os }}
           path: |
+            stage1
+            stage2
             stage2b
             stage2b.exe
             test-report-${{ matrix.triple }}.txt

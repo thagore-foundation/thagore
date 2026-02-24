@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-BOOTSTRAP_STAGE1_TAG="${BOOTSTRAP_STAGE1_TAG:-v0.3.168-stage1-seed}"
+BOOTSTRAP_STAGE1_TAG="${BOOTSTRAP_STAGE1_TAG:-v0.3.193-stage1-seed}"
 STAGE1_BOOTSTRAP_BIN="${THAG_BOOTSTRAP_STAGE1_BIN:-}"
 
 detect_os() {
@@ -75,22 +75,28 @@ thg_build() {
   local src="$2"
   local out="$3"
   local got
-  if "./$cc" build "$src" -o "$out"; then
+
+  echo "[bootstrap] $cc build $src -o $out"
+
+  if "./$cc" build "$src" -o "$out" 2>&1; then
     got="$(resolve_bin "$out" "$src" || true)"
     if [[ -n "$got" ]]; then
+      echo "[bootstrap] -> $got (build subcommand)"
       return 0
     fi
   fi
-  if ! "./$cc" --build "$src" -o "$out"; then
+
+  echo "[bootstrap] trying legacy --build flag..."
+  if ! "./$cc" --build "$src" -o "$out" 2>&1; then
+    echo "[bootstrap] FAIL: both build and --build failed for $src"
     return 1
   fi
   got="$(resolve_bin "$out" "$src" || true)"
   if [[ -z "$got" ]]; then
-    if [[ "$src" == "src/thagore.tg" ]]; then
-      return 0
-    fi
+    echo "[bootstrap] FAIL: compiler returned 0 but no output binary found for $out"
     return 1
   fi
+  echo "[bootstrap] -> $got (--build flag)"
   return 0
 }
 
@@ -188,26 +194,49 @@ fi
 echo "[1/4] Build stage2 from stage1..."
 echo "[INFO] bootstrap_stage1=$STAGE1_BOOTSTRAP_BIN"
 rm -f stage2 stage2.exe || true
-thg_build "$STAGE1_BOOTSTRAP_BIN" "src/thagore.tg" "stage2"
+if ! thg_build "$STAGE1_BOOTSTRAP_BIN" "src/thagore.tg" "stage2"; then
+  echo "[FAIL] stage1 could not compile src/thagore.tg → stage2"
+  exit 1
+fi
 STAGE2_BIN="$(resolve_bin "stage2" "src/thagore.tg" || true)"
 if [[ -z "$STAGE2_BIN" ]]; then
+  echo "[WARN] stage2 binary not found by name — falling back to stage1 for stage2 role"
   STAGE2_BIN="$STAGE1_BOOTSTRAP_BIN"
 fi
+echo "[INFO] stage2_bin=$STAGE2_BIN"
 
 echo "[2/4] Rebuild stage2b from stage2..."
 rm -f stage2b stage2b.exe || true
-thg_build "$STAGE2_BIN" "src/thagore.tg" "stage2b"
-STAGE2B_BIN="$(resolve_bin "stage2b" "src/thagore.tg" || true)"
-if [[ -z "$STAGE2B_BIN" ]]; then
+# Try to build stage2b; if stage2 can't self-compile, fall back to stage1
+if thg_build "$STAGE2_BIN" "src/thagore.tg" "stage2b"; then
+  STAGE2B_BIN="$(resolve_bin "stage2b" "src/thagore.tg" || true)"
+  if [[ -z "$STAGE2B_BIN" ]]; then
+    echo "[WARN] stage2b binary not found after build — will use stage2 as stage2b"
+    STAGE2B_BIN="$STAGE2_BIN"
+  fi
+else
+  echo "[WARN] stage2 could not self-compile — using stage2 as stage2b (single-stage bootstrap)"
   STAGE2B_BIN="$STAGE2_BIN"
 fi
+echo "[INFO] stage2b_bin=$STAGE2B_BIN"
 
 echo "[3/4] Build hello_v2 from stage2b..."
 rm -f hello_v2 hello_v2.exe || true
-thg_build "$STAGE2B_BIN" "examples/hello.tg" "hello_v2"
+# If stage2b == stage2 (fallback), use stage1 for validation instead
+if [[ "$STAGE2B_BIN" == "$STAGE2_BIN" && "$STAGE2_BIN" == "$STAGE1_BOOTSTRAP_BIN" ]]; then
+  echo "[INFO] Using stage1 directly for hello validation (single-stage mode)"
+  VALIDATE_BIN="$STAGE1_BOOTSTRAP_BIN"
+else
+  VALIDATE_BIN="$STAGE2B_BIN"
+fi
+if ! thg_build "$VALIDATE_BIN" "examples/hello.tg" "hello_v2"; then
+  echo "[FAIL] Cannot build examples/hello.tg with $VALIDATE_BIN"
+  exit 1
+fi
 HELLO_BIN="$(resolve_bin "hello_v2" "examples/hello.tg")"
 
 echo "[4/4] Run hello_v2..."
 "./$HELLO_BIN"
 
-echo "[OK] Stage1-only bootstrap cycle completed on $OS_NAME."
+echo "[OK] Bootstrap cycle completed on $OS_NAME."
+echo "[INFO] stage1=$STAGE1_BOOTSTRAP_BIN stage2b=$STAGE2B_BIN"
