@@ -61,9 +61,21 @@ def main() -> int:
                     schema = str(m.get("schema", "")).strip()
                     if schema != "thagc.target.pack.v1":
                         errors.append(f"{triple}: unexpected manifest schema: {schema}")
+                    link_driver = str(m.get("link_driver", "")).strip()
+                    if not link_driver:
+                        errors.append(f"{triple}: link_driver missing in manifest")
+                    rows.append(f"link_driver={triple}|{link_driver}")
                     runtime_candidates = m.get("runtime_candidates", [])
                     if not isinstance(runtime_candidates, list) or len(runtime_candidates) == 0:
                         errors.append(f"{triple}: runtime_candidates missing in manifest")
+                    else:
+                        for cand in runtime_candidates:
+                            cand_s = str(cand).strip()
+                            if not cand_s.startswith("runtime/"):
+                                errors.append(f"{triple}: runtime candidate must start with runtime/: {cand_s}")
+                                continue
+                            if ".." in cand_s:
+                                errors.append(f"{triple}: runtime candidate path traversal is forbidden: {cand_s}")
                     rows.append(f"manifest={triple}")
 
         standard = data.get("standard_profile", [])
