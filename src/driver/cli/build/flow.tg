@@ -293,6 +293,17 @@ func _link_with_runtime_lld(lld_driver: String, runtime_lib: String, input_path:
         cmd = lld_driver + target_flag + " -o " + _quote(out_path) + " " + _quote(input_path) + " " + _quote(runtime_lib)
     return process.run(cmd)
 
+func _prefer_clang_lld_bridge(target: String, link_driver: String, strict_embedded: i32) -> i32:
+    if (strlen(link_driver) == 0):
+        return 0
+    if (_contains(link_driver, "clang") == 0):
+        return 0
+    if (_is_windows_target(target) == 1):
+        return 0
+    if (strict_embedded == 1):
+        return 1
+    return 0
+
 func _print_autofix_build_failure(total_fixed: i32, code: i32) -> void:
     if (total_fixed > 0):
         print("[autofix] rebuild=failed after fixes_applied=" + _to_string_i32(total_fixed))
@@ -312,11 +323,17 @@ func _try_link_with_candidates(cand_set: String, input_path: String, out_path: S
         let ch = _char_at(cand_set, i)
         if (ch == ";"):
             if (strlen(tok) > 0):
-                if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
-                    return 0
-                if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+                if (_prefer_clang_lld_bridge(target, link_driver, strict_embedded) == 1):
                     if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
                         return 0
+                    if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
+                        return 0
+                else:
+                    if (_link_with_runtime_lld(lld_driver, tok, input_path, out_path, target) == 0):
+                        return 0
+                    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+                        if (_link_with_runtime(link_driver, tok, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                            return 0
                 tok = ""
         else:
             tok = tok + ch
@@ -341,26 +358,44 @@ func _link_exe(input_path: String, out_path: String, lld_driver: String, link_dr
         let cand_set = targetctl.target_runtime_candidates(target)
         if (_try_link_with_candidates(cand_set, input_path, out_path, lld_driver, link_driver, prefer_cxx, target, strict_embedded) == 0):
             return 0
-    if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
-        return 0
-    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+    if (_prefer_clang_lld_bridge(target, link_driver, strict_embedded) == 1):
         if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
-    if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
-        return 0
-    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
+            return 0
         if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
-    if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
-        return 0
-    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
+            return 0
         if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
-    if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
-        return 0
-    if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+        if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
+            return 0
         if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
             return 0
+        if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
+            return 0
+    else:
+        if (_link_with_runtime_lld(lld_driver, first_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, first_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, second_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, second_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, third_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, third_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
+        if (_link_with_runtime_lld(lld_driver, fourth_lib, input_path, out_path, target) == 0):
+            return 0
+        if ((strict_embedded == 0) or (strlen(link_driver) > 0)):
+            if (_link_with_runtime(link_driver, fourth_lib, input_path, out_path, prefer_cxx, lld_driver, target) == 0):
+                return 0
     print("CRITICAL: runtime library not found (expected runtime.lib/runtime.a).")
     return 1
 
