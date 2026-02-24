@@ -490,6 +490,23 @@ func _set_count_entries(set_text: String) -> i32:
 func target_doctor(triple_raw: String) -> i32:
     let cfg = _config_read()
     let t_in = _trim(triple_raw)
+    if (t_in == "all"):
+        let any_fail = 0
+        let token = ""
+        let i = 0
+        while (i < strlen(cfg.installed_set)):
+            let ch = _char_at(cfg.installed_set, i)
+            if (ch == ";"):
+                if (strlen(token) > 0):
+                    if (target_doctor(token) != 0):
+                        any_fail = 1
+                    token = ""
+            else:
+                token = token + ch
+            i = i + 1
+        if (any_fail == 1):
+            return 2
+        return 0
     let t = t_in
     if (strlen(t) == 0):
         t = _trim(cfg.default_target)

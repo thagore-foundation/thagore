@@ -25,7 +25,7 @@ func _print_help() -> void:
     print("  " + cli + " intent <doctor|explain|lock> <entry.tg> [flags]")
     print("  " + cli + " state <doctor|explain> <entry.tg> [--mode off|on|strict] [--json] [-o report.json]")
     print("  " + cli + " install toolchain [--yes]")
-    print("  " + cli + " target <list|installed|add|remove|ensure|doctor> [triple]  # doctor checks embedded clang/lld/runtime lane")
+    print("  " + cli + " target <list|installed|add|remove|ensure|doctor> [triple|all]  # doctor checks embedded clang/lld/runtime lane")
     print("  " + cli + " update <check|apply|rollback> [flags]")
 
 func _helper_exec_path(candidate_raw: String) -> String:
