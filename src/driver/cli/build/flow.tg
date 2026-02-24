@@ -22,8 +22,16 @@ func _is_windows_target(target: String) -> i32:
     return 0
 
 func _detect_lld_driver(target: String) -> String:
+    let manifest_lld = _trim(targetctl.target_lld_driver(target))
     if (strlen(target) > 0):
         let target_pack = _toolchain_pack_root() + "/" + target + "/llvm/bin"
+        if (strlen(manifest_lld) > 0):
+            let manifest_pack = _probe_link_driver(target_pack + "/" + manifest_lld)
+            if (strlen(manifest_pack) > 0):
+                return manifest_pack
+            let manifest_pack_exe = _probe_link_driver(target_pack + "/" + manifest_lld + ".exe")
+            if (strlen(manifest_pack_exe) > 0):
+                return manifest_pack_exe
         if (_is_windows_target(target) == 1):
             let lld_win = _probe_link_driver(target_pack + "/lld-link.exe")
             if (strlen(lld_win) > 0):
@@ -37,6 +45,10 @@ func _detect_lld_driver(target: String) -> String:
         let lld_plain = _probe_link_driver(target_pack + "/lld")
         if (strlen(lld_plain) > 0):
             return lld_plain
+        if (strlen(manifest_lld) > 0):
+            let manifest_global = _probe_link_driver(manifest_lld)
+            if (strlen(manifest_global) > 0):
+                return manifest_global
         return ""
     let home = _trim(env.get_var("HOME"))
     if (strlen(home) > 0):

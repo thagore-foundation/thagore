@@ -2,6 +2,7 @@
   "schema": "thagc.target.pack.v1",
   "target": "x86_64-apple-darwin",
   "link_driver": "clang",
+  "lld_driver": "ld.lld",
   "runtime_candidates": [
     "runtime/libthag_runtime.a",
     "runtime/runtime.a"

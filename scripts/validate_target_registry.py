@@ -65,6 +65,10 @@ def main() -> int:
                     if not link_driver:
                         errors.append(f"{triple}: link_driver missing in manifest")
                     rows.append(f"link_driver={triple}|{link_driver}")
+                    lld_driver = str(m.get("lld_driver", "")).strip()
+                    if not lld_driver:
+                        errors.append(f"{triple}: lld_driver missing in manifest")
+                    rows.append(f"lld_driver={triple}|{lld_driver}")
                     runtime_candidates = m.get("runtime_candidates", [])
                     if not isinstance(runtime_candidates, list) or len(runtime_candidates) == 0:
                         errors.append(f"{triple}: runtime_candidates missing in manifest")

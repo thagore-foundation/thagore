@@ -449,6 +449,16 @@ func target_link_driver(target_raw: String) -> String:
     let text = fs.read_text(manifest_path)
     return _trim(_extract_manifest_string(text, "link_driver"))
 
+func target_lld_driver(target_raw: String) -> String:
+    let target = _trim(target_raw)
+    if (strlen(target) == 0):
+        return ""
+    let manifest_path = _toolchain_pack_root() + "/" + target + "/manifest.json"
+    if (fs.exists(manifest_path) == 0):
+        return ""
+    let text = fs.read_text(manifest_path)
+    return _trim(_extract_manifest_string(text, "lld_driver"))
+
 func _pack_driver_path(pack: String, driver_name: String) -> String:
     let d = _trim(driver_name)
     if (strlen(d) == 0):
@@ -490,6 +500,8 @@ func target_doctor(triple_raw: String) -> i32:
     let manifest_path = pack + "/manifest.json"
     let driver_name = target_link_driver(t)
     let driver_path = _pack_driver_path(pack, driver_name)
+    let lld_name = target_lld_driver(t)
+    let lld_path = _pack_driver_path(pack, lld_name)
     let runtimes = target_runtime_candidates(t)
     let runtime_count = _set_count_entries(runtimes)
     let clang_ok = 0
@@ -507,6 +519,11 @@ func target_doctor(triple_raw: String) -> i32:
         print("link_driver_path=" + driver_path)
     else:
         print("link_driver_path=")
+    print("lld_driver_name=" + lld_name)
+    if (strlen(lld_path) > 0):
+        print("lld_driver_path=" + lld_path)
+    else:
+        print("lld_driver_path=")
     print("llvm_clang_present=" + _to_string_i32(clang_ok))
     print("llvm_lld_present=" + _to_string_i32(lld_ok))
     print("runtime_candidates_count=" + _to_string_i32(runtime_count))
