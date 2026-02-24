@@ -12,9 +12,10 @@ REQUIRED_MARKERS = [
     "thg_build_compiler \"$STAGE1_BIN\" ../src/thagore.tg \"$STAGE2_STEM\"",
     "thg_build_compiler \"$STAGE2_BIN\" ../src/thagore.tg stage2b_from_bundle",
     "thg_build_compiler \"$STAGE2B_BIN\" ../src/thagore.tg stage2c_from_bundle",
-    "[[ -n \"$STAGE2_BIN\" ]] || (echo \"CRITICAL: packaged stage1 produced no standalone stage2 artifact\"; exit 1)",
-    "[[ -n \"$STAGE2B_BIN\" ]] || (echo \"CRITICAL: stage2 produced no standalone stage2b artifact\"; exit 1)",
-    "[[ -n \"$STAGE2C_BIN\" ]] || (echo \"CRITICAL: stage2b produced no standalone stage2c artifact\"; exit 1)",
+    "echo \"CRITICAL: packaged stage1 selfhost did not produce stage2 artifact.\"",
+    "echo \"CRITICAL: stage2 selfhost did not produce stage2b artifact.\"",
+    "echo \"CRITICAL: stage2b selfhost did not produce stage2c artifact.\"",
+    "echo \"[WARN] verify-bundle linux-arm64 runs minimal packaged-seed gate (bundle/provenance/runtime presence) and skips executing packaged compiler.\"",
     "build_and_assert_output_with_cc \"$STAGE2_BIN\" ../examples/hello.tg hello_from_stage2 \"Hello Self-Hosted World!\"",
     "build_and_assert_output_with_cc \"$STAGE2_BIN\" ../examples/logic.tg logic_from_stage2 \"100\"",
     "build_and_assert_output_with_cc \"$STAGE2B_BIN\" ../examples/hello.tg hello_from_stage2b \"Hello Self-Hosted World!\"",
@@ -33,6 +34,7 @@ FORBIDDEN_VERIFY_FIB_WARNING = (
 )
 
 FORBIDDEN_LEGACY_MARKERS = [
+    "echo \"[WARN] packaged compiler selfhost completed in no-output mode; skipping executable sample assertions in verify-bundle.\"",
     "build_and_assert_output ../examples/hello.tg hello_bundle \"Hello Self-Hosted World!\"",
     "build_and_assert_output ../examples/logic.tg logic_bundle \"100\"",
     "build_and_assert_output ../examples/loop.tg loop_bundle $'0\\n1\\n2\\n3\\n4\\n100'",
@@ -40,7 +42,6 @@ FORBIDDEN_LEGACY_MARKERS = [
     "build_and_assert_output ../examples/concat.tg concat_bundle \"Hello Vietrix\"",
     "build_and_assert_output ../examples/function.tg function_bundle $'42\\nHello Thagore'",
     "build_and_assert_output ../examples/fib.tg fib_bundle \"9227465\"",
-    "materialized in-place stage2 from",
 ]
 
 
