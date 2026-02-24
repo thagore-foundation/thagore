@@ -9,7 +9,7 @@ import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Quick Start: Install Thagore
 
-Use the official installer flow by platform.
+Use the official `thagup` installer flow by platform.
 
 ## Step 1: Install
 
@@ -17,18 +17,19 @@ Use the official installer flow by platform.
   <TabItem label="Windows (UI Installer)">
 
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-x86_64.exe" -OutFile thagore-setup.exe
-Start-Process -FilePath .\thagore-setup.exe -Wait
+Invoke-WebRequest -Uri "https://thagore.org/thagup.exe" -OutFile thagup.exe
+Start-Process -FilePath .\thagup.exe -Wait
 ```
 
-For ARM64 Windows, use:
+`thagup.exe` maps to the latest stable Windows x86_64 installer.
+For ARM64 Windows, use the direct release asset:
 `https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-arm64.exe`
 
   </TabItem>
   <TabItem label="Linux (Ubuntu/Debian)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode ubuntu --yes
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode ubuntu --yes
 ```
 
 Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
@@ -37,7 +38,7 @@ Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when need
   <TabItem label="Linux (generic)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode linux --yes
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode linux --yes
 ```
 
 Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
@@ -46,7 +47,7 @@ Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when need
   <TabItem label="macOS">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode macos --yes
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode macos --yes
 ```
 
 Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
@@ -55,7 +56,7 @@ Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when need
   <TabItem label="Portable (Android/BSD)">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode portable --yes
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode portable --yes
 ```
 
 Installs Thagore to a safe prefix, adds PATH, and builds LLVM when needed.
@@ -106,7 +107,9 @@ thagore build hello.tg -o hello.exe
 
 ## Links
 
+- Bootstrap script (Linux/macOS/portable): `https://thagore.org/thagup.sh`
+- Bootstrap executable (Windows x86-64): `https://thagore.org/thagup.exe`
 - Windows x86-64 installer: `https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-x86_64.exe`
 - Windows ARM64 installer: `https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-arm64.exe`
-- Linux/macOS/portable installer script: `https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh`
+- Raw bootstrap source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh`
 - All releases: `https://github.com/thagore-foundation/thagore/releases`

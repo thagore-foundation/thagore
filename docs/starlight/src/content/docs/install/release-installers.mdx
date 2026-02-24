@@ -23,21 +23,36 @@ For Windows end users, use only the UI installer (`thagore-setup-windows-*.exe`)
 
 ## Using Pre-built Releases
 
-1. Windows: download `thagore-setup-windows-x86_64.exe` or `thagore-setup-windows-arm64.exe` from [GitHub Releases](https://github.com/thagore-foundation/thagore/releases) and run the installer UI.
-2. Linux/macOS/portable: use installer script:
+1. Windows (recommended): download and run `thagup.exe`:
+
+```powershell
+Invoke-WebRequest -Uri "https://thagore.org/thagup.exe" -OutFile thagup.exe
+Start-Process -FilePath .\thagup.exe -Wait
+```
+
+2. Linux/macOS/portable (recommended): use `thagup.sh`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode auto --yes
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode auto --yes
 ```
 
 3. Verify: `thagore --version`
 
+## Rustup-style Entry Points
+
+Primary endpoints:
+
+- `https://thagore.org/thagup.sh`
+- `https://thagore.org/thagup.exe`
+
+These endpoints always target the latest stable official release.
+
 ## Installer Scripts
 
-Use the unified installer entrypoint:
+If you need the raw bootstrap script source, use:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/refs/heads/main/scripts/install/install.sh | bash -s -- --mode auto --yes
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh | bash -s -- --mode auto --yes
 ```
 
 Modes:
