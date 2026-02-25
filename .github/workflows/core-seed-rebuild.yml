@@ -119,27 +119,25 @@ jobs:
       - name: Build standalone thagc (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Compile glibc compat shim.
-          # --wrap=__isoc23_strtol: redirect C23 glibc 2.38 symbol → our strtol wrapper.
-          # This makes the final binary only need GLIBC_2.2.5 for strtol.
+          # Compile glibc compat shim to an object file.
+          # By linking the .o BEFORE libthag_runtime.a, the linker resolves
+          # __isoc23_strtol from our definition (backed by strtol) instead of
+          # looking it up in libc (which requires GLIBC 2.38).
           $CC -c bootstrap/glibc_compat.c -o /tmp/glibc_compat.o -O2
-          ar rcs /tmp/libglibc_compat.a /tmp/glibc_compat.o
 
           # Locate static libstdc++ (needed for -static-libstdc++)
           STDCXX_A=$(find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -1)
           echo "Using static libstdc++: $STDCXX_A"
           STDCXX_DIR=$(dirname "$STDCXX_A")
 
-          # Link: thagc_main.cpp + compat shim + libthag_runtime.a
+          # Link: compat.o + thagc_main.cpp + libthag_runtime.a
+          # Object file order: compat.o MUST come BEFORE libthag_runtime.a
           # -static-libstdc++ -static-libgcc: embed C++ runtime, no .so deps
-          # compat BEFORE runtime so linker resolves __wrap_ from compat first
           $CXX bootstrap/thagc_main.cpp \
+            /tmp/glibc_compat.o \
             -o thagc_stage1 \
-            /tmp/libglibc_compat.a \
             ./libthag_runtime.a \
-            /tmp/libglibc_compat.a \
-            -Wl,--wrap=__isoc23_strtol \
-            -Wl,--wrap=__isoc23_strtoll \
+            /tmp/glibc_compat.o \
             -static-libstdc++ -static-libgcc \
             -L"$STDCXX_DIR" \
             -lpthread -ldl -lm \
@@ -159,7 +157,10 @@ jobs:
       - name: Build standalone thagc (macOS)
         if: runner.os == 'macOS'
         run: |
-          $CXX bootstrap/thagc_main.cpp bootstrap/glibc_compat.c \
+          # macOS: use system SDK headers explicitly
+          SDK=$(xcrun --show-sdk-path)
+          $CXX bootstrap/thagc_main.cpp \
+            -isysroot "$SDK" \
             -o thagc_stage1 \
             ./libthag_runtime.a \
             -lpthread \
