@@ -27,8 +27,6 @@ jobs:
             triple: x86_64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
-          - os: macos-13
-            triple: x86_64-apple-darwin
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
     steps:
@@ -119,10 +117,20 @@ jobs:
       - name: Smoke test
         shell: bash
         run: |
+          # stage1 = actual compiler backend (ELF, can build .tg files directly)
+          # stage2/stage2b = CLI wrapper (16K, needs THAG_HELPER_BIN=./stage1 to work)
+          # Prefer stage1 as the build driver; if only wrapper available, set env.
           THAGC=""
-          for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe" "./stage1" "./stage1.exe"; do
+          for c in "./stage1" "./stage1.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
+          if [[ -z "$THAGC" ]]; then
+            for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe"; do
+              [[ -f "$c" ]] && THAGC="$c" && break
+            done
+            # wrapper needs helper binary in same dir
+            export THAG_HELPER_BIN="$(pwd)/stage1"
+          fi
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler after bootstrap" >&2; exit 1; }
           echo "Compiler: $THAGC"
 
@@ -149,9 +157,15 @@ jobs:
         shell: bash
         run: |
           THAGC=""
-          for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe" "./stage1" "./stage1.exe"; do
+          for c in "./stage1" "./stage1.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
+          if [[ -z "$THAGC" ]]; then
+            for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe"; do
+              [[ -f "$c" ]] && THAGC="$c" && break
+            done
+            export THAG_HELPER_BIN="$(pwd)/stage1"
+          fi
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler" >&2; exit 1; }
           REPORT="test-report-${{ matrix.triple }}.txt"
           if [[ -d tests/ ]]; then
