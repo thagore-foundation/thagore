@@ -20,7 +20,7 @@ on:
       - ".github/workflows/core-seed-rebuild.yml"
 
 concurrency:
-  group: core-seed-rebuild-${{ github.ref }}
+  group: core-seed-rebuild-${{ github.event_name }}-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
