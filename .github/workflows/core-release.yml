@@ -167,8 +167,14 @@ jobs:
             cp stage1.exe "$CORE_STAGE/bin/stage1_helper.exe"
           fi
           cp scripts/install/thagup-init.sh "$CORE_STAGE/"
-          if [[ -f scripts/install/thagup ]]; then
-            cp scripts/install/thagup "$CORE_STAGE/"
+          # Bundle platform-appropriate thagup self-updater
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp scripts/install/thagup.ps1 "$CORE_STAGE/thagup.ps1"
+            # .cmd shim so `thagup` works from cmd.exe without specifying extension
+            printf '@powershell -NoProfile -ExecutionPolicy Bypass -File "%%~dp0thagup.ps1" %%*\r\n' \
+              > "$CORE_STAGE/thagup.cmd"
+          else
+            cp scripts/install/thagup "$CORE_STAGE/thagup"
           fi
           cp -r targets/registry/. "$CORE_STAGE/targets/registry/" 2>/dev/null || true
 

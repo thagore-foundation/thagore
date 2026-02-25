@@ -438,10 +438,24 @@ setup_bin_dir() {
     echo "[thagup] thagc linked to $BIN_DIR/thagc"
   fi
 
-  # Install thagup self-updater if present in bundle
+  # Install thagup self-updater — prefer bundle, fallback to direct download
+  local thagup_installed=0
   if [[ -f "$TOOLCHAIN_DIR/thagup" ]]; then
     cp "$TOOLCHAIN_DIR/thagup" "$BIN_DIR/thagup"
     chmod +x "$BIN_DIR/thagup"
+    echo "[thagup] thagup installed to $BIN_DIR/thagup"
+    thagup_installed=1
+  fi
+  if [[ "$thagup_installed" == "0" ]]; then
+    # Download thagup directly from the release tag
+    local thagup_url="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/refs/tags/${RELEASE_TAG}/scripts/install/thagup"
+    echo "[thagup] Downloading thagup from $RELEASE_TAG..."
+    if curl -fsSL "$thagup_url" -o "$BIN_DIR/thagup" 2>/dev/null; then
+      chmod +x "$BIN_DIR/thagup"
+      echo "[thagup] thagup installed to $BIN_DIR/thagup"
+    else
+      echo "[thagup] Warning: could not install thagup (non-fatal)"
+    fi
   fi
 
   # Write env file
@@ -594,14 +608,27 @@ setup_bin_dir
 update_shell_profile
 
 echo ""
-echo "Thagore $RELEASE_TAG installed successfully!"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Thagore $RELEASE_TAG installed successfully!"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Compiler:  $BIN_DIR/thagc"
-echo "  Updater:   $BIN_DIR/thagup  (if available)"
-echo "  Targets:   $TOOLCHAIN_DIR/targets/"
+echo "  thagc   →  $BIN_DIR/thagc"
+echo "  thagup  →  $BIN_DIR/thagup"
+echo "  targets →  $TOOLCHAIN_DIR/targets/"
 echo ""
-echo "To activate, run:"
-echo "  source ~/.thagore/env"
-echo "Or restart your shell."
+if [[ -f "$BIN_DIR/thagup" ]]; then
+  echo "  thagup is ready. Commands:"
+  echo "    thagup update             # update thagc to latest"
+  echo "    thagup install <tag>      # install specific version"
+  echo "    thagup target add <triple> # add cross-compile target"
+  echo "    thagup target list        # list installed targets"
+  echo "    thagup self-update        # update thagup itself"
+  echo ""
+fi
+echo "  Activate in current shell:"
+echo "    source ~/.thagore/env"
 echo ""
-echo "Test: thagc --version"
+echo "  Or restart your terminal."
+echo ""
+echo "  Verify: thagc --version"
+echo ""

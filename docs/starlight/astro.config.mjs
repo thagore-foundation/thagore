@@ -1,7 +1,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
-const default_site = "https://docs.thagore.io.vn";
+const default_site = "https://docs.thagore.org";
 const default_base = "/";
 const site = process.env.DOCS_SITE || default_site;
 const base = process.env.DOCS_BASE || default_base;
