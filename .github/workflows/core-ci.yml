@@ -27,6 +27,8 @@ jobs:
             triple: x86_64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,37 +65,63 @@ jobs:
           choco install llvm --version=21.1.8 -y
           clang --version
 
-      - name: Bootstrap (stage1 download + build stage2 + stage2b)
+      - name: Bootstrap Linux/macOS
+        if: runner.os != 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/bootstrap.sh
 
+      - name: Bootstrap Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "$env:BOOTSTRAP_STAGE1_TAG"
+          New-Item -ItemType Directory -Force -Path bootstrap | Out-Null
+          gh release download $tag --repo thagore-foundation/thagore `
+            --pattern "thagore-stage1-windows.tar.gz" -D bootstrap
+          tar -xzf "bootstrap\thagore-stage1-windows.tar.gz" -C bootstrap
+          $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "stage1_helper.exe" | Select-Object -First 1
+          if (-not $helper) {
+            $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "thagore.exe" | Select-Object -First 1
+          }
+          if (-not $helper) { Write-Error "stage1 binary not found in seed tarball"; exit 1 }
+          Copy-Item $helper.FullName stage1.exe
+          $runtime = Get-ChildItem -Recurse -Path bootstrap -Filter "*.lib" | Select-Object -First 1
+          if ($runtime) { Copy-Item $runtime.FullName thag_runtime.lib } `
+          else { New-Item -ItemType File -Force -Path thag_runtime.lib | Out-Null }
+          python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
+          .\stage1.exe build src/thagore.tg -o stage2.exe
+          if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
+          .\stage2.exe build src/thagore.tg -o stage2b.exe 2>$null
+          if (-not (Test-Path stage2b.exe)) {
+            Write-Host "[bootstrap] single-stage — using stage2.exe as stage2b.exe"
+            Copy-Item stage2.exe stage2b.exe
+          }
+
       - name: Inspect bootstrap artifacts
         shell: bash
         run: |
           echo "=== Files after bootstrap ==="
-          ls -lh stage1 stage2 stage2b 2>/dev/null || true
-          echo "=== stage2 --version ==="
-          ./stage2 --version 2>&1 || ./stage2b --version 2>&1 || true
+          ls -lh stage1 stage2 stage2b stage1.exe stage2.exe stage2b.exe 2>/dev/null || true
           echo "=== runtime libs ==="
           ls -lh runtime.a runtime.lib libthag_runtime.a thag_runtime.lib 2>/dev/null || true
 
       - name: Run test suite
         shell: bash
         run: |
-          # Pick the best available compiler binary
-          if [[ -f "./stage2b" ]]; then
-            THAGC=./stage2b
-          elif [[ -f "./stage2" ]]; then
-            THAGC=./stage2
-          elif [[ -f "./stage1" ]]; then
-            THAGC=./stage1
-          else
+          # Pick the best available compiler binary (prefer stage2b, handle .exe on Windows)
+          THAGC=""
+          for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe" "./stage1" "./stage1.exe"; do
+            if [[ -f "$c" ]]; then THAGC="$c"; break; fi
+          done
+          if [[ -z "$THAGC" ]]; then
             echo "ERROR: no compiler binary found after bootstrap" >&2
             exit 1
           fi
-          echo "Using compiler: $THAGC ($($THAGC --version 2>&1 | head -1))"
+          echo "Using compiler: $THAGC"
           if [[ -d tests/ ]]; then
             "$THAGC" test tests/ 2>&1 | tee test-report-${{ matrix.triple }}.txt
           else

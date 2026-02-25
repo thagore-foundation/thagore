@@ -27,22 +27,32 @@ jobs:
       - name: Detect docs framework
         id: detect
         run: |
-          if [[ -f docs/astro.config.mjs || -f docs/astro.config.ts ]]; then
+          # Starlight docs live in docs/starlight/
+          if [[ -f docs/starlight/astro.config.mjs || -f docs/starlight/astro.config.ts ]]; then
             echo "framework=astro" >> "$GITHUB_OUTPUT"
+            echo "docs_dir=docs/starlight" >> "$GITHUB_OUTPUT"
+          elif [[ -f docs/astro.config.mjs || -f docs/astro.config.ts ]]; then
+            echo "framework=astro" >> "$GITHUB_OUTPUT"
+            echo "docs_dir=docs" >> "$GITHUB_OUTPUT"
+          elif [[ -f docs/starlight/package.json ]]; then
+            echo "framework=node" >> "$GITHUB_OUTPUT"
+            echo "docs_dir=docs/starlight" >> "$GITHUB_OUTPUT"
           elif [[ -f docs/package.json ]]; then
             echo "framework=node" >> "$GITHUB_OUTPUT"
+            echo "docs_dir=docs" >> "$GITHUB_OUTPUT"
           else
             echo "framework=static" >> "$GITHUB_OUTPUT"
+            echo "docs_dir=docs" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install docs dependencies
         if: steps.detect.outputs.framework == 'astro' || steps.detect.outputs.framework == 'node'
-        working-directory: docs
+        working-directory: ${{ steps.detect.outputs.docs_dir }}
         run: npm ci
 
       - name: Build docs (Astro/Starlight)
         if: steps.detect.outputs.framework == 'astro' || steps.detect.outputs.framework == 'node'
-        working-directory: docs
+        working-directory: ${{ steps.detect.outputs.docs_dir }}
         run: npm run build
 
       - name: Validate static docs tree
@@ -58,7 +68,7 @@ jobs:
         with:
           name: docs-build
           path: |
-            docs/dist/
+            ${{ steps.detect.outputs.docs_dir }}/dist/
             docs-pages-report.txt
 
   deploy-pages:
@@ -84,7 +94,7 @@ jobs:
       - name: Upload to Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs-out/dist
+          path: docs-out
 
       - name: Deploy to GitHub Pages
         id: deployment

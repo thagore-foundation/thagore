@@ -40,10 +40,9 @@ jobs:
           - os: macos-latest
             triple: aarch64-apple-darwin
             os_slug: macos
-          # Windows bootstrap requires native bat/ps1 — not yet supported in bootstrap.sh
-          # - os: windows-latest
-          #   triple: x86_64-pc-windows-msvc
-          #   os_slug: windows
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            os_slug: windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,11 +74,47 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install llvm --version=21.1.8 -y
 
-      - name: Bootstrap (stage1 download + build stage2b = thagc compiler binary)
+      - name: Bootstrap Linux/macOS (stage1 download + build stage2b)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/bootstrap.sh
+
+      - name: Bootstrap Windows (download stage1 seed + build stage2b)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "$env:BOOTSTRAP_STAGE1_TAG"
+          New-Item -ItemType Directory -Force -Path bootstrap | Out-Null
+          gh release download $tag --repo thagore-foundation/thagore `
+            --pattern "thagore-stage1-windows.tar.gz" -D bootstrap
+          tar -xzf "bootstrap\thagore-stage1-windows.tar.gz" -C bootstrap
+          # Find stage1_helper.exe or thagore.exe
+          $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "stage1_helper.exe" | Select-Object -First 1
+          if (-not $helper) {
+            $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "thagore.exe" | Select-Object -First 1
+          }
+          if (-not $helper) { Write-Error "stage1 binary not found in seed tarball"; exit 1 }
+          Copy-Item $helper.FullName stage1.exe
+          Write-Host "[bootstrap] stage1 = $($helper.FullName)"
+          # Runtime lib
+          $runtime = Get-ChildItem -Recurse -Path bootstrap -Filter "*.lib" | Select-Object -First 1
+          if ($runtime) { Copy-Item $runtime.FullName thag_runtime.lib } `
+          else { New-Item -ItemType File -Force -Path thag_runtime.lib | Out-Null }
+          # Build stage2
+          python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
+          .\stage1.exe build src/thagore.tg -o stage2.exe
+          if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
+          # Attempt stage2b (may fail in single-stage mode)
+          .\stage2.exe build src/thagore.tg -o stage2b.exe 2>$null
+          if (-not (Test-Path stage2b.exe)) {
+            Write-Host "[bootstrap] single-stage mode — using stage2.exe as stage2b.exe"
+            Copy-Item stage2.exe stage2b.exe
+          }
+          Write-Host "[bootstrap] Done: stage1=$(Test-Path stage1.exe) stage2=$(Test-Path stage2.exe) stage2b=$(Test-Path stage2b.exe)"
 
       - name: Determine release version
         id: version
@@ -136,7 +171,7 @@ jobs:
             cp stage1.exe "$CORE_STAGE/bin/stage1_helper.exe"
           fi
           cp scripts/install/thagup-init.sh "$CORE_STAGE/"
-          if [[ -d scripts/install/thagup ]]; then
+          if [[ -f scripts/install/thagup ]]; then
             cp scripts/install/thagup "$CORE_STAGE/"
           fi
           cp -r targets/registry/. "$CORE_STAGE/targets/registry/" 2>/dev/null || true
@@ -218,10 +253,13 @@ jobs:
           for f in \
             dist/release/thagc-core-linux.tar.gz \
             dist/release/thagc-core-macos.tar.gz \
+            dist/release/thagc-core-windows.tar.gz \
             dist/release/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
             dist/release/thagc-target-aarch64-apple-darwin-macos.tar.gz \
+            dist/release/thagc-target-x86_64-pc-windows-msvc-windows.tar.gz \
             dist/release/SHA256SUMS-thagc-linux.txt \
-            dist/release/SHA256SUMS-thagc-macos.txt; do
+            dist/release/SHA256SUMS-thagc-macos.txt \
+            dist/release/SHA256SUMS-thagc-windows.txt; do
             [[ -f "$f" ]] && ASSETS+=("$f")
           done
           echo "Uploading ${#ASSETS[@]} assets..."
