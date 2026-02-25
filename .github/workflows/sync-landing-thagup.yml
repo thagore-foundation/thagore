@@ -1,0 +1,59 @@
+name: Sync Landing Thagup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install/thagup-init.sh"
+      - ".github/workflows/sync-landing-thagup.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-landing-thagup
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+
+      - name: Generate landing thagup wrapper
+        run: |
+          cat > /tmp/thagup.sh <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/${GITHUB_SHA}/scripts/install/thagup-init.sh | bash -s -- "\$@"
+          EOF
+          chmod +x /tmp/thagup.sh
+
+      - name: Checkout landing repository
+        uses: actions/checkout@v4
+        with:
+          repository: thagore-foundation/landing
+          ref: main
+          path: landing
+          token: ${{ secrets.LANDING_REPO_SYNC_TOKEN }}
+
+      - name: Update landing public thagup script
+        run: |
+          cp /tmp/thagup.sh landing/public/thagup.sh
+
+      - name: Commit and push landing changes
+        working-directory: landing
+        env:
+          SYNC_SHA: ${{ github.sha }}
+        run: |
+          if git diff --quiet -- public/thagup.sh; then
+            echo "No changes in public/thagup.sh"
+            exit 0
+          fi
+          git config user.name "thagore-sync-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/thagup.sh
+          git commit -m "chore: sync thagup.sh from thagore@${SYNC_SHA}"
+          git push origin main
