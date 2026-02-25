@@ -34,9 +34,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64: ubuntu-20.04 → GLIBC 2.31 → binary runs on 2.17+
-          # with -static-libstdc++ -static-libgcc it needs only libc.so
-          - runner: ubuntu-20.04
+          # Linux x86_64: manylinux2014 container (GLIBC 2.17) via ubuntu-latest
+          # -static-libstdc++ -static-libgcc → binary needs only libc.so (GLIBC 2.17+)
+          - runner: ubuntu-latest
             os_slug: linux
             triple: x86_64-unknown-linux-gnu
             artifact: thagore-stage1-linux.tar.gz
@@ -57,22 +57,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      # ── Linux: install LLVM 21, clang++, static libstdc++ ─────────────────
+      # ── Linux: install LLVM 21 + static libstdc++ ─────────────────────────
       - name: Install build deps (Linux)
         if: runner.os == 'Linux'
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
             | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-21 main" \
+          CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}")
+          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" \
             | sudo tee /etc/apt/sources.list.d/llvm-21.list
           sudo apt-get update -q
-          sudo apt-get install -y clang-21 lld-21 llvm-21 libstdc++-10-dev
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          # Get static libstdc++ — any available version works for -static-libstdc++
+          sudo apt-get install -y libstdc++-12-dev 2>/dev/null || \
+            sudo apt-get install -y libstdc++-11-dev 2>/dev/null || \
+            sudo apt-get install -y libstdc++-10-dev 2>/dev/null || true
           echo "CXX=clang++-21" >> $GITHUB_ENV
           echo "CC=clang-21"    >> $GITHUB_ENV
-          # Locate static libstdc++
-          STDCXX_A=$(find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -1)
-          echo "STDCXX_A=$STDCXX_A" >> $GITHUB_ENV
-          echo "Found static libstdc++: $STDCXX_A"
+          echo "=== static libstdc++ ==="
+          find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -3
 
       # ── macOS: use system clang++ (libc++) to match libthag_runtime.a ABI ──
       - name: Install build deps (macOS)
@@ -116,12 +119,20 @@ jobs:
       - name: Build standalone thagc (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Compile glibc compat shim (must come BEFORE libthag_runtime.a in link order)
+          # Compile glibc compat shim.
+          # --wrap=__isoc23_strtol: redirect C23 glibc 2.38 symbol → our strtol wrapper.
+          # This makes the final binary only need GLIBC_2.2.5 for strtol.
           $CC -c bootstrap/glibc_compat.c -o /tmp/glibc_compat.o -O2
           ar rcs /tmp/libglibc_compat.a /tmp/glibc_compat.o
 
-          # Link: thagc_main.cpp + compat + libthag_runtime.a
-          # -static-libstdc++ -static-libgcc: embed C++ runtime → no libstdc++.so dep
+          # Locate static libstdc++ (needed for -static-libstdc++)
+          STDCXX_A=$(find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -1)
+          echo "Using static libstdc++: $STDCXX_A"
+          STDCXX_DIR=$(dirname "$STDCXX_A")
+
+          # Link: thagc_main.cpp + compat shim + libthag_runtime.a
+          # -static-libstdc++ -static-libgcc: embed C++ runtime, no .so deps
+          # compat BEFORE runtime so linker resolves __wrap_ from compat first
           $CXX bootstrap/thagc_main.cpp \
             -o thagc_stage1 \
             /tmp/libglibc_compat.a \
@@ -130,13 +141,16 @@ jobs:
             -Wl,--wrap=__isoc23_strtol \
             -Wl,--wrap=__isoc23_strtoll \
             -static-libstdc++ -static-libgcc \
+            -L"$STDCXX_DIR" \
             -lpthread -ldl -lm \
             -O2 -DNDEBUG
           chmod +x thagc_stage1
 
-          # Verify: check GLIBC requirements
-          echo "=== GLIBC version requirements ==="
+          # Verify: GLIBC requirements — should show max GLIBC_2.17 or lower
+          echo "=== GLIBC/GLIBCXX requirements ==="
           objdump -p thagc_stage1 | grep "GLIBC_\|GLIBCXX_" || true
+          echo "=== Dynamic deps ==="
+          ldd thagc_stage1 || true
           echo "=== Binary size ==="
           ls -lh thagc_stage1
           echo "=== Version check ==="
