@@ -42,18 +42,16 @@ TRIPLE_TO_ASSET = {
 # lld-link:              PE/COFF linker (Windows)
 # llc:                   LLVM IR → object (useful for IR debugging)
 # llvm-ar:               archive utility (static lib creation)
+# NOTE: these are EXACT names matched against the filename — no prefix matching.
 BINS_TO_EXTRACT = {
-    "linux":   ["clang", "clang-{major}", "ld.lld", "llc", "llvm-ar"],
-    "macos":   ["clang", "clang-{major}", "ld.lld", "ld64.lld", "llc", "llvm-ar"],
-    "windows": ["clang.exe", "clang-{major}.exe", "lld-link.exe", "llc.exe", "llvm-ar.exe"],
+    "linux":   ["clang-{major}", "ld.lld", "llc", "llvm-ar"],
+    "macos":   ["clang-{major}", "ld.lld", "ld64.lld", "llc", "llvm-ar"],
+    "windows": ["clang-{major}.exe", "lld-link.exe", "llc.exe", "llvm-ar.exe"],
 }
 
-# Shared libraries to extract per platform
-LIBS_TO_EXTRACT = {
-    "linux":   ["libLLVM-{major}.so", "libLLVM.so.{major}", "libclang.so.{major}"],
-    "macos":   ["libLLVM.dylib", "libclang.dylib"],
-    "windows": ["LLVM-C.dll"],
-}
+# No shared libraries — thagc uses clang as a driver (which finds system libLLVM
+# at runtime via RPATH or system paths). Bundling libLLVM-21.so adds ~700MB.
+LIBS_TO_EXTRACT: dict = {}
 
 
 def detect_platform_from_triple(triple: str) -> str:
@@ -127,8 +125,9 @@ def extract_selected_files(archive: Path, out_dir: Path, platform: str, major: s
             name = Path(member.name).name
             if not member.isfile():
                 continue
-            # Match bin or lib files by name
-            if name in wanted_names or any(name.startswith(b.split("{")[0]) for b in bins + libs if "{" not in b):
+            # Exact name match only — no prefix/glob matching to avoid pulling in
+            # clang-tidy, clang-format, clang-check, libLLVM.so, etc.
+            if name in wanted_names:
                 # Determine destination
                 path_parts = member.name.split("/")
                 if "bin" in path_parts:
