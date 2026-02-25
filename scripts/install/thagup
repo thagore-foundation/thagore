@@ -61,6 +61,15 @@ detect_os_slug() {
   esac
 }
 
+# Asset naming: target packs are keyed by the triple's OS, not the host OS
+target_os_slug_for_triple() {
+  local triple="$1"
+  if [[ "$triple" == *"apple"* || "$triple" == *"darwin"* ]]; then echo "macos"
+  elif [[ "$triple" == *"windows"* ]]; then echo "windows"
+  else echo "linux"
+  fi
+}
+
 fetch_latest_tag() {
   curl -fsSL "${API_BASE}/releases/latest" \
     | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
@@ -177,10 +186,10 @@ cmd_target_add() {
   tag="$(fetch_latest_tag)"
   [[ -n "$tag" ]] || { echo "ERROR: cannot resolve latest tag" >&2; exit 1; }
 
-  local os_slug
-  os_slug="$(detect_os_slug)"
-  local target_asset="thagc-target-${triple}-${os_slug}.tar.gz"
-  local sum_asset="SHA256SUMS-thagc-${os_slug}.txt"
+  local target_os_slug
+  target_os_slug="$(target_os_slug_for_triple "$triple")"
+  local target_asset="thagc-target-${triple}-${target_os_slug}.tar.gz"
+  local sum_asset="SHA256SUMS-thagc-${target_os_slug}.txt"
   local base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}"
 
   local tmp

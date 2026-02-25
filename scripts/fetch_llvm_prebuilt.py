@@ -36,12 +36,16 @@ TRIPLE_TO_ASSET = {
     "x86_64-pc-windows-msvc":    "LLVM-{version}-Windows-X64.tar.xz",
 }
 
-# Binaries to extract per platform
+# Compact binary set — only what thagc needs to compile and link (~90 MB target pack).
+# clang / clang-{major}: C/IR compiler + driver
+# ld.lld / ld64.lld:     linker (ELF / MachO)
+# lld-link:              PE/COFF linker (Windows)
+# llc:                   LLVM IR → object (useful for IR debugging)
+# llvm-ar:               archive utility (static lib creation)
 BINS_TO_EXTRACT = {
-    "linux": ["clang", "clang-{major}", "ld.lld", "llc", "llvm-as", "llvm-ar", "llvm-nm"],
-    "macos": ["clang", "clang-{major}", "ld.lld", "ld64.lld", "llc", "llvm-as", "llvm-ar", "llvm-nm"],
-    "windows": ["clang.exe", "clang-{major}.exe", "lld-link.exe", "llc.exe",
-                "llvm-as.exe", "llvm-ar.exe", "llvm-nm.exe"],
+    "linux":   ["clang", "clang-{major}", "ld.lld", "llc", "llvm-ar"],
+    "macos":   ["clang", "clang-{major}", "ld.lld", "ld64.lld", "llc", "llvm-ar"],
+    "windows": ["clang.exe", "clang-{major}.exe", "lld-link.exe", "llc.exe", "llvm-ar.exe"],
 }
 
 # Shared libraries to extract per platform

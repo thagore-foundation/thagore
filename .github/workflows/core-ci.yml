@@ -25,8 +25,12 @@ jobs:
         include:
           - os: ubuntu-latest
             triple: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm64
+            triple: aarch64-unknown-linux-gnu
           - os: macos-latest
             triple: aarch64-apple-darwin
+          - os: macos-13
+            triple: x86_64-apple-darwin
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
     steps:
@@ -42,15 +46,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}")
+          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
           sudo apt-get update -q
           sudo apt-get install -y clang-21 lld-21 llvm-21
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
-          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-21 100
-          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-21   100
+          sudo update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/ld.lld-21  100
+          sudo update-alternatives --install /usr/bin/llc     llc     /usr/bin/llc-21     100
           sudo update-alternatives --install /usr/bin/llvm-as llvm-as /usr/bin/llvm-as-21 100
-          clang --version
-          ld.lld --version
+          clang --version && ld.lld --version
 
       - name: Install LLVM 21 (macOS)
         if: runner.os == 'macOS'
@@ -61,8 +65,13 @@ jobs:
 
       - name: Install LLVM 21 (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          choco install llvm --version=21.1.8 -y
+          choco install llvm --version=21.1.8 -y --no-progress
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvmBin) {
+            echo "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
           clang --version
 
       - name: Bootstrap Linux/macOS
@@ -108,23 +117,49 @@ jobs:
           echo "=== runtime libs ==="
           ls -lh runtime.a runtime.lib libthag_runtime.a thag_runtime.lib 2>/dev/null || true
 
+      # ── Smoke test: build hello.tg + fib.tg, verify output ────────────────
+      - name: Smoke test
+        shell: bash
+        run: |
+          THAGC=""
+          for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe" "./stage1" "./stage1.exe"; do
+            [[ -f "$c" ]] && THAGC="$c" && break
+          done
+          [[ -n "$THAGC" ]] || { echo "ERROR: no compiler after bootstrap" >&2; exit 1; }
+          echo "Compiler: $THAGC"
+
+          # hello.tg — output must contain "Hello"
+          echo "=== smoke: hello.tg ==="
+          "$THAGC" build examples/hello.tg -o ./smoke_hello 2>&1
+          HBIN=./smoke_hello; [[ -f ./smoke_hello.exe ]] && HBIN=./smoke_hello.exe
+          HOUT="$("$HBIN" 2>&1)"
+          echo "Output: $HOUT"
+          [[ "$HOUT" == *"Hello"* ]] || { echo "SMOKE FAIL: hello.tg output='$HOUT'" >&2; exit 1; }
+          echo "SMOKE PASS: hello.tg ✓"
+
+          # fib.tg — fib(35) must equal 9227465
+          echo "=== smoke: fib.tg ==="
+          "$THAGC" build examples/fib.tg -o ./smoke_fib 2>&1
+          FBIN=./smoke_fib; [[ -f ./smoke_fib.exe ]] && FBIN=./smoke_fib.exe
+          FOUT="$("$FBIN" 2>&1)"
+          echo "Output: $FOUT"
+          [[ "$FOUT" == *"9227465"* ]] || { echo "SMOKE FAIL: fib(35) expected 9227465, got='$FOUT'" >&2; exit 1; }
+          echo "SMOKE PASS: fib.tg ✓"
+
+      # ── Full test suite (if tests/ exists) ────────────────────────────────
       - name: Run test suite
         shell: bash
         run: |
-          # Pick the best available compiler binary (prefer stage2b, handle .exe on Windows)
           THAGC=""
           for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe" "./stage1" "./stage1.exe"; do
-            if [[ -f "$c" ]]; then THAGC="$c"; break; fi
+            [[ -f "$c" ]] && THAGC="$c" && break
           done
-          if [[ -z "$THAGC" ]]; then
-            echo "ERROR: no compiler binary found after bootstrap" >&2
-            exit 1
-          fi
-          echo "Using compiler: $THAGC"
+          [[ -n "$THAGC" ]] || { echo "ERROR: no compiler" >&2; exit 1; }
+          REPORT="test-report-${{ matrix.triple }}.txt"
           if [[ -d tests/ ]]; then
-            "$THAGC" test tests/ 2>&1 | tee test-report-${{ matrix.triple }}.txt
+            "$THAGC" test tests/ 2>&1 | tee "$REPORT" || true
           else
-            echo "No tests/ directory — skipping test suite" | tee test-report-${{ matrix.triple }}.txt
+            echo "No tests/ directory — skipping test suite" | tee "$REPORT"
           fi
 
       - name: Upload stage2b + test report

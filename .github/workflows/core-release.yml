@@ -37,9 +37,17 @@ jobs:
           - os: ubuntu-latest
             triple: x86_64-unknown-linux-gnu
             os_slug: linux
+          - os: ubuntu-24.04-arm64
+            triple: aarch64-unknown-linux-gnu
+            os_slug: linux-arm64
+            # Note: core bundle uses linux-arm64 slug; target pack uses linux slug
+            # for cross-compat (installer downloads target packs by triple OS, not runner OS)
           - os: macos-latest
             triple: aarch64-apple-darwin
             os_slug: macos
+          - os: macos-13
+            triple: x86_64-apple-darwin
+            os_slug: macos-x64
           - os: windows-latest
             triple: x86_64-pc-windows-msvc
             os_slug: windows
@@ -56,12 +64,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-noble}}")
+          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
           sudo apt-get update -q
           sudo apt-get install -y clang-21 lld-21 llvm-21
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
-          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-21 100
-          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-21   100
+          sudo update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/ld.lld-21  100
+          sudo update-alternatives --install /usr/bin/llc     llc     /usr/bin/llc-21     100
           sudo update-alternatives --install /usr/bin/llvm-as llvm-as /usr/bin/llvm-as-21 100
 
       - name: Install LLVM 21 (macOS)
@@ -72,7 +81,13 @@ jobs:
 
       - name: Install LLVM 21 (Windows)
         if: runner.os == 'Windows'
-        run: choco install llvm --version=21.1.8 -y
+        shell: pwsh
+        run: |
+          choco install llvm --version=21.1.8 -y --no-progress
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvmBin) {
+            echo "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
 
       - name: Bootstrap Linux/macOS (stage1 download + build stage2b)
         if: runner.os != 'Windows'
@@ -182,38 +197,48 @@ jobs:
           tar -czf "$CORE_TARBALL" -C "$CORE_STAGE" .
           echo "Packaged core: $CORE_TARBALL"
 
-          # Target pack: manifest + LLVM prebuilt + runtime
+          # Target pack slug is derived from the triple's OS (not the runner OS).
+          # This ensures thagup can download e.g. aarch64-unknown-linux-gnu target
+          # from any host by knowing the triple → slug mapping.
+          if [[ "$TRIPLE" == *"apple"* || "$TRIPLE" == *"darwin"* ]]; then
+            TARGET_OS_SLUG="macos"
+          elif [[ "$TRIPLE" == *"windows"* ]]; then
+            TARGET_OS_SLUG="windows"
+          else
+            TARGET_OS_SLUG="linux"
+          fi
+
           TARGET_STAGE="dist/release/target-staging-${TRIPLE}"
           mkdir -p "$TARGET_STAGE"
           cp -r "targets/packs/${TRIPLE}/." "$TARGET_STAGE/"
 
-          TARGET_TARBALL="dist/release/thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz"
+          TARGET_TARBALL="dist/release/thagc-target-${TRIPLE}-${TARGET_OS_SLUG}.tar.gz"
           tar -czf "$TARGET_TARBALL" -C "$TARGET_STAGE" .
           echo "Packaged target: $TARGET_TARBALL"
 
-          # Checksums
+          # Checksums: one file per OS_SLUG (core bundle) and TARGET_OS_SLUG (target pack)
           cd dist/release
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum \
-              "thagc-core-${OS_SLUG}.tar.gz" \
-              "thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz" \
-              > "SHA256SUMS-thagc-${OS_SLUG}.txt"
-          else
-            shasum -a 256 \
-              "thagc-core-${OS_SLUG}.tar.gz" \
-              "thagc-target-${TRIPLE}-${OS_SLUG}.tar.gz" \
-              > "SHA256SUMS-thagc-${OS_SLUG}.txt"
-          fi
+          SHA_CMD="sha256sum"
+          command -v sha256sum >/dev/null 2>&1 || SHA_CMD="shasum -a 256"
+
+          # Core checksum (by runner OS slug)
+          $SHA_CMD "thagc-core-${OS_SLUG}.tar.gz" \
+            > "SHA256SUMS-thagc-${OS_SLUG}.txt"
+          # Append target pack checksum to its own OS slug file
+          $SHA_CMD "thagc-target-${TRIPLE}-${TARGET_OS_SLUG}.tar.gz" \
+            >> "SHA256SUMS-thagc-${TARGET_OS_SLUG}.txt"
+
           cat "SHA256SUMS-thagc-${OS_SLUG}.txt"
+          [[ "${TARGET_OS_SLUG}" != "${OS_SLUG}" ]] && cat "SHA256SUMS-thagc-${TARGET_OS_SLUG}.txt" || true
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets-${{ matrix.os }}
+          name: release-assets-${{ matrix.triple }}
           path: |
             dist/release/thagc-core-${{ matrix.os_slug }}.tar.gz
-            dist/release/thagc-target-${{ matrix.triple }}-${{ matrix.os_slug }}.tar.gz
-            dist/release/SHA256SUMS-thagc-${{ matrix.os_slug }}.txt
+            dist/release/thagc-target-${{ matrix.triple }}-*.tar.gz
+            dist/release/SHA256SUMS-thagc-*.txt
 
   publish-release:
     name: publish-release
@@ -250,20 +275,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          # Collect all available release assets (Windows excluded until bootstrap.sh supports it)
+          # Collect all available release assets
+          # Glob all assets produced by the build matrix
           ASSETS=()
-          for f in \
-            dist/release/thagc-core-linux.tar.gz \
-            dist/release/thagc-core-macos.tar.gz \
-            dist/release/thagc-core-windows.tar.gz \
-            dist/release/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
-            dist/release/thagc-target-aarch64-apple-darwin-macos.tar.gz \
-            dist/release/thagc-target-x86_64-pc-windows-msvc-windows.tar.gz \
-            dist/release/SHA256SUMS-thagc-linux.txt \
-            dist/release/SHA256SUMS-thagc-macos.txt \
-            dist/release/SHA256SUMS-thagc-windows.txt; do
-            [[ -f "$f" ]] && ASSETS+=("$f")
-          done
+          while IFS= read -r -d '' f; do
+            ASSETS+=("$f")
+          done < <(find dist/release -maxdepth 1 -type f \( \
+            -name "thagc-core-*.tar.gz" -o \
+            -name "thagc-target-*.tar.gz" -o \
+            -name "SHA256SUMS-thagc-*.txt" \
+          \) -print0 | sort -z)
+          echo "Found ${#ASSETS[@]} assets to upload:"
+          printf '  %s\n' "${ASSETS[@]}"
           echo "Uploading ${#ASSETS[@]} assets..."
           gh release create "$VERSION" \
             --title "Thagore $VERSION" \
