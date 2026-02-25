@@ -59,17 +59,21 @@ jobs:
         if: steps.detect.outputs.framework == 'static'
         run: |
           test -d docs
-          echo "docs_root=docs" > docs-pages-report.txt
-          echo "framework=static" >> docs-pages-report.txt
-          echo "status=pass" >> docs-pages-report.txt
+          test -f docs/index.html
 
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
+      - name: Prepare Pages root
+        run: |
+          rm -rf _site
+          if [[ "${{ steps.detect.outputs.framework }}" == "static" ]]; then
+            cp -a docs _site
+          else
+            cp -a "${{ steps.detect.outputs.docs_dir }}/dist" _site
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: docs-build
-          path: |
-            ${{ steps.detect.outputs.docs_dir }}/dist/
-            docs-pages-report.txt
+          path: _site
 
   deploy-pages:
     needs: build-docs
@@ -82,19 +86,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download docs artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-build
-          path: docs-out
-
       - name: Setup Pages
         uses: actions/configure-pages@v4
-
-      - name: Upload to Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs-out
 
       - name: Deploy to GitHub Pages
         id: deployment
