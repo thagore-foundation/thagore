@@ -76,21 +76,17 @@ jobs:
           $tag = "$env:BOOTSTRAP_STAGE1_TAG"
           New-Item -ItemType Directory -Force -Path bootstrap | Out-Null
           gh release download $tag --repo thagore-foundation/thagore `
-            --pattern "thagore-stage1-windows.tar.gz" -D bootstrap
-          tar -xzf "bootstrap\thagore-stage1-windows.tar.gz" -C bootstrap
-          $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "stage1_helper.exe" | Select-Object -First 1
-          if (-not $helper) {
-            $helper = Get-ChildItem -Recurse -Path bootstrap -Filter "thagore.exe" | Select-Object -First 1
-          }
-          if (-not $helper) { Write-Error "stage1 binary not found"; exit 1 }
-          Copy-Item $helper.FullName stage1.exe
-          $runtime = Get-ChildItem -Recurse -Path bootstrap -Filter "*.lib" | Select-Object -First 1
-          if ($runtime) { Copy-Item $runtime.FullName thag_runtime.lib } `
-          else { New-Item -ItemType File -Force -Path thag_runtime.lib | Out-Null }
+            --pattern "thagore-stage1-windows-x86_64.exe" `
+            --pattern "thagore-stage1-helper-windows-x86_64.exe" `
+            --pattern "thagore-runtime-windows-x86_64.lib" `
+            -D bootstrap
+          Copy-Item "bootstrap\thagore-stage1-windows-x86_64.exe" stage1.exe
+          Copy-Item "bootstrap\thagore-stage1-helper-windows-x86_64.exe" stage1_helper.exe
+          Copy-Item "bootstrap\thagore-runtime-windows-x86_64.lib" thag_runtime.lib
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          Copy-Item stage2.exe stage2b.exe  # selfhost check will rebuild from scratch
+          Copy-Item stage2.exe stage2b.exe
 
       - name: Rebuild stage2 from stage1 (reproducibility pass 1)
         shell: bash
