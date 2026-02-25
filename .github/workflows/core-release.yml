@@ -37,11 +37,6 @@ jobs:
           - os: ubuntu-latest
             triple: x86_64-unknown-linux-gnu
             os_slug: linux
-          - os: ubuntu-24.04-arm64
-            triple: aarch64-unknown-linux-gnu
-            os_slug: linux-arm64
-            # Note: core bundle uses linux-arm64 slug; target pack uses linux slug
-            # for cross-compat (installer downloads target packs by triple OS, not runner OS)
           - os: macos-latest
             triple: aarch64-apple-darwin
             os_slug: macos
