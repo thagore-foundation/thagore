@@ -137,7 +137,6 @@ jobs:
             /tmp/glibc_compat.o \
             -o thagc_stage1 \
             ./libthag_runtime.a \
-            /tmp/glibc_compat.o \
             -static-libstdc++ -static-libgcc \
             -L"$STDCXX_DIR" \
             -lpthread -ldl -lm \
