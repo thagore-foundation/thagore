@@ -31,9 +31,10 @@ LLVM_GITHUB_BASE = "https://github.com/llvm/llvm-project/releases/download"
 TRIPLE_TO_ASSET = {
     "x86_64-unknown-linux-gnu":  "LLVM-{version}-Linux-X64.tar.xz",
     "aarch64-unknown-linux-gnu": "LLVM-{version}-Linux-ARM64.tar.xz",
-    "x86_64-apple-darwin":       "LLVM-{version}-macOS-X64.tar.xz",
+    # macOS x64 prebuilt not provided by LLVM upstream; skip (use macOS ARM64 only)
     "aarch64-apple-darwin":      "LLVM-{version}-macOS-ARM64.tar.xz",
-    "x86_64-pc-windows-msvc":    "LLVM-{version}-Windows-X64.tar.xz",
+    # Windows uses clang+llvm naming convention (different from Linux/macOS)
+    "x86_64-pc-windows-msvc":    "clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz",
 }
 
 # Compact binary set — only what thagc needs to compile and link (~90 MB target pack).
@@ -227,8 +228,9 @@ def main() -> int:
     try:
         url, asset_name = asset_url(triple, version)
     except ValueError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
+        print(f"[fetch_llvm] SKIP: {e}", file=sys.stderr)
+        print("[fetch_llvm] No LLVM prebuilt available for this triple — target pack will have no embedded LLVM.")
+        return 0
 
     # Create temp dir for download
     with tempfile.TemporaryDirectory(prefix="thagore-llvm-") as tmp:
