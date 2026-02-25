@@ -9,69 +9,71 @@ import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Quick Start: Install Thagore
 
-Use the official `thagup` installer flow by platform.
+Use the official `thagup` installer — one command installs `thagc` with embedded LLVM. No separate LLVM installation required.
 
 ## Step 1: Install
 
 <Tabs>
-  <TabItem label="Windows (UI Installer)">
+  <TabItem label="Linux (Ubuntu/Debian)">
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash
+```
+
+Installs `thagc` to `~/.thagore/bin`, downloads LLVM 21 per target pack (embedded — no system LLVM needed), and adds PATH automatically.
+
+  </TabItem>
+  <TabItem label="Linux (generic)">
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode linux
+```
+
+  </TabItem>
+  <TabItem label="macOS">
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode macos
+```
+
+  </TabItem>
+  <TabItem label="Portable (Android/BSD/other)">
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode portable
+```
+
+  </TabItem>
+  <TabItem label="Windows">
 
 ```powershell
 Invoke-WebRequest -Uri "https://thagore.org/thagup.exe" -OutFile thagup.exe
 Start-Process -FilePath .\thagup.exe -Wait
 ```
 
-`thagup.exe` maps to the latest stable Windows x86_64 installer.
-For ARM64 Windows, use the direct release asset:
-`https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-arm64.exe`
-
-  </TabItem>
-  <TabItem label="Linux (Ubuntu/Debian)">
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode ubuntu --yes
-```
-
-Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
-
-  </TabItem>
-  <TabItem label="Linux (generic)">
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode linux --yes
-```
-
-Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
-
-  </TabItem>
-  <TabItem label="macOS">
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode macos --yes
-```
-
-Installs Thagore to a safe prefix, adds PATH, and installs LLVM 21.1.8 when needed.
-
-  </TabItem>
-  <TabItem label="Portable (Android/BSD)">
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode portable --yes
-```
-
-Installs Thagore to a safe prefix, adds PATH, and builds LLVM when needed.
-
   </TabItem>
 </Tabs>
+
+Or install a specific version:
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --tag v0.5.44
+```
+
+Install with custom target selection:
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --profile custom --targets x86_64-unknown-linux-gnu,aarch64-apple-darwin
+```
 
 **Verify:**
 
 ```bash
-thagore --version
+thagc --version
 ```
 
 <Aside type="tip" title="PATH">
-Windows UI installer enables "Add to PATH" by default. Linux/macOS installer script updates PATH automatically.
+The installer adds `~/.thagore/bin` to PATH automatically via `.bashrc`/`.zshrc`. Restart your shell or run `source ~/.thagore/env` to activate immediately.
 </Aside>
 
 ## Step 2: Write Your First Program
@@ -90,7 +92,7 @@ Compile and run:
   <TabItem label="Linux/macOS">
 
 ```bash
-thagore build hello.tg -o hello
+thagc build hello.tg -o hello
 ./hello
 ```
 
@@ -98,18 +100,20 @@ thagore build hello.tg -o hello
   <TabItem label="Windows">
 
 ```powershell
-thagore build hello.tg -o hello.exe
+thagc build hello.tg -o hello.exe
 .\hello.exe
 ```
 
   </TabItem>
 </Tabs>
 
+<Aside type="note" title="No system LLVM required">
+`thagc` ships with embedded LLVM 21 in each target pack — no separate LLVM installation needed.
+</Aside>
+
 ## Links
 
 - Bootstrap script (Linux/macOS/portable): `https://thagore.org/thagup.sh`
 - Bootstrap executable (Windows x86-64): `https://thagore.org/thagup.exe`
-- Windows x86-64 installer: `https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-x86_64.exe`
-- Windows ARM64 installer: `https://github.com/thagore-foundation/thagore/releases/latest/download/thagore-setup-windows-arm64.exe`
 - Raw bootstrap source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/scripts/install/thagup-init.sh`
 - All releases: `https://github.com/thagore-foundation/thagore/releases`
