@@ -74,15 +74,15 @@ jobs:
           echo "STDCXX_A=$STDCXX_A" >> $GITHUB_ENV
           echo "Found static libstdc++: $STDCXX_A"
 
-      # ── macOS: install LLVM 21 via brew ───────────────────────────────────
+      # ── macOS: use system clang++ (libc++) to match libthag_runtime.a ABI ──
       - name: Install build deps (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm@21
-          LLVM_BIN="$(brew --prefix llvm@21)/bin"
-          echo "$LLVM_BIN" >> $GITHUB_PATH
-          echo "CXX=${LLVM_BIN}/clang++" >> $GITHUB_ENV
-          echo "CC=${LLVM_BIN}/clang"    >> $GITHUB_ENV
+          # libthag_runtime.a for macOS was built with Apple clang (libc++ ABI).
+          # Use system clang++ to match the ABI — not brew LLVM which may differ.
+          echo "CXX=$(xcrun -f clang++)" >> $GITHUB_ENV
+          echo "CC=$(xcrun -f clang)"    >> $GITHUB_ENV
+          xcrun clang++ --version
 
       # ── Download current seed runtime (libthag_runtime.a) ─────────────────
       - name: Download seed runtime library
