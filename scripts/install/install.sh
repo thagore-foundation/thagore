@@ -375,15 +375,63 @@ confirm_install() {
   esac
 }
 
+apt_lock_is_held() {
+  local lock_frontend="/var/lib/dpkg/lock-frontend"
+  local lock_backend="/var/lib/dpkg/lock"
+  if command -v fuser >/dev/null 2>&1; then
+    sudo fuser "$lock_frontend" >/dev/null 2>&1 && return 0
+    sudo fuser "$lock_backend" >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
+wait_for_apt_lock() {
+  local timeout_seconds="${THAGORE_APT_LOCK_TIMEOUT_SECONDS:-600}"
+  local sleep_seconds=5
+  local waited=0
+  while apt_lock_is_held; do
+    if (( waited >= timeout_seconds )); then
+      echo "ERROR: timed out after ${timeout_seconds}s waiting for apt/dpkg lock." >&2
+      return 1
+    fi
+    echo "[thagore-installer] Waiting for apt/dpkg lock (${waited}s/${timeout_seconds}s)..."
+    sleep "$sleep_seconds"
+    waited=$((waited + sleep_seconds))
+  done
+}
+
+run_with_apt_lock_retry() {
+  local label="$1"
+  shift
+  local attempts=3
+  local attempt=1
+  local rc=0
+  while (( attempt <= attempts )); do
+    wait_for_apt_lock
+    if "$@"; then
+      return 0
+    fi
+    rc=$?
+    if apt_lock_is_held; then
+      echo "[thagore-installer] ${label} hit apt/dpkg lock, retry ${attempt}/${attempts}..."
+      sleep 5
+      attempt=$((attempt + 1))
+      continue
+    fi
+    return "$rc"
+  done
+  return "$rc"
+}
+
 install_llvm_ubuntu() {
   if command -v clang >/dev/null 2>&1 && clang --version | grep -qE "version 21|21\.1\.8"; then
     echo "LLVM already available."
     return
   fi
-  sudo apt-get update
+  run_with_apt_lock_retry "apt-get update" sudo apt-get update
   curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
   chmod +x /tmp/llvm.sh
-  sudo /tmp/llvm.sh 21 all
+  run_with_apt_lock_retry "llvm.sh install" sudo /tmp/llvm.sh 21 all
   if ! command -v clang >/dev/null 2>&1 && [[ -d /usr/lib/llvm-21/bin ]]; then
     export PATH="/usr/lib/llvm-21/bin:$PATH"
   fi
