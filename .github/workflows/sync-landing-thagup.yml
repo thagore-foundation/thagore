@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sync:
@@ -52,8 +52,8 @@ jobs:
             echo "No changes in public/thagup.sh"
             exit 0
           fi
-          git config user.name "thagore-sync-bot"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/thagup.sh
           git commit -m "chore: sync thagup.sh from thagore@${SYNC_SHA}"
           git push origin main
