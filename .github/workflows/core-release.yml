@@ -128,6 +128,66 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Release version: $VERSION"
 
+      # ── Patch stage1_helper GLIBC compat (Linux only) ─────────────────────
+      # The seed stage1_helper requires GLIBC_2.38 (Ubuntu 24.04+).
+      # We binary-patch the version strings so it works on GLIBC_2.35 (Ubuntu 22.04).
+      - name: Patch stage1_helper GLIBC compat (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if [[ -f "stage1_helper" ]]; then
+            echo "=== Patching stage1_helper for GLIBC_2.35 compat ==="
+            python3 scripts/patch_glibc_compat.py stage1_helper stage1_helper
+            # Also patch the stage1 symlink/copy if it's a separate file
+            if [[ -f "stage1" ]]; then
+              python3 scripts/patch_glibc_compat.py stage1 stage1
+            fi
+          else
+            echo "stage1_helper not found — skipping GLIBC compat patch"
+          fi
+
+      # ── Build standalone thagc.bin from libthag_runtime.a (Linux/macOS) ───────
+      # The stage2/stage2b produced by seeded bootstrap is a broken stub (main = ret 0)
+      # because the seed stage1_helper generates placeholder IR for src/thagore.tg.
+      # We instead build a proper CLI binary directly from libthag_runtime.a.
+      - name: Build thagc.bin from libthag_runtime.a (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "=== Building standalone thagc.bin ==="
+          # glibc_compat.o must come BEFORE libthag_runtime.a in link order
+          ${CC:-gcc} -c bootstrap/glibc_compat.c -o /tmp/glibc_compat.o -O2
+          STDCXX_A=$(find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -1)
+          STDCXX_DIR=$(dirname "$STDCXX_A")
+          ${CXX:-g++} bootstrap/thagc_main.cpp \
+            /tmp/glibc_compat.o \
+            ./libthag_runtime.a \
+            -static-libstdc++ -static-libgcc \
+            -L"$STDCXX_DIR" \
+            -lpthread -ldl -lm \
+            -O2 -DNDEBUG \
+            -o thagc.bin
+          chmod +x thagc.bin
+          echo "=== thagc.bin ==="
+          ls -lh thagc.bin
+          ./thagc.bin --version 2>&1 || true
+
+      - name: Build thagc.bin from libthag_runtime.a (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          SDK=$(xcrun --show-sdk-path)
+          CXX_CMD=$(xcrun -f clang++ 2>/dev/null || echo clang++)
+          $CXX_CMD bootstrap/thagc_main.cpp \
+            -isysroot "$SDK" \
+            ./libthag_runtime.a \
+            -lpthread \
+            -O2 -DNDEBUG \
+            -o thagc.bin
+          chmod +x thagc.bin
+          ls -lh thagc.bin
+          ./thagc.bin --version 2>&1 || true
+
       - name: Download LLVM prebuilt for target pack
         shell: bash
         run: |
@@ -144,9 +204,9 @@ jobs:
           TRIPLE="${{ matrix.triple }}"
           mkdir -p dist/release
 
-          # Prefer stage2b > stage2 > stage1 as the released compiler binary.
-          # stage1 (= stage1_helper backend) is always functional; stage2/stage2b
-          # are CLI wrappers that also work but require stage1_helper alongside them.
+          # Use thagc.bin (built from libthag_runtime.a) as the shipped thagc.
+          # This is a real CLI binary — not the broken stub from seeded bootstrap.
+          # Fall back to stage2b/stage2/stage1 if thagc.bin wasn't built (Windows).
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             THAGC_DEST="thagc.exe"
             if [[ -f "stage2b.exe" ]]; then THAGC_BIN="stage2b.exe"
@@ -154,21 +214,30 @@ jobs:
             else THAGC_BIN="stage1.exe"; fi
           else
             THAGC_DEST="thagc"
-            if [[ -f "stage2b" ]]; then THAGC_BIN="stage2b"
+            if [[ -f "thagc.bin" ]]; then THAGC_BIN="thagc.bin"
+            elif [[ -f "stage2b" ]]; then THAGC_BIN="stage2b"
             elif [[ -f "stage2" ]]; then THAGC_BIN="stage2"
             else THAGC_BIN="stage1"; fi
           fi
           echo "Using compiler binary: $THAGC_BIN"
 
-          # Core bundle: thagc binary + stage1_helper + thagup-init.sh + target registry
+          # Core bundle: thagc binary + stage1_helper + thag_runtime.lib + thagup-init.sh
           CORE_STAGE="dist/release/core-staging"
-          mkdir -p "$CORE_STAGE/bin" "$CORE_STAGE/targets/registry"
+          mkdir -p "$CORE_STAGE/bin" "$CORE_STAGE/lib" "$CORE_STAGE/targets/registry"
           cp "$THAGC_BIN" "$CORE_STAGE/bin/$THAGC_DEST"
-          # Also bundle stage1 (= stage1_helper backend) so CLI wrapper can find it
+          # Bundle stage1_helper (codegen backend)
           if [[ -f "stage1" && "$THAGC_BIN" != "stage1" ]]; then
             cp stage1 "$CORE_STAGE/bin/stage1_helper"
           elif [[ -f "stage1.exe" && "$THAGC_BIN" != "stage1.exe" ]]; then
             cp stage1.exe "$CORE_STAGE/bin/stage1_helper.exe"
+          fi
+          # Bundle thag_runtime.lib (required by stage1_helper to link user programs)
+          if [[ -f "thag_runtime.lib" ]]; then
+            cp thag_runtime.lib "$CORE_STAGE/lib/thag_runtime.lib"
+            echo "Bundled thag_runtime.lib"
+          elif [[ -f "libthag_runtime.a" ]]; then
+            cp libthag_runtime.a "$CORE_STAGE/lib/thag_runtime.lib"
+            echo "Bundled libthag_runtime.a as thag_runtime.lib"
           fi
           cp scripts/install/thagup-init.sh "$CORE_STAGE/"
           # Bundle platform-appropriate thagup self-updater

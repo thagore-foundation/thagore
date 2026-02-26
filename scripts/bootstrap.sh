@@ -174,6 +174,16 @@ ensure_stage1() {
     chmod +x stage1_helper || true
     echo "[bootstrap] installed stage1_helper alongside stage1"
   fi
+  # Patch GLIBC version requirements so stage1/stage1_helper run on GLIBC_2.35+
+  # (seed was compiled on Ubuntu 24.04 which uses GLIBC_2.38 for C23 symbols).
+  if [[ "$(uname -s)" == "Linux" ]] && command -v python3 &>/dev/null; then
+    if [[ -f "scripts/patch_glibc_compat.py" ]]; then
+      python3 scripts/patch_glibc_compat.py stage1 stage1 2>/dev/null || true
+      if [[ -f "stage1_helper" ]]; then
+        python3 scripts/patch_glibc_compat.py stage1_helper stage1_helper 2>/dev/null || true
+      fi
+    fi
+  fi
   STAGE1_BOOTSTRAP_BIN="stage1"
   if ! compiler_can_emit_hello "$STAGE1_BOOTSTRAP_BIN"; then
     echo "[FAIL] Downloaded Stage1 seed is not healthy (cannot emit hello binary)."
