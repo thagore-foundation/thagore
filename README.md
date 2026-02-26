@@ -83,4 +83,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - Security policy: `.github/SECURITY.md`
 - ADRs: `docs/adr/`
 - Architecture map: `docs/architecture/repo-structure.md`
+- Rewrite status: `docs/architecture/rewrite-status.md`
 - New contributor map: `docs/contributor-guide/where-to-change.md`

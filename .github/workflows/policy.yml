@@ -23,6 +23,7 @@ jobs:
           test -f contracts/cli/commands_snapshot.json
           test -f contracts/grammar/tokens.yaml
           test -f contracts/semantics/type_rules_snapshot.yaml
+          test -f contracts/manifest.json
 
       - name: Verify architecture boundaries
         run: python3 tooling/policy/check_no_circular_headers.py --root compiler/include/thagc

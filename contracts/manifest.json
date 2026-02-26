@@ -1,0 +1,31 @@
+{
+  "baseline_branch": "backup/main-archive-20260226-211152",
+  "parity_target": {
+    "syntax": "1:1",
+    "semantics": "1:1",
+    "cli": "full-command-groups with optimized implementation"
+  },
+  "required_cli_groups": [
+    "build",
+    "run",
+    "test",
+    "fix",
+    "intent",
+    "state",
+    "install",
+    "target",
+    "update",
+    "flow"
+  ],
+  "release_gate": {
+    "platforms": [
+      "linux",
+      "macos",
+      "windows"
+    ],
+    "deterministic": true,
+    "parity_suite": true,
+    "soak": true
+  }
+}
+
