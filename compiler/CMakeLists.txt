@@ -12,6 +12,11 @@ add_executable(thagc
   src/main.cpp
   src/application/builder.cpp
   src/driver/core.cpp
+  src/driver/parser.cpp
+  src/driver/help.cpp
+  src/driver/build.cpp
+  src/driver/run.cpp
+  src/driver/stub.cpp
   src/infra/builder.cpp
   src/frontend/core.cpp
   src/frontend/ir.cpp

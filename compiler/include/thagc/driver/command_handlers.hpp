@@ -1,0 +1,18 @@
+#pragma once
+
+#include "thagc/driver/command_types.hpp"
+#include "thagc/shared/diag.hpp"
+
+namespace thagc::driver {
+
+class CompilerPipeline;
+
+int handle_help();
+int handle_version();
+int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
+int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
+int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
+int handle_not_implemented(CommandKind kind);
+
+}  // namespace thagc::driver
+
