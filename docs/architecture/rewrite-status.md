@@ -24,13 +24,13 @@ This dashboard tracks full compiler rewrite progress against `contracts/manifest
 - build: implemented (milestone quality)
 - run: implemented (milestone quality)
 - test: implemented (compile+run lane, needs full suite semantics)
-- fix: pending
-- intent: pending
-- state: pending
-- install: pending
-- target: pending
-- update: pending
-- flow: pending
+- fix: implemented (command skeleton + io behavior)
+- intent: implemented (doctor/explain/lock lane build verification)
+- state: implemented (doctor/explain lane build verification)
+- install: implemented (toolchain marker lane)
+- target: implemented (list/add/remove/ensure/doctor skeleton)
+- update: implemented (check/apply/rollback skeleton)
+- flow: implemented (doctor/explain/simulate/recover skeleton)
 
 ## Quality gates
 
@@ -40,4 +40,3 @@ This dashboard tracks full compiler rewrite progress against `contracts/manifest
 - Deterministic gate: partial
 - Soak gate: pending
 - 3-OS matrix release gate: pending
-

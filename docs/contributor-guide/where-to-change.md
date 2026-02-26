@@ -25,8 +25,17 @@ Quick map for contributors:
 ## I need to change CLI commands
 
 - `compiler/include/thagc/driver/command_router.hpp`
-- `compiler/src/driver/core.cpp`
-- `compiler/src/driver/builder.cpp`
+- `compiler/src/driver/core.cpp` (dispatcher)
+- `compiler/src/driver/parser.cpp` (command parsing)
+- `compiler/src/driver/build.cpp`
+- `compiler/src/driver/run.cpp`
+- `compiler/src/driver/fix.cpp`
+- `compiler/src/driver/intent.cpp`
+- `compiler/src/driver/state.cpp`
+- `compiler/src/driver/install.cpp`
+- `compiler/src/driver/target.cpp`
+- `compiler/src/driver/update.cpp`
+- `compiler/src/driver/flow.cpp`
 
 ## I need to update parity baseline contracts
 
