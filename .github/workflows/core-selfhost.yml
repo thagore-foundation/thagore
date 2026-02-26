@@ -102,7 +102,7 @@ jobs:
       - name: Rebuild stage2b from stage1 (reproducibility pass 2)
         shell: bash
         run: |
-          S1="./stage1"; [[ -f "./stage1.exe" ]] && S1="./stage1.exe"
+          S1="./stage1"; [[ ! -f "$S1" && -f "./stage1.exe" ]] && S1="./stage1.exe"
           "$S1" build src/thagore.tg -o stage2b 2>&1
           chmod +x stage2b 2>/dev/null || true
           if [[ ! -f stage2b && ! -f stage2b.exe ]]; then
