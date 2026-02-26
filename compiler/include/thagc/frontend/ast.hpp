@@ -17,6 +17,10 @@ struct AstStatement {
   StatementKind kind = StatementKind::Expr;
   std::string text;
   int line = 0;
+  bool has_expression = false;
+  bool expression_valid = true;
+  std::string expression_normalized;
+  std::string expression_error;
 };
 
 struct AstFunction {

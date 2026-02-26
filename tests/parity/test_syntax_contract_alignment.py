@@ -32,6 +32,22 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
         self.assertIn("if requires parentheses and trailing ':'", parser_cpp)
         self.assertIn("while requires parentheses and trailing ':'", parser_cpp)
 
+    def test_parser_has_expression_precedence_pipeline(self) -> None:
+        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        for fn in (
+            "parse_multiplicative",
+            "parse_additive",
+            "parse_comparison",
+            "parse_expression_equality",
+            "parse_statement_expression",
+        ):
+            self.assertIn(fn, parser_cpp)
+
+    def test_statement_ast_tracks_parsed_expression(self) -> None:
+        ast_hpp = Path("compiler/include/thagc/frontend/ast.hpp").read_text()
+        for field in ("has_expression", "expression_valid", "expression_normalized", "expression_error"):
+            self.assertIn(field, ast_hpp)
+
 
 if __name__ == "__main__":
     unittest.main()
