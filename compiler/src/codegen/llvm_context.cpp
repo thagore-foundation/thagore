@@ -14,8 +14,8 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <llvm/Support/Host.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/TargetParser/Host.h>
 
 namespace thagc::codegen {
 
@@ -61,10 +61,10 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   auto module = build_module(context, module_name);
 
   std::string error;
-  const std::string target_triple = llvm::sys::getDefaultTargetTriple();
+  const llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
   module->setTargetTriple(target_triple);
 
-  const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+  const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple.getTriple(), error);
   if (!target) {
     diag.error("E2003", "cannot resolve LLVM target: " + error);
     return false;
