@@ -1,0 +1,52 @@
+# Thagore Intent Rule Registry (deterministic, offline)
+# Format:
+#   enabled=1
+#   budget.total=<N>
+#   budget.family.<family>=<N>
+#   rule=<rule.id>
+
+enabled=1
+budget.total=60
+budget.family.search=20
+budget.family.math=24
+budget.family.dp=8
+budget.family.number=8
+budget.family.greedy=4
+budget.family.misc=4
+
+rule=rule.dp.fib.iterative.v1
+rule=rule.dp.trib.iterative.v1
+
+rule=rule.math.factorial.loop.v1
+rule=rule.math.pow.binary_exp.v1
+rule=rule.math.gcd.euclid.v1
+rule=rule.math.sum.formula.v1
+rule=rule.math.sum_squares.formula.v1
+rule=rule.math.sum_cubes.formula.v1
+rule=rule.math.sum_even_squares.formula.v1
+rule=rule.math.sum_odd_squares.formula.v1
+rule=rule.math.sum_even_cubes.formula.v1
+rule=rule.math.sum_odd_cubes.formula.v1
+rule=rule.math.sum_even.formula.v1
+rule=rule.math.sum_odd.formula.v1
+rule=rule.math.sqrt.newton.v1
+
+rule=rule.number.prime.sqrt.v1
+rule=rule.number.divisors.sqrt.v1
+rule=rule.number.bit_peel.iterative.v1
+
+rule=rule.greedy.interval_cover.v1
+
+rule=rule.search.binary.sorted.v1
+rule=rule.search.lower_bound.sorted.v1
+rule=rule.search.upper_bound.sorted.v1
+rule=rule.search.count_less.sorted.v1
+rule=rule.search.count_less_equal.sorted.v1
+rule=rule.search.count_greater.sorted.v1
+rule=rule.search.count_greater_equal.sorted.v1
+rule=rule.search.count_equal.sorted.v1
+rule=rule.search.count_not_equal.sorted.v1
+rule=rule.search.count_range.sorted.v1
+rule=rule.search.count_outside_range.sorted.v1
+rule=rule.search.two_sum.sorted.v1
+rule=rule.search.identity.bounds.v1

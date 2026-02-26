@@ -1,0 +1,271 @@
+---
+title: Advanced Features
+description: Enums, match, traits, comptime, defer, unsafe, intent system, and other advanced Thagore features.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Advanced Features
+
+This page covers Thagore's advanced language features that go beyond basic syntax.
+
+## Enums
+
+Define algebraic data types with `enum`:
+
+```python title="enums.tg"
+enum Color:
+    Red
+    Green
+    Blue
+
+enum Shape:
+    Circle(f32)
+    Rectangle(f32, f32)
+```
+
+Enums with payloads (data attached to variants) are tracked by the compiler's feature counter system.
+
+## Match Expressions
+
+Pattern match on enum variants:
+
+```python title="match.tg"
+enum Direction:
+    North
+    South
+    East
+    West
+
+func describe(d: Direction) -> String:
+    match d:
+        North:
+            return "going up"
+        South:
+            return "going down"
+        East:
+            return "going right"
+        West:
+            return "going left"
+```
+
+<Aside type="note" title="Match + Enum Requirement">
+The compiler validates that `match` is only used with at least one enum declaration in scope. A `match` without enums triggers error `E_TYPE_MATCH_MISSING_ENUM`.
+</Aside>
+
+## Type Aliases
+
+Create type aliases with the `type` keyword:
+
+```python title="type_alias.tg"
+type Distance = f32
+type Name = String
+```
+
+## Traits and `impl for`
+
+Define interfaces with `trait` and implement them:
+
+```python title="traits.tg"
+trait Printable:
+    func display(self) -> String
+
+struct Point:
+    x: i32
+    y: i32
+
+impl Printable for Point:
+    func display(self) -> String:
+        return "Point"
+```
+
+<Aside type="caution" title="Trait Status">
+Trait declarations and `impl for` blocks are parsed and tracked by the compiler's feature counter (`extension_impl_count`), but full trait-based dispatch is still being implemented in the lowering pipeline.
+</Aside>
+
+## Visibility: `pub`
+
+Mark declarations as public with `pub`:
+
+```python title="visibility.tg"
+pub func api_function() -> i32:
+    return 42
+
+pub struct PublicConfig:
+    name: String
+```
+
+## `unsafe` Blocks
+
+Mark code that requires unsafe operations:
+
+```python title="unsafe.tg"
+unsafe:
+    let raw = malloc(1024)
+    # raw pointer operations
+    free(raw)
+```
+
+## `defer`
+
+Schedule cleanup code that runs when the function exits:
+
+```python title="defer.tg"
+func process_file() -> i32:
+    let handle = fs.open_read("data.txt")
+    defer fs.close(handle)
+    # ... process the file ...
+    return 0
+    # fs.close(handle) runs here automatically
+```
+
+<Aside type="caution" title="Function Scope Only">
+`defer` is only valid inside function bodies. Top-level `defer` is rejected by the validation pipeline.
+</Aside>
+
+## `comptime` — Compile-Time Evaluation
+
+Execute code at compile time:
+
+```python title="comptime.tg"
+comptime:
+    let size = 4 * 1024
+    # compile-time evaluated
+```
+
+The compiler tracks `comptime` blocks and evaluates them during the lowering phase via `lowering/transform/comptime/eval.tg`.
+
+## Closures
+
+Lambda-style anonymous functions:
+
+```python title="closures.tg"
+# Closure syntax is parsed and tracked
+# Full closure semantics are in development
+```
+
+## Tuple Destructuring
+
+```python title="tuple_destruct.tg"
+# let (a, b) = get_pair()
+# Parsed and tracked by the compiler
+```
+
+## Array Literals and Slicing
+
+```python title="array_slice.tg"
+let nums = [1, 2, 3, 4, 5]
+
+# Array slice (tracked feature)
+# let sub = nums[1..3]
+```
+
+## Loop Labels
+
+```python title="loop_labels.tg"
+# Named loops for break/continue targeting
+# outer: while (true):
+#     inner: while (true):
+#         break outer
+```
+
+## Result Sugar
+
+```python title="result_sugar.tg"
+# Error handling with ? operator
+# let value = try_parse(input)?
+```
+
+## Raw Strings
+
+```python title="raw_strings.tg"
+# Raw strings with r# prefix
+# let pattern = r#"no escapes \n here"#
+```
+
+## Interpolated Strings
+
+```python title="interpolated.tg"
+# String interpolation with v"..." syntax
+# let msg = v"Hello {name}, you are {age} years old"
+```
+
+## Intent System
+
+Thagore's unique **intent system** allows declarative, constraint-based programming:
+
+```python title="intent_demo.tg"
+intent func fib(n: i32) -> i32:
+    goal: auto_plan
+    constraints:
+        deterministic == true
+
+func fib(n: i32) -> i32:
+    if (n < 2):
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+    print(fib(35))
+    return 0
+```
+
+### Intent Block Structure
+
+```
+intent func <name>(<params>) -> <type>:
+    goal: <goal_name>
+    strategy: <strategy> (optional)
+    examples:
+        <assertion expressions>
+    constraints:
+        <constraint expressions>
+```
+
+### Supported Goals
+
+| Goal | Description |
+|------|-------------|
+| `auto_plan` | Compiler automatically selects an optimization strategy |
+| `reduce_sum` | Optimize for sum reduction patterns |
+| `off` | Disable intent optimization for this function |
+
+### Intent with Examples and Constraints
+
+```python title="intent_full.tg"
+intent loop i in 0..10:
+    goal: reduce_sum
+    examples:
+        reduce_sum([1,2,3]) == 6
+    constraints:
+        deterministic == true
+        time <= O(n)
+```
+
+<Aside type="tip" title="Intent Validation">
+The compiler validates intent goals through the `semantics/intent/matcher.tg` module. Unsupported goals trigger error `E_TYPE_INTENT_GOAL`.
+</Aside>
+
+## Feature Detection Summary
+
+The compiler tracks usage of advanced features through its AST parser. Here are all tracked features:
+
+| Feature | Compiler Field | Status |
+|---------|----------------|--------|
+| Enum payloads | `enum_payload_count` | Parsed |
+| Match expressions | `match_count` | Parsed + validated |
+| Range loops | `range_loop_count` | Parsed + validated |
+| If expressions | `if_expr_count` | Parsed |
+| Closures | `closure_count` | Parsed |
+| Unsafe blocks | `unsafe_count` | Parsed |
+| Extension impl | `extension_impl_count` | Parsed |
+| Pub visibility | `visibility_count` | Parsed |
+| Tuple destruct | `tuple_destruct_count` | Parsed |
+| Array literals | `array_literal_count` | Parsed |
+| Slice expressions | `slice_expr_count` | Parsed |
+| Loop labels | `loop_label_count` | Parsed |
+| Raw strings | `raw_string_count` | Parsed |
+| Interpolated strings | `interpolated_string_count` | Parsed |
+| Result sugar | `result_sugar_count` | Parsed |
+| Defer | `defer_scope_count` | Parsed |
+| Comptime | `comptime_count` | Parsed |

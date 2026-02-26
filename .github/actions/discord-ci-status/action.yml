@@ -1,0 +1,55 @@
+name: Discord CI Status
+description: Create and update a single Discord webhook message for a workflow run.
+
+inputs:
+  mode:
+    description: init, update, watch, or finalize
+    required: true
+  webhook_url:
+    description: Discord webhook URL
+    required: true
+  github_token:
+    description: GitHub token used to query run/job metadata
+    required: true
+  message_id:
+    description: Existing Discord message id for update/finalize
+    required: false
+    default: ""
+  milestone:
+    description: Milestone text for current update
+    required: false
+    default: ""
+  poll_seconds:
+    description: Poll interval seconds for watch mode
+    required: false
+    default: "20"
+  max_minutes:
+    description: Max minutes for watch mode
+    required: false
+    default: "180"
+
+outputs:
+  message_id:
+    description: Discord message id created during init
+    value: ${{ steps.notify.outputs.message_id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Notify Discord
+      id: notify
+      shell: bash
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_MESSAGE_ID: ${{ inputs.message_id }}
+        INPUT_MILESTONE: ${{ inputs.milestone }}
+        INPUT_POLL_SECONDS: ${{ inputs.poll_seconds }}
+        INPUT_MAX_MINUTES: ${{ inputs.max_minutes }}
+      run: |
+        if command -v python3 >/dev/null 2>&1; then
+          python3 "${{ github.action_path }}/notify.py"
+        else
+          python "${{ github.action_path }}/notify.py"
+        fi

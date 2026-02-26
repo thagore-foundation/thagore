@@ -1,0 +1,23 @@
+# Thagore Flow Capability Registry
+# Versioned contract for external side-effect capability semantics.
+#
+# Format:
+#   schema_version=<N>
+#   enabled=<0|1>
+#   capability.<name>=undo:<0|1>,irreversible:<0|1>
+#
+# Semantics:
+# - undo: capability can guarantee compensation semantics.
+# - irreversible: capability is allowed to mark a step as irreversible.
+
+schema_version=1
+enabled=1
+
+capability.cloud=undo:1,irreversible:0
+capability.artifact=undo:1,irreversible:0
+capability.db=undo:1,irreversible:0
+capability.fs=undo:1,irreversible:0
+capability.process=undo:1,irreversible:1
+capability.http=undo:1,irreversible:1
+capability.queue=undo:0,irreversible:1
+capability.pubsub=undo:0,irreversible:1

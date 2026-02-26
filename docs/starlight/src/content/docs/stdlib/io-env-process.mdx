@@ -1,0 +1,228 @@
+---
+title: "I/O, Env & Process"
+description: "Console I/O, environment variables, command-line arguments, process management, and shell execution."
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# I/O, Env & Process
+
+## `lib/io.tg` — Console I/O
+
+### Reading Input
+
+```python
+func input() -> String                           # Read a line from stdin
+func input_i32() -> i32                          # Read an integer from stdin
+func input_prompt(prompt: String = "") -> String # Read with prompt
+func stdin_read_line(prompt: String = "") -> String  # Alias for input_prompt
+func stdin_read_all() -> String                  # Read all stdin until EOF
+```
+
+### Flexible Source Reading
+
+```python
+func stdread(path: String = "") -> String
+```
+
+Reads from a file or stdin depending on the `path` argument:
+- `""`, `"-"`, `"stdin"`, `"STDIN"`, `"con"`, `"CON"`, `"/dev/stdin"` → reads from stdin
+- Any other path → reads the file using `fs.read_text`
+
+### File Content Display
+
+```python
+func print_file_if_non_empty(path: String, header: String = "", footer: String = "") -> i32
+```
+
+Prints a file's content if it exists and is non-empty. Optionally prints header/footer around the content.
+
+### Example
+
+```python title="io_example.tg"
+import io
+
+func main() -> i32:
+    let name = io.input_prompt("Enter your name: ")
+    print("Hello, " + name + "!")
+
+    let age = io.input_i32()
+    print(age)
+    return 0
+```
+
+---
+
+## `lib/env.tg` — Environment
+
+### Command-Line Arguments
+
+```python
+func count() -> i32              # Number of command-line arguments
+func get(index: i32) -> String   # Get argument by index (0 = program name)
+func program_name() -> String    # Shorthand for get(0)
+func args_text() -> String       # All arguments as a single string
+```
+
+### Environment Variables
+
+```python
+func get_var(key: String) -> String              # Read environment variable
+func set_var(key: String, value: String) -> i32  # Set environment variable
+func cwd() -> String                             # Current working directory
+```
+
+### Example: CLI Tool
+
+```python title="cli_tool.tg"
+import env
+
+func main() -> i32:
+    let n = env.count()
+    print("Arguments received:")
+
+    let i = 0
+    while (i < n):
+        let arg = env.get(i)
+        print(arg)
+        i = i + 1
+
+    if (n > 1):
+        print("Processing file: " + env.get(1))
+    return 0
+```
+
+---
+
+## `lib/process.tg` — Process Management
+
+### Shell Execution
+
+```python
+func run(cmd: String) -> i32    # Run a shell command, returns exit code
+```
+
+### Structured Process Execution
+
+```python
+func exec(program: String, args_text: String) -> i32
+func exec_timeout(program: String, args_text: String, timeout_ms: i32) -> i32
+func exec_redirect(program: String, args_text: String, stdout_path: String, stderr_path: String) -> i32
+func exec_redirect_timeout(program: String, args_text: String, stdout_path: String, stderr_path: String, timeout_ms: i32) -> i32
+```
+
+The `args_text` parameter uses newline (`\n`) as the argument separator. Use `argv_sep()` to get the separator character.
+
+### Utility Functions
+
+```python
+func quote(text: String) -> String             # Wrap text in double quotes
+func argv_sep() -> String                      # Returns argument separator (newline)
+func open_path(path: String) -> i32            # Open file/folder in OS default app
+func download(url: String, out_path: String) -> i32   # Download file (uses runtime or curl)
+func unzip(zip_path: String, out_dir: String) -> i32   # Extract ZIP archive
+func move_file(src: String, dst: String) -> i32        # Move/rename file
+```
+
+### Command Struct
+
+```python
+struct Command:
+    cmd: String
+
+impl Command:
+    func exec(self) -> i32
+```
+
+### Example: Automation Script
+
+```python title="automation.tg"
+import fs
+import process
+
+func main() -> i32:
+    # Create a log file
+    print("Creating log file...")
+    let f = fs.open_write("log.txt")
+    f.write("System check initiated.")
+    f.close()
+
+    # Run a shell command
+    print("Checking OS info...")
+    let code = process.run("echo Hello from Shell")
+
+    if (code == 0):
+        print("Shell command executed.")
+    else:
+        print("Shell command failed.")
+    return 0
+```
+
+---
+
+## `lib/string.tg` — String Library
+
+### Core Functions
+
+```python
+func len(text: String) -> i32                # String length
+func char_at(text: String, index: i32) -> String  # Character at index
+func trim(text: String) -> String             # Trim whitespace
+func contains(text: String, needle: String) -> i32  # Search (1=found, 0=not)
+func starts_with(text: String, prefix: String) -> i32
+func ends_with(text: String, suffix: String) -> i32
+func replace(text: String, old_frag: String, new_frag: String) -> String
+func lower(text: String) -> String            # To lowercase
+func upper(text: String) -> String            # To uppercase
+func from_codepoint(cp: i32) -> String        # Unicode codepoint → String
+func quote(text: String) -> String            # Wrap in double quotes
+func unquote(text: String) -> String          # Remove surrounding double quotes
+```
+
+### Example
+
+```python title="string_lib.tg"
+import "lib/string.tg" as str
+
+func main() -> i32:
+    let text = "  Hello World  "
+    print(str.trim(text))              # Output: Hello World
+    print(str.upper("hello"))          # Output: HELLO
+    print(str.contains("abc", "b"))    # Output: 1
+    print(str.replace("a-b-c", "-", "."))  # Output: a.b.c
+    return 0
+```
+
+---
+
+## `lib/map.tg` — Key-Value Map
+
+<Aside type="caution" title="Stub Implementation">
+The current `map.tg` module is a stub/placeholder. The `put` and `get` functions have basic signatures but limited functionality.
+</Aside>
+
+```python
+func new() -> ptr
+func put(m: ptr, key: String, value: ptr) -> i32
+func get(m: ptr, key: String) -> ptr
+func is_null_ptr(p: ptr) -> i32
+```
+
+### Example
+
+```python title="map_test.tg"
+import map
+
+func main() -> i32:
+    let m = map.new()
+    m.put("x", "Value X")
+    m.put("y", "Value Y")
+
+    let val_x = m.get("x")
+    print(val_x)
+
+    let missing = m.get("z")
+    if (map.is_null_ptr(missing) == 1):
+        print("Key z not found")
+    return 0
+```

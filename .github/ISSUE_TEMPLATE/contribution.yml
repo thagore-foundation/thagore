@@ -1,0 +1,48 @@
+name: "🤝 Contribution Proposal"
+description: "Propose a contribution before opening a pull request."
+title: "[Contribution]: "
+labels:
+  - "contribution"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you plan to contribute code/docs/tests, share your plan here first for alignment.
+  - type: input
+    id: area
+    attributes:
+      label: "🧭 Contribution area"
+      description: "Which area do you want to work on?"
+      placeholder: "frontend/parser, bootstrap workflow, docs, runtime, tests..."
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: "🗺️ Proposed plan"
+      description: "What changes will you make?"
+      placeholder: "1) Add verify step ... 2) Add tests ... 3) Update docs ..."
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: "🧪 Verification plan"
+      description: "How will you verify your changes?"
+      placeholder: "Commands, tests, expected outputs."
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: "⚖️ Risks and compatibility"
+      description: "Any bootstrap/runtime/CI risks or breaking changes?"
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: "✅ Checklist"
+      options:
+        - label: "I read the repository contribution guidelines."
+          required: true
+        - label: "I will keep changes scoped to one logical unit."
+          required: true

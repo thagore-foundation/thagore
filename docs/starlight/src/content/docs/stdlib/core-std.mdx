@@ -1,0 +1,189 @@
+---
+title: "Core & std Modules"
+description: "Low-level core primitives: memory, pointers, string manipulation, List, and StringBuilder."
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Core & std Modules
+
+These are the foundational modules in `std/` that provide low-level operations.
+
+## `std/core.tg` — Core Primitives
+
+The core module wraps C standard library functions and Thagore runtime intrinsics.
+
+### Memory Functions
+
+```python
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
+```
+
+### Output Functions
+
+```python
+func print_i32(value: i32) -> i32     # Print an integer with newline
+func print_str(text: String) -> i32   # Print a string with newline
+```
+
+### Pointer Functions
+
+```python
+func ptr_set(base: ptr, index: i32, value: ptr) -> i32   # Set pointer at index
+func ptr_get(base: ptr, index: i32) -> ptr                # Get pointer at index
+func ptr_null() -> ptr                                     # Returns null pointer
+```
+
+### String Functions
+
+```python
+func str_substr(s: String, start: i32, len: i32) -> String   # Substring extraction
+func thg_str_add(a: String, b: String) -> String              # String concatenation
+```
+
+### Control
+
+```python
+func abort(code: i32) -> i32    # Exit process with error code
+func mem_free(p: ptr) -> i32    # Free memory (returns 1)
+```
+
+---
+
+## `std/string.tg` — String Operations
+
+### Basic Operations
+
+```python
+func substring(text: String, start: i32, count: i32) -> String
+func char_at(text: String, index: i32) -> String
+func equals(a: String, b: String) -> bool
+```
+
+**Examples:**
+
+```python title="string_ops.tg"
+import "std/string.tg" as sstr
+
+let text = "Hello World"
+let sub = sstr.substring(text, 0, 5)
+print(sub)    # Output: Hello
+
+let ch = sstr.char_at(text, 4)
+print(ch)     # Output: o
+```
+
+### Integer to String Conversion
+
+```python
+func to_string_i32(value: i32) -> String
+```
+
+Converts any `i32` to its string representation. Handles negative numbers and edge cases (including `INT_MIN`).
+
+```python title="int_to_string.tg"
+import "std/string.tg" as sstr
+
+let s = sstr.to_string_i32(42)
+print(s)    # Output: "42"
+
+let neg = sstr.to_string_i32(-100)
+print(neg)  # Output: "-100"
+```
+
+### StringBuilder
+
+A builder pattern for efficient string construction:
+
+```python
+struct StringBuilder:
+    total_len: i32
+    cache: String
+
+func builder_new() -> StringBuilder
+func append(self: StringBuilder, part: String) -> StringBuilder
+func len(self: StringBuilder) -> i32
+func to_string(self: StringBuilder) -> String
+func dispose(self: StringBuilder) -> i32
+```
+
+**Example:**
+
+```python title="string_builder.tg"
+import "std/string.tg" as sstr
+
+func main() -> i32:
+    let sb = sstr.builder_new()
+    sb = sstr.append(sb, "Hello")
+    sb = sstr.append(sb, " ")
+    sb = sstr.append(sb, "World")
+    print(sstr.to_string(sb))    # Output: Hello World
+    sstr.dispose(sb)
+    return 0
+```
+
+<Aside type="note" title="Immutable Pattern">
+`append` returns a new `StringBuilder` — you must reassign: `sb = sstr.append(sb, "text")`.
+</Aside>
+
+---
+
+## `std/list.tg` — Dynamic List
+
+A dynamically-resizing array of pointers (similar to `ArrayList`):
+
+```python
+struct List:
+    data: ptr
+    size: i32
+    capacity: i32
+```
+
+### API
+
+```python
+func new() -> List                          # Create empty list (capacity 4)
+func len(self: List) -> i32                # Current size
+func push(self: List, item: ptr) -> List   # Append item
+func get(self: List, index: i32) -> ptr    # Get item (returns null if out of bounds)
+func set(self: List, index: i32, val: ptr) -> List  # Set item at index
+func dispose(self: List) -> i32            # Free memory
+func is_null_ptr(p: ptr) -> i32            # Check if pointer is null
+```
+
+### Example
+
+```python title="dynamic_list.tg"
+import list
+
+func main() -> i32:
+    let my_list = list.new()
+
+    # Push items
+    my_list.push("Item 1")
+    my_list.push("Item 2")
+    my_list.push("Item 3")
+
+    # Read size
+    print(my_list.count())    # Output: 3
+
+    # Access items
+    let i = 0
+    while (i < my_list.count()):
+        let s = my_list.get(i)
+        print(s)
+        i = i + 1
+
+    # Clean up
+    my_list.dispose()
+    return 0
+```
+
+### Internal Details
+
+- Initial capacity: **4** elements
+- Growth strategy: **double** on overflow (4 → 8 → 16 → ...)
+- Elements are stored as `ptr` — any pointer type can be stored
+- Out-of-bounds access returns `null` (checked via `is_null_ptr`)

@@ -1,0 +1,127 @@
+---
+title: Backend & Runtime
+description: LLVM code emission, the runtime ABI, and how Thagore programs are linked into native binaries.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Backend & Runtime
+
+## LLVM Code Emission
+
+The emitter (`src/codegen/native/emitter.tg`) converts Core-IR into LLVM IR text (`.ll` files).
+
+### Emitter Entry Point
+
+```python
+func emit_program_core(core: CoreProgram, module_name: String) -> String
+```
+
+If the Core-IR has errors (`error_count > 0`), the emitter returns an empty string. Otherwise, it normalizes the source and delegates to the source-level emitter.
+
+### Emission Sub-Modules
+
+Located in `src/codegen/native/emit/`:
+
+| Module | Purpose |
+|--------|---------|
+| `source.tg` | Top-level program emission |
+| `expr.tg` | Expression emission (arithmetic, calls, field access) |
+| `exprcond.tg` | Conditional expression emission |
+| `exprcore.tg` | Core expression patterns |
+| `stmt.tg` | Statement emission |
+| `stmtcore.tg` | Core statement patterns |
+| `stmtfn.tg` | Function statement emission |
+| `flow.tg` | Control flow emission (if/else, while, return) |
+| `string.tg` | String literal and concatenation emission |
+| `text.tg` | Text processing utilities |
+| `helpers.tg` | Shared helper functions |
+
+### LLVM IR Output
+
+The emitter produces standard LLVM IR text. For a simple hello world:
+
+```llvm
+; ModuleID = 'hello'
+declare i32 @puts(i8*)
+
+@.str.0 = private unnamed_addr constant [24 x i8] c"Hello Self-Hosted World!\00"
+
+define i32 @main() {
+entry:
+  call i32 @puts(i8* getelementptr ([24 x i8], [24 x i8]* @.str.0, i32 0, i32 0))
+  ret i32 0
+}
+```
+
+## LLVM API Bindings
+
+The compiler has bindings to LLVM's C API in `src/codegen/llvm/`:
+
+| File | Purpose |
+|------|---------|
+| `entry.tg` | LLVM module creation entry point |
+| `api/core.tg` | Core LLVM operations (modules, functions, basic blocks) |
+| `api/target.tg` | Target machine configuration |
+
+## Runtime ABI
+
+Compiled Thagore programs link against a **runtime ABI library** that provides essential functions.
+
+### Runtime Functions
+
+| Function | Purpose |
+|----------|---------|
+| `print` / `puts` | Console output |
+| `__thg_str_substr` | String substring extraction |
+| `__thg_str_add` | String concatenation |
+| `__thg_str_contains` | String search |
+| `__thg_str_starts_with` | Prefix check |
+| `__thg_str_ends_with` | Suffix check |
+| `__thg_str_trim` | Whitespace trimming |
+| `__thg_str_replace` | String replacement |
+| `__thg_str_lower` / `upper` | Case conversion |
+| `__string_from_codepoint` | Create string from Unicode codepoint |
+| `__thg_ptr_null` | Null pointer |
+| `__thg_ptr_set` / `get` | Pointer array operations |
+| `__thg_arg_count` / `get` | Command-line arguments |
+| `__thg_fs_read_text` | File reading |
+| `__thg_fs_write_text` | File writing |
+| `__fs_exists` / `mkdir` / `list_dir` | File system operations |
+| `__process_run` | Shell command execution |
+| `__process_exec_argv` | Process spawning with args |
+| `__io_read_line` | Console input |
+| `__thg_input_i32` | Integer input |
+| `__time_now_ms` | Current time in milliseconds |
+| `__time_sleep` | Thread sleep |
+| `__http_get` / `post` | HTTP client |
+| `__thg_py_*` | Python bridge functions |
+
+### Runtime Artifacts
+
+| Platform | File | Size |
+|----------|------|------|
+| Windows x64 | `runtime.lib` | ~3.5 MB |
+| Linux x64 | `runtime.a` | ~2.8 MB |
+| macOS ARM64 | `runtime.a` | ~2.8 MB |
+
+## Linking Process
+
+After LLVM IR emission, the compiler invokes Clang to:
+1. Compile `.ll` to object file (`.obj` / `.o`)
+2. Link with the runtime ABI library
+3. Link with system libraries (libc, etc.)
+4. Produce the final native executable
+
+```bash
+# What the compiler does internally:
+clang -O2 program.ll -o program.exe -L. -lthag_runtime
+```
+
+<Aside type="note" title="No C++ Runtime">
+The runtime ABI is a pre-built binary artifact. It is never compiled from C++ source during the build process, enforcing the strict "no C++ fallback" bootstrap policy.
+</Aside>
+
+## Interpreter Mode
+
+The compiler also includes an interpreter (`src/codegen/interpreter/eval.tg`) for evaluating expressions at compile time (used by the `comptime` feature).

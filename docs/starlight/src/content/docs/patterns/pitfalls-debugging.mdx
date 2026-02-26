@@ -1,0 +1,204 @@
+---
+title: Pitfalls & Debugging
+description: Common mistakes, error messages, and debugging strategies for Thagore development.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Pitfalls & Debugging
+
+## Common Pitfalls
+
+### 1. Missing Parentheses in `if`/`while`
+
+❌ **Wrong:**
+```python
+if x > 0:
+    print(x)
+```
+
+✅ **Correct:**
+```python
+if (x > 0):
+    print(x)
+```
+
+Thagore requires parentheses around conditions in `if` and `while` statements.
+
+### 2. No `++` or `--` Operators
+
+❌ **Wrong:**
+```python
+i++
+```
+
+✅ **Correct:**
+```python
+i = i + 1
+```
+
+### 3. No `+=` or `-=` Operators
+
+❌ **Wrong:**
+```python
+total += x
+```
+
+✅ **Correct:**
+```python
+total = total + x
+```
+
+### 4. Forgetting to Reassign Struct Updates
+
+Since struct methods return new instances:
+
+❌ **Wrong:**
+```python
+let sb = builder_new()
+append(sb, "hello")    # Return value is discarded!
+```
+
+✅ **Correct:**
+```python
+let sb = builder_new()
+sb = append(sb, "hello")    # Reassign to capture update
+```
+
+### 5. Top-Level `defer`
+
+❌ **Wrong:**
+```python
+defer cleanup()    # Top-level defer is rejected
+```
+
+✅ **Correct:**
+```python
+func main() -> i32:
+    defer cleanup()    # Defer inside a function
+    return 0
+```
+
+### 6. `match` Without `enum`
+
+Using `match` requires at least one `enum` declaration:
+
+❌ **Wrong:**
+```python
+match value:    # No enum defined → E_TYPE_MATCH_MISSING_ENUM
+    1: print("one")
+```
+
+✅ **Correct:**
+```python
+enum Kind:
+    One
+    Two
+
+match kind:
+    One: print("one")
+    Two: print("two")
+```
+
+### 7. Malformed Range Loop
+
+❌ **Wrong:**
+```python
+for i in 0...10:    # Three dots instead of two
+    print(i)
+```
+
+✅ **Correct:**
+```python
+for i in 0..10:     # Exactly two dots
+    print(i)
+```
+
+## Compiler Error Reference
+
+| Error Code | Description | Fix |
+|-----------|-------------|-----|
+| `E_TYPE_MATCH_MISSING_ENUM` | `match` used without an `enum` | Add an `enum` declaration |
+| `E_TYPE_RANGE_HEADER` | Malformed `for i in a..b:` | Fix the range loop syntax |
+| `E_TYPE_IF_EXPR` | Malformed if-expression | Check if-expression syntax |
+| `E_TYPE_CLOSURE` | Malformed closure | Check closure syntax |
+| `E_TYPE_TRAIT_CONSTRAINT` | Trait/impl constraint check failed | Review trait/impl declarations |
+| `E_TYPE_INTENT_GOAL` | Unsupported intent goal | Use a valid goal: `auto_plan`, `reduce_sum`, `off` |
+| `E_TYPE_PIPELINE_VALIDATE` | General pipeline validation failure | Check source for syntax issues |
+| `E_INDENT` | Indentation mismatch | Fix indentation levels |
+
+## Debugging Strategies
+
+### 1. Inspect LLVM IR
+
+```bash
+thagore build program.tg --emit-llvm
+# Produces program.ll — inspect generated LLVM IR
+```
+
+### 2. Use Print Debugging
+
+Insert `print()` calls to trace execution:
+
+```python
+func complex_algorithm(n: i32) -> i32:
+    print("input:")
+    print(n)
+    let result = n * 2
+    print("result:")
+    print(result)
+    return result
+```
+
+### 3. Run Autofix Doctor
+
+```bash
+thagore fix doctor entry.tg
+```
+
+This diagnoses issues without applying fixes.
+
+### 4. Check Feature Set
+
+If a feature isn't working, verify it's being detected by the parser. The feature set includes tags like `;enum_payload;match;range_loop;if_expr;` etc.
+
+### 5. Verify Self-Hosting
+
+If you suspect a compiler bug, try the self-hosting test:
+
+```bash
+# Build Stage2 from your current compiler
+stage2.exe build src/thagore.tg -o stage2b.exe
+
+# If this succeeds, the compiler is consistent
+```
+
+## Memory Debugging
+
+For memory issues (crashes, leaks):
+
+```python title="memory_test.tg"
+func create_garbage() -> i32:
+    let s1 = "Part 1 "
+    let s2 = "Part 2"
+    let res = s1 + s2
+    print(res)
+    return 0
+
+func main() -> i32:
+    let i = 0
+    while (i < 1000):
+        create_garbage()
+        i = i + 1
+    print("Finished without crashing!")
+    return 0
+```
+
+This pattern tests that string operations don't leak memory over many iterations.
+
+<Aside type="tip" title="When in Doubt">
+1. Check file encoding (use UTF-8, LF line endings)
+2. Verify LLVM version (`clang --version` → should be 21.x)
+3. Ensure runtime ABI library is accessible
+4. Simplify the program to isolate the issue
+</Aside>

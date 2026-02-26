@@ -1,0 +1,50 @@
+---
+title: Standard Library Overview
+description: Complete reference for Thagore's standard library modules.
+---
+
+import { CardGrid, Card, Aside } from "@astrojs/starlight/components";
+
+# Standard Library Overview
+
+Thagore's standard library is split across two locations:
+
+| Directory | Purpose | Import Style |
+|-----------|---------|-------------|
+| `lib/` | High-level modules (fs, string, io, env, process, path, http, time, map) | `import fs` |
+| `std/` | Low-level core primitives (core, string, list) | `import "std/core.tg"` |
+
+## Module Reference
+
+<CardGrid>
+  <Card title="Core & std" href="/stdlib/core-std">
+    Low-level primitives: memory, pointers, string builder, list data structure.
+  </Card>
+  <Card title="I/O, Env & Process" href="/stdlib/io-env-process">
+    Console I/O, environment variables, command-line args, and process management.
+  </Card>
+  <Card title="Path, HTTP & Time" href="/stdlib/path-http-time">
+    File path manipulation, HTTP client, and time functions.
+  </Card>
+</CardGrid>
+
+## Quick Reference
+
+| Module | Import | Key Functions |
+|--------|--------|---------------|
+| **fs** | `import fs` | `read_text`, `write_text`, `exists`, `mkdir`, `list_dir`, `open_read`, `open_write` |
+| **string** (lib) | `import "lib/string.tg" as str` | `len`, `trim`, `contains`, `starts_with`, `ends_with`, `replace`, `lower`, `upper`, `quote` |
+| **string** (std) | `import "std/string.tg"` | `substring`, `char_at`, `to_string_i32`, `builder_new`, `append` |
+| **io** | `import io` | `input`, `input_prompt`, `stdin_read_all`, `stdread`, `input_i32` |
+| **env** | `import env` | `count`, `get`, `program_name`, `get_var`, `set_var`, `cwd` |
+| **process** | `import process` | `run`, `exec`, `exec_timeout`, `exec_redirect`, `download`, `unzip` |
+| **path** | `import path` | `join`, `basename`, `dirname`, `ext`, `stem` |
+| **http** | `import http` | `get`, `post`, `request` |
+| **time** | `import time` | `now_ms`, `sleep_ms` |
+| **list** (std) | `import list` | `new`, `push`, `get`, `set`, `len`, `dispose` |
+| **map** | `import map` | `new`, `put`, `get`, `is_null_ptr` |
+| **core** (std) | `import "std/core.tg"` | `malloc`, `free`, `print_i32`, `print_str`, `abort` |
+
+<Aside type="note" title="Two String Modules">
+There are two string modules: `lib/string.tg` (high-level operations like `trim`, `replace`, `lower`) and `std/string.tg` (lower-level operations like `substring`, `char_at`, `StringBuilder`). Most programs should use the `lib/` version.
+</Aside>

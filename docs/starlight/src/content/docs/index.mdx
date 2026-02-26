@@ -1,0 +1,73 @@
+---
+title: Thagore Developer Docs
+description: Complete technical documentation for the Thagore programming language — a statically-typed, self-hosted compiled language powered by LLVM.
+---
+
+import { Card, CardGrid, Aside } from "@astrojs/starlight/components";
+
+# Thagore Developer Docs
+
+**Thagore** is a statically-typed, compiled systems language that produces native binaries via LLVM IR. It features Python-like syntax with indentation-based scoping, a self-hosted compiler, and a unique **intent system** for declarative programming patterns.
+
+<Aside type="tip" title="Start Coding in 10 Minutes">
+  New to Thagore? Follow the **[Quick Start: Install Thagore](/install/quick-start)** guide to go from zero to your first compiled program.
+</Aside>
+
+<CardGrid>
+  <Card title="Philosophy" href="/philosophy/why-thagore" icon="sparkles">
+    Why Thagore exists, design goals, and practical trade-offs.
+  </Card>
+  <Card title="Install & Tooling" href="/install/quick-start" icon="seti:gear">
+    Quick start installation guide, bootstrap, CLI usage, and OS-specific setup.
+  </Card>
+  <Card title="Language Syntax" href="/syntax/index" icon="seti:code">
+    Complete syntax reference: variables, functions, control flow, structs, imports, and advanced features.
+  </Card>
+  <Card title="Compiler Internals" href="/compiler/index" icon="seti:binary">
+    How the compiler works: lexer, parser, typechecker, lowering, LLVM emitter, and runtime bridge.
+  </Card>
+  <Card title="Standard Library" href="/stdlib/index" icon="seti:library">
+    API reference for every built-in module: fs, env, process, string, io, path, http, time, list, and map.
+  </Card>
+  <Card title="Type System" href="/type-system/static-typing-model" icon="seti:settings">
+    Static typing model, type inference, supported primitive and composite types.
+  </Card>
+  <Card title="Patterns & Idioms" href="/patterns/index" icon="seti:todo">
+    Idiomatic patterns, common pitfalls, debugging strategies, and real-world examples.
+  </Card>
+  <Card title="Integration" href="/integration/index" icon="seti:network">
+    C FFI, Python bridge, PyTorch interop, and external system playbooks.
+  </Card>
+  <Card title="Memory Model" href="/memory/managed-string-runtime" icon="seti:lock">
+    String management, pointer operations, heap allocation, and the managed runtime.
+  </Card>
+  <Card title="Reference" href="/reference/compatibility-matrix" icon="seti:info">
+    Feature compatibility matrix, supported platforms, and LLVM version requirements.
+  </Card>
+  <Card title="Contributing" href="/contributing/first-pr" icon="seti:git">
+    How to contribute: first PR guide, coding standards, and CI requirements.
+  </Card>
+</CardGrid>
+
+## Quick Start Path
+
+1. **[Install Thagore](/install/quick-start)** — download a pre-built release and run your first program (5 min).
+2. Read [Why Thagore](/philosophy/why-thagore) to understand the design philosophy.
+3. Learn the [Syntax Guide](/syntax/index) — start with [Print](/syntax/print), [Input](/syntax/input), and [Variables](/syntax/variables-and-let).
+4. Explore the [Standard Library](/stdlib/index) for built-in APIs.
+5. Study [Patterns & Idioms](/patterns/idiomatic) for best practices.
+6. Read [Contributing](/contributing/first-pr) to submit your first PR.
+
+## Key Features at a Glance
+
+| Feature                | Description                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| **Static Typing**      | Full type inference with explicit annotations (`i32`, `f32`, `String`) |
+| **LLVM Backend**       | Native code generation via LLVM 21 (x86-64, ARM64)                    |
+| **Self-Hosted**        | Compiler written in Thagore itself                                     |
+| **Python-like Syntax** | Indentation-based blocks, `:` terminators, clean function declarations |
+| **C FFI**              | Direct `extern func` declarations to call any C library                |
+| **Python Bridge**      | Seamless interop with Python and PyTorch                               |
+| **Intent System**      | Declarative, constraint-based programming patterns                     |
+| **Operator Overloading** | `impl` blocks with `__add__`, `__mul__`, etc.                        |
+| **Module System**      | `import` for local files and standard library modules                  |

@@ -1,0 +1,167 @@
+---
+title: Memory & String Runtime
+description: How Thagore manages memory, strings, and pointers at runtime.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Memory & String Runtime
+
+## Overview
+
+Thagore uses a **managed string runtime** with manual memory management for raw pointers. There is no garbage collector — memory is managed through explicit allocation/deallocation and the runtime ABI.
+
+## String Management
+
+### How Strings Work
+
+1. **String literals** are stored as constant globals in the compiled binary
+2. **String concatenation** (`+`) allocates new memory via the runtime
+3. **Substring extraction** creates a new string copy
+4. **String comparison** uses byte-by-byte comparison
+
+### String Operations at Runtime
+
+| Operation | Runtime Function | Allocation |
+|-----------|-----------------|------------|
+| Literal `"hello"` | Static constant | None (compile-time) |
+| Concatenation `a + b` | `__thg_str_add` | Heap allocation |
+| Substring | `__thg_str_substr` | Heap allocation |
+| Length | `strlen` | None |
+| Comparison `==` | Byte comparison | None |
+
+### Memory Safety for Strings
+
+The runtime handles string memory automatically for common operations. You don't need to free strings manually:
+
+```python title="string_memory.tg"
+func create_greeting(name: String) -> String:
+    # This allocates a new string on the heap
+    return "Hello, " + name + "!"
+    # The intermediate concatenation results are managed by the runtime
+
+func main() -> i32:
+    let msg = create_greeting("World")
+    print(msg)
+    return 0
+```
+
+<Aside type="note" title="No GC">
+Thagore does not have a garbage collector. String memory from concatenation operations may not be reclaimed during program execution. For long-running programs that create many temporary strings, be mindful of memory usage.
+</Aside>
+
+## Raw Pointer Operations
+
+### Pointer Types
+
+| Type | Description |
+|------|-------------|
+| `ptr` | Generic raw pointer (equivalent to `void*` in C) |
+
+### Core Pointer Functions
+
+```python
+# Get a null pointer
+extern func __thg_ptr_null() -> ptr
+
+# Array-style pointer access
+extern func __thg_ptr_set(base: ptr, index: i32, value: ptr) -> void
+extern func __thg_ptr_get(base: ptr, index: i32) -> ptr
+```
+
+### Standard Library Wrappers
+
+```python
+import "std/core.tg" as core
+
+let null = core.ptr_null()                # Null pointer
+core.ptr_set(array_ptr, 0, value_ptr)     # Set element
+let item = core.ptr_get(array_ptr, 0)     # Get element
+core.mem_free(raw_ptr)                     # Free memory
+```
+
+## Heap Allocation
+
+### Using `malloc` and `free`
+
+```python title="heap.tg"
+extern func malloc(size: i32) -> ptr
+extern func free(p: ptr) -> void
+
+func main() -> i32:
+    # Allocate 1024 bytes
+    let buffer = malloc(1024)
+
+    # Use the buffer...
+
+    # Free when done
+    free(buffer)
+    return 0
+```
+
+### Dynamic List Implementation
+
+The `std/list.tg` module demonstrates heap management with pointer arrays:
+
+```python title="list_internals.tg"
+# Internal allocation: capacity * 8 bytes (pointer size)
+let data = malloc(capacity * 8)
+
+# Growth: double capacity when full
+if (size >= capacity):
+    let next_capacity = capacity * 2
+    let next_data = malloc(next_capacity * 8)
+    # Copy existing data
+    _copy_data(next_data, data, size)
+    # Free old allocation
+    free(data)
+```
+
+## Memory Testing Pattern
+
+To verify your program doesn't crash from memory issues:
+
+```python title="memory_stress.tg"
+func create_garbage() -> i32:
+    let s1 = "Part 1 "
+    let s2 = "Part 2"
+    let res = s1 + s2    # Heap allocation
+    print(res)
+    return 0
+
+func main() -> i32:
+    let i = 0
+    while (i < 1000):
+        create_garbage()    # Repeated allocation
+        i = i + 1
+    print("Finished without crashing!")
+    return 0
+```
+
+This pattern is used in the test suite (`examples/memory_test.tg`) to validate that the runtime handles repeated string allocations without crashing.
+
+## Null Safety
+
+Check for null pointers using the `is_null_ptr` function:
+
+```python title="null_check.tg"
+import list
+
+func safe_access(lst: List, index: i32) -> String:
+    let item = list.get(lst, index)
+    if (list.is_null_ptr(item) == 1):
+        return "not found"
+    return item
+```
+
+<Aside type="caution" title="No Null Safety at Language Level">
+Thagore does not have automatic null safety. Dereferencing a null pointer will cause a segfault. Always check pointers with `is_null_ptr` or comparison against `__thg_ptr_null()`.
+</Aside>
+
+## Memory Best Practices
+
+1. **Close file handles** — always call `fs.close(handle)` after file operations
+2. **Dispose lists** — call `list.dispose(lst)` when done with a dynamic list
+3. **Free raw memory** — pair every `malloc` with a `free`
+4. **Minimize string concatenation in loops** — use `StringBuilder` for efficient string building
+5. **Test with memory_test patterns** — stress-test with many iterations to catch leaks

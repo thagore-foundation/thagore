@@ -1,0 +1,39 @@
+{
+  "runs": 5,
+  "fixture": "tests\\intent\\fixtures\\intent_demo_golden.tg",
+  "lock_deterministic": true,
+  "results": [
+    {
+      "label": "intent_off",
+      "mean": 0.01602601999984472,
+      "median": 0.016250999999101623,
+      "min": 0.007625700000062352,
+      "max": 0.022918599999684375,
+      "overhead_vs_off_pct": 0.0
+    },
+    {
+      "label": "intent_min",
+      "mean": 0.013602460000038263,
+      "median": 0.014842000000498956,
+      "min": 0.007407699999021133,
+      "max": 0.016303799999150215,
+      "overhead_vs_off_pct": -8.670235669685301
+    },
+    {
+      "label": "intent_max",
+      "mean": 0.01379315999984101,
+      "median": 0.014471999998932006,
+      "min": 0.009442000000490225,
+      "max": 0.01691209999989951,
+      "overhead_vs_off_pct": -10.94701864665536
+    },
+    {
+      "label": "intent_max_strict_lock",
+      "mean": 0.013859899999806658,
+      "median": 0.0127916000001278,
+      "min": 0.007638199998837081,
+      "max": 0.02453830000013113,
+      "overhead_vs_off_pct": -21.287305391453216
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+---
+title: Lexer & Parser
+description: Deep dive into the Thagore lexer (tokenizer) and parser (AST builder).
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Lexer & Parser
+
+## Lexer (`src/syntax/native/lexer.tg`)
+
+The lexer converts Thagore source text into a flat token stream. It is **indentation-aware**, tracking indent levels to emit `INDENT`/`DEDENT` tokens (similar to Python).
+
+### Tokenization Process
+
+1. **Comment stripping** — `#` and `//` line comments are removed
+2. **Line-by-line scanning** — each line is processed individually
+3. **Indentation tracking** — indent level changes emit `INDENT`/`DEDENT` tokens using an indent stack
+4. **Token emission** — identifiers, numbers, strings, operators, and keywords are emitted
+
+### Token Format
+
+Tokens are encoded as a semicolon-delimited string:
+
+```
+KIND|TEXT|LINE|COL|INDENT;KIND|TEXT|LINE|COL|INDENT;...
+```
+
+For example, `let x = 42` produces tokens like:
+
+```
+LET|let|1|1|0;IDENT|x|1|5|0;SYMBOL|=|1|7|0;NUMBER|42|1|9|0;
+```
+
+### Token Types
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `IDENT` | Identifier | `x`, `myFunc`, `_count` |
+| `NUMBER` | Integer literal | `42`, `0`, `100` |
+| `STRING` | String literal | `"hello"` |
+| `INTERPOLATED_STRING` | Interpolated string | `v"hello {name}"` |
+| `FUNC` | `func` keyword | `func` |
+| `LET` | `let` keyword | `let` |
+| `IF` | `if` keyword | `if` |
+| `ELSE` | `else` keyword | `else` |
+| `WHILE` | `while` keyword | `while` |
+| `FOR` | `for` keyword | `for` |
+| `IN` | `in` keyword | `in` |
+| `MATCH` | `match` keyword | `match` |
+| `ENUM` | `enum` keyword | `enum` |
+| `TYPE` | `type` keyword | `type` |
+| `TRAIT` | `trait` keyword | `trait` |
+| `IMPL` | `impl` keyword | `impl` |
+| `PUB` | `pub` keyword | `pub` |
+| `UNSAFE` | `unsafe` keyword | `unsafe` |
+| `DEFER` | `defer` keyword | `defer` |
+| `COMPTIME` | `comptime` keyword | `comptime` |
+| `RETURN` | `return` keyword | `return` |
+| `EQEQ` | Equality operator | `==` |
+| `NEQ` | Not-equal operator | `!=` |
+| `GTE` | Greater-or-equal | `>=` |
+| `LTE` | Less-or-equal | `<=` |
+| `ARROW` | Arrow operator | `->` |
+| `RANGE` | Range operator | `..` |
+| `SYMBOL` | Single-char operator | `+`, `-`, `*`, `/`, `(`, `)`, `:`, `.`, `=` |
+| `INDENT` | Indentation increase | (structural) |
+| `DEDENT` | Indentation decrease | (structural) |
+| `NEWLINE` | Line separator | (structural) |
+| `E_INDENT` | Indent mismatch error | (error token) |
+| `EOF` | End of file | (structural) |
+
+### Key Lexer Functions
+
+| Function | Purpose |
+|----------|---------|
+| `tokenize_native(source)` | Main tokenizer entry point — returns full token stream |
+| `strip_comments(source)` | Remove `#` and `//` comments from source |
+| `has_sig_indentation(source)` | Check if source uses significant indentation |
+| `token_summary(source)` | Alias for `tokenize_native` |
+
+## Parser (`src/syntax/native/parser.tg`)
+
+The parser processes the token stream to build an **AST** represented as the `ProgramAstNative` struct.
+
+### ProgramAstNative Structure
+
+```python
+struct ProgramAstNative:
+    source: String              # Original source text
+    normalized: String          # Cleaned/normalized source
+    token_stream: String        # Tokenized representation
+    enums: String               # Parsed enum declarations
+    aliases: String             # Type alias declarations
+    funcs: String               # Function declarations
+    node_rows: String           # AST node rows
+    next_node_id: i32           # Auto-increment node ID
+    # Feature counters (17 fields):
+    enum_payload_count: i32
+    match_count: i32
+    range_loop_count: i32
+    if_expr_count: i32
+    closure_count: i32
+    unsafe_count: i32
+    extension_impl_count: i32
+    visibility_count: i32
+    tuple_destruct_count: i32
+    array_literal_count: i32
+    slice_expr_count: i32
+    loop_label_count: i32
+    raw_string_count: i32
+    interpolated_string_count: i32
+    result_sugar_count: i32
+    defer_scope_count: i32
+    comptime_count: i32
+```
+
+### Parsing Process
+
+1. **Tokenize** — call `tokenize_native(source)` to get the token stream
+2. **Line-by-line header analysis**:
+   - Detect `func` declarations → extract name, params, return type
+   - Detect `enum` declarations → extract name and variants
+   - Detect `type` aliases → extract name and target
+   - Detect `struct` declarations → extract fields
+   - Detect `impl` blocks → track method implementations
+3. **Feature counting** — count every advanced feature usage for the feature set
+4. **AST construction** — build node rows with id, parent_id, kind, and payload
+
+### Key Parser Functions
+
+| Function | Return | Purpose |
+|----------|--------|---------|
+| `parse_to_ast(source)` | `ProgramAstNative` | Full AST parse |
+| `parse_normalized(source)` | `String` | Get normalized source |
+| `parse_enums(source)` | `String` | Extract enum declarations |
+| `parse_aliases(source)` | `String` | Extract type aliases |
+| `parse_funcs(source)` | `String` | Extract function signatures |
+| `parse_feature_set(source)` | `String` | Get feature flags set |
+
+### Feature Set
+
+The parser builds a feature set string like:
+```
+;enum_payload;match;range_loop;if_expr;
+```
+
+This tells downstream stages (typechecker, lowering, emitter) which advanced features are used, enabling targeted code generation paths.
+
+<Aside type="note" title="String-Based IR">
+Thagore's internal representations (token streams, AST nodes, feature sets) are encoded as delimited strings rather than in-memory tree structures. This is a deliberate design choice for the self-hosted bootstrap — it avoids requiring complex data structure support in the early compiler stages.
+</Aside>

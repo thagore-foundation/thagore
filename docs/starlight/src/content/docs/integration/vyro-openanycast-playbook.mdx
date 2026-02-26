@@ -1,0 +1,75 @@
+---
+title: Vyro/OpenAnycast Playbook
+description: Integration playbook for connecting Thagore with Vyro and OpenAnycast systems.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+# Vyro/OpenAnycast Playbook
+
+## Overview
+
+This playbook describes how to integrate Thagore-compiled programs with the Vyro network engine and OpenAnycast infrastructure.
+
+## Vyro Integration
+
+Vyro is a network infrastructure component that Thagore can target through its native compilation and process execution capabilities.
+
+### Basic Integration Pattern
+
+```python title="vyro_integration.tg"
+import fs
+import process
+import env
+
+func deploy_to_vyro(binary_path: String, config_path: String) -> i32:
+    # Verify binary exists
+    if (fs.exists(binary_path) == 0):
+        print("Error: binary not found: " + binary_path)
+        return 1
+
+    # Read deployment config
+    let config = fs.read_text(config_path)
+    if (config == ""):
+        print("Error: empty or missing config")
+        return 2
+
+    # Execute deployment
+    let rc = process.run("vyro deploy " + binary_path)
+    return rc
+
+func main() -> i32:
+    let binary = env.get(1)
+    let config = env.get(2)
+    return deploy_to_vyro(binary, config)
+```
+
+## OpenAnycast Integration
+
+OpenAnycast configurations can be generated and managed from Thagore programs.
+
+### Configuration Generation
+
+```python title="anycast_config.tg"
+import fs
+import "std/string.tg" as sstr
+
+func generate_config(region: String, port: i32) -> String:
+    let sb = sstr.builder_new()
+    sb = sstr.append(sb, "region: ")
+    sb = sstr.append(sb, region)
+    sb = sstr.append(sb, "\nport: ")
+    sb = sstr.append(sb, sstr.to_string_i32(port))
+    sb = sstr.append(sb, "\n")
+    return sstr.to_string(sb)
+
+func main() -> i32:
+    let config = generate_config("us-east-1", 8080)
+    fs.write_text("anycast.conf", config)
+    print("Config generated: anycast.conf")
+    return 0
+```
+
+<Aside type="note" title="External Dependencies">
+Vyro and OpenAnycast integration requires their respective CLI tools and runtime services to be installed and configured separately.
+</Aside>
