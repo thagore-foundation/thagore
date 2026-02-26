@@ -1,6 +1,7 @@
 #include "thagc/frontend/typechecker.hpp"
 
 #include <cctype>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,13 +12,6 @@ namespace thagc::semantics {
 
 static bool is_supported_type(const std::string& type_name) {
   return type_name == "i32" || type_name == "string" || type_name == "void";
-}
-
-static TypeKind type_from_name(const std::string& type_name) {
-  if (type_name == "i32") return TypeKind::I32;
-  if (type_name == "string") return TypeKind::String;
-  if (type_name == "void") return TypeKind::Void;
-  return TypeKind::Unknown;
 }
 
 static std::string type_name(TypeKind kind) {
@@ -317,25 +311,17 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0003", "invalid function header at line " + std::to_string(fn.header_line));
       return false;
     }
-    if (fn.return_type.empty()) {
-      diag.error("E0004", "missing return type for function '" + fn.name + "'");
-      return false;
-    }
-    if (!is_supported_type(fn.return_type)) {
+    if (!fn.return_type.empty() && !is_supported_type(fn.return_type)) {
       diag.error("E0006", "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "'");
-      return false;
-    }
-  }
-  for (const auto& fn : program.functions) {
-    if (fn.name == "main" && fn.return_type != "i32") {
-      diag.error("E0005", "main must return i32");
       return false;
     }
   }
 
   for (const auto& fn : program.functions) {
-    const TypeKind fn_return = type_from_name(fn.return_type);
     std::unordered_map<std::string, TypeKind> scope;
+    std::optional<TypeKind> inferred_return;
+    bool has_return = false;
+
     for (const auto& st : fn.body) {
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
@@ -365,17 +351,27 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
 
       if (st.kind == syntax::StatementKind::Return) {
-        if (fn_return == TypeKind::Void && st.has_expression) {
-          diag.error("E0015",
-                     "line " + std::to_string(st.line) + ": void function '" + fn.name + "' cannot return value");
-          return false;
-        }
-        if (fn_return != TypeKind::Void && (!st.has_expression || expr_type != fn_return)) {
-          diag.error("E0016", "line " + std::to_string(st.line) + ": return type mismatch in function '" + fn.name +
-                                  "' (expected " + type_name(fn_return) + ", got " + type_name(expr_type) + ")");
+        has_return = true;
+        const TypeKind ret_type = st.has_expression ? expr_type : TypeKind::Void;
+        if (!inferred_return.has_value()) {
+          inferred_return = ret_type;
+        } else if (*inferred_return != ret_type) {
+          diag.error("E0016", "line " + std::to_string(st.line) + ": inconsistent return types in function '" +
+                                  fn.name + "' (expected " + type_name(*inferred_return) + ", got " +
+                                  type_name(ret_type) + ")");
           return false;
         }
       }
+    }
+
+    const TypeKind effective_return = inferred_return.value_or(TypeKind::Void);
+    if (fn.name == "main" && effective_return != TypeKind::I32) {
+      diag.error("E0005", "main must return i32");
+      return false;
+    }
+    if (has_return && effective_return == TypeKind::Unknown) {
+      diag.error("E0017", "cannot infer return type for function '" + fn.name + "'");
+      return false;
     }
   }
   return true;

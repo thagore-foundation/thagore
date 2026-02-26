@@ -58,11 +58,15 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
         for marker in (
             "operator '",
             "condition expression must be i32",
-            "return type mismatch in function",
+            "inconsistent return types in function",
             "unknown identifier",
             "parse_let_name",
         ):
             self.assertIn(marker, checker_cpp)
+
+    def test_function_return_annotation_is_forbidden(self) -> None:
+        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        self.assertIn("function return annotation '-> type' is not supported", parser_cpp)
 
 
 if __name__ == "__main__":

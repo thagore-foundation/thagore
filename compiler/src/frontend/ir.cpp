@@ -105,22 +105,6 @@ static std::string function_name_from_header(const std::string& line) {
   return line.substr(start, end - start);
 }
 
-static std::string return_type_from_header(const std::string& line) {
-  const std::size_t arrow = line.find("->");
-  if (arrow == std::string::npos) {
-    return "";
-  }
-  std::size_t start = arrow + 2;
-  while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start]))) {
-    ++start;
-  }
-  std::size_t end = line.find(':', start);
-  if (end == std::string::npos) {
-    end = line.size();
-  }
-  return trim(line.substr(start, end - start));
-}
-
 static void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
 }
@@ -495,7 +479,6 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
     if (starts_with(line.clean, "func ")) {
       AstFunction fn;
       fn.name = function_name_from_header(line.clean);
-      fn.return_type = return_type_from_header(line.clean);
       fn.header_line = line.number;
       fn.header_indent = line.indent;
 
@@ -505,8 +488,8 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       if (fn.name.empty()) {
         add_parse_error(program, line.number, "invalid function header");
       }
-      if (fn.return_type.empty()) {
-        add_parse_error(program, line.number, "function header requires explicit return type");
+      if (line.clean.find("->") != std::string::npos) {
+        add_parse_error(program, line.number, "function return annotation '-> type' is not supported");
       }
 
       if (fn.name == "main") {
