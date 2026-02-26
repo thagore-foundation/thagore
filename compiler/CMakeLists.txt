@@ -10,19 +10,19 @@ message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION}")
 
 add_executable(thagc
   src/main.cpp
-  src/application/build_usecase.cpp
-  src/driver/command_router.cpp
-  src/infra/adapters.cpp
-  src/frontend/lexer.cpp
-  src/frontend/parser.cpp
-  src/frontend/typechecker.cpp
-  src/middleend/core_ir_builder.cpp
-  src/backend/llvm_context.cpp
-  src/backend/object_emitter.cpp
-  src/driver/pipeline.cpp
-  src/shared/diag.cpp
-  src/shared/filesystem.cpp
-  src/shared/process.cpp
+  src/application/builder.cpp
+  src/driver/core.cpp
+  src/infra/builder.cpp
+  src/frontend/core.cpp
+  src/frontend/ir.cpp
+  src/frontend/builder.cpp
+  src/middleend/builder.cpp
+  src/backend/ir.cpp
+  src/backend/builder.cpp
+  src/driver/builder.cpp
+  src/shared/core.cpp
+  src/shared/io.cpp
+  src/shared/process_runner.cpp
 )
 
 target_include_directories(thagc PRIVATE include)
