@@ -20,6 +20,10 @@ FORBIDDEN_MARKERS = [
     "allow_missing_output",
     "fallback to existing compiler binary",
     "fallback to previous stage2 binary",
+    "single-stage",
+    "using stage2 as stage2b",
+    "using stage1 as stage2",
+    "non-reproducible",
 ]
 
 

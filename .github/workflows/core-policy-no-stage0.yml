@@ -27,17 +27,16 @@ jobs:
             echo "$HITS"
             exit 1
           fi
-          FALLBACK_HITS="$(grep -REn \"fallback to existing compiler binary|fallback to previous stage2 binary|allow_missing_output\" .github/workflows || true)"
+          FALLBACK_HITS="$(grep -REn \"fallback to existing compiler binary|fallback to previous stage2 binary|allow_missing_output|single-stage|using stage2 as stage2b|using stage1 as stage2|non-reproducible .* acceptable\" .github/workflows || true)"
           if [[ -n "$FALLBACK_HITS" ]]; then
             echo "CRITICAL: compiler-output fallback paths are forbidden in workflows."
             echo "$FALLBACK_HITS"
             exit 1
           fi
-          echo "Policy OK: no Stage0 markers in workflows." > policy-no-stage0-report.txt
+          echo "Policy OK: no Stage0 markers and no bootstrap fallback paths in workflows." > policy-no-stage0-report.txt
 
       - name: Upload policy report
         uses: actions/upload-artifact@v4
         with:
           name: core-policy-no-stage0-report
           path: policy-no-stage0-report.txt
-

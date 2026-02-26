@@ -70,6 +70,15 @@ resolve_bin() {
   return 1
 }
 
+sha256_file() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+    return 0
+  fi
+  shasum -a 256 "$file" | awk '{print $1}'
+}
+
 thg_build() {
   local cc="$1"
   local src="$2"
@@ -148,40 +157,22 @@ ensure_stage1() {
   rm -rf bootstrap/extract_stage1 || true
   mkdir -p bootstrap/extract_stage1
   tar -xzf "bootstrap/$asset" -C bootstrap/extract_stage1
-  # Prefer stage1_helper (actual compiler backend) over thagore/thag (CLI wrapper).
-  # The thagore wrapper binary needs stage1_helper as THAG_HELPER_BIN; if we
-  # accidentally set stage1 = thagore wrapper, it loops back to itself and silently
-  # returns 0 without producing any output.
+  # Strict single-binary bootstrap: prefer thagc/thagore/thag/stage1 and reject
+  # helper-only extraction as bootstrap entrypoint.
   local candidate
-  candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f -name stage1_helper | head -n 1 || true)"
+  candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagc -o -name thagore -o -name thag -o -name stage1 \) | head -n 1 || true)"
   if [[ -z "$candidate" ]]; then
-    candidate="$(find bootstrap/extract_stage1 -maxdepth 5 -type f \( -name thagore -o -name thag \) | head -n 1 || true)"
-  fi
-  if [[ -z "$candidate" ]]; then
-    echo "[FAIL] Stage1 tarball did not contain stage1_helper, bin/thagore, or bin/thag."
+    echo "[FAIL] Stage1 tarball did not contain a strict bootstrap binary (thagc/thagore/thag/stage1)."
     exit 1
   fi
   echo "[bootstrap] using stage1 candidate: $candidate"
 
   cp "$candidate" stage1
   chmod +x stage1 || true
-  # Also copy stage1_helper alongside stage1 so the thagore wrapper (stage2) can
-  # find it when it looks for THAG_HELPER_BIN in the same directory.
-  local helper_bin
-  helper_bin="$(find bootstrap/extract_stage1 -maxdepth 5 -type f -name stage1_helper | head -n 1 || true)"
-  if [[ -n "$helper_bin" && "$helper_bin" != "$candidate" ]]; then
-    cp "$helper_bin" stage1_helper
-    chmod +x stage1_helper || true
-    echo "[bootstrap] installed stage1_helper alongside stage1"
-  fi
-  # Patch GLIBC version requirements so stage1/stage1_helper run on GLIBC_2.35+
-  # (seed was compiled on Ubuntu 24.04 which uses GLIBC_2.38 for C23 symbols).
+  # Patch GLIBC version requirements so stage1 runs on GLIBC_2.35+.
   if [[ "$(uname -s)" == "Linux" ]] && command -v python3 &>/dev/null; then
     if [[ -f "scripts/patch_glibc_compat.py" ]]; then
       python3 scripts/patch_glibc_compat.py stage1 stage1 2>/dev/null || true
-      if [[ -f "stage1_helper" ]]; then
-        python3 scripts/patch_glibc_compat.py stage1_helper stage1_helper 2>/dev/null || true
-      fi
     fi
   fi
   STAGE1_BOOTSTRAP_BIN="stage1"
@@ -218,7 +209,7 @@ else
   python3 scripts/build_runtime_abi.py --target-os Darwin --summary runtime-abi-summary-local.txt
 fi
 
-echo "[1/4] Build stage2 from stage1..."
+echo "[1/5] Build stage2 from stage1..."
 echo "[INFO] bootstrap_stage1=$STAGE1_BOOTSTRAP_BIN"
 rm -f stage2 stage2.exe || true
 if ! thg_build "$STAGE1_BOOTSTRAP_BIN" "src/thagore.tg" "stage2"; then
@@ -227,45 +218,44 @@ if ! thg_build "$STAGE1_BOOTSTRAP_BIN" "src/thagore.tg" "stage2"; then
 fi
 STAGE2_BIN="$(resolve_bin "stage2" "src/thagore.tg" || true)"
 if [[ -z "$STAGE2_BIN" ]]; then
-  echo "[WARN] stage2 binary not found by name — falling back to stage1 for stage2 role"
-  STAGE2_BIN="$STAGE1_BOOTSTRAP_BIN"
+  echo "[FAIL] stage2 binary not found by expected names."
+  exit 1
 fi
 echo "[INFO] stage2_bin=$STAGE2_BIN"
 
-echo "[2/4] Rebuild stage2b from stage2..."
+echo "[2/5] Rebuild stage2b from stage2..."
 rm -f stage2b stage2b.exe || true
-# Try to build stage2b; if stage2 can't self-compile, fall back to stage1
-if thg_build "$STAGE2_BIN" "src/thagore.tg" "stage2b"; then
-  STAGE2B_BIN="$(resolve_bin "stage2b" "src/thagore.tg" || true)"
-  if [[ -z "$STAGE2B_BIN" ]]; then
-    echo "[WARN] stage2b binary not found after build — will use stage2 as stage2b"
-    STAGE2B_BIN="$STAGE2_BIN"
-  fi
-else
-  echo "[WARN] stage2 could not self-compile — using stage2 as stage2b (single-stage bootstrap)"
-  STAGE2B_BIN="$STAGE2_BIN"
+if ! thg_build "$STAGE2_BIN" "src/thagore.tg" "stage2b"; then
+  echo "[FAIL] stage2 could not self-compile src/thagore.tg → stage2b"
+  exit 1
+fi
+STAGE2B_BIN="$(resolve_bin "stage2b" "src/thagore.tg" || true)"
+if [[ -z "$STAGE2B_BIN" ]]; then
+  echo "[FAIL] stage2b binary not found by expected names."
+  exit 1
 fi
 echo "[INFO] stage2b_bin=$STAGE2B_BIN"
 
-echo "[3/4] Build hello_v2 from stage2b..."
-rm -f hello_v2 hello_v2.exe || true
-# If stage2b == stage2 (self-compile fallback), use stage1 for validation.
-# stage2 is a CLI wrapper binary that cannot independently compile .tg files;
-# only stage1 (= stage1_helper, the actual backend) can.
-if [[ "$STAGE2B_BIN" == "$STAGE2_BIN" ]]; then
-  echo "[INFO] stage2b is same as stage2 (single-stage mode) — using stage1 for hello validation"
-  VALIDATE_BIN="$STAGE1_BOOTSTRAP_BIN"
-else
-  VALIDATE_BIN="$STAGE2B_BIN"
+echo "[3/5] Reproducibility check (stage2 == stage2b SHA256)..."
+STAGE2_SHA="$(sha256_file "$STAGE2_BIN")"
+STAGE2B_SHA="$(sha256_file "$STAGE2B_BIN")"
+echo "[INFO] stage2_sha256=$STAGE2_SHA"
+echo "[INFO] stage2b_sha256=$STAGE2B_SHA"
+if [[ "$STAGE2_SHA" != "$STAGE2B_SHA" ]]; then
+  echo "[FAIL] Non-reproducible bootstrap: stage2 and stage2b differ."
+  exit 1
 fi
-if ! thg_build "$VALIDATE_BIN" "examples/hello.tg" "hello_v2"; then
-  echo "[FAIL] Cannot build examples/hello.tg with $VALIDATE_BIN"
+
+echo "[4/5] Build hello_v2 from stage2b..."
+rm -f hello_v2 hello_v2.exe || true
+if ! thg_build "$STAGE2B_BIN" "examples/hello.tg" "hello_v2"; then
+  echo "[FAIL] Cannot build examples/hello.tg with $STAGE2B_BIN"
   exit 1
 fi
 HELLO_BIN="$(resolve_bin "hello_v2" "examples/hello.tg")"
 
-echo "[4/4] Run hello_v2..."
+echo "[5/5] Run hello_v2..."
 "./$HELLO_BIN"
 
-echo "[OK] Bootstrap cycle completed on $OS_NAME."
+echo "[OK] Strict bootstrap cycle completed on $OS_NAME."
 echo "[INFO] stage1=$STAGE1_BOOTSTRAP_BIN stage2b=$STAGE2B_BIN"

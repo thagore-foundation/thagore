@@ -77,40 +77,37 @@ jobs:
           New-Item -ItemType Directory -Force -Path bootstrap | Out-Null
           gh release download $tag --repo thagore-foundation/thagore `
             --pattern "thagore-stage1-windows-x86_64.exe" `
-            --pattern "thagore-stage1-helper-windows-x86_64.exe" `
             --pattern "thagore-runtime-windows-x86_64.lib" `
             -D bootstrap
           Copy-Item "bootstrap\thagore-stage1-windows-x86_64.exe" stage1.exe
-          Copy-Item "bootstrap\thagore-stage1-helper-windows-x86_64.exe" stage1_helper.exe
           Copy-Item "bootstrap\thagore-runtime-windows-x86_64.lib" thag_runtime.lib
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          Copy-Item stage2.exe stage2b.exe
+          .\stage2.exe build src/thagore.tg -o stage2b.exe
+          if (-not (Test-Path stage2b.exe)) { Write-Error "stage2b.exe not produced"; exit 1 }
 
       - name: Rebuild stage2 from stage1 (reproducibility pass 1)
         shell: bash
         run: |
-          # Windows uses .exe suffix
           S1="./stage1"; [[ -f "./stage1.exe" ]] && S1="./stage1.exe"
           rm -f stage2 stage2b stage2.exe stage2b.exe || true
-          "$S1" build src/thagore.tg -o stage2 2>&1 || true
+          "$S1" build src/thagore.tg -o stage2 2>&1
           chmod +x stage2 2>/dev/null || true
-          # On Windows the output may be stage2.exe
           if [[ ! -f stage2 && ! -f stage2.exe ]]; then
-            echo "[selfhost] stage1 could not produce stage2 — using stage1 as stage2 (single-stage)"
-            cp "$S1" stage2 2>/dev/null || cp "$S1" stage2.exe 2>/dev/null || true
+            echo "[selfhost] FAIL: stage1 could not produce stage2"
+            exit 1
           fi
 
       - name: Rebuild stage2b from stage2 (reproducibility pass 2)
         shell: bash
         run: |
           S2="./stage2"; [[ -f "./stage2.exe" && ! -f "./stage2" ]] && S2="./stage2.exe"
-          "$S2" build src/thagore.tg -o stage2b 2>&1 || true
+          "$S2" build src/thagore.tg -o stage2b 2>&1
           chmod +x stage2b 2>/dev/null || true
           if [[ ! -f stage2b && ! -f stage2b.exe ]]; then
-            echo "[selfhost] stage2 could not self-compile — using stage2 as stage2b (single-stage mode)"
-            cp "$S2" stage2b 2>/dev/null || cp "$S2" stage2b.exe 2>/dev/null || true
+            echo "[selfhost] FAIL: stage2 could not self-compile into stage2b"
+            exit 1
           fi
 
       - name: Reproducibility check (stage2 vs stage2b SHA256)
@@ -140,7 +137,8 @@ jobs:
             echo "[selfhost] PASS: stage2 and stage2b are bit-identical (reproducible build)"
           else
             echo "reproducible=false" >> selfhost-reproducibility-${{ matrix.triple }}.txt
-            echo "[selfhost] NOTE: stage2 and stage2b differ — non-reproducible (single-stage bootstrap, acceptable)"
+            echo "[selfhost] FAIL: stage2 and stage2b differ — non-reproducible bootstrap"
+            exit 1
           fi
 
       - name: Policy checks

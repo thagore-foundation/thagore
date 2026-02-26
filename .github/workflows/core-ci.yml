@@ -83,27 +83,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Windows seed assets are bare .exe/.lib files, not a tarball
           $tag = "$env:BOOTSTRAP_STAGE1_TAG"
           New-Item -ItemType Directory -Force -Path bootstrap | Out-Null
           gh release download $tag --repo thagore-foundation/thagore `
             --pattern "thagore-stage1-windows-x86_64.exe" `
-            --pattern "thagore-stage1-helper-windows-x86_64.exe" `
             --pattern "thagore-runtime-windows-x86_64.lib" `
             -D bootstrap
           Copy-Item "bootstrap\thagore-stage1-windows-x86_64.exe" stage1.exe
-          Copy-Item "bootstrap\thagore-stage1-helper-windows-x86_64.exe" stage1_helper.exe
           Copy-Item "bootstrap\thagore-runtime-windows-x86_64.lib" thag_runtime.lib
-          Write-Host "[bootstrap] stage1=$(Test-Path stage1.exe) helper=$(Test-Path stage1_helper.exe)"
+          Write-Host "[bootstrap] stage1=$(Test-Path stage1.exe)"
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          .\stage2.exe build src/thagore.tg -o stage2b.exe 2>$null
-          if (-not (Test-Path stage2b.exe)) {
-            Write-Host "[bootstrap] single-stage — using stage2.exe as stage2b.exe"
-            Copy-Item stage2.exe stage2b.exe
-          }
+          .\stage2.exe build src/thagore.tg -o stage2b.exe
+          if (-not (Test-Path stage2b.exe)) { Write-Error "stage2b.exe not produced"; exit 1 }
           Write-Host "[bootstrap] Done: stage2=$(Test-Path stage2.exe) stage2b=$(Test-Path stage2b.exe)"
+
+      - name: Reproducibility check (stage2 vs stage2b SHA256)
+        shell: bash
+        run: |
+          S2="stage2";   [[ ! -f stage2   && -f stage2.exe  ]] && S2="stage2.exe"
+          S2B="stage2b"; [[ ! -f stage2b  && -f stage2b.exe ]] && S2B="stage2b.exe"
+          [[ -f "$S2" && -f "$S2B" ]] || { echo "ERROR: missing stage2/stage2b for reproducibility"; exit 1; }
+          if command -v sha256sum >/dev/null 2>&1; then
+            SHA_STAGE2="$(sha256sum "$S2" | awk '{print $1}')"
+            SHA_STAGE2B="$(sha256sum "$S2B" | awk '{print $1}')"
+          else
+            SHA_STAGE2="$(shasum -a 256 "$S2" | awk '{print $1}')"
+            SHA_STAGE2B="$(shasum -a 256 "$S2B" | awk '{print $1}')"
+          fi
+          echo "stage2  SHA256: $SHA_STAGE2"
+          echo "stage2b SHA256: $SHA_STAGE2B"
+          [[ "$SHA_STAGE2" == "$SHA_STAGE2B" ]] || { echo "ERROR: non-reproducible bootstrap"; exit 1; }
 
       - name: Inspect bootstrap artifacts
         shell: bash
@@ -117,20 +128,10 @@ jobs:
       - name: Smoke test
         shell: bash
         run: |
-          # stage1 = actual compiler backend (ELF, can build .tg files directly)
-          # stage2/stage2b = CLI wrapper (16K, needs THAG_HELPER_BIN=./stage1 to work)
-          # Prefer stage1 as the build driver; if only wrapper available, set env.
           THAGC=""
-          for c in "./stage1" "./stage1.exe"; do
+          for c in "./stage2b" "./stage2b.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
-          if [[ -z "$THAGC" ]]; then
-            for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe"; do
-              [[ -f "$c" ]] && THAGC="$c" && break
-            done
-            # wrapper needs helper binary in same dir
-            export THAG_HELPER_BIN="$(pwd)/stage1"
-          fi
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler after bootstrap" >&2; exit 1; }
           echo "Compiler: $THAGC"
 
@@ -154,15 +155,9 @@ jobs:
         shell: bash
         run: |
           THAGC=""
-          for c in "./stage1" "./stage1.exe"; do
+          for c in "./stage2b" "./stage2b.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
-          if [[ -z "$THAGC" ]]; then
-            for c in "./stage2b" "./stage2b.exe" "./stage2" "./stage2.exe"; do
-              [[ -f "$c" ]] && THAGC="$c" && break
-            done
-            export THAG_HELPER_BIN="$(pwd)/stage1"
-          fi
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler" >&2; exit 1; }
           REPORT="test-report-${{ matrix.triple }}.txt"
           if [[ -d tests/ ]]; then
