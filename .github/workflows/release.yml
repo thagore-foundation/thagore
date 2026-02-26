@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.1.0"
+        required: true
+        type: string
+
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-dev cmake ninja-build
+
+      - name: Build thagc
+        run: |
+          cmake -S . -B build -G Ninja
+          cmake --build build -j
+
+      - name: Package core
+        run: |
+          mkdir -p dist
+          python3 tools/packaging/pack_core.py \
+            --bin build/compiler/thagc \
+            --runtime build/compiler/libthag_runtime.a \
+            --out dist/thagc-core-linux.tar.gz
+          python3 tools/packaging/make_checksums.py \
+            --out dist/SHA256SUMS-thagc-linux.txt \
+            dist/thagc-core-linux.tar.gz
+
+      - name: Publish release artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            --title "thagc ${{ inputs.tag }}" \
+            --notes "Initial C++/LLVM direct API release lane." \
+            dist/thagc-core-linux.tar.gz \
+            dist/SHA256SUMS-thagc-linux.txt \
+            || gh release upload "${{ inputs.tag }}" \
+            dist/thagc-core-linux.tar.gz \
+            dist/SHA256SUMS-thagc-linux.txt --clobber
+

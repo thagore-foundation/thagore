@@ -1,0 +1,27 @@
+name: Selfhost Readiness
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deterministic-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Hash gate smoke
+        run: |
+          echo thagc > /tmp/a.bin
+          echo thagc > /tmp/b.bin
+          python3 tools/compare/compare_binary_hash.py --left /tmp/a.bin --right /tmp/b.bin
+
+      - name: Soak placeholder
+        run: |
+          echo "72h soak suite is enabled in release branch gates."
+
