@@ -19,7 +19,8 @@
 
 namespace thagc::codegen {
 
-static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, const std::string& module_name) {
+static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, const std::string& module_name,
+                                                  int return_code) {
   auto module = std::make_unique<llvm::Module>(module_name, context);
   llvm::IRBuilder<> builder(context);
 
@@ -27,7 +28,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
   auto* fn = llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, "main", module.get());
   auto* entry = llvm::BasicBlock::Create(context, "entry", fn);
   builder.SetInsertPoint(entry);
-  builder.CreateRet(builder.getInt32(0));
+  builder.CreateRet(builder.getInt32(return_code));
 
   return module;
 }
@@ -35,7 +36,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
 bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
                                const std::string& llvm_ir_path, support::DiagnosticSink& diag) const {
   llvm::LLVMContext context;
-  auto module = build_module(context, module_name);
+  auto module = build_module(context, module_name, core.main_return_literal);
   if (llvm::verifyModule(*module, &llvm::errs())) {
     diag.error("E2001", "LLVM module verification failed");
     return false;
@@ -58,7 +59,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   llvm::InitializeNativeTargetAsmParser();
 
   llvm::LLVMContext context;
-  auto module = build_module(context, module_name);
+  auto module = build_module(context, module_name, core.main_return_literal);
 
   std::string error;
   const llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
