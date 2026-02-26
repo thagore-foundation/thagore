@@ -1,0 +1,9 @@
+source_branch: backup/main-archive-20260226-211152
+operators:
+  - level: 1
+    ops: ["*", "/"]
+  - level: 2
+    ops: ["+", "-"]
+  - level: 3
+    ops: ["<", ">", "<=", ">=", "==", "!="]
+

@@ -1,0 +1,6 @@
+source_branch: backup/main-archive-20260226-211152
+lowering_contract:
+  - ast_to_typed_ir
+  - typed_ir_to_core_ir
+  - core_ir_to_llvm_ir
+

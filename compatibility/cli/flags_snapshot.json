@@ -1,0 +1,14 @@
+{
+  "source_branch": "backup/main-archive-20260226-211152",
+  "global_flags": [
+    "--help",
+    "--version"
+  ],
+  "build_flags": [
+    "-o",
+    "--target",
+    "--emit-llvm"
+  ],
+  "notes": "Will be expanded by automated extraction in future parity iterations."
+}
+

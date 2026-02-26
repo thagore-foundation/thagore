@@ -1,0 +1,8 @@
+{
+  "source_branch": "backup/main-archive-20260226-211152",
+  "must_keep_prefixes": [
+    "ERROR:"
+  ],
+  "notes": "Diagnostic text parity contract snapshot (initial)."
+}
+
