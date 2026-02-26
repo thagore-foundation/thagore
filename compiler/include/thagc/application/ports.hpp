@@ -3,10 +3,10 @@
 #include <string>
 #include <vector>
 
-#include "thagc/lowering/core_ir.hpp"
-#include "thagc/support/diag.hpp"
-#include "thagc/syntax/ast.hpp"
-#include "thagc/syntax/token.hpp"
+#include "thagc/middleend/core_ir.hpp"
+#include "thagc/shared/diag.hpp"
+#include "thagc/frontend/ast.hpp"
+#include "thagc/frontend/token.hpp"
 
 namespace thagc::application {
 

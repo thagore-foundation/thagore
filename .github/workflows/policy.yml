@@ -16,13 +16,13 @@ jobs:
           fetch-depth: 0
 
       - name: Verify baseline branch
-        run: python3 tools/policy/check_baseline_branch.py --branch backup/main-archive-20260226-211152
+        run: python3 tooling/policy/check_baseline_branch.py --branch backup/main-archive-20260226-211152
 
       - name: Verify compatibility snapshots
         run: |
-          test -f compatibility/cli/commands_snapshot.json
-          test -f compatibility/grammar/tokens.yaml
-          test -f compatibility/semantics/type_rules_snapshot.yaml
+          test -f contracts/cli/commands_snapshot.json
+          test -f contracts/grammar/tokens.yaml
+          test -f contracts/semantics/type_rules_snapshot.yaml
 
       - name: Verify architecture boundaries
-        run: python3 tools/policy/check_no_circular_headers.py --root compiler/include/thagc
+        run: python3 tooling/policy/check_no_circular_headers.py --root compiler/include/thagc

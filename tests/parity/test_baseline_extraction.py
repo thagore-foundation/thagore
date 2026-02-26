@@ -15,7 +15,7 @@ class BaselineExtractionTests(unittest.TestCase):
             subprocess.check_call(
                 [
                     "python3",
-                    "tools/extract_baseline/extract_cli_spec.py",
+                    "tooling/baseline/extract_cli_spec.py",
                     "--branch",
                     BRANCH,
                     "--out",
@@ -32,7 +32,7 @@ class BaselineExtractionTests(unittest.TestCase):
             subprocess.check_call(
                 [
                     "python3",
-                    "tools/extract_baseline/extract_grammar_spec.py",
+                    "tooling/baseline/extract_grammar_spec.py",
                     "--branch",
                     BRANCH,
                     "--out-dir",
@@ -42,7 +42,7 @@ class BaselineExtractionTests(unittest.TestCase):
             subprocess.check_call(
                 [
                     "python3",
-                    "tools/extract_baseline/extract_semantic_spec.py",
+                    "tooling/baseline/extract_semantic_spec.py",
                     "--branch",
                     BRANCH,
                     "--out-dir",

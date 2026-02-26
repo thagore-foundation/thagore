@@ -22,10 +22,10 @@ cmake --build build -j
 ## Test and Validation
 
 ```bash
-python3 -m compileall tools tests
+python3 -m compileall tooling tests
 python3 -m unittest discover -s tests -p "test_*.py"
-python3 tools/policy/check_baseline_branch.py --branch backup/main-archive-20260226-211152
-python3 tools/policy/check_no_circular_headers.py --root compiler/include/thagc
+python3 tooling/policy/check_baseline_branch.py --branch backup/main-archive-20260226-211152
+python3 tooling/policy/check_no_circular_headers.py --root compiler/include/thagc
 ```
 
 ## Commit and Versioning

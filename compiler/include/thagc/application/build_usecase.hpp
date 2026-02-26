@@ -2,7 +2,7 @@
 
 #include "thagc/application/ports.hpp"
 #include "thagc/domain/model.hpp"
-#include "thagc/support/diag.hpp"
+#include "thagc/shared/diag.hpp"
 
 namespace thagc::application {
 

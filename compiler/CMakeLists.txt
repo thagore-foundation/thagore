@@ -20,19 +20,19 @@ target_include_directories(thag_runtime PUBLIC ../runtime/include)
 add_executable(thagc
   src/main.cpp
   src/application/build_usecase.cpp
-  src/cli/command_router.cpp
+  src/driver/command_router.cpp
   src/infra/adapters.cpp
-  src/syntax/lexer.cpp
-  src/syntax/parser.cpp
-  src/semantics/typechecker.cpp
-  src/lowering/core_ir_builder.cpp
-  src/codegen/llvm_context.cpp
-  src/codegen/object_emitter.cpp
+  src/frontend/lexer.cpp
+  src/frontend/parser.cpp
+  src/frontend/typechecker.cpp
+  src/middleend/core_ir_builder.cpp
+  src/backend/llvm_context.cpp
+  src/backend/object_emitter.cpp
   src/driver/pipeline.cpp
   src/runtime/abi_link.cpp
-  src/support/diag.cpp
-  src/support/filesystem.cpp
-  src/support/process.cpp
+  src/shared/diag.cpp
+  src/shared/filesystem.cpp
+  src/shared/process.cpp
 )
 
 target_include_directories(thagc PRIVATE include)

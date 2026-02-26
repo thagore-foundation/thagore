@@ -24,7 +24,7 @@ jobs:
 
       - name: Run parity and deterministic tests
         run: |
-          python -m compileall tools tests
+          python -m compileall tooling tests
           python -m unittest discover -s tests -p "test_*.py"
 
   build-linux:

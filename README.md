@@ -15,20 +15,16 @@ It compiles `.tg` source code to native executables through LLVM.
 
 ```text
 compiler/
-  include/thagc/
-    domain/
-    application/
-    infra/
-    syntax/
-    semantics/
-    lowering/
-    codegen/
-    cli/
-    support/
-  src/
+  frontend/      # lexer/parser/type rules
+  middleend/     # typed/core IR + lowering
+  backend/       # LLVM emission + object generation
+  driver/        # CLI and pipeline orchestration
+  shared/        # diagnostics, fs/process abstractions
+  include/thagc/ # public/internal module headers
+  src/           # module implementations
 runtime/
-compatibility/
-tools/
+contracts/
+tooling/
 tests/
 docs/
 .github/workflows/
@@ -59,13 +55,13 @@ cmake --build build -j
 
 ```bash
 ./build/compiler/thagc --help
-./build/compiler/thagc build examples/hello.tg -o hello --emit-llvm
+./build/compiler/thagc build /tmp/hello.tg -o /tmp/hello_bin --emit-llvm
 ```
 
 ## Tests
 
 ```bash
-python3 -m compileall tools tests
+python3 -m compileall tooling tests
 python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
@@ -86,3 +82,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - Contribution guide: `.github/CONTRIBUTING.md`
 - Security policy: `.github/SECURITY.md`
 - ADRs: `docs/adr/`
+- Architecture map: `docs/architecture/repo-structure.md`
+- New contributor map: `docs/contributor-guide/where-to-change.md`

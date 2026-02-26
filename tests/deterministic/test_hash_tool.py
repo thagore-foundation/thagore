@@ -14,7 +14,7 @@ class HashToolTests(unittest.TestCase):
             subprocess.check_call(
                 [
                     "python3",
-                    "tools/compare/compare_binary_hash.py",
+                    "tooling/compare/compare_binary_hash.py",
                     "--left",
                     str(p1),
                     "--right",

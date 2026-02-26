@@ -30,11 +30,11 @@ jobs:
       - name: Package core
         run: |
           mkdir -p dist
-          python3 tools/packaging/pack_core.py \
+          python3 tooling/packaging/pack_core.py \
             --bin build/compiler/thagc \
             --runtime build/compiler/libthag_runtime.a \
             --out dist/thagc-core-linux.tar.gz
-          python3 tools/packaging/make_checksums.py \
+          python3 tooling/packaging/make_checksums.py \
             --out dist/SHA256SUMS-thagc-linux.txt \
             dist/thagc-core-linux.tar.gz
 
@@ -50,4 +50,3 @@ jobs:
             || gh release upload "${{ inputs.tag }}" \
             dist/thagc-core-linux.tar.gz \
             dist/SHA256SUMS-thagc-linux.txt --clobber
-

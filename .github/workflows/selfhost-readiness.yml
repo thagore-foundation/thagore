@@ -19,9 +19,8 @@ jobs:
         run: |
           echo thagc > /tmp/a.bin
           echo thagc > /tmp/b.bin
-          python3 tools/compare/compare_binary_hash.py --left /tmp/a.bin --right /tmp/b.bin
+          python3 tooling/compare/compare_binary_hash.py --left /tmp/a.bin --right /tmp/b.bin
 
       - name: Soak placeholder
         run: |
           echo "72h soak suite is enabled in release branch gates."
-

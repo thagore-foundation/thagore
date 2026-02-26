@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "thagc/support/diag.hpp"
+#include "thagc/shared/diag.hpp"
 
 namespace thagc::driver {
 

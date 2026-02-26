@@ -1,12 +1,12 @@
 #pragma once
 
 #include "thagc/application/ports.hpp"
-#include "thagc/codegen/llvm_emitter.hpp"
+#include "thagc/backend/llvm_emitter.hpp"
 #include "thagc/runtime/abi.hpp"
-#include "thagc/semantics/typechecker.hpp"
-#include "thagc/support/process.hpp"
-#include "thagc/syntax/lexer.hpp"
-#include "thagc/syntax/parser.hpp"
+#include "thagc/frontend/typechecker.hpp"
+#include "thagc/shared/process.hpp"
+#include "thagc/frontend/lexer.hpp"
+#include "thagc/frontend/parser.hpp"
 
 namespace thagc::infra {
 
