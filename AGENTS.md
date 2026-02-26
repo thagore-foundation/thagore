@@ -68,3 +68,48 @@ When instructions conflict, follow this order:
 2. This `AGENTS.md`.
 3. Other repository defaults/policies.
 
+## 8. Mandatory Repository Structure (Compiler Rewrite)
+
+All AI agents must follow this folder architecture and must not introduce ad-hoc layouts:
+
+- `compiler/frontend/` + `compiler/include/thagc/frontend/` + `compiler/src/frontend/`
+  - lexer/parser/AST/type-rule concerns only.
+- `compiler/middleend/` + `compiler/include/thagc/middleend/` + `compiler/src/middleend/`
+  - typed/core IR and lowering only.
+- `compiler/backend/` + `compiler/include/thagc/backend/` + `compiler/src/backend/`
+  - LLVM/object/codegen concerns only.
+- `compiler/driver/` + `compiler/include/thagc/driver/` + `compiler/src/driver/`
+  - CLI command parsing/dispatch and command handlers.
+- `compiler/shared/` + `compiler/include/thagc/shared/` + `compiler/src/shared/`
+  - diagnostics and reusable utilities only.
+- `contracts/`
+  - parity and behavior contracts (CLI/grammar/semantics).
+- `tooling/`
+  - baseline extraction, comparison, packaging, policy, release operations.
+- `docs/architecture/`, `docs/contributor-guide/`, `docs/adr/`
+  - architecture map, contributor map, and decisions.
+
+### 8.1 File Naming Rules (Strict)
+
+- Do not create monolithic files that mix unrelated responsibilities.
+- Use role-based filenames for implementation units:
+  - examples: `core.cpp`, `ir.cpp`, `builder.cpp`, `parser.cpp`, `help.cpp`, `run.cpp`.
+- For driver command logic, one command group per file:
+  - `build.cpp`, `run.cpp`, `test.cpp`, `fix.cpp`, `intent.cpp`, `state.cpp`, `install.cpp`, `target.cpp`, `update.cpp`, `flow.cpp`.
+- Avoid vague aggregator files (`misc.cpp`, `all.cpp`, `temp.cpp`, `wrapper.cpp`).
+
+### 8.2 Dependency Boundaries (Strict)
+
+- `frontend` must not depend on `backend`.
+- `middleend` must not depend on LLVM headers directly.
+- `driver` can orchestrate through application ports/interfaces, not by bypassing module boundaries.
+- `shared` must not contain compiler business logic.
+
+### 8.3 Required Docs Sync
+
+Any folder/file architecture change must update all:
+
+- `README.md` project layout section.
+- `docs/architecture/repo-structure.md`.
+- `docs/contributor-guide/where-to-change.md`.
+- `docs/architecture/rewrite-status.md` if progress status is impacted.
