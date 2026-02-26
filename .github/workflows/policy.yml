@@ -26,3 +26,6 @@ jobs:
 
       - name: Verify architecture boundaries
         run: python3 tooling/policy/check_no_circular_headers.py --root compiler/include/thagc
+
+      - name: Verify no legacy runtime link path
+        run: python3 tooling/policy/check_no_legacy_runtime_link.py --root compiler
