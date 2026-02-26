@@ -42,9 +42,9 @@ function Get-VerifiedRelease {
         "User-Agent" = "thagore-update"
         "Accept" = "application/vnd.github+json"
     }
-    $assetName = "thagore-windows-$arch.tar.gz"
-    $checksumName = "SHA256SUMS-windows-$arch.txt"
-    $proofName = "thagore-enduser-verified-windows-$arch.txt"
+    $assetName = "thagc-core-windows.tar.gz"
+    $checksumName = "SHA256SUMS-thagc-windows.txt"
+    $proofName = ""
     $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/thagore-foundation/thagore/releases?per_page=100" -Method Get
     foreach ($rel in $releases) {
         if ($rel.draft -or $rel.prerelease) { continue }
@@ -54,15 +54,15 @@ function Get-VerifiedRelease {
         foreach ($a in $rel.assets) {
             $names["$($a.name)"] = $true
         }
-        if ($names.ContainsKey($assetName) -and $names.ContainsKey($checksumName) -and $names.ContainsKey($proofName)) {
+        if ($names.ContainsKey($assetName) -and $names.ContainsKey($checksumName)) {
             return $rel
         }
     }
-    throw "No verified official release found for windows-$arch (missing proof asset $proofName)."
+    throw "No official release found for windows-$arch with assets $assetName + $checksumName."
 }
 
 function Resolve-AssetUrl($release, [string]$arch) {
-    $name = "thagore-windows-$arch.tar.gz"
+    $name = "thagc-core-windows.tar.gz"
     foreach ($asset in $release.assets) {
         if ($asset.name -eq $name) {
             return @{ Name = $name; Url = $asset.browser_download_url }
@@ -72,7 +72,7 @@ function Resolve-AssetUrl($release, [string]$arch) {
 }
 
 function Resolve-ChecksumUrl($release, [string]$arch) {
-    $name = "SHA256SUMS-windows-$arch.txt"
+    $name = "SHA256SUMS-thagc-windows.txt"
     foreach ($asset in $release.assets) {
         if ($asset.name -eq $name) {
             return @{ Name = $name; Url = $asset.browser_download_url }
@@ -149,40 +149,32 @@ function Assert-CliOutputHealthy([string]$ExePath) {
     }
 }
 
-function Assert-Stage1HelperHealthy {
+function Assert-AtomicBuildHealthy {
     param(
-        [Parameter(Mandatory = $true)][string]$CompilerExe,
-        [Parameter(Mandatory = $true)][string]$HelperExe
+        [Parameter(Mandatory = $true)][string]$CompilerExe
     )
-    if (-not (Test-Path $HelperExe)) {
-        throw "Helper health check failed: missing helper binary $HelperExe"
-    }
-    $tmpDir = Join-Path $env:TEMP ("thagore-update-helper-smoke-" + [guid]::NewGuid().ToString("N"))
+    $tmpDir = Join-Path $env:TEMP ("thagore-update-atomic-smoke-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
-    $src = Join-Path $tmpDir "helper_smoke.tg"
-    $ll = Join-Path $tmpDir "helper_smoke.ll"
+    $src = Join-Path $tmpDir "atomic_smoke.tg"
+    $bin = Join-Path $tmpDir "atomic_smoke.exe"
     @'
 func main() -> i32:
-    print("helper smoke")
+    print("atomic smoke")
     return 0
 '@ | Set-Content -Path $src -NoNewline
-    $oldHelper = $env:THAG_HELPER_BIN
     try {
-        $env:THAG_HELPER_BIN = $HelperExe
-        $out = (& $CompilerExe --emit-llvm-internal $src -o $ll 2>&1 | Out-String).Trim()
-        if (-not (Test-Path $ll)) {
-            throw "Helper smoke failed: LLVM file not produced. Output: $out"
+        & $CompilerExe build $src -o $bin | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Atomic smoke failed: build command failed."
         }
-        $len = (Get-Item $ll).Length
-        if ($len -le 0) {
-            throw "Helper smoke failed: LLVM file is empty."
+        if (-not (Test-Path $bin)) {
+            throw "Atomic smoke failed: output executable missing."
+        }
+        $out = (& $bin 2>&1 | Out-String).Trim()
+        if ($out -notmatch "atomic smoke") {
+            throw "Atomic smoke failed: runtime output mismatch."
         }
     } finally {
-        if ($null -eq $oldHelper) {
-            Remove-Item Env:THAG_HELPER_BIN -ErrorAction SilentlyContinue
-        } else {
-            $env:THAG_HELPER_BIN = $oldHelper
-        }
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
     }
 }
@@ -236,11 +228,16 @@ foreach ($cand in $binCandidates) {
 if (-not $binDir) {
     throw "Cannot resolve bin directory near $selfDir"
 }
-$engine = Join-Path $binDir "thagore.exe"
+$engine = Join-Path $binDir "thagc.exe"
 if (-not (Test-Path $engine)) {
-    throw "Cannot find engine binary: $engine"
+    $fallbackEngine = Join-Path $binDir "thagore.exe"
+    if (Test-Path $fallbackEngine) {
+        $engine = $fallbackEngine
+    } else {
+        throw "Cannot find compiler binary (thagc.exe or thagore.exe) in $binDir"
+    }
 }
-$stage1 = Join-Path $binDir "stage1.exe"
+$thagoreCompat = Join-Path $binDir "thagore.exe"
 $legacyEngine = Join-Path $binDir "thag.exe"
 $legacyCmdWrapper = Join-Path $binDir "thagore.cmd"
 $installRoot = (Resolve-Path (Join-Path $binDir "..")).Path
@@ -287,8 +284,7 @@ if ($mode -eq "apply") {
     $archivePath = Join-Path $stateDir "download.tar.gz"
     $checksumPath = Join-Path $stateDir "SHA256SUMS.txt"
     $extractDir = Join-Path $stateDir "extract"
-    $backupEngine = Join-Path $stateDir "thagore.prev.exe"
-    $backupStage1 = Join-Path $stateDir "stage1.prev.exe"
+    $backupEngine = Join-Path $stateDir "thagc.prev.exe"
     $backupRuntime = Join-Path $stateDir "runtime.prev.lib"
     if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
@@ -308,13 +304,14 @@ if ($mode -eq "apply") {
         throw "Archive checksum mismatch for $($asset.Name)."
     }
     tar -xzf $archivePath -C $extractDir
-    $newEngine = Join-Path $extractDir "bin\thagore.exe"
-    $newStage1 = Join-Path $extractDir "bin\stage1.exe"
+    $newEngine = Join-Path $extractDir "bin\thagc.exe"
     if (-not (Test-Path $newEngine)) {
-        throw "Extracted asset does not contain thagore.exe"
-    }
-    if (-not (Test-Path $newStage1)) {
-        throw "Extracted asset does not contain stage1.exe"
+        $fallbackNew = Join-Path $extractDir "bin\thagore.exe"
+        if (Test-Path $fallbackNew) {
+            $newEngine = $fallbackNew
+        } else {
+            throw "Extracted asset does not contain thagc.exe"
+        }
     }
     $newInstallerDir = Join-Path $extractDir "installer"
     $newStdDir = Join-Path $extractDir "lib\std"
@@ -327,29 +324,26 @@ if ($mode -eq "apply") {
     }
 
     Copy-WithRetry -Source $engine -Target $backupEngine
-    if (Test-Path $stage1) {
-        Copy-WithRetry -Source $stage1 -Target $backupStage1
-    }
     if (Test-Path $runtimeLib) {
         Copy-WithRetry -Source $runtimeLib -Target $backupRuntime
     }
 
     $newEngineHash = Get-FileSha256 -Path $newEngine
-    $newStage1Hash = Get-FileSha256 -Path $newStage1
     $newRuntimeHash = Get-FileSha256 -Path $newRuntimeLib
 
     try {
-        Copy-And-VerifyHash -Source $newEngine -Target $engine -ExpectedHash $newEngineHash -Label "thagore.exe"
-        Copy-And-VerifyHash -Source $newStage1 -Target $stage1 -ExpectedHash $newStage1Hash -Label "stage1.exe"
+        Copy-And-VerifyHash -Source $newEngine -Target $engine -ExpectedHash $newEngineHash -Label "thagc.exe"
+        if ($engine -ne $thagoreCompat) {
+            Copy-And-VerifyHash -Source $newEngine -Target $thagoreCompat -ExpectedHash $newEngineHash -Label "thagore.exe"
+        }
         Copy-And-VerifyHash -Source $newRuntimeLib -Target $runtimeLib -ExpectedHash $newRuntimeHash -Label "runtime.lib"
         Assert-CliOutputHealthy -ExePath $engine
-        Assert-Stage1HelperHealthy -CompilerExe $engine -HelperExe $stage1
+        Assert-AtomicBuildHealthy -CompilerExe $engine
     } catch {
         $backupEngineHash = Get-FileSha256 -Path $backupEngine
-        Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
-        if (Test-Path $backupStage1) {
-            $backupStage1Hash = Get-FileSha256 -Path $backupStage1
-            Copy-And-VerifyHash -Source $backupStage1 -Target $stage1 -ExpectedHash $backupStage1Hash -Label "rollback stage1.exe"
+        Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagc.exe"
+        if ($engine -ne $thagoreCompat) {
+            Copy-And-VerifyHash -Source $backupEngine -Target $thagoreCompat -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
         }
         if (Test-Path $backupRuntime) {
             $backupRuntimeHash = Get-FileSha256 -Path $backupRuntime
@@ -374,7 +368,7 @@ if ($mode -eq "apply") {
     }
 
     Write-Host "Updated to $latestTag"
-    Write-Host "[update] binaries replaced: $engine, $stage1"
+    Write-Host "[update] compiler replaced: $engine"
     Write-Host "[update] runtime replaced: $runtimeLib"
     Write-Host "[update] stale legacy binaries removed: $legacyEngine, $legacyCmdWrapper"
     exit 0
@@ -382,11 +376,10 @@ if ($mode -eq "apply") {
 
 if ($mode -eq "rollback") {
     $stateDir = Join-Path $env:LOCALAPPDATA "Thagore\update"
-    $backupEngine = Join-Path $stateDir "thagore.prev.exe"
-    $backupStage1 = Join-Path $stateDir "stage1.prev.exe"
+    $backupEngine = Join-Path $stateDir "thagc.prev.exe"
     $backupRuntime = Join-Path $stateDir "runtime.prev.lib"
     if (-not (Test-Path $backupEngine)) {
-        throw "No rollback backup found for thagore.exe."
+        throw "No rollback backup found for thagc.exe."
     }
     if (-not $yes) {
         $ans = Read-Host "Rollback current binary? [Y/n]"
@@ -396,17 +389,16 @@ if ($mode -eq "rollback") {
         }
     }
     $backupEngineHash = Get-FileSha256 -Path $backupEngine
-    Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
-    if (Test-Path $backupStage1) {
-        $backupStage1Hash = Get-FileSha256 -Path $backupStage1
-        Copy-And-VerifyHash -Source $backupStage1 -Target $stage1 -ExpectedHash $backupStage1Hash -Label "rollback stage1.exe"
+    Copy-And-VerifyHash -Source $backupEngine -Target $engine -ExpectedHash $backupEngineHash -Label "rollback thagc.exe"
+    if ($engine -ne $thagoreCompat) {
+        Copy-And-VerifyHash -Source $backupEngine -Target $thagoreCompat -ExpectedHash $backupEngineHash -Label "rollback thagore.exe"
     }
     if (Test-Path $backupRuntime) {
         $backupRuntimeHash = Get-FileSha256 -Path $backupRuntime
         Copy-And-VerifyHash -Source $backupRuntime -Target $runtimeLib -ExpectedHash $backupRuntimeHash -Label "rollback runtime.lib"
     }
     Assert-CliOutputHealthy -ExePath $engine
-    Assert-Stage1HelperHealthy -CompilerExe $engine -HelperExe $stage1
+    Assert-AtomicBuildHealthy -CompilerExe $engine
     if (Test-Path $legacyEngine) {
         Remove-Item -Force $legacyEngine
     }

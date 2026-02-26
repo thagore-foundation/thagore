@@ -417,47 +417,14 @@ setup_bin_dir() {
     echo "[thagup] WARNING: thagc binary not found in core bundle"
   fi
 
-  # stage1_helper (needed by wrapper at runtime)
-  local h1
-  for h1 in "$TOOLCHAIN_DIR/bin/stage1_helper" "$TOOLCHAIN_DIR/bin/stage1_helper.exe"; do
-    if [[ -f "$h1" ]]; then
-      cp "$h1" "$BIN_DIR/stage1_helper"
-      chmod +x "$BIN_DIR/stage1_helper" || true
-      # Patch GLIBC version requirements so helper works on GLIBC_2.35+ (Ubuntu 22.04)
-      # The seed helper was built on Ubuntu 24.04 which uses GLIBC_2.38 for C23 symbols.
-      if [[ "$(uname -s)" == "Linux" ]] && command -v python3 &>/dev/null; then
-        python3 - "$BIN_DIR/stage1_helper" <<'PATCH_PYEOF' 2>/dev/null || true
-import struct, sys, os
-def elf_hash(n):
-    h = 0
-    for c in n.encode():
-        h = (h << 4) + c; g = h & 0xF0000000
-        if g: h ^= g >> 24
-        h &= ~g
-    return h & 0xFFFFFFFF
-PATCHES = [("GLIBC_2.38","GLIBC_2.35"),("GLIBCXX_3.4.31","GLIBCXX_3.4.30")]
-path = sys.argv[1]
-with open(path,"rb") as f: data = bytearray(f.read())
-if data[:4] != b"\x7fELF": sys.exit(0)
-for old,new in PATCHES:
-    ob,nb = old.encode(),new.encode()
-    p = data.find(ob)
-    if p == -1: continue
-    data[p:p+len(ob)] = nb
-    oh,nh = struct.pack("<I",elf_hash(old)),struct.pack("<I",elf_hash(new))
-    hp = data.find(oh)
-    if hp != -1: data[hp:hp+4] = nh
-with open(path,"wb") as f: f.write(data)
-PATCH_PYEOF
-      fi
-      break
-    fi
-  done
+  # thagore compatibility alias to the strict thagc binary
+  if [[ -f "$BIN_DIR/thagc" ]]; then
+    ln -sf "$BIN_DIR/thagc" "$BIN_DIR/thagore" 2>/dev/null || cp "$BIN_DIR/thagc" "$BIN_DIR/thagore"
+    chmod +x "$BIN_DIR/thagore" || true
+  fi
 
   # ── thag_runtime.lib ────────────────────────────────────────────────────────
-  # Required by stage1_helper to link compiled user programs.
-  # thagc.bin (our libthag_runtime.a-linked binary) auto-detects this at
-  # <exe_dir>/../lib/thag_runtime.lib and symlinks it into CWD at build time.
+  # Required by runtime link step to compile user programs.
   local rtlib_dest="$THAGORE_HOME/lib/thag_runtime.lib"
   mkdir -p "$THAGORE_HOME/lib"
   local rtlib_src=""
@@ -491,8 +458,7 @@ PATCH_PYEOF
   fi
 
   # ── clang symlink ────────────────────────────────────────────────────────────
-  # stage1_helper looks for clang at /usr/bin/clang and /usr/local/bin/clang.
-  # On Ubuntu 22.04+, only versioned clang-N exists. Create a symlink in our bin.
+  # On Ubuntu 22.04+, only versioned clang-N may exist. Create a symlink in our bin.
   if [[ "$(uname -s)" == "Linux" ]] && [[ ! -f "/usr/bin/clang" ]] && [[ ! -f "/usr/local/bin/clang" ]]; then
     for v in 21 20 19 18 17 16 15 14; do
       if command -v "clang-$v" &>/dev/null; then

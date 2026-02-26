@@ -1,6 +1,6 @@
 name: Core Seed Rebuild
 
-# Rebuilds stage1_helper as a standalone thagc binary from libthag_runtime.a.
+# Rebuilds stage1 as a standalone thagc binary from libthag_runtime.a.
 # Produces binaries that run on GLIBC >= 2.17 (Ubuntu 14.04+, Debian 8+).
 # Ships as thagc — no wrapper, no helper subprocess, like rustc.
 #
@@ -40,13 +40,11 @@ jobs:
             os_slug: linux
             triple: x86_64-unknown-linux-gnu
             artifact: thagore-stage1-linux.tar.gz
-            helper_artifact: thagore-stage1-helper-linux-x86_64
           # macOS arm64
           - runner: macos-latest
             os_slug: macos
             triple: aarch64-apple-darwin
             artifact: thagore-stage1-macos.tar.gz
-            helper_artifact: thagore-stage1-helper-macos-arm64
 
     steps:
       - name: Checkout
@@ -156,12 +154,13 @@ jobs:
       - name: Build standalone thagc (macOS)
         if: runner.os == 'macOS'
         run: |
-          # macOS: use system SDK headers explicitly
+          # macOS: use system SDK headers + explicit libc++ link
           SDK=$(xcrun --show-sdk-path)
           $CXX bootstrap/thagc_main.cpp \
             -isysroot "$SDK" \
             -o thagc_stage1 \
             ./libthag_runtime.a \
+            -lc++ -lc++abi \
             -lpthread \
             -O2 -DNDEBUG
           chmod +x thagc_stage1
@@ -177,16 +176,12 @@ jobs:
           echo "=== smoke: hello.tg ==="
           ./thagc_stage1 build examples/hello.tg -o ./smoke_hello 2>&1
           HBIN=./smoke_hello; [[ -f ./smoke_hello.exe ]] && HBIN=./smoke_hello.exe
-          if [[ -f "$HBIN" ]]; then
-            HOUT="$("$HBIN" 2>&1)"
-            echo "Output: $HOUT"
-            [[ "$HOUT" == *"Hello"* ]] && echo "SMOKE PASS: hello.tg ✓" || echo "SMOKE WARN: unexpected output"
-          else
-            echo "SMOKE INFO: no output binary produced (codegen may still need stage1 helper)"
-            # Not a hard failure — the binary itself is what we're validating
-          fi
+          [[ -f "$HBIN" ]] || { echo "SMOKE FAIL: no output binary produced for hello.tg"; exit 1; }
+          HOUT="$("$HBIN" 2>&1)"
+          echo "Output: $HOUT"
+          [[ "$HOUT" == *"Hello"* ]] || { echo "SMOKE FAIL: unexpected hello output"; exit 1; }
           echo "=== fib.tg (compile only) ==="
-          ./thagc_stage1 build examples/fib.tg -o ./smoke_fib 2>&1 || true
+          ./thagc_stage1 build examples/fib.tg -o ./smoke_fib 2>&1
 
       # ── Package as seed artifacts ─────────────────────────────────────────
       - name: Package seed artifacts
@@ -195,19 +190,12 @@ jobs:
           SLUG="${{ matrix.os_slug }}"
           mkdir -p dist/seed
 
-          # Core binary renamed as stage1_helper (drop-in replacement for the old one)
-          cp thagc_stage1 "${{ matrix.helper_artifact }}"
-          chmod +x "${{ matrix.helper_artifact }}"
-
-          # Also create a thagc wrapper that works as standalone
-          cp thagc_stage1 thagc_standalone
-
           # Pack: stage1 tarball (same format as existing seed tarballs)
           mkdir -p seed_pack/bin
-          cp thagc_stage1 seed_pack/bin/stage1_helper
+          cp thagc_stage1 seed_pack/bin/stage1
           cp thagc_stage1 seed_pack/bin/thagore
           cp thagc_stage1 seed_pack/bin/thag
-          ln -sf stage1_helper seed_pack/bin/thagc 2>/dev/null || cp thagc_stage1 seed_pack/bin/thagc
+          cp thagc_stage1 seed_pack/bin/thagc
           tar -czf "dist/seed/${{ matrix.artifact }}" -C seed_pack .
 
           # Also pack runtime.a for downstream use
@@ -222,7 +210,6 @@ jobs:
           name: seed-${{ matrix.os_slug }}
           path: |
             dist/seed/
-            ${{ matrix.helper_artifact }}
             thagc_stage1
 
   # ── Publish new seed release ───────────────────────────────────────────────
@@ -252,7 +239,7 @@ jobs:
           while IFS= read -r -d '' f; do
             ASSETS+=("$f")
           done < <(find all-seed-artifacts -type f \
-            \( -name "*.tar.gz" -o -name "*.a" -o -name "thagore-stage1-helper-*" \) \
+            \( -name "*.tar.gz" -o -name "*.a" \) \
             -print0 | sort -z)
 
           echo "Assets to upload:"

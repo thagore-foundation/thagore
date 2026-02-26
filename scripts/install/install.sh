@@ -315,16 +315,15 @@ validate_cli_install() {
   fi
 }
 
-validate_helper_bundle_install() {
+validate_atomic_bundle_install() {
   local cli_bin="$1"
   local payload_prefix="$2"
-  if [[ "${THAGORE_INSTALL_SKIP_HELPER_VALIDATE:-0}" == "1" ]]; then
-    echo "WARN: skipping helper bundle validation because THAGORE_INSTALL_SKIP_HELPER_VALIDATE=1" >&2
+  if [[ "${THAGORE_INSTALL_SKIP_ATOMIC_VALIDATE:-0}" == "1" ]]; then
+    echo "WARN: skipping atomic bundle validation because THAGORE_INSTALL_SKIP_ATOMIC_VALIDATE=1" >&2
     return 0
   fi
-  local helper_bin="$payload_prefix/bin/stage1"
-  if [[ ! -x "$helper_bin" ]]; then
-    echo "ERROR: installed payload missing executable helper: $helper_bin" >&2
+  if [[ ! -x "$cli_bin" ]]; then
+    echo "ERROR: installed payload missing executable compiler: $cli_bin" >&2
     exit 1
   fi
   local tmpdir
@@ -343,19 +342,18 @@ TG
     if [[ -f "$payload_prefix/lib/runtime.a" ]]; then
       cp "$payload_prefix/lib/runtime.a" ./runtime.a
     fi
-    THAG_HELPER_BIN="$helper_bin" "$cli_bin" --emit-llvm-internal atomic_bundle_smoke.tg -o atomic_bundle_smoke.ll >/dev/null 2>&1
-    if [[ ! -s atomic_bundle_smoke.ll ]]; then
-      echo "ERROR: helper smoke failed: --emit-llvm-internal did not produce non-empty LLVM IR." >&2
+    "$cli_bin" build atomic_bundle_smoke.tg -o atomic_bundle_smoke >/dev/null 2>&1
+    local out_bin="./atomic_bundle_smoke"
+    if [[ ! -x "$out_bin" && -x "./atomic_bundle_smoke.exe" ]]; then
+      out_bin="./atomic_bundle_smoke.exe"
+    fi
+    if [[ ! -x "$out_bin" ]]; then
+      echo "ERROR: atomic smoke failed: build did not produce executable output." >&2
       exit 1
     fi
-    THAG_HELPER_BIN="$helper_bin" "$cli_bin" build atomic_bundle_smoke.tg -o atomic_bundle_smoke >/dev/null 2>&1
-    if [[ ! -x atomic_bundle_smoke ]]; then
-      echo "ERROR: helper smoke failed: build did not produce executable output." >&2
-      exit 1
-    fi
-    out="$(./atomic_bundle_smoke 2>&1 || true)"
+    out="$("$out_bin" 2>&1 || true)"
     if ! grep -Fq "atomic package smoke" <<<"$out"; then
-      echo "ERROR: helper smoke failed: runtime output mismatch." >&2
+      echo "ERROR: atomic smoke failed: runtime output mismatch." >&2
       exit 1
     fi
   )
@@ -545,19 +543,28 @@ install_payload_with_prefix() {
 
   mkdir -p "$payload_prefix"
   cp -R "$source_root/"* "$payload_prefix/"
-  if [[ ! -x "$payload_prefix/bin/thagore" ]]; then
-    echo "ERROR: installed payload missing executable: $payload_prefix/bin/thagore" >&2
+  local compiler_src=""
+  local c
+  for c in "$payload_prefix/bin/thagc" "$payload_prefix/bin/thagore"; do
+    if [[ -x "$c" ]]; then
+      compiler_src="$c"
+      break
+    fi
+  done
+  if [[ -z "$compiler_src" ]]; then
+    echo "ERROR: installed payload missing compiler executable (bin/thagc or bin/thagore)." >&2
     exit 1
   fi
 
   local link_dir="$HOME/.local/bin"
   mkdir -p "$link_dir"
-  ln -sf "$payload_prefix/bin/thagore" "$link_dir/thagore"
+  ln -sf "$compiler_src" "$link_dir/thagc"
+  ln -sf "$compiler_src" "$link_dir/thagore"
   if [[ -x "$payload_prefix/bin/stage1" ]]; then
     ln -sf "$payload_prefix/bin/stage1" "$link_dir/stage1"
   fi
-  validate_cli_install "$link_dir/thagore"
-  validate_helper_bundle_install "$link_dir/thagore" "$payload_prefix"
+  validate_cli_install "$link_dir/thagc"
+  validate_atomic_bundle_install "$link_dir/thagc" "$payload_prefix"
 
   ensure_local_llvm_layout "$payload_prefix"
   if [[ "$MODE" == "portable" && -d "$LLVM_PREFIX/bin" ]]; then
@@ -567,7 +574,7 @@ install_payload_with_prefix() {
 
   cat <<EOF
 Thagore installed successfully.
-Binary: $link_dir/thagore
+Binary: $link_dir/thagc
 Prefix: $payload_prefix
 Stdlib: $payload_prefix/lib/std
 EOF
