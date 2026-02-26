@@ -84,15 +84,16 @@ jobs:
           echo "=== static libstdc++ ==="
           find /usr/lib/gcc -name "libstdc++.a" 2>/dev/null | head -3
 
-      # ── macOS: use system clang++ (libc++) to match libthag_runtime.a ABI ──
+      # ── macOS: use LLVM 21 toolchain for libc++ ABI compatibility ─────────
       - name: Install build deps (macOS)
         if: runner.os == 'macOS'
         run: |
-          # libthag_runtime.a for macOS was built with Apple clang (libc++ ABI).
-          # Use system clang++ to match the ABI — not brew LLVM which may differ.
-          echo "CXX=$(xcrun -f clang++)" >> $GITHUB_ENV
-          echo "CC=$(xcrun -f clang)"    >> $GITHUB_ENV
-          xcrun clang++ --version
+          brew install llvm@21
+          LLVM_PREFIX="$(brew --prefix llvm@21)"
+          echo "CXX=${LLVM_PREFIX}/bin/clang++" >> $GITHUB_ENV
+          echo "CC=${LLVM_PREFIX}/bin/clang" >> $GITHUB_ENV
+          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> $GITHUB_ENV
+          "${LLVM_PREFIX}/bin/clang++" --version
 
       - name: Install build deps (Windows)
         if: runner.os == 'Windows'
@@ -171,10 +172,13 @@ jobs:
         run: |
           # macOS: use system SDK headers + explicit libc++ link
           SDK=$(xcrun --show-sdk-path)
+          LLVM_LIBCXX_DIR="${LLVM_PREFIX}/lib/c++"
           $CXX bootstrap/thagc_main.cpp \
             -isysroot "$SDK" \
             -o thagc_stage1 \
             -Wl,-force_load,./thagore-runtime-macos.a \
+            -L"${LLVM_LIBCXX_DIR}" \
+            -Wl,-rpath,"${LLVM_LIBCXX_DIR}" \
             -lc++ -lc++abi \
             -lpthread \
             -O2 -DNDEBUG
@@ -201,16 +205,17 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          rm -f ./stage1 ./stage1.exe ./stage1_helper ./stage1_helper.exe || true
           echo "=== smoke: hello.tg ==="
           cp "./${{ matrix.runtime_asset }}" ./thag_runtime.lib
-          ./thagc_stage1 build examples/hello.tg -o ./smoke_hello 2>&1
+          THAG_HELPER_BIN=./thagc_stage1 THAG_ALLOW_SELF_HELPER=1 ./thagc_stage1 build examples/hello.tg -o ./smoke_hello 2>&1
           HBIN=./smoke_hello; [[ -f ./smoke_hello.exe ]] && HBIN=./smoke_hello.exe
           [[ -f "$HBIN" ]] || { echo "SMOKE FAIL: no output binary produced for hello.tg"; exit 1; }
           HOUT="$("$HBIN" 2>&1)"
           echo "Output: $HOUT"
           [[ "$HOUT" == *"Hello"* ]] || { echo "SMOKE FAIL: unexpected hello output"; exit 1; }
           echo "=== fib.tg (compile only) ==="
-          ./thagc_stage1 build examples/fib.tg -o ./smoke_fib 2>&1
+          THAG_HELPER_BIN=./thagc_stage1 THAG_ALLOW_SELF_HELPER=1 ./thagc_stage1 build examples/fib.tg -o ./smoke_fib 2>&1
 
       - name: Smoke test new thagc (Windows)
         if: runner.os == 'Windows'
