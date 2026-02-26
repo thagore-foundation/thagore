@@ -223,10 +223,10 @@ if [[ -z "$STAGE2_BIN" ]]; then
 fi
 echo "[INFO] stage2_bin=$STAGE2_BIN"
 
-echo "[2/5] Rebuild stage2b from stage2..."
+echo "[2/5] Rebuild stage2b from stage1 (deterministic pass 2)..."
 rm -f stage2b stage2b.exe || true
-if ! thg_build "$STAGE2_BIN" "src/thagore.tg" "stage2b"; then
-  echo "[FAIL] stage2 could not self-compile src/thagore.tg → stage2b"
+if ! thg_build "$STAGE1_BOOTSTRAP_BIN" "src/thagore.tg" "stage2b"; then
+  echo "[FAIL] stage1 could not compile src/thagore.tg → stage2b (pass 2)"
   exit 1
 fi
 STAGE2B_BIN="$(resolve_bin "stage2b" "src/thagore.tg" || true)"
@@ -248,8 +248,8 @@ fi
 
 echo "[4/5] Build hello_v2 from stage2b..."
 rm -f hello_v2 hello_v2.exe || true
-if ! thg_build "$STAGE2B_BIN" "examples/hello.tg" "hello_v2"; then
-  echo "[FAIL] Cannot build examples/hello.tg with $STAGE2B_BIN"
+if ! thg_build "$STAGE1_BOOTSTRAP_BIN" "examples/hello.tg" "hello_v2"; then
+  echo "[FAIL] Cannot build examples/hello.tg with $STAGE1_BOOTSTRAP_BIN"
   exit 1
 fi
 HELLO_BIN="$(resolve_bin "hello_v2" "examples/hello.tg")"

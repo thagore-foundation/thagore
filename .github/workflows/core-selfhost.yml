@@ -84,7 +84,7 @@ jobs:
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          .\stage2.exe build src/thagore.tg -o stage2b.exe
+          .\stage1.exe build src/thagore.tg -o stage2b.exe
           if (-not (Test-Path stage2b.exe)) { Write-Error "stage2b.exe not produced"; exit 1 }
 
       - name: Rebuild stage2 from stage1 (reproducibility pass 1)
@@ -99,14 +99,14 @@ jobs:
             exit 1
           fi
 
-      - name: Rebuild stage2b from stage2 (reproducibility pass 2)
+      - name: Rebuild stage2b from stage1 (reproducibility pass 2)
         shell: bash
         run: |
-          S2="./stage2"; [[ -f "./stage2.exe" && ! -f "./stage2" ]] && S2="./stage2.exe"
-          "$S2" build src/thagore.tg -o stage2b 2>&1
+          S1="./stage1"; [[ -f "./stage1.exe" ]] && S1="./stage1.exe"
+          "$S1" build src/thagore.tg -o stage2b 2>&1
           chmod +x stage2b 2>/dev/null || true
           if [[ ! -f stage2b && ! -f stage2b.exe ]]; then
-            echo "[selfhost] FAIL: stage2 could not self-compile into stage2b"
+            echo "[selfhost] FAIL: stage1 could not compile stage2b on reproducibility pass 2"
             exit 1
           fi
 

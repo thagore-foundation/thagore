@@ -106,7 +106,7 @@ jobs:
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          .\stage2.exe build src/thagore.tg -o stage2b.exe
+          .\stage1.exe build src/thagore.tg -o stage2b.exe
           if (-not (Test-Path stage2b.exe)) { Write-Error "stage2b.exe not produced"; exit 1 }
           Write-Host "[bootstrap] Done: stage2=$(Test-Path stage2.exe) stage2b=$(Test-Path stage2b.exe)"
 
@@ -157,10 +157,10 @@ jobs:
 
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             THAGC_DEST="thagc.exe"
-            THAGC_BIN="stage2b.exe"
+            THAGC_BIN="stage1.exe"
           else
             THAGC_DEST="thagc"
-            THAGC_BIN="stage2b"
+            THAGC_BIN="stage1"
           fi
           [[ -f "$THAGC_BIN" ]] || { echo "ERROR: strict release requires $THAGC_BIN"; exit 1; }
           echo "Using compiler binary: $THAGC_BIN"

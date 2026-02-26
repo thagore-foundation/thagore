@@ -95,7 +95,7 @@ jobs:
           python scripts\build_runtime_abi.py --target-os Windows --summary runtime-abi-summary-local.txt
           .\stage1.exe build src/thagore.tg -o stage2.exe
           if (-not (Test-Path stage2.exe)) { Write-Error "stage2.exe not produced"; exit 1 }
-          .\stage2.exe build src/thagore.tg -o stage2b.exe
+          .\stage1.exe build src/thagore.tg -o stage2b.exe
           if (-not (Test-Path stage2b.exe)) { Write-Error "stage2b.exe not produced"; exit 1 }
           Write-Host "[bootstrap] Done: stage2=$(Test-Path stage2.exe) stage2b=$(Test-Path stage2b.exe)"
 
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           THAGC=""
-          for c in "./stage2b" "./stage2b.exe"; do
+          for c in "./stage1" "./stage1.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler after bootstrap" >&2; exit 1; }
@@ -155,7 +155,7 @@ jobs:
         shell: bash
         run: |
           THAGC=""
-          for c in "./stage2b" "./stage2b.exe"; do
+          for c in "./stage1" "./stage1.exe"; do
             [[ -f "$c" ]] && THAGC="$c" && break
           done
           [[ -n "$THAGC" ]] || { echo "ERROR: no compiler" >&2; exit 1; }
