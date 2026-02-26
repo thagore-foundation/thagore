@@ -16,6 +16,7 @@ on:
   push:
     paths:
       - "bootstrap/thagc_main.cpp"
+      - "bootstrap/thagc_main.c"
       - "bootstrap/glibc_compat.c"
       - ".github/workflows/core-seed-rebuild.yml"
 
@@ -40,11 +41,19 @@ jobs:
             os_slug: linux
             triple: x86_64-unknown-linux-gnu
             artifact: thagore-stage1-linux.tar.gz
+            runtime_asset: thagore-runtime-linux.a
           # macOS arm64
           - runner: macos-latest
             os_slug: macos
             triple: aarch64-apple-darwin
             artifact: thagore-stage1-macos.tar.gz
+            runtime_asset: thagore-runtime-macos.a
+          # Windows x86_64
+          - runner: windows-latest
+            os_slug: windows
+            triple: x86_64-pc-windows-msvc
+            artifact: thagore-stage1-windows-x86_64.exe
+            runtime_asset: thagore-runtime-windows-x86_64.lib
 
     steps:
       - name: Checkout
@@ -85,33 +94,39 @@ jobs:
           echo "CC=$(xcrun -f clang)"    >> $GITHUB_ENV
           xcrun clang++ --version
 
+      - name: Install build deps (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --version=21.1.8 -y --no-progress
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          if (Test-Path $llvmBin) {
+            echo "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          clang --version
+
       # ── Download current seed runtime (libthag_runtime.a) ─────────────────
       - name: Download seed runtime library
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          SEED_TAG="${{ github.event.inputs.publish_tag || 'v0.3.193-stage1-seed' }}"
-          # Try the existing seed tag to get libthag_runtime.a
+          # Try the existing seed tag to get runtime library for this lane
           mkdir -p bootstrap/seed
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            RUNTIME_ASSET="thagore-runtime-linux.a"
-          else
-            RUNTIME_ASSET="thagore-runtime-macos.a"
-          fi
+          RUNTIME_ASSET="${{ matrix.runtime_asset }}"
           # Download from the current stable seed
           gh release download v0.3.193-stage1-seed \
             --repo thagore-foundation/thagore \
             --pattern "$RUNTIME_ASSET" \
             -D bootstrap/seed || true
           if [[ -f "bootstrap/seed/$RUNTIME_ASSET" ]]; then
-            cp "bootstrap/seed/$RUNTIME_ASSET" libthag_runtime.a
-            echo "Downloaded runtime: $RUNTIME_ASSET ($(du -sh libthag_runtime.a | cut -f1))"
+            cp "bootstrap/seed/$RUNTIME_ASSET" .
+            echo "Downloaded runtime: $RUNTIME_ASSET ($(du -sh "$RUNTIME_ASSET" | cut -f1))"
           else
-            # Fallback: use the one already in the repo
-            echo "Using repo-local libthag_runtime.a"
+            echo "[FAIL] Missing runtime asset: $RUNTIME_ASSET"
+            exit 1
           fi
-          ls -lh libthag_runtime.a
+          ls -lh "$RUNTIME_ASSET"
 
       # ── Build standalone thagc binary ─────────────────────────────────────
       - name: Build standalone thagc (Linux)
@@ -134,7 +149,7 @@ jobs:
           $CXX bootstrap/thagc_main.cpp \
             /tmp/glibc_compat.o \
             -o thagc_stage1 \
-            ./libthag_runtime.a \
+            ./thagore-runtime-linux.a \
             -static-libstdc++ -static-libgcc \
             -L"$STDCXX_DIR" \
             -lpthread -ldl -lm \
@@ -159,7 +174,7 @@ jobs:
           $CXX bootstrap/thagc_main.cpp \
             -isysroot "$SDK" \
             -o thagc_stage1 \
-            ./libthag_runtime.a \
+            -Wl,-force_load,./thagore-runtime-macos.a \
             -lc++ -lc++abi \
             -lpthread \
             -O2 -DNDEBUG
@@ -169,11 +184,25 @@ jobs:
           echo "=== Version check ==="
           ./thagc_stage1 --version 2>&1 || true
 
+      - name: Build standalone thagc (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          clang bootstrap\thagc_main.c `
+            .\thagore-runtime-windows-x86_64.lib `
+            -O2 -DNDEBUG `
+            -o thagc_stage1.exe
+          if (-not (Test-Path thagc_stage1.exe)) { throw "thagc_stage1.exe not produced" }
+          Get-Item thagc_stage1.exe | Format-Table -AutoSize
+          .\thagc_stage1.exe --version 2>&1 | Out-String | Write-Host
+
       # ── Smoke test: build hello.tg with the new binary ────────────────────
       - name: Smoke test new thagc
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           echo "=== smoke: hello.tg ==="
+          cp "./${{ matrix.runtime_asset }}" ./thag_runtime.lib
           ./thagc_stage1 build examples/hello.tg -o ./smoke_hello 2>&1
           HBIN=./smoke_hello; [[ -f ./smoke_hello.exe ]] && HBIN=./smoke_hello.exe
           [[ -f "$HBIN" ]] || { echo "SMOKE FAIL: no output binary produced for hello.tg"; exit 1; }
@@ -183,6 +212,19 @@ jobs:
           echo "=== fib.tg (compile only) ==="
           ./thagc_stage1 build examples/fib.tg -o ./smoke_fib 2>&1
 
+      - name: Smoke test new thagc (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item .\thagore-runtime-windows-x86_64.lib .\thag_runtime.lib -Force
+          .\thagc_stage1.exe build examples\hello.tg -o smoke_hello.exe
+          if (-not (Test-Path smoke_hello.exe)) { throw "SMOKE FAIL: hello output binary missing" }
+          $hout = (& .\smoke_hello.exe 2>&1 | Out-String).Trim()
+          Write-Host "Output: $hout"
+          if ($hout -notmatch "Hello") { throw "SMOKE FAIL: unexpected hello output" }
+          .\thagc_stage1.exe build examples\fib.tg -o smoke_fib.exe
+          if (-not (Test-Path smoke_fib.exe)) { throw "SMOKE FAIL: fib output binary missing" }
+
       # ── Package as seed artifacts ─────────────────────────────────────────
       - name: Package seed artifacts
         shell: bash
@@ -190,16 +232,19 @@ jobs:
           SLUG="${{ matrix.os_slug }}"
           mkdir -p dist/seed
 
-          # Pack: stage1 tarball (same format as existing seed tarballs)
-          mkdir -p seed_pack/bin
-          cp thagc_stage1 seed_pack/bin/stage1
-          cp thagc_stage1 seed_pack/bin/thagore
-          cp thagc_stage1 seed_pack/bin/thag
-          cp thagc_stage1 seed_pack/bin/thagc
-          tar -czf "dist/seed/${{ matrix.artifact }}" -C seed_pack .
-
-          # Also pack runtime.a for downstream use
-          cp libthag_runtime.a "dist/seed/thagore-runtime-${SLUG}.a"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp thagc_stage1.exe "dist/seed/${{ matrix.artifact }}"
+            cp thagore-runtime-windows-x86_64.lib "dist/seed/thagore-runtime-windows-x86_64.lib"
+          else
+            # Pack: stage1 tarball (same format as existing seed tarballs)
+            mkdir -p seed_pack/bin
+            cp thagc_stage1 seed_pack/bin/stage1
+            cp thagc_stage1 seed_pack/bin/thagore
+            cp thagc_stage1 seed_pack/bin/thag
+            cp thagc_stage1 seed_pack/bin/thagc
+            tar -czf "dist/seed/${{ matrix.artifact }}" -C seed_pack .
+            cp "${{ matrix.runtime_asset }}" "dist/seed/thagore-runtime-${SLUG}.a"
+          fi
 
           echo "=== Packaged ==="
           ls -lh dist/seed/
@@ -210,7 +255,6 @@ jobs:
           name: seed-${{ matrix.os_slug }}
           path: |
             dist/seed/
-            thagc_stage1
 
   # ── Publish new seed release ───────────────────────────────────────────────
   publish-seed:
@@ -239,7 +283,7 @@ jobs:
           while IFS= read -r -d '' f; do
             ASSETS+=("$f")
           done < <(find all-seed-artifacts -type f \
-            \( -name "*.tar.gz" -o -name "*.a" \) \
+            \( -name "*.tar.gz" -o -name "*.a" -o -name "*.lib" -o -name "*.exe" \) \
             -print0 | sort -z)
 
           echo "Assets to upload:"
