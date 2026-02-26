@@ -180,6 +180,23 @@ static std::vector<ExprToken> tokenize_expression(const std::string& text, std::
       ++i;
       continue;
     }
+    if (ch == '"') {
+      std::size_t start = i++;
+      while (i < text.size() && text[i] != '"') {
+        if (text[i] == '\\' && i + 1 < text.size()) {
+          i += 2;
+          continue;
+        }
+        ++i;
+      }
+      if (i >= text.size() || text[i] != '"') {
+        error = "unterminated string literal in expression";
+        return {};
+      }
+      ++i;
+      out.push_back(ExprToken{ExprTokenKind::Atom, text.substr(start, i - start)});
+      continue;
+    }
     if (std::isdigit(static_cast<unsigned char>(ch))) {
       std::size_t start = i;
       while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
@@ -215,6 +232,14 @@ static std::string parse_expression_equality(ExprCursor& cursor);
 
 static std::string parse_primary(ExprCursor& cursor) {
   const ExprToken& tok = current_token(cursor);
+  if (tok.kind == ExprTokenKind::Operator && tok.text == "-") {
+    ++cursor.index;
+    const std::string rhs = parse_primary(cursor);
+    if (!cursor.error.empty()) {
+      return "";
+    }
+    return "(0 - " + rhs + ")";
+  }
   if (tok.kind == ExprTokenKind::Atom) {
     ++cursor.index;
     return tok.text;

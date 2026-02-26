@@ -48,6 +48,22 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
         for field in ("has_expression", "expression_valid", "expression_normalized", "expression_error"):
             self.assertIn(field, ast_hpp)
 
+    def test_parser_expression_supports_string_and_unary_minus(self) -> None:
+        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        self.assertIn("unterminated string literal in expression", parser_cpp)
+        self.assertIn("tok.kind == ExprTokenKind::Operator && tok.text == \"-\"", parser_cpp)
+
+    def test_typechecker_expression_rules_present(self) -> None:
+        checker_cpp = Path("compiler/src/frontend/builder.cpp").read_text()
+        for marker in (
+            "operator '",
+            "condition expression must be i32",
+            "return type mismatch in function",
+            "unknown identifier",
+            "parse_let_name",
+        ):
+            self.assertIn(marker, checker_cpp)
+
 
 if __name__ == "__main__":
     unittest.main()
