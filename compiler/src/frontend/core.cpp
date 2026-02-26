@@ -20,6 +20,18 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "while") {
     return TokenKind::KeywordWhile;
   }
+  if (text == "struct") {
+    return TokenKind::KeywordStruct;
+  }
+  if (text == "impl") {
+    return TokenKind::KeywordImpl;
+  }
+  if (text == "import") {
+    return TokenKind::KeywordImport;
+  }
+  if (text == "extern") {
+    return TokenKind::KeywordExtern;
+  }
   return TokenKind::Identifier;
 }
 
@@ -43,6 +55,22 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
     if (std::isspace(static_cast<unsigned char>(ch))) {
       ++column;
       ++i;
+      continue;
+    }
+    if (ch == '#') {
+      while (i < source.size() && source[i] != '\n') {
+        ++i;
+        ++column;
+      }
+      continue;
+    }
+    if (ch == '/' && i + 1 < source.size() && source[i + 1] == '/') {
+      i += 2;
+      column += 2;
+      while (i < source.size() && source[i] != '\n') {
+        ++i;
+        ++column;
+      }
       continue;
     }
     if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_') {
@@ -88,24 +116,49 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
       continue;
     }
 
+    if (ch == '-' && i + 1 < source.size() && source[i + 1] == '>') {
+      tokens.push_back(Token{TokenKind::Arrow, "->", line, column});
+      i += 2;
+      column += 2;
+      continue;
+    }
+    if (ch == '<' && i + 1 < source.size() && source[i + 1] == '=') {
+      tokens.push_back(Token{TokenKind::LessEqual, "<=", line, column});
+      i += 2;
+      column += 2;
+      continue;
+    }
+    if (ch == '>' && i + 1 < source.size() && source[i + 1] == '=') {
+      tokens.push_back(Token{TokenKind::GreaterEqual, ">=", line, column});
+      i += 2;
+      column += 2;
+      continue;
+    }
+    if (ch == '=' && i + 1 < source.size() && source[i + 1] == '=') {
+      tokens.push_back(Token{TokenKind::EqualEqual, "==", line, column});
+      i += 2;
+      column += 2;
+      continue;
+    }
+    if (ch == '!' && i + 1 < source.size() && source[i + 1] == '=') {
+      tokens.push_back(Token{TokenKind::BangEqual, "!=", line, column});
+      i += 2;
+      column += 2;
+      continue;
+    }
+
     TokenKind kind = TokenKind::Unknown;
     if (ch == ':') kind = TokenKind::Colon;
     if (ch == '(') kind = TokenKind::LParen;
     if (ch == ')') kind = TokenKind::RParen;
     if (ch == ',') kind = TokenKind::Comma;
     if (ch == '=') kind = TokenKind::Equal;
+    if (ch == '<') kind = TokenKind::Less;
+    if (ch == '>') kind = TokenKind::Greater;
     if (ch == '+') kind = TokenKind::Plus;
     if (ch == '*') kind = TokenKind::Star;
     if (ch == '/') kind = TokenKind::Slash;
-    if (ch == '-') {
-      if (i + 1 < source.size() && source[i + 1] == '>') {
-        tokens.push_back(Token{TokenKind::Arrow, "->", line, column});
-        i += 2;
-        column += 2;
-        continue;
-      }
-      kind = TokenKind::Minus;
-    }
+    if (ch == '-') kind = TokenKind::Minus;
     tokens.push_back(Token{kind, std::string(1, ch), line, column});
     ++i;
     ++column;
@@ -115,4 +168,3 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
 }
 
 }  // namespace thagc::syntax
-

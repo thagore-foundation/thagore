@@ -2,9 +2,19 @@
 
 namespace thagc::semantics {
 
+static bool is_supported_type(const std::string& type_name) {
+  return type_name == "i32" || type_name == "string" || type_name == "void";
+}
+
 bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSink& diag) const {
   if (program.source.empty()) {
     diag.error("E0001", "source is empty");
+    return false;
+  }
+  if (!program.parse_errors.empty()) {
+    for (const std::string& message : program.parse_errors) {
+      diag.error("E0010", "syntax error: " + message);
+    }
     return false;
   }
   if (!program.has_main) {
@@ -18,6 +28,10 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
     if (fn.return_type.empty()) {
       diag.error("E0004", "missing return type for function '" + fn.name + "'");
+      return false;
+    }
+    if (!is_supported_type(fn.return_type)) {
+      diag.error("E0006", "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "'");
       return false;
     }
   }

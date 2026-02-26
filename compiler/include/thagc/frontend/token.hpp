@@ -13,12 +13,22 @@ enum class TokenKind {
   KeywordReturn,
   KeywordIf,
   KeywordWhile,
+  KeywordStruct,
+  KeywordImpl,
+  KeywordImport,
+  KeywordExtern,
   Colon,
   LParen,
   RParen,
   Comma,
   Arrow,
   Equal,
+  EqualEqual,
+  BangEqual,
+  Less,
+  LessEqual,
+  Greater,
+  GreaterEqual,
   Plus,
   Minus,
   Star,
@@ -36,4 +46,3 @@ struct Token {
 };
 
 }  // namespace thagc::syntax
-
