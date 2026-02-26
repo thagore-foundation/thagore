@@ -302,8 +302,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
     return false;
   }
-  if (!program.has_main) {
-    diag.error("E0002", "missing entry function: func main() -> i32");
+  if (!program.has_main && program.top_level_statements.empty()) {
+    diag.error("E0002", "missing entrypoint: define func main() or provide top-level executable statements");
     return false;
   }
   for (const auto& fn : program.functions) {
@@ -374,6 +374,39 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       return false;
     }
   }
+
+  std::unordered_map<std::string, TypeKind> top_scope;
+  for (const auto& st : program.top_level_statements) {
+    TypeKind expr_type = TypeKind::Void;
+    std::string expr_error;
+    if (!typecheck_statement_expression(st, st.line, top_scope, expr_type, expr_error)) {
+      diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
+      return false;
+    }
+    if (st.kind == syntax::StatementKind::Let) {
+      const std::string name = parse_let_name(st.text);
+      if (name.empty()) {
+        diag.error("E0012", "line " + std::to_string(st.line) + ": invalid let binding name");
+        return false;
+      }
+      if (expr_type == TypeKind::Void || expr_type == TypeKind::Unknown) {
+        diag.error("E0013", "line " + std::to_string(st.line) + ": let binding requires typed value");
+        return false;
+      }
+      top_scope[name] = expr_type;
+    }
+    if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
+      if (expr_type != TypeKind::I32) {
+        diag.error("E0014", "line " + std::to_string(st.line) + ": condition expression must be i32");
+        return false;
+      }
+    }
+    if (st.kind == syntax::StatementKind::Return) {
+      diag.error("E0018", "line " + std::to_string(st.line) + ": top-level return is not allowed");
+      return false;
+    }
+  }
+
   return true;
 }
 

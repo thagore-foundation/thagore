@@ -47,6 +47,7 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
         ast_hpp = Path("compiler/include/thagc/frontend/ast.hpp").read_text()
         for field in ("has_expression", "expression_valid", "expression_normalized", "expression_error"):
             self.assertIn(field, ast_hpp)
+        self.assertIn("top_level_statements", ast_hpp)
 
     def test_parser_expression_supports_string_and_unary_minus(self) -> None:
         parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
@@ -67,6 +68,21 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
     def test_function_return_annotation_is_forbidden(self) -> None:
         parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
         self.assertIn("function return annotation '-> type' is not supported", parser_cpp)
+
+    def test_parser_collects_top_level_executable_statements(self) -> None:
+        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        self.assertIn("top-level executable statements must not be indented", parser_cpp)
+        self.assertIn("program.top_level_statements.push_back(top)", parser_cpp)
+
+    def test_typechecker_accepts_script_entrypoint(self) -> None:
+        checker_cpp = Path("compiler/src/frontend/builder.cpp").read_text()
+        self.assertIn("missing entrypoint: define func main() or provide top-level executable statements", checker_cpp)
+        self.assertIn("program.top_level_statements", checker_cpp)
+
+    def test_lowering_uses_top_level_script_exit_code(self) -> None:
+        lowering_cpp = Path("compiler/src/middleend/builder.cpp").read_text()
+        self.assertIn("program.top_level_statements.back()", lowering_cpp)
+        self.assertIn("core.has_main = program.has_main || !program.top_level_statements.empty()", lowering_cpp)
 
 
 if __name__ == "__main__":

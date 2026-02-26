@@ -33,6 +33,7 @@ struct AstFunction {
 
 struct AstProgram {
   std::vector<std::string> top_level_lines;
+  std::vector<AstStatement> top_level_statements;
   std::vector<AstFunction> functions;
   std::vector<std::string> imports;
   std::vector<std::string> extern_decls;

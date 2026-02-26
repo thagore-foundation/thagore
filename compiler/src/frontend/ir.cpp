@@ -425,6 +425,31 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
   }
 }
 
+static AstStatement build_statement_from_line(AstProgram& program, const SourceLine& body) {
+  AstStatement st;
+  st.text = body.clean;
+  st.line = body.number;
+  if (starts_with(body.clean, "if ")) {
+    st.kind = StatementKind::If;
+    if (!valid_control_header("if", body.clean)) {
+      add_parse_error(program, body.number, "if requires parentheses and trailing ':'");
+    }
+  } else if (starts_with(body.clean, "while ")) {
+    st.kind = StatementKind::While;
+    if (!valid_control_header("while", body.clean)) {
+      add_parse_error(program, body.number, "while requires parentheses and trailing ':'");
+    }
+  } else if (starts_with(body.clean, "return ")) {
+    st.kind = StatementKind::Return;
+  } else if (starts_with(body.clean, "let ")) {
+    st.kind = StatementKind::Let;
+  } else {
+    st.kind = StatementKind::Expr;
+  }
+  parse_statement_expression(program, st);
+  return st;
+}
+
 static int parse_return_literal(const std::string& line) {
   const std::string expr = expression_from_return(line);
   const ParsedExpression parsed = parse_expression_text(expr);
@@ -503,30 +528,10 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
 
       while (i < lines.size() && lines[i].indent > fn.header_indent) {
         const SourceLine& body = lines[i];
-        AstStatement st;
-        st.text = body.clean;
-        st.line = body.number;
-        if (starts_with(body.clean, "if ")) {
-          st.kind = StatementKind::If;
-          if (!valid_control_header("if", body.clean)) {
-            add_parse_error(program, body.number, "if requires parentheses and trailing ':'");
-          }
-        } else if (starts_with(body.clean, "while ")) {
-          st.kind = StatementKind::While;
-          if (!valid_control_header("while", body.clean)) {
-            add_parse_error(program, body.number, "while requires parentheses and trailing ':'");
-          }
-        } else if (starts_with(body.clean, "return ")) {
-          st.kind = StatementKind::Return;
-          if (fn.name == "main") {
-            program.main_return_literal = parse_return_literal(body.clean);
-          }
-        } else if (starts_with(body.clean, "let ")) {
-          st.kind = StatementKind::Let;
-        } else {
-          st.kind = StatementKind::Expr;
+        AstStatement st = build_statement_from_line(program, body);
+        if (st.kind == StatementKind::Return && fn.name == "main") {
+          program.main_return_literal = parse_return_literal(body.clean);
         }
-        parse_statement_expression(program, st);
         fn.body.push_back(st);
         ++i;
       }
@@ -561,6 +566,18 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       ++i;
       continue;
     }
+
+    if (line.indent != 0) {
+      add_parse_error(program, line.number, "top-level executable statements must not be indented");
+      ++i;
+      continue;
+    }
+
+    AstStatement top = build_statement_from_line(program, line);
+    if (top.kind == StatementKind::Return) {
+      add_parse_error(program, line.number, "top-level return is not allowed");
+    }
+    program.top_level_statements.push_back(top);
 
     ++i;
   }
