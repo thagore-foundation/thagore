@@ -25,7 +25,13 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
   if (!codegen_.emit_object(core, "thagc_module", object_path, diag)) {
     return result;
   }
-  if (!linker_.link_executable(object_path, request.output_path, diag)) {
+  domain::LinkPlan link_plan;
+  link_plan.object_path = object_path;
+  link_plan.output_path = request.output_path;
+  const domain::LinkResult link_result = linker_.link_executable(link_plan, diag);
+  if (!link_result.success) {
+    const std::string detail = link_result.error.empty() ? "link step failed" : link_result.error;
+    diag.error("E3200", detail + " (exit=" + std::to_string(link_result.exit_code) + ")");
     return result;
   }
   result.artifacts.push_back(object_path);

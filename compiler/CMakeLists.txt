@@ -8,15 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION}")
 
-add_library(thag_runtime STATIC
-  ../runtime/src/thag_runtime.cpp
-  ../runtime/src/print.cpp
-  ../runtime/src/string.cpp
-  ../runtime/src/platform_posix.cpp
-  ../runtime/src/platform_windows.cpp
-)
-target_include_directories(thag_runtime PUBLIC ../runtime/include)
-
 add_executable(thagc
   src/main.cpp
   src/application/build_usecase.cpp
@@ -29,7 +20,6 @@ add_executable(thagc
   src/backend/llvm_context.cpp
   src/backend/object_emitter.cpp
   src/driver/pipeline.cpp
-  src/runtime/abi_link.cpp
   src/shared/diag.cpp
   src/shared/filesystem.cpp
   src/shared/process.cpp
@@ -38,7 +28,6 @@ add_executable(thagc
 target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(thagc PRIVATE ${LLVM_DEFINITIONS})
-target_link_libraries(thagc PRIVATE thag_runtime)
 
 llvm_map_components_to_libnames(LLVM_LIBS
   Core

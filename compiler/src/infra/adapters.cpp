@@ -31,17 +31,23 @@ bool LlvmCodegenAdapter::emit_llvm_ir(const lowering::CoreProgram& core, const s
   return codegen::LlvmEmitter().emit_llvm_ir(core, module_name, llvm_ir_path, diag);
 }
 
-bool ClangLinkerAdapter::link_executable(const std::string& object_path, const std::string& output_path,
-                                         support::DiagnosticSink& diag) {
-  const std::vector<std::string> clang_link = {
-      "clang", object_path, "-o", output_path, "-lstdc++", runtime::runtime_library_name(),
-  };
+domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& plan,
+                                                       support::DiagnosticSink& diag) {
+  std::vector<std::string> clang_link = {"clang", plan.object_path, "-o", plan.output_path};
+  clang_link.insert(clang_link.end(), plan.extra_args.begin(), plan.extra_args.end());
   const int rc = support::run_process(clang_link);
+
+  domain::LinkResult out;
+  out.exit_code = rc;
+  out.command = "clang " + plan.object_path + " -o " + plan.output_path;
   if (rc != 0) {
-    diag.error("E3001", "clang link failed with exit code: " + std::to_string(rc));
-    return false;
+    out.success = false;
+    out.error = "clang link failed";
+    diag.error("E3001", out.error + " with exit code: " + std::to_string(rc));
+    return out;
   }
-  return true;
+  out.success = true;
+  return out;
 }
 
 }  // namespace thagc::infra

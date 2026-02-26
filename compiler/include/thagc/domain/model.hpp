@@ -23,4 +23,17 @@ struct BuildResult {
   std::vector<std::string> artifacts;
 };
 
+struct LinkPlan {
+  std::string object_path;
+  std::string output_path;
+  std::vector<std::string> extra_args;
+};
+
+struct LinkResult {
+  bool success = false;
+  std::string command;
+  int exit_code = 0;
+  std::string error;
+};
+
 }  // namespace thagc::domain

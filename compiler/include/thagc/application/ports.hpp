@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "thagc/middleend/core_ir.hpp"
+#include "thagc/domain/model.hpp"
 #include "thagc/shared/diag.hpp"
 #include "thagc/frontend/ast.hpp"
 #include "thagc/frontend/token.hpp"
@@ -46,9 +47,7 @@ class CodegenPort {
 class LinkerPort {
  public:
   virtual ~LinkerPort() = default;
-  virtual bool link_executable(const std::string& object_path, const std::string& output_path,
-                               support::DiagnosticSink& diag) = 0;
+  virtual domain::LinkResult link_executable(const domain::LinkPlan& plan, support::DiagnosticSink& diag) = 0;
 };
 
 }  // namespace thagc::application
-

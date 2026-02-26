@@ -32,7 +32,6 @@ jobs:
           mkdir -p dist
           python3 tooling/packaging/pack_core.py \
             --bin build/compiler/thagc \
-            --runtime build/compiler/libthag_runtime.a \
             --out dist/thagc-core-linux.tar.gz
           python3 tooling/packaging/make_checksums.py \
             --out dist/SHA256SUMS-thagc-linux.txt \
