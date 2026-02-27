@@ -1,6 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current released milestone: `v0.6.0` (Concurrency Primitives Alpha).
+Current effective milestone by code audit (February 27, 2026): `v0.2` (Compiler Foundation).
+Status note: tag `v0.6.0` exists, but concurrency work is currently treated as prototype track until compiler gates (`v0.2` → `v0.5`) are passed.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -10,144 +11,149 @@ Active implementation policy: finish one milestone completely before starting th
 
 ---
 
-## Trạng thái hiện tại (v0.6.0)
+## Trạng thái hiện tại (audit ngày February 27, 2026)
 
 | Area | % Done | Ghi chú |
 |------|--------|---------|
-| Compiler Frontend (lexer/parser) | ~35% | Lexer + parser solid, typechecker là stub |
-| Compiler Middleend (typed IR / lowering) | ~25% | Scaffolding xong, implementation thiếu |
-| Compiler Backend (LLVM emit) | ~55% | `func main`, `let`, `print`, `defer`, closures, enums — hoạt động |
-| CLI Driver (10 command groups) | ~85% | Tất cả 10 groups wired, passing parity tests |
-| Runtime (concurrency + IO) | ~40% | APIs hình thành, platform layer là stub |
+| Compiler Frontend (lexer/parser) | ~35% | Lexer + parser usable, typechecker vẫn là stub |
+| Compiler Middleend (typed IR / lowering) | ~25% | Scaffolding có, thiếu implementation thật |
+| Compiler Backend (LLVM emit) | ~35% | Chủ yếu single-function flow; multi-function còn thiếu |
+| CLI Driver (10 command groups) | ~85% | 10 groups wired, nhưng bị giới hạn bởi compiler/runtime backend |
+| Runtime (concurrency + IO) | ~25% | Có API prototype; scheduler/IO platform backend chưa production |
 | Stdlib | ~30% | File structure đúng, implementation gần như rỗng |
-| Tooling | ~75% | Policy, packaging, compare tools đầy đủ |
-| CI / Release | ~65% | Linux + macOS, Windows build job còn thiếu |
+| Tooling | ~75% | Policy, packaging, compare tools hiện có |
+| CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: released `v0.6.0`, continuing milestone-by-milestone toward `v1.5`**
+**Overall: thực tế đang ở `v0.2` (~60%), chưa pass gate để claim `v0.3+`**
 
-Historical note: milestones `v0.2` → `v0.5` are completed and rolled up into the `v0.6.0` release train.
+Execution order (re-anchored to dependency reality):
+1. Close `v0.2` gate (compiler foundation)
+2. Complete `v0.3` (struct/type system)
+3. Complete `v0.4` (module/import pipeline)
+4. Complete `v0.5` (language completeness)
+5. Resume and harden concurrency track (`v0.6+`)
 
 ---
 
-## v0.2 — Compiler Foundation ✅ Completed (historical)
+## v0.2 — Compiler Foundation 🚧 In Progress (~60%)
 > *"Hello World thật sự chạy được — không chỉ `func main()`"*
 
 ### Compiler
-- [x] Multi-function codegen — user-defined functions được emit và gọi được
-- [x] Float types (`f32`, `f64`) trong LLVM emitter — `ValueType::F32/F64`
-- [x] `bool` literal `true`/`false` là first-class value
-- [x] Binary arithmetic cho float — `+`, `-`, `*`, `/` với `f32`/`f64`
-- [x] Typechecker pass thật sự — kiểm tra type mismatch, undefined variable
-- [x] Error messages rõ ràng, có line number, không cryptic
+- [x] `func main` + print + arithmetic MVP chạy được
+- [x] Float types (`f32`, `f64`) có trong backend `ValueType::F32/F64`
+- [ ] Multi-function codegen — user-defined functions được emit và gọi được
+- [ ] `bool` literal `true`/`false` là first-class value end-to-end
+- [ ] Binary arithmetic cho float — `+`, `-`, `*`, `/` với `f32`/`f64`
+- [ ] Typechecker pass thật sự — kiểm tra type mismatch, undefined variable
+- [ ] Error messages rõ ràng, có line/column number, không cryptic
 
 ### Stdlib
-- [x] `std/core.tg` — `print_int`, `print_float`, `print_bool` thật sự hoạt động
-- [x] `std/string.tg` — `len()`, `concat()`, `trim()` basic
+- [ ] `std/core.tg` — `print_int`, `print_float`, `print_bool` thật sự hoạt động
+- [ ] `std/string.tg` — `len()`, `concat()`, `trim()` basic
 
 ### CI
-- [x] Windows build job trong `ci.yml`
-- [x] 3-OS matrix đầy đủ cho build jobs
+- [ ] Windows build job trong `ci.yml`
+- [ ] 3-OS matrix đầy đủ cho build jobs
 
 ### Gate
-- [x] Chương trình có nhiều functions, float, bool compile và chạy đúng trên Linux/macOS/Windows
+- [ ] Chương trình có nhiều functions, float, bool compile và chạy đúng trên Linux/macOS/Windows
 
 ---
 
-## v0.3 — Struct & Type System ✅ Completed (historical)
+## v0.3 — Struct & Type System 🔲 Planned (dependency on v0.2 gate)
 > *"Tao có thể định nghĩa kiểu dữ liệu của riêng mình"*
 
 ### Compiler
-- [x] Struct definition codegen — field layout, alloca cho struct type
-- [x] Field access (`obj.field`) trong LLVM emitter
-- [x] `impl` block codegen — methods được emit như functions với implicit `self`
-- [x] Method call syntax `obj.method()` lowering
-- [x] Enum với payload — variant mang data được emit đúng
-- [x] `TypeKind` mở rộng — struct type, enum type, function type
+- [ ] Struct definition codegen — field layout, alloca cho struct type
+- [ ] Field access (`obj.field`) trong LLVM emitter
+- [ ] `impl` block codegen — methods được emit như functions với implicit `self`
+- [ ] Method call syntax `obj.method()` lowering
+- [ ] Enum với payload — variant mang data được emit đúng
+- [ ] `TypeKind` mở rộng — struct type, enum type, function type
 
 ### Middleend
-- [x] Typed IR implementation — `ast_to_typed_ir` pass thật sự
-- [x] `typed_ir_to_core_ir` lowering cho struct/impl/enum
+- [ ] Typed IR implementation — `ast_to_typed_ir` pass thật sự (scaffolding exists)
+- [ ] `typed_ir_to_core_ir` lowering cho struct/impl/enum
 
 ### Gate
-- [x] Struct với fields, methods, và enum với payload compile và chạy đúng
+- [ ] Struct với fields, methods, và enum với payload compile và chạy đúng
 
 ---
 
-## v0.4 — Module & Import System ✅ Completed (historical)
+## v0.4 — Module & Import System 🔲 Planned (dependency on v0.3 gate)
 > *"Tao có thể chia code ra nhiều file"*
 
 ### Language — Import Syntax
-- [x] `import a.b.c` — resolve từ project root, dùng qua prefix `c.func()`
-- [x] `from a.b.c import func` — import trực tiếp symbol
-- [x] `import pkg_name` — resolve Drago package từ manifest
-- [x] `from pkg_name import func` — import trực tiếp từ package
-- [x] `import a.b.c as alias` — alias để tránh conflict tên
-- [x] Conflict detection — compiler error khi hai import cùng tên cuối, yêu cầu alias
-- [x] Import scope: top-level only, không hỗ trợ block-level import
+- [ ] `import a.b.c` — resolve từ project root, dùng qua prefix `c.func()`
+- [ ] `from a.b.c import func` — import trực tiếp symbol
+- [ ] `import pkg_name` — resolve Drago package từ manifest
+- [ ] `from pkg_name import func` — import trực tiếp từ package
+- [ ] `import a.b.c as alias` — alias để tránh conflict tên
+- [ ] Conflict detection — compiler error khi hai import cùng tên cuối, yêu cầu alias
+- [ ] Import scope: top-level only, không hỗ trợ block-level import
 
 ### Build Pipeline
-- [x] Multi-file compilation — locate + compile + link `.tg` modules
-- [x] `thagore.toml` manifest — khai báo dependencies, version pinning
-- [x] Module resolver — phân biệt package vs file path qua manifest
-- [x] Incremental compilation — chỉ recompile file thay đổi
+- [ ] Multi-file compilation — locate + compile + link `.tg` modules
+- [ ] `thagore.toml` manifest — khai báo dependencies, version pinning
+- [ ] Module resolver — phân biệt package vs file path qua manifest
+- [ ] Incremental compilation — chỉ recompile file thay đổi
 
 ### Drago Package Registry (MVP)
-- [x] `thagc install <package>` hoạt động
-- [x] Local cache tại `~/.thagore/packages/`
-- [x] Registry endpoint cơ bản
-- [x] `thagore.toml` lock file
+- [ ] `thagc install <package>` hoạt động
+- [ ] Local cache tại `~/.thagore/packages/`
+- [ ] Registry endpoint cơ bản
+- [ ] `thagore.toml` lock file
 
 ### Gate
-- [x] Project nhiều file compile thành công, import package từ registry hoạt động
+- [ ] Project nhiều file compile thành công, import package từ registry hoạt động
 
 ---
 
-## v0.5 — Language Features Complete ✅ Completed (historical)
+## v0.5 — Language Features Complete 🔲 Planned (dependency on v0.4 gate)
 > *"Ngôn ngữ đủ để viết chương trình thật"*
 
 ### Compiler — Language Features
-- [x] Closures — capture, function-value type, emit đúng trong LLVM
-- [x] `defer` stack — defer-stack mechanism trong backend, đúng execution order
-- [x] Interpolated strings — `"Hello {name}!"` compile thành string concat
-- [x] `Result<T, E>` / `Option<T>` — built-in sum types, không cần generic đầy đủ
-- [x] `?` operator — early return cho Result/Option
-- [x] Tuple type — `(i32, string)`, tuple destructuring
-- [x] Array/slice literals — `[1, 2, 3]`, index access `arr[i]`
-- [x] Loop labels + labeled `break`/`continue`
-- [x] `pub` visibility enforcement — cross-module access control
+- [ ] Closures — capture, function-value type, emit đúng trong LLVM
+- [ ] `defer` stack — defer-stack mechanism trong backend, đúng execution order
+- [ ] Interpolated strings — `"Hello {name}!"` compile thành string concat
+- [ ] `Result<T, E>` / `Option<T>` — built-in sum types, không cần generic đầy đủ
+- [ ] `?` operator — early return cho Result/Option
+- [ ] Tuple type — `(i32, string)`, tuple destructuring
+- [ ] Array/slice literals — `[1, 2, 3]`, index access `arr[i]`
+- [ ] Loop labels + labeled `break`/`continue`
+- [ ] `pub` visibility enforcement — cross-module access control
 
 ### Type System
-- [x] Generic types cơ bản — `List<T>`, `Option<T>`, `Result<T, E>`
-- [x] Function types — `fn(i32) -> string`
-- [x] User-defined type validation — struct field types, trait method signatures
+- [ ] Generic types cơ bản — `List<T>`, `Option<T>`, `Result<T, E>`
+- [ ] Function types — `fn(i32) -> string`
+- [ ] User-defined type validation — struct field types, trait method signatures
 
 ### Gate
-- [x] Có thể viết một CLI tool hoàn chỉnh bằng Thagore (sort, search, transform data)
+- [ ] Có thể viết một CLI tool hoàn chỉnh bằng Thagore (sort, search, transform data)
 
 ---
 
-## v0.6 — Concurrency Primitives (Alpha) ✅ Released
-> *"Code concurrent không còn là ác mộng"*
+## v0.6 — Concurrency Primitives (Prototype Track) ⚠️ Out-of-order
+> *"Track này đã có prototype, nhưng chưa thể release trước khi pass `v0.2` → `v0.5` gates."*
 
 ### Runtime
-- [x] Task scope foundation — `thag_task_scope_t` production-ready, không dùng raw `std::thread`
-- [x] Nursery prototype — parent-child task relationship đúng
-- [x] Parent-child cancellation propagation thật sự
-- [x] Async scheduler — event loop thay thế thread-per-task
-- [x] epoll/kqueue integration cho Linux/macOS
+- [x] Task scope/nursery/cancel/timeout APIs ở mức prototype
+- [ ] Async scheduler event loop thay thế thread-per-task
+- [ ] epoll/kqueue integration cho Linux/macOS
+- [ ] Platform layer production (không còn stub)
 
 ### Compiler
-- [x] `Rc<T>` codegen — single-thread reference counting
-- [x] `Arc<T>` codegen — atomic reference counting
-- [x] `Send`/`Sync` auto-check thật sự trong typechecker
-- [x] Diagnostic `E_SEND_SYNC_004` với fix hint "use `Arc` instead of `Rc`"
+- [ ] `Rc<T>` codegen — single-thread reference counting
+- [ ] `Arc<T>` codegen — atomic reference counting
+- [ ] `Send`/`Sync` auto-check thật sự trong typechecker
+- [ ] Diagnostic `E_SEND_SYNC_004` với fix hint "use `Arc` instead of `Rc`"
 
 ### Tests
-- [x] Child tasks cannot silently leak outside scope
-- [x] Cancel propagation deterministic under stress
+- [ ] Child tasks cannot silently leak outside scope
+- [ ] Cancel propagation deterministic under stress
 
 ### Gate
-- [x] Structured concurrency contracts pass — scope/cancel/timeout behavior deterministic
+- [ ] Structured concurrency contracts pass — scope/cancel/timeout behavior deterministic
 
 ---
 
@@ -438,12 +444,12 @@ Historical note: milestones `v0.2` → `v0.5` are completed and rolled up into t
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| v0.1 | Baseline rewrite | ✅ Completed (historical) |
-| v0.2 | Compiler foundation | ✅ Completed (rolled into v0.6.0) |
-| v0.3 | Struct & type system | ✅ Completed (rolled into v0.6.0) |
-| v0.4 | Module & import system | ✅ Completed (rolled into v0.6.0) |
-| v0.5 | Language features complete | ✅ Completed (rolled into v0.6.0) |
-| v0.6 | Concurrency alpha | ✅ Released |
+| v0.1 | Baseline rewrite | ✅ Completed (infrastructure baseline) |
+| v0.2 | Compiler foundation | 🚧 In progress (~60% by audit) |
+| v0.3 | Struct & type system | 🔲 Planned (~10% scaffolding only) |
+| v0.4 | Module & import system | 🔲 Planned |
+| v0.5 | Language features complete | 🔲 Planned |
+| v0.6 | Concurrency alpha | ⚠️ Prototype track (out-of-order, not releasable) |
 | v0.7 | Structured concurrency beta | 🔲 Planned |
 | v0.8 | Memory model MVP | 🔲 Planned |
 | v0.9 | IO stack alpha | 🔲 Planned |
