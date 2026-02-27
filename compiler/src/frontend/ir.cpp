@@ -105,6 +105,64 @@ static std::string function_name_from_header(const std::string& line) {
   return line.substr(start, end - start);
 }
 
+static std::string method_name_from_line(const std::string& line) {
+  std::string clean = trim(line);
+  if (starts_with(clean, "pub ")) {
+    clean = trim(clean.substr(4));
+  }
+  if (!starts_with(clean, "func ")) {
+    return "";
+  }
+  return function_name_from_header(clean);
+}
+
+static std::string function_return_type_from_header(const std::string& line) {
+  const std::size_t arrow = line.find("->");
+  if (arrow == std::string::npos) {
+    return "";
+  }
+  std::size_t start = arrow + 2;
+  while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start]))) {
+    ++start;
+  }
+  std::size_t end = line.rfind(':');
+  if (end == std::string::npos || end <= start) {
+    end = line.size();
+  }
+  return trim(line.substr(start, end - start));
+}
+
+static bool parse_impl_for_header(const std::string& line, std::string& trait_name, std::string& type_name) {
+  std::string clean = trim(line);
+  if (!starts_with(clean, "impl ") || !ends_with(clean, ":")) {
+    return false;
+  }
+  clean = trim(clean.substr(5, clean.size() - 6));
+  const std::size_t for_pos = clean.find(" for ");
+  if (for_pos == std::string::npos) {
+    return false;
+  }
+  trait_name = trim(clean.substr(0, for_pos));
+  type_name = trim(clean.substr(for_pos + 5));
+  return !trait_name.empty() && !type_name.empty();
+}
+
+static std::string enum_variant_name_from_line(const std::string& line) {
+  std::string clean = trim(line);
+  if (clean.empty() || clean == ":") {
+    return "";
+  }
+  std::size_t end = 0;
+  while (end < clean.size() &&
+         (std::isalnum(static_cast<unsigned char>(clean[end])) || clean[end] == '_')) {
+    ++end;
+  }
+  if (end == 0) {
+    return "";
+  }
+  return clean.substr(0, end);
+}
+
 static void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
 }
@@ -123,6 +181,75 @@ static bool valid_control_header(const std::string& keyword, const std::string& 
     return false;
   }
   return true;
+}
+
+static bool valid_for_header(const std::string& line) {
+  if (!starts_with(line, "for ") || !ends_with(line, ":")) {
+    return false;
+  }
+  const std::string head = trim(line.substr(0, line.size() - 1));
+  const std::size_t in_pos = head.find(" in ");
+  return in_pos != std::string::npos && in_pos > 4 && in_pos + 4 < head.size();
+}
+
+static void collect_feature_counters(const std::string& line, AstProgram& program) {
+  if (starts_with(line, "match ")) {
+    ++program.match_count;
+  }
+  if (starts_with(line, "if ") && line.find(" if ") != std::string::npos) {
+    ++program.if_expr_count;
+  }
+  if (line.find("enum ") != std::string::npos && line.find('(') != std::string::npos &&
+      line.find(')') != std::string::npos) {
+    ++program.enum_payload_count;
+  }
+  if (line.find(" |") != std::string::npos || line.find("| ") != std::string::npos) {
+    ++program.closure_count;
+  }
+  if (starts_with(line, "for ") && line.find(" in ") != std::string::npos && line.find("..") != std::string::npos) {
+    ++program.range_loop_count;
+  }
+  if (starts_with(line, "let (")) {
+    ++program.tuple_destruct_count;
+  }
+  if (line.find('[') != std::string::npos && line.find(']') != std::string::npos &&
+      line.find(',') != std::string::npos) {
+    ++program.array_literal_count;
+  }
+  if (line.find('[') != std::string::npos && line.find("..") != std::string::npos &&
+      line.find(']') != std::string::npos) {
+    ++program.slice_expr_count;
+  }
+  if (ends_with(line, ":") && line.find(':') != std::string::npos && !starts_with(line, "if ") &&
+      !starts_with(line, "while ") && !starts_with(line, "for ") && !starts_with(line, "func ") &&
+      !starts_with(line, "struct ") && !starts_with(line, "enum ") && !starts_with(line, "impl ") &&
+      !starts_with(line, "trait ") && !starts_with(line, "match ") && !starts_with(line, "else")) {
+    ++program.loop_label_count;
+  }
+  if (starts_with(line, "unsafe ") || starts_with(line, "unsafe:")) {
+    ++program.unsafe_count;
+  }
+  if (starts_with(line, "defer ")) {
+    ++program.defer_scope_count;
+  }
+  if (starts_with(line, "comptime ") || starts_with(line, "comptime:")) {
+    ++program.comptime_count;
+  }
+  if (starts_with(line, "impl ")) {
+    ++program.extension_impl_count;
+  }
+  if (starts_with(line, "pub ")) {
+    ++program.visibility_count;
+  }
+  if (line.find("r#\"") != std::string::npos) {
+    ++program.raw_string_count;
+  }
+  if (line.find("v\"") != std::string::npos) {
+    ++program.interpolated_string_count;
+  }
+  if (line.find('?') != std::string::npos) {
+    ++program.result_sugar_count;
+  }
 }
 
 static bool is_identifier_start(char ch) {
@@ -183,8 +310,20 @@ static std::vector<ExprToken> tokenize_expression(const std::string& text, std::
     }
     if (std::isdigit(static_cast<unsigned char>(ch))) {
       std::size_t start = i;
+      bool has_dot = false;
       while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
         ++i;
+      }
+      if (i < text.size() && text[i] == '.') {
+        has_dot = true;
+        ++i;
+        while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
+          ++i;
+        }
+      }
+      if (has_dot && i == start + 1) {
+        error = "invalid numeric literal in expression";
+        return {};
       }
       out.push_back(ExprToken{ExprTokenKind::Atom, text.substr(start, i - start)});
       continue;
@@ -370,6 +509,9 @@ static std::string expression_from_let(const std::string& line) {
 }
 
 static std::string expression_from_return(const std::string& line) {
+  if (trim(line) == "return") {
+    return "";
+  }
   if (!starts_with(line, "return ")) {
     return "";
   }
@@ -383,6 +525,25 @@ static std::string expression_from_control(const std::string& line) {
     return "";
   }
   return trim(line.substr(lparen + 1, rparen - lparen - 1));
+}
+
+static std::string expression_after_keyword_colon(const std::string& line, const std::string& keyword) {
+  if (!starts_with(line, keyword + " ") || !ends_with(line, ":")) {
+    return "";
+  }
+  return trim(line.substr(keyword.size(), line.size() - keyword.size() - 1));
+}
+
+static std::string expression_from_for(const std::string& line) {
+  if (!starts_with(line, "for ") || !ends_with(line, ":")) {
+    return "";
+  }
+  const std::string body = trim(line.substr(4, line.size() - 5));
+  const std::size_t in_pos = body.find(" in ");
+  if (in_pos == std::string::npos) {
+    return "";
+  }
+  return trim(body.substr(in_pos + 4));
 }
 
 static void parse_statement_expression(AstProgram& program, AstStatement& st) {
@@ -407,8 +568,37 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
       add_parse_error(program, st.line, st.expression_error);
       return;
     }
+  } else if (st.kind == StatementKind::For) {
+    expr_text = expression_from_for(st.text);
+    if (expr_text.empty()) {
+      st.has_expression = true;
+      st.expression_valid = false;
+      st.expression_error = "for statement requires range expression";
+      add_parse_error(program, st.line, st.expression_error);
+      return;
+    }
+    st.has_expression = true;
+    st.expression_valid = expr_text.find("..") != std::string::npos;
+    st.expression_normalized = expr_text;
+    if (!st.expression_valid) {
+      st.expression_error = "for statement must use '..' range syntax";
+      add_parse_error(program, st.line, st.expression_error);
+    }
+    return;
+  } else if (st.kind == StatementKind::Match) {
+    expr_text = expression_after_keyword_colon(st.text, "match");
+  } else if (st.kind == StatementKind::Else) {
+    return;
   } else {
-    expr_text = trim(st.text);
+    const std::string line = trim(st.text);
+    if (ends_with(line, ":")) {
+      return;
+    }
+    if (starts_with(line, "print(") && ends_with(line, ")")) {
+      expr_text = trim(line.substr(6, line.size() - 7));
+    } else {
+      expr_text = line;
+    }
   }
 
   if (expr_text.empty()) {
@@ -429,17 +619,33 @@ static AstStatement build_statement_from_line(AstProgram& program, const SourceL
   AstStatement st;
   st.text = body.clean;
   st.line = body.number;
+  st.indent = body.indent;
   if (starts_with(body.clean, "if ")) {
     st.kind = StatementKind::If;
     if (!valid_control_header("if", body.clean)) {
       add_parse_error(program, body.number, "if requires parentheses and trailing ':'");
+    }
+  } else if (starts_with(body.clean, "else")) {
+    st.kind = StatementKind::Else;
+    if (trim(body.clean) != "else:") {
+      add_parse_error(program, body.number, "else must be written as 'else:'");
     }
   } else if (starts_with(body.clean, "while ")) {
     st.kind = StatementKind::While;
     if (!valid_control_header("while", body.clean)) {
       add_parse_error(program, body.number, "while requires parentheses and trailing ':'");
     }
-  } else if (starts_with(body.clean, "return ")) {
+  } else if (starts_with(body.clean, "for ")) {
+    st.kind = StatementKind::For;
+    if (!valid_for_header(body.clean)) {
+      add_parse_error(program, body.number, "for header must follow 'for <name> in <expr>:'");
+    }
+  } else if (starts_with(body.clean, "match ")) {
+    st.kind = StatementKind::Match;
+    if (!ends_with(body.clean, ":")) {
+      add_parse_error(program, body.number, "match header must be colon-terminated");
+    }
+  } else if (starts_with(body.clean, "return ") || trim(body.clean) == "return") {
     st.kind = StatementKind::Return;
   } else if (starts_with(body.clean, "let ")) {
     st.kind = StatementKind::Let;
@@ -501,20 +707,28 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
   std::size_t i = 0;
   while (i < lines.size()) {
     const SourceLine& line = lines[i];
-    if (starts_with(line.clean, "func ")) {
+    collect_feature_counters(line.clean, program);
+    std::string effective_line = line.clean;
+    if (starts_with(effective_line, "pub ")) {
+      program.public_decls.push_back(line.clean);
+      effective_line = trim(effective_line.substr(4));
+    }
+
+    if (starts_with(effective_line, "func ")) {
       AstFunction fn;
-      fn.name = function_name_from_header(line.clean);
+      fn.name = function_name_from_header(effective_line);
       fn.header_line = line.number;
       fn.header_indent = line.indent;
 
-      if (!ends_with(line.clean, ":")) {
+      if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "function header must be colon-terminated");
       }
       if (fn.name.empty()) {
         add_parse_error(program, line.number, "invalid function header");
       }
-      if (line.clean.find("->") != std::string::npos) {
-        add_parse_error(program, line.number, "function return annotation '-> type' is not supported");
+      fn.return_type = function_return_type_from_header(effective_line);
+      if (effective_line.find("->") != std::string::npos && fn.return_type.empty()) {
+        add_parse_error(program, line.number, "function return annotation is invalid");
       }
 
       if (fn.name == "main") {
@@ -540,30 +754,90 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(line.clean, "import ")) {
-      program.imports.push_back(line.clean);
+    if (starts_with(effective_line, "import ")) {
+      program.imports.push_back(effective_line);
       ++i;
       continue;
     }
-    if (starts_with(line.clean, "extern ")) {
-      program.extern_decls.push_back(line.clean);
+    if (starts_with(effective_line, "extern ")) {
+      program.extern_decls.push_back(effective_line);
       ++i;
       continue;
     }
-    if (starts_with(line.clean, "struct ")) {
-      if (!ends_with(line.clean, ":")) {
+    if (starts_with(effective_line, "struct ")) {
+      if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "struct header must be colon-terminated");
       }
-      program.structs.push_back(line.clean);
+      program.structs.push_back(effective_line);
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "enum ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "enum header must be colon-terminated");
+      }
+      program.enums.push_back(effective_line);
+      int variant_index = 0;
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        const std::string variant = enum_variant_name_from_line(lines[i].clean);
+        if (!variant.empty() && program.enum_variant_tags.find(variant) == program.enum_variant_tags.end()) {
+          program.enum_variant_tags[variant] = variant_index++;
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "type ")) {
+      program.type_aliases.push_back(effective_line);
       ++i;
       continue;
     }
-    if (starts_with(line.clean, "impl ")) {
-      if (!ends_with(line.clean, ":")) {
+    if (starts_with(effective_line, "trait ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "trait header must be colon-terminated");
+      }
+      program.traits.push_back(effective_line);
+      const std::string trait_name = trim(effective_line.substr(6, effective_line.size() - 7));
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        const std::string method = method_name_from_line(lines[i].clean);
+        if (!method.empty()) {
+          program.trait_required_methods[trait_name].push_back(method);
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "impl ")) {
+      if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "impl header must be colon-terminated");
       }
-      program.impls.push_back(line.clean);
+      program.impls.push_back(effective_line);
+      std::string trait_name;
+      std::string type_name;
+      const bool is_impl_for = parse_impl_for_header(effective_line, trait_name, type_name);
+      const std::string impl_key = trait_name + "|" + type_name;
+      if (is_impl_for) {
+        program.impl_for_headers.push_back(effective_line);
+      }
       ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        if (is_impl_for) {
+          const std::string method = method_name_from_line(lines[i].clean);
+          if (!method.empty()) {
+            program.impl_for_methods[impl_key].push_back(method);
+          }
+        }
+        ++i;
+      }
       continue;
     }
 

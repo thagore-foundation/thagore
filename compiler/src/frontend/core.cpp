@@ -17,8 +17,41 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "if") {
     return TokenKind::KeywordIf;
   }
+  if (text == "else") {
+    return TokenKind::KeywordElse;
+  }
   if (text == "while") {
     return TokenKind::KeywordWhile;
+  }
+  if (text == "for") {
+    return TokenKind::KeywordFor;
+  }
+  if (text == "in") {
+    return TokenKind::KeywordIn;
+  }
+  if (text == "match") {
+    return TokenKind::KeywordMatch;
+  }
+  if (text == "enum") {
+    return TokenKind::KeywordEnum;
+  }
+  if (text == "type") {
+    return TokenKind::KeywordType;
+  }
+  if (text == "trait") {
+    return TokenKind::KeywordTrait;
+  }
+  if (text == "pub") {
+    return TokenKind::KeywordPub;
+  }
+  if (text == "unsafe") {
+    return TokenKind::KeywordUnsafe;
+  }
+  if (text == "defer") {
+    return TokenKind::KeywordDefer;
+  }
+  if (text == "comptime") {
+    return TokenKind::KeywordComptime;
   }
   if (text == "struct") {
     return TokenKind::KeywordStruct;

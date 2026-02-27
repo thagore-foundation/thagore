@@ -20,6 +20,8 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
       return result;
     }
     result.artifacts.push_back(request.llvm_ir_path);
+    result.success = true;
+    return result;
   }
   const std::string object_path = request.output_path + ".o";
   if (!codegen_.emit_object(core, "thagc_module", object_path, diag)) {
