@@ -1,5 +1,7 @@
 #include "thagc/shared/process.hpp"
 
+#include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <sstream>
 
@@ -34,5 +36,33 @@ int run_process(const std::vector<std::string>& args) {
   return std::system(cmd.str().c_str());
 }
 
-}  // namespace thagc::support
+std::string run_process_capture(const std::vector<std::string>& args, int* exit_code) {
+  std::stringstream cmd;
+  for (std::size_t i = 0; i < args.size(); ++i) {
+    if (i > 0) {
+      cmd << ' ';
+    }
+    cmd << quote_if_needed(args[i]);
+  }
+  cmd << " 2>/dev/null";
 
+  std::string out;
+  std::array<char, 1024> buffer{};
+  FILE* pipe = popen(cmd.str().c_str(), "r");
+  if (pipe == nullptr) {
+    if (exit_code != nullptr) {
+      *exit_code = -1;
+    }
+    return out;
+  }
+  while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+    out += buffer.data();
+  }
+  const int rc = pclose(pipe);
+  if (exit_code != nullptr) {
+    *exit_code = rc;
+  }
+  return out;
+}
+
+}  // namespace thagc::support

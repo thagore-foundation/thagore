@@ -4,6 +4,7 @@
 
 #include "thagc/driver/common.hpp"
 #include "thagc/driver/pipeline.hpp"
+#include "thagc/shared/filesystem.hpp"
 
 namespace thagc::driver {
 
@@ -17,8 +18,13 @@ int handle_flow(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
     std::cerr << "ERROR: unknown flow subcommand: " << sub << "\n";
     return 1;
   }
+  const std::string journal_path = compiler_home_dir() + "/flow-journal.json";
   if (sub == "recover") {
-    std::cout << "flow recover: no journal in this milestone\n";
+    if (!support::file_exists(journal_path)) {
+      std::cout << "flow recover: no journal found\n";
+      return 0;
+    }
+    std::cout << support::read_text_file(journal_path);
     return 0;
   }
   if (cmd.args.size() < 2) {
@@ -34,8 +40,31 @@ int handle_flow(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
     for (const auto& d : diag.diagnostics()) {
       std::cerr << d.code << ": " << d.message << "\n";
     }
+    support::write_text_file(journal_path,
+                             "{\n"
+                             "  \"status\": \"failed\",\n"
+                             "  \"subcommand\": \"" +
+                                 sub +
+                                 "\",\n"
+                                 "  \"input\": \"" +
+                                 options.input_path +
+                                 "\"\n"
+                                 "}\n");
     return 1;
   }
+  support::write_text_file(journal_path,
+                           "{\n"
+                           "  \"status\": \"ok\",\n"
+                           "  \"subcommand\": \"" +
+                               sub +
+                               "\",\n"
+                               "  \"input\": \"" +
+                               options.input_path +
+                               "\",\n"
+                               "  \"output\": \"" +
+                               options.output_path +
+                               "\"\n"
+                               "}\n");
   std::cout << "flow " << sub << ": OK (" << options.input_path << ")\n";
   return 0;
 }

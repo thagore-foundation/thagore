@@ -34,6 +34,9 @@ bool LlvmCodegenAdapter::emit_llvm_ir(const lowering::CoreProgram& core, const s
 domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& plan,
                                                        support::DiagnosticSink& diag) {
   std::vector<std::string> clang_link = {"clang", plan.object_path, "-o", plan.output_path};
+#if defined(__linux__)
+  clang_link.push_back("-no-pie");
+#endif
   clang_link.insert(clang_link.end(), plan.extra_args.begin(), plan.extra_args.end());
   const int rc = support::run_process(clang_link);
 
