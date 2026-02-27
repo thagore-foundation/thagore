@@ -84,4 +84,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - ADRs: `docs/adr/`
 - Architecture map: `docs/architecture/repo-structure.md`
 - Rewrite status: `docs/architecture/rewrite-status.md`
+- v1.5 roadmap: `docs/architecture/v1.5-roadmap.md`
 - New contributor map: `docs/contributor-guide/where-to-change.md`
