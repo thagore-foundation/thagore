@@ -41,11 +41,11 @@ Execution order (re-anchored to dependency reality):
 ### Compiler
 - [x] `func main` + print + arithmetic MVP chạy được
 - [x] Float types (`f32`, `f64`) có trong backend `ValueType::F32/F64`
-- [ ] Multi-function codegen — user-defined functions được emit và gọi được
-- [ ] `bool` literal `true`/`false` là first-class value end-to-end
-- [ ] Binary arithmetic cho float — `+`, `-`, `*`, `/` với `f32`/`f64`
-- [ ] Typechecker pass thật sự — kiểm tra type mismatch, undefined variable
-- [ ] Error messages rõ ràng, có line/column number, không cryptic
+- [x] Multi-function codegen — user-defined functions được emit và gọi được
+- [x] `bool` literal `true`/`false` là first-class value end-to-end
+- [x] Binary arithmetic cho float — `+`, `-`, `*`, `/` với `f32`/`f64`
+- [x] Typechecker pass thật sự — kiểm tra type mismatch, undefined variable
+- [x] Error messages rõ ràng, có line/column number, không cryptic
 
 ### Stdlib
 - [ ] `std/core.tg` — `print_int`, `print_float`, `print_bool` thật sự hoạt động
