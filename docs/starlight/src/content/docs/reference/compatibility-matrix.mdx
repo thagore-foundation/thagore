@@ -87,12 +87,14 @@ import { Aside } from "@astrojs/starlight/components";
 | `lib/process.tg` | ✅ Production | Shell exec, download, unzip |
 | `lib/io.tg` | ✅ Production | stdin/stdout |
 | `lib/path.tg` | ✅ Production | Path manipulation |
-| `lib/http.tg` | ⚠️ Basic | GET/POST only |
-| `lib/time.tg` | ⚠️ Basic | now_ms, sleep_ms only |
-| `lib/map.tg` | 🔨 Stub | Placeholder implementation |
-| `std/core.tg` | ✅ Production | Core primitives |
-| `std/string.tg` | ✅ Production | StringBuilder, char ops |
-| `std/list.tg` | ✅ Production | Dynamic list |
+| `lib/http.tg` | ⚠️ Basic | Minimal `http_get`/`http_post` client surface |
+| `lib/ws.tg` | ⚠️ Basic | Minimal `ws_connect`/`ws_send`/`ws_close` surface |
+| `lib/db.tg` | ⚠️ Basic | Minimal `db_connect`/`db_query`/`db_close` surface |
+| `lib/time.tg` | ⚠️ Basic | Minimal `now_ms`/`sleep_ms` helpers |
+| `lib/map.tg` | ⚠️ Basic | Deterministic map contract entry points |
+| `std/core.tg` | ⚠️ Basic | Core helper primitives |
+| `std/string.tg` | ⚠️ Basic | String utility helper surface |
+| `std/list.tg` | ⚠️ Basic | List utility helper surface |
 
 ## CI/CD Requirements
 

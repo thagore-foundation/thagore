@@ -120,6 +120,31 @@ thagore install toolchain [options]
 
 Installs or updates the Thagore toolchain (LLVM, runtime ABI, etc.).
 
+### `target` — Target manifest management
+
+```bash
+thagore target <subcommand> [options]
+```
+
+Common subcommands:
+
+- `target add <triple> [--cc=...] [--cxx=...] [--linker=...] [--sysroot=...]`
+- `target list`
+- `target doctor [triple]`
+- `target show <triple>`
+- `target remove <triple>`
+
+### `update` — Compiler update lane
+
+```bash
+thagore update <check|apply|rollback> [options]
+```
+
+Common flags:
+
+- `--dry-run` (preview only)
+- `--yes` (skip confirmation prompts)
+
 ### Global Options
 
 | Flag | Description |

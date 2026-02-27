@@ -33,10 +33,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM + build tools
+      - name: Install LLVM 21 + build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm-dev cmake ninja-build clang-format
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          sudo apt-get install -y \
+            clang-21 lld-21 llvm-21-dev \
+            cmake ninja-build clang-format \
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
 
       - name: Format check (C++)
         run: |
@@ -46,7 +52,17 @@ jobs:
           fi
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
 
       - name: Build
         run: cmake --build build -j
+
+      - name: Run full Python suites with built compiler
+        env:
+          THAGC_BIN: build/compiler/thagc
+        run: |
+          python -m unittest discover -s tests -p "test_*.py"

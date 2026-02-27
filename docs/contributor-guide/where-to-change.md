@@ -43,6 +43,19 @@ Quick map for contributors:
 - `contracts/*`
 - `tests/parity/*`
 
+## I need to change runtime concurrency / cancel / timeout
+
+- `runtime/include/thag_runtime.h`
+- `runtime/src/concurrency.cpp`
+- `contracts/concurrency/*`
+- `tests/integration/*` and `tests/soak/*`
+
+## I need to change stdlib client surfaces (HTTP/WebSocket/DB/time/map)
+
+- `stdlib/lib/*`
+- `stdlib/std/*`
+- `contracts/io/*`
+
 ## I need to update release/policy automation
 
 - `.github/workflows/*`

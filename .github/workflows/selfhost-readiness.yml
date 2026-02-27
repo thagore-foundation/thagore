@@ -21,6 +21,27 @@ jobs:
           echo thagc > /tmp/b.bin
           python3 tooling/compare/compare_binary_hash.py --left /tmp/a.bin --right /tmp/b.bin
 
-      - name: Soak placeholder
+      - name: Install LLVM 21 + build deps
         run: |
-          echo "72h soak suite is enabled in release branch gates."
+          sudo apt-get update
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          sudo apt-get install -y \
+            clang-21 lld-21 llvm-21-dev \
+            cmake ninja-build \
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
+
+      - name: Build compiler
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+          cmake --build build -j
+
+      - name: Run soak suite
+        env:
+          THAGC_BIN: build/compiler/thagc
+        run: |
+          python3 -m unittest tests.soak.test_compiler_stress

@@ -20,11 +20,20 @@ jobs:
       - name: Install build toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm-dev cmake ninja-build
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          sudo apt-get install -y \
+            clang-21 lld-21 llvm-21-dev \
+            cmake ninja-build \
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
 
       - name: Build thagc
         run: |
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
           cmake --build build -j
 
       - name: Package core
