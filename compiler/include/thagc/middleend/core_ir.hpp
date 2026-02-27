@@ -11,6 +11,7 @@ namespace thagc::lowering {
 enum class CoreStmtKind {
   Let,
   Assign,
+  Defer,
   Expr,
   Return,
   If,
@@ -38,6 +39,12 @@ struct CoreFunction {
   std::vector<CoreStmt> statements;
 };
 
+struct CoreExternFunction {
+  std::string name;
+  std::vector<std::string> param_types;
+  std::string return_type;
+};
+
 struct CoreProgram {
   std::string normalized_source;
   bool has_main = false;
@@ -45,7 +52,9 @@ struct CoreProgram {
   std::string main_return_expression;
   std::vector<CoreStmt> main_statements;
   std::vector<CoreFunction> functions;
+  std::vector<CoreExternFunction> extern_functions;
   std::unordered_map<std::string, int> enum_variant_tags;
+  std::unordered_map<std::string, std::string> enum_variant_payload_types;
   std::unordered_map<std::string, std::vector<std::string>> struct_fields;
   std::unordered_map<std::string, std::string> struct_field_types;
 };

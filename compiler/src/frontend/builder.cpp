@@ -16,9 +16,56 @@ static bool starts_with(const std::string& text, const std::string& prefix) {
   return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
 }
 
+static std::string trim_copy(const std::string& text) {
+  std::size_t left = 0;
+  while (left < text.size() && std::isspace(static_cast<unsigned char>(text[left]))) {
+    ++left;
+  }
+  std::size_t right = text.size();
+  while (right > left && std::isspace(static_cast<unsigned char>(text[right - 1]))) {
+    --right;
+  }
+  return text.substr(left, right - left);
+}
+
+static bool parse_generic_parts(const std::string& type_name, std::string& base, std::vector<std::string>& args) {
+  args.clear();
+  const std::string clean = trim_copy(type_name);
+  const std::size_t lt = clean.find('<');
+  const std::size_t gt = clean.rfind('>');
+  if (lt == std::string::npos || gt == std::string::npos || gt <= lt + 1) {
+    return false;
+  }
+  base = trim_copy(clean.substr(0, lt));
+  const std::string inner = clean.substr(lt + 1, gt - lt - 1);
+  std::size_t i = 0;
+  while (i < inner.size()) {
+    std::size_t comma = inner.find(',', i);
+    if (comma == std::string::npos) {
+      comma = inner.size();
+    }
+    const std::string arg = trim_copy(inner.substr(i, comma - i));
+    if (!arg.empty()) {
+      args.push_back(arg);
+    }
+    i = comma + 1;
+  }
+  return !base.empty() && !args.empty();
+}
+
 static bool is_supported_type(const std::string& type_name) {
-  return type_name == "i32" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
-         type_name == "string" || type_name == "String" || type_name == "ptr" || type_name == "void";
+  if (type_name == "i32" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
+      type_name == "string" || type_name == "String" || type_name == "ptr" || type_name == "void" ||
+      type_name == "Option" || type_name == "Result" || type_name == "List" || type_name == "Rc" ||
+      type_name == "Arc" || type_name == "Fn") {
+    return true;
+  }
+  std::string base;
+  std::vector<std::string> args;
+  if (!parse_generic_parts(type_name, base, args)) {
+    return false;
+  }
+  return base == "Option" || base == "Result" || base == "List" || base == "Rc" || base == "Arc";
 }
 
 static std::string type_name(TypeKind kind) {
@@ -27,6 +74,12 @@ static std::string type_name(TypeKind kind) {
   if (kind == TypeKind::F64) return "f64";
   if (kind == TypeKind::Bool) return "bool";
   if (kind == TypeKind::String) return "String";
+  if (kind == TypeKind::Option) return "Option";
+  if (kind == TypeKind::Result) return "Result";
+  if (kind == TypeKind::List) return "List";
+  if (kind == TypeKind::Rc) return "Rc";
+  if (kind == TypeKind::Arc) return "Arc";
+  if (kind == TypeKind::Fn) return "Fn";
   if (kind == TypeKind::Ptr) return "ptr";
   if (kind == TypeKind::Struct) return "struct";
   if (kind == TypeKind::Void) return "void";
@@ -34,13 +87,29 @@ static std::string type_name(TypeKind kind) {
 }
 
 static TypeKind parse_type_name(const std::string& type_name) {
-  if (type_name == "i32") return TypeKind::I32;
-  if (type_name == "f32") return TypeKind::F32;
-  if (type_name == "f64") return TypeKind::F64;
-  if (type_name == "bool") return TypeKind::Bool;
-  if (type_name == "string" || type_name == "String") return TypeKind::String;
-  if (type_name == "ptr") return TypeKind::Ptr;
-  if (type_name == "void") return TypeKind::Void;
+  const std::string clean = trim_copy(type_name);
+  if (clean == "i32") return TypeKind::I32;
+  if (clean == "f32") return TypeKind::F32;
+  if (clean == "f64") return TypeKind::F64;
+  if (clean == "bool") return TypeKind::Bool;
+  if (clean == "string" || clean == "String") return TypeKind::String;
+  if (clean == "Option") return TypeKind::Option;
+  if (clean == "Result") return TypeKind::Result;
+  if (clean == "List") return TypeKind::List;
+  if (clean == "Rc") return TypeKind::Rc;
+  if (clean == "Arc") return TypeKind::Arc;
+  if (clean == "Fn") return TypeKind::Fn;
+  if (clean == "ptr") return TypeKind::Ptr;
+  if (clean == "void") return TypeKind::Void;
+  std::string base;
+  std::vector<std::string> args;
+  if (parse_generic_parts(clean, base, args)) {
+    if (base == "Option") return TypeKind::Option;
+    if (base == "Result") return TypeKind::Result;
+    if (base == "List") return TypeKind::List;
+    if (base == "Rc") return TypeKind::Rc;
+    if (base == "Arc") return TypeKind::Arc;
+  }
   return TypeKind::Unknown;
 }
 
@@ -124,6 +193,16 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
     }
     out[fn.name] = TypeKind::Unknown;
   }
+  for (const auto& ext : program.extern_functions) {
+    const TypeKind direct = resolve_declared_type(ext.return_type, aliases);
+    if (direct != TypeKind::Unknown) {
+      out[ext.name] = direct;
+    } else if (struct_names.find(ext.return_type) != struct_names.end()) {
+      out[ext.name] = TypeKind::Struct;
+    } else {
+      out[ext.name] = TypeKind::Unknown;
+    }
+  }
   return out;
 }
 
@@ -160,8 +239,45 @@ static bool is_ident_body(char ch) {
   return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
 }
 
+static bool is_interpolated_literal(const std::string& text) {
+  const std::string clean = trim_copy(text);
+  return clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"';
+}
+
+static bool parse_closure_literal(const std::string& text, std::string& param, std::string& body) {
+  const std::string clean = trim_copy(text);
+  if (clean.size() < 4 || clean[0] != '|') {
+    return false;
+  }
+  const std::size_t second_bar = clean.find('|', 1);
+  if (second_bar == std::string::npos || second_bar <= 1) {
+    return false;
+  }
+  param = trim_copy(clean.substr(1, second_bar - 1));
+  body = trim_copy(clean.substr(second_bar + 1));
+  if (param.empty() || body.empty()) {
+    return false;
+  }
+  if (!is_ident_start(param[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < param.size(); ++i) {
+    if (!is_ident_body(param[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& error) {
   std::vector<ExprTok> out;
+  std::string closure_param;
+  std::string closure_body;
+  if (parse_closure_literal(text, closure_param, closure_body)) {
+    out.push_back(ExprTok{ExprTokKind::Atom, trim_copy(text)});
+    out.push_back(ExprTok{ExprTokKind::End, ""});
+    return out;
+  }
   for (std::size_t i = 0; i < text.size();) {
     const char ch = text[i];
     if (std::isspace(static_cast<unsigned char>(ch))) {
@@ -234,6 +350,24 @@ static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& 
       continue;
     }
     if (is_ident_start(ch)) {
+      if (ch == 'v' && i + 1 < text.size() && text[i + 1] == '"') {
+        const std::size_t start = i;
+        i += 2;
+        while (i < text.size() && text[i] != '"') {
+          if (text[i] == '\\' && i + 1 < text.size()) {
+            i += 2;
+            continue;
+          }
+          ++i;
+        }
+        if (i >= text.size() || text[i] != '"') {
+          error = "unterminated interpolated string literal";
+          return {};
+        }
+        ++i;
+        out.push_back(ExprTok{ExprTokKind::Atom, text.substr(start, i - start)});
+        continue;
+      }
       std::size_t start = i;
       while (i < text.size()) {
         if (is_ident_body(text[i])) {
@@ -306,12 +440,14 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     ++cursor.index;
     if (cur(cursor).kind == ExprTokKind::LParen) {
       ++cursor.index;  // '('
+      std::vector<TypeKind> args;
       if (cur(cursor).kind != ExprTokKind::RParen) {
         while (true) {
           const TypeKind arg_type = parse_expr_type(cursor);
           if (arg_type == TypeKind::Unknown) {
             return TypeKind::Unknown;
           }
+          args.push_back(arg_type);
           if (cur(cursor).kind == ExprTokKind::Comma) {
             ++cursor.index;
             continue;
@@ -324,10 +460,49 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
         return TypeKind::Unknown;
       }
       ++cursor.index;
+      if (tok.text == "Some" || tok.text == "None") {
+        return TypeKind::Option;
+      }
+      if (tok.text == "Ok" || tok.text == "Err") {
+        return TypeKind::Result;
+      }
+      if (tok.text == "is_some" || tok.text == "is_none" || tok.text == "is_ok" || tok.text == "is_err") {
+        if (args.size() != 1) {
+          cursor.error = "predicate '" + tok.text + "' expects 1 argument";
+          return TypeKind::Unknown;
+        }
+        return TypeKind::Bool;
+      }
+      if (tok.text == "unwrap") {
+        if (args.size() != 1) {
+          cursor.error = "unwrap() expects 1 argument";
+          return TypeKind::Unknown;
+        }
+        return TypeKind::I32;
+      }
+      if (tok.text == "unwrap_or") {
+        if (args.size() != 2) {
+          cursor.error = "unwrap_or() expects 2 arguments";
+          return TypeKind::Unknown;
+        }
+        return args[1];
+      }
+      if (tok.text == "open" || tok.text == "close" || tok.text == "read" || tok.text == "write") {
+        return TypeKind::I32;
+      }
+      if (tok.text == "print") {
+        return TypeKind::I32;
+      }
       if (cursor.function_returns != nullptr) {
         auto fn = cursor.function_returns->find(tok.text);
         if (fn != cursor.function_returns->end()) {
           return fn->second;
+        }
+      }
+      if (cursor.scope != nullptr) {
+        auto local_callable = cursor.scope->find(tok.text);
+        if (local_callable != cursor.scope->end() && local_callable->second == TypeKind::Fn) {
+          return TypeKind::I32;
         }
       }
       if (cursor.struct_names != nullptr && cursor.struct_names->find(tok.text) != cursor.struct_names->end()) {
@@ -347,6 +522,14 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     }
     if (is_string_atom(tok.text)) {
       return TypeKind::String;
+    }
+    if (is_interpolated_literal(tok.text)) {
+      return TypeKind::String;
+    }
+    std::string closure_param;
+    std::string closure_body;
+    if (parse_closure_literal(tok.text, closure_param, closure_body)) {
+      return TypeKind::Fn;
     }
     if (cursor.scope != nullptr) {
       auto it = cursor.scope->find(tok.text);
@@ -519,6 +702,32 @@ static bool split_field_target(const std::string& target, std::string& base, std
   return true;
 }
 
+static std::string parse_match_payload_binding_label(const std::string& line) {
+  const std::string clean = trim_copy(line);
+  if (clean.empty() || clean.back() != ':') {
+    return "";
+  }
+  const std::string label = trim_copy(clean.substr(0, clean.size() - 1));
+  const std::size_t lparen = label.find('(');
+  const std::size_t rparen = label.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen + 1) {
+    return "";
+  }
+  std::string binding = trim_copy(label.substr(lparen + 1, rparen - lparen - 1));
+  if (binding.empty() || binding == "_") {
+    return "";
+  }
+  if (!is_ident_start(binding[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < binding.size(); ++i) {
+    if (!is_ident_body(binding[i])) {
+      return "";
+    }
+  }
+  return binding;
+}
+
 enum class OwnershipKind {
   None,
   Rc,
@@ -633,6 +842,68 @@ static std::string parse_constructor_name(const std::string& expr) {
     }
   }
   return name;
+}
+
+static bool is_assignable_type(TypeKind declared, TypeKind actual) {
+  if (declared == actual) {
+    return true;
+  }
+  if ((declared == TypeKind::Rc || declared == TypeKind::Arc || declared == TypeKind::List) &&
+      actual != TypeKind::Void && actual != TypeKind::Unknown) {
+    return true;
+  }
+  if (declared == TypeKind::F64 && (actual == TypeKind::F32 || actual == TypeKind::I32)) {
+    return true;
+  }
+  if (declared == TypeKind::F32 && actual == TypeKind::I32) {
+    return true;
+  }
+  if (declared == TypeKind::Arc && actual == TypeKind::Rc) {
+    return false;
+  }
+  return false;
+}
+
+static bool validate_typestate_statement(const syntax::AstStatement& st, std::unordered_map<std::string, bool>& opened,
+                                         support::DiagnosticSink& diag) {
+  const std::string open_ident = extract_call_arg_ident(st.text, "open");
+  if (!open_ident.empty()) {
+    opened[open_ident] = true;
+    return true;
+  }
+
+  const std::string close_ident = extract_call_arg_ident(st.text, "close");
+  if (!close_ident.empty()) {
+    auto it = opened.find(close_ident);
+    if (it == opened.end() || !it->second) {
+      diag.error("E_TYPESTATE_001",
+                 "line " + std::to_string(st.line) + ": close(" + close_ident + ") requires resource in open state");
+      return false;
+    }
+    it->second = false;
+    return true;
+  }
+
+  const std::string read_ident = extract_call_arg_ident(st.text, "read");
+  if (!read_ident.empty()) {
+    auto it = opened.find(read_ident);
+    if (it == opened.end() || !it->second) {
+      diag.error("E_TYPESTATE_002",
+                 "line " + std::to_string(st.line) + ": read(" + read_ident + ") requires resource in open state");
+      return false;
+    }
+  }
+
+  const std::string write_ident = extract_call_arg_ident(st.text, "write");
+  if (!write_ident.empty()) {
+    auto it = opened.find(write_ident);
+    if (it == opened.end() || !it->second) {
+      diag.error("E_TYPESTATE_002",
+                 "line " + std::to_string(st.line) + ": write(" + write_ident + ") requires resource in open state");
+      return false;
+    }
+  }
+  return true;
 }
 
 static bool validate_memory_model_statement(
@@ -972,6 +1243,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   for (const auto& fn : program.functions) {
     std::unordered_map<std::string, TypeKind> scope;
     std::unordered_map<std::string, OwnershipKind> ownership;
+    std::unordered_map<std::string, bool> opened_resources;
     std::unordered_map<std::string, std::string> struct_bindings;
     for (const std::string& param : fn.params) {
       if (!param.empty()) {
@@ -986,12 +1258,22 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       if (!validate_memory_model_statement(st, ownership, diag)) {
         return false;
       }
+      if (!validate_typestate_statement(st, opened_resources, diag)) {
+        return false;
+      }
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
       if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, function_returns,
                                           struct_names, expr_type, expr_error)) {
         diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
         return false;
+      }
+      if (st.kind == syntax::StatementKind::Expr) {
+        const std::string payload_binding = parse_match_payload_binding_label(st.text);
+        if (!payload_binding.empty()) {
+          scope[payload_binding] = TypeKind::I32;
+          continue;
+        }
       }
 
       if (st.kind == syntax::StatementKind::Let) {
@@ -1004,8 +1286,23 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           diag.error("E0013", "line " + std::to_string(st.line) + ": let binding requires typed value");
           return false;
         }
-        scope[name] = expr_type;
-        if (expr_type == TypeKind::Struct) {
+        const std::string annotation = parse_let_annotation(st.text);
+        if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+          const TypeKind declared = resolve_declared_type(annotation, aliases);
+          if (declared == TypeKind::Unknown) {
+            diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
+            return false;
+          }
+          if (!is_assignable_type(declared, expr_type)) {
+            diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                   "' is not assignable from " + type_name(expr_type));
+            return false;
+          }
+          scope[name] = declared;
+        } else {
+          scope[name] = expr_type;
+        }
+        if (scope[name] == TypeKind::Struct) {
           const std::string ctor = parse_constructor_name(st.expression_normalized);
           if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
             diag.error("E0020",
@@ -1056,7 +1353,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           }
           const std::string field_key = target;
           auto field_type_it = scope.find(field_key);
-          if (field_type_it != scope.end() && field_type_it->second != expr_type) {
+          if (field_type_it != scope.end() && !is_assignable_type(field_type_it->second, expr_type)) {
             diag.error("E0024", "line " + std::to_string(st.line) + ": assigned value type " + type_name(expr_type) +
                                    " does not match field type " + type_name(field_type_it->second));
             return false;
@@ -1068,7 +1365,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             diag.error("E0025", "line " + std::to_string(st.line) + ": assignment to unknown variable '" + target + "'");
             return false;
           }
-          if (it->second != expr_type) {
+          if (!is_assignable_type(it->second, expr_type)) {
             diag.error("E0026", "line " + std::to_string(st.line) + ": cannot assign " + type_name(expr_type) +
                                    " to variable '" + target + "' of type " + type_name(it->second));
             return false;
@@ -1085,7 +1382,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
       }
       if (st.kind == syntax::StatementKind::Match) {
-        if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool) {
+        if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
+            expr_type != TypeKind::Result) {
           diag.error("E_TYPE_MATCH_MISSING_ENUM",
                      "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
           return false;
@@ -1131,8 +1429,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
                      " but inferred " + type_name(effective_return));
       return false;
     }
-    if (fn.name == "main" && effective_return != TypeKind::I32) {
-      diag.error("E0005", "main must return i32");
+    if (fn.name == "main" && effective_return == TypeKind::Void) {
+      diag.error("E0005", "main must return a value");
       return false;
     }
     if (has_return && effective_return == TypeKind::Unknown) {
@@ -1143,9 +1441,17 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
   std::unordered_map<std::string, TypeKind> top_scope;
   std::unordered_map<std::string, OwnershipKind> top_ownership;
+  std::unordered_map<std::string, bool> top_opened_resources;
   std::unordered_map<std::string, std::string> top_struct_bindings;
   for (const auto& st : program.top_level_statements) {
+    if (st.kind == syntax::StatementKind::Defer) {
+      diag.error("E0028", "line " + std::to_string(st.line) + ": top-level defer is not allowed");
+      return false;
+    }
     if (!validate_memory_model_statement(st, top_ownership, diag)) {
+      return false;
+    }
+    if (!validate_typestate_statement(st, top_opened_resources, diag)) {
       return false;
     }
     TypeKind expr_type = TypeKind::Void;
@@ -1154,6 +1460,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
                                         struct_names, expr_type, expr_error)) {
       diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
       return false;
+    }
+    if (st.kind == syntax::StatementKind::Expr) {
+      const std::string payload_binding = parse_match_payload_binding_label(st.text);
+      if (!payload_binding.empty()) {
+        top_scope[payload_binding] = TypeKind::I32;
+        continue;
+      }
     }
     if (st.kind == syntax::StatementKind::Let) {
       const std::string name = parse_let_name(st.text);
@@ -1165,8 +1478,23 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         diag.error("E0013", "line " + std::to_string(st.line) + ": let binding requires typed value");
         return false;
       }
-      top_scope[name] = expr_type;
-      if (expr_type == TypeKind::Struct) {
+      const std::string annotation = parse_let_annotation(st.text);
+      if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+        const TypeKind declared = resolve_declared_type(annotation, aliases);
+        if (declared == TypeKind::Unknown) {
+          diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
+          return false;
+        }
+        if (!is_assignable_type(declared, expr_type)) {
+          diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                 "' is not assignable from " + type_name(expr_type));
+          return false;
+        }
+        top_scope[name] = declared;
+      } else {
+        top_scope[name] = expr_type;
+      }
+      if (top_scope[name] == TypeKind::Struct) {
         const std::string ctor = parse_constructor_name(st.expression_normalized);
         if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
           diag.error("E0020",
@@ -1215,7 +1543,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           return false;
         }
         auto field_type_it = top_scope.find(target);
-        if (field_type_it != top_scope.end() && field_type_it->second != expr_type) {
+        if (field_type_it != top_scope.end() && !is_assignable_type(field_type_it->second, expr_type)) {
           diag.error("E0024", "line " + std::to_string(st.line) + ": assigned value type " + type_name(expr_type) +
                                  " does not match field type " + type_name(field_type_it->second));
           return false;
@@ -1227,7 +1555,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           diag.error("E0025", "line " + std::to_string(st.line) + ": assignment to unknown variable '" + target + "'");
           return false;
         }
-        if (it->second != expr_type) {
+        if (!is_assignable_type(it->second, expr_type)) {
           diag.error("E0026", "line " + std::to_string(st.line) + ": cannot assign " + type_name(expr_type) +
                                  " to variable '" + target + "' of type " + type_name(it->second));
           return false;
@@ -1243,7 +1571,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
     }
     if (st.kind == syntax::StatementKind::Match) {
-      if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool) {
+      if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
+          expr_type != TypeKind::Result) {
         diag.error("E_TYPE_MATCH_MISSING_ENUM",
                    "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
         return false;

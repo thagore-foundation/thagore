@@ -10,6 +10,7 @@ enum class StatementKind {
   Return,
   Let,
   Assign,
+  Defer,
   If,
   Else,
   While,
@@ -39,10 +40,18 @@ struct AstFunction {
   std::vector<AstStatement> body;
 };
 
+struct AstExternFunction {
+  std::string name;
+  std::vector<std::string> param_types;
+  std::string return_type;
+  int line = 0;
+};
+
 struct AstProgram {
   std::vector<std::string> top_level_lines;
   std::vector<AstStatement> top_level_statements;
   std::vector<AstFunction> functions;
+  std::vector<AstExternFunction> extern_functions;
   std::vector<std::string> imports;
   std::vector<std::string> extern_decls;
   std::vector<std::string> structs;
@@ -50,11 +59,14 @@ struct AstProgram {
   std::unordered_map<std::string, std::string> struct_field_types;
   std::vector<std::string> impls;
   std::vector<std::string> enums;
+  std::vector<std::string> flows;
+  std::vector<std::string> intents;
   std::vector<std::string> type_aliases;
   std::vector<std::string> traits;
   std::vector<std::string> impl_for_headers;
   std::vector<std::string> public_decls;
   std::unordered_map<std::string, int> enum_variant_tags;
+  std::unordered_map<std::string, std::string> enum_variant_payload_types;
   std::unordered_map<std::string, std::vector<std::string>> trait_required_methods;
   std::unordered_map<std::string, std::vector<std::string>> impl_for_methods;
   std::vector<std::string> parse_errors;

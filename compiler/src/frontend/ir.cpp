@@ -197,6 +197,24 @@ static std::string enum_variant_name_from_line(const std::string& line) {
   return clean.substr(0, end);
 }
 
+static std::string enum_variant_payload_type_from_line(const std::string& line) {
+  const std::string clean = trim(line);
+  const std::size_t lparen = clean.find('(');
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen + 1) {
+    return "";
+  }
+  std::string payload = trim(clean.substr(lparen + 1, rparen - lparen - 1));
+  if (payload.empty()) {
+    return "";
+  }
+  const std::size_t colon = payload.find(':');
+  if (colon != std::string::npos) {
+    payload = trim(payload.substr(colon + 1));
+  }
+  return payload;
+}
+
 static std::string struct_name_from_header(const std::string& line) {
   if (!starts_with(line, "struct ") || !ends_with(line, ":")) {
     return "";
@@ -252,6 +270,88 @@ static std::string struct_field_type_from_line(const std::string& line) {
 
 static void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
+}
+
+static bool is_interpolated_literal(const std::string& text) {
+  const std::string clean = trim(text);
+  return clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"';
+}
+
+static bool parse_closure_literal(const std::string& text, std::string& param, std::string& body) {
+  auto is_ident_start_local = [](char ch) {
+    return std::isalpha(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  auto is_ident_body_local = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  const std::string clean = trim(text);
+  if (clean.size() < 4 || clean[0] != '|') {
+    return false;
+  }
+  const std::size_t second_bar = clean.find('|', 1);
+  if (second_bar == std::string::npos || second_bar <= 1) {
+    return false;
+  }
+  param = trim(clean.substr(1, second_bar - 1));
+  body = trim(clean.substr(second_bar + 1));
+  if (param.empty() || body.empty()) {
+    return false;
+  }
+  if (!is_ident_start_local(param[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < param.size(); ++i) {
+    if (!is_ident_body_local(param[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool parse_extern_function_declaration(const std::string& line, AstExternFunction& out) {
+  const std::string clean = trim(line);
+  if (!starts_with(clean, "extern func ")) {
+    return false;
+  }
+  const std::size_t name_start = 12;
+  const std::size_t lparen = clean.find('(', name_start);
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen < lparen) {
+    return false;
+  }
+  out.name = trim(clean.substr(name_start, lparen - name_start));
+  if (out.name.empty()) {
+    return false;
+  }
+
+  const std::string params = trim(clean.substr(lparen + 1, rparen - lparen - 1));
+  out.param_types.clear();
+  std::size_t i = 0;
+  while (i < params.size()) {
+    std::size_t comma = params.find(',', i);
+    if (comma == std::string::npos) {
+      comma = params.size();
+    }
+    std::string part = trim(params.substr(i, comma - i));
+    if (!part.empty()) {
+      const std::size_t colon = part.find(':');
+      if (colon != std::string::npos && colon + 1 < part.size()) {
+        part = trim(part.substr(colon + 1));
+      }
+      if (!part.empty()) {
+        out.param_types.push_back(part);
+      }
+    }
+    i = comma + 1;
+  }
+
+  const std::size_t arrow = clean.find("->", rparen);
+  if (arrow == std::string::npos) {
+    out.return_type = "i32";
+  } else {
+    out.return_type = trim(clean.substr(arrow + 2));
+  }
+  return !out.return_type.empty();
 }
 
 static bool valid_control_header(const std::string& keyword, const std::string& line) {
@@ -770,6 +870,8 @@ static std::string expression_from_for(const std::string& line) {
 
 static void parse_statement_expression(AstProgram& program, AstStatement& st) {
   std::string expr_text;
+  std::string closure_param;
+  std::string closure_body;
   if (st.kind == StatementKind::Let) {
     st.target = let_binding_name_from_line(st.text);
     expr_text = expression_from_let(st.text);
@@ -792,6 +894,15 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
     }
   } else if (st.kind == StatementKind::Return) {
     expr_text = expression_from_return(st.text);
+  } else if (st.kind == StatementKind::Defer) {
+    expr_text = trim(st.text.substr(6));
+    if (expr_text.empty()) {
+      st.has_expression = true;
+      st.expression_valid = false;
+      st.expression_error = "defer statement requires deferred expression";
+      add_parse_error(program, st.line, st.expression_error);
+      return;
+    }
   } else if (st.kind == StatementKind::If || st.kind == StatementKind::While) {
     expr_text = expression_from_control(st.text);
     if (expr_text.empty()) {
@@ -839,6 +950,12 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
   }
 
   st.has_expression = true;
+  if (parse_closure_literal(expr_text, closure_param, closure_body) || is_interpolated_literal(expr_text)) {
+    st.expression_valid = true;
+    st.expression_normalized = trim(expr_text);
+    st.expression_error.clear();
+    return;
+  }
   const ParsedExpression parsed = parse_expression_text(expr_text);
   st.expression_valid = parsed.ok;
   st.expression_normalized = parsed.normalized;
@@ -878,6 +995,8 @@ static AstStatement build_statement_from_line(AstProgram& program, const SourceL
     if (!ends_with(body.clean, ":")) {
       add_parse_error(program, body.number, "match header must be colon-terminated");
     }
+  } else if (starts_with(body.clean, "defer ")) {
+    st.kind = StatementKind::Defer;
   } else if (starts_with(body.clean, "return ") || trim(body.clean) == "return") {
     st.kind = StatementKind::Return;
   } else if (starts_with(body.clean, "let ")) {
@@ -948,6 +1067,17 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       program.public_decls.push_back(line.clean);
       effective_line = trim(effective_line.substr(4));
     }
+    if (starts_with(effective_line, "intent ")) {
+      program.intents.push_back(effective_line);
+    }
+    if (starts_with(effective_line, "flow ")) {
+      program.flows.push_back(effective_line);
+    }
+    if (starts_with(effective_line, "intent func ")) {
+      effective_line = trim(effective_line.substr(7));
+    } else if (starts_with(effective_line, "flow func ")) {
+      effective_line = trim(effective_line.substr(5));
+    }
 
     if (starts_with(effective_line, "func ")) {
       AstFunction fn;
@@ -1002,6 +1132,13 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
     }
     if (starts_with(effective_line, "extern ")) {
       program.extern_decls.push_back(effective_line);
+      AstExternFunction ext;
+      if (!parse_extern_function_declaration(effective_line, ext)) {
+        add_parse_error(program, line.number, "malformed extern declaration");
+      } else {
+        ext.line = line.number;
+        program.extern_functions.push_back(std::move(ext));
+      }
       ++i;
       continue;
     }
@@ -1044,6 +1181,10 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
         const std::string variant = enum_variant_name_from_line(lines[i].clean);
         if (!variant.empty() && program.enum_variant_tags.find(variant) == program.enum_variant_tags.end()) {
           program.enum_variant_tags[variant] = variant_index++;
+          const std::string payload_type = enum_variant_payload_type_from_line(lines[i].clean);
+          if (!payload_type.empty()) {
+            program.enum_variant_payload_types[variant] = payload_type;
+          }
         }
         ++i;
       }

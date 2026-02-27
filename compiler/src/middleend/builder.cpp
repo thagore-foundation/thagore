@@ -82,7 +82,9 @@ static bool should_track_known_value(const std::string& expr) {
   if (expr.empty()) {
     return false;
   }
-  if (expr.find('(') != std::string::npos || expr.find(')') != std::string::npos || expr.find('.') != std::string::npos) {
+  if (expr.find('(') != std::string::npos || expr.find(')') != std::string::npos ||
+      expr.find('.') != std::string::npos || expr.find('|') != std::string::npos ||
+      expr.find('{') != std::string::npos || expr.find('}') != std::string::npos) {
     return false;
   }
   return true;
@@ -94,6 +96,8 @@ static CoreStmtKind map_stmt_kind(syntax::StatementKind kind) {
       return CoreStmtKind::Let;
     case syntax::StatementKind::Assign:
       return CoreStmtKind::Assign;
+    case syntax::StatementKind::Defer:
+      return CoreStmtKind::Defer;
     case syntax::StatementKind::Return:
       return CoreStmtKind::Return;
     case syntax::StatementKind::If:
@@ -130,8 +134,16 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
   CoreProgram core;
   core.normalized_source = program.source;
   core.enum_variant_tags = program.enum_variant_tags;
+  core.enum_variant_payload_types = program.enum_variant_payload_types;
   core.struct_fields = program.struct_fields;
   core.struct_field_types = program.struct_field_types;
+  for (const auto& ext : program.extern_functions) {
+    CoreExternFunction out;
+    out.name = ext.name;
+    out.param_types = ext.param_types;
+    out.return_type = ext.return_type;
+    core.extern_functions.push_back(std::move(out));
+  }
   core.has_main = program.has_main || !program.top_level_statements.empty();
   core.main_return_literal = program.main_return_literal;
 
