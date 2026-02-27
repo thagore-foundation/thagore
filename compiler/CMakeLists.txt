@@ -47,7 +47,6 @@ llvm_map_components_to_libnames(LLVM_LIBS
   Support
   Target
   TargetParser
-  TargetMachine
   MC
   MCParser
   Object
@@ -55,5 +54,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
   AsmPrinter
   ScalarOpts
   CodeGen
+  native
+  nativecodegen
 )
 target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
