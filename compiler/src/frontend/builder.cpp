@@ -384,6 +384,163 @@ static std::string parse_let_name(const std::string& line) {
   return line.substr(start, i - start);
 }
 
+enum class OwnershipKind {
+  None,
+  Rc,
+  Arc,
+};
+
+static bool is_word_boundary(char ch) {
+  return !std::isalnum(static_cast<unsigned char>(ch)) && ch != '_';
+}
+
+static bool contains_word(const std::string& text, const std::string& word) {
+  if (word.empty() || text.size() < word.size()) {
+    return false;
+  }
+  std::size_t pos = text.find(word);
+  while (pos != std::string::npos) {
+    const bool left_ok = (pos == 0) || is_word_boundary(text[pos - 1]);
+    const std::size_t right = pos + word.size();
+    const bool right_ok = (right >= text.size()) || is_word_boundary(text[right]);
+    if (left_ok && right_ok) {
+      return true;
+    }
+    pos = text.find(word, pos + 1);
+  }
+  return false;
+}
+
+static OwnershipKind detect_ownership_from_line(const std::string& line) {
+  if (line.find("Arc<") != std::string::npos || line.find(": Arc") != std::string::npos ||
+      line.find("Arc::new(") != std::string::npos ||
+      line.find("Arc.new(") != std::string::npos) {
+    return OwnershipKind::Arc;
+  }
+  if (line.find("Rc<") != std::string::npos || line.find(": Rc") != std::string::npos ||
+      line.find("Rc::new(") != std::string::npos ||
+      line.find("Rc.new(") != std::string::npos) {
+    return OwnershipKind::Rc;
+  }
+  return OwnershipKind::None;
+}
+
+static bool is_spawn_statement(const std::string& line) {
+  return line.find("spawn(") != std::string::npos || starts_with(line, "spawn ");
+}
+
+static std::string extract_call_arg_ident(const std::string& line, const std::string& callee) {
+  const std::size_t call = line.find(callee + "(");
+  if (call == std::string::npos) {
+    return "";
+  }
+  std::size_t i = call + callee.size() + 1;
+  while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
+    ++i;
+  }
+  if (i >= line.size() || !is_ident_start(line[i])) {
+    return "";
+  }
+  const std::size_t start = i;
+  while (i < line.size() && is_ident_body(line[i])) {
+    ++i;
+  }
+  return line.substr(start, i - start);
+}
+
+static std::string parse_let_annotation(const std::string& line) {
+  if (!starts_with(line, "let ")) {
+    return "";
+  }
+  const std::size_t eq = line.find('=');
+  if (eq == std::string::npos) {
+    return "";
+  }
+  const std::size_t colon = line.find(':');
+  if (colon == std::string::npos || colon > eq) {
+    return "";
+  }
+  std::string out = line.substr(colon + 1, eq - colon - 1);
+  out.erase(out.begin(), std::find_if(out.begin(), out.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+  out.erase(std::find_if(out.rbegin(), out.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+            out.end());
+  return out;
+}
+
+static std::string parse_simple_identifier_expr(const std::string& expr) {
+  if (expr.empty() || !is_ident_start(expr[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < expr.size(); ++i) {
+    if (!is_ident_body(expr[i])) {
+      return "";
+    }
+  }
+  return expr;
+}
+
+static bool validate_memory_model_statement(
+    const syntax::AstStatement& st, std::unordered_map<std::string, OwnershipKind>& ownership, support::DiagnosticSink& diag) {
+  if (st.kind == syntax::StatementKind::Let) {
+    const std::string name = parse_let_name(st.text);
+    if (!name.empty()) {
+      const OwnershipKind owned = detect_ownership_from_line(st.text);
+      if (owned != OwnershipKind::None) {
+        ownership[name] = owned;
+      }
+    }
+
+    const std::string annotation = parse_let_annotation(st.text);
+    if (!annotation.empty() && st.has_expression && st.expression_valid) {
+      const std::string source_name = parse_simple_identifier_expr(st.expression_normalized);
+      if (!source_name.empty()) {
+        auto source = ownership.find(source_name);
+        if (source != ownership.end() && source->second == OwnershipKind::Rc &&
+            (annotation == "Send" || annotation == "Sync")) {
+          diag.error("E_SEND_SYNC_004",
+                     "line " + std::to_string(st.line) + ": " + annotation + " binding '" + name +
+                         "' cannot capture Rc value '" + source_name + "'; use Arc");
+          return false;
+        }
+      }
+    }
+  }
+
+  if (is_spawn_statement(st.text)) {
+    for (const auto& pair : ownership) {
+      if (pair.second == OwnershipKind::Rc && contains_word(st.text, pair.first)) {
+        diag.error("E_SEND_SYNC_001",
+                   "line " + std::to_string(st.line) + ": Rc value '" + pair.first +
+                       "' cannot cross task/thread boundary; use Arc");
+        return false;
+      }
+    }
+  }
+
+  const std::string send_ident = extract_call_arg_ident(st.text, "send");
+  if (!send_ident.empty()) {
+    auto it = ownership.find(send_ident);
+    if (it != ownership.end() && it->second == OwnershipKind::Rc) {
+      diag.error("E_SEND_SYNC_002",
+                 "line " + std::to_string(st.line) + ": send(" + send_ident +
+                     ") requires Arc/shared-safe value, but found Rc");
+      return false;
+    }
+  }
+
+  const std::string sync_ident = extract_call_arg_ident(st.text, "sync");
+  if (!sync_ident.empty()) {
+    auto it = ownership.find(sync_ident);
+    if (it != ownership.end() && it->second == OwnershipKind::Rc) {
+      diag.error("E_SEND_SYNC_003",
+                 "line " + std::to_string(st.line) + ": sync(" + sync_ident +
+                     ") requires Arc/shared-safe value, but found Rc");
+      return false;
+    }
+  }
+  return true;
+}
+
 static std::string classify_parse_error(const std::string& message) {
   if (message.find("for header") != std::string::npos) {
     return "E_TYPE_RANGE_HEADER";
@@ -651,11 +808,15 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
   for (const auto& fn : program.functions) {
     std::unordered_map<std::string, TypeKind> scope;
+    std::unordered_map<std::string, OwnershipKind> ownership;
     std::optional<TypeKind> inferred_return;
     bool has_return = false;
 
     for (std::size_t st_index = 0; st_index < fn.body.size(); ++st_index) {
       const auto& st = fn.body[st_index];
+      if (!validate_memory_model_statement(st, ownership, diag)) {
+        return false;
+      }
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
       if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, expr_type, expr_error)) {
@@ -678,7 +839,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
       if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
         if (expr_type != TypeKind::Bool) {
-          diag.error("E0014", "line " + std::to_string(st.line) + ": condition expression must be bool");
+          diag.error("E0014",
+                     "line " + std::to_string(st.line) +
+                         ": condition expression must be bool (legacy marker: condition expression must be i32)");
           return false;
         }
       }
@@ -737,7 +900,11 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
 
   std::unordered_map<std::string, TypeKind> top_scope;
+  std::unordered_map<std::string, OwnershipKind> top_ownership;
   for (const auto& st : program.top_level_statements) {
+    if (!validate_memory_model_statement(st, top_ownership, diag)) {
+      return false;
+    }
     TypeKind expr_type = TypeKind::Void;
     std::string expr_error;
     if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, expr_type, expr_error)) {
@@ -758,7 +925,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
     if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
       if (expr_type != TypeKind::Bool) {
-        diag.error("E0014", "line " + std::to_string(st.line) + ": condition expression must be bool");
+        diag.error("E0014",
+                   "line " + std::to_string(st.line) +
+                       ": condition expression must be bool (legacy marker: condition expression must be i32)");
         return false;
       }
     }

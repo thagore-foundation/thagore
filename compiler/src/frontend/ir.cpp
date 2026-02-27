@@ -728,7 +728,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       fn.return_type = function_return_type_from_header(effective_line);
       if (effective_line.find("->") != std::string::npos && fn.return_type.empty()) {
-        add_parse_error(program, line.number, "function return annotation is invalid");
+        add_parse_error(program, line.number, "function return annotation '-> type' is not supported");
       }
 
       if (fn.name == "main") {
