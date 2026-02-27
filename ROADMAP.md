@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (February 27, 2026): `v0.4` (Module & Import System).
-Status note: tag `v0.6.0` exists, but concurrency work is currently treated as prototype track until compiler gates (`v0.2` → `v0.5`) are passed.
+Current effective milestone by code audit (February 27, 2026): `v0.8` (Memory Model MVP).
+Status note: `v0.6` → `v0.8` gates now pass on the active Linux lane with deterministic stress runs.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -24,7 +24,7 @@ Active implementation policy: finish one milestone completely before starting th
 | Tooling | ~75% | Policy, packaging, compare tools hiện có |
 | CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: compiler gate `v0.4` đã pass trên Linux (multi-file import + package import compile/run).**
+**Overall: compiler + runtime gates through `v0.8` pass on Linux (import pipeline, language completeness, structured concurrency, memory model checks).**
 
 Execution order (re-anchored to dependency reality):
 1. Close `v0.2` gate (compiler foundation)
@@ -181,22 +181,22 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.8 — Memory Model MVP
+## v0.8 — Memory Model MVP ✅ Released
 > *"Compiler lo memory — mày lo logic"*
 
 ### Compiler
-- [ ] Automatic `Send`/`Sync` validation trong typechecker và middleend
-- [ ] Reject `Rc` across thread boundaries với actionable diagnostic
-- [ ] Suggest `Arc` khi `Rc` Send/Sync fail
-- [ ] Memory model compliance cases trong contracts
+- [x] Automatic `Send`/`Sync` validation trong typechecker và middleend
+- [x] Reject `Rc` across thread boundaries với actionable diagnostic
+- [x] Suggest `Arc` khi `Rc` Send/Sync fail
+- [x] Memory model compliance cases trong contracts
 
 ### Runtime
-- [ ] `platform_posix.cpp` implementation đầy đủ (không còn 4-line stub)
-- [ ] `platform_windows.cpp` implementation đầy đủ
-- [ ] `thag_runtime.cpp` — init, shutdown, memory tracking thật sự
+- [x] `platform_posix.cpp` implementation đầy đủ (không còn 4-line stub)
+- [x] `platform_windows.cpp` implementation đầy đủ
+- [x] `thag_runtime.cpp` — init, shutdown, memory tracking thật sự
 
 ### Gate
-- [ ] Invalid cross-thread `Rc` usage bị reject tại compile time với actionable diagnostics
+- [x] Invalid cross-thread `Rc` usage bị reject tại compile time với actionable diagnostics
 
 ---
 

@@ -1,4 +1,6 @@
 # Core std helpers.
+# Rc<T>: single-thread shared ownership.
+# Arc<T>: cross-thread shared ownership (Send/Sync-safe when inner type is Send).
 
 pub func ok(val):
   return Ok(val)
@@ -10,3 +12,9 @@ pub func assert(cond, msg):
   if (cond):
     return 1
   return 0
+
+pub func rc_new(val):
+  return Rc(val)
+
+pub func arc_new(val):
+  return Arc(val)

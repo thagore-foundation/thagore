@@ -27,6 +27,13 @@ class ContractAndStdlibSurfaceTests(unittest.TestCase):
         for path in required:
             self.assertTrue(Path(path).exists(), msg=f"missing {path}")
 
+    def test_core_stdlib_documents_rc_arc(self) -> None:
+        core = Path("stdlib/std/core.tg").read_text()
+        self.assertIn("Rc<T>", core)
+        self.assertIn("Arc<T>", core)
+        self.assertIn("pub func rc_new", core)
+        self.assertIn("pub func arc_new", core)
+
 
 if __name__ == "__main__":
     unittest.main()

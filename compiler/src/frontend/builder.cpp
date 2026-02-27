@@ -613,6 +613,13 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
         }
         return TypeKind::I32;
       }
+      if (tok.text == "Rc" || tok.text == "Arc") {
+        if (args.size() != 1) {
+          cursor.error = tok.text + "() expects exactly 1 argument";
+          return TypeKind::Unknown;
+        }
+        return tok.text == "Arc" ? TypeKind::Arc : TypeKind::Rc;
+      }
       if (tok.text == "len") {
         if (args.size() != 1) {
           cursor.error = "len() expects 1 argument";
@@ -1020,12 +1027,6 @@ static std::string parse_match_payload_binding_label(const std::string& line) {
   return binding;
 }
 
-enum class OwnershipKind {
-  None,
-  Rc,
-  Arc,
-};
-
 static bool is_word_boundary(char ch) {
   return !std::isalnum(static_cast<unsigned char>(ch)) && ch != '_';
 }
@@ -1045,20 +1046,6 @@ static bool contains_word(const std::string& text, const std::string& word) {
     pos = text.find(word, pos + 1);
   }
   return false;
-}
-
-static OwnershipKind detect_ownership_from_line(const std::string& line) {
-  if (line.find("Arc<") != std::string::npos || line.find(": Arc") != std::string::npos ||
-      line.find("Arc::new(") != std::string::npos ||
-      line.find("Arc.new(") != std::string::npos) {
-    return OwnershipKind::Arc;
-  }
-  if (line.find("Rc<") != std::string::npos || line.find(": Rc") != std::string::npos ||
-      line.find("Rc::new(") != std::string::npos ||
-      line.find("Rc.new(") != std::string::npos) {
-    return OwnershipKind::Rc;
-  }
-  return OwnershipKind::None;
 }
 
 static bool is_spawn_statement(const std::string& line) {
@@ -1136,6 +1123,149 @@ static std::string parse_constructor_name(const std::string& expr) {
   return name;
 }
 
+struct MemoryModelState {
+  std::unordered_map<std::string, std::string> value_types;
+  std::unordered_map<std::string, std::vector<std::string>> closure_captures;
+};
+
+static std::string normalize_type_expr(const std::string& type_expr) {
+  return trim_copy(type_expr);
+}
+
+static std::vector<std::string> extract_identifiers(const std::string& text) {
+  std::vector<std::string> out;
+  std::size_t i = 0;
+  while (i < text.size()) {
+    if (!is_ident_start(text[i])) {
+      ++i;
+      continue;
+    }
+    const std::size_t start = i;
+    ++i;
+    while (i < text.size() && is_ident_body(text[i])) {
+      ++i;
+    }
+    out.push_back(text.substr(start, i - start));
+  }
+  return out;
+}
+
+static bool find_non_send_path_in_type(const std::string& type_expr,
+                                       const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                                       const std::unordered_map<std::string, std::string>& struct_field_types,
+                                       std::unordered_set<std::string>& visiting_structs, std::string& out_path,
+                                       std::string& out_offending) {
+  const std::string clean = normalize_type_expr(type_expr);
+  if (clean.empty()) {
+    return false;
+  }
+  if (clean == "Rc" || starts_with(clean, "Rc<")) {
+    out_path.clear();
+    out_offending = clean == "Rc" ? "Rc<T>" : clean;
+    return true;
+  }
+  if (clean == "Arc") {
+    return false;
+  }
+
+  std::string generic_base;
+  std::vector<std::string> generic_args;
+  if (parse_generic_parts(clean, generic_base, generic_args)) {
+    if (generic_base == "Rc") {
+      out_path.clear();
+      out_offending = clean;
+      return true;
+    }
+    if (generic_base == "Arc") {
+      if (generic_args.empty()) {
+        return false;
+      }
+      return find_non_send_path_in_type(generic_args.front(), struct_fields, struct_field_types, visiting_structs, out_path,
+                                        out_offending);
+    }
+    for (std::size_t i = 0; i < generic_args.size(); ++i) {
+      std::string nested_path;
+      std::string nested_type;
+      if (find_non_send_path_in_type(generic_args[i], struct_fields, struct_field_types, visiting_structs, nested_path,
+                                     nested_type)) {
+        out_path = nested_path.empty() ? ("arg" + std::to_string(i)) : ("arg" + std::to_string(i) + "." + nested_path);
+        out_offending = nested_type;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  auto fields_it = struct_fields.find(clean);
+  if (fields_it == struct_fields.end()) {
+    return false;
+  }
+  if (visiting_structs.find(clean) != visiting_structs.end()) {
+    return false;
+  }
+  visiting_structs.insert(clean);
+  for (const std::string& field : fields_it->second) {
+    const std::string key = clean + "." + field;
+    auto field_type_it = struct_field_types.find(key);
+    const std::string field_type = field_type_it == struct_field_types.end() ? "i32" : field_type_it->second;
+    std::string nested_path;
+    std::string nested_type;
+    if (find_non_send_path_in_type(field_type, struct_fields, struct_field_types, visiting_structs, nested_path,
+                                   nested_type)) {
+      out_path = nested_path.empty() ? field : (field + "." + nested_path);
+      out_offending = nested_type;
+      visiting_structs.erase(clean);
+      return true;
+    }
+  }
+  visiting_structs.erase(clean);
+  return false;
+}
+
+static bool emit_send_sync_violation(int line, const std::string& path, const std::string& offending_type,
+                                     support::DiagnosticSink& diag) {
+  diag.error("E_SEND_SYNC_004",
+             "line " + std::to_string(line) + ": field `" + path + "` of type `" + offending_type +
+                 "` is not Send — replace Rc<T> with Arc<T>");
+  return false;
+}
+
+static std::string infer_memory_model_type(
+    const syntax::AstStatement& st, const MemoryModelState& state,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_fields) {
+  const std::string annotation = parse_let_annotation(st.text);
+  if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+    return annotation;
+  }
+  if (!st.has_expression || !st.expression_valid) {
+    return "";
+  }
+  const std::string expr = normalize_type_expr(st.expression_normalized);
+  if (starts_with(expr, "Rc(")) {
+    return "Rc<T>";
+  }
+  if (starts_with(expr, "Arc(")) {
+    return "Arc<T>";
+  }
+  const std::string copied = parse_simple_identifier_expr(expr);
+  if (!copied.empty()) {
+    auto it = state.value_types.find(copied);
+    if (it != state.value_types.end()) {
+      return it->second;
+    }
+  }
+  const std::string ctor = parse_constructor_name(expr);
+  if (!ctor.empty() && struct_fields.find(ctor) != struct_fields.end()) {
+    return ctor;
+  }
+  std::vector<std::string> closure_params;
+  std::string closure_body;
+  if (parse_closure_literal(expr, closure_params, closure_body)) {
+    return "closure";
+  }
+  return "";
+}
+
 static bool is_assignable_type(TypeKind declared, TypeKind actual) {
   if (declared == actual) {
     return true;
@@ -1199,38 +1329,88 @@ static bool validate_typestate_statement(const syntax::AstStatement& st, std::un
 }
 
 static bool validate_memory_model_statement(
-    const syntax::AstStatement& st, std::unordered_map<std::string, OwnershipKind>& ownership, support::DiagnosticSink& diag) {
+    const syntax::AstStatement& st, MemoryModelState& state,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+    const std::unordered_map<std::string, std::string>& struct_field_types, support::DiagnosticSink& diag) {
   if (st.kind == syntax::StatementKind::Let) {
     const std::string name = parse_let_name(st.text);
     if (!name.empty()) {
-      const OwnershipKind owned = detect_ownership_from_line(st.text);
-      if (owned != OwnershipKind::None) {
-        ownership[name] = owned;
+      const std::string inferred_type = infer_memory_model_type(st, state, struct_fields);
+      if (!inferred_type.empty()) {
+        state.value_types[name] = inferred_type;
       }
-    }
-
-    const std::string annotation = parse_let_annotation(st.text);
-    if (!annotation.empty() && st.has_expression && st.expression_valid) {
-      const std::string source_name = parse_simple_identifier_expr(st.expression_normalized);
-      if (!source_name.empty()) {
-        auto source = ownership.find(source_name);
-        if (source != ownership.end() && source->second == OwnershipKind::Rc &&
-            (annotation == "Send" || annotation == "Sync")) {
-          diag.error("E_SEND_SYNC_004",
-                     "line " + std::to_string(st.line) +
-                         ": cannot send `Rc<T>` across thread boundary — use `Arc<T>` instead");
-          return false;
+      if (st.has_expression && st.expression_valid) {
+        std::vector<std::string> closure_params;
+        std::string closure_body;
+        if (parse_closure_literal(st.expression_normalized, closure_params, closure_body)) {
+          std::unordered_set<std::string> param_set(closure_params.begin(), closure_params.end());
+          std::unordered_set<std::string> captures;
+          for (const std::string& ident : extract_identifiers(closure_body)) {
+            if (param_set.find(ident) != param_set.end()) {
+              continue;
+            }
+            if (ident == "return" || ident == "if" || ident == "else" || ident == "true" || ident == "false" ||
+                ident == "match" || ident == "let" || ident == "while" || ident == "for") {
+              continue;
+            }
+            if (state.value_types.find(ident) != state.value_types.end()) {
+              captures.insert(ident);
+            }
+          }
+          state.closure_captures[name] = std::vector<std::string>(captures.begin(), captures.end());
         }
       }
     }
   }
 
+  auto check_symbol_send = [&](const std::string& symbol, const std::string& prefix) {
+    auto type_it = state.value_types.find(symbol);
+    if (type_it != state.value_types.end()) {
+      std::unordered_set<std::string> visiting_structs;
+      std::string bad_path;
+      std::string bad_type;
+      if (find_non_send_path_in_type(type_it->second, struct_fields, struct_field_types, visiting_structs, bad_path,
+                                     bad_type)) {
+        const std::string full_path =
+            prefix.empty() ? (bad_path.empty() ? symbol : symbol + "." + bad_path)
+                           : (bad_path.empty() ? prefix : prefix + "." + bad_path);
+        return emit_send_sync_violation(st.line, full_path, bad_type, diag);
+      }
+    }
+    auto closure_it = state.closure_captures.find(symbol);
+    if (closure_it != state.closure_captures.end()) {
+      for (const std::string& captured : closure_it->second) {
+        auto capture_type = state.value_types.find(captured);
+        if (capture_type == state.value_types.end()) {
+          continue;
+        }
+        std::unordered_set<std::string> visiting_structs;
+        std::string bad_path;
+        std::string bad_type;
+        if (find_non_send_path_in_type(capture_type->second, struct_fields, struct_field_types, visiting_structs,
+                                       bad_path, bad_type)) {
+          std::string capture_path = prefix.empty() ? symbol : prefix;
+          capture_path += ".capture." + captured;
+          if (!bad_path.empty()) {
+            capture_path += "." + bad_path;
+          }
+          return emit_send_sync_violation(st.line, capture_path, bad_type, diag);
+        }
+      }
+    }
+    return true;
+  };
+
   if (is_spawn_statement(st.text)) {
-    for (const auto& pair : ownership) {
-      if (pair.second == OwnershipKind::Rc && contains_word(st.text, pair.first)) {
-        diag.error("E_SEND_SYNC_004",
-                   "line " + std::to_string(st.line) +
-                       ": cannot send `Rc<T>` across thread boundary — use `Arc<T>` instead");
+    const std::string direct = extract_call_arg_ident(st.text, "spawn");
+    if (!direct.empty()) {
+      if (!check_symbol_send(direct, direct)) {
+        return false;
+      }
+      return true;
+    }
+    for (const auto& pair : state.value_types) {
+      if (contains_word(st.text, pair.first) && !check_symbol_send(pair.first, pair.first)) {
         return false;
       }
     }
@@ -1738,7 +1918,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
   for (const auto& fn : program.functions) {
     std::unordered_map<std::string, TypeKind> scope;
-    std::unordered_map<std::string, OwnershipKind> ownership;
+    MemoryModelState memory_state;
     std::unordered_map<std::string, bool> opened_resources;
     std::unordered_map<std::string, std::string> struct_bindings;
     std::string method_owner;
@@ -1781,7 +1961,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       while (!active_match_indents.empty() && st.indent <= active_match_indents.back()) {
         active_match_indents.pop_back();
       }
-      if (!validate_memory_model_statement(st, ownership, diag)) {
+      if (!validate_memory_model_statement(st, memory_state, program.struct_fields, program.struct_field_types, diag)) {
         return false;
       }
       if (!validate_typestate_statement(st, opened_resources, diag)) {
@@ -1990,7 +2170,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
 
   std::unordered_map<std::string, TypeKind> top_scope;
-  std::unordered_map<std::string, OwnershipKind> top_ownership;
+  MemoryModelState top_memory_state;
   std::unordered_map<std::string, bool> top_opened_resources;
   std::unordered_map<std::string, std::string> top_struct_bindings;
   std::vector<int> top_match_indents;
@@ -2002,7 +2182,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0028", "line " + std::to_string(st.line) + ": top-level defer is not allowed");
       return false;
     }
-    if (!validate_memory_model_statement(st, top_ownership, diag)) {
+    if (!validate_memory_model_statement(st, top_memory_state, program.struct_fields, program.struct_field_types, diag)) {
       return false;
     }
     if (!validate_typestate_statement(st, top_opened_resources, diag)) {

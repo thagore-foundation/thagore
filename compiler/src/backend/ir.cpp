@@ -2118,6 +2118,9 @@ static ValueType value_type_from_field_annotation(const std::string& type_name) 
       starts_with(type_name, "Result<")) {
     return ValueType::I32;
   }
+  if (type_name == "Rc" || type_name == "Arc" || starts_with(type_name, "Rc<") || starts_with(type_name, "Arc<")) {
+    return ValueType::I8Ptr;
+  }
   return ValueType::I32;
 }
 
