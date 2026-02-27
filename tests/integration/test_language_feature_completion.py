@@ -1,0 +1,122 @@
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from tests._support import resolve_thagc_bin
+
+
+class LanguageFeatureCompletionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.bin = resolve_thagc_bin()
+        if self.bin is None:
+            self.skipTest("thagc binary not found; set THAGC_BIN or build compiler first")
+
+    def _build(self, source: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+        td = tempfile.TemporaryDirectory()
+        root = Path(td.name)
+        src = root / "main.tg"
+        out = root / "main.bin"
+        src.write_text(source)
+        build = subprocess.run(
+            [str(self.bin), "build", str(src), "-o", str(out)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.addCleanup(td.cleanup)
+        return build, out
+
+    def _build_and_run(self, source: str) -> tuple[subprocess.CompletedProcess[str], subprocess.CompletedProcess[str]]:
+        build, out = self._build(source)
+        self.assertEqual(build.returncode, 0, msg=build.stderr)
+        run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+        return build, run
+
+    def test_defer_runs_lifo(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  defer print(1)\n"
+            "  defer print(2)\n"
+            "  print(3)\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+        lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+        self.assertEqual(lines[-3:], ["3", "2", "1"])
+
+    def test_closure_capture_and_call(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let base = 4\n"
+            "  let add = |x| x + base\n"
+            "  print(add(3))\n"
+            "  return add(3)\n"
+        )
+        self.assertEqual(run.returncode, 7, msg=run.stderr)
+        self.assertIn("7", run.stdout)
+
+    def test_enum_payload_match_binding(self) -> None:
+        _, run = self._build_and_run(
+            "enum Reply:\n"
+            "  Ok(i32)\n"
+            "  Err(i32)\n"
+            "\n"
+            "func main():\n"
+            "  let r = Ok(12)\n"
+            "  match (r):\n"
+            "    Ok(v):\n"
+            "      return v\n"
+            "    Err(e):\n"
+            "      return e\n"
+        )
+        self.assertEqual(run.returncode, 12, msg=run.stderr)
+
+    def test_interpolated_string_print(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let x = 5\n"
+            "  print(v\"value={x}\")\n"
+            "  return x\n"
+        )
+        self.assertEqual(run.returncode, 5, msg=run.stderr)
+        self.assertIn("value=5", run.stdout)
+
+    def test_option_result_builtins(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let a: Option<i32> = Some(9)\n"
+            "  let b: Result<i32, i32> = Ok(4)\n"
+            "  if (is_some(a)):\n"
+            "    print(unwrap(a))\n"
+            "  if (is_ok(b)):\n"
+            "    return unwrap_or(b, 0)\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 4, msg=run.stderr)
+        self.assertIn("9", run.stdout)
+
+    def test_typestate_rejects_read_before_open(self) -> None:
+        build, _ = self._build(
+            "func main():\n"
+            "  let conn = 1\n"
+            "  read(conn)\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("E_TYPESTATE_002", build.stderr)
+
+    def test_typestate_accepts_open_read_close(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let conn = 1\n"
+            "  open(conn)\n"
+            "  read(conn)\n"
+            "  close(conn)\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
