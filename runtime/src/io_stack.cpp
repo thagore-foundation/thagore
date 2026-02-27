@@ -1,16 +1,29 @@
 #include "thag_runtime.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
 
 #if defined(THAG_RUNTIME_HAS_CURL)
 #include <curl/curl.h>
+#endif
+
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+#include <sqlite3.h>
+#endif
+
+#if !defined(_WIN32)
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -20,12 +33,24 @@ struct RuntimeMap {
   std::unordered_map<std::string, std::string> values;
 };
 
+struct WsHandle {
+  std::string endpoint;
+  int socket_fd = -1;
+};
+
 std::mutex g_ws_mutex;
-std::unordered_map<int, std::string> g_ws_handles;
+std::unordered_map<int, WsHandle> g_ws_handles;
 std::atomic<int> g_ws_next_handle{1};
 
+struct DbHandle {
+  std::string dsn;
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+  sqlite3* sqlite = nullptr;
+#endif
+};
+
 std::mutex g_db_mutex;
-std::unordered_map<int, std::string> g_db_handles;
+std::unordered_map<int, DbHandle> g_db_handles;
 std::atomic<int> g_db_next_handle{1};
 
 #if defined(THAG_RUNTIME_HAS_CURL)
@@ -72,6 +97,91 @@ int http_request_code(const char* method, const char* url, const char* payload, 
     return 599;
   }
   return static_cast<int>(status);
+}
+#endif
+
+#if !defined(_WIN32)
+struct ParsedWsEndpoint {
+  std::string host;
+  std::string port;
+};
+
+std::optional<ParsedWsEndpoint> parse_ws_endpoint(const char* endpoint) {
+  if (endpoint == nullptr) {
+    return std::nullopt;
+  }
+  std::string text(endpoint);
+  if (text.rfind("ws://", 0) != 0) {
+    return std::nullopt;
+  }
+  text = text.substr(5);
+  const std::size_t slash = text.find('/');
+  if (slash != std::string::npos) {
+    text = text.substr(0, slash);
+  }
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  ParsedWsEndpoint out;
+  out.port = "80";
+  const std::size_t colon = text.rfind(':');
+  if (colon != std::string::npos && colon + 1 < text.size()) {
+    out.host = text.substr(0, colon);
+    out.port = text.substr(colon + 1);
+  } else {
+    out.host = text;
+  }
+  if (out.host.empty() || out.port.empty()) {
+    return std::nullopt;
+  }
+  return out;
+}
+
+int connect_ws_socket(const ParsedWsEndpoint& endpoint) {
+  addrinfo hints{};
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  addrinfo* result = nullptr;
+  if (getaddrinfo(endpoint.host.c_str(), endpoint.port.c_str(), &hints, &result) != 0) {
+    return -1;
+  }
+
+  int fd = -1;
+  for (addrinfo* it = result; it != nullptr; it = it->ai_next) {
+    fd = ::socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+    if (fd < 0) {
+      continue;
+    }
+    if (::connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+      break;
+    }
+    ::close(fd);
+    fd = -1;
+  }
+  freeaddrinfo(result);
+  return fd;
+}
+#endif
+
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+sqlite3* open_sqlite_from_dsn(const std::string& dsn) {
+  std::string sqlite_path;
+  if (dsn == "memory://") {
+    sqlite_path = ":memory:";
+  } else if (dsn.rfind("sqlite://", 0) == 0 && dsn.size() > 9) {
+    sqlite_path = dsn.substr(9);
+  } else {
+    return nullptr;
+  }
+  sqlite3* db = nullptr;
+  if (sqlite3_open(sqlite_path.c_str(), &db) != SQLITE_OK) {
+    if (db != nullptr) {
+      sqlite3_close(db);
+    }
+    return nullptr;
+  }
+  return db;
 }
 #endif
 
@@ -150,8 +260,15 @@ int thag_ws_connect(const char* endpoint, int timeout_ms) {
     return 0;
   }
   const int handle = g_ws_next_handle.fetch_add(1);
+  WsHandle ws;
+  ws.endpoint = endpoint;
+#if !defined(_WIN32)
+  if (const auto parsed = parse_ws_endpoint(endpoint); parsed.has_value()) {
+    ws.socket_fd = connect_ws_socket(*parsed);
+  }
+#endif
   std::lock_guard<std::mutex> lock(g_ws_mutex);
-  g_ws_handles[handle] = endpoint;
+  g_ws_handles[handle] = std::move(ws);
   return handle;
 }
 
@@ -164,6 +281,15 @@ int thag_ws_send(int handle, const char* message) {
   if (it == g_ws_handles.end()) {
     return 0;
   }
+#if !defined(_WIN32)
+  if (it->second.socket_fd >= 0) {
+    const ssize_t sent = ::send(it->second.socket_fd, message, std::strlen(message), 0);
+    if (sent > 0) {
+      return static_cast<int>(sent);
+    }
+    return 0;
+  }
+#endif
   return static_cast<int>(std::strlen(message));
 }
 
@@ -173,6 +299,11 @@ int thag_ws_close(int handle) {
   if (it == g_ws_handles.end()) {
     return 0;
   }
+#if !defined(_WIN32)
+  if (it->second.socket_fd >= 0) {
+    ::close(it->second.socket_fd);
+  }
+#endif
   g_ws_handles.erase(it);
   return 1;
 }
@@ -182,8 +313,13 @@ int thag_db_connect(const char* dsn) {
     return 0;
   }
   const int handle = g_db_next_handle.fetch_add(1);
+  DbHandle db_handle;
+  db_handle.dsn = dsn;
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+  db_handle.sqlite = open_sqlite_from_dsn(db_handle.dsn);
+#endif
   std::lock_guard<std::mutex> lock(g_db_mutex);
-  g_db_handles[handle] = dsn;
+  g_db_handles[handle] = db_handle;
   return handle;
 }
 
@@ -192,10 +328,34 @@ int thag_db_query(int handle, const char* query) {
     return 0;
   }
   std::lock_guard<std::mutex> lock(g_db_mutex);
-  if (g_db_handles.find(handle) == g_db_handles.end()) {
+  auto it = g_db_handles.find(handle);
+  if (it == g_db_handles.end()) {
     return 0;
   }
   const std::string q(query);
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+  if (it->second.sqlite != nullptr) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(it->second.sqlite, q.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+      if (stmt != nullptr) {
+        sqlite3_finalize(stmt);
+      }
+      return 0;
+    }
+    const int step_rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (step_rc == SQLITE_ROW || step_rc == SQLITE_DONE) {
+      std::string lower = q;
+      std::transform(lower.begin(), lower.end(), lower.begin(),
+                     [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+      if (lower.rfind("select", 0) == 0) {
+        return 1;
+      }
+      return 2;
+    }
+    return 0;
+  }
+#endif
   if (q.rfind("select", 0) == 0 || q.rfind("SELECT", 0) == 0) {
     return 1;
   }
@@ -208,6 +368,12 @@ int thag_db_close(int handle) {
   if (it == g_db_handles.end()) {
     return 0;
   }
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+  if (it->second.sqlite != nullptr) {
+    sqlite3_close(it->second.sqlite);
+    it->second.sqlite = nullptr;
+  }
+#endif
   g_db_handles.erase(it);
   return 1;
 }
