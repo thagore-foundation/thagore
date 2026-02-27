@@ -48,6 +48,7 @@ struct AstExternFunction {
 };
 
 struct AstProgram {
+  std::string source_path;
   std::vector<std::string> top_level_lines;
   std::vector<AstStatement> top_level_statements;
   std::vector<AstFunction> functions;

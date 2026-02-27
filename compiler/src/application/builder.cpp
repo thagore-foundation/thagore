@@ -10,7 +10,8 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
   domain::BuildResult result;
   const std::string source = request.source_text;
   const auto tokens = lexer_.tokenize(source);
-  const auto ast = parser_.parse(tokens, source);
+  auto ast = parser_.parse(tokens, source);
+  ast.source_path = request.input_path;
   if (!checker_.check(ast, diag)) {
     return result;
   }

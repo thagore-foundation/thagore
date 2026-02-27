@@ -127,6 +127,23 @@ static std::string parse_let_name(const std::string& line) {
   return line.substr(start, i - start);
 }
 
+static std::string parse_let_annotation(const std::string& line) {
+  if (!starts_with(line, "let ")) {
+    return "";
+  }
+  const std::size_t eq = line.find('=');
+  if (eq == std::string::npos) {
+    return "";
+  }
+  const std::size_t colon = line.find(':');
+  if (colon == std::string::npos || colon > eq) {
+    return "";
+  }
+  std::string out = line.substr(colon + 1, eq - colon - 1);
+  out = trim(out);
+  return out;
+}
+
 static llvm::AllocaInst* create_entry_alloca(llvm::Function* fn, llvm::Type* type, const std::string& name) {
   llvm::IRBuilder<> tmp(&fn->getEntryBlock(), fn->getEntryBlock().begin());
   return tmp.CreateAlloca(type, nullptr, name);
@@ -725,24 +742,57 @@ static bool is_numeric_type(ValueType type) {
   return type == ValueType::I32 || type == ValueType::F32 || type == ValueType::F64;
 }
 
-static llvm::Value* to_f64_value(ExprValue value, llvm::IRBuilder<>& builder) {
+static ValueType promoted_float_type(ValueType lhs, ValueType rhs) {
+  if (lhs == ValueType::F64 || rhs == ValueType::F64) {
+    return ValueType::F64;
+  }
+  if (lhs == ValueType::F32 || rhs == ValueType::F32) {
+    return ValueType::F32;
+  }
+  return ValueType::F64;
+}
+
+static llvm::Value* to_float_value(ExprValue value, ValueType target, llvm::IRBuilder<>& builder) {
   if (value.value == nullptr) {
     return nullptr;
   }
-  if (value.type == ValueType::F64) {
-    return value.value;
+  if (target != ValueType::F32 && target != ValueType::F64) {
+    return nullptr;
+  }
+  if (target == ValueType::F64) {
+    if (value.type == ValueType::F64) {
+      return value.value;
+    }
+    if (value.type == ValueType::F32) {
+      return builder.CreateFPExt(value.value, builder.getDoubleTy());
+    }
+    if (value.type == ValueType::I32) {
+      return builder.CreateSIToFP(value.value, builder.getDoubleTy());
+    }
+    if (value.type == ValueType::I1) {
+      llvm::Value* as_i32 = builder.CreateZExt(value.value, builder.getInt32Ty());
+      return builder.CreateSIToFP(as_i32, builder.getDoubleTy());
+    }
+    return nullptr;
   }
   if (value.type == ValueType::F32) {
-    return builder.CreateFPExt(value.value, builder.getDoubleTy());
+    return value.value;
+  }
+  if (value.type == ValueType::F64) {
+    return builder.CreateFPTrunc(value.value, builder.getFloatTy());
   }
   if (value.type == ValueType::I32) {
-    return builder.CreateSIToFP(value.value, builder.getDoubleTy());
+    return builder.CreateSIToFP(value.value, builder.getFloatTy());
   }
   if (value.type == ValueType::I1) {
     llvm::Value* as_i32 = builder.CreateZExt(value.value, builder.getInt32Ty());
-    return builder.CreateSIToFP(as_i32, builder.getDoubleTy());
+    return builder.CreateSIToFP(as_i32, builder.getFloatTy());
   }
   return nullptr;
+}
+
+static llvm::Value* to_f64_value(ExprValue value, llvm::IRBuilder<>& builder) {
+  return to_float_value(value, ValueType::F64, builder);
 }
 
 static ExprValue parse_multiplicative(ExprCursor& cursor) {
@@ -760,14 +810,15 @@ static ExprValue parse_multiplicative(ExprCursor& cursor) {
     }
     const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
     if (use_float) {
-      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
-      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
+      llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
+      llvm::Value* rhs_f = to_float_value(rhs, float_type, *cursor.builder);
       if (lhs_f == nullptr || rhs_f == nullptr) {
         cursor.error = "cannot convert operands to float for operator '" + op + "'";
         return {};
       }
       lhs.value = (op == "*") ? cursor.builder->CreateFMul(lhs_f, rhs_f) : cursor.builder->CreateFDiv(lhs_f, rhs_f);
-      lhs.type = ValueType::F64;
+      lhs.type = float_type;
     } else {
       lhs.value = (op == "*") ? cursor.builder->CreateMul(lhs.value, rhs.value)
                               : cursor.builder->CreateSDiv(lhs.value, rhs.value);
@@ -792,14 +843,15 @@ static ExprValue parse_additive(ExprCursor& cursor) {
     }
     const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
     if (use_float) {
-      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
-      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
+      llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
+      llvm::Value* rhs_f = to_float_value(rhs, float_type, *cursor.builder);
       if (lhs_f == nullptr || rhs_f == nullptr) {
         cursor.error = "cannot convert operands to float for operator '" + op + "'";
         return {};
       }
       lhs.value = (op == "+") ? cursor.builder->CreateFAdd(lhs_f, rhs_f) : cursor.builder->CreateFSub(lhs_f, rhs_f);
-      lhs.type = ValueType::F64;
+      lhs.type = float_type;
     } else {
       lhs.value = (op == "+") ? cursor.builder->CreateAdd(lhs.value, rhs.value)
                               : cursor.builder->CreateSub(lhs.value, rhs.value);
@@ -826,8 +878,9 @@ static ExprValue parse_comparison(ExprCursor& cursor) {
     }
     const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
     if (use_float) {
-      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
-      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
+      llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
+      llvm::Value* rhs_f = to_float_value(rhs, float_type, *cursor.builder);
       if (lhs_f == nullptr || rhs_f == nullptr) {
         cursor.error = "cannot convert operands to float for comparison";
         return {};
@@ -875,8 +928,9 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
         lhs.value = (op == "==") ? cursor.builder->CreateICmpEQ(lhs.value, rhs.value)
                                  : cursor.builder->CreateICmpNE(lhs.value, rhs.value);
       } else {
-        llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
-        llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+        const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
+        llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
+        llvm::Value* rhs_f = to_float_value(rhs, float_type, *cursor.builder);
         if (lhs_f == nullptr || rhs_f == nullptr) {
           cursor.error = "cannot convert operands for equality operator '" + op + "'";
           return {};
@@ -1461,6 +1515,32 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (value.value == nullptr || value.type == ValueType::Invalid) {
         return false;
       }
+      const std::string annotation = parse_let_annotation(st.text);
+      if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+        ValueType declared_type = ValueType::Invalid;
+        if (annotation == "i32" || annotation == "Option" || annotation == "Result" ||
+            starts_with(annotation, "Option<") || starts_with(annotation, "Result<")) {
+          declared_type = ValueType::I32;
+        } else if (annotation == "f32") {
+          declared_type = ValueType::F32;
+        } else if (annotation == "f64") {
+          declared_type = ValueType::F64;
+        } else if (annotation == "bool") {
+          declared_type = ValueType::I1;
+        } else if (annotation == "string" || annotation == "String" || annotation == "ptr") {
+          declared_type = ValueType::I8Ptr;
+        }
+        if (declared_type == ValueType::Invalid) {
+          diag.error("E2010", "unsupported let annotation in backend: '" + annotation + "'");
+          return false;
+        }
+        llvm::Value* casted = cast_value_to_type(value, declared_type, builder);
+        if (casted == nullptr) {
+          diag.error("E2011", "cannot cast let value for '" + name + "' to declared type '" + annotation + "'");
+          return false;
+        }
+        value = ExprValue{casted, declared_type};
+      }
       auto it = variables.find(name);
       if (it == variables.end()) {
         llvm::Type* type = llvm_type_from_value_type(value.type, builder);
@@ -1966,8 +2046,11 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
   if (!target_triple.empty()) {
     module->setTargetTriple(llvm::Triple(target_triple));
   }
-  if (llvm::verifyModule(*module, &llvm::errs())) {
-    diag.error("E2001", "LLVM module verification failed");
+  std::string verify_error;
+  llvm::raw_string_ostream verify_stream(verify_error);
+  if (llvm::verifyModule(*module, &verify_stream)) {
+    verify_stream.flush();
+    diag.error("E2001", "LLVM module verification failed: " + trim(verify_error));
     return false;
   }
   std::error_code ec;
@@ -1992,6 +2075,13 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
   if (!module) {
+    return false;
+  }
+  std::string verify_error;
+  llvm::raw_string_ostream verify_stream(verify_error);
+  if (llvm::verifyModule(*module, &verify_stream)) {
+    verify_stream.flush();
+    diag.error("E2001", "LLVM module verification failed: " + trim(verify_error));
     return false;
   }
 

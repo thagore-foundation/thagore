@@ -206,6 +206,17 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
   return out;
 }
 
+static std::unordered_map<std::string, std::size_t> collect_function_arity(const syntax::AstProgram& program) {
+  std::unordered_map<std::string, std::size_t> out;
+  for (const auto& fn : program.functions) {
+    out[fn.name] = fn.params.size();
+  }
+  for (const auto& ext : program.extern_functions) {
+    out[ext.name] = ext.param_types.size();
+  }
+  return out;
+}
+
 enum class ExprTokKind {
   Atom,
   Op,
@@ -228,6 +239,7 @@ struct ExprTypeCursor {
   const std::unordered_map<std::string, TypeKind>* scope = nullptr;
   const std::unordered_map<std::string, int>* enum_variants = nullptr;
   const std::unordered_map<std::string, TypeKind>* function_returns = nullptr;
+  const std::unordered_map<std::string, std::size_t>* function_arity = nullptr;
   const std::unordered_set<std::string>* struct_names = nullptr;
 };
 
@@ -496,6 +508,14 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
       if (cursor.function_returns != nullptr) {
         auto fn = cursor.function_returns->find(tok.text);
         if (fn != cursor.function_returns->end()) {
+          if (cursor.function_arity != nullptr) {
+            auto arity = cursor.function_arity->find(tok.text);
+            if (arity != cursor.function_arity->end() && args.size() != arity->second) {
+              cursor.error = "function '" + tok.text + "' expects " + std::to_string(arity->second) +
+                             " arguments but got " + std::to_string(args.size());
+              return TypeKind::Unknown;
+            }
+          }
           return fn->second;
         }
       }
@@ -1105,6 +1125,7 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
                                            const std::unordered_map<std::string, TypeKind>& scope,
                                            const std::unordered_map<std::string, int>& enum_variants,
                                            const std::unordered_map<std::string, TypeKind>& function_returns,
+                                           const std::unordered_map<std::string, std::size_t>& function_arity,
                                            const std::unordered_set<std::string>& struct_names,
                                            TypeKind& out, std::string& error) {
   if (!st.has_expression) {
@@ -1123,6 +1144,7 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
   cursor.scope = &scope;
   cursor.enum_variants = &enum_variants;
   cursor.function_returns = &function_returns;
+  cursor.function_arity = &function_arity;
   cursor.struct_names = &struct_names;
   if (!tokenize_error.empty()) {
     error = tokenize_error;
@@ -1224,6 +1246,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   const auto aliases = collect_type_aliases(program);
   const auto struct_names = collect_struct_names(program);
   const auto function_returns = collect_function_return_types(program, aliases, struct_names);
+  const auto function_arity = collect_function_arity(program);
   if (!program.has_main && program.top_level_statements.empty()) {
     diag.error("E0002", "missing entrypoint: define func main() or provide top-level executable statements");
     return false;
@@ -1264,6 +1287,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
       if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, function_returns,
+                                          function_arity,
                                           struct_names, expr_type, expr_error)) {
         diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
         return false;
@@ -1457,6 +1481,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     TypeKind expr_type = TypeKind::Void;
     std::string expr_error;
     if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, function_returns,
+                                        function_arity,
                                         struct_names, expr_type, expr_error)) {
       diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
       return false;

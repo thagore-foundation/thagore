@@ -45,6 +45,55 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
         self.assertEqual(lines[-3:], ["3", "2", "1"])
 
+    def test_multi_function_calls_compile_and_run(self) -> None:
+        _, run = self._build_and_run(
+            "func sum2(a, b):\n"
+            "  return a + b\n"
+            "\n"
+            "func sum4(v):\n"
+            "  return sum2(sum2(v, v), v)\n"
+            "\n"
+            "func main():\n"
+            "  return sum4(3)\n"
+        )
+        self.assertEqual(run.returncode, 9, msg=run.stderr)
+
+    def test_float_and_bool_variables_compile_and_run(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let x: f32 = 1.5\n"
+            "  let y: f32 = 2.0\n"
+            "  let z: f32 = x + y\n"
+            "  let ok: bool = z > 3.0\n"
+            "  if (ok):\n"
+            "    print(z)\n"
+            "    return 1\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 1, msg=run.stderr)
+        self.assertIn("3.500000", run.stdout)
+
+    def test_typechecker_rejects_wrong_argument_count(self) -> None:
+        build, _ = self._build(
+            "func add(a, b):\n"
+            "  return a + b\n"
+            "\n"
+            "func main():\n"
+            "  return add(1)\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("expects 2 arguments but got 1", build.stderr)
+
+    def test_typechecker_rejects_undefined_variable_and_assignment_mismatch(self) -> None:
+        build, _ = self._build(
+            "func main():\n"
+            "  let x = 1\n"
+            "  x = true\n"
+            "  return y\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertTrue("cannot assign bool to variable 'x'" in build.stderr or "unknown identifier 'y'" in build.stderr)
+
     def test_closure_capture_and_call(self) -> None:
         _, run = self._build_and_run(
             "func main():\n"

@@ -1,6 +1,8 @@
 #include "thagc/driver/command_handlers.hpp"
 
+#include <algorithm>
 #include <iostream>
+#include <regex>
 
 #include "thagc/driver/common.hpp"
 #include "thagc/driver/pipeline.hpp"
@@ -18,6 +20,25 @@ static std::string default_output(const std::string& input) {
   return default_base_name(input) + ".bin";
 }
 
+static int extract_line_from_message(const std::string& message) {
+  std::smatch m;
+  static const std::regex kLinePattern(R"(line\s+([0-9]+))");
+  if (std::regex_search(message, m, kLinePattern) && m.size() >= 2) {
+    return std::stoi(m[1].str());
+  }
+  return 1;
+}
+
+static void print_diagnostics(const ParsedCommand& cmd, const support::DiagnosticSink& diag) {
+  for (const auto& d : diag.diagnostics()) {
+    const std::string file = d.file.empty() ? (cmd.input_path.empty() ? "<unknown>" : cmd.input_path) : d.file;
+    const int line = d.line > 0 ? d.line : extract_line_from_message(d.message);
+    const int column = d.column > 0 ? d.column : 1;
+    std::cerr << file << ":" << std::max(1, line) << ":" << std::max(1, column) << ": " << d.code << ": " << d.message
+              << "\n";
+  }
+}
+
 int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag) {
   if (cmd.input_path.empty()) {
     std::cerr << "ERROR: missing input path for build\n";
@@ -30,9 +51,7 @@ int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
   options.target_triple = cmd.target_triple;
   options.emit_llvm = cmd.emit_llvm;
   if (!apply_target_config(options, cmd.target_triple, diag)) {
-    for (const auto& d : diag.diagnostics()) {
-      std::cerr << d.code << ": " << d.message << "\n";
-    }
+    print_diagnostics(cmd, diag);
     return 1;
   }
   if (options.emit_llvm) {
@@ -40,9 +59,7 @@ int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
                                                     : (options.output_path + ".ll");
   }
   if (!pipeline.build(options, diag)) {
-    for (const auto& d : diag.diagnostics()) {
-      std::cerr << d.code << ": " << d.message << "\n";
-    }
+    print_diagnostics(cmd, diag);
     return 1;
   }
   return 0;
