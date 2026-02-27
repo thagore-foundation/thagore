@@ -15,6 +15,13 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
     def _run(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([str(self.bin), *args], cwd=cwd, capture_output=True, text=True, check=False)
 
+    def _host_triple(self) -> str | None:
+        for tool in ("clang", "gcc"):
+            p = subprocess.run([tool, "-dumpmachine"], capture_output=True, text=True, check=False)
+            if p.returncode == 0 and p.stdout.strip():
+                return p.stdout.strip()
+        return None
+
     def test_target_and_flow_journal(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -50,6 +57,21 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             dry = self._run(root, "update", "apply", "--dry-run")
             self.assertEqual(dry.returncode, 0, msg=dry.stderr)
             self.assertIn("[dry-run]", dry.stdout)
+
+    def test_build_target_one_command_auto_init(self) -> None:
+        triple = self._host_triple()
+        if not triple:
+            self.skipTest("no compiler triple available")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "main.tg"
+            out = root / "main.bin"
+            src.write_text("func main():\n  return 0\n")
+            build = self._run(root, "build", str(src), "-o", str(out), f"--target={triple}")
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            self.assertTrue(out.exists())
+            manifest = root / ".thagc" / "targets" / triple / "manifest.json"
+            self.assertTrue(manifest.exists(), msg=f"missing manifest {manifest}")
 
 
 if __name__ == "__main__":
