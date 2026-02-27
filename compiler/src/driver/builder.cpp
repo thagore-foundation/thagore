@@ -79,7 +79,7 @@ static std::string extract_enum_name(const std::string& header) {
   return trim_copy(name);
 }
 
-static std::unordered_set<std::string> collect_exports(const syntax::AstProgram& ast) {
+static std::unordered_set<std::string> collect_all_symbols(const syntax::AstProgram& ast) {
   std::unordered_set<std::string> out;
   for (const auto& fn : ast.functions) {
     if (fn.name.empty()) {
@@ -102,6 +102,76 @@ static std::unordered_set<std::string> collect_exports(const syntax::AstProgram&
   for (const std::string& header : ast.enums) {
     const std::string name = extract_enum_name(header);
     if (!name.empty()) {
+      out.insert(name);
+    }
+  }
+  return out;
+}
+
+static std::unordered_set<std::string> collect_prefixed_symbol_refs(const std::string& source, const std::string& prefix) {
+  std::unordered_set<std::string> out;
+  if (prefix.empty()) {
+    return out;
+  }
+  const std::string needle = prefix + ".";
+  std::istringstream in(source);
+  std::string line;
+  while (std::getline(in, line)) {
+    const std::string clean = trim_copy(line);
+    if (starts_with(clean, "import ") || starts_with(clean, "from ")) {
+      continue;
+    }
+    std::size_t pos = 0;
+    while (pos < line.size()) {
+      const std::size_t found = line.find(needle, pos);
+      if (found == std::string::npos) {
+        break;
+      }
+      const bool left_ok = found == 0 || !is_ident_body(line[found - 1]);
+      std::size_t cursor = found + needle.size();
+      if (!left_ok || cursor >= line.size() || !(std::isalpha(static_cast<unsigned char>(line[cursor])) || line[cursor] == '_')) {
+        pos = found + 1;
+        continue;
+      }
+      const std::size_t symbol_start = cursor;
+      while (cursor < line.size() && is_ident_body(line[cursor])) {
+        ++cursor;
+      }
+      out.insert(line.substr(symbol_start, cursor - symbol_start));
+      pos = cursor;
+    }
+  }
+  return out;
+}
+
+static std::unordered_set<std::string> collect_exports(const syntax::AstProgram& ast) {
+  std::unordered_set<std::string> out;
+  for (const auto& fn : ast.functions) {
+    if (fn.name.empty()) {
+      continue;
+    }
+    if (fn.name.find('.') != std::string::npos) {
+      continue;
+    }
+    if (fn.name == "main") {
+      continue;
+    }
+    auto vis = ast.function_visibility.find(fn.name);
+    if (vis != ast.function_visibility.end() && vis->second) {
+      out.insert(fn.name);
+    }
+  }
+  for (const std::string& header : ast.structs) {
+    const std::string name = extract_struct_name(header);
+    auto vis = ast.struct_visibility.find(name);
+    if (!name.empty() && vis != ast.struct_visibility.end() && vis->second) {
+      out.insert(name);
+    }
+  }
+  for (const std::string& header : ast.enums) {
+    const std::string name = extract_enum_name(header);
+    auto vis = ast.enum_visibility.find(name);
+    if (!name.empty() && vis != ast.enum_visibility.end() && vis->second) {
       out.insert(name);
     }
   }
@@ -257,11 +327,17 @@ static bool validate_import_bindings(const std::unordered_map<std::string, Modul
         return false;
       }
       if (binding.import_decl.is_from_import) {
+        const std::unordered_set<std::string> all_symbols = collect_all_symbols(target_it->second.ast);
         for (const std::string& symbol : binding.import_decl.symbols) {
           if (target_it->second.exports.find(symbol) == target_it->second.exports.end()) {
-            diag.error("E_MOD_205",
-                       "symbol '" + symbol + "' is not exported by module '" + binding.resolved.display_name + "'",
-                       module.path, binding.import_decl.line, binding.import_decl.column);
+            if (all_symbols.find(symbol) != all_symbols.end()) {
+              diag.error("E_MOD_208", "symbol `" + symbol + "` is private — add `pub` to export it", module.path,
+                         binding.import_decl.line, binding.import_decl.column);
+            } else {
+              diag.error("E_MOD_205",
+                         "symbol '" + symbol + "' is not exported by module '" + binding.resolved.display_name + "'",
+                         module.path, binding.import_decl.line, binding.import_decl.column);
+            }
             return false;
           }
         }
@@ -275,6 +351,19 @@ static bool validate_import_bindings(const std::unordered_map<std::string, Modul
         return false;
       }
       prefix_owner[prefix] = binding.resolved.module_key;
+
+      const std::unordered_set<std::string> all_symbols = collect_all_symbols(target_it->second.ast);
+      const std::unordered_set<std::string> refs = collect_prefixed_symbol_refs(module.source, prefix);
+      for (const std::string& symbol : refs) {
+        if (all_symbols.find(symbol) == all_symbols.end()) {
+          continue;
+        }
+        if (target_it->second.exports.find(symbol) == target_it->second.exports.end()) {
+          diag.error("E_MOD_208", "symbol `" + symbol + "` is private — add `pub` to export it", module.path,
+                     binding.import_decl.line, binding.import_decl.column);
+          return false;
+        }
+      }
     }
   }
   return true;

@@ -206,6 +206,51 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         self.assertEqual(run.returncode, 4, msg=run.stderr)
         self.assertIn("9", run.stdout)
 
+    def test_try_operator_early_return_on_err(self) -> None:
+        _, run = self._build_and_run(
+            "func may_fail(v) -> Result<i32, i32>:\n"
+            "  if (v == 0):\n"
+            "    return Err(11)\n"
+            "  return Ok(v)\n"
+            "\n"
+            "func main():\n"
+            "  let x = may_fail(0)?\n"
+            "  return x\n"
+        )
+        self.assertEqual(run.returncode, 11, msg=run.stderr)
+
+    def test_tuple_destructure_and_field_access(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let t = (1, 2, 3)\n"
+            "  let (a, b, c) = t\n"
+            "  return a + b + c + t.1\n"
+        )
+        self.assertEqual(run.returncode, 8, msg=run.stderr)
+
+    def test_array_literal_index_and_len(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let arr = [4, 5, 6]\n"
+            "  print(len(arr))\n"
+            "  return arr[1]\n"
+        )
+        self.assertEqual(run.returncode, 5, msg=run.stderr)
+        self.assertIn("3", run.stdout)
+
+    def test_labeled_break_continue(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let i = 0\n"
+            "  'outer: while (i < 5):\n"
+            "    i = i + 1\n"
+            "    if (i < 3):\n"
+            "      continue 'outer\n"
+            "    break 'outer\n"
+            "  return i\n"
+        )
+        self.assertEqual(run.returncode, 3, msg=run.stderr)
+
     def test_typestate_rejects_read_before_open(self) -> None:
         build, _ = self._build(
             "func main():\n"

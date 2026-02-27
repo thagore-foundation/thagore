@@ -53,11 +53,24 @@ static bool parse_generic_parts(const std::string& type_name, std::string& base,
   return !base.empty() && !args.empty();
 }
 
+static bool is_tuple_type_syntax(const std::string& type_name) {
+  const std::string clean = trim_copy(type_name);
+  return clean.size() >= 5 && clean.front() == '(' && clean.back() == ')' && clean.find(',') != std::string::npos;
+}
+
+static bool is_array_type_syntax(const std::string& type_name) {
+  const std::string clean = trim_copy(type_name);
+  return clean.size() >= 5 && clean.front() == '[' && clean.back() == ']' && clean.find(';') != std::string::npos;
+}
+
 static bool is_supported_type(const std::string& type_name) {
   if (type_name == "i32" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
       type_name == "string" || type_name == "String" || type_name == "ptr" || type_name == "void" ||
       type_name == "Option" || type_name == "Result" || type_name == "List" || type_name == "Rc" ||
       type_name == "Arc" || type_name == "Fn") {
+    return true;
+  }
+  if (is_tuple_type_syntax(type_name) || is_array_type_syntax(type_name)) {
     return true;
   }
   std::string base;
@@ -83,6 +96,8 @@ static std::string type_name(TypeKind kind) {
   if (kind == TypeKind::Ptr) return "ptr";
   if (kind == TypeKind::StructType) return "struct";
   if (kind == TypeKind::EnumType) return "enum";
+  if (kind == TypeKind::TupleType) return "tuple";
+  if (kind == TypeKind::ArrayType) return "array";
   if (kind == TypeKind::Void) return "void";
   return "unknown";
 }
@@ -102,6 +117,8 @@ static TypeKind parse_type_name(const std::string& type_name) {
   if (clean == "Fn" || clean == "fn") return TypeKind::FunctionType;
   if (clean == "ptr") return TypeKind::Ptr;
   if (clean == "void") return TypeKind::Void;
+  if (is_tuple_type_syntax(clean)) return TypeKind::TupleType;
+  if (is_array_type_syntax(clean)) return TypeKind::ArrayType;
   std::string base;
   std::vector<std::string> args;
   if (parse_generic_parts(clean, base, args)) {
@@ -298,10 +315,14 @@ static bool split_dotted_name(const std::string& value, std::string& base, std::
 
 static bool is_interpolated_literal(const std::string& text) {
   const std::string clean = trim_copy(text);
-  return clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"';
+  if (clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"') {
+    return true;
+  }
+  return clean.size() >= 2 && clean.front() == '"' && clean.back() == '"' && clean.find('{') != std::string::npos &&
+         clean.find('}') != std::string::npos;
 }
 
-static bool parse_closure_literal(const std::string& text, std::string& param, std::string& body) {
+static bool parse_closure_literal(const std::string& text, std::vector<std::string>& params, std::string& body) {
   const std::string clean = trim_copy(text);
   if (clean.size() < 4 || clean[0] != '|') {
     return false;
@@ -310,16 +331,38 @@ static bool parse_closure_literal(const std::string& text, std::string& param, s
   if (second_bar == std::string::npos || second_bar <= 1) {
     return false;
   }
-  param = trim_copy(clean.substr(1, second_bar - 1));
+  const std::string param_text = trim_copy(clean.substr(1, second_bar - 1));
   body = trim_copy(clean.substr(second_bar + 1));
-  if (param.empty() || body.empty()) {
+  params.clear();
+  std::size_t i = 0;
+  while (i < param_text.size()) {
+    std::size_t comma = param_text.find(',', i);
+    if (comma == std::string::npos) {
+      comma = param_text.size();
+    }
+    const std::string part = trim_copy(param_text.substr(i, comma - i));
+    if (part.empty()) {
+      return false;
+    }
+    params.push_back(part);
+    i = comma + 1;
+  }
+  if (params.empty() || body.empty()) {
     return false;
   }
-  if (!is_ident_start(param[0])) {
-    return false;
+  for (const std::string& param : params) {
+    if (!is_ident_start(param[0])) {
+      return false;
+    }
+    for (std::size_t k = 1; k < param.size(); ++k) {
+      if (!is_ident_body(param[k])) {
+        return false;
+      }
+    }
   }
-  for (std::size_t i = 1; i < param.size(); ++i) {
-    if (!is_ident_body(param[i])) {
+  if (body.size() >= 2 && body.front() == '{' && body.back() == '}') {
+    body = trim_copy(body.substr(1, body.size() - 2));
+    if (body.empty()) {
       return false;
     }
   }
@@ -328,9 +371,9 @@ static bool parse_closure_literal(const std::string& text, std::string& param, s
 
 static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& error) {
   std::vector<ExprTok> out;
-  std::string closure_param;
+  std::vector<std::string> closure_params;
   std::string closure_body;
-  if (parse_closure_literal(text, closure_param, closure_body)) {
+  if (parse_closure_literal(text, closure_params, closure_body)) {
     out.push_back(ExprTok{ExprTokKind::Atom, trim_copy(text)});
     out.push_back(ExprTok{ExprTokKind::End, ""});
     return out;
@@ -366,6 +409,21 @@ static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& 
     }
     if (ch == ',') {
       out.push_back(ExprTok{ExprTokKind::Comma, ","});
+      ++i;
+      continue;
+    }
+    if (ch == '[') {
+      out.push_back(ExprTok{ExprTokKind::LParen, "["});
+      ++i;
+      continue;
+    }
+    if (ch == ']') {
+      out.push_back(ExprTok{ExprTokKind::RParen, "]"});
+      ++i;
+      continue;
+    }
+    if (ch == '?') {
+      out.push_back(ExprTok{ExprTokKind::Op, "?"});
       ++i;
       continue;
     }
@@ -431,7 +489,8 @@ static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& 
           ++i;
           continue;
         }
-        if (text[i] == '.' && i + 1 < text.size() && is_ident_start(text[i + 1])) {
+        if (text[i] == '.' && i + 1 < text.size() &&
+            (is_ident_start(text[i + 1]) || std::isdigit(static_cast<unsigned char>(text[i + 1])))) {
           ++i;
           continue;
         }
@@ -547,6 +606,13 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
       if (tok.text == "open" || tok.text == "close" || tok.text == "read" || tok.text == "write") {
         return TypeKind::I32;
       }
+      if (tok.text == "len") {
+        if (args.size() != 1) {
+          cursor.error = "len() expects 1 argument";
+          return TypeKind::Unknown;
+        }
+        return TypeKind::I32;
+      }
       if (tok.text == "print") {
         return TypeKind::I32;
       }
@@ -632,9 +698,9 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     if (is_interpolated_literal(tok.text)) {
       return TypeKind::String;
     }
-    std::string closure_param;
+    std::vector<std::string> closure_params;
     std::string closure_body;
-    if (parse_closure_literal(tok.text, closure_param, closure_body)) {
+    if (parse_closure_literal(tok.text, closure_params, closure_body)) {
       return TypeKind::FunctionType;
     }
     std::string field_base;
@@ -666,6 +732,21 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
         return TypeKind::I32;
       }
     }
+    if (split_dotted_name(tok.text, field_base, field_name) && cursor.scope != nullptr) {
+      auto base_it = cursor.scope->find(field_base);
+      if (base_it != cursor.scope->end() && base_it->second == TypeKind::TupleType) {
+        bool all_digit = !field_name.empty();
+        for (char ch : field_name) {
+          if (!std::isdigit(static_cast<unsigned char>(ch))) {
+            all_digit = false;
+            break;
+          }
+        }
+        if (all_digit) {
+          return TypeKind::I32;
+        }
+      }
+    }
     if (cursor.scope != nullptr) {
       auto it = cursor.scope->find(tok.text);
       if (it != cursor.scope->end()) {
@@ -687,11 +768,23 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     if (inner == TypeKind::Unknown) {
       return TypeKind::Unknown;
     }
+    bool is_tuple = false;
+    while (cur(cursor).kind == ExprTokKind::Comma) {
+      is_tuple = true;
+      ++cursor.index;
+      const TypeKind tuple_item = parse_expr_type(cursor);
+      if (tuple_item == TypeKind::Unknown) {
+        return TypeKind::Unknown;
+      }
+    }
     if (cur(cursor).kind != ExprTokKind::RParen) {
       cursor.error = "missing closing ')' in expression";
       return TypeKind::Unknown;
     }
     ++cursor.index;
+    if (is_tuple) {
+      return TypeKind::TupleType;
+    }
     return inner;
   }
   cursor.error = "expected expression atom";
@@ -733,8 +826,26 @@ static TypeKind parse_expr_type(ExprTypeCursor& cursor) {
     return TypeKind::Unknown;
   }
 
+  while (cur(cursor).kind == ExprTokKind::Op && cur(cursor).text == "?") {
+    ++cursor.index;
+    if (lhs != TypeKind::Result && lhs != TypeKind::Option) {
+      cursor.error = "operator '?' requires Result/Option operand";
+      return TypeKind::Unknown;
+    }
+    lhs = TypeKind::I32;
+  }
+
   while (cur(cursor).kind == ExprTokKind::Op) {
     const std::string op = cur(cursor).text;
+    if (op == "?") {
+      ++cursor.index;
+      if (lhs != TypeKind::Result && lhs != TypeKind::Option) {
+        cursor.error = "operator '?' requires Result/Option operand";
+        return TypeKind::Unknown;
+      }
+      lhs = TypeKind::I32;
+      continue;
+    }
     ++cursor.index;
     const TypeKind rhs = parse_atom_type(cursor);
     if (rhs == TypeKind::Unknown) {
@@ -795,6 +906,45 @@ static std::string parse_let_name(const std::string& line) {
     return "";
   }
   return line.substr(start, i - start);
+}
+
+static bool parse_let_tuple_bindings(const std::string& line, std::vector<std::string>& names) {
+  names.clear();
+  if (line.rfind("let ", 0) != 0) {
+    return false;
+  }
+  std::size_t i = 4;
+  while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
+    ++i;
+  }
+  if (i >= line.size() || line[i] != '(') {
+    return false;
+  }
+  const std::size_t close = line.find(')', i + 1);
+  const std::size_t eq = line.find('=', close == std::string::npos ? i : close + 1);
+  if (close == std::string::npos || eq == std::string::npos || close >= eq) {
+    return false;
+  }
+  std::string content = line.substr(i + 1, close - i - 1);
+  std::size_t from = 0;
+  while (from < content.size()) {
+    std::size_t comma = content.find(',', from);
+    if (comma == std::string::npos) {
+      comma = content.size();
+    }
+    std::string part = trim_copy(content.substr(from, comma - from));
+    if (part.empty() || !is_ident_start(part[0])) {
+      return false;
+    }
+    for (std::size_t k = 1; k < part.size(); ++k) {
+      if (!is_ident_body(part[k])) {
+        return false;
+      }
+    }
+    names.push_back(part);
+    from = comma + 1;
+  }
+  return !names.empty();
 }
 
 static std::string parse_assignment_target(const std::string& line) {
@@ -1359,6 +1509,37 @@ static MatchArmInfo parse_match_arm_info(const std::string& line) {
   return out;
 }
 
+static bool is_array_literal_expr(const std::string& expr) {
+  const std::string clean = trim_copy(expr);
+  return clean.size() >= 2 && clean.front() == '[' && clean.back() == ']' && clean.find(',') != std::string::npos;
+}
+
+static bool parse_array_index_expr(const std::string& expr, std::string& base, std::string& index_expr) {
+  const std::string clean = trim_copy(expr);
+  const std::size_t lbr = clean.find('[');
+  const std::size_t rbr = clean.rfind(']');
+  if (lbr == std::string::npos || rbr == std::string::npos || rbr <= lbr + 1) {
+    return false;
+  }
+  if (trim_copy(clean.substr(rbr + 1)).empty() == false) {
+    return false;
+  }
+  base = trim_copy(clean.substr(0, lbr));
+  index_expr = trim_copy(clean.substr(lbr + 1, rbr - lbr - 1));
+  if (base.empty() || index_expr.empty()) {
+    return false;
+  }
+  if (!is_ident_start(base[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < base.size(); ++i) {
+    if (!is_ident_body(base[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool typecheck_statement_expression(const syntax::AstStatement& st, int line,
                                            const std::unordered_map<std::string, TypeKind>& scope,
                                            const std::unordered_map<std::string, int>& enum_variants,
@@ -1377,6 +1558,32 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
   if (!st.expression_valid) {
     error = st.expression_error.empty() ? "invalid expression" : st.expression_error;
     return false;
+  }
+
+  const std::string clean_expr = trim_copy(st.expression_normalized);
+  if (is_array_literal_expr(clean_expr)) {
+    out = TypeKind::ArrayType;
+    return true;
+  }
+  if (clean_expr.size() >= 2 && clean_expr.front() == '(' && clean_expr.back() == ')' &&
+      clean_expr.find(',') != std::string::npos) {
+    out = TypeKind::TupleType;
+    return true;
+  }
+  std::string index_base;
+  std::string index_expr;
+  if (parse_array_index_expr(clean_expr, index_base, index_expr)) {
+    auto base_it = scope.find(index_base);
+    if (base_it == scope.end()) {
+      error = "unknown identifier '" + index_base + "'";
+      return false;
+    }
+    if (base_it->second != TypeKind::ArrayType) {
+      error = "index access requires array value";
+      return false;
+    }
+    out = TypeKind::I32;
+    return true;
   }
 
   std::string tokenize_error;
@@ -1626,6 +1833,17 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
 
       if (st.kind == syntax::StatementKind::Let) {
+        std::vector<std::string> tuple_bindings;
+        if (parse_let_tuple_bindings(st.text, tuple_bindings)) {
+          if (expr_type != TypeKind::TupleType) {
+            diag.error("E0013", "line " + std::to_string(st.line) + ": tuple destructuring requires tuple value");
+            return false;
+          }
+          for (const std::string& tuple_name : tuple_bindings) {
+            scope[tuple_name] = TypeKind::I32;
+          }
+          continue;
+        }
         const std::string name = parse_let_name(st.text);
         if (name.empty()) {
           diag.error("E0012", "line " + std::to_string(st.line) + ": invalid let binding name");
@@ -1835,6 +2053,17 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
     }
     if (st.kind == syntax::StatementKind::Let) {
+      std::vector<std::string> tuple_bindings;
+      if (parse_let_tuple_bindings(st.text, tuple_bindings)) {
+        if (expr_type != TypeKind::TupleType) {
+          diag.error("E0013", "line " + std::to_string(st.line) + ": tuple destructuring requires tuple value");
+          return false;
+        }
+        for (const std::string& tuple_name : tuple_bindings) {
+          top_scope[tuple_name] = TypeKind::I32;
+        }
+        continue;
+      }
       const std::string name = parse_let_name(st.text);
       if (name.empty()) {
         diag.error("E0012", "line " + std::to_string(st.line) + ": invalid let binding name");

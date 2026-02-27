@@ -12,6 +12,8 @@ enum class CoreStmtKind {
   Let,
   Assign,
   Defer,
+  Break,
+  Continue,
   Expr,
   Return,
   If,
@@ -33,6 +35,7 @@ struct CoreStmt {
 struct CoreFunction {
   std::string name;
   bool is_method = false;
+  bool is_pub = false;
   std::string owner_type;
   std::string method_name;
   std::vector<std::string> params;
@@ -40,6 +43,14 @@ struct CoreFunction {
   int return_literal = 0;
   std::string return_expression;
   std::vector<CoreStmt> statements;
+};
+
+struct CoreClosure {
+  std::vector<std::string> captures;
+  std::vector<std::string> params;
+  std::string body;
+  bool block_body = false;
+  int line = 0;
 };
 
 struct CoreStructType {
@@ -68,6 +79,7 @@ struct CoreProgram {
   std::string main_return_expression;
   std::vector<CoreStmt> main_statements;
   std::vector<CoreFunction> functions;
+  std::vector<CoreClosure> closures;
   std::vector<CoreExternFunction> extern_functions;
   std::vector<CoreStructType> struct_types;
   std::vector<CoreEnumVariant> enum_variants;

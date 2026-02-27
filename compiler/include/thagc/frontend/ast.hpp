@@ -11,6 +11,8 @@ enum class StatementKind {
   Let,
   Assign,
   Defer,
+  Break,
+  Continue,
   If,
   Else,
   While,
@@ -31,12 +33,32 @@ struct AstStatement {
   std::string expression_error;
 };
 
+struct AstClosure {
+  std::vector<std::string> captures;
+  std::vector<std::string> params;
+  std::string body;
+  int line = 0;
+  bool block_body = false;
+};
+
+struct AstInterpolatedSegment {
+  bool is_expression = false;
+  std::string text;
+};
+
+struct AstInterpolatedString {
+  std::string raw;
+  std::vector<AstInterpolatedSegment> segments;
+  int line = 0;
+};
+
 struct AstFunction {
   std::string name;
   std::vector<std::string> params;
   std::string return_type;
   int header_line = 0;
   int header_indent = 0;
+  bool is_pub = false;
   std::vector<AstStatement> body;
 };
 
@@ -78,6 +100,11 @@ struct AstProgram {
   std::vector<std::string> traits;
   std::vector<std::string> impl_for_headers;
   std::vector<std::string> public_decls;
+  std::unordered_map<std::string, bool> function_visibility;
+  std::unordered_map<std::string, bool> struct_visibility;
+  std::unordered_map<std::string, bool> enum_visibility;
+  std::vector<AstClosure> closures;
+  std::vector<AstInterpolatedString> interpolated_strings;
   std::unordered_map<std::string, int> enum_variant_tags;
   std::unordered_map<std::string, std::string> enum_variant_payload_types;
   std::unordered_map<std::string, std::vector<std::string>> trait_required_methods;

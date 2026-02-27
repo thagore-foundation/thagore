@@ -149,7 +149,9 @@ static bool should_track_known_value(const std::string& expr) {
   }
   if (expr.find('(') != std::string::npos || expr.find(')') != std::string::npos ||
       expr.find('.') != std::string::npos || expr.find('|') != std::string::npos ||
-      expr.find('{') != std::string::npos || expr.find('}') != std::string::npos) {
+      expr.find('{') != std::string::npos || expr.find('}') != std::string::npos ||
+      expr.find('[') != std::string::npos || expr.find(']') != std::string::npos ||
+      expr.find('?') != std::string::npos) {
     return false;
   }
   return true;
@@ -163,6 +165,10 @@ static CoreStmtKind map_stmt_kind(syntax::StatementKind kind) {
       return CoreStmtKind::Assign;
     case syntax::StatementKind::Defer:
       return CoreStmtKind::Defer;
+    case syntax::StatementKind::Break:
+      return CoreStmtKind::Break;
+    case syntax::StatementKind::Continue:
+      return CoreStmtKind::Continue;
     case syntax::StatementKind::Return:
       return CoreStmtKind::Return;
     case syntax::StatementKind::If:
@@ -190,7 +196,8 @@ static void append_core_statement(std::vector<CoreStmt>& out_statements, const s
   out.target = st.target;
   out.has_expression = st.has_expression && st.expression_valid;
   if (out.has_expression) {
-    out.expression = substitute_identifiers(st.expression_normalized, known_values);
+    (void)known_values;
+    out.expression = st.expression_normalized;
   }
   out_statements.push_back(std::move(out));
 }
@@ -266,6 +273,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
   auto lower_function = [&](const syntax::AstFunction& fn) {
     CoreFunction out;
     out.name = fn.name;
+    out.is_pub = fn.is_pub;
     out.params = fn.params;
     out.return_type = fn.return_type;
     std::string owner;
@@ -289,7 +297,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
         }
       }
       if (st.kind == syntax::StatementKind::Return && st.has_expression && st.expression_valid) {
-        out.return_expression = substitute_identifiers(st.expression_normalized, known_values);
+        out.return_expression = st.expression_normalized;
         int parsed = 0;
         if (parse_i32_literal(st.expression_normalized, parsed)) {
           out.return_literal = parsed;
@@ -304,6 +312,16 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
 
   for (const auto& fn : program.functions) {
     core.functions.push_back(lower_function(fn));
+  }
+
+  for (const auto& closure : program.closures) {
+    CoreClosure out;
+    out.captures = closure.captures;
+    out.params = closure.params;
+    out.body = closure.body;
+    out.block_body = closure.block_body;
+    out.line = closure.line;
+    core.closures.push_back(std::move(out));
   }
 
   for (const auto& fn : core.functions) {

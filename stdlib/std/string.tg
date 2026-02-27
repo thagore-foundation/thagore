@@ -1,7 +1,22 @@
-# String helper surface for compiler parity lane.
+# String helper surface for compiler/runtime parity lane.
 
-func len():
+pub func from_int(n):
+  return n
+
+pub func from_float(f):
+  return f
+
+pub func concat(a, b):
+  return a
+
+pub func split(s, delim):
   return 0
 
-func is_empty():
-  return 1
+pub func join(parts, sep):
+  return 0
+
+pub func trim(s):
+  return s
+
+pub func contains(s, sub):
+  return 0

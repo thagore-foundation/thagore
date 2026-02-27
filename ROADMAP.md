@@ -109,27 +109,27 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.5 — Language Features Complete 🔲 Planned (dependency on v0.4 gate)
+## v0.5 — Language Features Complete ✅ Released
 > *"Ngôn ngữ đủ để viết chương trình thật"*
 
 ### Compiler — Language Features
-- [ ] Closures — capture, function-value type, emit đúng trong LLVM
-- [ ] `defer` stack — defer-stack mechanism trong backend, đúng execution order
-- [ ] Interpolated strings — `"Hello {name}!"` compile thành string concat
-- [ ] `Result<T, E>` / `Option<T>` — built-in sum types, không cần generic đầy đủ
-- [ ] `?` operator — early return cho Result/Option
-- [ ] Tuple type — `(i32, string)`, tuple destructuring
-- [ ] Array/slice literals — `[1, 2, 3]`, index access `arr[i]`
-- [ ] Loop labels + labeled `break`/`continue`
-- [ ] `pub` visibility enforcement — cross-module access control
+- [x] Closures — capture, function-value type, emit đúng trong LLVM
+- [x] `defer` stack — defer-stack mechanism trong backend, đúng execution order
+- [x] Interpolated strings — `"Hello {name}!"` compile thành string concat
+- [x] `Result<T, E>` / `Option<T>` — built-in sum types, không cần generic đầy đủ
+- [x] `?` operator — early return cho Result/Option
+- [x] Tuple type — `(i32, string)`, tuple destructuring
+- [x] Array/slice literals — `[1, 2, 3]`, index access `arr[i]`
+- [x] Loop labels + labeled `break`/`continue`
+- [x] `pub` visibility enforcement — cross-module access control
 
 ### Type System
-- [ ] Generic types cơ bản — `List<T>`, `Option<T>`, `Result<T, E>`
-- [ ] Function types — `fn(i32) -> string`
-- [ ] User-defined type validation — struct field types, trait method signatures
+- [x] Generic types cơ bản — `List<T>`, `Option<T>`, `Result<T, E>`
+- [x] Function types — `fn(i32) -> string`
+- [x] User-defined type validation — struct field types, trait method signatures
 
 ### Gate
-- [ ] Có thể viết một CLI tool hoàn chỉnh bằng Thagore (sort, search, transform data)
+- [x] Có thể viết một CLI tool hoàn chỉnh bằng Thagore (sort, search, transform data)
 
 ---
 
@@ -445,10 +445,10 @@ Execution order (re-anchored to dependency reality):
 | Version | Theme | Status |
 |---------|-------|--------|
 | v0.1 | Baseline rewrite | ✅ Completed (infrastructure baseline) |
-| v0.2 | Compiler foundation | 🚧 In progress (~60% by audit) |
+| v0.2 | Compiler foundation | ✅ Completed (gate passed on Linux) |
 | v0.3 | Struct & type system | ✅ Completed (gate passed on Linux) |
-| v0.4 | Module & import system | 🔲 Planned |
-| v0.5 | Language features complete | 🔲 Planned |
+| v0.4 | Module & import system | ✅ Completed (gate passed on Linux) |
+| v0.5 | Language features complete | ✅ Completed (gate passed on Linux) |
 | v0.6 | Concurrency alpha | ⚠️ Prototype track (out-of-order, not releasable) |
 | v0.7 | Structured concurrency beta | 🔲 Planned |
 | v0.8 | Memory model MVP | 🔲 Planned |

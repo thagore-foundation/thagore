@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <llvm/IR/BasicBlock.h>
@@ -66,8 +67,22 @@ struct StructInstance {
 };
 
 struct ClosureDef {
-  std::string param;
+  std::vector<std::string> params;
   std::string body_expr;
+  bool block_body = false;
+  std::unordered_map<std::string, llvm::Value*> captured_i32_values;
+};
+
+struct TupleInstance {
+  llvm::AllocaInst* alloca = nullptr;
+  llvm::StructType* llvm_type = nullptr;
+  std::vector<ValueType> element_types;
+};
+
+struct ArrayInstance {
+  llvm::AllocaInst* alloca = nullptr;
+  ValueType element_type = ValueType::Invalid;
+  std::size_t length = 0;
 };
 
 static constexpr int kEnumPayloadShift = 20;
@@ -85,6 +100,8 @@ struct ExprCursor {
   const std::unordered_map<std::string, std::vector<std::string>>* struct_fields = nullptr;
   const std::unordered_map<std::string, std::string>* struct_field_types = nullptr;
   const std::unordered_map<std::string, StructInstance>* struct_instances = nullptr;
+  std::unordered_map<std::string, TupleInstance>* tuple_instances = nullptr;
+  std::unordered_map<std::string, ArrayInstance>* array_instances = nullptr;
   std::unordered_map<std::string, ClosureDef>* closures = nullptr;
   llvm::Function* current_function = nullptr;
 };
@@ -250,6 +267,124 @@ static ParsedConstructorCall parse_constructor_call(const std::string& expr) {
   return out;
 }
 
+static bool split_top_level_items(const std::string& text, std::vector<std::string>& out) {
+  out.clear();
+  std::string current;
+  int depth_paren = 0;
+  int depth_bracket = 0;
+  bool in_string = false;
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char ch = text[i];
+    if (in_string) {
+      current.push_back(ch);
+      if (ch == '\\' && i + 1 < text.size()) {
+        current.push_back(text[++i]);
+        continue;
+      }
+      if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      current.push_back(ch);
+      continue;
+    }
+    if (ch == '(') {
+      ++depth_paren;
+      current.push_back(ch);
+      continue;
+    }
+    if (ch == ')') {
+      --depth_paren;
+      current.push_back(ch);
+      continue;
+    }
+    if (ch == '[') {
+      ++depth_bracket;
+      current.push_back(ch);
+      continue;
+    }
+    if (ch == ']') {
+      --depth_bracket;
+      current.push_back(ch);
+      continue;
+    }
+    if (ch == ',' && depth_paren == 0 && depth_bracket == 0) {
+      const std::string item = trim(current);
+      if (!item.empty()) {
+        out.push_back(item);
+      }
+      current.clear();
+      continue;
+    }
+    current.push_back(ch);
+  }
+  const std::string tail = trim(current);
+  if (!tail.empty()) {
+    out.push_back(tail);
+  }
+  return !in_string && depth_paren == 0 && depth_bracket == 0;
+}
+
+static bool parse_tuple_literal_expr(const std::string& expr, std::vector<std::string>& elements) {
+  std::string clean = trim(expr);
+  if (clean.size() < 5 || clean.front() != '(' || clean.back() != ')' || clean.find(',') == std::string::npos) {
+    return false;
+  }
+  clean = clean.substr(1, clean.size() - 2);
+  if (!split_top_level_items(clean, elements)) {
+    return false;
+  }
+  return elements.size() >= 2;
+}
+
+static bool parse_array_literal_expr(const std::string& expr, std::vector<std::string>& elements) {
+  std::string clean = trim(expr);
+  if (clean.size() < 2 || clean.front() != '[' || clean.back() != ']') {
+    return false;
+  }
+  clean = clean.substr(1, clean.size() - 2);
+  if (trim(clean).empty()) {
+    elements.clear();
+    return true;
+  }
+  return split_top_level_items(clean, elements);
+}
+
+static bool parse_tuple_destructure_let(const std::string& line, std::vector<std::string>& names, std::string& expr) {
+  names.clear();
+  expr.clear();
+  const std::string clean = trim(line);
+  if (!starts_with(clean, "let (")) {
+    return false;
+  }
+  const std::size_t open = clean.find('(');
+  const std::size_t close = clean.find(')', open == std::string::npos ? 0 : open + 1);
+  const std::size_t eq = clean.find('=', close == std::string::npos ? 0 : close + 1);
+  if (open == std::string::npos || close == std::string::npos || eq == std::string::npos || close >= eq) {
+    return false;
+  }
+  std::vector<std::string> parts;
+  if (!split_top_level_items(clean.substr(open + 1, close - open - 1), parts)) {
+    return false;
+  }
+  for (const std::string& part : parts) {
+    if (part.empty() || !is_ident_start(part[0])) {
+      return false;
+    }
+    for (std::size_t i = 1; i < part.size(); ++i) {
+      if (!is_ident_body(part[i])) {
+        return false;
+      }
+    }
+    names.push_back(part);
+  }
+  expr = trim(clean.substr(eq + 1));
+  return !names.empty() && !expr.empty();
+}
+
 static llvm::AllocaInst* create_entry_alloca(llvm::Function* fn, llvm::Type* type, const std::string& name) {
   llvm::IRBuilder<> tmp(&fn->getEntryBlock(), fn->getEntryBlock().begin());
   return tmp.CreateAlloca(type, nullptr, name);
@@ -264,10 +399,15 @@ static llvm::Value* create_global_cstr_ptr(llvm::IRBuilder<>& builder, const std
 
 static bool is_interpolated_literal(const std::string& text) {
   const std::string clean = trim(text);
-  return clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"';
+  if (clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"' && clean.back() == '"') {
+    return true;
+  }
+  return clean.size() >= 2 && clean.front() == '"' && clean.back() == '"' && clean.find('{') != std::string::npos &&
+         clean.find('}') != std::string::npos;
 }
 
-static bool parse_closure_literal(const std::string& text, std::string& param, std::string& body_expr) {
+static bool parse_closure_literal(const std::string& text, std::vector<std::string>& params, std::string& body_expr,
+                                  bool& block_body) {
   const std::string clean = trim(text);
   if (clean.size() < 4 || clean[0] != '|') {
     return false;
@@ -276,13 +416,148 @@ static bool parse_closure_literal(const std::string& text, std::string& param, s
   if (second == std::string::npos || second <= 1) {
     return false;
   }
-  param = trim(clean.substr(1, second - 1));
+  const std::string param_text = trim(clean.substr(1, second - 1));
   body_expr = trim(clean.substr(second + 1));
-  if (param.empty() || body_expr.empty() || !is_ident_start(param[0])) {
+  block_body = false;
+  if (param_text.empty() || body_expr.empty()) {
     return false;
   }
-  for (std::size_t i = 1; i < param.size(); ++i) {
-    if (!is_ident_body(param[i])) {
+  params.clear();
+  std::size_t i = 0;
+  while (i < param_text.size()) {
+    std::size_t comma = param_text.find(',', i);
+    if (comma == std::string::npos) {
+      comma = param_text.size();
+    }
+    std::string part = trim(param_text.substr(i, comma - i));
+    if (part.empty() || !is_ident_start(part[0])) {
+      return false;
+    }
+    for (std::size_t k = 1; k < part.size(); ++k) {
+      if (!is_ident_body(part[k])) {
+        return false;
+      }
+    }
+    params.push_back(part);
+    i = comma + 1;
+  }
+  if (params.empty()) {
+    return false;
+  }
+  if (body_expr.size() >= 2 && body_expr.front() == '{' && body_expr.back() == '}') {
+    body_expr = trim(body_expr.substr(1, body_expr.size() - 2));
+    block_body = true;
+  }
+  if (body_expr.empty()) {
+    return false;
+  }
+  return true;
+}
+
+static std::vector<std::string> collect_closure_captures(const std::vector<std::string>& params, const std::string& body) {
+  std::unordered_set<std::string> param_set(params.begin(), params.end());
+  std::unordered_set<std::string> seen;
+  std::vector<std::string> out;
+  for (std::size_t i = 0; i < body.size();) {
+    if (!is_ident_start(body[i])) {
+      ++i;
+      continue;
+    }
+    const std::size_t start = i;
+    while (i < body.size() && is_ident_body(body[i])) {
+      ++i;
+    }
+    const std::string name = body.substr(start, i - start);
+    if (param_set.find(name) != param_set.end()) {
+      continue;
+    }
+    if (name == "true" || name == "false" || name == "Some" || name == "None" || name == "Ok" || name == "Err") {
+      continue;
+    }
+    if (seen.insert(name).second) {
+      out.push_back(name);
+    }
+  }
+  return out;
+}
+
+static bool parse_try_operator_expr(const std::string& text, std::string& inner) {
+  std::string clean = trim(text);
+  if (clean.empty() || clean.back() != '?') {
+    return false;
+  }
+  inner = trim(clean.substr(0, clean.size() - 1));
+  return !inner.empty();
+}
+
+static bool parse_tuple_field_access(const std::string& text, std::string& base, std::size_t& index) {
+  const std::string clean = trim(text);
+  const std::size_t dot = clean.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= clean.size()) {
+    return false;
+  }
+  if (clean.find('.', dot + 1) != std::string::npos) {
+    return false;
+  }
+  base = clean.substr(0, dot);
+  const std::string idx_text = clean.substr(dot + 1);
+  if (base.empty() || !is_ident_start(base[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < base.size(); ++i) {
+    if (!is_ident_body(base[i])) {
+      return false;
+    }
+  }
+  if (idx_text.empty()) {
+    return false;
+  }
+  for (char ch : idx_text) {
+    if (!std::isdigit(static_cast<unsigned char>(ch))) {
+      return false;
+    }
+  }
+  index = static_cast<std::size_t>(std::stoul(idx_text));
+  return true;
+}
+
+static bool parse_array_index_access(const std::string& text, std::string& base, std::string& index_expr) {
+  const std::string clean = trim(text);
+  const std::size_t lbr = clean.find('[');
+  const std::size_t rbr = clean.rfind(']');
+  if (lbr == std::string::npos || rbr == std::string::npos || rbr <= lbr + 1) {
+    return false;
+  }
+  if (trim(clean.substr(rbr + 1)).empty() == false) {
+    return false;
+  }
+  base = trim(clean.substr(0, lbr));
+  index_expr = trim(clean.substr(lbr + 1, rbr - lbr - 1));
+  if (base.empty() || index_expr.empty()) {
+    return false;
+  }
+  if (!is_ident_start(base[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < base.size(); ++i) {
+    if (!is_ident_body(base[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool parse_len_call(const std::string& text, std::string& base) {
+  const std::string clean = trim(text);
+  if (!starts_with(clean, "len(") || !ends_with(clean, ")")) {
+    return false;
+  }
+  base = trim(clean.substr(4, clean.size() - 5));
+  if (base.empty() || !is_ident_start(base[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < base.size(); ++i) {
+    if (!is_ident_body(base[i])) {
       return false;
     }
   }
@@ -350,9 +625,10 @@ static bool is_string_atom(const std::string& text) {
 
 static std::vector<ExprTok> tokenize_expression(const std::string& text, std::string& error) {
   std::vector<ExprTok> out;
-  std::string closure_param;
+  std::vector<std::string> closure_params;
   std::string closure_body;
-  if (parse_closure_literal(text, closure_param, closure_body)) {
+  bool closure_block = false;
+  if (parse_closure_literal(text, closure_params, closure_body, closure_block)) {
     out.push_back(ExprTok{ExprTokKind::Atom, trim(text)});
     out.push_back(ExprTok{ExprTokKind::End, ""});
     return out;
@@ -388,6 +664,21 @@ static std::vector<ExprTok> tokenize_expression(const std::string& text, std::st
     }
     if (ch == ',') {
       out.push_back(ExprTok{ExprTokKind::Comma, ","});
+      ++i;
+      continue;
+    }
+    if (ch == '[') {
+      out.push_back(ExprTok{ExprTokKind::LParen, "["});
+      ++i;
+      continue;
+    }
+    if (ch == ']') {
+      out.push_back(ExprTok{ExprTokKind::RParen, "]"});
+      ++i;
+      continue;
+    }
+    if (ch == '?') {
+      out.push_back(ExprTok{ExprTokKind::Op, "?"});
       ++i;
       continue;
     }
@@ -454,7 +745,8 @@ static std::vector<ExprTok> tokenize_expression(const std::string& text, std::st
           continue;
         }
         if (text[i] == '.' && i + 1 < text.size() &&
-            (std::isalpha(static_cast<unsigned char>(text[i + 1])) || text[i + 1] == '_')) {
+            (std::isalpha(static_cast<unsigned char>(text[i + 1])) || text[i + 1] == '_' ||
+             std::isdigit(static_cast<unsigned char>(text[i + 1])))) {
           ++i;
           continue;
         }
@@ -639,34 +931,60 @@ static ExprValue parse_primary(ExprCursor& cursor) {
       if (cursor.closures != nullptr) {
         auto closure_it = cursor.closures->find(tok.text);
         if (closure_it != cursor.closures->end()) {
-          if (args.size() != 1 || cursor.variables == nullptr || cursor.current_function == nullptr) {
-            cursor.error = "closure call requires one argument and variable scope";
+          if (cursor.variables == nullptr || cursor.current_function == nullptr) {
+            cursor.error = "closure call requires variable scope";
             return {};
           }
-          llvm::Value* arg_i32 = nullptr;
-          if (args[0].type == ValueType::I32) {
-            arg_i32 = args[0].value;
-          } else if (args[0].type == ValueType::I1) {
-            arg_i32 = cursor.builder->CreateZExt(args[0].value, cursor.builder->getInt32Ty());
-          } else if (args[0].type == ValueType::F32 || args[0].type == ValueType::F64) {
-            arg_i32 = cursor.builder->CreateFPToSI(args[0].value, cursor.builder->getInt32Ty());
-          }
-          if (arg_i32 == nullptr) {
-            cursor.error = "closure argument must be i32-compatible";
+          if (args.size() != closure_it->second.params.size()) {
+            cursor.error = "closure '" + tok.text + "' expects " + std::to_string(closure_it->second.params.size()) +
+                           " arguments but got " + std::to_string(args.size());
             return {};
           }
 
-          VariableSlot previous_slot;
-          bool had_previous = false;
-          auto prev_it = cursor.variables->find(closure_it->second.param);
-          if (prev_it != cursor.variables->end()) {
-            had_previous = true;
-            previous_slot = prev_it->second;
+          struct SavedBinding {
+            std::string name;
+            bool had_previous = false;
+            VariableSlot slot;
+          };
+          std::vector<SavedBinding> saved;
+          auto bind_i32 = [&](const std::string& name, llvm::Value* value) {
+            SavedBinding entry;
+            entry.name = name;
+            auto prev_it = cursor.variables->find(name);
+            if (prev_it != cursor.variables->end()) {
+              entry.had_previous = true;
+              entry.slot = prev_it->second;
+            }
+            saved.push_back(entry);
+            llvm::AllocaInst* alloca = create_entry_alloca(cursor.current_function, cursor.builder->getInt32Ty(),
+                                                           name + ".closure");
+            cursor.builder->CreateStore(value, alloca);
+            (*cursor.variables)[name] = VariableSlot{alloca, ValueType::I32};
+          };
+
+          for (std::size_t param_index = 0; param_index < closure_it->second.params.size(); ++param_index) {
+            llvm::Value* arg_i32 = nullptr;
+            const ExprValue& arg_value = args[param_index];
+            if (arg_value.type == ValueType::I32) {
+              arg_i32 = arg_value.value;
+            } else if (arg_value.type == ValueType::I1) {
+              arg_i32 = cursor.builder->CreateZExt(arg_value.value, cursor.builder->getInt32Ty());
+            } else if (arg_value.type == ValueType::F32 || arg_value.type == ValueType::F64) {
+              arg_i32 = cursor.builder->CreateFPToSI(arg_value.value, cursor.builder->getInt32Ty());
+            }
+            if (arg_i32 == nullptr) {
+              cursor.error = "closure argument must be i32-compatible";
+              return {};
+            }
+            bind_i32(closure_it->second.params[param_index], arg_i32);
           }
-          llvm::AllocaInst* param_alloca = create_entry_alloca(cursor.current_function, cursor.builder->getInt32Ty(),
-                                                               closure_it->second.param + ".closure");
-          cursor.builder->CreateStore(arg_i32, param_alloca);
-          (*cursor.variables)[closure_it->second.param] = VariableSlot{param_alloca, ValueType::I32};
+
+          for (const auto& [capture_name, capture_value] : closure_it->second.captured_i32_values) {
+            if (capture_value == nullptr) {
+              continue;
+            }
+            bind_i32(capture_name, capture_value);
+          }
 
           std::string nested_error;
           ExprCursor nested;
@@ -677,6 +995,8 @@ static ExprValue parse_primary(ExprCursor& cursor) {
           nested.struct_fields = cursor.struct_fields;
           nested.struct_field_types = cursor.struct_field_types;
           nested.struct_instances = cursor.struct_instances;
+          nested.tuple_instances = cursor.tuple_instances;
+          nested.array_instances = cursor.array_instances;
           nested.functions = cursor.functions;
           nested.function_returns = cursor.function_returns;
           nested.closures = cursor.closures;
@@ -692,10 +1012,12 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             return {};
           }
 
-          if (had_previous) {
-            (*cursor.variables)[closure_it->second.param] = previous_slot;
-          } else {
-            cursor.variables->erase(closure_it->second.param);
+          for (auto it = saved.rbegin(); it != saved.rend(); ++it) {
+            if (it->had_previous) {
+              (*cursor.variables)[it->name] = it->slot;
+            } else {
+              cursor.variables->erase(it->name);
+            }
           }
           return closure_result;
         }
@@ -890,16 +1212,38 @@ static ExprValue parse_primary(ExprCursor& cursor) {
       return ExprValue{create_global_cstr_ptr(*cursor.builder, text, "strlit"), ValueType::I8Ptr};
     }
     if (is_interpolated_literal(tok.text)) {
-      const std::string text = tok.text.substr(2, tok.text.size() - 3);
+      std::string text = tok.text;
+      if (text.size() >= 3 && text[0] == 'v' && text[1] == '"') {
+        text = text.substr(2, text.size() - 3);
+      } else if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+        text = text.substr(1, text.size() - 2);
+      }
       return ExprValue{create_global_cstr_ptr(*cursor.builder, text, "istrlit"), ValueType::I8Ptr};
     }
-    std::string closure_param;
+    std::vector<std::string> closure_params;
     std::string closure_body;
-    if (parse_closure_literal(tok.text, closure_param, closure_body)) {
+    bool closure_block = false;
+    if (parse_closure_literal(tok.text, closure_params, closure_body, closure_block)) {
       return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
     }
     std::string field_base;
     std::string field_name;
+    std::size_t tuple_field_index = 0;
+    if (parse_tuple_field_access(tok.text, field_base, tuple_field_index) && cursor.tuple_instances != nullptr) {
+      auto tuple_it = cursor.tuple_instances->find(field_base);
+      if (tuple_it != cursor.tuple_instances->end()) {
+        if (tuple_field_index >= tuple_it->second.element_types.size()) {
+          cursor.error = "tuple index out of bounds for '" + tok.text + "'";
+          return {};
+        }
+        llvm::Value* field_ptr = cursor.builder->CreateStructGEP(tuple_it->second.llvm_type, tuple_it->second.alloca,
+                                                                 static_cast<unsigned>(tuple_field_index),
+                                                                 tok.text + ".ptr");
+        const ValueType field_ty = tuple_it->second.element_types[tuple_field_index];
+        llvm::Value* loaded = cursor.builder->CreateLoad(llvm_type_from_value_type(field_ty, *cursor.builder), field_ptr);
+        return ExprValue{loaded, field_ty};
+      }
+    }
     if (split_dotted_name(tok.text, field_base, field_name) && cursor.struct_instances != nullptr &&
         cursor.struct_fields != nullptr && cursor.struct_field_types != nullptr) {
       auto inst_it = cursor.struct_instances->find(field_base);
@@ -1150,6 +1494,15 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
   if (lhs.type == ValueType::Invalid || lhs.value == nullptr) {
     return {};
   }
+  while (cur(cursor).kind == ExprTokKind::Op && cur(cursor).text == "?") {
+    ++cursor.index;
+    if (lhs.type != ValueType::I32) {
+      cursor.error = "operator '?' requires i32-encoded Result/Option";
+      return {};
+    }
+    lhs.value = extract_enum_payload_value(lhs.value, *cursor.builder);
+    lhs.type = ValueType::I32;
+  }
   while (cur(cursor).kind == ExprTokKind::Op && (cur(cursor).text == "==" || cur(cursor).text == "!=")) {
     const std::string op = cur(cursor).text;
     ++cursor.index;
@@ -1193,6 +1546,8 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
                                      const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
                                      const std::unordered_map<std::string, std::string>& struct_field_types,
                                      const std::unordered_map<std::string, StructInstance>& struct_instances,
+                                     std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                                     std::unordered_map<std::string, ArrayInstance>& array_instances,
                                      const std::unordered_map<std::string, llvm::Function*>& functions,
                                      const std::unordered_map<std::string, ValueType>& function_returns,
                                      std::unordered_map<std::string, ClosureDef>* closures,
@@ -1205,6 +1560,88 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
   if (expr_text.empty()) {
     return ExprValue{builder.getInt32(0), ValueType::I32};
   }
+
+  std::string len_base;
+  if (parse_len_call(clean, len_base)) {
+    auto array_it = array_instances.find(len_base);
+    if (array_it != array_instances.end()) {
+      return ExprValue{builder.getInt32(static_cast<int>(array_it->second.length)), ValueType::I32};
+    }
+    auto tuple_it = tuple_instances.find(len_base);
+    if (tuple_it != tuple_instances.end()) {
+      return ExprValue{builder.getInt32(static_cast<int>(tuple_it->second.element_types.size())), ValueType::I32};
+    }
+    diag.error("E2050", "len() expects tuple/array variable, got '" + len_base + "'");
+    return {};
+  }
+
+  std::string tuple_base;
+  std::size_t tuple_index = 0;
+  if (parse_tuple_field_access(clean, tuple_base, tuple_index)) {
+    auto tuple_it = tuple_instances.find(tuple_base);
+    if (tuple_it != tuple_instances.end()) {
+      if (tuple_index >= tuple_it->second.element_types.size()) {
+        diag.error("E2051", "tuple index out of bounds: '" + clean + "'");
+        return {};
+      }
+      llvm::Value* field_ptr = builder.CreateStructGEP(tuple_it->second.llvm_type, tuple_it->second.alloca,
+                                                       static_cast<unsigned>(tuple_index), clean + ".ptr");
+      const ValueType element_ty = tuple_it->second.element_types[tuple_index];
+      llvm::Value* loaded = builder.CreateLoad(llvm_type_from_value_type(element_ty, builder), field_ptr);
+      return ExprValue{loaded, element_ty};
+    }
+  }
+
+  std::string array_base;
+  std::string array_index_expr;
+  if (parse_array_index_access(clean, array_base, array_index_expr)) {
+    auto array_it = array_instances.find(array_base);
+    if (array_it != array_instances.end()) {
+      ExprValue index_value =
+          evaluate_expression(array_index_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
+                              current_function, diag);
+      if (index_value.value == nullptr || index_value.type == ValueType::Invalid) {
+        return {};
+      }
+      llvm::Value* index_i32 = nullptr;
+      if (index_value.type == ValueType::I32) {
+        index_i32 = index_value.value;
+      } else if (index_value.type == ValueType::I1) {
+        index_i32 = builder.CreateZExt(index_value.value, builder.getInt32Ty());
+      } else if (index_value.type == ValueType::F32 || index_value.type == ValueType::F64) {
+        index_i32 = builder.CreateFPToSI(index_value.value, builder.getInt32Ty());
+      }
+      if (index_i32 == nullptr) {
+        diag.error("E2052", "array index must be numeric");
+        return {};
+      }
+      llvm::Value* non_negative = builder.CreateICmpSGE(index_i32, builder.getInt32(0));
+      llvm::Value* under_bound = builder.CreateICmpSLT(index_i32, builder.getInt32(static_cast<int>(array_it->second.length)));
+      llvm::Value* in_bounds = builder.CreateAnd(non_negative, under_bound);
+      llvm::Function* fn = current_function == nullptr ? builder.GetInsertBlock()->getParent() : current_function;
+      auto* ok_bb = llvm::BasicBlock::Create(builder.getContext(), "arr.idx.ok", fn);
+      auto* panic_bb = llvm::BasicBlock::Create(builder.getContext(), "arr.idx.panic", fn);
+      builder.CreateCondBr(in_bounds, ok_bb, panic_bb);
+      builder.SetInsertPoint(panic_bb);
+      llvm::Module* module = fn->getParent();
+      llvm::FunctionCallee puts_fn = module->getOrInsertFunction("puts", llvm::FunctionType::get(builder.getInt32Ty(), builder.getPtrTy(), false));
+      llvm::FunctionCallee exit_fn =
+          module->getOrInsertFunction("exit", llvm::FunctionType::get(builder.getVoidTy(), {builder.getInt32Ty()}, false));
+      llvm::Value* panic_msg = create_global_cstr_ptr(builder, "panic: array index out of bounds", "arr_oob");
+      builder.CreateCall(puts_fn, {panic_msg});
+      builder.CreateCall(exit_fn, {builder.getInt32(1)});
+      builder.CreateUnreachable();
+      builder.SetInsertPoint(ok_bb);
+      llvm::Type* arr_alloc_ty = array_it->second.alloca->getAllocatedType();
+      llvm::Type* elem_ty = llvm_type_from_value_type(array_it->second.element_type, builder);
+      llvm::Value* elem_ptr = builder.CreateInBoundsGEP(arr_alloc_ty, array_it->second.alloca,
+                                                        {builder.getInt32(0), index_i32}, array_base + ".idx.ptr");
+      llvm::Value* loaded = builder.CreateLoad(elem_ty, elem_ptr);
+      return ExprValue{loaded, array_it->second.element_type};
+    }
+  }
+
   std::string tok_error;
   ExprCursor cursor;
   cursor.tokens = tokenize_expression(clean, tok_error);
@@ -1214,6 +1651,8 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
   cursor.struct_fields = &struct_fields;
   cursor.struct_field_types = &struct_field_types;
   cursor.struct_instances = &struct_instances;
+  cursor.tuple_instances = &tuple_instances;
+  cursor.array_instances = &array_instances;
   cursor.functions = &functions;
   cursor.function_returns = &function_returns;
   cursor.closures = closures;
@@ -1249,7 +1688,15 @@ static bool parse_interpolated_chunks(const std::string& literal, std::vector<In
     error = "not an interpolated literal";
     return false;
   }
-  const std::string body = literal.substr(2, literal.size() - 3);
+  std::string clean = trim(literal);
+  if (clean.size() >= 3 && clean[0] == 'v' && clean[1] == '"') {
+    clean = clean.substr(1);
+  }
+  if (clean.size() < 2 || clean.front() != '"' || clean.back() != '"') {
+    error = "invalid interpolated literal quotes";
+    return false;
+  }
+  const std::string body = clean.substr(1, clean.size() - 2);
   std::string segment;
   for (std::size_t i = 0; i < body.size();) {
     if (body[i] == '{') {
@@ -1291,6 +1738,8 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
                                       const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
                                       const std::unordered_map<std::string, std::string>& struct_field_types,
                                       const std::unordered_map<std::string, StructInstance>& struct_instances,
+                                      std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                                      std::unordered_map<std::string, ArrayInstance>& array_instances,
                                       const std::unordered_map<std::string, llvm::Function*>& functions,
                                       const std::unordered_map<std::string, ValueType>& function_returns,
                                       std::unordered_map<std::string, ClosureDef>& closures,
@@ -1318,7 +1767,8 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
           continue;
         }
         ExprValue value = evaluate_expression(chunk.text, builder, variables, enum_variant_tags, struct_fields,
-                                              struct_field_types, struct_instances, functions, function_returns,
+                                              struct_field_types, struct_instances, tuple_instances, array_instances,
+                                              functions, function_returns,
                                               &closures, fn, diag);
         if (value.value == nullptr || value.type == ValueType::Invalid) {
           return false;
@@ -1346,8 +1796,8 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
     }
 
     ExprValue value = evaluate_expression(inner, builder, variables, enum_variant_tags, struct_fields,
-                                          struct_field_types, struct_instances, functions, function_returns, &closures,
-                                          fn, diag);
+                                          struct_field_types, struct_instances, tuple_instances, array_instances,
+                                          functions, function_returns, &closures, fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
       return false;
     }
@@ -1374,7 +1824,8 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
   if (has_expression) {
     ExprValue value =
         evaluate_expression(effective_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                            struct_instances, functions, function_returns, &closures, fn, diag);
+                            struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                            fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
       return false;
     }
@@ -1558,15 +2009,78 @@ static ValueType field_value_type_for_struct(const std::string& struct_name, con
 
 struct ForHeader {
   bool ok = false;
+  std::string label;
   std::string loop_var;
   std::string start_expr;
   std::string end_expr;
 };
 
+struct LoopControlTarget {
+  std::string label;
+  llvm::BasicBlock* continue_target = nullptr;
+  llvm::BasicBlock* break_target = nullptr;
+};
+
+static bool parse_loop_header_label(const std::string& line, const std::string& keyword, std::string& label,
+                                    std::string& normalized) {
+  label.clear();
+  normalized = trim(line);
+  if (starts_with(normalized, keyword + " ")) {
+    return true;
+  }
+  const std::size_t colon = normalized.find(':');
+  if (colon == std::string::npos || colon + 1 >= normalized.size()) {
+    return false;
+  }
+  std::string maybe_label = trim(normalized.substr(0, colon));
+  normalized = trim(normalized.substr(colon + 1));
+  if (!starts_with(normalized, keyword + " ")) {
+    return false;
+  }
+  if (!maybe_label.empty() && maybe_label.front() == '\'') {
+    maybe_label = trim(maybe_label.substr(1));
+  }
+  if (maybe_label.empty() || !is_ident_start(maybe_label[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < maybe_label.size(); ++i) {
+    if (!is_ident_body(maybe_label[i])) {
+      return false;
+    }
+  }
+  label = maybe_label;
+  return true;
+}
+
+static bool parse_loop_control_statement(const std::string& line, const std::string& keyword, std::string& label) {
+  label.clear();
+  const std::string clean = trim(line);
+  if (clean == keyword) {
+    return true;
+  }
+  if (!starts_with(clean, keyword + " ")) {
+    return false;
+  }
+  std::string rest = trim(clean.substr(keyword.size()));
+  if (!rest.empty() && rest.front() == '\'') {
+    rest = trim(rest.substr(1));
+  }
+  if (rest.empty() || !is_ident_start(rest[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < rest.size(); ++i) {
+    if (!is_ident_body(rest[i])) {
+      return false;
+    }
+  }
+  label = rest;
+  return true;
+}
+
 static ForHeader parse_for_header(const lowering::CoreStmt& st) {
   ForHeader out;
-  std::string line = trim(st.text);
-  if (!starts_with(line, "for ") || !ends_with(line, ":")) {
+  std::string line;
+  if (!parse_loop_header_label(st.text, "for", out.label, line) || !ends_with(line, ":")) {
     return out;
   }
   line = trim(line.substr(4, line.size() - 5));
@@ -1692,6 +2206,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                        std::size_t& index, int parent_indent, llvm::Function* fn, llvm::Module* module,
                        llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
                        std::unordered_map<std::string, StructInstance>& struct_instances,
+                       std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                       std::unordered_map<std::string, ArrayInstance>& array_instances,
+                       std::vector<LoopControlTarget>& loop_targets,
                        std::unordered_map<std::string, ClosureDef>& closures, support::DiagnosticSink& diag) {
   llvm::FunctionCallee printf_fn = module->getOrInsertFunction(
       "printf",
@@ -1711,8 +2228,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
-                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances, functions,
-                                     function_returns, closures, diag)) {
+                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances,
+                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
         return false;
       }
     }
@@ -1720,18 +2237,123 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     return true;
   };
 
+  auto eval_with_try = [&](const std::string& expr_text, ExprValue& out_value) {
+    std::string try_inner;
+    if (!parse_try_operator_expr(expr_text, try_inner)) {
+      out_value = evaluate_expression(expr_text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                                      struct_instances, tuple_instances, array_instances, functions, function_returns,
+                                      &closures, fn, diag);
+      return out_value.value != nullptr && out_value.type != ValueType::Invalid;
+    }
+    if (expected_return_type != ValueType::I32) {
+      diag.error("E2053", "operator '?' requires function returning Result/Option-compatible i32 encoding");
+      return false;
+    }
+    ExprValue encoded = evaluate_expression(try_inner, builder, variables, enum_variant_tags, struct_fields,
+                                            struct_field_types, struct_instances, tuple_instances, array_instances,
+                                            functions, function_returns, &closures, fn, diag);
+    if (encoded.value == nullptr || encoded.type == ValueType::Invalid) {
+      return false;
+    }
+    if (encoded.type != ValueType::I32) {
+      diag.error("E2054", "operator '?' expects i32-encoded Result/Option value");
+      return false;
+    }
+    llvm::Value* tag = extract_enum_tag_value(encoded.value, builder);
+    llvm::Value* is_err = builder.CreateICmpEQ(tag, builder.getInt32(3));
+    llvm::Value* is_none = builder.CreateICmpEQ(tag, builder.getInt32(0));
+    llvm::Value* should_return = builder.CreateOr(is_err, is_none);
+    auto* ok_bb = llvm::BasicBlock::Create(builder.getContext(), "try.ok", fn);
+    auto* err_bb = llvm::BasicBlock::Create(builder.getContext(), "try.err", fn);
+    builder.CreateCondBr(should_return, err_bb, ok_bb);
+
+    builder.SetInsertPoint(err_bb);
+    for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
+      const std::string deferred_line = it->has_expression ? trim(it->expression) : trim(it->text);
+      if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
+                                     printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
+                                     printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
+                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances,
+                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
+        return false;
+      }
+    }
+    builder.CreateRet(encoded.value);
+
+    builder.SetInsertPoint(ok_bb);
+    out_value = ExprValue{extract_enum_payload_value(encoded.value, builder), ValueType::I32};
+    return true;
+  };
+
   while (index < stmts.size() && stmts[index].indent > parent_indent) {
     const lowering::CoreStmt& st = stmts[index];
     if (st.kind == lowering::CoreStmtKind::Let) {
+      std::vector<std::string> tuple_bindings;
+      std::string tuple_source_expr;
+      if (parse_tuple_destructure_let(st.text, tuple_bindings, tuple_source_expr)) {
+        const std::string tuple_source = trim(tuple_source_expr);
+        auto tuple_it = tuple_instances.find(tuple_source);
+        if (tuple_it == tuple_instances.end()) {
+          diag.error("E2055", "tuple destructuring source is not a tuple variable: '" + tuple_source + "'");
+          return false;
+        }
+        if (tuple_bindings.size() != tuple_it->second.element_types.size()) {
+          diag.error("E2056", "tuple destructuring arity mismatch: expected " +
+                                  std::to_string(tuple_it->second.element_types.size()) + " got " +
+                                  std::to_string(tuple_bindings.size()));
+          return false;
+        }
+        for (std::size_t i = 0; i < tuple_bindings.size(); ++i) {
+          const std::string& bind_name = tuple_bindings[i];
+          const ValueType bind_type = tuple_it->second.element_types[i];
+          llvm::Value* field_ptr =
+              builder.CreateStructGEP(tuple_it->second.llvm_type, tuple_it->second.alloca, static_cast<unsigned>(i),
+                                      tuple_source + ".destructure." + std::to_string(i) + ".ptr");
+          llvm::Value* loaded = builder.CreateLoad(llvm_type_from_value_type(bind_type, builder), field_ptr);
+          auto var_it = variables.find(bind_name);
+          if (var_it == variables.end()) {
+            llvm::AllocaInst* alloca = create_entry_alloca(fn, llvm_type_from_value_type(bind_type, builder), bind_name);
+            variables[bind_name] = VariableSlot{alloca, bind_type};
+            var_it = variables.find(bind_name);
+          }
+          if (var_it->second.type != bind_type) {
+            diag.error("E2057", "tuple destructuring changes existing variable type for '" + bind_name + "'");
+            return false;
+          }
+          builder.CreateStore(loaded, var_it->second.alloca);
+        }
+        ++index;
+        continue;
+      }
+
       const std::string name = parse_let_name(st.text);
       if (name.empty() || !st.has_expression) {
         diag.error("E2010", "invalid let statement in backend: '" + st.text + "'");
         return false;
       }
-      std::string closure_param;
+      std::vector<std::string> closure_params;
       std::string closure_body;
-      if (parse_closure_literal(st.expression, closure_param, closure_body)) {
-        closures[name] = ClosureDef{closure_param, closure_body};
+      bool closure_block = false;
+      if (parse_closure_literal(st.expression, closure_params, closure_body, closure_block)) {
+        ClosureDef closure;
+        closure.params = closure_params;
+        closure.body_expr = closure_body;
+        closure.block_body = closure_block;
+        for (const std::string& capture : collect_closure_captures(closure_params, closure_body)) {
+          auto capture_it = variables.find(capture);
+          if (capture_it == variables.end() || capture_it->second.alloca == nullptr) {
+            continue;
+          }
+          llvm::Value* loaded =
+              builder.CreateLoad(capture_it->second.alloca->getAllocatedType(), capture_it->second.alloca, capture + ".capt");
+          if (capture_it->second.type == ValueType::I1) {
+            loaded = builder.CreateZExt(loaded, builder.getInt32Ty());
+          } else if (capture_it->second.type == ValueType::F32 || capture_it->second.type == ValueType::F64) {
+            loaded = builder.CreateFPToSI(loaded, builder.getInt32Ty());
+          }
+          closure.captured_i32_values[capture] = loaded;
+        }
+        closures[name] = std::move(closure);
         llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name + ".closure");
         variables[name] = VariableSlot{marker, ValueType::I32};
         builder.CreateStore(builder.getInt32(0), marker);
@@ -1766,7 +2388,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
             if (field_index < ctor_call.args.size()) {
               ExprValue arg_value = evaluate_expression(
                   ctor_call.args[field_index], builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                  struct_instances, functions, function_returns, &closures, fn, diag);
+                  struct_instances, tuple_instances, array_instances, functions, function_returns, &closures, fn, diag);
               init_value = cast_value_to_type(arg_value, field_type, builder);
               if (init_value == nullptr) {
                 diag.error("E2035", "constructor argument type mismatch for field '" + field_name + "'");
@@ -1792,10 +2414,90 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         }
       }
 
-      ExprValue value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
-      if (value.value == nullptr || value.type == ValueType::Invalid) {
+      std::vector<std::string> tuple_elements;
+      if (parse_tuple_literal_expr(st.expression, tuple_elements)) {
+        std::vector<ExprValue> tuple_values;
+        std::vector<ValueType> tuple_types;
+        std::vector<llvm::Type*> llvm_types;
+        tuple_values.reserve(tuple_elements.size());
+        tuple_types.reserve(tuple_elements.size());
+        llvm_types.reserve(tuple_elements.size());
+        for (const std::string& element_expr : tuple_elements) {
+          ExprValue element_value;
+          if (!eval_with_try(element_expr, element_value)) {
+            return false;
+          }
+          tuple_values.push_back(element_value);
+          tuple_types.push_back(element_value.type);
+          llvm_types.push_back(llvm_type_from_value_type(element_value.type, builder));
+        }
+        llvm::StructType* tuple_ty = llvm::StructType::get(builder.getContext(), llvm_types, false);
+        llvm::AllocaInst* tuple_alloca = create_entry_alloca(fn, tuple_ty, name + ".tuple");
+        for (std::size_t i = 0; i < tuple_values.size(); ++i) {
+          llvm::Value* field_ptr =
+              builder.CreateStructGEP(tuple_ty, tuple_alloca, static_cast<unsigned>(i), name + ".tuple.ptr");
+          builder.CreateStore(tuple_values[i].value, field_ptr);
+        }
+        tuple_instances[name] = TupleInstance{tuple_alloca, tuple_ty, tuple_types};
+        llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name);
+        variables[name] = VariableSlot{marker, ValueType::I32};
+        builder.CreateStore(builder.getInt32(0), marker);
+        ++index;
+        continue;
+      }
+
+      std::vector<std::string> array_elements;
+      if (parse_array_literal_expr(st.expression, array_elements)) {
+        std::vector<ExprValue> array_values;
+        array_values.reserve(array_elements.size());
+        ValueType element_type = ValueType::I32;
+        for (const std::string& element_expr : array_elements) {
+          ExprValue element_value;
+          if (!eval_with_try(element_expr, element_value)) {
+            return false;
+          }
+          if (array_values.empty()) {
+            element_type = element_value.type;
+          } else if (element_type != element_value.type) {
+            if ((element_type == ValueType::F64 || element_value.type == ValueType::F64) &&
+                is_numeric_type(element_type) && is_numeric_type(element_value.type)) {
+              element_type = ValueType::F64;
+            } else if ((element_type == ValueType::F32 || element_value.type == ValueType::F32) &&
+                       is_numeric_type(element_type) && is_numeric_type(element_value.type)) {
+              element_type = ValueType::F32;
+            } else if (is_numeric_type(element_type) && is_numeric_type(element_value.type)) {
+              element_type = ValueType::I32;
+            } else {
+              diag.error("E2058", "array literal elements must have compatible numeric or same types");
+              return false;
+            }
+          }
+          array_values.push_back(element_value);
+        }
+        llvm::Type* element_llvm_type = llvm_type_from_value_type(element_type, builder);
+        llvm::ArrayType* array_ty = llvm::ArrayType::get(element_llvm_type, array_values.size());
+        llvm::AllocaInst* array_alloca = create_entry_alloca(fn, array_ty, name + ".array");
+        for (std::size_t i = 0; i < array_values.size(); ++i) {
+          llvm::Value* casted = cast_value_to_type(array_values[i], element_type, builder);
+          if (casted == nullptr) {
+            diag.error("E2059", "array literal element cannot be converted to element type");
+            return false;
+          }
+          llvm::Value* elem_ptr =
+              builder.CreateInBoundsGEP(array_ty, array_alloca, {builder.getInt32(0), builder.getInt32(static_cast<int>(i))},
+                                        name + ".array.elem.ptr");
+          builder.CreateStore(casted, elem_ptr);
+        }
+        array_instances[name] = ArrayInstance{array_alloca, element_type, array_values.size()};
+        llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name);
+        variables[name] = VariableSlot{marker, ValueType::I32};
+        builder.CreateStore(builder.getInt32(0), marker);
+        ++index;
+        continue;
+      }
+
+      ExprValue value;
+      if (!eval_with_try(st.expression, value)) {
         return false;
       }
       const std::string annotation = parse_let_annotation(st.text);
@@ -1858,8 +2560,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
             return false;
           }
           ExprValue value =
-              evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                                  struct_instances, functions, function_returns, &closures, fn, diag);
+              ExprValue{};
+          if (!eval_with_try(st.expression, value)) {
+            return false;
+          }
           const ValueType field_type =
               field_value_type_for_struct(inst_it->second.struct_name, field_name, struct_field_types);
           llvm::Value* casted = cast_value_to_type(value, field_type, builder);
@@ -1885,8 +2589,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
       ExprValue value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+          ExprValue{};
+      if (!eval_with_try(st.expression, value)) {
+        return false;
+      }
       llvm::Value* casted = cast_value_to_type(value, it->second.type, builder);
       if (casted == nullptr) {
         diag.error("E2024", "assignment type mismatch for '" + target + "'");
@@ -1907,12 +2613,51 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       continue;
     }
 
+    if (st.kind == lowering::CoreStmtKind::Break || st.kind == lowering::CoreStmtKind::Continue) {
+      const std::string keyword = st.kind == lowering::CoreStmtKind::Break ? "break" : "continue";
+      std::string loop_label;
+      if (!parse_loop_control_statement(st.text, keyword, loop_label)) {
+        diag.error("E2060", "invalid " + keyword + " statement: '" + st.text + "'");
+        return false;
+      }
+      const LoopControlTarget* target = nullptr;
+      if (loop_label.empty()) {
+        if (!loop_targets.empty()) {
+          target = &loop_targets.back();
+        }
+      } else {
+        for (auto it = loop_targets.rbegin(); it != loop_targets.rend(); ++it) {
+          if (it->label == loop_label) {
+            target = &(*it);
+            break;
+          }
+        }
+      }
+      if (target == nullptr) {
+        diag.error("E2061", "no matching loop target for " + keyword +
+                               (loop_label.empty() ? std::string() : " '" + loop_label + "'"));
+        return false;
+      }
+      if (!flush_deferred()) {
+        return false;
+      }
+      llvm::BasicBlock* jump_target =
+          st.kind == lowering::CoreStmtKind::Break ? target->break_target : target->continue_target;
+      if (jump_target == nullptr) {
+        diag.error("E2062", "internal loop target is null for " + keyword);
+        return false;
+      }
+      builder.CreateBr(jump_target);
+      index = find_block_end(stmts, index + 1, parent_indent);
+      return true;
+    }
+
     if (st.kind == lowering::CoreStmtKind::Expr) {
       if (!emit_expression_statement(trim(st.text), st.has_expression, st.expression, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
-                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances, functions,
-                                     function_returns, closures, diag)) {
+                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances,
+                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
         return false;
       }
       ++index;
@@ -1922,9 +2667,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     if (st.kind == lowering::CoreStmtKind::Return) {
       llvm::Value* ret = nullptr;
       if (st.has_expression) {
-        ExprValue value =
-            evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                                struct_instances, functions, function_returns, &closures, fn, diag);
+        ExprValue value;
+        if (!eval_with_try(st.expression, value)) {
+          return false;
+        }
         ret = cast_value_to_type(value, expected_return_type, builder);
         if (ret == nullptr && expected_return_type != ValueType::Void) {
           diag.error("E2013", "return type mismatch");
@@ -1965,7 +2711,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
       ExprValue cond_value =
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                              fn, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2015", "if condition must be bool/i32-compatible");
@@ -1982,7 +2729,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
                       function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, diag)) {
         return false;
       }
       if (!builder.GetInsertBlock()->getTerminator()) {
@@ -1995,7 +2742,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
                         function_returns,
                         expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                        closures, diag)) {
+                        tuple_instances, array_instances, loop_targets, closures, diag)) {
           return false;
         }
         if (!builder.GetInsertBlock()->getTerminator()) {
@@ -2014,6 +2761,12 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         diag.error("E2016", "while statement missing condition expression");
         return false;
       }
+      std::string while_label;
+      std::string normalized_while;
+      if (!parse_loop_header_label(st.text, "while", while_label, normalized_while)) {
+        diag.error("E2063", "invalid while header: '" + st.text + "'");
+        return false;
+      }
       auto* cond_bb = llvm::BasicBlock::Create(builder.getContext(), "while.cond", fn);
       auto* body_bb = llvm::BasicBlock::Create(builder.getContext(), "while.body", fn);
       auto* after_bb = llvm::BasicBlock::Create(builder.getContext(), "while.end", fn);
@@ -2022,7 +2775,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       builder.SetInsertPoint(cond_bb);
       ExprValue cond_value =
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                              fn, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2017", "while condition must be bool/i32-compatible");
@@ -2031,13 +2785,16 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       builder.CreateCondBr(cond, body_bb, after_bb);
 
       builder.SetInsertPoint(body_bb);
+      loop_targets.push_back(LoopControlTarget{while_label, cond_bb, after_bb});
       ++index;
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
                       function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, diag)) {
+        loop_targets.pop_back();
         return false;
       }
+      loop_targets.pop_back();
       if (!builder.GetInsertBlock()->getTerminator()) {
         builder.CreateBr(cond_bb);
       }
@@ -2060,10 +2817,12 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
       ExprValue start_value =
           evaluate_expression(header.start_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                              fn, diag);
       ExprValue end_value =
           evaluate_expression(header.end_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                              fn, diag);
       llvm::Value* start_i32 = to_i32(start_value, builder);
       llvm::Value* end_i32 = to_i32(end_value, builder);
       if (start_i32 == nullptr || end_i32 == nullptr) {
@@ -2094,13 +2853,16 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       builder.CreateCondBr(cond, body_bb, after_bb);
 
       builder.SetInsertPoint(body_bb);
+      loop_targets.push_back(LoopControlTarget{header.label, step_bb, after_bb});
       ++index;
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
                       function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, diag)) {
+        loop_targets.pop_back();
         return false;
       }
+      loop_targets.pop_back();
       if (!builder.GetInsertBlock()->getTerminator()) {
         builder.CreateBr(step_bb);
       }
@@ -2127,7 +2889,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
       ExprValue match_expr =
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                              struct_instances, functions, function_returns, &closures, fn, diag);
+                              struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
+                              fn, diag);
       llvm::Value* match_i32 = to_i32(match_expr, builder);
       if (match_i32 == nullptr) {
         diag.error("E2018", "match expression must be i32/bool-compatible");
@@ -2194,7 +2957,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
                         function_returns,
                         expected_return_type, nested_index, arm_label_stmt.indent, fn, module, builder, variables,
-                        struct_instances, closures, diag)) {
+                        struct_instances, tuple_instances, array_instances, loop_targets, closures, diag)) {
           return false;
         }
         if (bound_payload) {
@@ -2332,6 +3095,9 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     builder.SetInsertPoint(entry);
     std::unordered_map<std::string, VariableSlot> variables;
     std::unordered_map<std::string, StructInstance> struct_instances;
+    std::unordered_map<std::string, TupleInstance> tuple_instances;
+    std::unordered_map<std::string, ArrayInstance> array_instances;
+    std::vector<LoopControlTarget> loop_targets;
     std::unordered_map<std::string, ClosureDef> closures;
 
     std::size_t arg_index = 0;
@@ -2361,7 +3127,9 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     std::size_t index = 0;
     if (!emit_block(fn_def.statements, core.enum_variant_tags, core.struct_fields, core.struct_field_types,
                     llvm_struct_types, llvm_functions, function_returns, function_returns[fn_def.name], index, -1, fn,
-                    module.get(), builder, variables, struct_instances, closures, diag)) {
+                    module.get(), builder, variables, struct_instances, tuple_instances, array_instances, loop_targets,
+                    closures,
+                    diag)) {
       return nullptr;
     }
 
@@ -2374,7 +3142,8 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         if (!trim(fn_def.return_expression).empty()) {
           ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
                                                 core.struct_fields, core.struct_field_types, struct_instances,
-                                                llvm_functions, function_returns, &closures, fn, diag);
+                                                tuple_instances, array_instances, llvm_functions, function_returns,
+                                                &closures, fn, diag);
           fallback = cast_value_to_type(value, expected, builder);
         }
         if (fallback == nullptr) {

@@ -27,7 +27,7 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             root = Path(td)
             (root / "a" / "b").mkdir(parents=True)
             (root / "a" / "b" / "c.tg").write_text(
-                "func add1(v):\n"
+                "pub func add1(v):\n"
                 "  return v + 1\n"
             )
             entry = root / "main.tg"
@@ -47,7 +47,7 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             root = Path(td)
             (root / "util").mkdir(parents=True)
             (root / "util" / "math.tg").write_text(
-                "func triple(v):\n"
+                "pub func triple(v):\n"
                 "  return v * 3\n"
             )
             entry = root / "main.tg"
@@ -68,11 +68,11 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             (root / "a").mkdir(parents=True)
             (root / "b").mkdir(parents=True)
             (root / "a" / "x.tg").write_text(
-                "func one():\n"
+                "pub func one():\n"
                 "  return 1\n"
             )
             (root / "b" / "x.tg").write_text(
-                "func two():\n"
+                "pub func two():\n"
                 "  return 2\n"
             )
             entry = root / "main.tg"
@@ -93,8 +93,8 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             root = Path(td)
             (root / "a").mkdir(parents=True)
             (root / "b").mkdir(parents=True)
-            (root / "a" / "x.tg").write_text("func one():\n  return 1\n")
-            (root / "b" / "x.tg").write_text("func two():\n  return 2\n")
+            (root / "a" / "x.tg").write_text("pub func one():\n  return 1\n")
+            (root / "b" / "x.tg").write_text("pub func two():\n  return 2\n")
             entry = root / "main.tg"
             entry.write_text(
                 "import a.x\n"
@@ -129,13 +129,13 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             (root / "a" / "mod.tg").write_text(
                 "import b.mod\n"
                 "\n"
-                "func f():\n"
+                "pub func f():\n"
                 "  return mod.g()\n"
             )
             (root / "b" / "mod.tg").write_text(
                 "import a.mod\n"
                 "\n"
-                "func g():\n"
+                "pub func g():\n"
                 "  return 1\n"
             )
             entry = root / "main.tg"
@@ -171,6 +171,25 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             build = self._build(root, entry)
             self.assertNotEqual(build.returncode, 0)
             self.assertIn("package `ghostpkg` not found in dependencies", build.stderr)
+
+    def test_private_symbol_requires_pub(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "lib").mkdir(parents=True)
+            (root / "lib" / "math.tg").write_text(
+                "func hidden(v):\n"
+                "  return v + 1\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "from lib.math import hidden\n"
+                "\n"
+                "func main():\n"
+                "  return hidden(1)\n"
+            )
+            build = self._build(root, entry)
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("symbol `hidden` is private", build.stderr)
 
 
 if __name__ == "__main__":

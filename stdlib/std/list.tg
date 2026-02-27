@@ -1,7 +1,22 @@
-# List helper surface for compiler parity lane.
+# List helper surface for compiler/runtime parity lane.
 
-func size():
+pub func append(list, value):
+  return list
+
+pub func remove(list, index):
+  return list
+
+pub func sort(list):
+  return list
+
+pub func filter(list, predicate):
+  return list
+
+pub func map(list, mapper):
+  return list
+
+pub func reduce(list, init, reducer):
+  return init
+
+pub func len(list):
   return 0
-
-func empty():
-  return 1

@@ -1,7 +1,12 @@
 # Core std helpers.
 
-func ok():
-  return 1
+pub func ok(val):
+  return Ok(val)
 
-func fail():
+pub func fail(msg):
+  return Err(msg)
+
+pub func assert(cond, msg):
+  if (cond):
+    return 1
   return 0

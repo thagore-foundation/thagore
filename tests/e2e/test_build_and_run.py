@@ -165,7 +165,7 @@ class BuildAndRunE2ETests(unittest.TestCase):
             (root / "a" / "b").mkdir(parents=True)
             (root / "deps" / "mathpkg").mkdir(parents=True)
             (root / "a" / "b" / "c.tg").write_text(
-                "func inc(x):\n"
+                "pub func inc(x):\n"
                 "  return x + 1\n"
             )
             (root / "deps" / "mathpkg" / "thagore.toml").write_text(
@@ -174,7 +174,7 @@ class BuildAndRunE2ETests(unittest.TestCase):
                 "version = \"0.1.0\"\n"
             )
             (root / "deps" / "mathpkg" / "main.tg").write_text(
-                "func pkg_double(v):\n"
+                "pub func pkg_double(v):\n"
                 "  return v * 2\n"
             )
             (root / "thagore.toml").write_text(
@@ -212,6 +212,44 @@ class BuildAndRunE2ETests(unittest.TestCase):
             self.assertEqual(build.returncode, 0, msg=build.stderr)
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 9, msg=run.stderr)
+
+    def test_build_and_run_language_feature_complete_cli_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "cli_gate.tg"
+            out = root / "cli_gate.bin"
+            src.write_text(
+                "func parse_pos(v) -> Result<i32, i32>:\n"
+                "  if (v > 0):\n"
+                "    return Ok(v)\n"
+                "  return Err(7)\n"
+                "\n"
+                "func main():\n"
+                "  defer print(99)\n"
+                "  let data = [3, 1, 2]\n"
+                "  let tupled = (data[0], data[1], data[2])\n"
+                "  let (a, b, c) = tupled\n"
+                "  let transform = |x| x + c\n"
+                "  let parsed: Result<i32, i32> = parse_pos(transform(a + b))\n"
+                "  let value = parsed?\n"
+                "  if (is_some(Some(value))):\n"
+                "    print(len(data))\n"
+                "  print(value)\n"
+                "  return value\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 6, msg=run.stderr)
+            lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+            self.assertIn("3", lines)
+            self.assertIn("6", lines)
+            self.assertEqual(lines[-1], "99")
 
 
 if __name__ == "__main__":

@@ -17,10 +17,14 @@ enum class TypeKind {
   Ptr,
   StructType,
   EnumType,
+  TupleType,
+  ArrayType,
   Void,
   Unknown,
   Fn = FunctionType,
   Struct = StructType,
+  Tuple = TupleType,
+  Array = ArrayType,
 };
 
 }  // namespace thagc::semantics
