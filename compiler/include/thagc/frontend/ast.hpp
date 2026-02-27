@@ -47,13 +47,23 @@ struct AstExternFunction {
   int line = 0;
 };
 
+struct AstImport {
+  bool is_from_import = false;
+  std::vector<std::string> module_path;
+  std::string alias;
+  std::vector<std::string> symbols;
+  int line = 0;
+  int column = 1;
+  std::string raw;
+};
+
 struct AstProgram {
   std::string source_path;
   std::vector<std::string> top_level_lines;
   std::vector<AstStatement> top_level_statements;
   std::vector<AstFunction> functions;
   std::vector<AstExternFunction> extern_functions;
-  std::vector<std::string> imports;
+  std::vector<AstImport> imports;
   std::vector<std::string> extern_decls;
   std::vector<std::string> structs;
   std::unordered_map<std::string, std::vector<std::string>> struct_fields;

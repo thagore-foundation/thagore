@@ -159,6 +159,60 @@ class BuildAndRunE2ETests(unittest.TestCase):
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 12, msg=run.stderr)
 
+    def test_build_multi_file_with_file_and_package_import(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "a" / "b").mkdir(parents=True)
+            (root / "deps" / "mathpkg").mkdir(parents=True)
+            (root / "a" / "b" / "c.tg").write_text(
+                "func inc(x):\n"
+                "  return x + 1\n"
+            )
+            (root / "deps" / "mathpkg" / "thagore.toml").write_text(
+                "[package]\n"
+                "name = \"mathpkg\"\n"
+                "version = \"0.1.0\"\n"
+            )
+            (root / "deps" / "mathpkg" / "main.tg").write_text(
+                "func pkg_double(v):\n"
+                "  return v * 2\n"
+            )
+            (root / "thagore.toml").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+                "\n"
+                "[dependencies]\n"
+                "mathpkg = \"path:./deps/mathpkg\"\n"
+            )
+            src = root / "main.tg"
+            out = root / "main.bin"
+            src.write_text(
+                "import a.b.c\n"
+                "import mathpkg\n"
+                "\n"
+                "func main():\n"
+                "  return c.inc(mathpkg.pkg_double(4))\n"
+            )
+            install = subprocess.run(
+                [str(self.bin), "install"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(install.returncode, 0, msg=install.stderr)
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 9, msg=run.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

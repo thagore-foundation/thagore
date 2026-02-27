@@ -24,6 +24,7 @@ add_executable(thagc
   src/driver/update.cpp
   src/driver/flow.cpp
   src/driver/common.cpp
+  src/driver/resolver.cpp
   src/driver/unknown.cpp
   src/infra/builder.cpp
   src/frontend/core.cpp

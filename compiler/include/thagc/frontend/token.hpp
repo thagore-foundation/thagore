@@ -27,6 +27,8 @@ enum class TokenKind {
   KeywordStruct,
   KeywordImpl,
   KeywordImport,
+  KeywordFrom,
+  KeywordAs,
   KeywordExtern,
   KeywordFlow,
   KeywordIntent,

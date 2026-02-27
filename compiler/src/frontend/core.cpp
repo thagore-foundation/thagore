@@ -62,6 +62,12 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "import") {
     return TokenKind::KeywordImport;
   }
+  if (text == "from") {
+    return TokenKind::KeywordFrom;
+  }
+  if (text == "as") {
+    return TokenKind::KeywordAs;
+  }
   if (text == "extern") {
     return TokenKind::KeywordExtern;
   }

@@ -1,20 +1,43 @@
 #include "thagc/driver/pipeline.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "thagc/application/build_usecase.hpp"
 #include "thagc/domain/model.hpp"
+#include "thagc/driver/resolver.hpp"
+#include "thagc/frontend/lexer.hpp"
+#include "thagc/frontend/parser.hpp"
 #include "thagc/infra/adapters.hpp"
 #include "thagc/shared/filesystem.hpp"
 
 namespace thagc::driver {
 
-static std::string trim(const std::string& text) {
+namespace {
+
+struct ModuleImportBinding {
+  syntax::AstImport import_decl;
+  ResolvedImport resolved;
+};
+
+struct ModuleNode {
+  std::string key;
+  std::string path;
+  std::string source;
+  syntax::AstProgram ast;
+  std::vector<ModuleImportBinding> imports;
+  std::unordered_set<std::string> exports;
+  bool is_entry = false;
+};
+
+static std::string trim_copy(const std::string& text) {
   std::size_t left = 0;
   while (left < text.size() && std::isspace(static_cast<unsigned char>(text[left]))) {
     ++left;
@@ -30,111 +53,312 @@ static bool starts_with(const std::string& text, const std::string& prefix) {
   return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
 }
 
-static std::string parse_import_target(const std::string& line) {
-  const std::string clean = trim(line);
-  if (!starts_with(clean, "import ")) {
-    return "";
-  }
-  std::string target = trim(clean.substr(7));
-  if (target.empty()) {
-    return "";
-  }
-  if ((target.front() == '"' && target.back() == '"') || (target.front() == '\'' && target.back() == '\'')) {
-    target = target.substr(1, target.size() - 2);
-  }
-  return trim(target);
+static bool is_ident_body(char ch) {
+  return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
 }
 
-static std::vector<std::filesystem::path> import_candidates(const std::filesystem::path& importer,
-                                                            const std::string& target) {
-  std::vector<std::filesystem::path> out;
-  const std::filesystem::path parent = importer.parent_path();
-  const std::filesystem::path target_path(target);
-  if (target_path.is_absolute()) {
-    out.push_back(target_path);
-    if (target_path.extension() != ".tg") {
-      out.push_back(target_path.string() + ".tg");
+static std::string extract_struct_name(const std::string& header) {
+  if (!starts_with(header, "struct ")) {
+    return "";
+  }
+  std::string name = trim_copy(header.substr(7));
+  if (!name.empty() && name.back() == ':') {
+    name.pop_back();
+  }
+  return trim_copy(name);
+}
+
+static std::string extract_enum_name(const std::string& header) {
+  if (!starts_with(header, "enum ")) {
+    return "";
+  }
+  std::string name = trim_copy(header.substr(5));
+  if (!name.empty() && name.back() == ':') {
+    name.pop_back();
+  }
+  return trim_copy(name);
+}
+
+static std::unordered_set<std::string> collect_exports(const syntax::AstProgram& ast) {
+  std::unordered_set<std::string> out;
+  for (const auto& fn : ast.functions) {
+    if (fn.name.empty()) {
+      continue;
     }
-    return out;
+    if (fn.name.find('.') != std::string::npos) {
+      continue;
+    }
+    if (fn.name == "main") {
+      continue;
+    }
+    out.insert(fn.name);
   }
-
-  out.push_back(parent / target_path);
-  if (target_path.extension() != ".tg") {
-    out.push_back(parent / (target + ".tg"));
+  for (const std::string& header : ast.structs) {
+    const std::string name = extract_struct_name(header);
+    if (!name.empty()) {
+      out.insert(name);
+    }
   }
-
-  const std::filesystem::path cwd = std::filesystem::current_path();
-  out.push_back(cwd / "stdlib" / "lib" / target_path);
-  out.push_back(cwd / "stdlib" / "std" / target_path);
-  if (target_path.extension() != ".tg") {
-    out.push_back(cwd / "stdlib" / "lib" / (target + ".tg"));
-    out.push_back(cwd / "stdlib" / "std" / (target + ".tg"));
+  for (const std::string& header : ast.enums) {
+    const std::string name = extract_enum_name(header);
+    if (!name.empty()) {
+      out.insert(name);
+    }
   }
   return out;
 }
 
-static bool resolve_import_path(const std::filesystem::path& importer, const std::string& target,
-                                std::filesystem::path& resolved) {
-  for (const auto& candidate : import_candidates(importer, target)) {
-    std::error_code ec;
-    if (std::filesystem::exists(candidate, ec) && !ec) {
-      resolved = std::filesystem::absolute(candidate, ec);
-      if (!ec) {
-        return true;
-      }
+static std::string join_cycle_path(const std::vector<std::string>& stack, const std::string& back_edge) {
+  std::size_t begin = 0;
+  for (std::size_t i = 0; i < stack.size(); ++i) {
+    if (stack[i] == back_edge) {
+      begin = i;
+      break;
     }
   }
-  return false;
+  std::string out;
+  for (std::size_t i = begin; i < stack.size(); ++i) {
+    if (!out.empty()) {
+      out += " -> ";
+    }
+    out += stack[i];
+  }
+  if (!out.empty()) {
+    out += " -> ";
+  }
+  out += back_edge;
+  return out;
 }
 
-static bool expand_imports_recursive(const std::filesystem::path& file, std::set<std::string>& visiting,
-                                     std::set<std::string>& loaded, std::string& out, support::DiagnosticSink& diag) {
-  const std::string abs = support::absolute_path(file.string());
-  if (loaded.find(abs) != loaded.end()) {
-    return true;
+static std::string replace_prefixed_symbol(const std::string& line, const std::string& prefix, const std::string& symbol) {
+  const std::string pattern = prefix + "." + symbol;
+  if (pattern.empty()) {
+    return line;
   }
-  if (visiting.find(abs) != visiting.end()) {
-    diag.error("E_MOD_001", "cyclic import detected at '" + abs + "'");
-    return false;
-  }
-  visiting.insert(abs);
-
-  const std::string source = support::read_text_file(abs);
-  std::istringstream in(source);
-  std::string line;
-  while (std::getline(in, line)) {
-    const std::string target = parse_import_target(line);
-    if (!target.empty()) {
-      std::filesystem::path resolved;
-      if (!resolve_import_path(abs, target, resolved)) {
-        diag.error("E_MOD_002", "cannot resolve import '" + target + "' from '" + abs + "'");
-        visiting.erase(abs);
-        return false;
-      }
-      if (!expand_imports_recursive(resolved, visiting, loaded, out, diag)) {
-        visiting.erase(abs);
-        return false;
-      }
+  std::string out = line;
+  std::size_t pos = 0;
+  while (pos < out.size()) {
+    const std::size_t found = out.find(pattern, pos);
+    if (found == std::string::npos) {
+      break;
+    }
+    const std::size_t end = found + pattern.size();
+    const bool left_ok = found == 0 || !is_ident_body(out[found - 1]);
+    const bool right_ok = end >= out.size() || !is_ident_body(out[end]);
+    if (!left_ok || !right_ok) {
+      pos = found + 1;
       continue;
     }
-    out += line;
-    out.push_back('\n');
+    out.replace(found, pattern.size(), symbol);
+    pos = found + symbol.size();
   }
+  return out;
+}
 
-  visiting.erase(abs);
-  loaded.insert(abs);
+static bool parse_module_source(const std::string& path, const std::string& source, syntax::AstProgram& ast,
+                                support::DiagnosticSink& diag) {
+  syntax::Lexer lexer;
+  syntax::Parser parser;
+  const auto tokens = lexer.tokenize(source);
+  ast = parser.parse(tokens, source);
+  ast.source_path = path;
+  if (!ast.parse_errors.empty()) {
+    for (const std::string& message : ast.parse_errors) {
+      diag.error("E_MOD_200", message, path);
+    }
+    return false;
+  }
   return true;
 }
 
-static std::string expand_imports(const std::string& entry, support::DiagnosticSink& diag) {
-  std::set<std::string> visiting;
-  std::set<std::string> loaded;
+static bool load_module_recursive(const std::string& path, bool is_entry, ModuleResolver& resolver,
+                                  const ProjectManifest& manifest, std::unordered_map<std::string, ModuleNode>& modules,
+                                  std::unordered_set<std::string>& visiting, std::unordered_set<std::string>& loaded,
+                                  std::vector<std::string>& stack, std::vector<std::string>& postorder,
+                                  support::DiagnosticSink& diag) {
+  const std::string key = std::filesystem::weakly_canonical(path).string();
+  if (loaded.find(key) != loaded.end()) {
+    return true;
+  }
+  if (visiting.find(key) != visiting.end()) {
+    diag.error("E_MOD_201", "circular import detected: " + join_cycle_path(stack, key));
+    return false;
+  }
+  visiting.insert(key);
+  stack.push_back(key);
+
+  std::string source;
+  try {
+    source = support::read_text_file(key);
+  } catch (const std::exception& ex) {
+    diag.error("E_MOD_202", "cannot read module '" + key + "': " + std::string(ex.what()));
+    stack.pop_back();
+    visiting.erase(key);
+    return false;
+  }
+
+  syntax::AstProgram ast;
+  if (!parse_module_source(key, source, ast, diag)) {
+    stack.pop_back();
+    visiting.erase(key);
+    return false;
+  }
+  if (!is_entry && !ast.top_level_statements.empty()) {
+    diag.error("E_MOD_203", "imported module cannot contain top-level executable statements", key, 1, 1);
+    stack.pop_back();
+    visiting.erase(key);
+    return false;
+  }
+
+  ModuleNode node;
+  node.key = key;
+  node.path = key;
+  node.source = source;
+  node.ast = std::move(ast);
+  node.exports = collect_exports(node.ast);
+  node.is_entry = is_entry;
+
+  for (const auto& import_decl : node.ast.imports) {
+    ResolvedImport resolved;
+    if (!resolver.resolve_import(import_decl, key, manifest, resolved, diag)) {
+      stack.pop_back();
+      visiting.erase(key);
+      return false;
+    }
+    node.imports.push_back(ModuleImportBinding{import_decl, resolved});
+  }
+
+  modules[key] = node;
+  for (const auto& binding : modules[key].imports) {
+    if (!load_module_recursive(binding.resolved.absolute_path, false, resolver, manifest, modules, visiting, loaded, stack,
+                               postorder, diag)) {
+      stack.pop_back();
+      visiting.erase(key);
+      return false;
+    }
+  }
+
+  stack.pop_back();
+  visiting.erase(key);
+  loaded.insert(key);
+  postorder.push_back(key);
+  return true;
+}
+
+static bool validate_import_bindings(const std::unordered_map<std::string, ModuleNode>& modules,
+                                     support::DiagnosticSink& diag) {
+  for (const auto& [module_key, module] : modules) {
+    (void)module_key;
+    std::unordered_map<std::string, std::string> prefix_owner;
+    for (const auto& binding : module.imports) {
+      auto target_it = modules.find(binding.resolved.module_key);
+      if (target_it == modules.end()) {
+        diag.error("E_MOD_204", "internal resolver error: unresolved module '" + binding.resolved.module_key + "'");
+        return false;
+      }
+      if (binding.import_decl.is_from_import) {
+        for (const std::string& symbol : binding.import_decl.symbols) {
+          if (target_it->second.exports.find(symbol) == target_it->second.exports.end()) {
+            diag.error("E_MOD_205",
+                       "symbol '" + symbol + "' is not exported by module '" + binding.resolved.display_name + "'",
+                       module.path, binding.import_decl.line, binding.import_decl.column);
+            return false;
+          }
+        }
+        continue;
+      }
+      const std::string prefix = binding.import_decl.alias.empty() ? binding.import_decl.module_path.back() : binding.import_decl.alias;
+      auto conflict = prefix_owner.find(prefix);
+      if (conflict != prefix_owner.end() && conflict->second != binding.resolved.module_key) {
+        diag.error("E_MOD_206", "import prefix conflict for '" + prefix + "', use alias to disambiguate", module.path,
+                   binding.import_decl.line, binding.import_decl.column);
+        return false;
+      }
+      prefix_owner[prefix] = binding.resolved.module_key;
+    }
+  }
+  return true;
+}
+
+static std::string rewrite_module_source(const ModuleNode& module, const std::unordered_map<std::string, ModuleNode>& modules) {
+  std::unordered_map<std::string, std::vector<std::string>> prefix_symbols;
+  for (const auto& binding : module.imports) {
+    if (binding.import_decl.is_from_import) {
+      continue;
+    }
+    auto target_it = modules.find(binding.resolved.module_key);
+    if (target_it == modules.end()) {
+      continue;
+    }
+    const std::string prefix = binding.import_decl.alias.empty() ? binding.import_decl.module_path.back() : binding.import_decl.alias;
+    std::vector<std::string> symbols;
+    symbols.reserve(target_it->second.exports.size());
+    for (const std::string& symbol : target_it->second.exports) {
+      symbols.push_back(symbol);
+    }
+    std::sort(symbols.begin(), symbols.end(), [](const std::string& lhs, const std::string& rhs) {
+      if (lhs.size() == rhs.size()) {
+        return lhs < rhs;
+      }
+      return lhs.size() > rhs.size();
+    });
+    prefix_symbols[prefix] = std::move(symbols);
+  }
+
   std::string merged;
-  if (!expand_imports_recursive(entry, visiting, loaded, merged, diag)) {
-    return "";
+  std::istringstream in(module.source);
+  std::string line;
+  while (std::getline(in, line)) {
+    const std::string clean = trim_copy(line);
+    if (starts_with(clean, "import ") || starts_with(clean, "from ")) {
+      continue;
+    }
+    std::string rewritten = line;
+    for (const auto& [prefix, symbols] : prefix_symbols) {
+      for (const std::string& symbol : symbols) {
+        rewritten = replace_prefixed_symbol(rewritten, prefix, symbol);
+      }
+    }
+    merged += rewritten;
+    merged.push_back('\n');
   }
   return merged;
 }
+
+static bool build_merged_source(const std::string& entry_path, ModuleResolver& resolver, ProjectManifest& manifest,
+                                std::string& out_source, support::DiagnosticSink& diag) {
+  if (!resolver.load_project_manifest(entry_path, manifest, diag)) {
+    return false;
+  }
+  if (!resolver.write_lock_file(manifest, diag)) {
+    return false;
+  }
+
+  std::unordered_map<std::string, ModuleNode> modules;
+  std::unordered_set<std::string> visiting;
+  std::unordered_set<std::string> loaded;
+  std::vector<std::string> stack;
+  std::vector<std::string> postorder;
+  if (!load_module_recursive(entry_path, true, resolver, manifest, modules, visiting, loaded, stack, postorder, diag)) {
+    return false;
+  }
+  if (!validate_import_bindings(modules, diag)) {
+    return false;
+  }
+
+  out_source.clear();
+  for (const std::string& key : postorder) {
+    auto it = modules.find(key);
+    if (it == modules.end()) {
+      continue;
+    }
+    out_source += rewrite_module_source(it->second, modules);
+    out_source.push_back('\n');
+  }
+  return true;
+}
+
+}  // namespace
 
 bool CompilerPipeline::build(const BuildOptions& options, support::DiagnosticSink& diag) const {
   try {
@@ -144,12 +368,17 @@ bool CompilerPipeline::build(const BuildOptions& options, support::DiagnosticSin
     infra::LoweringAdapter lowerer;
     infra::LlvmCodegenAdapter codegen;
     infra::ClangLinkerAdapter linker;
+    ModuleResolver resolver;
 
     application::BuildUseCase usecase(lexer, parser, checker, lowerer, codegen, linker);
     domain::BuildRequest request;
     request.input_path = options.input_path;
-    request.source_text = expand_imports(options.input_path, diag);
+    ProjectManifest manifest;
+    if (!build_merged_source(options.input_path, resolver, manifest, request.source_text, diag)) {
+      return false;
+    }
     if (request.source_text.empty()) {
+      diag.error("E_MOD_207", "empty compilation unit after import resolution", options.input_path);
       return false;
     }
     request.output_path = options.output_path;

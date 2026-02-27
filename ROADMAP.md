@@ -1,6 +1,6 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (February 27, 2026): `v0.3` (Struct & Type System).
+Current effective milestone by code audit (February 27, 2026): `v0.4` (Module & Import System).
 Status note: tag `v0.6.0` exists, but concurrency work is currently treated as prototype track until compiler gates (`v0.2` → `v0.5`) are passed.
 Active implementation policy: finish one milestone completely before starting the next.
 
@@ -24,7 +24,7 @@ Active implementation policy: finish one milestone completely before starting th
 | Tooling | ~75% | Policy, packaging, compare tools hiện có |
 | CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: compiler gate `v0.3` đã pass trên Linux (struct + impl method + enum payload compile/run).**
+**Overall: compiler gate `v0.4` đã pass trên Linux (multi-file import + package import compile/run).**
 
 Execution order (re-anchored to dependency reality):
 1. Close `v0.2` gate (compiler foundation)
@@ -80,32 +80,32 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.4 — Module & Import System 🔲 Planned (dependency on v0.3 gate)
+## v0.4 — Module & Import System ✅ Completed
 > *"Tao có thể chia code ra nhiều file"*
 
 ### Language — Import Syntax
-- [ ] `import a.b.c` — resolve từ project root, dùng qua prefix `c.func()`
-- [ ] `from a.b.c import func` — import trực tiếp symbol
-- [ ] `import pkg_name` — resolve Drago package từ manifest
-- [ ] `from pkg_name import func` — import trực tiếp từ package
-- [ ] `import a.b.c as alias` — alias để tránh conflict tên
-- [ ] Conflict detection — compiler error khi hai import cùng tên cuối, yêu cầu alias
-- [ ] Import scope: top-level only, không hỗ trợ block-level import
+- [x] `import a.b.c` — resolve từ project root, dùng qua prefix `c.func()`
+- [x] `from a.b.c import func` — import trực tiếp symbol
+- [x] `import pkg_name` — resolve Drago package từ manifest
+- [x] `from pkg_name import func` — import trực tiếp từ package
+- [x] `import a.b.c as alias` — alias để tránh conflict tên
+- [x] Conflict detection — compiler error khi hai import cùng tên cuối, yêu cầu alias
+- [x] Import scope: top-level only, không hỗ trợ block-level import
 
 ### Build Pipeline
-- [ ] Multi-file compilation — locate + compile + link `.tg` modules
-- [ ] `thagore.toml` manifest — khai báo dependencies, version pinning
-- [ ] Module resolver — phân biệt package vs file path qua manifest
+- [x] Multi-file compilation — locate + compile + link `.tg` modules
+- [x] `thagore.toml` manifest — khai báo dependencies, version pinning
+- [x] Module resolver — phân biệt package vs file path qua manifest
 - [ ] Incremental compilation — chỉ recompile file thay đổi
 
 ### Drago Package Registry (MVP)
-- [ ] `thagc install <package>` hoạt động
-- [ ] Local cache tại `~/.thagore/packages/`
+- [x] `thagc install <package>` hoạt động
+- [x] Local cache tại `~/.thagore/packages/`
 - [ ] Registry endpoint cơ bản
-- [ ] `thagore.toml` lock file
+- [x] `thagore.toml` lock file
 
 ### Gate
-- [ ] Project nhiều file compile thành công, import package từ registry hoạt động
+- [x] Project nhiều file compile thành công, import package từ manifest/cache hoạt động
 
 ---
 

@@ -1001,6 +1001,12 @@ static AstStatement build_statement_from_line(AstProgram& program, const SourceL
   st.text = body.clean;
   st.line = body.number;
   st.indent = body.indent;
+  if (starts_with(body.clean, "import ") || starts_with(body.clean, "from ")) {
+    st.kind = StatementKind::Expr;
+    add_parse_error(program, body.number, "import statements are only allowed at top-level scope");
+    parse_statement_expression(program, st);
+    return st;
+  }
   if (starts_with(body.clean, "if ")) {
     st.kind = StatementKind::If;
     if (!valid_control_header("if", body.clean)) {
@@ -1067,6 +1073,122 @@ static int parse_return_literal(const std::string& line) {
   }
   const int value = std::stoi(normalized.substr(index));
   return neg ? -value : value;
+}
+
+static bool is_identifier(const std::string& text) {
+  if (text.empty() || !(std::isalpha(static_cast<unsigned char>(text[0])) || text[0] == '_')) {
+    return false;
+  }
+  for (std::size_t i = 1; i < text.size(); ++i) {
+    if (!(std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '_')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool parse_module_path(const std::string& text, std::vector<std::string>& out, std::string& error) {
+  out.clear();
+  std::size_t i = 0;
+  while (i < text.size()) {
+    std::size_t dot = text.find('.', i);
+    if (dot == std::string::npos) {
+      dot = text.size();
+    }
+    const std::string segment = trim(text.substr(i, dot - i));
+    if (!is_identifier(segment)) {
+      error = "invalid import module path segment '" + segment + "'";
+      return false;
+    }
+    out.push_back(segment);
+    i = dot + 1;
+  }
+  if (out.empty()) {
+    error = "import module path is empty";
+    return false;
+  }
+  return true;
+}
+
+static bool parse_import_symbols(const std::string& text, std::vector<std::string>& out, std::string& error) {
+  out.clear();
+  std::size_t i = 0;
+  while (i < text.size()) {
+    std::size_t comma = text.find(',', i);
+    if (comma == std::string::npos) {
+      comma = text.size();
+    }
+    const std::string symbol = trim(text.substr(i, comma - i));
+    if (symbol == "*") {
+      error = "wildcard import is not supported";
+      return false;
+    }
+    if (!is_identifier(symbol)) {
+      error = "invalid imported symbol '" + symbol + "'";
+      return false;
+    }
+    out.push_back(symbol);
+    i = comma + 1;
+  }
+  if (out.empty()) {
+    error = "from-import requires at least one symbol";
+    return false;
+  }
+  return true;
+}
+
+static bool parse_import_decl(const std::string& line, AstImport& out, std::string& error) {
+  const std::string clean = trim(line);
+  if (starts_with(clean, "import ")) {
+    std::string rest = trim(clean.substr(7));
+    std::string module_text = rest;
+    std::string alias;
+    const std::size_t as_pos = rest.find(" as ");
+    if (as_pos != std::string::npos) {
+      module_text = trim(rest.substr(0, as_pos));
+      alias = trim(rest.substr(as_pos + 4));
+      if (!is_identifier(alias)) {
+        error = "invalid import alias '" + alias + "'";
+        return false;
+      }
+    }
+    std::vector<std::string> module_path;
+    if (!parse_module_path(module_text, module_path, error)) {
+      return false;
+    }
+    out = AstImport{};
+    out.is_from_import = false;
+    out.module_path = std::move(module_path);
+    out.alias = alias;
+    out.raw = clean;
+    return true;
+  }
+  if (starts_with(clean, "from ")) {
+    const std::string rest = trim(clean.substr(5));
+    const std::size_t import_pos = rest.find(" import ");
+    if (import_pos == std::string::npos) {
+      error = "from-import must use 'from <module> import <symbol>'";
+      return false;
+    }
+    const std::string module_text = trim(rest.substr(0, import_pos));
+    const std::string symbols_text = trim(rest.substr(import_pos + 8));
+    std::vector<std::string> module_path;
+    if (!parse_module_path(module_text, module_path, error)) {
+      return false;
+    }
+    std::vector<std::string> symbols;
+    if (!parse_import_symbols(symbols_text, symbols, error)) {
+      return false;
+    }
+    out = AstImport{};
+    out.is_from_import = true;
+    out.module_path = std::move(module_path);
+    out.symbols = std::move(symbols);
+    out.raw = clean;
+    return true;
+  }
+  error = "not an import declaration";
+  return false;
 }
 
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
@@ -1156,8 +1278,16 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(effective_line, "import ")) {
-      program.imports.push_back(effective_line);
+    if (starts_with(effective_line, "import ") || starts_with(effective_line, "from ")) {
+      AstImport import_decl;
+      std::string import_error;
+      if (!parse_import_decl(effective_line, import_decl, import_error)) {
+        add_parse_error(program, line.number, import_error);
+      } else {
+        import_decl.line = line.number;
+        import_decl.column = 1;
+        program.imports.push_back(std::move(import_decl));
+      }
       ++i;
       continue;
     }
