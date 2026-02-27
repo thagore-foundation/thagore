@@ -1,8 +1,9 @@
 #include "thagc/middleend/core_ir.hpp"
 
+#include <algorithm>
 #include <cctype>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace thagc::lowering {
@@ -32,6 +33,70 @@ static bool is_ident_start(char ch) {
 
 static bool is_ident_body(char ch) {
   return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+}
+
+static std::string trim_copy(const std::string& text) {
+  std::size_t left = 0;
+  while (left < text.size() && std::isspace(static_cast<unsigned char>(text[left]))) {
+    ++left;
+  }
+  std::size_t right = text.size();
+  while (right > left && std::isspace(static_cast<unsigned char>(text[right - 1]))) {
+    --right;
+  }
+  return text.substr(left, right - left);
+}
+
+static std::string parse_struct_name_from_header(const std::string& header) {
+  constexpr std::string_view kStruct = "struct ";
+  if (header.size() < kStruct.size() || header.compare(0, kStruct.size(), kStruct) != 0) {
+    return "";
+  }
+  std::string out = header.substr(kStruct.size());
+  if (!out.empty() && out.back() == ':') {
+    out.pop_back();
+  }
+  out = trim_copy(out);
+  if (out.empty() || !is_ident_start(out[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < out.size(); ++i) {
+    if (!is_ident_body(out[i])) {
+      return "";
+    }
+  }
+  return out;
+}
+
+static std::string parse_enum_name_from_header(const std::string& header) {
+  constexpr std::string_view kEnum = "enum ";
+  if (header.size() < kEnum.size() || header.compare(0, kEnum.size(), kEnum) != 0) {
+    return "";
+  }
+  std::string out = header.substr(kEnum.size());
+  if (!out.empty() && out.back() == ':') {
+    out.pop_back();
+  }
+  out = trim_copy(out);
+  if (out.empty() || !is_ident_start(out[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < out.size(); ++i) {
+    if (!is_ident_body(out[i])) {
+      return "";
+    }
+  }
+  return out;
+}
+
+static bool split_owner_and_method(const std::string& name, std::string& owner, std::string& method) {
+  const std::size_t dot = name.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= name.size()) {
+    return false;
+  }
+  owner = name.substr(0, dot);
+  method = name.substr(dot + 1);
+  return true;
 }
 
 static std::string parse_let_name(const std::string& line) {
@@ -137,6 +202,57 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
   core.enum_variant_payload_types = program.enum_variant_payload_types;
   core.struct_fields = program.struct_fields;
   core.struct_field_types = program.struct_field_types;
+  core.struct_methods = program.struct_methods;
+
+  for (const std::string& header : program.structs) {
+    const std::string struct_name = parse_struct_name_from_header(header);
+    if (struct_name.empty()) {
+      continue;
+    }
+    CoreStructType typed;
+    typed.name = struct_name;
+    auto fields_it = program.struct_fields.find(struct_name);
+    if (fields_it != program.struct_fields.end()) {
+      typed.fields = fields_it->second;
+      typed.field_types.reserve(fields_it->second.size());
+      for (const std::string& field : fields_it->second) {
+        const std::string key = struct_name + "." + field;
+        auto type_it = program.struct_field_types.find(key);
+        typed.field_types.push_back(type_it == program.struct_field_types.end() ? "i32" : type_it->second);
+      }
+    }
+    core.struct_types.push_back(std::move(typed));
+  }
+
+  std::vector<std::pair<std::string, int>> variants;
+  variants.reserve(program.enum_variant_tags.size());
+  for (const auto& entry : program.enum_variant_tags) {
+    variants.push_back(entry);
+  }
+  std::unordered_map<std::string, std::string> variant_owner;
+  for (const auto& [enum_name, enum_members] : program.enum_variants) {
+    for (const std::string& variant_name : enum_members) {
+      if (!variant_name.empty()) {
+        variant_owner[variant_name] = enum_name;
+      }
+    }
+  }
+  std::sort(variants.begin(), variants.end(), [](const auto& lhs, const auto& rhs) { return lhs.second < rhs.second; });
+  for (const auto& [name, tag] : variants) {
+    CoreEnumVariant typed;
+    auto owner_it = variant_owner.find(name);
+    if (owner_it != variant_owner.end()) {
+      typed.enum_name = owner_it->second;
+    }
+    typed.name = name;
+    typed.tag = tag;
+    auto payload_it = program.enum_variant_payload_types.find(name);
+    if (payload_it != program.enum_variant_payload_types.end()) {
+      typed.payload_type = payload_it->second;
+    }
+    core.enum_variants.push_back(std::move(typed));
+  }
+
   for (const auto& ext : program.extern_functions) {
     CoreExternFunction out;
     out.name = ext.name;
@@ -152,6 +268,16 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     out.name = fn.name;
     out.params = fn.params;
     out.return_type = fn.return_type;
+    std::string owner;
+    std::string method;
+    if (split_owner_and_method(fn.name, owner, method) && program.struct_fields.find(owner) != program.struct_fields.end()) {
+      out.is_method = true;
+      out.owner_type = owner;
+      out.method_name = method;
+      if (!out.params.empty() && out.params.front() == "self") {
+        out.params.erase(out.params.begin());
+      }
+    }
     std::unordered_map<std::string, std::string> known_values;
     for (const auto& st : fn.body) {
       append_core_statement(out.statements, st, known_values);

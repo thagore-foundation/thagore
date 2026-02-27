@@ -79,9 +79,10 @@ static std::string type_name(TypeKind kind) {
   if (kind == TypeKind::List) return "List";
   if (kind == TypeKind::Rc) return "Rc";
   if (kind == TypeKind::Arc) return "Arc";
-  if (kind == TypeKind::Fn) return "Fn";
+  if (kind == TypeKind::FunctionType) return "fn";
   if (kind == TypeKind::Ptr) return "ptr";
-  if (kind == TypeKind::Struct) return "struct";
+  if (kind == TypeKind::StructType) return "struct";
+  if (kind == TypeKind::EnumType) return "enum";
   if (kind == TypeKind::Void) return "void";
   return "unknown";
 }
@@ -98,7 +99,7 @@ static TypeKind parse_type_name(const std::string& type_name) {
   if (clean == "List") return TypeKind::List;
   if (clean == "Rc") return TypeKind::Rc;
   if (clean == "Arc") return TypeKind::Arc;
-  if (clean == "Fn") return TypeKind::Fn;
+  if (clean == "Fn" || clean == "fn") return TypeKind::FunctionType;
   if (clean == "ptr") return TypeKind::Ptr;
   if (clean == "void") return TypeKind::Void;
   std::string base;
@@ -173,9 +174,30 @@ static std::unordered_set<std::string> collect_struct_names(const syntax::AstPro
   return out;
 }
 
+static std::unordered_set<std::string> collect_enum_names(const syntax::AstProgram& program) {
+  std::unordered_set<std::string> out;
+  for (const std::string& header : program.enums) {
+    if (!starts_with(header, "enum ")) {
+      continue;
+    }
+    std::string clean = header.substr(5);
+    if (!clean.empty() && clean.back() == ':') {
+      clean.pop_back();
+    }
+    clean.erase(clean.begin(), std::find_if(clean.begin(), clean.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+    clean.erase(std::find_if(clean.rbegin(), clean.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+               clean.end());
+    if (!clean.empty()) {
+      out.insert(clean);
+    }
+  }
+  return out;
+}
+
 static std::unordered_map<std::string, TypeKind> collect_function_return_types(
     const syntax::AstProgram& program, const std::unordered_map<std::string, TypeKind>& aliases,
-    const std::unordered_set<std::string>& struct_names) {
+    const std::unordered_set<std::string>& struct_names,
+    const std::unordered_set<std::string>& enum_names) {
   std::unordered_map<std::string, TypeKind> out;
   for (const auto& fn : program.functions) {
     if (fn.return_type.empty()) {
@@ -188,7 +210,11 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
       continue;
     }
     if (struct_names.find(fn.return_type) != struct_names.end()) {
-      out[fn.name] = TypeKind::Struct;
+      out[fn.name] = TypeKind::StructType;
+      continue;
+    }
+    if (enum_names.find(fn.return_type) != enum_names.end()) {
+      out[fn.name] = TypeKind::EnumType;
       continue;
     }
     out[fn.name] = TypeKind::Unknown;
@@ -198,7 +224,9 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
     if (direct != TypeKind::Unknown) {
       out[ext.name] = direct;
     } else if (struct_names.find(ext.return_type) != struct_names.end()) {
-      out[ext.name] = TypeKind::Struct;
+      out[ext.name] = TypeKind::StructType;
+    } else if (enum_names.find(ext.return_type) != enum_names.end()) {
+      out[ext.name] = TypeKind::EnumType;
     } else {
       out[ext.name] = TypeKind::Unknown;
     }
@@ -241,6 +269,10 @@ struct ExprTypeCursor {
   const std::unordered_map<std::string, TypeKind>* function_returns = nullptr;
   const std::unordered_map<std::string, std::size_t>* function_arity = nullptr;
   const std::unordered_set<std::string>* struct_names = nullptr;
+  const std::unordered_map<std::string, std::string>* struct_bindings = nullptr;
+  const std::unordered_map<std::string, std::vector<std::string>>* struct_fields = nullptr;
+  const std::unordered_map<std::string, std::string>* struct_field_types = nullptr;
+  const std::unordered_map<std::string, std::vector<std::string>>* struct_methods = nullptr;
 };
 
 static bool is_ident_start(char ch) {
@@ -249,6 +281,19 @@ static bool is_ident_start(char ch) {
 
 static bool is_ident_body(char ch) {
   return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+}
+
+static bool split_dotted_name(const std::string& value, std::string& base, std::string& member) {
+  const std::size_t dot = value.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= value.size()) {
+    return false;
+  }
+  if (value.find('.', dot + 1) != std::string::npos) {
+    return false;
+  }
+  base = value.substr(0, dot);
+  member = value.substr(dot + 1);
+  return true;
 }
 
 static bool is_interpolated_literal(const std::string& text) {
@@ -505,6 +550,47 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
       if (tok.text == "print") {
         return TypeKind::I32;
       }
+      if (cursor.enum_variants != nullptr) {
+        auto enum_it = cursor.enum_variants->find(tok.text);
+        if (enum_it != cursor.enum_variants->end()) {
+          if (args.size() > 1) {
+            cursor.error = "enum payload constructor '" + tok.text + "' expects at most 1 argument";
+            return TypeKind::Unknown;
+          }
+          return TypeKind::EnumType;
+        }
+      }
+      std::string call_base;
+      std::string call_member;
+      if (split_dotted_name(tok.text, call_base, call_member) && cursor.struct_bindings != nullptr &&
+          cursor.struct_methods != nullptr && cursor.function_returns != nullptr) {
+        auto binding = cursor.struct_bindings->find(call_base);
+        if (binding != cursor.struct_bindings->end()) {
+          const std::string& struct_name = binding->second;
+          auto methods_it = cursor.struct_methods->find(struct_name);
+          if (methods_it == cursor.struct_methods->end() ||
+              std::find(methods_it->second.begin(), methods_it->second.end(), call_member) ==
+                  methods_it->second.end()) {
+            cursor.error = "unknown method '" + call_member + "' on struct '" + struct_name + "'";
+            return TypeKind::Unknown;
+          }
+          const std::string method_symbol = struct_name + "." + call_member;
+          auto ret = cursor.function_returns->find(method_symbol);
+          if (ret == cursor.function_returns->end()) {
+            cursor.error = "method '" + method_symbol + "' is declared but has no implementation";
+            return TypeKind::Unknown;
+          }
+          if (cursor.function_arity != nullptr) {
+            auto arity = cursor.function_arity->find(method_symbol);
+            if (arity != cursor.function_arity->end() && args.size() + 1 != arity->second) {
+              cursor.error = "method '" + call_member + "' expects " + std::to_string(arity->second - 1) +
+                             " arguments but got " + std::to_string(args.size());
+              return TypeKind::Unknown;
+            }
+          }
+          return ret->second;
+        }
+      }
       if (cursor.function_returns != nullptr) {
         auto fn = cursor.function_returns->find(tok.text);
         if (fn != cursor.function_returns->end()) {
@@ -521,12 +607,12 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
       }
       if (cursor.scope != nullptr) {
         auto local_callable = cursor.scope->find(tok.text);
-        if (local_callable != cursor.scope->end() && local_callable->second == TypeKind::Fn) {
+        if (local_callable != cursor.scope->end() && local_callable->second == TypeKind::FunctionType) {
           return TypeKind::I32;
         }
       }
       if (cursor.struct_names != nullptr && cursor.struct_names->find(tok.text) != cursor.struct_names->end()) {
-        return TypeKind::Struct;
+        return TypeKind::StructType;
       }
       cursor.error = "unknown callable '" + tok.text + "'";
       return TypeKind::Unknown;
@@ -549,7 +635,36 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     std::string closure_param;
     std::string closure_body;
     if (parse_closure_literal(tok.text, closure_param, closure_body)) {
-      return TypeKind::Fn;
+      return TypeKind::FunctionType;
+    }
+    std::string field_base;
+    std::string field_name;
+    if (split_dotted_name(tok.text, field_base, field_name) && cursor.struct_bindings != nullptr &&
+        cursor.struct_fields != nullptr) {
+      auto binding = cursor.struct_bindings->find(field_base);
+      if (binding != cursor.struct_bindings->end()) {
+        const std::string& struct_name = binding->second;
+        auto fields_it = cursor.struct_fields->find(struct_name);
+        if (fields_it == cursor.struct_fields->end() ||
+            std::find(fields_it->second.begin(), fields_it->second.end(), field_name) == fields_it->second.end()) {
+          cursor.error = "unknown field '" + field_name + "' on struct '" + struct_name + "'";
+          return TypeKind::Unknown;
+        }
+        if (cursor.scope != nullptr) {
+          auto known = cursor.scope->find(tok.text);
+          if (known != cursor.scope->end()) {
+            return known->second;
+          }
+        }
+        if (cursor.struct_field_types != nullptr) {
+          auto field_type_it = cursor.struct_field_types->find(struct_name + "." + field_name);
+          if (field_type_it != cursor.struct_field_types->end()) {
+            const TypeKind resolved = parse_type_name(field_type_it->second);
+            return resolved == TypeKind::Unknown ? TypeKind::I32 : resolved;
+          }
+        }
+        return TypeKind::I32;
+      }
     }
     if (cursor.scope != nullptr) {
       auto it = cursor.scope->find(tok.text);
@@ -560,7 +675,7 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     if (cursor.enum_variants != nullptr) {
       auto enum_it = cursor.enum_variants->find(tok.text);
       if (enum_it != cursor.enum_variants->end()) {
-        return TypeKind::I32;
+        return TypeKind::EnumType;
       }
     }
     cursor.error = "unknown identifier '" + tok.text + "'";
@@ -1121,9 +1236,136 @@ static bool validate_extern_declarations(const syntax::AstProgram& program, supp
   return true;
 }
 
+static bool split_owner_and_method(const std::string& name, std::string& owner, std::string& method) {
+  const std::size_t dot = name.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= name.size()) {
+    return false;
+  }
+  owner = name.substr(0, dot);
+  method = name.substr(dot + 1);
+  return true;
+}
+
+static TypeKind resolve_declared_user_type(const std::string& type_name,
+                                           const std::unordered_map<std::string, TypeKind>& aliases,
+                                           const std::unordered_set<std::string>& struct_names,
+                                           const std::unordered_set<std::string>& enum_names) {
+  const TypeKind direct = resolve_declared_type(type_name, aliases);
+  if (direct != TypeKind::Unknown) {
+    return direct;
+  }
+  if (struct_names.find(type_name) != struct_names.end()) {
+    return TypeKind::StructType;
+  }
+  if (enum_names.find(type_name) != enum_names.end()) {
+    return TypeKind::EnumType;
+  }
+  return TypeKind::Unknown;
+}
+
+struct MatchArmInfo {
+  bool is_arm = false;
+  bool wildcard = false;
+  bool literal = false;
+  bool has_variant = false;
+  std::string variant;
+  std::string payload_binding;
+  std::string error;
+};
+
+static bool is_builtin_match_variant(const std::string& name) {
+  return name == "Some" || name == "None" || name == "Ok" || name == "Err";
+}
+
+static MatchArmInfo parse_match_arm_info(const std::string& line) {
+  MatchArmInfo out;
+  const std::string clean = trim_copy(line);
+  if (clean.empty() || clean.back() != ':') {
+    return out;
+  }
+  out.is_arm = true;
+  std::string label = trim_copy(clean.substr(0, clean.size() - 1));
+  if (label.empty()) {
+    out.error = "empty match arm label";
+    return out;
+  }
+  if (label == "_" || label == "else") {
+    out.wildcard = true;
+    return out;
+  }
+  if (label == "true" || label == "false") {
+    out.literal = true;
+    return out;
+  }
+  bool numeric = true;
+  std::size_t i = 0;
+  if (!label.empty() && label[0] == '-') {
+    i = 1;
+  }
+  if (i >= label.size()) {
+    numeric = false;
+  }
+  for (; i < label.size(); ++i) {
+    if (!std::isdigit(static_cast<unsigned char>(label[i]))) {
+      numeric = false;
+      break;
+    }
+  }
+  if (numeric) {
+    out.literal = true;
+    return out;
+  }
+
+  std::string variant = label;
+  std::string payload;
+  const std::size_t lparen = label.find('(');
+  const std::size_t rparen = label.rfind(')');
+  if (lparen != std::string::npos || rparen != std::string::npos) {
+    if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen) {
+      out.error = "malformed payload match arm";
+      return out;
+    }
+    variant = trim_copy(label.substr(0, lparen));
+    payload = trim_copy(label.substr(lparen + 1, rparen - lparen - 1));
+    if (payload == "_") {
+      payload.clear();
+    }
+  }
+  if (variant.empty() || !is_ident_start(variant[0])) {
+    out.error = "invalid variant name in match arm";
+    return out;
+  }
+  for (std::size_t k = 1; k < variant.size(); ++k) {
+    if (!is_ident_body(variant[k])) {
+      out.error = "invalid variant name in match arm";
+      return out;
+    }
+  }
+  if (!payload.empty()) {
+    if (!is_ident_start(payload[0])) {
+      out.error = "invalid payload binding in match arm";
+      return out;
+    }
+    for (std::size_t k = 1; k < payload.size(); ++k) {
+      if (!is_ident_body(payload[k])) {
+        out.error = "invalid payload binding in match arm";
+        return out;
+      }
+    }
+  }
+  out.has_variant = true;
+  out.variant = variant;
+  out.payload_binding = payload;
+  return out;
+}
+
 static bool typecheck_statement_expression(const syntax::AstStatement& st, int line,
                                            const std::unordered_map<std::string, TypeKind>& scope,
                                            const std::unordered_map<std::string, int>& enum_variants,
+                                           const std::unordered_map<std::string, std::string>& struct_bindings,
+                                           const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                                           const std::unordered_map<std::string, std::string>& struct_field_types,
+                                           const std::unordered_map<std::string, std::vector<std::string>>& struct_methods,
                                            const std::unordered_map<std::string, TypeKind>& function_returns,
                                            const std::unordered_map<std::string, std::size_t>& function_arity,
                                            const std::unordered_set<std::string>& struct_names,
@@ -1143,6 +1385,10 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
   cursor.line = line;
   cursor.scope = &scope;
   cursor.enum_variants = &enum_variants;
+  cursor.struct_bindings = &struct_bindings;
+  cursor.struct_fields = &struct_fields;
+  cursor.struct_field_types = &struct_field_types;
+  cursor.struct_methods = &struct_methods;
   cursor.function_returns = &function_returns;
   cursor.function_arity = &function_arity;
   cursor.struct_names = &struct_names;
@@ -1245,8 +1491,43 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
   const auto aliases = collect_type_aliases(program);
   const auto struct_names = collect_struct_names(program);
-  const auto function_returns = collect_function_return_types(program, aliases, struct_names);
+  const auto enum_names = collect_enum_names(program);
+  const auto function_returns = collect_function_return_types(program, aliases, struct_names, enum_names);
   const auto function_arity = collect_function_arity(program);
+
+  for (const auto& [field_key, field_type] : program.struct_field_types) {
+    if (resolve_declared_user_type(field_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
+      diag.error("E0030", "unsupported field type '" + field_type + "' for '" + field_key + "'");
+      return false;
+    }
+  }
+  for (const auto& [variant, payload_type] : program.enum_variant_payload_types) {
+    if (resolve_declared_user_type(payload_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
+      diag.error("E0031", "unsupported enum payload type '" + payload_type + "' for variant '" + variant + "'");
+      return false;
+    }
+  }
+  for (const auto& [struct_name, methods] : program.struct_methods) {
+    if (struct_names.find(struct_name) == struct_names.end()) {
+      diag.error("E0032", "impl target '" + struct_name + "' is not a declared struct");
+      return false;
+    }
+    for (const std::string& method_name : methods) {
+      const std::string symbol = struct_name + "." + method_name;
+      auto fn_it = std::find_if(program.functions.begin(), program.functions.end(), [&](const auto& fn) {
+        return fn.name == symbol;
+      });
+      if (fn_it == program.functions.end()) {
+        diag.error("E0033", "method '" + symbol + "' declared in impl but function body is missing");
+        return false;
+      }
+      if (fn_it->params.empty() || fn_it->params.front() != "self") {
+        diag.error("E0034", "method '" + symbol + "' must declare 'self' as first parameter");
+        return false;
+      }
+    }
+  }
+
   if (!program.has_main && program.top_level_statements.empty()) {
     diag.error("E0002", "missing entrypoint: define func main() or provide top-level executable statements");
     return false;
@@ -1256,8 +1537,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0003", "invalid function header at line " + std::to_string(fn.header_line));
       return false;
     }
-    if (!fn.return_type.empty() && resolve_declared_type(fn.return_type, aliases) == TypeKind::Unknown &&
-        struct_names.find(fn.return_type) == struct_names.end()) {
+    if (!fn.return_type.empty() &&
+        resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
       diag.error("E0006", "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "'");
       return false;
     }
@@ -1268,16 +1549,46 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     std::unordered_map<std::string, OwnershipKind> ownership;
     std::unordered_map<std::string, bool> opened_resources;
     std::unordered_map<std::string, std::string> struct_bindings;
+    std::string method_owner;
+    std::string method_name;
+    const bool is_method =
+        split_owner_and_method(fn.name, method_owner, method_name) && struct_names.find(method_owner) != struct_names.end();
     for (const std::string& param : fn.params) {
       if (!param.empty()) {
-        scope[param] = TypeKind::I32;
+        if (is_method && param == "self") {
+          scope[param] = TypeKind::StructType;
+          struct_bindings[param] = method_owner;
+        } else {
+          scope[param] = TypeKind::I32;
+        }
+      }
+    }
+    if (is_method) {
+      auto fields_it = program.struct_fields.find(method_owner);
+      if (fields_it != program.struct_fields.end()) {
+        for (const std::string& field : fields_it->second) {
+          const std::string key = method_owner + "." + field;
+          TypeKind field_type = TypeKind::I32;
+          auto type_it = program.struct_field_types.find(key);
+          if (type_it != program.struct_field_types.end()) {
+            const TypeKind resolved = resolve_declared_user_type(type_it->second, aliases, struct_names, enum_names);
+            if (resolved != TypeKind::Unknown) {
+              field_type = resolved;
+            }
+          }
+          scope["self." + field] = field_type;
+        }
       }
     }
     std::optional<TypeKind> inferred_return;
     bool has_return = false;
+    std::vector<int> active_match_indents;
 
     for (std::size_t st_index = 0; st_index < fn.body.size(); ++st_index) {
       const auto& st = fn.body[st_index];
+      while (!active_match_indents.empty() && st.indent <= active_match_indents.back()) {
+        active_match_indents.pop_back();
+      }
       if (!validate_memory_model_statement(st, ownership, diag)) {
         return false;
       }
@@ -1286,16 +1597,30 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
-      if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, function_returns,
-                                          function_arity,
-                                          struct_names, expr_type, expr_error)) {
+      if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, struct_bindings,
+                                          program.struct_fields, program.struct_field_types, program.struct_methods,
+                                          function_returns, function_arity, struct_names, expr_type, expr_error)) {
         diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
         return false;
       }
-      if (st.kind == syntax::StatementKind::Expr) {
-        const std::string payload_binding = parse_match_payload_binding_label(st.text);
-        if (!payload_binding.empty()) {
-          scope[payload_binding] = TypeKind::I32;
+      if (st.kind == syntax::StatementKind::Match) {
+        active_match_indents.push_back(st.indent);
+      } else if (st.kind == syntax::StatementKind::Expr && !active_match_indents.empty() &&
+                 st.indent > active_match_indents.back()) {
+        const MatchArmInfo arm = parse_match_arm_info(st.text);
+        if (arm.is_arm) {
+          if (!arm.error.empty()) {
+            diag.error("E0035", "line " + std::to_string(st.line) + ": " + arm.error);
+            return false;
+          }
+          if (arm.has_variant && program.enum_variant_tags.find(arm.variant) == program.enum_variant_tags.end() &&
+              !is_builtin_match_variant(arm.variant)) {
+            diag.error("E0036", "line " + std::to_string(st.line) + ": unknown enum variant '" + arm.variant + "'");
+            return false;
+          }
+          if (!arm.payload_binding.empty()) {
+            scope[arm.payload_binding] = TypeKind::I32;
+          }
           continue;
         }
       }
@@ -1312,7 +1637,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
         const std::string annotation = parse_let_annotation(st.text);
         if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
-          const TypeKind declared = resolve_declared_type(annotation, aliases);
+          const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
           if (declared == TypeKind::Unknown) {
             diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
             return false;
@@ -1326,7 +1651,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         } else {
           scope[name] = expr_type;
         }
-        if (scope[name] == TypeKind::Struct) {
+        if (scope[name] == TypeKind::StructType) {
           const std::string ctor = parse_constructor_name(st.expression_normalized);
           if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
             diag.error("E0020",
@@ -1341,7 +1666,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
               TypeKind field_type = TypeKind::I32;
               auto type_it = program.struct_field_types.find(key);
               if (type_it != program.struct_field_types.end()) {
-                const TypeKind resolved = resolve_declared_type(type_it->second, aliases);
+                const TypeKind resolved = resolve_declared_user_type(type_it->second, aliases, struct_names, enum_names);
                 if (resolved != TypeKind::Unknown) {
                   field_type = resolved;
                 }
@@ -1407,7 +1732,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
       if (st.kind == syntax::StatementKind::Match) {
         if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
-            expr_type != TypeKind::Result) {
+            expr_type != TypeKind::Result && expr_type != TypeKind::EnumType) {
           diag.error("E_TYPE_MATCH_MISSING_ENUM",
                      "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
           return false;
@@ -1442,11 +1767,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
 
     const TypeKind effective_return = inferred_return.value_or(TypeKind::Void);
-    TypeKind declared_return = fn.return_type.empty() ? TypeKind::Unknown : resolve_declared_type(fn.return_type, aliases);
-    if (declared_return == TypeKind::Unknown && !fn.return_type.empty() &&
-        struct_names.find(fn.return_type) != struct_names.end()) {
-      declared_return = TypeKind::Struct;
-    }
+    TypeKind declared_return =
+        fn.return_type.empty() ? TypeKind::Unknown
+                               : resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names);
     if (declared_return != TypeKind::Unknown && declared_return != effective_return) {
       diag.error("E0015",
                  "function '" + fn.name + "' declared return " + type_name(declared_return) +
@@ -1467,7 +1790,11 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   std::unordered_map<std::string, OwnershipKind> top_ownership;
   std::unordered_map<std::string, bool> top_opened_resources;
   std::unordered_map<std::string, std::string> top_struct_bindings;
+  std::vector<int> top_match_indents;
   for (const auto& st : program.top_level_statements) {
+    while (!top_match_indents.empty() && st.indent <= top_match_indents.back()) {
+      top_match_indents.pop_back();
+    }
     if (st.kind == syntax::StatementKind::Defer) {
       diag.error("E0028", "line " + std::to_string(st.line) + ": top-level defer is not allowed");
       return false;
@@ -1480,16 +1807,30 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
     TypeKind expr_type = TypeKind::Void;
     std::string expr_error;
-    if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, function_returns,
-                                        function_arity,
-                                        struct_names, expr_type, expr_error)) {
+    if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, top_struct_bindings,
+                                        program.struct_fields, program.struct_field_types, program.struct_methods,
+                                        function_returns, function_arity, struct_names, expr_type, expr_error)) {
       diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
       return false;
     }
-    if (st.kind == syntax::StatementKind::Expr) {
-      const std::string payload_binding = parse_match_payload_binding_label(st.text);
-      if (!payload_binding.empty()) {
-        top_scope[payload_binding] = TypeKind::I32;
+    if (st.kind == syntax::StatementKind::Match) {
+      top_match_indents.push_back(st.indent);
+    } else if (st.kind == syntax::StatementKind::Expr && !top_match_indents.empty() &&
+               st.indent > top_match_indents.back()) {
+      const MatchArmInfo arm = parse_match_arm_info(st.text);
+      if (arm.is_arm) {
+        if (!arm.error.empty()) {
+          diag.error("E0035", "line " + std::to_string(st.line) + ": " + arm.error);
+          return false;
+        }
+        if (arm.has_variant && program.enum_variant_tags.find(arm.variant) == program.enum_variant_tags.end() &&
+            !is_builtin_match_variant(arm.variant)) {
+          diag.error("E0036", "line " + std::to_string(st.line) + ": unknown enum variant '" + arm.variant + "'");
+          return false;
+        }
+        if (!arm.payload_binding.empty()) {
+          top_scope[arm.payload_binding] = TypeKind::I32;
+        }
         continue;
       }
     }
@@ -1505,7 +1846,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
       const std::string annotation = parse_let_annotation(st.text);
       if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
-        const TypeKind declared = resolve_declared_type(annotation, aliases);
+        const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
         if (declared == TypeKind::Unknown) {
           diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
           return false;
@@ -1519,7 +1860,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       } else {
         top_scope[name] = expr_type;
       }
-      if (top_scope[name] == TypeKind::Struct) {
+      if (top_scope[name] == TypeKind::StructType) {
         const std::string ctor = parse_constructor_name(st.expression_normalized);
         if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
           diag.error("E0020",
@@ -1534,7 +1875,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             TypeKind field_type = TypeKind::I32;
             auto type_it = program.struct_field_types.find(key);
             if (type_it != program.struct_field_types.end()) {
-              const TypeKind resolved = resolve_declared_type(type_it->second, aliases);
+              const TypeKind resolved = resolve_declared_user_type(type_it->second, aliases, struct_names, enum_names);
               if (resolved != TypeKind::Unknown) {
                 field_type = resolved;
               }
@@ -1597,7 +1938,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
     if (st.kind == syntax::StatementKind::Match) {
       if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
-          expr_type != TypeKind::Result) {
+          expr_type != TypeKind::Result && expr_type != TypeKind::EnumType) {
         diag.error("E_TYPE_MATCH_MISSING_ENUM",
                    "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
         return false;

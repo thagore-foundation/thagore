@@ -1,6 +1,6 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (February 27, 2026): `v0.2` (Compiler Foundation).
+Current effective milestone by code audit (February 27, 2026): `v0.3` (Struct & Type System).
 Status note: tag `v0.6.0` exists, but concurrency work is currently treated as prototype track until compiler gates (`v0.2` → `v0.5`) are passed.
 Active implementation policy: finish one milestone completely before starting the next.
 
@@ -24,7 +24,7 @@ Active implementation policy: finish one milestone completely before starting th
 | Tooling | ~75% | Policy, packaging, compare tools hiện có |
 | CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: thực tế đang ở `v0.2` (~60%), chưa pass gate để claim `v0.3+`**
+**Overall: compiler gate `v0.3` đã pass trên Linux (struct + impl method + enum payload compile/run).**
 
 Execution order (re-anchored to dependency reality):
 1. Close `v0.2` gate (compiler foundation)
@@ -60,23 +60,23 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.3 — Struct & Type System 🔲 Planned (dependency on v0.2 gate)
+## v0.3 — Struct & Type System ✅ Completed
 > *"Tao có thể định nghĩa kiểu dữ liệu của riêng mình"*
 
 ### Compiler
-- [ ] Struct definition codegen — field layout, alloca cho struct type
-- [ ] Field access (`obj.field`) trong LLVM emitter
-- [ ] `impl` block codegen — methods được emit như functions với implicit `self`
-- [ ] Method call syntax `obj.method()` lowering
-- [ ] Enum với payload — variant mang data được emit đúng
-- [ ] `TypeKind` mở rộng — struct type, enum type, function type
+- [x] Struct definition codegen — field layout, alloca cho struct type
+- [x] Field access (`obj.field`) trong LLVM emitter
+- [x] `impl` block codegen — methods được emit như functions với implicit `self`
+- [x] Method call syntax `obj.method()` lowering
+- [x] Enum với payload — variant mang data được emit đúng
+- [x] `TypeKind` mở rộng — struct type, enum type, function type
 
 ### Middleend
-- [ ] Typed IR implementation — `ast_to_typed_ir` pass thật sự (scaffolding exists)
-- [ ] `typed_ir_to_core_ir` lowering cho struct/impl/enum
+- [x] Typed IR implementation — `ast_to_typed_ir` pass thật sự (scaffolding exists)
+- [x] `typed_ir_to_core_ir` lowering cho struct/impl/enum
 
 ### Gate
-- [ ] Struct với fields, methods, và enum với payload compile và chạy đúng
+- [x] Struct với fields, methods, và enum với payload compile và chạy đúng
 
 ---
 
@@ -446,7 +446,7 @@ Execution order (re-anchored to dependency reality):
 |---------|-------|--------|
 | v0.1 | Baseline rewrite | ✅ Completed (infrastructure baseline) |
 | v0.2 | Compiler foundation | 🚧 In progress (~60% by audit) |
-| v0.3 | Struct & type system | 🔲 Planned (~10% scaffolding only) |
+| v0.3 | Struct & type system | ✅ Completed (gate passed on Linux) |
 | v0.4 | Module & import system | 🔲 Planned |
 | v0.5 | Language features complete | 🔲 Planned |
 | v0.6 | Concurrency alpha | ⚠️ Prototype track (out-of-order, not releasable) |

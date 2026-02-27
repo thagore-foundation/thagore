@@ -59,6 +59,12 @@ struct VariableSlot {
   ValueType type = ValueType::Invalid;
 };
 
+struct StructInstance {
+  llvm::Value* ptr = nullptr;
+  llvm::StructType* llvm_type = nullptr;
+  std::string struct_name;
+};
+
 struct ClosureDef {
   std::string param;
   std::string body_expr;
@@ -76,6 +82,9 @@ struct ExprCursor {
   const std::unordered_map<std::string, int>* enum_variant_tags = nullptr;
   const std::unordered_map<std::string, llvm::Function*>* functions = nullptr;
   const std::unordered_map<std::string, ValueType>* function_returns = nullptr;
+  const std::unordered_map<std::string, std::vector<std::string>>* struct_fields = nullptr;
+  const std::unordered_map<std::string, std::string>* struct_field_types = nullptr;
+  const std::unordered_map<std::string, StructInstance>* struct_instances = nullptr;
   std::unordered_map<std::string, ClosureDef>* closures = nullptr;
   llvm::Function* current_function = nullptr;
 };
@@ -141,6 +150,103 @@ static std::string parse_let_annotation(const std::string& line) {
   }
   std::string out = line.substr(colon + 1, eq - colon - 1);
   out = trim(out);
+  return out;
+}
+
+static bool split_dotted_name(const std::string& text, std::string& base, std::string& member) {
+  const std::size_t dot = text.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= text.size()) {
+    return false;
+  }
+  if (text.find('.', dot + 1) != std::string::npos) {
+    return false;
+  }
+  base = text.substr(0, dot);
+  member = text.substr(dot + 1);
+  return true;
+}
+
+static std::size_t field_index_for_struct(const std::string& struct_name, const std::string& field_name,
+                                          const std::unordered_map<std::string, std::vector<std::string>>& struct_fields) {
+  auto fields_it = struct_fields.find(struct_name);
+  if (fields_it == struct_fields.end()) {
+    return static_cast<std::size_t>(-1);
+  }
+  const auto& fields = fields_it->second;
+  auto found = std::find(fields.begin(), fields.end(), field_name);
+  if (found == fields.end()) {
+    return static_cast<std::size_t>(-1);
+  }
+  return static_cast<std::size_t>(std::distance(fields.begin(), found));
+}
+
+static ValueType field_value_type_for_struct(const std::string& struct_name, const std::string& field_name,
+                                             const std::unordered_map<std::string, std::string>& struct_field_types);
+
+struct ParsedConstructorCall {
+  bool ok = false;
+  std::string name;
+  std::vector<std::string> args;
+  std::string error;
+};
+
+static ParsedConstructorCall parse_constructor_call(const std::string& expr) {
+  ParsedConstructorCall out;
+  const std::string clean = trim(expr);
+  const std::size_t lparen = clean.find('(');
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen) {
+    return out;
+  }
+  if (!trim(clean.substr(rparen + 1)).empty()) {
+    return out;
+  }
+  const std::string name = trim(clean.substr(0, lparen));
+  if (name.empty() || !is_ident_start(name[0])) {
+    return out;
+  }
+  for (std::size_t i = 1; i < name.size(); ++i) {
+    if (!is_ident_body(name[i])) {
+      return out;
+    }
+  }
+  out.name = name;
+  const std::string body = clean.substr(lparen + 1, rparen - lparen - 1);
+  std::size_t start = 0;
+  int depth = 0;
+  bool in_string = false;
+  for (std::size_t i = 0; i <= body.size(); ++i) {
+    if (i == body.size() || (body[i] == ',' && depth == 0 && !in_string)) {
+      std::string part = trim(body.substr(start, i - start));
+      if (!part.empty()) {
+        out.args.push_back(part);
+      }
+      start = i + 1;
+      continue;
+    }
+    const char ch = body[i];
+    if (ch == '"' && (i == 0 || body[i - 1] != '\\')) {
+      in_string = !in_string;
+      continue;
+    }
+    if (in_string) {
+      continue;
+    }
+    if (ch == '(') {
+      ++depth;
+    } else if (ch == ')') {
+      if (depth == 0) {
+        out.error = "unexpected ')' in constructor arguments";
+        return out;
+      }
+      --depth;
+    }
+  }
+  if (depth != 0 || in_string) {
+    out.error = "unterminated constructor argument list";
+    return out;
+  }
+  out.ok = true;
   return out;
 }
 
@@ -372,6 +478,7 @@ static const ExprTok& cur(const ExprCursor& cursor) {
   return cursor.tokens[cursor.index];
 }
 
+static llvm::Type* llvm_type_from_value_type(ValueType type, llvm::IRBuilder<>& builder);
 static ExprValue parse_expression_equality(ExprCursor& cursor);
 
 static ExprValue parse_primary(ExprCursor& cursor) {
@@ -567,6 +674,9 @@ static ExprValue parse_primary(ExprCursor& cursor) {
           nested.builder = cursor.builder;
           nested.variables = cursor.variables;
           nested.enum_variant_tags = cursor.enum_variant_tags;
+          nested.struct_fields = cursor.struct_fields;
+          nested.struct_field_types = cursor.struct_field_types;
+          nested.struct_instances = cursor.struct_instances;
           nested.functions = cursor.functions;
           nested.function_returns = cursor.function_returns;
           nested.closures = cursor.closures;
@@ -588,6 +698,100 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             cursor.variables->erase(closure_it->second.param);
           }
           return closure_result;
+        }
+      }
+
+      std::string call_base;
+      std::string call_member;
+      const bool dotted_call = split_dotted_name(tok.text, call_base, call_member);
+      if (dotted_call && cursor.struct_instances != nullptr && cursor.functions != nullptr &&
+          cursor.function_returns != nullptr) {
+        auto receiver_it = cursor.struct_instances->find(call_base);
+        if (receiver_it != cursor.struct_instances->end()) {
+          const std::string method_symbol = receiver_it->second.struct_name + "." + call_member;
+          auto fn_it = cursor.functions->find(method_symbol);
+          auto ret_it = cursor.function_returns->find(method_symbol);
+          if (fn_it == cursor.functions->end() || ret_it == cursor.function_returns->end()) {
+            cursor.error = "unknown method '" + call_member + "' for struct '" + receiver_it->second.struct_name + "'";
+            return {};
+          }
+          llvm::Function* callee = fn_it->second;
+          if (callee == nullptr) {
+            cursor.error = "null callee for method '" + method_symbol + "'";
+            return {};
+          }
+          if (callee->arg_size() != args.size() + 1) {
+            cursor.error = "method '" + call_member + "' expects " + std::to_string(callee->arg_size() - 1) +
+                           " args but got " + std::to_string(args.size());
+            return {};
+          }
+          std::vector<llvm::Value*> call_args;
+          call_args.reserve(args.size() + 1);
+          llvm::Value* self_ptr = receiver_it->second.ptr;
+          if (self_ptr == nullptr || !self_ptr->getType()->isPointerTy()) {
+            cursor.error = "method receiver '" + call_base + "' is not addressable";
+            return {};
+          }
+          call_args.push_back(self_ptr);
+          std::size_t arg_index = 0;
+          std::size_t callee_index = 0;
+          for (llvm::Argument& arg : callee->args()) {
+            if (callee_index == 0) {
+              ++callee_index;
+              continue;
+            }
+            ExprValue& value = args[arg_index];
+            llvm::Type* target_ty = arg.getType();
+            llvm::Value* coerced = nullptr;
+            if (target_ty->isIntegerTy(32)) {
+              if (value.type == ValueType::I32) {
+                coerced = value.value;
+              } else if (value.type == ValueType::I1) {
+                coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt32Ty());
+              } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+                coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt32Ty());
+              }
+            } else if (target_ty->isFloatTy()) {
+              if (value.type == ValueType::F32) {
+                coerced = value.value;
+              } else if (value.type == ValueType::F64) {
+                coerced = cursor.builder->CreateFPTrunc(value.value, cursor.builder->getFloatTy());
+              } else if (value.type == ValueType::I32) {
+                coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
+              }
+            } else if (target_ty->isDoubleTy()) {
+              if (value.type == ValueType::F64) {
+                coerced = value.value;
+              } else if (value.type == ValueType::F32) {
+                coerced = cursor.builder->CreateFPExt(value.value, cursor.builder->getDoubleTy());
+              } else if (value.type == ValueType::I32) {
+                coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
+              }
+            } else if (target_ty->isIntegerTy(1)) {
+              if (value.type == ValueType::I1) {
+                coerced = value.value;
+              } else if (value.type == ValueType::I32) {
+                coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt32(0));
+              }
+            } else if (target_ty->isPointerTy()) {
+              if (value.type == ValueType::I8Ptr) {
+                coerced = value.value;
+              }
+            }
+            if (coerced == nullptr) {
+              cursor.error = "cannot convert argument for method call '" + tok.text + "'";
+              return {};
+            }
+            call_args.push_back(coerced);
+            ++arg_index;
+            ++callee_index;
+          }
+          llvm::CallInst* call = cursor.builder->CreateCall(callee, call_args);
+          const ValueType ret_type = ret_it->second;
+          if (ret_type == ValueType::Void) {
+            return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
+          }
+          return ExprValue{call, ret_type};
         }
       }
 
@@ -693,6 +897,37 @@ static ExprValue parse_primary(ExprCursor& cursor) {
     std::string closure_body;
     if (parse_closure_literal(tok.text, closure_param, closure_body)) {
       return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
+    }
+    std::string field_base;
+    std::string field_name;
+    if (split_dotted_name(tok.text, field_base, field_name) && cursor.struct_instances != nullptr &&
+        cursor.struct_fields != nullptr && cursor.struct_field_types != nullptr) {
+      auto inst_it = cursor.struct_instances->find(field_base);
+      if (inst_it != cursor.struct_instances->end()) {
+        const std::size_t field_index =
+            field_index_for_struct(inst_it->second.struct_name, field_name, *cursor.struct_fields);
+        if (field_index == static_cast<std::size_t>(-1)) {
+          cursor.error = "unknown field '" + field_name + "' on struct '" + inst_it->second.struct_name + "'";
+          return {};
+        }
+        llvm::Value* ptr = inst_it->second.ptr;
+        if (ptr == nullptr || !ptr->getType()->isPointerTy()) {
+          cursor.error = "field access receiver is not addressable";
+          return {};
+        }
+        if (inst_it->second.llvm_type == nullptr) {
+          cursor.error = "missing LLVM struct layout for '" + inst_it->second.struct_name + "'";
+          return {};
+        }
+        llvm::Value* field_ptr = cursor.builder->CreateStructGEP(inst_it->second.llvm_type, ptr,
+                                                                 static_cast<unsigned>(field_index),
+                                                                 field_base + "." + field_name + ".ptr");
+        const ValueType field_ty =
+            field_value_type_for_struct(inst_it->second.struct_name, field_name, *cursor.struct_field_types);
+        llvm::Value* loaded =
+            cursor.builder->CreateLoad(llvm_type_from_value_type(field_ty, *cursor.builder), field_ptr);
+        return ExprValue{loaded, field_ty};
+      }
     }
     if (cursor.variables != nullptr) {
       const auto it = cursor.variables->find(tok.text);
@@ -955,6 +1190,9 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
 static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuilder<>& builder,
                                      std::unordered_map<std::string, VariableSlot>& variables,
                                      const std::unordered_map<std::string, int>& enum_variant_tags,
+                                     const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                                     const std::unordered_map<std::string, std::string>& struct_field_types,
+                                     const std::unordered_map<std::string, StructInstance>& struct_instances,
                                      const std::unordered_map<std::string, llvm::Function*>& functions,
                                      const std::unordered_map<std::string, ValueType>& function_returns,
                                      std::unordered_map<std::string, ClosureDef>* closures,
@@ -973,6 +1211,9 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
   cursor.builder = &builder;
   cursor.variables = &variables;
   cursor.enum_variant_tags = &enum_variant_tags;
+  cursor.struct_fields = &struct_fields;
+  cursor.struct_field_types = &struct_field_types;
+  cursor.struct_instances = &struct_instances;
   cursor.functions = &functions;
   cursor.function_returns = &function_returns;
   cursor.closures = closures;
@@ -1047,6 +1288,9 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
                                       llvm::Value* printf_newline_fmt,
                                       std::unordered_map<std::string, VariableSlot>& variables,
                                       const std::unordered_map<std::string, int>& enum_variant_tags,
+                                      const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                                      const std::unordered_map<std::string, std::string>& struct_field_types,
+                                      const std::unordered_map<std::string, StructInstance>& struct_instances,
                                       const std::unordered_map<std::string, llvm::Function*>& functions,
                                       const std::unordered_map<std::string, ValueType>& function_returns,
                                       std::unordered_map<std::string, ClosureDef>& closures,
@@ -1073,8 +1317,9 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
           builder.CreateCall(printf_fn, {printf_raw_str_fmt, str});
           continue;
         }
-        ExprValue value = evaluate_expression(chunk.text, builder, variables, enum_variant_tags, functions,
-                                              function_returns, &closures, fn, diag);
+        ExprValue value = evaluate_expression(chunk.text, builder, variables, enum_variant_tags, struct_fields,
+                                              struct_field_types, struct_instances, functions, function_returns,
+                                              &closures, fn, diag);
         if (value.value == nullptr || value.type == ValueType::Invalid) {
           return false;
         }
@@ -1100,8 +1345,9 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
       return true;
     }
 
-    ExprValue value = evaluate_expression(inner, builder, variables, enum_variant_tags, functions, function_returns,
-                                          &closures, fn, diag);
+    ExprValue value = evaluate_expression(inner, builder, variables, enum_variant_tags, struct_fields,
+                                          struct_field_types, struct_instances, functions, function_returns, &closures,
+                                          fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
       return false;
     }
@@ -1126,8 +1372,9 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
   }
 
   if (has_expression) {
-    ExprValue value = evaluate_expression(effective_expr, builder, variables, enum_variant_tags, functions, function_returns,
-                                          &closures, fn, diag);
+    ExprValue value =
+        evaluate_expression(effective_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                            struct_instances, functions, function_returns, &closures, fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
       return false;
     }
@@ -1293,7 +1540,20 @@ static ValueType value_type_from_field_annotation(const std::string& type_name) 
   if (type_name == "bool") {
     return ValueType::I1;
   }
+  if (type_name == "Option" || type_name == "Result" || starts_with(type_name, "Option<") ||
+      starts_with(type_name, "Result<")) {
+    return ValueType::I32;
+  }
   return ValueType::I32;
+}
+
+static ValueType field_value_type_for_struct(const std::string& struct_name, const std::string& field_name,
+                                             const std::unordered_map<std::string, std::string>& struct_field_types) {
+  auto type_it = struct_field_types.find(struct_name + "." + field_name);
+  if (type_it == struct_field_types.end()) {
+    return ValueType::I32;
+  }
+  return value_type_from_field_annotation(type_it->second);
 }
 
 struct ForHeader {
@@ -1426,11 +1686,12 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                        const std::unordered_map<std::string, int>& enum_variant_tags,
                        const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
                        const std::unordered_map<std::string, std::string>& struct_field_types,
+                       const std::unordered_map<std::string, llvm::StructType*>& llvm_struct_types,
                        const std::unordered_map<std::string, llvm::Function*>& functions,
                        const std::unordered_map<std::string, ValueType>& function_returns, ValueType expected_return_type,
                        std::size_t& index, int parent_indent, llvm::Function* fn, llvm::Module* module,
                        llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
-                       std::unordered_map<std::string, std::string>& struct_instances,
+                       std::unordered_map<std::string, StructInstance>& struct_instances,
                        std::unordered_map<std::string, ClosureDef>& closures, support::DiagnosticSink& diag) {
   llvm::FunctionCallee printf_fn = module->getOrInsertFunction(
       "printf",
@@ -1450,7 +1711,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
-                                     enum_variant_tags, functions, function_returns, closures, diag)) {
+                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances, functions,
+                                     function_returns, closures, diag)) {
         return false;
       }
     }
@@ -1476,42 +1738,63 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         ++index;
         continue;
       }
-      const std::string ctor = parse_constructor_call_name(st.expression, struct_fields);
-      if (!ctor.empty()) {
-        struct_instances[name] = ctor;
-        auto fields_it = struct_fields.find(ctor);
-        if (fields_it != struct_fields.end()) {
-          for (const std::string& field : fields_it->second) {
-            const std::string slot_name = name + "." + field;
-            ValueType field_type = ValueType::I32;
-            auto type_it = struct_field_types.find(ctor + "." + field);
-            if (type_it != struct_field_types.end()) {
-              field_type = value_type_from_field_annotation(type_it->second);
-            }
-            llvm::Type* llvm_ty = llvm_type_from_value_type(field_type, builder);
-            llvm::AllocaInst* slot = create_entry_alloca(fn, llvm_ty, slot_name);
-            variables[slot_name] = VariableSlot{slot, field_type};
-            if (field_type == ValueType::I1) {
-              builder.CreateStore(builder.getInt1(false), slot);
-            } else if (field_type == ValueType::F32) {
-              builder.CreateStore(llvm::ConstantFP::get(builder.getFloatTy(), 0.0), slot);
-            } else if (field_type == ValueType::F64) {
-              builder.CreateStore(llvm::ConstantFP::get(builder.getDoubleTy(), 0.0), slot);
-            } else {
-              builder.CreateStore(builder.getInt32(0), slot);
-            }
+      const ParsedConstructorCall ctor_call = parse_constructor_call(st.expression);
+      if (!ctor_call.error.empty()) {
+        diag.error("E2033", "invalid constructor call for '" + name + "': " + ctor_call.error);
+        return false;
+      }
+      if (ctor_call.ok) {
+        auto struct_ty_it = llvm_struct_types.find(ctor_call.name);
+        auto fields_it = struct_fields.find(ctor_call.name);
+        if (struct_ty_it != llvm_struct_types.end() && fields_it != struct_fields.end()) {
+          llvm::StructType* struct_ty = struct_ty_it->second;
+          llvm::AllocaInst* instance_alloca = create_entry_alloca(fn, struct_ty, name + ".struct");
+          const auto& fields = fields_it->second;
+          if (ctor_call.args.size() > fields.size()) {
+            diag.error("E2034", "struct constructor '" + ctor_call.name + "' expects at most " +
+                                    std::to_string(fields.size()) + " args but got " +
+                                    std::to_string(ctor_call.args.size()));
+            return false;
           }
+          for (std::size_t field_index = 0; field_index < fields.size(); ++field_index) {
+            const std::string& field_name = fields[field_index];
+            llvm::Value* field_ptr =
+                builder.CreateStructGEP(struct_ty, instance_alloca, static_cast<unsigned>(field_index),
+                                        name + "." + field_name + ".ptr");
+            const ValueType field_type = field_value_type_for_struct(ctor_call.name, field_name, struct_field_types);
+            llvm::Value* init_value = nullptr;
+            if (field_index < ctor_call.args.size()) {
+              ExprValue arg_value = evaluate_expression(
+                  ctor_call.args[field_index], builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                  struct_instances, functions, function_returns, &closures, fn, diag);
+              init_value = cast_value_to_type(arg_value, field_type, builder);
+              if (init_value == nullptr) {
+                diag.error("E2035", "constructor argument type mismatch for field '" + field_name + "'");
+                return false;
+              }
+            } else if (field_type == ValueType::I1) {
+              init_value = builder.getInt1(false);
+            } else if (field_type == ValueType::F32) {
+              init_value = llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
+            } else if (field_type == ValueType::F64) {
+              init_value = llvm::ConstantFP::get(builder.getDoubleTy(), 0.0);
+            } else {
+              init_value = builder.getInt32(0);
+            }
+            builder.CreateStore(init_value, field_ptr);
+          }
+          struct_instances[name] = StructInstance{instance_alloca, struct_ty, ctor_call.name};
+          llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name);
+          variables[name] = VariableSlot{marker, ValueType::I32};
+          builder.CreateStore(builder.getInt32(0), marker);
+          ++index;
+          continue;
         }
-        llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name);
-        variables[name] = VariableSlot{marker, ValueType::I32};
-        builder.CreateStore(builder.getInt32(0), marker);
-        ++index;
-        continue;
       }
 
       ExprValue value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       if (value.value == nullptr || value.type == ValueType::Invalid) {
         return false;
       }
@@ -1563,14 +1846,47 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         diag.error("E2022", "invalid assignment statement in backend: '" + st.text + "'");
         return false;
       }
+      std::string base_name;
+      std::string field_name;
+      if (split_dotted_name(target, base_name, field_name)) {
+        auto inst_it = struct_instances.find(base_name);
+        if (inst_it != struct_instances.end()) {
+          const std::size_t field_index =
+              field_index_for_struct(inst_it->second.struct_name, field_name, struct_fields);
+          if (field_index == static_cast<std::size_t>(-1)) {
+            diag.error("E2023", "unknown field '" + field_name + "' on struct '" + inst_it->second.struct_name + "'");
+            return false;
+          }
+          ExprValue value =
+              evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                                  struct_instances, functions, function_returns, &closures, fn, diag);
+          const ValueType field_type =
+              field_value_type_for_struct(inst_it->second.struct_name, field_name, struct_field_types);
+          llvm::Value* casted = cast_value_to_type(value, field_type, builder);
+          if (casted == nullptr) {
+            diag.error("E2024", "assignment type mismatch for field '" + target + "'");
+            return false;
+          }
+          if (inst_it->second.ptr == nullptr || inst_it->second.llvm_type == nullptr) {
+            diag.error("E2023", "field assignment target is not addressable: '" + target + "'");
+            return false;
+          }
+          llvm::Value* field_ptr =
+              builder.CreateStructGEP(inst_it->second.llvm_type, inst_it->second.ptr, static_cast<unsigned>(field_index),
+                                      target + ".ptr");
+          builder.CreateStore(casted, field_ptr);
+          ++index;
+          continue;
+        }
+      }
       auto it = variables.find(target);
       if (it == variables.end()) {
         diag.error("E2023", "assignment target is not declared: '" + target + "'");
         return false;
       }
       ExprValue value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       llvm::Value* casted = cast_value_to_type(value, it->second.type, builder);
       if (casted == nullptr) {
         diag.error("E2024", "assignment type mismatch for '" + target + "'");
@@ -1595,7 +1911,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!emit_expression_statement(trim(st.text), st.has_expression, st.expression, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
-                                     enum_variant_tags, functions, function_returns, closures, diag)) {
+                                     enum_variant_tags, struct_fields, struct_field_types, struct_instances, functions,
+                                     function_returns, closures, diag)) {
         return false;
       }
       ++index;
@@ -1606,8 +1923,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       llvm::Value* ret = nullptr;
       if (st.has_expression) {
         ExprValue value =
-            evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                                &closures, fn, diag);
+            evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                                struct_instances, functions, function_returns, &closures, fn, diag);
         ret = cast_value_to_type(value, expected_return_type, builder);
         if (ret == nullptr && expected_return_type != ValueType::Void) {
           diag.error("E2013", "return type mismatch");
@@ -1647,8 +1964,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           then_end < stmts.size() && stmts[then_end].kind == lowering::CoreStmtKind::Else && stmts[then_end].indent == st.indent;
 
       ExprValue cond_value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2015", "if condition must be bool/i32-compatible");
@@ -1662,7 +1979,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
       builder.SetInsertPoint(then_bb);
       index = then_start;
-      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
+                      function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
                       closures, diag)) {
         return false;
@@ -1674,7 +1992,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (has_else) {
         builder.SetInsertPoint(else_bb);
         index = then_end + 1;
-        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
+                        function_returns,
                         expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
                         closures, diag)) {
           return false;
@@ -1702,8 +2021,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
       builder.SetInsertPoint(cond_bb);
       ExprValue cond_value =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2017", "while condition must be bool/i32-compatible");
@@ -1713,7 +2032,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
       builder.SetInsertPoint(body_bb);
       ++index;
-      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
+                      function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
                       closures, diag)) {
         return false;
@@ -1739,11 +2059,11 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
       ExprValue start_value =
-          evaluate_expression(header.start_expr, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(header.start_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       ExprValue end_value =
-          evaluate_expression(header.end_expr, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(header.end_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       llvm::Value* start_i32 = to_i32(start_value, builder);
       llvm::Value* end_i32 = to_i32(end_value, builder);
       if (start_i32 == nullptr || end_i32 == nullptr) {
@@ -1775,7 +2095,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
       builder.SetInsertPoint(body_bb);
       ++index;
-      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
+                      function_returns,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
                       closures, diag)) {
         return false;
@@ -1805,8 +2126,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
       ExprValue match_expr =
-          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns,
-                              &closures, fn, diag);
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                              struct_instances, functions, function_returns, &closures, fn, diag);
       llvm::Value* match_i32 = to_i32(match_expr, builder);
       if (match_i32 == nullptr) {
         diag.error("E2018", "match expression must be i32/bool-compatible");
@@ -1870,7 +2191,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           bound_payload = true;
         }
         std::size_t nested_index = arm_body_start;
-        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
+                        function_returns,
                         expected_return_type, nested_index, arm_label_stmt.indent, fn, module, builder, variables,
                         struct_instances, closures, diag)) {
           return false;
@@ -1932,6 +2254,32 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     functions.push_back(std::move(legacy_main));
   }
 
+  std::unordered_map<std::string, llvm::StructType*> llvm_struct_types;
+  for (const auto& struct_def : core.struct_types) {
+    if (struct_def.name.empty()) {
+      continue;
+    }
+    llvm_struct_types[struct_def.name] = llvm::StructType::create(context, struct_def.name);
+  }
+  for (const auto& struct_def : core.struct_types) {
+    auto llvm_struct_it = llvm_struct_types.find(struct_def.name);
+    if (llvm_struct_it == llvm_struct_types.end() || llvm_struct_it->second == nullptr) {
+      continue;
+    }
+    std::vector<llvm::Type*> field_types;
+    field_types.reserve(struct_def.field_types.size());
+    for (std::size_t i = 0; i < struct_def.field_types.size(); ++i) {
+      const std::string& field_type_name = struct_def.field_types[i];
+      auto nested_struct_it = llvm_struct_types.find(field_type_name);
+      if (nested_struct_it != llvm_struct_types.end() && nested_struct_it->second != nullptr) {
+        field_types.push_back(nested_struct_it->second);
+        continue;
+      }
+      field_types.push_back(llvm_type_from_value_type(value_type_from_return_type(field_type_name), builder));
+    }
+    llvm_struct_it->second->setBody(field_types, false);
+  }
+
   std::unordered_map<std::string, llvm::Function*> llvm_functions;
   std::unordered_map<std::string, ValueType> function_returns;
   for (const auto& ext : core.extern_functions) {
@@ -1954,7 +2302,15 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
       return_type = ValueType::I32;
     }
     std::vector<llvm::Type*> params;
-    params.reserve(fn_def.params.size());
+    params.reserve(fn_def.params.size() + (fn_def.is_method ? 1 : 0));
+    if (fn_def.is_method) {
+      auto owner_it = llvm_struct_types.find(fn_def.owner_type);
+      if (owner_it == llvm_struct_types.end() || owner_it->second == nullptr) {
+        diag.error("E2026", "missing struct layout for method owner '" + fn_def.owner_type + "'");
+        return nullptr;
+      }
+      params.push_back(builder.getPtrTy());
+    }
     for (std::size_t i = 0; i < fn_def.params.size(); ++i) {
       params.push_back(builder.getInt32Ty());
     }
@@ -1975,11 +2331,22 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, fn_def.name + ".entry", fn);
     builder.SetInsertPoint(entry);
     std::unordered_map<std::string, VariableSlot> variables;
-    std::unordered_map<std::string, std::string> struct_instances;
+    std::unordered_map<std::string, StructInstance> struct_instances;
     std::unordered_map<std::string, ClosureDef> closures;
 
+    std::size_t arg_index = 0;
     std::size_t param_index = 0;
     for (llvm::Argument& arg : fn->args()) {
+      if (fn_def.is_method && arg_index == 0) {
+        auto owner_it = llvm_struct_types.find(fn_def.owner_type);
+        if (owner_it == llvm_struct_types.end() || owner_it->second == nullptr) {
+          diag.error("E2026", "missing struct layout for method owner '" + fn_def.owner_type + "'");
+          return nullptr;
+        }
+        struct_instances["self"] = StructInstance{&arg, owner_it->second, fn_def.owner_type};
+        ++arg_index;
+        continue;
+      }
       if (param_index >= fn_def.params.size()) {
         break;
       }
@@ -1988,12 +2355,13 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
       builder.CreateStore(&arg, alloca);
       variables[param_name] = VariableSlot{alloca, ValueType::I32};
       ++param_index;
+      ++arg_index;
     }
 
     std::size_t index = 0;
     if (!emit_block(fn_def.statements, core.enum_variant_tags, core.struct_fields, core.struct_field_types,
-                    llvm_functions, function_returns, function_returns[fn_def.name], index, -1, fn, module.get(),
-                    builder, variables, struct_instances, closures, diag)) {
+                    llvm_struct_types, llvm_functions, function_returns, function_returns[fn_def.name], index, -1, fn,
+                    module.get(), builder, variables, struct_instances, closures, diag)) {
       return nullptr;
     }
 
@@ -2005,6 +2373,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         llvm::Value* fallback = nullptr;
         if (!trim(fn_def.return_expression).empty()) {
           ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
+                                                core.struct_fields, core.struct_field_types, struct_instances,
                                                 llvm_functions, function_returns, &closures, fn, diag);
           fallback = cast_value_to_type(value, expected, builder);
         }

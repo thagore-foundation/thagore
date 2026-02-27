@@ -32,11 +32,27 @@ struct CoreStmt {
 
 struct CoreFunction {
   std::string name;
+  bool is_method = false;
+  std::string owner_type;
+  std::string method_name;
   std::vector<std::string> params;
   std::string return_type;
   int return_literal = 0;
   std::string return_expression;
   std::vector<CoreStmt> statements;
+};
+
+struct CoreStructType {
+  std::string name;
+  std::vector<std::string> fields;
+  std::vector<std::string> field_types;
+};
+
+struct CoreEnumVariant {
+  std::string enum_name;
+  std::string name;
+  int tag = 0;
+  std::string payload_type;
 };
 
 struct CoreExternFunction {
@@ -53,10 +69,13 @@ struct CoreProgram {
   std::vector<CoreStmt> main_statements;
   std::vector<CoreFunction> functions;
   std::vector<CoreExternFunction> extern_functions;
+  std::vector<CoreStructType> struct_types;
+  std::vector<CoreEnumVariant> enum_variants;
   std::unordered_map<std::string, int> enum_variant_tags;
   std::unordered_map<std::string, std::string> enum_variant_payload_types;
   std::unordered_map<std::string, std::vector<std::string>> struct_fields;
   std::unordered_map<std::string, std::string> struct_field_types;
+  std::unordered_map<std::string, std::vector<std::string>> struct_methods;
 };
 
 CoreProgram lower_to_core(const syntax::AstProgram& program);

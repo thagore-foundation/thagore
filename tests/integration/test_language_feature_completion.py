@@ -121,6 +121,67 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 12, msg=run.stderr)
 
+    def test_struct_method_and_field_assignment(self) -> None:
+        _, run = self._build_and_run(
+            "struct Counter:\n"
+            "  value: i32\n"
+            "\n"
+            "impl Counter:\n"
+            "  func inc(self, delta):\n"
+            "    self.value = self.value + delta\n"
+            "    return self.value\n"
+            "\n"
+            "func main():\n"
+            "  let c = Counter(1)\n"
+            "  let x = c.inc(4)\n"
+            "  return x\n"
+        )
+        self.assertEqual(run.returncode, 5, msg=run.stderr)
+
+    def test_typechecker_rejects_undefined_method(self) -> None:
+        build, _ = self._build(
+            "struct Point:\n"
+            "  x: i32\n"
+            "\n"
+            "impl Point:\n"
+            "  func ok(self):\n"
+            "    return self.x\n"
+            "\n"
+            "func main():\n"
+            "  let p = Point(1)\n"
+            "  return p.nope()\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("unknown method 'nope' on struct 'Point'", build.stderr)
+
+    def test_typechecker_rejects_undefined_struct_field(self) -> None:
+        build, _ = self._build(
+            "struct Point:\n"
+            "  x: i32\n"
+            "\n"
+            "func main():\n"
+            "  let p = Point(1)\n"
+            "  return p.y\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("unknown field 'y' on struct 'Point'", build.stderr)
+
+    def test_typechecker_rejects_unknown_match_variant(self) -> None:
+        build, _ = self._build(
+            "enum Reply:\n"
+            "  Ok(i32)\n"
+            "\n"
+            "func main():\n"
+            "  let r = Ok(1)\n"
+            "  match (r):\n"
+            "    Nope(v):\n"
+            "      return v\n"
+            "    _:\n"
+            "      return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("unknown enum variant 'Nope'", build.stderr)
+
     def test_interpolated_string_print(self) -> None:
         _, run = self._build_and_run(
             "func main():\n"

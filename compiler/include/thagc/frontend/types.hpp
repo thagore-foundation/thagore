@@ -13,11 +13,14 @@ enum class TypeKind {
   List,
   Rc,
   Arc,
-  Fn,
+  FunctionType,
   Ptr,
-  Struct,
+  StructType,
+  EnumType,
   Void,
   Unknown,
+  Fn = FunctionType,
+  Struct = StructType,
 };
 
 }  // namespace thagc::semantics

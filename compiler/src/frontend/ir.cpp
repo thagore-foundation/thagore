@@ -181,6 +181,19 @@ static bool parse_impl_for_header(const std::string& line, std::string& trait_na
   return !trait_name.empty() && !type_name.empty();
 }
 
+static bool parse_impl_type_header(const std::string& line, std::string& type_name) {
+  std::string clean = trim(line);
+  if (!starts_with(clean, "impl ") || !ends_with(clean, ":")) {
+    return false;
+  }
+  clean = trim(clean.substr(5, clean.size() - 6));
+  if (clean.empty() || clean.find(" for ") != std::string::npos) {
+    return false;
+  }
+  type_name = clean;
+  return true;
+}
+
 static std::string enum_variant_name_from_line(const std::string& line) {
   std::string clean = trim(line);
   if (clean.empty() || clean == ":") {
@@ -213,6 +226,24 @@ static std::string enum_variant_payload_type_from_line(const std::string& line) 
     payload = trim(payload.substr(colon + 1));
   }
   return payload;
+}
+
+static std::string enum_name_from_header(const std::string& line) {
+  if (!starts_with(line, "enum ") || !ends_with(line, ":")) {
+    return "";
+  }
+  const std::string body = trim(line.substr(5, line.size() - 6));
+  if (body.empty()) {
+    return "";
+  }
+  std::size_t end = 0;
+  while (end < body.size() && (std::isalnum(static_cast<unsigned char>(body[end])) || body[end] == '_')) {
+    ++end;
+  }
+  if (end == 0) {
+    return "";
+  }
+  return body.substr(0, end);
 }
 
 static std::string struct_name_from_header(const std::string& line) {
@@ -1174,6 +1205,10 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
         add_parse_error(program, line.number, "enum header must be colon-terminated");
       }
       program.enums.push_back(effective_line);
+      const std::string enum_name = enum_name_from_header(effective_line);
+      if (enum_name.empty()) {
+        add_parse_error(program, line.number, "invalid enum header");
+      }
       int variant_index = 0;
       ++i;
       while (i < lines.size() && lines[i].indent > line.indent) {
@@ -1185,6 +1220,9 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
           if (!payload_type.empty()) {
             program.enum_variant_payload_types[variant] = payload_type;
           }
+        }
+        if (!enum_name.empty() && !variant.empty()) {
+          program.enum_variants[enum_name].push_back(variant);
         }
         ++i;
       }
@@ -1220,18 +1258,69 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       std::string trait_name;
       std::string type_name;
       const bool is_impl_for = parse_impl_for_header(effective_line, trait_name, type_name);
+      std::string impl_type_name;
+      const bool is_type_impl = parse_impl_type_header(effective_line, impl_type_name);
       const std::string impl_key = trait_name + "|" + type_name;
       if (is_impl_for) {
         program.impl_for_headers.push_back(effective_line);
       }
       ++i;
       while (i < lines.size() && lines[i].indent > line.indent) {
-        collect_feature_counters(lines[i].clean, program);
+        const SourceLine& member_line = lines[i];
+        collect_feature_counters(member_line.clean, program);
+        std::string effective_member = member_line.clean;
+        if (starts_with(effective_member, "pub ")) {
+          effective_member = trim(effective_member.substr(4));
+        }
         if (is_impl_for) {
-          const std::string method = method_name_from_line(lines[i].clean);
+          const std::string method = method_name_from_line(member_line.clean);
           if (!method.empty()) {
             program.impl_for_methods[impl_key].push_back(method);
           }
+        }
+        if (is_type_impl && starts_with(effective_member, "func ")) {
+          AstFunction fn;
+          const std::string method_name = function_name_from_header(effective_member);
+          if (method_name.empty()) {
+            add_parse_error(program, member_line.number, "invalid impl method header");
+            ++i;
+            while (i < lines.size() && lines[i].indent > member_line.indent) {
+              ++i;
+            }
+            continue;
+          }
+          fn.name = impl_type_name + "." + method_name;
+          fn.params = function_params_from_header(effective_member);
+          if (fn.params.empty() || fn.params.front() != "self") {
+            fn.params.insert(fn.params.begin(), "self");
+          }
+          fn.header_line = member_line.number;
+          fn.header_indent = member_line.indent;
+          fn.return_type = function_return_type_from_header(effective_member);
+          if (!ends_with(effective_member, ":")) {
+            add_parse_error(program, member_line.number, "impl method header must be colon-terminated");
+          }
+          if (effective_member.find("->") != std::string::npos && fn.return_type.empty()) {
+            add_parse_error(program, member_line.number, "impl method return annotation '-> type' is not supported");
+          }
+          if (!method_name.empty()) {
+            auto& methods = program.struct_methods[impl_type_name];
+            if (std::find(methods.begin(), methods.end(), method_name) == methods.end()) {
+              methods.push_back(method_name);
+            }
+          }
+
+          ++i;
+          if (i >= lines.size() || lines[i].indent <= fn.header_indent) {
+            add_parse_error(program, member_line.number, "impl method body must be indentation-scoped");
+          }
+          while (i < lines.size() && lines[i].indent > fn.header_indent) {
+            AstStatement st = build_statement_from_line(program, lines[i]);
+            fn.body.push_back(std::move(st));
+            ++i;
+          }
+          program.functions.push_back(std::move(fn));
+          continue;
         }
         ++i;
       }

@@ -122,6 +122,43 @@ class BuildAndRunE2ETests(unittest.TestCase):
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 1, msg=run.stderr)
 
+    def test_build_and_run_struct_method_and_enum_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "struct_enum.tg"
+            out = root / "struct_enum.bin"
+            src.write_text(
+                "struct Point:\n"
+                "  x: i32\n"
+                "  y: i32\n"
+                "\n"
+                "impl Point:\n"
+                "  func sum(self):\n"
+                "    return self.x + self.y\n"
+                "\n"
+                "enum Reply:\n"
+                "  Ok(i32)\n"
+                "  Err(i32)\n"
+                "\n"
+                "func main():\n"
+                "  let p = Point(10, 2)\n"
+                "  let r = Ok(p.sum())\n"
+                "  match (r):\n"
+                "    Ok(v):\n"
+                "      return v\n"
+                "    Err(e):\n"
+                "      return e\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 12, msg=run.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

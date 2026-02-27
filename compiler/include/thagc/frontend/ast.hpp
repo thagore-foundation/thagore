@@ -58,8 +58,10 @@ struct AstProgram {
   std::vector<std::string> structs;
   std::unordered_map<std::string, std::vector<std::string>> struct_fields;
   std::unordered_map<std::string, std::string> struct_field_types;
+  std::unordered_map<std::string, std::vector<std::string>> struct_methods;
   std::vector<std::string> impls;
   std::vector<std::string> enums;
+  std::unordered_map<std::string, std::vector<std::string>> enum_variants;
   std::vector<std::string> flows;
   std::vector<std::string> intents;
   std::vector<std::string> type_aliases;
