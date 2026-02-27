@@ -1,6 +1,6 @@
 # Time helpers mapped to runtime hooks.
 
-extern func thag_now_ms() -> i32
+extern func thag_now_ms() -> i64
 extern func thag_sleep_ms(millis: i32) -> void
 
 func now_ms():

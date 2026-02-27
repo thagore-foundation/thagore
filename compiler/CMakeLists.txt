@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(LLVM REQUIRED CONFIG)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION}")
 
 add_executable(thagc
@@ -38,6 +39,20 @@ add_executable(thagc
   src/shared/io.cpp
   src/shared/process_runner.cpp
 )
+
+set(THAG_EMBED_TOOL "${CMAKE_SOURCE_DIR}/tooling/packaging/embed_runtime_archive.py")
+set(THAG_EMBEDDED_RUNTIME_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_runtime.cpp")
+add_custom_command(
+  OUTPUT "${THAG_EMBEDDED_RUNTIME_CPP}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+  COMMAND "${Python3_EXECUTABLE}" "${THAG_EMBED_TOOL}"
+          --input "$<TARGET_FILE:thag_runtime>"
+          --output "${THAG_EMBEDDED_RUNTIME_CPP}"
+  DEPENDS thag_runtime "${THAG_EMBED_TOOL}" "$<TARGET_FILE:thag_runtime>"
+  VERBATIM
+)
+target_sources(thagc PRIVATE "${THAG_EMBEDDED_RUNTIME_CPP}")
+add_dependencies(thagc thag_runtime)
 
 target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})
