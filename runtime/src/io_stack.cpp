@@ -9,6 +9,10 @@
 #include <thread>
 #include <unordered_map>
 
+#if defined(THAG_RUNTIME_HAS_CURL)
+#include <curl/curl.h>
+#endif
+
 namespace {
 
 struct RuntimeMap {
@@ -23,6 +27,53 @@ std::atomic<int> g_ws_next_handle{1};
 std::mutex g_db_mutex;
 std::unordered_map<int, std::string> g_db_handles;
 std::atomic<int> g_db_next_handle{1};
+
+#if defined(THAG_RUNTIME_HAS_CURL)
+std::once_flag g_curl_init_once;
+
+size_t discard_http_body(char* ptr, size_t size, size_t nmemb, void* userdata) {
+  (void)ptr;
+  (void)userdata;
+  return size * nmemb;
+}
+
+void ensure_curl_init() {
+  std::call_once(g_curl_init_once, []() { curl_global_init(CURL_GLOBAL_DEFAULT); });
+}
+
+int http_request_code(const char* method, const char* url, const char* payload, int timeout_ms) {
+  if (url == nullptr || std::strlen(url) == 0 || timeout_ms < 0) {
+    return 0;
+  }
+  ensure_curl_init();
+  CURL* curl = curl_easy_init();
+  if (curl == nullptr) {
+    return 0;
+  }
+
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_http_body);
+  if (timeout_ms > 0) {
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(timeout_ms));
+  }
+  if (std::strcmp(method, "POST") == 0) {
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload == nullptr ? "" : payload);
+  }
+
+  const CURLcode rc = curl_easy_perform(curl);
+  long status = 0;
+  if (rc == CURLE_OK) {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+  }
+  curl_easy_cleanup(curl);
+  if (rc != CURLE_OK) {
+    return 599;
+  }
+  return static_cast<int>(status);
+}
+#endif
 
 }  // namespace
 
@@ -73,20 +124,25 @@ void thag_map_free(void* map) {
 }
 
 int thag_http_get(const char* url, int timeout_ms) {
+#if defined(THAG_RUNTIME_HAS_CURL)
+  return http_request_code("GET", url, nullptr, timeout_ms);
+#else
   if (url == nullptr || std::strlen(url) == 0 || timeout_ms < 0) {
     return 0;
   }
-  if (timeout_ms == 0) {
-    return 1;
-  }
   return 200;
+#endif
 }
 
 int thag_http_post(const char* url, const char* payload, int timeout_ms) {
+#if defined(THAG_RUNTIME_HAS_CURL)
+  return http_request_code("POST", url, payload, timeout_ms);
+#else
   if (url == nullptr || payload == nullptr || timeout_ms < 0) {
     return 0;
   }
   return std::strlen(payload) == 0 ? 202 : 201;
+#endif
 }
 
 int thag_ws_connect(const char* endpoint, int timeout_ms) {

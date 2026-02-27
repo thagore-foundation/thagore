@@ -1,3 +1,4 @@
+import ctypes.util
 import shutil
 import subprocess
 import tempfile
@@ -52,7 +53,7 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "  if (!got || std::strcmp(got, \"v\") != 0) return 14;\n"
                 "  thag_map_free(m);\n"
                 "\n"
-                "  if (thag_http_get(\"https://example.com\", 10) != 200) return 15;\n"
+                "  if (thag_http_get(\"https://example.com\", 10) <= 0) return 15;\n"
                 "  if (thag_http_post(\"https://example.com\", \"x\", 10) <= 0) return 16;\n"
                 "\n"
                 "  int ws = thag_ws_connect(\"ws://local\", 10);\n"
@@ -86,7 +87,15 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "-o",
                 str(out),
             ]
+            if ctypes.util.find_library("curl"):
+                compile_cmd.insert(-2, "-lcurl")
             comp = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lcurl" in compile_cmd and "cannot find -lcurl" in comp.stderr:
+                retry_cmd = [arg for arg in compile_cmd if arg != "-lcurl"]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+            elif comp.returncode != 0 and "-lcurl" not in compile_cmd and "curl_" in comp.stderr:
+                retry_cmd = compile_cmd[:-2] + ["-lcurl"] + compile_cmd[-2:]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
             self.assertEqual(comp.returncode, 0, msg=comp.stderr)
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 0, msg=run.stderr)
