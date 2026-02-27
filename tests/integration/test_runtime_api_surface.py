@@ -13,6 +13,11 @@ class RuntimeApiSurfaceTests(unittest.TestCase):
             "thag_task_scope_set_timeout_ms",
             "thag_task_scope_wait",
             "thag_task_scope_cancelled",
+            "thag_async_runtime_create",
+            "thag_async_runtime_destroy",
+            "thag_async_spawn",
+            "thag_async_sleep",
+            "thag_async_wait_idle",
         ]
         for symbol in required:
             self.assertIn(symbol, header)

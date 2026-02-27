@@ -7,6 +7,7 @@ extern "C" {
 
 typedef void (*thag_task_fn)(void* user_data);
 typedef struct thag_task_scope thag_task_scope_t;
+typedef struct thag_async_runtime thag_async_runtime_t;
 
 void thag_runtime_init(void);
 void thag_print_i32(int value);
@@ -37,6 +38,12 @@ void thag_task_scope_cancel(thag_task_scope_t* scope);
 void thag_task_scope_set_timeout_ms(thag_task_scope_t* scope, uint64_t timeout_ms);
 int thag_task_scope_wait(thag_task_scope_t* scope);
 int thag_task_scope_cancelled(const thag_task_scope_t* scope);
+
+thag_async_runtime_t* thag_async_runtime_create(void);
+void thag_async_runtime_destroy(thag_async_runtime_t* runtime);
+int thag_async_spawn(thag_async_runtime_t* runtime, thag_task_fn fn, void* user_data);
+int thag_async_sleep(thag_async_runtime_t* runtime, uint64_t delay_ms, thag_task_fn fn, void* user_data);
+int thag_async_wait_idle(thag_async_runtime_t* runtime, uint64_t timeout_ms);
 
 #ifdef __cplusplus
 }

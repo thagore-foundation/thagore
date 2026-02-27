@@ -38,7 +38,9 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "#include \"thag_runtime.h\"\n"
                 "\n"
                 "static std::atomic<int> g_count{0};\n"
+                "static std::atomic<int> g_async{0};\n"
                 "static void worker(void*) { g_count.fetch_add(1); }\n"
+                "static void async_worker(void*) { g_async.fetch_add(1); }\n"
                 "\n"
                 "int main() {\n"
                 "  int64_t t0 = thag_now_ms();\n"
@@ -73,6 +75,14 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "  if (!thag_task_scope_wait(scope)) return 26;\n"
                 "  thag_task_scope_destroy(scope);\n"
                 "  if (g_count.load() != 2) return 27;\n"
+                "\n"
+                "  thag_async_runtime_t* rt = thag_async_runtime_create();\n"
+                "  if (!rt) return 28;\n"
+                "  if (!thag_async_spawn(rt, async_worker, nullptr)) return 29;\n"
+                "  if (!thag_async_sleep(rt, 1, async_worker, nullptr)) return 30;\n"
+                "  if (!thag_async_wait_idle(rt, 1000)) return 31;\n"
+                "  thag_async_runtime_destroy(rt);\n"
+                "  if (g_async.load() != 2) return 32;\n"
                 "  return 0;\n"
                 "}\n"
             )
@@ -89,12 +99,20 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
             ]
             if ctypes.util.find_library("curl"):
                 compile_cmd.insert(-2, "-lcurl")
+            if ctypes.util.find_library("sqlite3"):
+                compile_cmd.insert(-2, "-lsqlite3")
             comp = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
             if comp.returncode != 0 and "-lcurl" in compile_cmd and "cannot find -lcurl" in comp.stderr:
                 retry_cmd = [arg for arg in compile_cmd if arg != "-lcurl"]
                 comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
             elif comp.returncode != 0 and "-lcurl" not in compile_cmd and "curl_" in comp.stderr:
                 retry_cmd = compile_cmd[:-2] + ["-lcurl"] + compile_cmd[-2:]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lsqlite3" in compile_cmd and "cannot find -lsqlite3" in comp.stderr:
+                retry_cmd = [arg for arg in compile_cmd if arg != "-lsqlite3"]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+            elif comp.returncode != 0 and "-lsqlite3" not in compile_cmd and "sqlite3_" in comp.stderr:
+                retry_cmd = compile_cmd[:-2] + ["-lsqlite3"] + compile_cmd[-2:]
                 comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
             self.assertEqual(comp.returncode, 0, msg=comp.stderr)
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
