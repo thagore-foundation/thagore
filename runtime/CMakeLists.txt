@@ -5,6 +5,10 @@ add_library(thag_runtime STATIC
   src/print.cpp
   src/string.cpp
   src/io_stack.cpp
+  src/http.cpp
+  src/ws.cpp
+  src/db.cpp
+  src/event_loop.cpp
   src/concurrency.cpp
   src/platform_posix.cpp
   src/platform_windows.cpp
@@ -18,14 +22,28 @@ if(NOT WIN32)
   target_link_libraries(thag_runtime PUBLIC Threads::Threads)
 endif()
 
-find_package(CURL QUIET)
-if(CURL_FOUND)
-  target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_CURL=1)
-  target_link_libraries(thag_runtime PUBLIC CURL::libcurl)
+# Optional system OpenSSL for HTTPS support in self-implemented HTTP client.
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+  target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_OPENSSL=1)
+  target_link_libraries(thag_runtime PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
-find_package(SQLite3 QUIET)
-if(SQLite3_FOUND)
-  target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_SQLITE3=1)
-  target_link_libraries(thag_runtime PUBLIC SQLite::SQLite3)
+# SQLite is allowed as self-contained dependency (amalgamation) or system library.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/sqlite3/sqlite3.c")
+  target_sources(thag_runtime PRIVATE vendor/sqlite3/sqlite3.c)
+  target_include_directories(thag_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/vendor/sqlite3")
+  target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_SQLITE3=1 THAG_RUNTIME_HAS_SQLITE3_AMALGAMATION=1)
+else()
+  find_path(THAG_SQLITE3_INCLUDE_DIR sqlite3.h)
+  find_library(THAG_SQLITE3_LIBRARY sqlite3)
+  if(THAG_SQLITE3_INCLUDE_DIR AND THAG_SQLITE3_LIBRARY)
+    target_include_directories(thag_runtime PUBLIC "${THAG_SQLITE3_INCLUDE_DIR}")
+    target_link_libraries(thag_runtime PUBLIC "${THAG_SQLITE3_LIBRARY}")
+    target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_SQLITE3=1 THAG_RUNTIME_HAS_SQLITE3_SYSTEM=1)
+  endif()
+endif()
+
+if(WIN32)
+  target_link_libraries(thag_runtime PUBLIC ws2_32)
 endif()

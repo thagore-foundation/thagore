@@ -1,6 +1,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include "thag/runtime.h"
 
 #ifdef __cplusplus
 extern "C" {
