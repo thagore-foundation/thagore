@@ -33,6 +33,10 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
 
             flow = self._run(root, "flow", "simulate", str(src))
             self.assertEqual(flow.returncode, 0, msg=flow.stderr)
+
+            build_target = self._run(root, "build", str(src), "--target=x86_64-unknown-linux-gnu")
+            self.assertEqual(build_target.returncode, 0, msg=build_target.stderr)
+
             recover = self._run(root, "flow", "recover")
             self.assertEqual(recover.returncode, 0, msg=recover.stderr)
             self.assertIn('"status": "ok"', recover.stdout)

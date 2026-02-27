@@ -10,8 +10,8 @@ int handle_help() {
   std::cout << "  thagore --help\n";
   std::cout << "  thagore --version\n";
   std::cout << "  thagore <input.tg> [options]\n";
-  std::cout << "  thagore build <input.tg> [-o <output>] [--emit-llvm]\n";
-  std::cout << "  thagore run <input.tg> [-o <output>] [--emit-llvm]\n";
+  std::cout << "  thagore build <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm]\n";
+  std::cout << "  thagore run <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm]\n";
   std::cout << "  thagore test [filter] [--workspace] [--list] [--json] [--no-run] [--fail-fast]\n";
   std::cout << "  thagore fix apply <entry.tg>|--workspace [--level=safe] [--json]\n";
   std::cout << "  thagore target add <triple> [--cc=clang] [--cxx=clang++] [--linker=clang] [--sysroot=...]\n";

@@ -42,19 +42,23 @@ target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(thagc PRIVATE ${LLVM_DEFINITIONS})
 
-llvm_map_components_to_libnames(LLVM_LIBS
-  Core
-  Support
-  Target
-  TargetParser
-  MC
-  MCParser
-  Object
-  BitWriter
-  AsmPrinter
-  ScalarOpts
-  CodeGen
-  native
-  nativecodegen
-)
-target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
+if (TARGET LLVM)
+  target_link_libraries(thagc PRIVATE LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBS
+    Core
+    Support
+    Target
+    TargetParser
+    MC
+    MCParser
+    Object
+    BitWriter
+    AsmPrinter
+    ScalarOpts
+    CodeGen
+    native
+    nativecodegen
+  )
+  target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
+endif()

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "thagc/driver/common.hpp"
 #include "thagc/driver/pipeline.hpp"
 #include "thagc/shared/process.hpp"
 
@@ -120,7 +121,14 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
   BuildOptions options;
   options.input_path = cmd.input_path;
   options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
+  options.target_triple = cmd.target_triple;
   options.emit_llvm = cmd.emit_llvm;
+  if (!apply_target_config(options, cmd.target_triple, diag)) {
+    for (const auto& d : diag.diagnostics()) {
+      std::cerr << d.code << ": " << d.message << "\n";
+    }
+    return 1;
+  }
   if (options.emit_llvm) {
     options.llvm_ir_path = cmd.output_path.empty() ? (default_base_name(cmd.input_path) + ".ll")
                                                     : (options.output_path + ".ll");
@@ -186,13 +194,24 @@ int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
     } else {
       options.output_path = cmd.output_path + "." + std::to_string(idx);
     }
+    options.target_triple = cmd.target_triple;
     options.emit_llvm = cmd.emit_llvm;
+    support::DiagnosticSink test_diag;
+    if (!apply_target_config(options, cmd.target_triple, test_diag)) {
+      r.build_ok = false;
+      r.message = "target config failed";
+      all_ok = false;
+      results.push_back(std::move(r));
+      if (cmd.fail_fast) {
+        break;
+      }
+      continue;
+    }
     if (options.emit_llvm) {
       options.llvm_ir_path = cmd.output_path.empty() ? (default_base_name(test_path) + ".ll")
                                                       : (options.output_path + ".ll");
     }
 
-    support::DiagnosticSink test_diag;
     if (!pipeline.build(options, test_diag)) {
       r.build_ok = false;
       r.message = "build failed";
@@ -237,4 +256,3 @@ int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
 }
 
 }  // namespace thagc::driver
-

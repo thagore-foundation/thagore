@@ -39,9 +39,11 @@ class CodegenPort {
  public:
   virtual ~CodegenPort() = default;
   virtual bool emit_object(const lowering::CoreProgram& core, const std::string& module_name,
-                           const std::string& object_path, support::DiagnosticSink& diag) = 0;
+                           const std::string& object_path, const std::string& target_triple,
+                           support::DiagnosticSink& diag) = 0;
   virtual bool emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
-                            const std::string& llvm_ir_path, support::DiagnosticSink& diag) = 0;
+                            const std::string& llvm_ir_path, const std::string& target_triple,
+                            support::DiagnosticSink& diag) = 0;
 };
 
 class LinkerPort {

@@ -21,6 +21,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
 
 namespace thagc::codegen {
 
@@ -876,11 +877,15 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
 }
 
 bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
-                               const std::string& llvm_ir_path, support::DiagnosticSink& diag) const {
+                               const std::string& llvm_ir_path, const std::string& target_triple,
+                               support::DiagnosticSink& diag) const {
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
   if (!module) {
     return false;
+  }
+  if (!target_triple.empty()) {
+    module->setTargetTriple(llvm::Triple(target_triple));
   }
   if (llvm::verifyModule(*module, &llvm::errs())) {
     diag.error("E2001", "LLVM module verification failed");
@@ -898,10 +903,12 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
 }
 
 bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::string& module_name,
-                              const std::string& object_path, support::DiagnosticSink& diag) const {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-  llvm::InitializeNativeTargetAsmParser();
+                              const std::string& object_path, const std::string& target_triple,
+                              support::DiagnosticSink& diag) const {
+  llvm::InitializeAllTargets();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllAsmPrinters();
 
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
@@ -910,10 +917,11 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
 
   std::string error;
-  const llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
-  module->setTargetTriple(target_triple);
+  const std::string triple_value = target_triple.empty() ? llvm::sys::getDefaultTargetTriple() : target_triple;
+  const llvm::Triple triple(triple_value);
+  module->setTargetTriple(triple);
 
-  const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple.getTriple(), error);
+  const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (!target) {
     diag.error("E2003", "cannot resolve LLVM target: " + error);
     return false;
@@ -921,7 +929,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
 
   llvm::TargetOptions options;
   std::unique_ptr<llvm::TargetMachine> target_machine(
-      target->createTargetMachine(target_triple, "generic", "", options, std::nullopt));
+      target->createTargetMachine(triple, "generic", "", options, std::nullopt));
   if (!target_machine) {
     diag.error("E2004", "cannot create LLVM target machine");
     return false;

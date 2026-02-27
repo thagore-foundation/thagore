@@ -26,6 +26,7 @@ struct ParsedCommand {
   std::vector<std::string> args;
   std::string input_path;
   std::string output_path;
+  std::string target_triple;
   bool emit_llvm = false;
   std::string autofix_mode;
   std::string autofix_lock_path;
@@ -47,4 +48,3 @@ struct ParsedCommand {
 };
 
 }  // namespace thagc::driver
-

@@ -16,7 +16,7 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
   }
   const auto core = lowerer_.lower(ast);
   if (request.emit_llvm) {
-    if (!codegen_.emit_llvm_ir(core, "thagc_module", request.llvm_ir_path, diag)) {
+    if (!codegen_.emit_llvm_ir(core, "thagc_module", request.llvm_ir_path, request.target_triple, diag)) {
       return result;
     }
     result.artifacts.push_back(request.llvm_ir_path);
@@ -24,12 +24,15 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
     return result;
   }
   const std::string object_path = request.output_path + ".o";
-  if (!codegen_.emit_object(core, "thagc_module", object_path, diag)) {
+  if (!codegen_.emit_object(core, "thagc_module", object_path, request.target_triple, diag)) {
     return result;
   }
   domain::LinkPlan link_plan;
   link_plan.object_path = object_path;
   link_plan.output_path = request.output_path;
+  link_plan.target_triple = request.target_triple;
+  link_plan.sysroot = request.target_sysroot;
+  link_plan.linker_path = request.target_linker;
   const domain::LinkResult link_result = linker_.link_executable(link_plan, diag);
   if (!link_result.success) {
     const std::string detail = link_result.error.empty() ? "link step failed" : link_result.error;

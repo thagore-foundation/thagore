@@ -53,6 +53,14 @@ static void parse_build_like_options(ParsedCommand& out, int argc, char** argv, 
       out.output_path = argv[++i];
       continue;
     }
+    if ((arg == "--target" || arg == "-t") && i + 1 < argc) {
+      out.target_triple = argv[++i];
+      continue;
+    }
+    if (starts_with(arg, "--target=")) {
+      out.target_triple = arg.substr(std::string("--target=").size());
+      continue;
+    }
     if (arg == "--emit-llvm") {
       out.emit_llvm = true;
       continue;

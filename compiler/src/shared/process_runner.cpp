@@ -44,11 +44,13 @@ std::string run_process_capture(const std::vector<std::string>& args, int* exit_
     }
     cmd << quote_if_needed(args[i]);
   }
-  cmd << " 2>/dev/null";
-
   std::string out;
   std::array<char, 1024> buffer{};
+#if defined(_WIN32)
+  FILE* pipe = _popen(cmd.str().c_str(), "r");
+#else
   FILE* pipe = popen(cmd.str().c_str(), "r");
+#endif
   if (pipe == nullptr) {
     if (exit_code != nullptr) {
       *exit_code = -1;
@@ -58,7 +60,11 @@ std::string run_process_capture(const std::vector<std::string>& args, int* exit_
   while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
     out += buffer.data();
   }
+#if defined(_WIN32)
+  const int rc = _pclose(pipe);
+#else
   const int rc = pclose(pipe);
+#endif
   if (exit_code != nullptr) {
     *exit_code = rc;
   }

@@ -23,6 +23,9 @@ bool CompilerPipeline::build(const BuildOptions& options, support::DiagnosticSin
     request.input_path = options.input_path;
     request.source_text = support::read_text_file(options.input_path);
     request.output_path = options.output_path;
+    request.target_triple = options.target_triple;
+    request.target_linker = options.target_linker;
+    request.target_sysroot = options.target_sysroot;
     request.emit_llvm = options.emit_llvm;
     request.llvm_ir_path = options.llvm_ir_path;
 

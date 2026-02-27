@@ -145,9 +145,19 @@ int handle_target(const ParsedCommand& cmd) {
     }
     bool ok = true;
     for (const std::string& triple : triples) {
-      const std::string manifest = target_manifest(triple);
-      if (!support::file_exists(manifest)) {
-        std::cout << "target doctor: " << triple << " FAIL missing manifest\n";
+      TargetConfig cfg;
+      if (!load_target_config(triple, cfg)) {
+        std::cout << "target doctor: " << triple << " FAIL missing/invalid manifest\n";
+        ok = false;
+        continue;
+      }
+      if (cfg.cc.empty() || cfg.cxx.empty() || cfg.linker.empty()) {
+        std::cout << "target doctor: " << triple << " FAIL missing tool paths\n";
+        ok = false;
+        continue;
+      }
+      if (!file_executable(cfg.cc) || !file_executable(cfg.cxx) || !file_executable(cfg.linker)) {
+        std::cout << "target doctor: " << triple << " FAIL non-executable tool path\n";
         ok = false;
         continue;
       }

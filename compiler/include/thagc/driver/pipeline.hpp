@@ -9,6 +9,9 @@ namespace thagc::driver {
 struct BuildOptions {
   std::string input_path;
   std::string output_path;
+  std::string target_triple;
+  std::string target_linker;
+  std::string target_sysroot;
   bool emit_llvm = false;
   std::string llvm_ir_path;
 };
@@ -19,4 +22,3 @@ class CompilerPipeline {
 };
 
 }  // namespace thagc::driver
-
