@@ -28,6 +28,8 @@ enum class TokenKind {
   KeywordImpl,
   KeywordImport,
   KeywordExtern,
+  KeywordFlow,
+  KeywordIntent,
   Colon,
   LParen,
   RParen,

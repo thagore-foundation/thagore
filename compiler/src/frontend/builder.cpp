@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "thagc/frontend/types.hpp"
@@ -27,6 +28,7 @@ static std::string type_name(TypeKind kind) {
   if (kind == TypeKind::Bool) return "bool";
   if (kind == TypeKind::String) return "String";
   if (kind == TypeKind::Ptr) return "ptr";
+  if (kind == TypeKind::Struct) return "struct";
   if (kind == TypeKind::Void) return "void";
   return "unknown";
 }
@@ -82,11 +84,55 @@ static TypeKind resolve_declared_type(const std::string& type_name,
   return TypeKind::Unknown;
 }
 
+static std::unordered_set<std::string> collect_struct_names(const syntax::AstProgram& program) {
+  std::unordered_set<std::string> out;
+  for (const std::string& header : program.structs) {
+    if (!starts_with(header, "struct ")) {
+      continue;
+    }
+    std::string clean = header.substr(7);
+    if (!clean.empty() && clean.back() == ':') {
+      clean.pop_back();
+    }
+    clean.erase(clean.begin(), std::find_if(clean.begin(), clean.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+    clean.erase(std::find_if(clean.rbegin(), clean.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+               clean.end());
+    if (!clean.empty()) {
+      out.insert(clean);
+    }
+  }
+  return out;
+}
+
+static std::unordered_map<std::string, TypeKind> collect_function_return_types(
+    const syntax::AstProgram& program, const std::unordered_map<std::string, TypeKind>& aliases,
+    const std::unordered_set<std::string>& struct_names) {
+  std::unordered_map<std::string, TypeKind> out;
+  for (const auto& fn : program.functions) {
+    if (fn.return_type.empty()) {
+      out[fn.name] = fn.name == "main" ? TypeKind::I32 : TypeKind::I32;
+      continue;
+    }
+    const TypeKind direct = resolve_declared_type(fn.return_type, aliases);
+    if (direct != TypeKind::Unknown) {
+      out[fn.name] = direct;
+      continue;
+    }
+    if (struct_names.find(fn.return_type) != struct_names.end()) {
+      out[fn.name] = TypeKind::Struct;
+      continue;
+    }
+    out[fn.name] = TypeKind::Unknown;
+  }
+  return out;
+}
+
 enum class ExprTokKind {
   Atom,
   Op,
   LParen,
   RParen,
+  Comma,
   End,
 };
 
@@ -102,6 +148,8 @@ struct ExprTypeCursor {
   int line = 0;
   const std::unordered_map<std::string, TypeKind>* scope = nullptr;
   const std::unordered_map<std::string, int>* enum_variants = nullptr;
+  const std::unordered_map<std::string, TypeKind>* function_returns = nullptr;
+  const std::unordered_set<std::string>* struct_names = nullptr;
 };
 
 static bool is_ident_start(char ch) {
@@ -140,6 +188,11 @@ static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& 
     }
     if (ch == ')') {
       out.push_back(ExprTok{ExprTokKind::RParen, ")"});
+      ++i;
+      continue;
+    }
+    if (ch == ',') {
+      out.push_back(ExprTok{ExprTokKind::Comma, ","});
       ++i;
       continue;
     }
@@ -182,8 +235,16 @@ static std::vector<ExprTok> tokenize_expr(const std::string& text, std::string& 
     }
     if (is_ident_start(ch)) {
       std::size_t start = i;
-      while (i < text.size() && is_ident_body(text[i])) {
-        ++i;
+      while (i < text.size()) {
+        if (is_ident_body(text[i])) {
+          ++i;
+          continue;
+        }
+        if (text[i] == '.' && i + 1 < text.size() && is_ident_start(text[i + 1])) {
+          ++i;
+          continue;
+        }
+        break;
       }
       out.push_back(ExprTok{ExprTokKind::Atom, text.substr(start, i - start)});
       continue;
@@ -243,6 +304,38 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
   const ExprTok& tok = cur(cursor);
   if (tok.kind == ExprTokKind::Atom) {
     ++cursor.index;
+    if (cur(cursor).kind == ExprTokKind::LParen) {
+      ++cursor.index;  // '('
+      if (cur(cursor).kind != ExprTokKind::RParen) {
+        while (true) {
+          const TypeKind arg_type = parse_expr_type(cursor);
+          if (arg_type == TypeKind::Unknown) {
+            return TypeKind::Unknown;
+          }
+          if (cur(cursor).kind == ExprTokKind::Comma) {
+            ++cursor.index;
+            continue;
+          }
+          break;
+        }
+      }
+      if (cur(cursor).kind != ExprTokKind::RParen) {
+        cursor.error = "missing closing ')' in call expression";
+        return TypeKind::Unknown;
+      }
+      ++cursor.index;
+      if (cursor.function_returns != nullptr) {
+        auto fn = cursor.function_returns->find(tok.text);
+        if (fn != cursor.function_returns->end()) {
+          return fn->second;
+        }
+      }
+      if (cursor.struct_names != nullptr && cursor.struct_names->find(tok.text) != cursor.struct_names->end()) {
+        return TypeKind::Struct;
+      }
+      cursor.error = "unknown callable '" + tok.text + "'";
+      return TypeKind::Unknown;
+    }
     if (tok.text == "true" || tok.text == "false") {
       return TypeKind::Bool;
     }
@@ -255,9 +348,11 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
     if (is_string_atom(tok.text)) {
       return TypeKind::String;
     }
-    auto it = cursor.scope->find(tok.text);
-    if (it != cursor.scope->end()) {
-      return it->second;
+    if (cursor.scope != nullptr) {
+      auto it = cursor.scope->find(tok.text);
+      if (it != cursor.scope->end()) {
+        return it->second;
+      }
     }
     if (cursor.enum_variants != nullptr) {
       auto enum_it = cursor.enum_variants->find(tok.text);
@@ -384,6 +479,46 @@ static std::string parse_let_name(const std::string& line) {
   return line.substr(start, i - start);
 }
 
+static std::string parse_assignment_target(const std::string& line) {
+  const std::size_t eq = line.find('=');
+  if (eq == std::string::npos) {
+    return "";
+  }
+  std::string out = line.substr(0, eq);
+  out.erase(out.begin(), std::find_if(out.begin(), out.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+  out.erase(std::find_if(out.rbegin(), out.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+            out.end());
+  if (out.empty() || !is_ident_start(out[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < out.size(); ++i) {
+    const char ch = out[i];
+    if (ch == '.') {
+      if (i + 1 >= out.size() || !is_ident_start(out[i + 1])) {
+        return "";
+      }
+      continue;
+    }
+    if (!is_ident_body(ch)) {
+      return "";
+    }
+  }
+  return out;
+}
+
+static bool split_field_target(const std::string& target, std::string& base, std::string& field) {
+  const std::size_t dot = target.find('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 >= target.size()) {
+    return false;
+  }
+  if (target.find('.', dot + 1) != std::string::npos) {
+    return false;
+  }
+  base = target.substr(0, dot);
+  field = target.substr(dot + 1);
+  return true;
+}
+
 enum class OwnershipKind {
   None,
   Rc,
@@ -477,6 +612,27 @@ static std::string parse_simple_identifier_expr(const std::string& expr) {
     }
   }
   return expr;
+}
+
+static std::string parse_constructor_name(const std::string& expr) {
+  const std::size_t lparen = expr.find('(');
+  const std::size_t rparen = expr.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen) {
+    return "";
+  }
+  std::string name = expr.substr(0, lparen);
+  name.erase(name.begin(), std::find_if(name.begin(), name.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+  name.erase(std::find_if(name.rbegin(), name.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+             name.end());
+  if (name.empty() || !is_ident_start(name[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < name.size(); ++i) {
+    if (!is_ident_body(name[i])) {
+      return "";
+    }
+  }
+  return name;
 }
 
 static bool validate_memory_model_statement(
@@ -677,6 +833,8 @@ static bool validate_extern_declarations(const syntax::AstProgram& program, supp
 static bool typecheck_statement_expression(const syntax::AstStatement& st, int line,
                                            const std::unordered_map<std::string, TypeKind>& scope,
                                            const std::unordered_map<std::string, int>& enum_variants,
+                                           const std::unordered_map<std::string, TypeKind>& function_returns,
+                                           const std::unordered_set<std::string>& struct_names,
                                            TypeKind& out, std::string& error) {
   if (!st.has_expression) {
     out = TypeKind::Void;
@@ -693,6 +851,8 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
   cursor.line = line;
   cursor.scope = &scope;
   cursor.enum_variants = &enum_variants;
+  cursor.function_returns = &function_returns;
+  cursor.struct_names = &struct_names;
   if (!tokenize_error.empty()) {
     error = tokenize_error;
     return false;
@@ -791,6 +951,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     return false;
   }
   const auto aliases = collect_type_aliases(program);
+  const auto struct_names = collect_struct_names(program);
+  const auto function_returns = collect_function_return_types(program, aliases, struct_names);
   if (!program.has_main && program.top_level_statements.empty()) {
     diag.error("E0002", "missing entrypoint: define func main() or provide top-level executable statements");
     return false;
@@ -800,7 +962,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0003", "invalid function header at line " + std::to_string(fn.header_line));
       return false;
     }
-    if (!fn.return_type.empty() && resolve_declared_type(fn.return_type, aliases) == TypeKind::Unknown) {
+    if (!fn.return_type.empty() && resolve_declared_type(fn.return_type, aliases) == TypeKind::Unknown &&
+        struct_names.find(fn.return_type) == struct_names.end()) {
       diag.error("E0006", "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "'");
       return false;
     }
@@ -809,6 +972,12 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   for (const auto& fn : program.functions) {
     std::unordered_map<std::string, TypeKind> scope;
     std::unordered_map<std::string, OwnershipKind> ownership;
+    std::unordered_map<std::string, std::string> struct_bindings;
+    for (const std::string& param : fn.params) {
+      if (!param.empty()) {
+        scope[param] = TypeKind::I32;
+      }
+    }
     std::optional<TypeKind> inferred_return;
     bool has_return = false;
 
@@ -819,7 +988,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
       TypeKind expr_type = TypeKind::Void;
       std::string expr_error;
-      if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, expr_type, expr_error)) {
+      if (!typecheck_statement_expression(st, st.line, scope, program.enum_variant_tags, function_returns,
+                                          struct_names, expr_type, expr_error)) {
         diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
         return false;
       }
@@ -835,6 +1005,75 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           return false;
         }
         scope[name] = expr_type;
+        if (expr_type == TypeKind::Struct) {
+          const std::string ctor = parse_constructor_name(st.expression_normalized);
+          if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
+            diag.error("E0020",
+                       "line " + std::to_string(st.line) + ": struct constructor must use known type call");
+            return false;
+          }
+          struct_bindings[name] = ctor;
+          auto fields_it = program.struct_fields.find(ctor);
+          if (fields_it != program.struct_fields.end()) {
+            for (const std::string& field : fields_it->second) {
+              const std::string key = ctor + "." + field;
+              TypeKind field_type = TypeKind::I32;
+              auto type_it = program.struct_field_types.find(key);
+              if (type_it != program.struct_field_types.end()) {
+                const TypeKind resolved = resolve_declared_type(type_it->second, aliases);
+                if (resolved != TypeKind::Unknown) {
+                  field_type = resolved;
+                }
+              }
+              scope[name + "." + field] = field_type;
+            }
+          }
+        }
+      }
+
+      if (st.kind == syntax::StatementKind::Assign) {
+        const std::string target = parse_assignment_target(st.text);
+        if (target.empty()) {
+          diag.error("E0021", "line " + std::to_string(st.line) + ": invalid assignment target");
+          return false;
+        }
+        std::string base;
+        std::string field;
+        if (split_field_target(target, base, field)) {
+          auto binding = struct_bindings.find(base);
+          if (binding == struct_bindings.end()) {
+            diag.error("E0022", "line " + std::to_string(st.line) +
+                                   ": field assignment requires struct instance on left-hand side");
+            return false;
+          }
+          const std::string struct_name = binding->second;
+          auto fields_it = program.struct_fields.find(struct_name);
+          if (fields_it == program.struct_fields.end() ||
+              std::find(fields_it->second.begin(), fields_it->second.end(), field) == fields_it->second.end()) {
+            diag.error("E0023", "line " + std::to_string(st.line) + ": unknown field '" + field +
+                                   "' on struct '" + struct_name + "'");
+            return false;
+          }
+          const std::string field_key = target;
+          auto field_type_it = scope.find(field_key);
+          if (field_type_it != scope.end() && field_type_it->second != expr_type) {
+            diag.error("E0024", "line " + std::to_string(st.line) + ": assigned value type " + type_name(expr_type) +
+                                   " does not match field type " + type_name(field_type_it->second));
+            return false;
+          }
+          scope[field_key] = expr_type;
+        } else {
+          auto it = scope.find(target);
+          if (it == scope.end()) {
+            diag.error("E0025", "line " + std::to_string(st.line) + ": assignment to unknown variable '" + target + "'");
+            return false;
+          }
+          if (it->second != expr_type) {
+            diag.error("E0026", "line " + std::to_string(st.line) + ": cannot assign " + type_name(expr_type) +
+                                   " to variable '" + target + "' of type " + type_name(it->second));
+            return false;
+          }
+        }
       }
 
       if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
@@ -881,8 +1120,11 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
 
     const TypeKind effective_return = inferred_return.value_or(TypeKind::Void);
-    const TypeKind declared_return =
-        fn.return_type.empty() ? TypeKind::Unknown : resolve_declared_type(fn.return_type, aliases);
+    TypeKind declared_return = fn.return_type.empty() ? TypeKind::Unknown : resolve_declared_type(fn.return_type, aliases);
+    if (declared_return == TypeKind::Unknown && !fn.return_type.empty() &&
+        struct_names.find(fn.return_type) != struct_names.end()) {
+      declared_return = TypeKind::Struct;
+    }
     if (declared_return != TypeKind::Unknown && declared_return != effective_return) {
       diag.error("E0015",
                  "function '" + fn.name + "' declared return " + type_name(declared_return) +
@@ -901,13 +1143,15 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
   std::unordered_map<std::string, TypeKind> top_scope;
   std::unordered_map<std::string, OwnershipKind> top_ownership;
+  std::unordered_map<std::string, std::string> top_struct_bindings;
   for (const auto& st : program.top_level_statements) {
     if (!validate_memory_model_statement(st, top_ownership, diag)) {
       return false;
     }
     TypeKind expr_type = TypeKind::Void;
     std::string expr_error;
-    if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, expr_type, expr_error)) {
+    if (!typecheck_statement_expression(st, st.line, top_scope, program.enum_variant_tags, function_returns,
+                                        struct_names, expr_type, expr_error)) {
       diag.error("E0011", "line " + std::to_string(st.line) + ": " + expr_error);
       return false;
     }
@@ -922,6 +1166,73 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         return false;
       }
       top_scope[name] = expr_type;
+      if (expr_type == TypeKind::Struct) {
+        const std::string ctor = parse_constructor_name(st.expression_normalized);
+        if (ctor.empty() || struct_names.find(ctor) == struct_names.end()) {
+          diag.error("E0020",
+                     "line " + std::to_string(st.line) + ": struct constructor must use known type call");
+          return false;
+        }
+        top_struct_bindings[name] = ctor;
+        auto fields_it = program.struct_fields.find(ctor);
+        if (fields_it != program.struct_fields.end()) {
+          for (const std::string& field : fields_it->second) {
+            const std::string key = ctor + "." + field;
+            TypeKind field_type = TypeKind::I32;
+            auto type_it = program.struct_field_types.find(key);
+            if (type_it != program.struct_field_types.end()) {
+              const TypeKind resolved = resolve_declared_type(type_it->second, aliases);
+              if (resolved != TypeKind::Unknown) {
+                field_type = resolved;
+              }
+            }
+            top_scope[name + "." + field] = field_type;
+          }
+        }
+      }
+    }
+    if (st.kind == syntax::StatementKind::Assign) {
+      const std::string target = parse_assignment_target(st.text);
+      if (target.empty()) {
+        diag.error("E0021", "line " + std::to_string(st.line) + ": invalid assignment target");
+        return false;
+      }
+      std::string base;
+      std::string field;
+      if (split_field_target(target, base, field)) {
+        auto binding = top_struct_bindings.find(base);
+        if (binding == top_struct_bindings.end()) {
+          diag.error("E0022", "line " + std::to_string(st.line) +
+                                 ": field assignment requires struct instance on left-hand side");
+          return false;
+        }
+        const std::string struct_name = binding->second;
+        auto fields_it = program.struct_fields.find(struct_name);
+        if (fields_it == program.struct_fields.end() ||
+            std::find(fields_it->second.begin(), fields_it->second.end(), field) == fields_it->second.end()) {
+          diag.error("E0023", "line " + std::to_string(st.line) + ": unknown field '" + field +
+                                 "' on struct '" + struct_name + "'");
+          return false;
+        }
+        auto field_type_it = top_scope.find(target);
+        if (field_type_it != top_scope.end() && field_type_it->second != expr_type) {
+          diag.error("E0024", "line " + std::to_string(st.line) + ": assigned value type " + type_name(expr_type) +
+                                 " does not match field type " + type_name(field_type_it->second));
+          return false;
+        }
+        top_scope[target] = expr_type;
+      } else {
+        auto it = top_scope.find(target);
+        if (it == top_scope.end()) {
+          diag.error("E0025", "line " + std::to_string(st.line) + ": assignment to unknown variable '" + target + "'");
+          return false;
+        }
+        if (it->second != expr_type) {
+          diag.error("E0026", "line " + std::to_string(st.line) + ": cannot assign " + type_name(expr_type) +
+                                 " to variable '" + target + "' of type " + type_name(it->second));
+          return false;
+        }
+      }
     }
     if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
       if (expr_type != TypeKind::Bool) {

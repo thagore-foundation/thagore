@@ -9,9 +9,9 @@ enum class TypeKind {
   Bool,
   String,
   Ptr,
+  Struct,
   Void,
   Unknown,
 };
 
 }  // namespace thagc::semantics
-

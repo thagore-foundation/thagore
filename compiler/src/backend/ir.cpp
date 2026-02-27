@@ -30,6 +30,7 @@ enum class ExprTokKind {
   Op,
   LParen,
   RParen,
+  Comma,
   End,
 };
 
@@ -40,8 +41,11 @@ struct ExprTok {
 
 enum class ValueType {
   I32,
+  F32,
+  F64,
   I1,
   I8Ptr,
+  Void,
   Invalid,
 };
 
@@ -62,6 +66,8 @@ struct ExprCursor {
   llvm::IRBuilder<>* builder = nullptr;
   std::unordered_map<std::string, VariableSlot>* variables = nullptr;
   const std::unordered_map<std::string, int>* enum_variant_tags = nullptr;
+  const std::unordered_map<std::string, llvm::Function*>* functions = nullptr;
+  const std::unordered_map<std::string, ValueType>* function_returns = nullptr;
 };
 
 static std::string trim(const std::string& text) {
@@ -116,6 +122,13 @@ static llvm::AllocaInst* create_entry_alloca(llvm::Function* fn, llvm::Type* typ
   return tmp.CreateAlloca(type, nullptr, name);
 }
 
+static llvm::Value* create_global_cstr_ptr(llvm::IRBuilder<>& builder, const std::string& value,
+                                           const std::string& name_hint) {
+  llvm::GlobalVariable* global = builder.CreateGlobalString(value, name_hint);
+  llvm::Value* zero = builder.getInt32(0);
+  return builder.CreateInBoundsGEP(global->getValueType(), global, {zero, zero}, name_hint + ".ptr");
+}
+
 static bool is_integer_atom(const std::string& text) {
   if (text.empty()) {
     return false;
@@ -126,6 +139,26 @@ static bool is_integer_atom(const std::string& text) {
     }
   }
   return true;
+}
+
+static bool is_float_atom(const std::string& text) {
+  if (text.empty()) {
+    return false;
+  }
+  bool seen_dot = false;
+  bool seen_digit = false;
+  for (char ch : text) {
+    if (std::isdigit(static_cast<unsigned char>(ch))) {
+      seen_digit = true;
+      continue;
+    }
+    if (ch == '.' && !seen_dot) {
+      seen_dot = true;
+      continue;
+    }
+    return false;
+  }
+  return seen_dot && seen_digit;
 }
 
 static bool is_string_atom(const std::string& text) {
@@ -163,6 +196,11 @@ static std::vector<ExprTok> tokenize_expression(const std::string& text, std::st
       ++i;
       continue;
     }
+    if (ch == ',') {
+      out.push_back(ExprTok{ExprTokKind::Comma, ","});
+      ++i;
+      continue;
+    }
     if (ch == '"') {
       const std::size_t start = i++;
       while (i < text.size() && text[i] != '"') {
@@ -182,17 +220,37 @@ static std::vector<ExprTok> tokenize_expression(const std::string& text, std::st
     }
     if (std::isdigit(static_cast<unsigned char>(ch))) {
       const std::size_t start = i;
+      bool has_dot = false;
       while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
         ++i;
+      }
+      if (i < text.size() && text[i] == '.') {
+        has_dot = true;
+        ++i;
+        while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
+          ++i;
+        }
+      }
+      if (has_dot && i == start + 1) {
+        error = "invalid float literal";
+        return {};
       }
       out.push_back(ExprTok{ExprTokKind::Atom, text.substr(start, i - start)});
       continue;
     }
     if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_') {
       const std::size_t start = i;
-      while (i < text.size() &&
-             (std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '_')) {
-        ++i;
+      while (i < text.size()) {
+        if (std::isalnum(static_cast<unsigned char>(text[i])) || text[i] == '_') {
+          ++i;
+          continue;
+        }
+        if (text[i] == '.' && i + 1 < text.size() &&
+            (std::isalpha(static_cast<unsigned char>(text[i + 1])) || text[i + 1] == '_')) {
+          ++i;
+          continue;
+        }
+        break;
       }
       out.push_back(ExprTok{ExprTokKind::Atom, text.substr(start, i - start)});
       continue;
@@ -219,15 +277,118 @@ static ExprValue parse_primary(ExprCursor& cursor) {
   if (tok.kind == ExprTokKind::Op && tok.text == "-") {
     ++cursor.index;
     ExprValue rhs = parse_primary(cursor);
-    if (rhs.type != ValueType::I32 || rhs.value == nullptr) {
-      cursor.error = cursor.error.empty() ? "unary '-' requires i32 operand" : cursor.error;
+    const bool numeric = rhs.type == ValueType::I32 || rhs.type == ValueType::F32 || rhs.type == ValueType::F64;
+    if (!numeric || rhs.value == nullptr) {
+      cursor.error = cursor.error.empty() ? "unary '-' requires numeric operand" : cursor.error;
       return {};
     }
-    return ExprValue{cursor.builder->CreateNeg(rhs.value), ValueType::I32};
+    if (rhs.type == ValueType::I32) {
+      return ExprValue{cursor.builder->CreateNeg(rhs.value), ValueType::I32};
+    }
+    if (rhs.type == ValueType::F32) {
+      return ExprValue{cursor.builder->CreateFNeg(rhs.value), ValueType::F32};
+    }
+    return ExprValue{cursor.builder->CreateFNeg(rhs.value), ValueType::F64};
   }
 
   if (tok.kind == ExprTokKind::Atom) {
     ++cursor.index;
+    if (cur(cursor).kind == ExprTokKind::LParen) {
+      ++cursor.index;  // '('
+      std::vector<ExprValue> args;
+      if (cur(cursor).kind != ExprTokKind::RParen) {
+        while (true) {
+          ExprValue arg = parse_expression_equality(cursor);
+          if (arg.value == nullptr || arg.type == ValueType::Invalid) {
+            return {};
+          }
+          args.push_back(arg);
+          if (cur(cursor).kind == ExprTokKind::Comma) {
+            ++cursor.index;
+            continue;
+          }
+          break;
+        }
+      }
+      if (cur(cursor).kind != ExprTokKind::RParen) {
+        cursor.error = "missing ')' in function call";
+        return {};
+      }
+      ++cursor.index;
+      if (cursor.functions == nullptr || cursor.function_returns == nullptr) {
+        cursor.error = "function call resolution context is missing";
+        return {};
+      }
+      auto fn_it = cursor.functions->find(tok.text);
+      auto ret_it = cursor.function_returns->find(tok.text);
+      if (fn_it == cursor.functions->end() || ret_it == cursor.function_returns->end()) {
+        cursor.error = "unknown function call '" + tok.text + "'";
+        return {};
+      }
+      llvm::Function* callee = fn_it->second;
+      if (callee == nullptr) {
+        cursor.error = "null callee for '" + tok.text + "'";
+        return {};
+      }
+      std::vector<llvm::Value*> call_args;
+      call_args.reserve(args.size());
+      if (callee->arg_size() != args.size()) {
+        cursor.error = "function '" + tok.text + "' expects " + std::to_string(callee->arg_size()) +
+                       " args but got " + std::to_string(args.size());
+        return {};
+      }
+      std::size_t arg_index = 0;
+      for (llvm::Argument& arg : callee->args()) {
+        ExprValue& value = args[arg_index];
+        llvm::Type* target_ty = arg.getType();
+        llvm::Value* coerced = nullptr;
+        if (target_ty->isIntegerTy(32)) {
+          if (value.type == ValueType::I32) {
+            coerced = value.value;
+          } else if (value.type == ValueType::I1) {
+            coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt32Ty());
+          } else if (value.type == ValueType::F32) {
+            coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt32Ty());
+          } else if (value.type == ValueType::F64) {
+            coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt32Ty());
+          }
+        } else if (target_ty->isFloatTy()) {
+          if (value.type == ValueType::F32) {
+            coerced = value.value;
+          } else if (value.type == ValueType::F64) {
+            coerced = cursor.builder->CreateFPTrunc(value.value, cursor.builder->getFloatTy());
+          } else if (value.type == ValueType::I32) {
+            coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
+          }
+        } else if (target_ty->isDoubleTy()) {
+          if (value.type == ValueType::F64) {
+            coerced = value.value;
+          } else if (value.type == ValueType::F32) {
+            coerced = cursor.builder->CreateFPExt(value.value, cursor.builder->getDoubleTy());
+          } else if (value.type == ValueType::I32) {
+            coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
+          }
+        } else if (target_ty->isIntegerTy(1)) {
+          if (value.type == ValueType::I1) {
+            coerced = value.value;
+          } else if (value.type == ValueType::I32) {
+            coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt32(0));
+          }
+        }
+        if (coerced == nullptr) {
+          cursor.error = "cannot convert argument for call '" + tok.text + "'";
+          return {};
+        }
+        call_args.push_back(coerced);
+        ++arg_index;
+      }
+      llvm::CallInst* call = cursor.builder->CreateCall(callee, call_args);
+      const ValueType ret_type = ret_it->second;
+      if (ret_type == ValueType::Void) {
+        return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
+      }
+      return ExprValue{call, ret_type};
+    }
     if (tok.text == "true") {
       return ExprValue{cursor.builder->getInt1(true), ValueType::I1};
     }
@@ -237,9 +398,12 @@ static ExprValue parse_primary(ExprCursor& cursor) {
     if (is_integer_atom(tok.text)) {
       return ExprValue{cursor.builder->getInt32(std::stoi(tok.text)), ValueType::I32};
     }
+    if (is_float_atom(tok.text)) {
+      return ExprValue{llvm::ConstantFP::get(cursor.builder->getDoubleTy(), std::stod(tok.text)), ValueType::F64};
+    }
     if (is_string_atom(tok.text)) {
       const std::string text = tok.text.substr(1, tok.text.size() - 2);
-      return ExprValue{cursor.builder->CreateGlobalStringPtr(text), ValueType::I8Ptr};
+      return ExprValue{create_global_cstr_ptr(*cursor.builder, text, "strlit"), ValueType::I8Ptr};
     }
     if (cursor.variables != nullptr) {
       const auto it = cursor.variables->find(tok.text);
@@ -276,6 +440,30 @@ static ExprValue parse_primary(ExprCursor& cursor) {
   return {};
 }
 
+static bool is_numeric_type(ValueType type) {
+  return type == ValueType::I32 || type == ValueType::F32 || type == ValueType::F64;
+}
+
+static llvm::Value* to_f64_value(ExprValue value, llvm::IRBuilder<>& builder) {
+  if (value.value == nullptr) {
+    return nullptr;
+  }
+  if (value.type == ValueType::F64) {
+    return value.value;
+  }
+  if (value.type == ValueType::F32) {
+    return builder.CreateFPExt(value.value, builder.getDoubleTy());
+  }
+  if (value.type == ValueType::I32) {
+    return builder.CreateSIToFP(value.value, builder.getDoubleTy());
+  }
+  if (value.type == ValueType::I1) {
+    llvm::Value* as_i32 = builder.CreateZExt(value.value, builder.getInt32Ty());
+    return builder.CreateSIToFP(as_i32, builder.getDoubleTy());
+  }
+  return nullptr;
+}
+
 static ExprValue parse_multiplicative(ExprCursor& cursor) {
   ExprValue lhs = parse_primary(cursor);
   if (lhs.type == ValueType::Invalid || lhs.value == nullptr) {
@@ -285,13 +473,25 @@ static ExprValue parse_multiplicative(ExprCursor& cursor) {
     const std::string op = cur(cursor).text;
     ++cursor.index;
     ExprValue rhs = parse_primary(cursor);
-    if (lhs.type != ValueType::I32 || rhs.type != ValueType::I32 || rhs.value == nullptr) {
-      cursor.error = "operator '" + op + "' requires i32 operands";
+    if (!is_numeric_type(lhs.type) || !is_numeric_type(rhs.type) || rhs.value == nullptr) {
+      cursor.error = "operator '" + op + "' requires numeric operands";
       return {};
     }
-    lhs.value = (op == "*") ? cursor.builder->CreateMul(lhs.value, rhs.value)
-                            : cursor.builder->CreateSDiv(lhs.value, rhs.value);
-    lhs.type = ValueType::I32;
+    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    if (use_float) {
+      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
+      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      if (lhs_f == nullptr || rhs_f == nullptr) {
+        cursor.error = "cannot convert operands to float for operator '" + op + "'";
+        return {};
+      }
+      lhs.value = (op == "*") ? cursor.builder->CreateFMul(lhs_f, rhs_f) : cursor.builder->CreateFDiv(lhs_f, rhs_f);
+      lhs.type = ValueType::F64;
+    } else {
+      lhs.value = (op == "*") ? cursor.builder->CreateMul(lhs.value, rhs.value)
+                              : cursor.builder->CreateSDiv(lhs.value, rhs.value);
+      lhs.type = ValueType::I32;
+    }
   }
   return lhs;
 }
@@ -305,13 +505,25 @@ static ExprValue parse_additive(ExprCursor& cursor) {
     const std::string op = cur(cursor).text;
     ++cursor.index;
     ExprValue rhs = parse_multiplicative(cursor);
-    if (lhs.type != ValueType::I32 || rhs.type != ValueType::I32 || rhs.value == nullptr) {
-      cursor.error = "operator '" + op + "' requires i32 operands";
+    if (!is_numeric_type(lhs.type) || !is_numeric_type(rhs.type) || rhs.value == nullptr) {
+      cursor.error = "operator '" + op + "' requires numeric operands";
       return {};
     }
-    lhs.value = (op == "+") ? cursor.builder->CreateAdd(lhs.value, rhs.value)
-                            : cursor.builder->CreateSub(lhs.value, rhs.value);
-    lhs.type = ValueType::I32;
+    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    if (use_float) {
+      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
+      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      if (lhs_f == nullptr || rhs_f == nullptr) {
+        cursor.error = "cannot convert operands to float for operator '" + op + "'";
+        return {};
+      }
+      lhs.value = (op == "+") ? cursor.builder->CreateFAdd(lhs_f, rhs_f) : cursor.builder->CreateFSub(lhs_f, rhs_f);
+      lhs.type = ValueType::F64;
+    } else {
+      lhs.value = (op == "+") ? cursor.builder->CreateAdd(lhs.value, rhs.value)
+                              : cursor.builder->CreateSub(lhs.value, rhs.value);
+      lhs.type = ValueType::I32;
+    }
   }
   return lhs;
 }
@@ -327,18 +539,37 @@ static ExprValue parse_comparison(ExprCursor& cursor) {
     const std::string op = cur(cursor).text;
     ++cursor.index;
     ExprValue rhs = parse_additive(cursor);
-    if (lhs.type != ValueType::I32 || rhs.type != ValueType::I32 || rhs.value == nullptr) {
-      cursor.error = "comparison operator '" + op + "' requires i32 operands";
+    if (!is_numeric_type(lhs.type) || !is_numeric_type(rhs.type) || rhs.value == nullptr) {
+      cursor.error = "comparison operator '" + op + "' requires numeric operands";
       return {};
     }
-    if (op == "<") {
-      lhs.value = cursor.builder->CreateICmpSLT(lhs.value, rhs.value);
-    } else if (op == "<=") {
-      lhs.value = cursor.builder->CreateICmpSLE(lhs.value, rhs.value);
-    } else if (op == ">") {
-      lhs.value = cursor.builder->CreateICmpSGT(lhs.value, rhs.value);
+    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    if (use_float) {
+      llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
+      llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+      if (lhs_f == nullptr || rhs_f == nullptr) {
+        cursor.error = "cannot convert operands to float for comparison";
+        return {};
+      }
+      if (op == "<") {
+        lhs.value = cursor.builder->CreateFCmpOLT(lhs_f, rhs_f);
+      } else if (op == "<=") {
+        lhs.value = cursor.builder->CreateFCmpOLE(lhs_f, rhs_f);
+      } else if (op == ">") {
+        lhs.value = cursor.builder->CreateFCmpOGT(lhs_f, rhs_f);
+      } else {
+        lhs.value = cursor.builder->CreateFCmpOGE(lhs_f, rhs_f);
+      }
     } else {
-      lhs.value = cursor.builder->CreateICmpSGE(lhs.value, rhs.value);
+      if (op == "<") {
+        lhs.value = cursor.builder->CreateICmpSLT(lhs.value, rhs.value);
+      } else if (op == "<=") {
+        lhs.value = cursor.builder->CreateICmpSLE(lhs.value, rhs.value);
+      } else if (op == ">") {
+        lhs.value = cursor.builder->CreateICmpSGT(lhs.value, rhs.value);
+      } else {
+        lhs.value = cursor.builder->CreateICmpSGE(lhs.value, rhs.value);
+      }
     }
     lhs.type = ValueType::I1;
   }
@@ -354,7 +585,28 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
     const std::string op = cur(cursor).text;
     ++cursor.index;
     ExprValue rhs = parse_comparison(cursor);
-    if (rhs.type != lhs.type || rhs.value == nullptr) {
+    if (rhs.value == nullptr) {
+      cursor.error = "equality operator '" + op + "' requires valid operands";
+      return {};
+    }
+    if (is_numeric_type(lhs.type) && is_numeric_type(rhs.type)) {
+      if (lhs.type == ValueType::I32 && rhs.type == ValueType::I32) {
+        lhs.value = (op == "==") ? cursor.builder->CreateICmpEQ(lhs.value, rhs.value)
+                                 : cursor.builder->CreateICmpNE(lhs.value, rhs.value);
+      } else {
+        llvm::Value* lhs_f = to_f64_value(lhs, *cursor.builder);
+        llvm::Value* rhs_f = to_f64_value(rhs, *cursor.builder);
+        if (lhs_f == nullptr || rhs_f == nullptr) {
+          cursor.error = "cannot convert operands for equality operator '" + op + "'";
+          return {};
+        }
+        lhs.value = (op == "==") ? cursor.builder->CreateFCmpOEQ(lhs_f, rhs_f)
+                                 : cursor.builder->CreateFCmpONE(lhs_f, rhs_f);
+      }
+      lhs.type = ValueType::I1;
+      continue;
+    }
+    if (rhs.type != lhs.type) {
       cursor.error = "equality operator '" + op + "' requires same-type operands";
       return {};
     }
@@ -368,6 +620,8 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
 static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuilder<>& builder,
                                      std::unordered_map<std::string, VariableSlot>& variables,
                                      const std::unordered_map<std::string, int>& enum_variant_tags,
+                                     const std::unordered_map<std::string, llvm::Function*>& functions,
+                                     const std::unordered_map<std::string, ValueType>& function_returns,
                                      support::DiagnosticSink& diag) {
   const std::string clean = trim(expr_text);
   if (clean.empty()) {
@@ -382,6 +636,8 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
   cursor.builder = &builder;
   cursor.variables = &variables;
   cursor.enum_variant_tags = &enum_variant_tags;
+  cursor.functions = &functions;
+  cursor.function_returns = &function_returns;
   if (!tok_error.empty()) {
     diag.error("E2007", "cannot tokenize backend expression '" + clean + "': " + tok_error);
     return {};
@@ -409,6 +665,9 @@ static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.type == ValueType::I1) {
     return builder.CreateZExt(value.value, builder.getInt32Ty());
   }
+  if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+    return builder.CreateFPToSI(value.value, builder.getInt32Ty());
+  }
   return nullptr;
 }
 
@@ -422,6 +681,82 @@ static llvm::Value* to_i1(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.type == ValueType::I32) {
     return builder.CreateICmpNE(value.value, builder.getInt32(0));
   }
+  if (value.type == ValueType::F32) {
+    return builder.CreateFCmpONE(value.value, llvm::ConstantFP::get(builder.getFloatTy(), 0.0));
+  }
+  if (value.type == ValueType::F64) {
+    return builder.CreateFCmpONE(value.value, llvm::ConstantFP::get(builder.getDoubleTy(), 0.0));
+  }
+  return nullptr;
+}
+
+static ValueType value_type_from_return_type(const std::string& type_name) {
+  if (type_name == "i32" || type_name.empty()) {
+    return ValueType::I32;
+  }
+  if (type_name == "f32") {
+    return ValueType::F32;
+  }
+  if (type_name == "f64") {
+    return ValueType::F64;
+  }
+  if (type_name == "bool") {
+    return ValueType::I1;
+  }
+  if (type_name == "void") {
+    return ValueType::Void;
+  }
+  return ValueType::I32;
+}
+
+static llvm::Type* llvm_type_from_value_type(ValueType type, llvm::IRBuilder<>& builder) {
+  if (type == ValueType::I32) {
+    return builder.getInt32Ty();
+  }
+  if (type == ValueType::F32) {
+    return builder.getFloatTy();
+  }
+  if (type == ValueType::F64) {
+    return builder.getDoubleTy();
+  }
+  if (type == ValueType::I1) {
+    return builder.getInt1Ty();
+  }
+  if (type == ValueType::Void) {
+    return builder.getVoidTy();
+  }
+  if (type == ValueType::I8Ptr) {
+    return llvm::PointerType::get(builder.getContext(), 0);
+  }
+  return builder.getInt32Ty();
+}
+
+static llvm::Value* cast_value_to_type(ExprValue value, ValueType target, llvm::IRBuilder<>& builder) {
+  if (target == ValueType::Void) {
+    return nullptr;
+  }
+  if (value.value == nullptr) {
+    return nullptr;
+  }
+  if (value.type == target) {
+    return value.value;
+  }
+  if (target == ValueType::I32) {
+    return to_i32(value, builder);
+  }
+  if (target == ValueType::I1) {
+    return to_i1(value, builder);
+  }
+  if (target == ValueType::F64) {
+    return to_f64_value(value, builder);
+  }
+  if (target == ValueType::F32) {
+    llvm::Value* as_f64 = to_f64_value(value, builder);
+    if (as_f64 == nullptr) {
+      return nullptr;
+    }
+    return builder.CreateFPTrunc(as_f64, builder.getFloatTy());
+  }
   return nullptr;
 }
 
@@ -432,6 +767,40 @@ static std::size_t find_block_end(const std::vector<lowering::CoreStmt>& stmts, 
     ++i;
   }
   return i;
+}
+
+static std::string parse_constructor_call_name(
+    const std::string& expr, const std::unordered_map<std::string, std::vector<std::string>>& struct_fields) {
+  std::string clean = trim(expr);
+  const std::size_t lparen = clean.find('(');
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen) {
+    return "";
+  }
+  if (trim(clean.substr(lparen + 1, rparen - lparen - 1)).empty() == false) {
+    return "";
+  }
+  const std::string name = trim(clean.substr(0, lparen));
+  if (struct_fields.find(name) == struct_fields.end()) {
+    return "";
+  }
+  return name;
+}
+
+static ValueType value_type_from_field_annotation(const std::string& type_name) {
+  if (type_name == "i32" || type_name.empty()) {
+    return ValueType::I32;
+  }
+  if (type_name == "f32") {
+    return ValueType::F32;
+  }
+  if (type_name == "f64") {
+    return ValueType::F64;
+  }
+  if (type_name == "bool") {
+    return ValueType::I1;
+  }
+  return ValueType::I32;
 }
 
 struct ForHeader {
@@ -525,16 +894,22 @@ static MatchArmLabel parse_match_arm_label(const std::string& line,
   return out;
 }
 
-static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, int parent_indent, llvm::Function* fn,
-                       llvm::Module* module, llvm::IRBuilder<>& builder,
-                       std::unordered_map<std::string, VariableSlot>& variables, support::DiagnosticSink& diag) {
+static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
+                       const std::unordered_map<std::string, int>& enum_variant_tags,
+                       const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                       const std::unordered_map<std::string, std::string>& struct_field_types,
+                       const std::unordered_map<std::string, llvm::Function*>& functions,
+                       const std::unordered_map<std::string, ValueType>& function_returns, ValueType expected_return_type,
+                       std::size_t& index, int parent_indent, llvm::Function* fn, llvm::Module* module,
+                       llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
+                       std::unordered_map<std::string, std::string>& struct_instances, support::DiagnosticSink& diag) {
   llvm::FunctionCallee printf_fn = module->getOrInsertFunction(
       "printf",
-      llvm::FunctionType::get(builder.getInt32Ty(), llvm::PointerType::getUnqual(builder.getInt8Ty()), true));
-  llvm::Value* printf_i32_fmt = builder.CreateGlobalStringPtr("%d\n");
-  llvm::Value* printf_str_fmt = builder.CreateGlobalStringPtr("%s\n");
+      llvm::FunctionType::get(builder.getInt32Ty(), builder.getPtrTy(), true));
+  llvm::Value* printf_i32_fmt = create_global_cstr_ptr(builder, "%d\n", "printf_i32_fmt");
+  llvm::Value* printf_f64_fmt = create_global_cstr_ptr(builder, "%f\n", "printf_f64_fmt");
+  llvm::Value* printf_str_fmt = create_global_cstr_ptr(builder, "%s\n", "printf_str_fmt");
 
-  const auto& stmts = core.main_statements;
   while (index < stmts.size() && stmts[index].indent > parent_indent) {
     const lowering::CoreStmt& st = stmts[index];
     if (st.kind == lowering::CoreStmtKind::Let) {
@@ -543,13 +918,47 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
         diag.error("E2010", "invalid let statement in backend: '" + st.text + "'");
         return false;
       }
-      ExprValue value = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
+      const std::string ctor = parse_constructor_call_name(st.expression, struct_fields);
+      if (!ctor.empty()) {
+        struct_instances[name] = ctor;
+        auto fields_it = struct_fields.find(ctor);
+        if (fields_it != struct_fields.end()) {
+          for (const std::string& field : fields_it->second) {
+            const std::string slot_name = name + "." + field;
+            ValueType field_type = ValueType::I32;
+            auto type_it = struct_field_types.find(ctor + "." + field);
+            if (type_it != struct_field_types.end()) {
+              field_type = value_type_from_field_annotation(type_it->second);
+            }
+            llvm::Type* llvm_ty = llvm_type_from_value_type(field_type, builder);
+            llvm::AllocaInst* slot = create_entry_alloca(fn, llvm_ty, slot_name);
+            variables[slot_name] = VariableSlot{slot, field_type};
+            if (field_type == ValueType::I1) {
+              builder.CreateStore(builder.getInt1(false), slot);
+            } else if (field_type == ValueType::F32) {
+              builder.CreateStore(llvm::ConstantFP::get(builder.getFloatTy(), 0.0), slot);
+            } else if (field_type == ValueType::F64) {
+              builder.CreateStore(llvm::ConstantFP::get(builder.getDoubleTy(), 0.0), slot);
+            } else {
+              builder.CreateStore(builder.getInt32(0), slot);
+            }
+          }
+        }
+        llvm::AllocaInst* marker = create_entry_alloca(fn, builder.getInt32Ty(), name);
+        variables[name] = VariableSlot{marker, ValueType::I32};
+        builder.CreateStore(builder.getInt32(0), marker);
+        ++index;
+        continue;
+      }
+
+      ExprValue value =
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
       if (value.value == nullptr || value.type == ValueType::Invalid) {
         return false;
       }
       auto it = variables.find(name);
       if (it == variables.end()) {
-        llvm::Type* type = (value.type == ValueType::I1) ? builder.getInt1Ty() : builder.getInt32Ty();
+        llvm::Type* type = llvm_type_from_value_type(value.type, builder);
         llvm::AllocaInst* alloca = create_entry_alloca(fn, type, name);
         variables[name] = VariableSlot{alloca, value.type};
         it = variables.find(name);
@@ -563,13 +972,44 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
       continue;
     }
 
+    if (st.kind == lowering::CoreStmtKind::Assign) {
+      const std::string target = trim(st.target.empty() ? st.text : st.target);
+      if (target.empty() || !st.has_expression) {
+        diag.error("E2022", "invalid assignment statement in backend: '" + st.text + "'");
+        return false;
+      }
+      auto it = variables.find(target);
+      if (it == variables.end()) {
+        diag.error("E2023", "assignment target is not declared: '" + target + "'");
+        return false;
+      }
+      ExprValue value =
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
+      llvm::Value* casted = cast_value_to_type(value, it->second.type, builder);
+      if (casted == nullptr) {
+        diag.error("E2024", "assignment type mismatch for '" + target + "'");
+        return false;
+      }
+      builder.CreateStore(casted, it->second.alloca);
+      ++index;
+      continue;
+    }
+
     if (st.kind == lowering::CoreStmtKind::Expr) {
       const std::string line = trim(st.text);
       if (starts_with(line, "print(") && ends_with(line, ")")) {
         std::string inner = st.has_expression ? st.expression : trim(line.substr(6, line.size() - 7));
-        ExprValue value = evaluate_expression(inner, builder, variables, core.enum_variant_tags, diag);
+        ExprValue value =
+            evaluate_expression(inner, builder, variables, enum_variant_tags, functions, function_returns, diag);
         if (value.type == ValueType::I8Ptr) {
           builder.CreateCall(printf_fn, {printf_str_fmt, value.value});
+        } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+          llvm::Value* as_f64 = to_f64_value(value, builder);
+          if (as_f64 == nullptr) {
+            diag.error("E2012", "print() failed float conversion");
+            return false;
+          }
+          builder.CreateCall(printf_fn, {printf_f64_fmt, as_f64});
         } else {
           llvm::Value* as_i32 = to_i32(value, builder);
           if (as_i32 == nullptr) {
@@ -579,7 +1019,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
           builder.CreateCall(printf_fn, {printf_i32_fmt, as_i32});
         }
       } else if (st.has_expression) {
-        ExprValue value = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
+        ExprValue value =
+            evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
         if (value.value == nullptr) {
           return false;
         }
@@ -589,16 +1030,31 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
     }
 
     if (st.kind == lowering::CoreStmtKind::Return) {
-      llvm::Value* ret = builder.getInt32(0);
+      llvm::Value* ret = nullptr;
       if (st.has_expression) {
-        ExprValue value = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
-        ret = to_i32(value, builder);
-        if (ret == nullptr) {
-          diag.error("E2013", "return expects i32/bool-compatible expression");
+        ExprValue value =
+            evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
+        ret = cast_value_to_type(value, expected_return_type, builder);
+        if (ret == nullptr && expected_return_type != ValueType::Void) {
+          diag.error("E2013", "return type mismatch");
           return false;
         }
+      } else if (expected_return_type != ValueType::Void) {
+        if (expected_return_type == ValueType::I1) {
+          ret = builder.getInt1(false);
+        } else if (expected_return_type == ValueType::F32) {
+          ret = llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
+        } else if (expected_return_type == ValueType::F64) {
+          ret = llvm::ConstantFP::get(builder.getDoubleTy(), 0.0);
+        } else {
+          ret = builder.getInt32(0);
+        }
       }
-      builder.CreateRet(ret);
+      if (expected_return_type == ValueType::Void) {
+        builder.CreateRetVoid();
+      } else {
+        builder.CreateRet(ret);
+      }
       index = find_block_end(stmts, index + 1, parent_indent);
       return true;
     }
@@ -613,7 +1069,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
       const bool has_else =
           then_end < stmts.size() && stmts[then_end].kind == lowering::CoreStmtKind::Else && stmts[then_end].indent == st.indent;
 
-      ExprValue cond_value = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
+      ExprValue cond_value =
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2015", "if condition must be bool/i32-compatible");
@@ -627,7 +1084,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
 
       builder.SetInsertPoint(then_bb);
       index = then_start;
-      if (!emit_block(core, index, st.indent, fn, module, builder, variables, diag)) {
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+                      expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances, diag)) {
         return false;
       }
       if (!builder.GetInsertBlock()->getTerminator()) {
@@ -637,7 +1095,9 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
       if (has_else) {
         builder.SetInsertPoint(else_bb);
         index = then_end + 1;
-        if (!emit_block(core, index, st.indent, fn, module, builder, variables, diag)) {
+        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+                        expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
+                        diag)) {
           return false;
         }
         if (!builder.GetInsertBlock()->getTerminator()) {
@@ -662,7 +1122,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
       builder.CreateBr(cond_bb);
 
       builder.SetInsertPoint(cond_bb);
-      ExprValue cond_value = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
+      ExprValue cond_value =
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2017", "while condition must be bool/i32-compatible");
@@ -672,7 +1133,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
 
       builder.SetInsertPoint(body_bb);
       ++index;
-      if (!emit_block(core, index, st.indent, fn, module, builder, variables, diag)) {
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+                      expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances, diag)) {
         return false;
       }
       if (!builder.GetInsertBlock()->getTerminator()) {
@@ -693,8 +1155,9 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
         return false;
       }
       ExprValue start_value =
-          evaluate_expression(header.start_expr, builder, variables, core.enum_variant_tags, diag);
-      ExprValue end_value = evaluate_expression(header.end_expr, builder, variables, core.enum_variant_tags, diag);
+          evaluate_expression(header.start_expr, builder, variables, enum_variant_tags, functions, function_returns, diag);
+      ExprValue end_value =
+          evaluate_expression(header.end_expr, builder, variables, enum_variant_tags, functions, function_returns, diag);
       llvm::Value* start_i32 = to_i32(start_value, builder);
       llvm::Value* end_i32 = to_i32(end_value, builder);
       if (start_i32 == nullptr || end_i32 == nullptr) {
@@ -726,7 +1189,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
 
       builder.SetInsertPoint(body_bb);
       ++index;
-      if (!emit_block(core, index, st.indent, fn, module, builder, variables, diag)) {
+      if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+                      expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances, diag)) {
         return false;
       }
       if (!builder.GetInsertBlock()->getTerminator()) {
@@ -753,7 +1217,8 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
         diag.error("E2018", "match statement missing expression");
         return false;
       }
-      ExprValue match_expr = evaluate_expression(st.expression, builder, variables, core.enum_variant_tags, diag);
+      ExprValue match_expr =
+          evaluate_expression(st.expression, builder, variables, enum_variant_tags, functions, function_returns, diag);
       llvm::Value* match_i32 = to_i32(match_expr, builder);
       if (match_i32 == nullptr) {
         diag.error("E2018", "match expression must be i32/bool-compatible");
@@ -776,7 +1241,7 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
         if (arm_label_stmt.indent <= st.indent) {
           break;
         }
-        const MatchArmLabel label = parse_match_arm_label(arm_label_stmt.text, core.enum_variant_tags);
+        const MatchArmLabel label = parse_match_arm_label(arm_label_stmt.text, enum_variant_tags);
         if (!label.valid) {
           diag.error("E2018", "invalid match arm label: '" + arm_label_stmt.text + "'");
           return false;
@@ -801,7 +1266,9 @@ static bool emit_block(const lowering::CoreProgram& core, std::size_t& index, in
 
         builder.SetInsertPoint(arm_bb);
         std::size_t nested_index = arm_body_start;
-        if (!emit_block(core, nested_index, arm_label_stmt.indent, fn, module, builder, variables, diag)) {
+        if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, functions, function_returns,
+                        expected_return_type, nested_index, arm_label_stmt.indent, fn, module, builder, variables,
+                        struct_instances, diag)) {
           return false;
         }
         if (!builder.GetInsertBlock()->getTerminator()) {
@@ -840,37 +1307,100 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
   auto module = std::make_unique<llvm::Module>(module_name, context);
   llvm::IRBuilder<> builder(context);
 
-  auto* fn_type = llvm::FunctionType::get(builder.getInt32Ty(), false);
-  auto* fn = llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, "main", module.get());
-  auto* entry = llvm::BasicBlock::Create(context, "entry", fn);
-  builder.SetInsertPoint(entry);
-  std::unordered_map<std::string, VariableSlot> variables;
+  std::vector<lowering::CoreFunction> functions = core.functions;
+  if (functions.empty()) {
+    lowering::CoreFunction legacy_main;
+    legacy_main.name = "main";
+    legacy_main.return_type = "i32";
+    legacy_main.return_literal = core.main_return_literal;
+    legacy_main.return_expression = core.main_return_expression;
+    legacy_main.statements = core.main_statements;
+    functions.push_back(std::move(legacy_main));
+  }
 
-  if (!core.main_statements.empty()) {
-    std::size_t index = 0;
-    if (!emit_block(core, index, -1, fn, module.get(), builder, variables, diag)) {
+  std::unordered_map<std::string, llvm::Function*> llvm_functions;
+  std::unordered_map<std::string, ValueType> function_returns;
+  for (const auto& fn_def : functions) {
+    ValueType return_type = value_type_from_return_type(fn_def.return_type);
+    if (fn_def.name == "main") {
+      return_type = ValueType::I32;
+    }
+    std::vector<llvm::Type*> params;
+    params.reserve(fn_def.params.size());
+    for (std::size_t i = 0; i < fn_def.params.size(); ++i) {
+      params.push_back(builder.getInt32Ty());
+    }
+    llvm::FunctionType* fn_type =
+        llvm::FunctionType::get(llvm_type_from_value_type(return_type, builder), params, false);
+    llvm::Function* fn =
+        llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, fn_def.name, module.get());
+    llvm_functions[fn_def.name] = fn;
+    function_returns[fn_def.name] = return_type;
+  }
+
+  for (const auto& fn_def : functions) {
+    llvm::Function* fn = llvm_functions[fn_def.name];
+    if (fn == nullptr) {
+      diag.error("E2025", "internal backend error: missing llvm function '" + fn_def.name + "'");
       return nullptr;
     }
-    if (!builder.GetInsertBlock()->getTerminator()) {
-      llvm::Value* fallback = builder.getInt32(core.main_return_literal);
-      if (!trim(core.main_return_expression).empty()) {
-        ExprValue value =
-            evaluate_expression(core.main_return_expression, builder, variables, core.enum_variant_tags, diag);
-        llvm::Value* as_i32 = to_i32(value, builder);
-        if (as_i32 != nullptr) {
-          fallback = as_i32;
-        }
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, fn_def.name + ".entry", fn);
+    builder.SetInsertPoint(entry);
+    std::unordered_map<std::string, VariableSlot> variables;
+    std::unordered_map<std::string, std::string> struct_instances;
+
+    std::size_t param_index = 0;
+    for (llvm::Argument& arg : fn->args()) {
+      if (param_index >= fn_def.params.size()) {
+        break;
       }
-      builder.CreateRet(fallback);
+      const std::string& param_name = fn_def.params[param_index];
+      llvm::AllocaInst* alloca = create_entry_alloca(fn, builder.getInt32Ty(), param_name);
+      builder.CreateStore(&arg, alloca);
+      variables[param_name] = VariableSlot{alloca, ValueType::I32};
+      ++param_index;
     }
-  } else {
-    ExprValue value =
-        evaluate_expression(core.main_return_expression, builder, variables, core.enum_variant_tags, diag);
-    llvm::Value* ret_value = to_i32(value, builder);
-    if (ret_value == nullptr) {
-      ret_value = builder.getInt32(core.main_return_literal);
+
+    std::size_t index = 0;
+    if (!emit_block(fn_def.statements, core.enum_variant_tags, core.struct_fields, core.struct_field_types,
+                    llvm_functions, function_returns, function_returns[fn_def.name], index, -1, fn, module.get(),
+                    builder, variables, struct_instances, diag)) {
+      return nullptr;
     }
-    builder.CreateRet(ret_value);
+
+    if (!builder.GetInsertBlock()->getTerminator()) {
+      const ValueType expected = function_returns[fn_def.name];
+      if (expected == ValueType::Void) {
+        builder.CreateRetVoid();
+      } else {
+        llvm::Value* fallback = nullptr;
+        if (!trim(fn_def.return_expression).empty()) {
+          ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
+                                                llvm_functions, function_returns, diag);
+          fallback = cast_value_to_type(value, expected, builder);
+        }
+        if (fallback == nullptr) {
+          if (expected == ValueType::I1) {
+            fallback = builder.getInt1(false);
+          } else if (expected == ValueType::F32) {
+            fallback = llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
+          } else if (expected == ValueType::F64) {
+            fallback = llvm::ConstantFP::get(builder.getDoubleTy(), 0.0);
+          } else {
+            fallback = builder.getInt32(fn_def.return_literal);
+          }
+        }
+        builder.CreateRet(fallback);
+      }
+    }
+  }
+
+  if (llvm_functions.find("main") == llvm_functions.end()) {
+    llvm::FunctionType* fn_type = llvm::FunctionType::get(builder.getInt32Ty(), false);
+    llvm::Function* fn = llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, "main", module.get());
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "main.entry", fn);
+    builder.SetInsertPoint(entry);
+    builder.CreateRet(builder.getInt32(core.main_return_literal));
   }
 
   return module;

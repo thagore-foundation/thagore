@@ -9,6 +9,7 @@ namespace thagc::syntax {
 enum class StatementKind {
   Return,
   Let,
+  Assign,
   If,
   Else,
   While,
@@ -20,6 +21,7 @@ enum class StatementKind {
 struct AstStatement {
   StatementKind kind = StatementKind::Expr;
   std::string text;
+  std::string target;
   int line = 0;
   int indent = 0;
   bool has_expression = false;
@@ -30,6 +32,7 @@ struct AstStatement {
 
 struct AstFunction {
   std::string name;
+  std::vector<std::string> params;
   std::string return_type;
   int header_line = 0;
   int header_indent = 0;
@@ -43,6 +46,8 @@ struct AstProgram {
   std::vector<std::string> imports;
   std::vector<std::string> extern_decls;
   std::vector<std::string> structs;
+  std::unordered_map<std::string, std::vector<std::string>> struct_fields;
+  std::unordered_map<std::string, std::string> struct_field_types;
   std::vector<std::string> impls;
   std::vector<std::string> enums;
   std::vector<std::string> type_aliases;

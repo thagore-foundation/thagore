@@ -19,6 +19,7 @@ enum class ExprTokenKind {
   Operator,
   LParen,
   RParen,
+  Comma,
   End,
 };
 
@@ -105,6 +106,39 @@ static std::string function_name_from_header(const std::string& line) {
   return line.substr(start, end - start);
 }
 
+static std::vector<std::string> function_params_from_header(const std::string& line) {
+  std::vector<std::string> out;
+  const std::size_t func_pos = line.find("func ");
+  if (func_pos == std::string::npos) {
+    return out;
+  }
+  const std::size_t lparen = line.find('(', func_pos + 5);
+  const std::size_t rparen = line.find(')', lparen == std::string::npos ? 0 : lparen + 1);
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen < lparen) {
+    return out;
+  }
+  const std::string param_block = line.substr(lparen + 1, rparen - lparen - 1);
+  std::size_t i = 0;
+  while (i < param_block.size()) {
+    std::size_t comma = param_block.find(',', i);
+    if (comma == std::string::npos) {
+      comma = param_block.size();
+    }
+    std::string part = trim(param_block.substr(i, comma - i));
+    if (!part.empty()) {
+      const std::size_t colon = part.find(':');
+      if (colon != std::string::npos) {
+        part = trim(part.substr(0, colon));
+      }
+      if (!part.empty()) {
+        out.push_back(part);
+      }
+    }
+    i = comma + 1;
+  }
+  return out;
+}
+
 static std::string method_name_from_line(const std::string& line) {
   std::string clean = trim(line);
   if (starts_with(clean, "pub ")) {
@@ -163,6 +197,59 @@ static std::string enum_variant_name_from_line(const std::string& line) {
   return clean.substr(0, end);
 }
 
+static std::string struct_name_from_header(const std::string& line) {
+  if (!starts_with(line, "struct ") || !ends_with(line, ":")) {
+    return "";
+  }
+  const std::string body = trim(line.substr(7, line.size() - 8));
+  if (body.empty()) {
+    return "";
+  }
+  std::size_t end = 0;
+  while (end < body.size() && (std::isalnum(static_cast<unsigned char>(body[end])) || body[end] == '_')) {
+    ++end;
+  }
+  if (end == 0) {
+    return "";
+  }
+  return body.substr(0, end);
+}
+
+static std::string struct_field_name_from_line(const std::string& line) {
+  auto is_ident_start = [](char ch) {
+    return std::isalpha(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  auto is_ident_body_local = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  std::string clean = trim(line);
+  if (clean.empty()) {
+    return "";
+  }
+  const std::size_t colon = clean.find(':');
+  if (colon != std::string::npos) {
+    clean = trim(clean.substr(0, colon));
+  }
+  if (clean.empty() || !is_ident_start(clean[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < clean.size(); ++i) {
+    if (!is_ident_body_local(clean[i])) {
+      return "";
+    }
+  }
+  return clean;
+}
+
+static std::string struct_field_type_from_line(const std::string& line) {
+  const std::size_t colon = line.find(':');
+  if (colon == std::string::npos) {
+    return "i32";
+  }
+  const std::string ty = trim(line.substr(colon + 1));
+  return ty.empty() ? "i32" : ty;
+}
+
 static void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
 }
@@ -190,6 +277,78 @@ static bool valid_for_header(const std::string& line) {
   const std::string head = trim(line.substr(0, line.size() - 1));
   const std::size_t in_pos = head.find(" in ");
   return in_pos != std::string::npos && in_pos > 4 && in_pos + 4 < head.size();
+}
+
+static std::string let_binding_name_from_line(const std::string& line) {
+  if (!starts_with(line, "let ")) {
+    return "";
+  }
+  auto is_ident_start = [](char ch) {
+    return std::isalpha(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  auto is_ident_body_local = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  std::size_t i = 4;
+  while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
+    ++i;
+  }
+  if (i >= line.size() || !is_ident_start(line[i])) {
+    return "";
+  }
+  const std::size_t start = i;
+  while (i < line.size() && is_ident_body_local(line[i])) {
+    ++i;
+  }
+  return line.substr(start, i - start);
+}
+
+static bool is_simple_assignable_target(const std::string& text) {
+  auto is_ident_start = [](char ch) {
+    return std::isalpha(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  auto is_ident_body_local = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  if (text.empty() || !is_ident_start(text[0])) {
+    return false;
+  }
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char ch = text[i];
+    if (ch == '.') {
+      if (i == 0 || i + 1 >= text.size() || !is_ident_start(text[i + 1])) {
+        return false;
+      }
+      continue;
+    }
+    if (!is_ident_body_local(ch)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool is_assignment_line(const std::string& line) {
+  if (starts_with(line, "let ") || starts_with(line, "if ") || starts_with(line, "while ") ||
+      starts_with(line, "for ") || starts_with(line, "match ") || starts_with(line, "return ") ||
+      trim(line) == "return") {
+    return false;
+  }
+  const std::size_t eq = line.find('=');
+  if (eq == std::string::npos) {
+    return false;
+  }
+  if (eq + 1 < line.size() && line[eq + 1] == '=') {
+    return false;
+  }
+  if (eq > 0) {
+    const char prev = line[eq - 1];
+    if (prev == '=' || prev == '!' || prev == '<' || prev == '>') {
+      return false;
+    }
+  }
+  const std::string lhs = trim(line.substr(0, eq));
+  return is_simple_assignable_target(lhs);
 }
 
 static void collect_feature_counters(const std::string& line, AstProgram& program) {
@@ -291,6 +450,11 @@ static std::vector<ExprToken> tokenize_expression(const std::string& text, std::
       ++i;
       continue;
     }
+    if (ch == ',') {
+      out.push_back(ExprToken{ExprTokenKind::Comma, ","});
+      ++i;
+      continue;
+    }
     if (ch == '"') {
       std::size_t start = i++;
       while (i < text.size() && text[i] != '"') {
@@ -330,8 +494,16 @@ static std::vector<ExprToken> tokenize_expression(const std::string& text, std::
     }
     if (is_identifier_start(ch)) {
       std::size_t start = i;
-      while (i < text.size() && is_identifier_body(text[i])) {
-        ++i;
+      while (i < text.size()) {
+        if (is_identifier_body(text[i])) {
+          ++i;
+          continue;
+        }
+        if (text[i] == '.' && i + 1 < text.size() && is_identifier_start(text[i + 1])) {
+          ++i;
+          continue;
+        }
+        break;
       }
       out.push_back(ExprToken{ExprTokenKind::Atom, text.substr(start, i - start)});
       continue;
@@ -365,7 +537,41 @@ static std::string parse_primary(ExprCursor& cursor) {
   }
   if (tok.kind == ExprTokenKind::Atom) {
     ++cursor.index;
-    return tok.text;
+    std::string atom = tok.text;
+    if (current_token(cursor).kind != ExprTokenKind::LParen) {
+      return atom;
+    }
+
+    ++cursor.index;  // '('
+    std::vector<std::string> args;
+    if (current_token(cursor).kind != ExprTokenKind::RParen) {
+      while (true) {
+        const std::string arg = parse_expression_equality(cursor);
+        if (!cursor.error.empty()) {
+          return "";
+        }
+        args.push_back(arg);
+        if (current_token(cursor).kind == ExprTokenKind::Comma) {
+          ++cursor.index;
+          continue;
+        }
+        break;
+      }
+    }
+    if (current_token(cursor).kind != ExprTokenKind::RParen) {
+      cursor.error = "missing closing ')' in call expression";
+      return "";
+    }
+    ++cursor.index;
+    std::string out = atom + "(";
+    for (std::size_t i = 0; i < args.size(); ++i) {
+      if (i > 0) {
+        out += ", ";
+      }
+      out += args[i];
+    }
+    out += ")";
+    return out;
   }
   if (tok.kind == ExprTokenKind::LParen) {
     ++cursor.index;
@@ -508,6 +714,22 @@ static std::string expression_from_let(const std::string& line) {
   return trim(line.substr(equal + 1));
 }
 
+static std::string expression_from_assign(const std::string& line) {
+  const std::size_t equal = line.find('=');
+  if (equal == std::string::npos) {
+    return "";
+  }
+  return trim(line.substr(equal + 1));
+}
+
+static std::string assignment_target_from_line(const std::string& line) {
+  const std::size_t equal = line.find('=');
+  if (equal == std::string::npos) {
+    return "";
+  }
+  return trim(line.substr(0, equal));
+}
+
 static std::string expression_from_return(const std::string& line) {
   if (trim(line) == "return") {
     return "";
@@ -549,11 +771,22 @@ static std::string expression_from_for(const std::string& line) {
 static void parse_statement_expression(AstProgram& program, AstStatement& st) {
   std::string expr_text;
   if (st.kind == StatementKind::Let) {
+    st.target = let_binding_name_from_line(st.text);
     expr_text = expression_from_let(st.text);
     if (expr_text.empty()) {
       st.has_expression = true;
       st.expression_valid = false;
       st.expression_error = "let statement requires assignment expression";
+      add_parse_error(program, st.line, st.expression_error);
+      return;
+    }
+  } else if (st.kind == StatementKind::Assign) {
+    st.target = assignment_target_from_line(st.text);
+    expr_text = expression_from_assign(st.text);
+    if (st.target.empty() || !is_simple_assignable_target(st.target) || expr_text.empty()) {
+      st.has_expression = true;
+      st.expression_valid = false;
+      st.expression_error = "assignment statement requires '<target> = <expr>'";
       add_parse_error(program, st.line, st.expression_error);
       return;
     }
@@ -649,6 +882,8 @@ static AstStatement build_statement_from_line(AstProgram& program, const SourceL
     st.kind = StatementKind::Return;
   } else if (starts_with(body.clean, "let ")) {
     st.kind = StatementKind::Let;
+  } else if (is_assignment_line(body.clean)) {
+    st.kind = StatementKind::Assign;
   } else {
     st.kind = StatementKind::Expr;
   }
@@ -717,6 +952,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
     if (starts_with(effective_line, "func ")) {
       AstFunction fn;
       fn.name = function_name_from_header(effective_line);
+      fn.params = function_params_from_header(effective_line);
       fn.header_line = line.number;
       fn.header_indent = line.indent;
 
@@ -725,6 +961,11 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       if (fn.name.empty()) {
         add_parse_error(program, line.number, "invalid function header");
+      }
+      for (const std::string& param : fn.params) {
+        if (param.empty() || !is_simple_assignable_target(param) || param.find('.') != std::string::npos) {
+          add_parse_error(program, line.number, "invalid function parameter '" + param + "'");
+        }
       }
       fn.return_type = function_return_type_from_header(effective_line);
       if (effective_line.find("->") != std::string::npos && fn.return_type.empty()) {
@@ -769,9 +1010,24 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
         add_parse_error(program, line.number, "struct header must be colon-terminated");
       }
       program.structs.push_back(effective_line);
+      const std::string struct_name = struct_name_from_header(effective_line);
+      if (struct_name.empty()) {
+        add_parse_error(program, line.number, "invalid struct header");
+      }
       ++i;
       while (i < lines.size() && lines[i].indent > line.indent) {
         collect_feature_counters(lines[i].clean, program);
+        if (!struct_name.empty()) {
+          const std::string field_name = struct_field_name_from_line(lines[i].clean);
+          if (field_name.empty()) {
+            add_parse_error(program, lines[i].number,
+                            "invalid struct field declaration: '" + lines[i].clean + "'");
+          } else {
+            program.struct_fields[struct_name].push_back(field_name);
+            program.struct_field_types[struct_name + "." + field_name] =
+                struct_field_type_from_line(lines[i].clean);
+          }
+        }
         ++i;
       }
       continue;

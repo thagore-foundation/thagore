@@ -65,6 +65,12 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "extern") {
     return TokenKind::KeywordExtern;
   }
+  if (text == "flow") {
+    return TokenKind::KeywordFlow;
+  }
+  if (text == "intent") {
+    return TokenKind::KeywordIntent;
+  }
   return TokenKind::Identifier;
 }
 
