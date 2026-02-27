@@ -1,0 +1,7 @@
+# String helper stubs for compiler parity lane.
+
+func len():
+  return 0
+
+func is_empty():
+  return 1

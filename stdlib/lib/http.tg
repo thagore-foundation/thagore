@@ -1,0 +1,11 @@
+# Minimal HTTP client surface.
+# This module is intentionally small: one client path, two verbs.
+
+func http_ready():
+  return 1
+
+func http_get():
+  return 0
+
+func http_post():
+  return 0

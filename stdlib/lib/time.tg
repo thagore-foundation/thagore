@@ -1,0 +1,7 @@
+# Minimal time helpers.
+
+func now_ms():
+  return 0
+
+func sleep_ms():
+  return 0

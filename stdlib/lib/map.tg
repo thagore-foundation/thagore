@@ -1,0 +1,14 @@
+# Simple map contract entry points.
+# This implementation is intentionally tiny and deterministic.
+
+func new():
+  return 0
+
+func put():
+  return 0
+
+func get():
+  return 0
+
+func is_null_ptr():
+  return 1

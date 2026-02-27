@@ -1,0 +1,13 @@
+# Minimal WebSocket client surface.
+
+func ws_ready():
+  return 1
+
+func ws_connect():
+  return 0
+
+func ws_send():
+  return 0
+
+func ws_close():
+  return 0

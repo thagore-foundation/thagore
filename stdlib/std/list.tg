@@ -1,0 +1,7 @@
+# List helper stubs for compiler parity lane.
+
+func size():
+  return 0
+
+func empty():
+  return 1

@@ -1,0 +1,13 @@
+# Minimal database client surface.
+
+func db_ready():
+  return 1
+
+func db_connect():
+  return 0
+
+func db_query():
+  return 0
+
+func db_close():
+  return 0

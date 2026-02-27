@@ -1,0 +1,7 @@
+# Core std helpers.
+
+func ok():
+  return 1
+
+func fail():
+  return 0

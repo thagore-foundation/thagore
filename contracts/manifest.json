@@ -17,6 +17,12 @@
     "update",
     "flow"
   ],
+  "v15_contracts": {
+    "concurrency": "contracts/concurrency/structured_concurrency.yaml",
+    "memory": "contracts/memory/model.yaml",
+    "io": "contracts/io/client_surface.yaml",
+    "deploy": "contracts/deploy/story.yaml"
+  },
   "release_gate": {
     "platforms": [
       "linux",
@@ -28,4 +34,3 @@
     "soak": true
   }
 }
-
