@@ -1,8 +1,11 @@
 #if !defined(_WIN32)
 
 #include <cerrno>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include <fcntl.h>
@@ -17,6 +20,21 @@
 #include <sys/event.h>
 #include <sys/time.h>
 #include <unistd.h>
+#endif
+
+#if defined(__APPLE__)
+namespace {
+
+constexpr int kSyntheticTimerBase = 1 << 20;
+std::atomic<int> g_next_timer_id{kSyntheticTimerBase};
+std::mutex g_timer_mutex;
+std::unordered_map<int, uint64_t> g_timer_delays_ms;
+
+bool is_synthetic_timer(int fd) {
+  return fd >= kSyntheticTimerBase;
+}
+
+}  // namespace
 #endif
 
 extern "C" {
@@ -52,6 +70,20 @@ int thag_platform_event_add_read(int loop_fd, int fd, uint64_t user_data) {
   ev.data.u64 = user_data;
   return ::epoll_ctl(loop_fd, EPOLL_CTL_ADD, fd, &ev) == 0 ? 1 : 0;
 #elif defined(__APPLE__)
+  if (is_synthetic_timer(fd)) {
+    uint64_t delay_ms = 1;
+    {
+      std::lock_guard<std::mutex> lock(g_timer_mutex);
+      auto it = g_timer_delays_ms.find(fd);
+      if (it != g_timer_delays_ms.end()) {
+        delay_ms = it->second == 0 ? 1 : it->second;
+      }
+    }
+    struct kevent kev{};
+    EV_SET(&kev, static_cast<uintptr_t>(fd), EVFILT_TIMER, EV_ADD | EV_ENABLE | EV_ONESHOT, NOTE_MSECONDS,
+           static_cast<intptr_t>(delay_ms), reinterpret_cast<void*>(static_cast<uintptr_t>(user_data)));
+    return ::kevent(loop_fd, &kev, 1, nullptr, 0, nullptr) == 0 ? 1 : 0;
+  }
   struct kevent kev{};
   EV_SET(&kev, static_cast<uintptr_t>(fd), EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0,
          reinterpret_cast<void*>(static_cast<uintptr_t>(user_data)));
@@ -70,7 +102,8 @@ int thag_platform_event_del(int loop_fd, int fd) {
   return ::epoll_ctl(loop_fd, EPOLL_CTL_DEL, fd, nullptr) == 0 ? 1 : 0;
 #elif defined(__APPLE__)
   struct kevent kev{};
-  EV_SET(&kev, static_cast<uintptr_t>(fd), EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+  const int16_t filter = is_synthetic_timer(fd) ? EVFILT_TIMER : EVFILT_READ;
+  EV_SET(&kev, static_cast<uintptr_t>(fd), filter, EV_DELETE, 0, 0, nullptr);
   return ::kevent(loop_fd, &kev, 1, nullptr, 0, nullptr) == 0 ? 1 : 0;
 #else
   return 0;
@@ -117,6 +150,14 @@ int thag_platform_event_wait(int loop_fd, int timeout_ms, uint64_t* out_user_dat
 int thag_platform_timer_create(void) {
 #if defined(__linux__)
   return ::timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+#elif defined(__APPLE__)
+  // TODO(v0.8-audit): verify EVFILT_TIMER latency on dedicated macOS CI lane.
+  const int timer_id = g_next_timer_id.fetch_add(1);
+  {
+    std::lock_guard<std::mutex> lock(g_timer_mutex);
+    g_timer_delays_ms[timer_id] = 1;
+  }
+  return timer_id;
 #else
   return -1;
 #endif
@@ -131,6 +172,13 @@ int thag_platform_timer_arm(int timer_fd, uint64_t delay_ms) {
   spec.it_value.tv_sec = static_cast<time_t>(delay_ms / 1000);
   spec.it_value.tv_nsec = static_cast<long>((delay_ms % 1000) * 1000000);
   return ::timerfd_settime(timer_fd, 0, &spec, nullptr) == 0 ? 1 : 0;
+#elif defined(__APPLE__)
+  if (!is_synthetic_timer(timer_fd)) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(g_timer_mutex);
+  g_timer_delays_ms[timer_fd] = delay_ms == 0 ? 1 : delay_ms;
+  return 1;
 #else
   (void)delay_ms;
   return 0;
@@ -160,6 +208,13 @@ int thag_platform_fd_close(int fd) {
     return 0;
   }
 #if defined(__linux__) || defined(__APPLE__)
+  #if defined(__APPLE__)
+  if (is_synthetic_timer(fd)) {
+    std::lock_guard<std::mutex> lock(g_timer_mutex);
+    g_timer_delays_ms.erase(fd);
+    return 1;
+  }
+  #endif
   return ::close(fd) == 0 ? 1 : 0;
 #else
   return 0;

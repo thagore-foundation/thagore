@@ -72,9 +72,14 @@ else()
     BitWriter
     AsmPrinter
     ScalarOpts
+    coroutines
     CodeGen
     native
     nativecodegen
   )
   target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
+endif()
+
+if(THAG_RUNTIME_USES_OPENSSL)
+  target_compile_definitions(thagc PRIVATE THAG_RUNTIME_HAS_OPENSSL=1)
 endif()

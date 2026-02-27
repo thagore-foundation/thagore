@@ -17,16 +17,22 @@ add_library(thag_runtime STATIC
 target_include_directories(thag_runtime PUBLIC include)
 target_compile_features(thag_runtime PUBLIC cxx_std_20)
 
+option(THAG_RUNTIME_USE_SYSTEM_OPENSSL "Enable OpenSSL-backed HTTPS support in runtime HTTP client" OFF)
+
 if(NOT WIN32)
   find_package(Threads REQUIRED)
   target_link_libraries(thag_runtime PUBLIC Threads::Threads)
 endif()
 
 # Optional system OpenSSL for HTTPS support in self-implemented HTTP client.
-find_package(OpenSSL QUIET)
-if(OpenSSL_FOUND)
-  target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_OPENSSL=1)
-  target_link_libraries(thag_runtime PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+set(THAG_RUNTIME_USES_OPENSSL OFF PARENT_SCOPE)
+if(THAG_RUNTIME_USE_SYSTEM_OPENSSL)
+  find_package(OpenSSL QUIET)
+  if(OpenSSL_FOUND)
+    set(THAG_RUNTIME_USES_OPENSSL ON PARENT_SCOPE)
+    target_compile_definitions(thag_runtime PUBLIC THAG_RUNTIME_HAS_OPENSSL=1)
+    target_link_libraries(thag_runtime PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  endif()
 endif()
 
 # SQLite is allowed as self-contained dependency (amalgamation) or system library.

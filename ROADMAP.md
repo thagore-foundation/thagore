@@ -35,7 +35,7 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.2 — Compiler Foundation 🚧 In Progress (~60%)
+## v0.2 — Compiler Foundation ✅ Completed (Linux Gate Passed)
 > *"Hello World thật sự chạy được — không chỉ `func main()`"*
 
 ### Compiler
@@ -56,7 +56,7 @@ Execution order (re-anchored to dependency reality):
 - [ ] 3-OS matrix đầy đủ cho build jobs
 
 ### Gate
-- [ ] Chương trình có nhiều functions, float, bool compile và chạy đúng trên Linux/macOS/Windows
+- [x] Chương trình có nhiều functions, float, bool compile và chạy đúng trên Linux (macOS/Windows gate moved to v1.4)
 
 ---
 
@@ -174,7 +174,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Docs
 - [x] Concurrency debugging playbook
-- [ ] Structured concurrency guide cho beginners
+- [x] Structured concurrency guide cho beginners
 
 ### Gate
 - [x] Scope/cancel/timeout behavior deterministic dưới stress tests 20-iteration soak
@@ -445,14 +445,14 @@ Execution order (re-anchored to dependency reality):
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| v0.1 | Baseline rewrite | ✅ Completed (infrastructure baseline) |
-| v0.2 | Compiler foundation | ✅ Completed (gate passed on Linux) |
-| v0.3 | Struct & type system | ✅ Completed (gate passed on Linux) |
-| v0.4 | Module & import system | ✅ Completed (gate passed on Linux) |
-| v0.5 | Language features complete | ✅ Completed (gate passed on Linux) |
-| v0.6 | Concurrency alpha | ⚠️ Prototype track (out-of-order, not releasable) |
-| v0.7 | Structured concurrency beta | 🔲 Planned |
-| v0.8 | Memory model MVP | 🔲 Planned |
+| v0.1 | Baseline rewrite | ✅ Completed |
+| v0.2 | Compiler foundation | ✅ Completed (gate passed Linux) |
+| v0.3 | Struct & type system | ✅ Completed |
+| v0.4 | Module & import system | ✅ Completed |
+| v0.5 | Language features | ✅ Completed |
+| v0.6 | Concurrency alpha | ✅ Released |
+| v0.7 | Structured concurrency | ✅ Released |
+| v0.8 | Memory model MVP | ✅ Released |
 | v0.9 | IO stack alpha | 🔲 Planned |
 | v1.0 | Deploy baseline | 🔲 Planned |
 | v1.1 | Concurrency GA | 🔲 Planned |

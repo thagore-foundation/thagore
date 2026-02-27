@@ -44,6 +44,16 @@ class MemoryModelSendSyncTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
 
+    def test_rc_single_thread_ok(self) -> None:
+        result = self._build(
+            "func main():\n"
+            "  let local: Rc = Rc(1)\n"
+            "  let alias: Rc = local\n"
+            "  return 0\n"
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertNotIn("E_SEND_SYNC_004", result.stderr)
+
     def test_reject_closure_capturing_rc_across_spawn(self) -> None:
         result = self._build(
             "func main():\n"

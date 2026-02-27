@@ -28,6 +28,7 @@ struct CoreStmt {
   int indent = 0;
   std::string text;
   std::string target;
+  bool has_await = false;
   bool has_expression = false;
   std::string expression;
 };
@@ -36,6 +37,7 @@ struct CoreFunction {
   std::string name;
   bool is_method = false;
   bool is_pub = false;
+  bool is_async = false;
   std::string owner_type;
   std::string method_name;
   std::vector<std::string> params;

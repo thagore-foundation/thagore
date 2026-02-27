@@ -169,6 +169,10 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
   clang_link.push_back("-lstdc++");
   clang_link.push_back("-lpthread");
 #endif
+#if defined(THAG_RUNTIME_HAS_OPENSSL) && !defined(_WIN32)
+  clang_link.push_back("-lssl");
+  clang_link.push_back("-lcrypto");
+#endif
 #if defined(__linux__)
   clang_link.push_back("-no-pie");
 #endif

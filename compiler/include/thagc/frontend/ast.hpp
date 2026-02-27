@@ -27,6 +27,7 @@ struct AstStatement {
   std::string target;
   int line = 0;
   int indent = 0;
+  bool has_await = false;
   bool has_expression = false;
   bool expression_valid = true;
   std::string expression_normalized;

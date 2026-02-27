@@ -12,10 +12,13 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
@@ -23,6 +26,10 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
+#include <llvm/Transforms/Coroutines/CoroCleanup.h>
+#include <llvm/Transforms/Coroutines/CoroEarly.h>
+#include <llvm/Transforms/Coroutines/CoroElide.h>
+#include <llvm/Transforms/Coroutines/CoroSplit.h>
 
 namespace thagc::codegen {
 
@@ -88,6 +95,20 @@ struct ArrayInstance {
   llvm::AllocaInst* alloca = nullptr;
   ValueType element_type = ValueType::Invalid;
   std::size_t length = 0;
+};
+
+struct AsyncLoweringContext {
+  bool enabled = false;
+  ValueType expected_return_type = ValueType::Invalid;
+  llvm::Value* coro_id = nullptr;
+  llvm::Value* coro_handle = nullptr;
+  llvm::AllocaInst* return_slot = nullptr;
+  llvm::BasicBlock* finalize_block = nullptr;
+  llvm::FunctionCallee coro_save;
+  llvm::FunctionCallee coro_suspend;
+  llvm::FunctionCallee coro_end;
+  llvm::FunctionCallee coro_free;
+  llvm::FunctionCallee free_fn;
 };
 
 static constexpr int kEnumPayloadShift = 20;
@@ -1731,6 +1752,10 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
 
 static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder);
 static llvm::Value* to_i64(ExprValue value, llvm::IRBuilder<>& builder);
+static bool emit_await_semantics_for_expression(const std::string& expression,
+                                                const std::unordered_map<std::string, bool>& function_async_flags,
+                                                AsyncLoweringContext* async_ctx, llvm::IRBuilder<>& builder,
+                                                llvm::Function* fn, support::DiagnosticSink& diag);
 
 struct InterpChunk {
   bool placeholder = false;
@@ -1798,7 +1823,9 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
                                       std::unordered_map<std::string, ArrayInstance>& array_instances,
                                       const std::unordered_map<std::string, llvm::Function*>& functions,
                                       const std::unordered_map<std::string, ValueType>& function_returns,
+                                      const std::unordered_map<std::string, bool>& function_async_flags,
                                       std::unordered_map<std::string, ClosureDef>& closures,
+                                      bool await_expression, AsyncLoweringContext* async_ctx,
                                       support::DiagnosticSink& diag) {
   std::string effective_line = line;
   std::string effective_expr = expression;
@@ -1848,6 +1875,10 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
         }
       }
       builder.CreateCall(printf_fn, {printf_newline_fmt});
+      if (await_expression &&
+          !emit_await_semantics_for_expression(inner, function_async_flags, async_ctx, builder, fn, diag)) {
+        return false;
+      }
       return true;
     }
 
@@ -1874,6 +1905,10 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
       }
       builder.CreateCall(printf_fn, {printf_i32_fmt, as_i32});
     }
+    if (await_expression &&
+        !emit_await_semantics_for_expression(inner, function_async_flags, async_ctx, builder, fn, diag)) {
+      return false;
+    }
     return true;
   }
 
@@ -1883,6 +1918,10 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
                             struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
                             fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
+      return false;
+    }
+    if (await_expression &&
+        !emit_await_semantics_for_expression(effective_expr, function_async_flags, async_ctx, builder, fn, diag)) {
       return false;
     }
   }
@@ -2074,6 +2113,138 @@ static llvm::Value* cast_value_to_type(ExprValue value, ValueType target, llvm::
   return nullptr;
 }
 
+static llvm::Value* default_value_for_type(ValueType type, llvm::IRBuilder<>& builder) {
+  if (type == ValueType::I1) {
+    return builder.getInt1(false);
+  }
+  if (type == ValueType::F32) {
+    return llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
+  }
+  if (type == ValueType::F64) {
+    return llvm::ConstantFP::get(builder.getDoubleTy(), 0.0);
+  }
+  if (type == ValueType::I8Ptr) {
+    return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(builder.getPtrTy()));
+  }
+  if (type == ValueType::Void) {
+    return nullptr;
+  }
+  return builder.getInt32(0);
+}
+
+static std::string strip_await_prefixes(const std::string& expression) {
+  std::string clean = trim(expression);
+  while (starts_with(clean, "await ")) {
+    clean = trim(clean.substr(6));
+  }
+  return clean;
+}
+
+static std::string parse_await_call_target(const std::string& expression) {
+  const std::string clean = strip_await_prefixes(expression);
+  const std::size_t lparen = clean.find('(');
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen) {
+    return "";
+  }
+  std::string name = trim(clean.substr(0, lparen));
+  if (name.empty()) {
+    return "";
+  }
+  while (!name.empty() && name.back() == '?') {
+    name.pop_back();
+    name = trim(name);
+  }
+  if (name.empty() || !is_ident_start(name[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < name.size(); ++i) {
+    if (name[i] == '.') {
+      continue;
+    }
+    if (!is_ident_body(name[i])) {
+      return "";
+    }
+  }
+  return name;
+}
+
+static void emit_await_spawn_wrapper(llvm::IRBuilder<>& builder, llvm::Function* fn, llvm::Value* coro_handle) {
+  if (fn == nullptr || fn->getParent() == nullptr) {
+    return;
+  }
+  llvm::Module* module = fn->getParent();
+  llvm::FunctionCallee spawn_fn =
+      module->getOrInsertFunction("thag_task_scope_spawn",
+                                  llvm::FunctionType::get(builder.getInt32Ty(),
+                                                          {builder.getPtrTy(), builder.getPtrTy(), builder.getPtrTy()},
+                                                          false));
+  llvm::FunctionCallee done_fn =
+      module->getOrInsertFunction("thag_coro_done",
+                                  llvm::FunctionType::get(builder.getInt1Ty(), {builder.getPtrTy()}, false));
+  llvm::FunctionCallee resume_fn =
+      module->getOrInsertFunction("thag_coro_resume",
+                                  llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false));
+
+  llvm::Value* effective_handle = coro_handle;
+  if (effective_handle == nullptr) {
+    effective_handle = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(builder.getPtrTy()));
+  }
+  llvm::Value* done = builder.CreateCall(done_fn, {effective_handle}, "await.done");
+  auto* spawn_bb = llvm::BasicBlock::Create(builder.getContext(), "await.spawn", fn);
+  auto* cont_bb = llvm::BasicBlock::Create(builder.getContext(), "await.spawn.cont", fn);
+  builder.CreateCondBr(done, cont_bb, spawn_bb);
+
+  builder.SetInsertPoint(spawn_bb);
+  llvm::Value* null_scope = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(builder.getPtrTy()));
+  llvm::Value* resume_ptr = builder.CreateBitCast(resume_fn.getCallee(), builder.getPtrTy());
+  builder.CreateCall(spawn_fn, {null_scope, resume_ptr, effective_handle});
+  builder.CreateBr(cont_bb);
+
+  builder.SetInsertPoint(cont_bb);
+}
+
+static bool emit_async_suspend_point(AsyncLoweringContext* async_ctx, llvm::IRBuilder<>& builder, llvm::Function* fn,
+                                     support::DiagnosticSink& diag) {
+  if (async_ctx == nullptr || !async_ctx->enabled) {
+    return true;
+  }
+  if (fn == nullptr || fn->getParent() == nullptr || async_ctx->coro_handle == nullptr ||
+      async_ctx->finalize_block == nullptr) {
+    diag.error("E2065", "internal async lowering error: missing coroutine context");
+    return false;
+  }
+
+  llvm::Value* save = builder.CreateCall(async_ctx->coro_save, {async_ctx->coro_handle}, "await.save");
+  llvm::Value* suspend = builder.CreateCall(async_ctx->coro_suspend, {save, builder.getFalse()}, "await.suspend");
+
+  auto* resume_bb = llvm::BasicBlock::Create(builder.getContext(), "await.resume", fn);
+  auto* finalize_bb = llvm::BasicBlock::Create(builder.getContext(), "await.finalize", fn);
+  llvm::SwitchInst* sw = builder.CreateSwitch(suspend, resume_bb, 2);
+  sw->addCase(builder.getInt8(1), finalize_bb);
+  sw->addCase(builder.getInt8(2), finalize_bb);
+
+  builder.SetInsertPoint(finalize_bb);
+  builder.CreateBr(async_ctx->finalize_block);
+
+  builder.SetInsertPoint(resume_bb);
+  return true;
+}
+
+static bool emit_await_semantics_for_expression(const std::string& expression,
+                                                const std::unordered_map<std::string, bool>& function_async_flags,
+                                                AsyncLoweringContext* async_ctx, llvm::IRBuilder<>& builder,
+                                                llvm::Function* fn, support::DiagnosticSink& diag) {
+  const std::string call_target = parse_await_call_target(expression);
+  if (!call_target.empty()) {
+    auto async_it = function_async_flags.find(call_target);
+    if (async_it != function_async_flags.end() && async_it->second) {
+      emit_await_spawn_wrapper(builder, fn, async_ctx == nullptr ? nullptr : async_ctx->coro_handle);
+    }
+  }
+  return emit_async_suspend_point(async_ctx, builder, fn, diag);
+}
+
 static std::size_t find_block_end(const std::vector<lowering::CoreStmt>& stmts, std::size_t start_index,
                                   int parent_indent) {
   std::size_t i = start_index;
@@ -2081,6 +2252,15 @@ static std::size_t find_block_end(const std::vector<lowering::CoreStmt>& stmts, 
     ++i;
   }
   return i;
+}
+
+static bool function_contains_await(const lowering::CoreFunction& fn_def) {
+  for (const auto& st : fn_def.statements) {
+    if (st.has_await) {
+      return true;
+    }
+  }
+  return starts_with(trim(fn_def.return_expression), "await ");
 }
 
 static std::string parse_constructor_call_name(
@@ -2328,14 +2508,17 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                        const std::unordered_map<std::string, std::string>& struct_field_types,
                        const std::unordered_map<std::string, llvm::StructType*>& llvm_struct_types,
                        const std::unordered_map<std::string, llvm::Function*>& functions,
-                       const std::unordered_map<std::string, ValueType>& function_returns, ValueType expected_return_type,
+                       const std::unordered_map<std::string, ValueType>& function_returns,
+                       const std::unordered_map<std::string, bool>& function_async_flags,
+                       ValueType expected_return_type,
                        std::size_t& index, int parent_indent, llvm::Function* fn, llvm::Module* module,
                        llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
                        std::unordered_map<std::string, StructInstance>& struct_instances,
                        std::unordered_map<std::string, TupleInstance>& tuple_instances,
                        std::unordered_map<std::string, ArrayInstance>& array_instances,
                        std::vector<LoopControlTarget>& loop_targets,
-                       std::unordered_map<std::string, ClosureDef>& closures, support::DiagnosticSink& diag) {
+                       std::unordered_map<std::string, ClosureDef>& closures, AsyncLoweringContext* async_ctx,
+                       support::DiagnosticSink& diag) {
   llvm::FunctionCallee printf_fn = module->getOrInsertFunction(
       "printf",
       llvm::FunctionType::get(builder.getInt32Ty(), builder.getPtrTy(), true));
@@ -2355,7 +2538,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
-                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
+                                     tuple_instances, array_instances, functions, function_returns, function_async_flags,
+                                     closures, it->has_await, async_ctx, diag)) {
         return false;
       }
     }
@@ -2376,13 +2560,20 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     }
   };
 
-  auto eval_with_try = [&](const std::string& expr_text, ExprValue& out_value) {
+  auto eval_with_try = [&](const std::string& expr_text, bool has_await, ExprValue& out_value) {
     std::string try_inner;
     if (!parse_try_operator_expr(expr_text, try_inner)) {
       out_value = evaluate_expression(expr_text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
                                       struct_instances, tuple_instances, array_instances, functions, function_returns,
                                       &closures, fn, diag);
-      return out_value.value != nullptr && out_value.type != ValueType::Invalid;
+      if (out_value.value == nullptr || out_value.type == ValueType::Invalid) {
+        return false;
+      }
+      if (has_await &&
+          !emit_await_semantics_for_expression(expr_text, function_async_flags, async_ctx, builder, fn, diag)) {
+        return false;
+      }
+      return true;
     }
     if (expected_return_type != ValueType::I32) {
       diag.error("E2053", "operator '?' requires function returning Result/Option-compatible i32 encoding");
@@ -2396,6 +2587,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     }
     if (encoded.type != ValueType::I32) {
       diag.error("E2054", "operator '?' expects i32-encoded Result/Option value");
+      return false;
+    }
+    if (has_await &&
+        !emit_await_semantics_for_expression(expr_text, function_async_flags, async_ctx, builder, fn, diag)) {
       return false;
     }
     llvm::Value* tag = extract_enum_tag_value(encoded.value, builder);
@@ -2413,12 +2608,20 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
-                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
+                                     tuple_instances, array_instances, functions, function_returns, function_async_flags,
+                                     closures, it->has_await, async_ctx, diag)) {
         return false;
       }
     }
     drop_owned_variables();
-    builder.CreateRet(encoded.value);
+    if (async_ctx != nullptr && async_ctx->enabled) {
+      if (async_ctx->return_slot != nullptr) {
+        builder.CreateStore(encoded.value, async_ctx->return_slot);
+      }
+      builder.CreateBr(async_ctx->finalize_block);
+    } else {
+      builder.CreateRet(encoded.value);
+    }
 
     builder.SetInsertPoint(ok_bb);
     out_value = ExprValue{extract_enum_payload_value(encoded.value, builder), ValueType::I32};
@@ -2564,7 +2767,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         llvm_types.reserve(tuple_elements.size());
         for (const std::string& element_expr : tuple_elements) {
           ExprValue element_value;
-          if (!eval_with_try(element_expr, element_value)) {
+          if (!eval_with_try(element_expr, false, element_value)) {
             return false;
           }
           tuple_values.push_back(element_value);
@@ -2593,7 +2796,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         ValueType element_type = ValueType::I32;
         for (const std::string& element_expr : array_elements) {
           ExprValue element_value;
-          if (!eval_with_try(element_expr, element_value)) {
+          if (!eval_with_try(element_expr, false, element_value)) {
             return false;
           }
           if (array_values.empty()) {
@@ -2637,7 +2840,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
 
       ExprValue value;
-      if (!eval_with_try(st.expression, value)) {
+      if (!eval_with_try(st.expression, st.has_await, value)) {
         return false;
       }
       const std::string annotation = parse_let_annotation(st.text);
@@ -2742,7 +2945,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           }
           ExprValue value =
               ExprValue{};
-          if (!eval_with_try(st.expression, value)) {
+          if (!eval_with_try(st.expression, st.has_await, value)) {
             return false;
           }
           const ValueType field_type =
@@ -2771,7 +2974,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
       ExprValue value =
           ExprValue{};
-      if (!eval_with_try(st.expression, value)) {
+      if (!eval_with_try(st.expression, st.has_await, value)) {
         return false;
       }
       llvm::Value* casted = nullptr;
@@ -2864,7 +3067,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
                                      printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
-                                     tuple_instances, array_instances, functions, function_returns, closures, diag)) {
+                                     tuple_instances, array_instances, functions, function_returns, function_async_flags,
+                                     closures, st.has_await, async_ctx, diag)) {
         return false;
       }
       ++index;
@@ -2875,7 +3079,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       llvm::Value* ret = nullptr;
       if (st.has_expression) {
         ExprValue value;
-        if (!eval_with_try(st.expression, value)) {
+        if (!eval_with_try(st.expression, st.has_await, value)) {
           return false;
         }
         ret = cast_value_to_type(value, expected_return_type, builder);
@@ -2898,10 +3102,21 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
       drop_owned_variables();
-      if (expected_return_type == ValueType::Void) {
-        builder.CreateRetVoid();
+      if (async_ctx != nullptr && async_ctx->enabled) {
+        if (expected_return_type != ValueType::Void && async_ctx->return_slot != nullptr) {
+          llvm::Value* stored = ret;
+          if (stored == nullptr) {
+            stored = default_value_for_type(expected_return_type, builder);
+          }
+          builder.CreateStore(stored, async_ctx->return_slot);
+        }
+        builder.CreateBr(async_ctx->finalize_block);
       } else {
-        builder.CreateRet(ret);
+        if (expected_return_type == ValueType::Void) {
+          builder.CreateRetVoid();
+        } else {
+          builder.CreateRet(ret);
+        }
       }
       index = find_block_end(stmts, index + 1, parent_indent);
       return true;
@@ -2921,6 +3136,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
                               struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
                               fn, diag);
+      if (st.has_await &&
+          !emit_await_semantics_for_expression(st.expression, function_async_flags, async_ctx, builder, fn, diag)) {
+        return false;
+      }
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2015", "if condition must be bool/i32-compatible");
@@ -2935,9 +3154,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       builder.SetInsertPoint(then_bb);
       index = then_start;
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
-                      function_returns,
+                      function_returns, function_async_flags,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      tuple_instances, array_instances, loop_targets, closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, async_ctx, diag)) {
         return false;
       }
       if (!builder.GetInsertBlock()->getTerminator()) {
@@ -2948,9 +3167,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         builder.SetInsertPoint(else_bb);
         index = then_end + 1;
         if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
-                        function_returns,
+                        function_returns, function_async_flags,
                         expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                        tuple_instances, array_instances, loop_targets, closures, diag)) {
+                        tuple_instances, array_instances, loop_targets, closures, async_ctx, diag)) {
           return false;
         }
         if (!builder.GetInsertBlock()->getTerminator()) {
@@ -2985,6 +3204,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
                               struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
                               fn, diag);
+      if (st.has_await &&
+          !emit_await_semantics_for_expression(st.expression, function_async_flags, async_ctx, builder, fn, diag)) {
+        return false;
+      }
       llvm::Value* cond = to_i1(cond_value, builder);
       if (cond == nullptr) {
         diag.error("E2017", "while condition must be bool/i32-compatible");
@@ -2996,9 +3219,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       loop_targets.push_back(LoopControlTarget{while_label, cond_bb, after_bb});
       ++index;
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
-                      function_returns,
+                      function_returns, function_async_flags,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      tuple_instances, array_instances, loop_targets, closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, async_ctx, diag)) {
         loop_targets.pop_back();
         return false;
       }
@@ -3064,9 +3287,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       loop_targets.push_back(LoopControlTarget{header.label, step_bb, after_bb});
       ++index;
       if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
-                      function_returns,
+                      function_returns, function_async_flags,
                       expected_return_type, index, st.indent, fn, module, builder, variables, struct_instances,
-                      tuple_instances, array_instances, loop_targets, closures, diag)) {
+                      tuple_instances, array_instances, loop_targets, closures, async_ctx, diag)) {
         loop_targets.pop_back();
         return false;
       }
@@ -3099,6 +3322,10 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           evaluate_expression(st.expression, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
                               struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
                               fn, diag);
+      if (st.has_await &&
+          !emit_await_semantics_for_expression(st.expression, function_async_flags, async_ctx, builder, fn, diag)) {
+        return false;
+      }
       llvm::Value* match_i32 = to_i32(match_expr, builder);
       if (match_i32 == nullptr) {
         diag.error("E2018", "match expression must be i32/bool-compatible");
@@ -3163,9 +3390,9 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         }
         std::size_t nested_index = arm_body_start;
         if (!emit_block(stmts, enum_variant_tags, struct_fields, struct_field_types, llvm_struct_types, functions,
-                        function_returns,
+                        function_returns, function_async_flags,
                         expected_return_type, nested_index, arm_label_stmt.indent, fn, module, builder, variables,
-                        struct_instances, tuple_instances, array_instances, loop_targets, closures, diag)) {
+                        struct_instances, tuple_instances, array_instances, loop_targets, closures, async_ctx, diag)) {
           return false;
         }
         if (bound_payload) {
@@ -3253,6 +3480,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
 
   std::unordered_map<std::string, llvm::Function*> llvm_functions;
   std::unordered_map<std::string, ValueType> function_returns;
+  std::unordered_map<std::string, bool> function_async_flags;
   for (const auto& ext : core.extern_functions) {
     std::vector<llvm::Type*> params;
     params.reserve(ext.param_types.size());
@@ -3266,6 +3494,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, ext.name, module.get());
     llvm_functions[ext.name] = fn;
     function_returns[ext.name] = value_type_from_return_type(ext.return_type);
+    function_async_flags[ext.name] = false;
   }
   for (const auto& fn_def : functions) {
     ValueType return_type = value_type_from_return_type(fn_def.return_type);
@@ -3291,6 +3520,7 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, fn_def.name, module.get());
     llvm_functions[fn_def.name] = fn;
     function_returns[fn_def.name] = return_type;
+    function_async_flags[fn_def.name] = fn_def.is_async && function_contains_await(fn_def);
   }
 
   for (const auto& fn_def : functions) {
@@ -3301,6 +3531,47 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     }
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, fn_def.name + ".entry", fn);
     builder.SetInsertPoint(entry);
+    AsyncLoweringContext async_ctx;
+    async_ctx.enabled = function_async_flags[fn_def.name];
+    async_ctx.expected_return_type = function_returns[fn_def.name];
+    if (async_ctx.enabled) {
+      fn->addFnAttr("presplitcoroutine");
+      llvm::Type* ptr_ty = builder.getPtrTy();
+      llvm::Value* null_ptr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptr_ty));
+      llvm::Function* coro_id_decl = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_id);
+      llvm::Function* coro_size_decl =
+          llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_size, {builder.getInt64Ty()});
+      llvm::Function* coro_begin_decl = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_begin);
+      llvm::Function* coro_save_decl = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_save);
+      llvm::Function* coro_suspend_decl =
+          llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_suspend);
+      llvm::Function* coro_end_decl = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_end);
+      llvm::Function* coro_free_decl = llvm::Intrinsic::getDeclaration(module.get(), llvm::Intrinsic::coro_free);
+      llvm::FunctionCallee malloc_fn = module->getOrInsertFunction(
+          "malloc", llvm::FunctionType::get(ptr_ty, {builder.getInt64Ty()}, false));
+
+      async_ctx.coro_id =
+          builder.CreateCall(coro_id_decl, {builder.getInt32(0), null_ptr, null_ptr, null_ptr}, "coro.id");
+      llvm::Value* coro_size = builder.CreateCall(coro_size_decl, {}, "coro.size");
+      llvm::Value* coro_frame = builder.CreateCall(malloc_fn, {coro_size}, "coro.frame");
+      async_ctx.coro_handle = builder.CreateCall(coro_begin_decl, {async_ctx.coro_id, coro_frame}, "coro.begin");
+      async_ctx.coro_save = coro_save_decl;
+      async_ctx.coro_suspend = coro_suspend_decl;
+      async_ctx.coro_end = coro_end_decl;
+      async_ctx.coro_free = coro_free_decl;
+      async_ctx.free_fn = module->getOrInsertFunction(
+          "free", llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false));
+      async_ctx.finalize_block = llvm::BasicBlock::Create(context, fn_def.name + ".async.finalize", fn);
+      if (async_ctx.expected_return_type != ValueType::Void) {
+        async_ctx.return_slot = create_entry_alloca(
+            fn, llvm_type_from_value_type(async_ctx.expected_return_type, builder), fn_def.name + ".async.ret");
+        llvm::Value* init_ret = default_value_for_type(async_ctx.expected_return_type, builder);
+        if (init_ret != nullptr) {
+          builder.CreateStore(init_ret, async_ctx.return_slot);
+        }
+      }
+    }
+
     std::unordered_map<std::string, VariableSlot> variables;
     std::unordered_map<std::string, StructInstance> struct_instances;
     std::unordered_map<std::string, TupleInstance> tuple_instances;
@@ -3334,14 +3605,15 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
 
     std::size_t index = 0;
     if (!emit_block(fn_def.statements, core.enum_variant_tags, core.struct_fields, core.struct_field_types,
-                    llvm_struct_types, llvm_functions, function_returns, function_returns[fn_def.name], index, -1, fn,
+                    llvm_struct_types, llvm_functions, function_returns, function_async_flags,
+                    function_returns[fn_def.name], index, -1, fn,
                     module.get(), builder, variables, struct_instances, tuple_instances, array_instances, loop_targets,
-                    closures,
+                    closures, &async_ctx,
                     diag)) {
       return nullptr;
     }
 
-    if (!builder.GetInsertBlock()->getTerminator()) {
+    auto drop_owned_variables = [&]() {
       for (auto& [_, slot] : variables) {
         if (slot.type != ValueType::I8Ptr || slot.alloca == nullptr) {
           continue;
@@ -3352,7 +3624,83 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         llvm::Value* handle = builder.CreateLoad(slot.alloca->getAllocatedType(), slot.alloca);
         emit_ref_drop_call(slot.ownership, handle, fn, builder);
       }
-      const ValueType expected = function_returns[fn_def.name];
+    };
+
+    const ValueType expected = function_returns[fn_def.name];
+    if (async_ctx.enabled) {
+      if (!builder.GetInsertBlock()->getTerminator()) {
+        drop_owned_variables();
+        if (expected != ValueType::Void && async_ctx.return_slot != nullptr) {
+          llvm::Value* fallback = nullptr;
+          if (!trim(fn_def.return_expression).empty()) {
+            ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
+                                                  core.struct_fields, core.struct_field_types, struct_instances,
+                                                  tuple_instances, array_instances, llvm_functions, function_returns,
+                                                  &closures, fn, diag);
+            fallback = cast_value_to_type(value, expected, builder);
+          }
+          if (fallback == nullptr) {
+            if (expected == ValueType::I32) {
+              fallback = builder.getInt32(fn_def.return_literal);
+            } else {
+              fallback = default_value_for_type(expected, builder);
+            }
+          }
+          if (fallback != nullptr) {
+            builder.CreateStore(fallback, async_ctx.return_slot);
+          }
+        }
+        builder.CreateBr(async_ctx.finalize_block);
+      }
+
+      builder.SetInsertPoint(async_ctx.finalize_block);
+      if (!builder.GetInsertBlock()->getTerminator()) {
+        llvm::Value* save = builder.CreateCall(async_ctx.coro_save, {async_ctx.coro_handle}, "coro.final.save");
+        llvm::Value* suspend = builder.CreateCall(async_ctx.coro_suspend, {save, builder.getTrue()}, "coro.final.suspend");
+
+        auto* final_suspend_ret_bb =
+            llvm::BasicBlock::Create(context, fn_def.name + ".async.final.suspend.ret", fn);
+        auto* final_cleanup_bb = llvm::BasicBlock::Create(context, fn_def.name + ".async.final.cleanup", fn);
+        auto* final_resume_bb = llvm::BasicBlock::Create(context, fn_def.name + ".async.final.resume", fn);
+        llvm::SwitchInst* final_sw = builder.CreateSwitch(suspend, final_resume_bb, 2);
+        final_sw->addCase(builder.getInt8(1), final_cleanup_bb);
+        final_sw->addCase(builder.getInt8(2), final_cleanup_bb);
+
+        builder.SetInsertPoint(final_resume_bb);
+        builder.CreateBr(final_suspend_ret_bb);
+
+        builder.SetInsertPoint(final_cleanup_bb);
+        llvm::Value* frame = builder.CreateCall(async_ctx.coro_free, {async_ctx.coro_id, async_ctx.coro_handle},
+                                                "coro.final.free.frame");
+        llvm::Value* has_frame = builder.CreateIsNotNull(frame, "coro.final.has.frame");
+        auto* final_free_bb = llvm::BasicBlock::Create(context, fn_def.name + ".async.final.free", fn);
+        auto* final_no_free_bb = llvm::BasicBlock::Create(context, fn_def.name + ".async.final.no_free", fn);
+        builder.CreateCondBr(has_frame, final_free_bb, final_no_free_bb);
+
+        builder.SetInsertPoint(final_free_bb);
+        builder.CreateCall(async_ctx.free_fn, {frame});
+        builder.CreateBr(final_suspend_ret_bb);
+
+        builder.SetInsertPoint(final_no_free_bb);
+        builder.CreateBr(final_suspend_ret_bb);
+
+        builder.SetInsertPoint(final_suspend_ret_bb);
+        builder.CreateCall(async_ctx.coro_end, {async_ctx.coro_handle, builder.getFalse(), save});
+        if (expected == ValueType::Void) {
+          builder.CreateRetVoid();
+        } else {
+          llvm::Value* ret_value = async_ctx.return_slot == nullptr
+                                       ? default_value_for_type(expected, builder)
+                                       : builder.CreateLoad(
+                                             llvm_type_from_value_type(expected, builder), async_ctx.return_slot);
+          if (ret_value == nullptr) {
+            ret_value = default_value_for_type(expected, builder);
+          }
+          builder.CreateRet(ret_value);
+        }
+      }
+    } else if (!builder.GetInsertBlock()->getTerminator()) {
+      drop_owned_variables();
       if (expected == ValueType::Void) {
         builder.CreateRetVoid();
       } else {
@@ -3391,6 +3739,30 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
   return module;
 }
 
+static void run_coroutine_passes(llvm::Module& module) {
+  // LLVM 21 no longer exposes legacy addCoroutinePassesToExtensionPoints; run
+  // the coroutine lowering pipeline explicitly with the new PM.
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+  llvm::PassBuilder pb;
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  llvm::ModulePassManager mpm;
+  mpm.addPass(llvm::CoroEarlyPass());
+  mpm.addPass(llvm::createModuleToPostOrderCGSCCPassAdaptor(llvm::CoroSplitPass()));
+  llvm::FunctionPassManager fpm;
+  fpm.addPass(llvm::CoroElidePass());
+  mpm.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(fpm)));
+  mpm.addPass(llvm::CoroCleanupPass());
+  mpm.run(module, mam);
+}
+
 bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
                                const std::string& llvm_ir_path, const std::string& target_triple,
                                support::DiagnosticSink& diag) const {
@@ -3402,6 +3774,7 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
   if (!target_triple.empty()) {
     module->setTargetTriple(llvm::Triple(target_triple));
   }
+  run_coroutine_passes(*module);
   std::string verify_error;
   llvm::raw_string_ostream verify_stream(verify_error);
   if (llvm::verifyModule(*module, &verify_stream)) {
@@ -3433,13 +3806,6 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   if (!module) {
     return false;
   }
-  std::string verify_error;
-  llvm::raw_string_ostream verify_stream(verify_error);
-  if (llvm::verifyModule(*module, &verify_stream)) {
-    verify_stream.flush();
-    diag.error("E2001", "LLVM module verification failed: " + trim(verify_error));
-    return false;
-  }
 
   std::string error;
   const std::string triple_value = target_triple.empty() ? llvm::sys::getDefaultTargetTriple() : target_triple;
@@ -3460,6 +3826,15 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
     return false;
   }
   module->setDataLayout(target_machine->createDataLayout());
+  run_coroutine_passes(*module);
+
+  std::string verify_error;
+  llvm::raw_string_ostream verify_stream(verify_error);
+  if (llvm::verifyModule(*module, &verify_stream)) {
+    verify_stream.flush();
+    diag.error("E2001", "LLVM module verification failed: " + trim(verify_error));
+    return false;
+  }
 
   std::error_code ec;
   llvm::raw_fd_ostream obj_file(object_path, ec, llvm::sys::fs::OF_None);

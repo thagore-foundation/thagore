@@ -194,6 +194,7 @@ static void append_core_statement(std::vector<CoreStmt>& out_statements, const s
   out.indent = st.indent;
   out.text = st.text;
   out.target = st.target;
+  out.has_await = st.has_await;
   out.has_expression = st.has_expression && st.expression_valid;
   if (out.has_expression) {
     (void)known_values;
@@ -274,6 +275,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     CoreFunction out;
     out.name = fn.name;
     out.is_pub = fn.is_pub;
+    out.is_async = fn.is_async;
     out.params = fn.params;
     out.return_type = fn.return_type;
     std::string owner;

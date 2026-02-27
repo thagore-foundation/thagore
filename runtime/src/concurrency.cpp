@@ -438,6 +438,16 @@ void thag_concurrency_runtime_shutdown(void) {
   scheduler_shutdown();
 }
 
+void thag_coro_resume(void* coro_handle) {
+  // TODO(v0.9): wire coroutine handles to scheduler-owned resumable tasks.
+  (void)coro_handle;
+}
+
+bool thag_coro_done(void* coro_handle) {
+  // TODO(v0.9): query coroutine completion state from runtime coroutine table.
+  return coro_handle == nullptr;
+}
+
 thag_task_scope_t* thag_task_scope_create(void) {
   scheduler_start_once();
   auto* scope = new thag_task_scope();

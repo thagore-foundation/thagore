@@ -1183,6 +1183,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
       add_parse_error(program, st.line, st.expression_error);
       return;
     }
+    st.has_await = starts_with(trim(expr_text), "await ");
     st.has_expression = true;
     st.expression_valid = expr_text.find("..") != std::string::npos;
     st.expression_normalized = expr_text;
@@ -1216,6 +1217,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st) {
     return;
   }
 
+  st.has_await = starts_with(trim(expr_text), "await ");
   st.has_expression = true;
   if (parse_closure_literal(expr_text, closure_params, closure_body, closure_block)) {
     st.expression_valid = true;

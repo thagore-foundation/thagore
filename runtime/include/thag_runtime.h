@@ -49,6 +49,8 @@ void thag_async_runtime_destroy(thag_async_runtime_t* runtime);
 int thag_async_spawn(thag_async_runtime_t* runtime, thag_task_fn fn, void* user_data);
 int thag_async_sleep(thag_async_runtime_t* runtime, uint64_t delay_ms, thag_task_fn fn, void* user_data);
 int thag_async_wait_idle(thag_async_runtime_t* runtime, uint64_t timeout_ms);
+void thag_coro_resume(void* coro_handle);
+bool thag_coro_done(void* coro_handle);
 
 void* thag_rc_new(size_t value_size, const void* value_data);
 void* thag_rc_clone(void* handle);
@@ -58,6 +60,10 @@ void* thag_arc_clone(void* handle);
 void thag_arc_drop(void* handle);
 int64_t thag_rc_read_i64(const void* handle);
 int64_t thag_arc_read_i64(const void* handle);
+int64_t thag_rc_alloc_count(void);
+int64_t thag_arc_alloc_count(void);
+int64_t thag_rc_live_count(void);
+int64_t thag_arc_live_count(void);
 
 #ifdef __cplusplus
 }
