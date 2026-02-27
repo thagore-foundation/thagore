@@ -133,27 +133,28 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.6 — Concurrency Primitives (Prototype Track) ⚠️ Out-of-order
-> *"Track này đã có prototype, nhưng chưa thể release trước khi pass `v0.2` → `v0.5` gates."*
+## v0.6 — Concurrency Primitives (Alpha) ✅ Released
+> *"Structured concurrency primitives đã pass gate stress deterministic."*
 
 ### Runtime
-- [x] Task scope/nursery/cancel/timeout APIs ở mức prototype
-- [ ] Async scheduler event loop thay thế thread-per-task
-- [ ] epoll/kqueue integration cho Linux/macOS
-- [ ] Platform layer production (không còn stub)
+- [x] Task scope/nursery/cancel/timeout APIs
+- [x] Async scheduler event loop thay thế thread-per-task
+- [x] epoll/kqueue integration cho Linux/macOS
+- [x] Platform layer production baseline (không còn stub APIs)
 
 ### Compiler
-- [ ] `Rc<T>` codegen — single-thread reference counting
-- [ ] `Arc<T>` codegen — atomic reference counting
-- [ ] `Send`/`Sync` auto-check thật sự trong typechecker
-- [ ] Diagnostic `E_SEND_SYNC_004` với fix hint "use `Arc` instead of `Rc`"
+- [x] `Rc<T>` codegen — single-thread reference counting
+- [x] `Arc<T>` codegen — atomic reference counting
+- [x] `Send`/`Sync` auto-check cho task-boundary checks trong typechecker
+- [x] Diagnostic `E_SEND_SYNC_004` với fix hint "use `Arc` instead of `Rc`"
 
 ### Tests
-- [ ] Child tasks cannot silently leak outside scope
-- [ ] Cancel propagation deterministic under stress
+- [x] Child tasks cannot silently leak outside scope
+- [x] Cancel propagation deterministic under stress
+- [x] 20-iteration deterministic soak lane cho native concurrency
 
 ### Gate
-- [ ] Structured concurrency contracts pass — scope/cancel/timeout behavior deterministic
+- [x] Structured concurrency contracts pass — scope/cancel/timeout behavior deterministic
 
 ---
 

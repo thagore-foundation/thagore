@@ -28,7 +28,7 @@ class MemoryModelSendSyncTests(unittest.TestCase):
         result = self._build(
             "func main():\n"
             "  let local: Rc = 1\n"
-            "  let outbound: Send = local\n"
+            "  spawn(local)\n"
             "  return 0\n"
         )
         self.assertNotEqual(result.returncode, 0)
@@ -38,8 +38,8 @@ class MemoryModelSendSyncTests(unittest.TestCase):
         result = self._build(
             "func main():\n"
             "  let shared: Arc = 1\n"
-            "  let outbound: Send = shared\n"
-            "  return outbound\n"
+            "  spawn(shared)\n"
+            "  return 0\n"
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
 

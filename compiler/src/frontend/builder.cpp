@@ -606,6 +606,13 @@ static TypeKind parse_atom_type(ExprTypeCursor& cursor) {
       if (tok.text == "open" || tok.text == "close" || tok.text == "read" || tok.text == "write") {
         return TypeKind::I32;
       }
+      if (tok.text == "spawn") {
+        if (args.size() != 1) {
+          cursor.error = "spawn() expects exactly 1 argument";
+          return TypeKind::Unknown;
+        }
+        return TypeKind::I32;
+      }
       if (tok.text == "len") {
         if (args.size() != 1) {
           cursor.error = "len() expects 1 argument";
@@ -1210,8 +1217,8 @@ static bool validate_memory_model_statement(
         if (source != ownership.end() && source->second == OwnershipKind::Rc &&
             (annotation == "Send" || annotation == "Sync")) {
           diag.error("E_SEND_SYNC_004",
-                     "line " + std::to_string(st.line) + ": " + annotation + " binding '" + name +
-                         "' cannot capture Rc value '" + source_name + "'; use Arc");
+                     "line " + std::to_string(st.line) +
+                         ": cannot send `Rc<T>` across thread boundary — use `Arc<T>` instead");
           return false;
         }
       }
@@ -1221,33 +1228,11 @@ static bool validate_memory_model_statement(
   if (is_spawn_statement(st.text)) {
     for (const auto& pair : ownership) {
       if (pair.second == OwnershipKind::Rc && contains_word(st.text, pair.first)) {
-        diag.error("E_SEND_SYNC_001",
-                   "line " + std::to_string(st.line) + ": Rc value '" + pair.first +
-                       "' cannot cross task/thread boundary; use Arc");
+        diag.error("E_SEND_SYNC_004",
+                   "line " + std::to_string(st.line) +
+                       ": cannot send `Rc<T>` across thread boundary — use `Arc<T>` instead");
         return false;
       }
-    }
-  }
-
-  const std::string send_ident = extract_call_arg_ident(st.text, "send");
-  if (!send_ident.empty()) {
-    auto it = ownership.find(send_ident);
-    if (it != ownership.end() && it->second == OwnershipKind::Rc) {
-      diag.error("E_SEND_SYNC_002",
-                 "line " + std::to_string(st.line) + ": send(" + send_ident +
-                     ") requires Arc/shared-safe value, but found Rc");
-      return false;
-    }
-  }
-
-  const std::string sync_ident = extract_call_arg_ident(st.text, "sync");
-  if (!sync_ident.empty()) {
-    auto it = ownership.find(sync_ident);
-    if (it != ownership.end() && it->second == OwnershipKind::Rc) {
-      diag.error("E_SEND_SYNC_003",
-                 "line " + std::to_string(st.line) + ": sync(" + sync_ident +
-                     ") requires Arc/shared-safe value, but found Rc");
-      return false;
     }
   }
   return true;

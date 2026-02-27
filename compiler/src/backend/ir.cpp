@@ -58,6 +58,11 @@ struct ExprValue {
 struct VariableSlot {
   llvm::AllocaInst* alloca = nullptr;
   ValueType type = ValueType::Invalid;
+  enum class Ownership {
+    None,
+    Rc,
+    Arc,
+  } ownership = Ownership::None;
 };
 
 struct StructInstance {
@@ -326,6 +331,19 @@ static bool split_top_level_items(const std::string& text, std::vector<std::stri
     out.push_back(tail);
   }
   return !in_string && depth_paren == 0 && depth_bracket == 0;
+}
+
+static std::string parse_simple_identifier_expr(const std::string& expr) {
+  const std::string clean = trim(expr);
+  if (clean.empty() || !is_ident_start(clean[0])) {
+    return "";
+  }
+  for (std::size_t i = 1; i < clean.size(); ++i) {
+    if (!is_ident_body(clean[i])) {
+      return "";
+    }
+  }
+  return clean;
 }
 
 static bool parse_tuple_literal_expr(const std::string& expr, std::vector<std::string>& elements) {
@@ -772,6 +790,13 @@ static const ExprTok& cur(const ExprCursor& cursor) {
 
 static llvm::Type* llvm_type_from_value_type(ValueType type, llvm::IRBuilder<>& builder);
 static ExprValue parse_expression_equality(ExprCursor& cursor);
+static llvm::Value* to_i64(ExprValue value, llvm::IRBuilder<>& builder);
+static llvm::Value* emit_ref_new_call(VariableSlot::Ownership ownership, llvm::Value* value_i64, llvm::Function* fn,
+                                      llvm::IRBuilder<>& builder);
+static llvm::Value* emit_ref_clone_call(VariableSlot::Ownership ownership, llvm::Value* handle, llvm::Function* fn,
+                                        llvm::IRBuilder<>& builder);
+static void emit_ref_drop_call(VariableSlot::Ownership ownership, llvm::Value* handle, llvm::Function* fn,
+                               llvm::IRBuilder<>& builder);
 
 static ExprValue parse_primary(ExprCursor& cursor) {
   const ExprTok& tok = cur(cursor);
@@ -884,6 +909,26 @@ static ExprValue parse_primary(ExprCursor& cursor) {
         return ExprValue{cursor.builder->CreateSelect(is_some, payload, fallback), ValueType::I32};
       }
 
+      if (tok.text == "Rc" || tok.text == "Arc") {
+        if (args.size() != 1) {
+          cursor.error = tok.text + "(...) expects exactly one argument";
+          return {};
+        }
+        const VariableSlot::Ownership owner =
+            tok.text == "Arc" ? VariableSlot::Ownership::Arc : VariableSlot::Ownership::Rc;
+        llvm::Value* value_i64 = to_i64(args[0], *cursor.builder);
+        if (value_i64 == nullptr) {
+          cursor.error = tok.text + "(...) argument must be i32/bool/float-compatible";
+          return {};
+        }
+        llvm::Value* handle = emit_ref_new_call(owner, value_i64, cursor.current_function, *cursor.builder);
+        if (handle == nullptr) {
+          cursor.error = "failed to emit runtime call for " + tok.text;
+          return {};
+        }
+        return ExprValue{handle, ValueType::I8Ptr};
+      }
+
       if (tok.text == "open" || tok.text == "close" || tok.text == "read" || tok.text == "write") {
         if (args.empty()) {
           return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
@@ -893,6 +938,13 @@ static ExprValue parse_primary(ExprCursor& cursor) {
         }
         if (args[0].type == ValueType::I1) {
           return ExprValue{cursor.builder->CreateZExt(args[0].value, cursor.builder->getInt32Ty()), ValueType::I32};
+        }
+        return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
+      }
+      if (tok.text == "spawn") {
+        if (args.size() != 1) {
+          cursor.error = "spawn() expects exactly 1 argument";
+          return {};
         }
         return ExprValue{cursor.builder->getInt32(0), ValueType::I32};
       }
@@ -1675,6 +1727,7 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
 }
 
 static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder);
+static llvm::Value* to_i64(ExprValue value, llvm::IRBuilder<>& builder);
 
 struct InterpChunk {
   bool placeholder = false;
@@ -1849,6 +1902,70 @@ static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder) {
   return nullptr;
 }
 
+static llvm::Value* to_i64(ExprValue value, llvm::IRBuilder<>& builder) {
+  if (value.value == nullptr) {
+    return nullptr;
+  }
+  if (value.type == ValueType::I32) {
+    return builder.CreateSExt(value.value, builder.getInt64Ty());
+  }
+  if (value.type == ValueType::I1) {
+    llvm::Value* as_i32 = builder.CreateZExt(value.value, builder.getInt32Ty());
+    return builder.CreateSExt(as_i32, builder.getInt64Ty());
+  }
+  if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+    return builder.CreateFPToSI(value.value, builder.getInt64Ty());
+  }
+  return nullptr;
+}
+
+static llvm::Value* emit_ref_new_call(VariableSlot::Ownership ownership, llvm::Value* value_i64,
+                                      llvm::Function* fn, llvm::IRBuilder<>& builder) {
+  if (value_i64 == nullptr || fn == nullptr) {
+    return nullptr;
+  }
+  llvm::Module* module = fn->getParent();
+  if (module == nullptr) {
+    return nullptr;
+  }
+  const char* symbol = ownership == VariableSlot::Ownership::Arc ? "thag_arc_new" : "thag_rc_new";
+  llvm::FunctionCallee callee =
+      module->getOrInsertFunction(symbol, llvm::FunctionType::get(builder.getPtrTy(), {builder.getInt64Ty(), builder.getPtrTy()}, false));
+  llvm::AllocaInst* tmp = create_entry_alloca(fn, builder.getInt64Ty(), std::string(symbol) + ".tmp");
+  builder.CreateStore(value_i64, tmp);
+  return builder.CreateCall(callee, {builder.getInt64(8), tmp});
+}
+
+static llvm::Value* emit_ref_clone_call(VariableSlot::Ownership ownership, llvm::Value* handle, llvm::Function* fn,
+                                        llvm::IRBuilder<>& builder) {
+  if (handle == nullptr || fn == nullptr) {
+    return nullptr;
+  }
+  llvm::Module* module = fn->getParent();
+  if (module == nullptr) {
+    return nullptr;
+  }
+  const char* symbol = ownership == VariableSlot::Ownership::Arc ? "thag_arc_clone" : "thag_rc_clone";
+  llvm::FunctionCallee callee =
+      module->getOrInsertFunction(symbol, llvm::FunctionType::get(builder.getPtrTy(), {builder.getPtrTy()}, false));
+  return builder.CreateCall(callee, {handle});
+}
+
+static void emit_ref_drop_call(VariableSlot::Ownership ownership, llvm::Value* handle, llvm::Function* fn,
+                               llvm::IRBuilder<>& builder) {
+  if (handle == nullptr || fn == nullptr) {
+    return;
+  }
+  llvm::Module* module = fn->getParent();
+  if (module == nullptr) {
+    return;
+  }
+  const char* symbol = ownership == VariableSlot::Ownership::Arc ? "thag_arc_drop" : "thag_rc_drop";
+  llvm::FunctionCallee callee =
+      module->getOrInsertFunction(symbol, llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false));
+  builder.CreateCall(callee, {handle});
+}
+
 static llvm::Value* to_i1(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.value == nullptr) {
     return nullptr;
@@ -1880,6 +1997,9 @@ static ValueType value_type_from_return_type(const std::string& type_name) {
   }
   if (type_name == "bool") {
     return ValueType::I1;
+  }
+  if (type_name == "Rc" || type_name == "Arc" || starts_with(type_name, "Rc<") || starts_with(type_name, "Arc<")) {
+    return ValueType::I8Ptr;
   }
   if (type_name == "ptr" || type_name == "string" || type_name == "String") {
     return ValueType::I8Ptr;
@@ -2237,6 +2357,19 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     return true;
   };
 
+  auto drop_owned_variables = [&]() {
+    for (auto& [_, slot] : variables) {
+      if (slot.type != ValueType::I8Ptr || slot.alloca == nullptr) {
+        continue;
+      }
+      if (slot.ownership != VariableSlot::Ownership::Rc && slot.ownership != VariableSlot::Ownership::Arc) {
+        continue;
+      }
+      llvm::Value* handle = builder.CreateLoad(slot.alloca->getAllocatedType(), slot.alloca);
+      emit_ref_drop_call(slot.ownership, handle, fn, builder);
+    }
+  };
+
   auto eval_with_try = [&](const std::string& expr_text, ExprValue& out_value) {
     std::string try_inner;
     if (!parse_try_operator_expr(expr_text, try_inner)) {
@@ -2278,6 +2411,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
     }
+    drop_owned_variables();
     builder.CreateRet(encoded.value);
 
     builder.SetInsertPoint(ok_bb);
@@ -2501,6 +2635,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         return false;
       }
       const std::string annotation = parse_let_annotation(st.text);
+      VariableSlot::Ownership ownership = VariableSlot::Ownership::None;
       if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
         ValueType declared_type = ValueType::Invalid;
         if (annotation == "i32" || annotation == "Option" || annotation == "Result" ||
@@ -2512,6 +2647,12 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           declared_type = ValueType::F64;
         } else if (annotation == "bool") {
           declared_type = ValueType::I1;
+        } else if (annotation == "Rc" || starts_with(annotation, "Rc<")) {
+          declared_type = ValueType::I8Ptr;
+          ownership = VariableSlot::Ownership::Rc;
+        } else if (annotation == "Arc" || starts_with(annotation, "Arc<")) {
+          declared_type = ValueType::I8Ptr;
+          ownership = VariableSlot::Ownership::Arc;
         } else if (annotation == "string" || annotation == "String" || annotation == "ptr") {
           declared_type = ValueType::I8Ptr;
         }
@@ -2519,7 +2660,27 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           diag.error("E2010", "unsupported let annotation in backend: '" + annotation + "'");
           return false;
         }
-        llvm::Value* casted = cast_value_to_type(value, declared_type, builder);
+        llvm::Value* casted = nullptr;
+        if (ownership == VariableSlot::Ownership::Rc || ownership == VariableSlot::Ownership::Arc) {
+          const std::string source_ident = parse_simple_identifier_expr(st.expression);
+          if (!source_ident.empty()) {
+            auto source_it = variables.find(source_ident);
+            if (source_it != variables.end() && source_it->second.type == ValueType::I8Ptr &&
+                source_it->second.ownership == ownership) {
+              llvm::Value* src_handle = builder.CreateLoad(source_it->second.alloca->getAllocatedType(), source_it->second.alloca);
+              casted = emit_ref_clone_call(ownership, src_handle, fn, builder);
+            }
+          }
+          if (casted == nullptr && value.type == ValueType::I8Ptr) {
+            casted = value.value;
+          }
+          if (casted == nullptr) {
+            llvm::Value* as_i64 = to_i64(value, builder);
+            casted = emit_ref_new_call(ownership, as_i64, fn, builder);
+          }
+        } else {
+          casted = cast_value_to_type(value, declared_type, builder);
+        }
         if (casted == nullptr) {
           diag.error("E2011", "cannot cast let value for '" + name + "' to declared type '" + annotation + "'");
           return false;
@@ -2537,7 +2698,21 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         diag.error("E2011", "type change for variable '" + name + "' is not supported in backend");
         return false;
       }
+      if (ownership == VariableSlot::Ownership::None && value.type == ValueType::I8Ptr) {
+        if (starts_with(trim(st.expression), "Rc(")) {
+          ownership = VariableSlot::Ownership::Rc;
+        } else if (starts_with(trim(st.expression), "Arc(")) {
+          ownership = VariableSlot::Ownership::Arc;
+        }
+      }
+      if (it->second.type == ValueType::I8Ptr &&
+          (it->second.ownership == VariableSlot::Ownership::Rc || it->second.ownership == VariableSlot::Ownership::Arc) &&
+          it->second.alloca != nullptr) {
+        llvm::Value* prev = builder.CreateLoad(it->second.alloca->getAllocatedType(), it->second.alloca);
+        emit_ref_drop_call(it->second.ownership, prev, fn, builder);
+      }
       builder.CreateStore(value.value, it->second.alloca);
+      it->second.ownership = ownership == VariableSlot::Ownership::None ? it->second.ownership : ownership;
       ++index;
       continue;
     }
@@ -2593,10 +2768,36 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!eval_with_try(st.expression, value)) {
         return false;
       }
-      llvm::Value* casted = cast_value_to_type(value, it->second.type, builder);
+      llvm::Value* casted = nullptr;
+      if (it->second.type == ValueType::I8Ptr &&
+          (it->second.ownership == VariableSlot::Ownership::Rc || it->second.ownership == VariableSlot::Ownership::Arc)) {
+        const std::string source_ident = parse_simple_identifier_expr(st.expression);
+        if (!source_ident.empty()) {
+          auto source_it = variables.find(source_ident);
+          if (source_it != variables.end() && source_it->second.type == ValueType::I8Ptr &&
+              source_it->second.ownership == it->second.ownership) {
+            llvm::Value* src_handle = builder.CreateLoad(source_it->second.alloca->getAllocatedType(), source_it->second.alloca);
+            casted = emit_ref_clone_call(it->second.ownership, src_handle, fn, builder);
+          }
+        }
+        if (casted == nullptr && value.type == ValueType::I8Ptr) {
+          casted = value.value;
+        }
+        if (casted == nullptr) {
+          llvm::Value* as_i64 = to_i64(value, builder);
+          casted = emit_ref_new_call(it->second.ownership, as_i64, fn, builder);
+        }
+      } else {
+        casted = cast_value_to_type(value, it->second.type, builder);
+      }
       if (casted == nullptr) {
         diag.error("E2024", "assignment type mismatch for '" + target + "'");
         return false;
+      }
+      if (it->second.type == ValueType::I8Ptr &&
+          (it->second.ownership == VariableSlot::Ownership::Rc || it->second.ownership == VariableSlot::Ownership::Arc)) {
+        llvm::Value* prev = builder.CreateLoad(it->second.alloca->getAllocatedType(), it->second.alloca);
+        emit_ref_drop_call(it->second.ownership, prev, fn, builder);
       }
       builder.CreateStore(casted, it->second.alloca);
       ++index;
@@ -2690,6 +2891,7 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!flush_deferred()) {
         return false;
       }
+      drop_owned_variables();
       if (expected_return_type == ValueType::Void) {
         builder.CreateRetVoid();
       } else {
@@ -3134,6 +3336,16 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
     }
 
     if (!builder.GetInsertBlock()->getTerminator()) {
+      for (auto& [_, slot] : variables) {
+        if (slot.type != ValueType::I8Ptr || slot.alloca == nullptr) {
+          continue;
+        }
+        if (slot.ownership != VariableSlot::Ownership::Rc && slot.ownership != VariableSlot::Ownership::Arc) {
+          continue;
+        }
+        llvm::Value* handle = builder.CreateLoad(slot.alloca->getAllocatedType(), slot.alloca);
+        emit_ref_drop_call(slot.ownership, handle, fn, builder);
+      }
       const ValueType expected = function_returns[fn_def.name];
       if (expected == ValueType::Void) {
         builder.CreateRetVoid();

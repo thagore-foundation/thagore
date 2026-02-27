@@ -5,9 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._support import resolve_thagc_bin
+
 
 def _find_runtime_lib() -> Path | None:
     for candidate in (
+        Path("build-llvm21/runtime/libthag_runtime.a"),
         Path("build-llvm21-run/runtime/libthag_runtime.a"),
         Path("build-gcc-llvm21-clean/runtime/libthag_runtime.a"),
         Path("build/runtime/libthag_runtime.a"),
@@ -21,6 +24,7 @@ class ConcurrencyRegressionNativeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime_lib = _find_runtime_lib()
         self.cxx = shutil.which("g++")
+        self.thagc = resolve_thagc_bin()
         if self.runtime_lib is None:
             self.skipTest("runtime static library not found; build runtime first")
         if self.cxx is None:
@@ -111,6 +115,77 @@ class ConcurrencyRegressionNativeTests(unittest.TestCase):
             "}\n"
         )
         self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_child_scope_cannot_leak_outside_parent(self) -> None:
+        run = self._compile_and_run(
+            "#include <atomic>\n"
+            "#include \"thag_runtime.h\"\n"
+            "static std::atomic<int> g_done{0};\n"
+            "static void child_worker(void*) { g_done.fetch_add(1); }\n"
+            "static void parent_worker(void*) {\n"
+            "  thag_task_scope_t* child = thag_task_scope_create();\n"
+            "  thag_task_scope_spawn(child, child_worker, nullptr);\n"
+            "}\n"
+            "int main() {\n"
+            "  thag_task_scope_t* parent = thag_task_scope_create();\n"
+            "  if (!parent) return 40;\n"
+            "  if (!thag_task_scope_spawn(parent, parent_worker, nullptr)) return 41;\n"
+            "  int ok = thag_task_scope_wait(parent);\n"
+            "  thag_task_scope_destroy(parent);\n"
+            "  if (!ok) return 42;\n"
+            "  return g_done.load() == 1 ? 0 : 43;\n"
+            "}\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_cancel_propagates_to_nested_children(self) -> None:
+        run = self._compile_and_run(
+            "#include <atomic>\n"
+            "#include \"thag_runtime.h\"\n"
+            "static std::atomic<int> g_cancel_seen{0};\n"
+            "static void sleepy(void*) {\n"
+            "  for (int i = 0; i < 200; ++i) {\n"
+            "    if (thag_task_is_cancelled()) { g_cancel_seen.store(1); return; }\n"
+            "    thag_sleep_ms(1);\n"
+            "  }\n"
+            "}\n"
+            "static void spawn_child(void*) {\n"
+            "  thag_task_scope_t* child = thag_task_scope_create();\n"
+            "  thag_task_scope_spawn(child, sleepy, nullptr);\n"
+            "}\n"
+            "int main() {\n"
+            "  thag_task_scope_t* parent = thag_task_scope_create();\n"
+            "  if (!parent) return 50;\n"
+            "  if (!thag_task_scope_spawn(parent, spawn_child, nullptr)) return 51;\n"
+            "  thag_sleep_ms(5);\n"
+            "  thag_task_scope_cancel(parent);\n"
+            "  (void)thag_task_scope_wait(parent);\n"
+            "  thag_task_scope_destroy(parent);\n"
+            "  return g_cancel_seen.load() == 1 ? 0 : 52;\n"
+            "}\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_rc_rejected_across_task_boundary(self) -> None:
+        if self.thagc is None:
+            self.skipTest("thagc binary not found; set THAGC_BIN or build compiler first")
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "main.tg"
+            out = Path(td) / "main.bin"
+            src.write_text(
+                "func main():\n"
+                "  let conn: Rc = 1\n"
+                "  spawn(conn)\n"
+                "  return 0\n"
+            )
+            build = subprocess.run(
+                [str(self.thagc), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("E_SEND_SYNC_004", build.stderr)
 
 
 if __name__ == "__main__":
