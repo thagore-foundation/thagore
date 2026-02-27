@@ -1,16 +1,19 @@
 #include "thag_runtime.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #if defined(THAG_RUNTIME_HAS_CURL)
 #include <curl/curl.h>
@@ -23,6 +26,7 @@
 #if !defined(_WIN32)
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -36,6 +40,7 @@ struct RuntimeMap {
 struct WsHandle {
   std::string endpoint;
   int socket_fd = -1;
+  bool websocket_ready = false;
 };
 
 std::mutex g_ws_mutex;
@@ -104,6 +109,7 @@ int http_request_code(const char* method, const char* url, const char* payload, 
 struct ParsedWsEndpoint {
   std::string host;
   std::string port;
+  std::string path;
 };
 
 std::optional<ParsedWsEndpoint> parse_ws_endpoint(const char* endpoint) {
@@ -115,8 +121,10 @@ std::optional<ParsedWsEndpoint> parse_ws_endpoint(const char* endpoint) {
     return std::nullopt;
   }
   text = text.substr(5);
+  std::string path = "/";
   const std::size_t slash = text.find('/');
   if (slash != std::string::npos) {
+    path = text.substr(slash);
     text = text.substr(0, slash);
   }
   if (text.empty()) {
@@ -134,6 +142,7 @@ std::optional<ParsedWsEndpoint> parse_ws_endpoint(const char* endpoint) {
   if (out.host.empty() || out.port.empty()) {
     return std::nullopt;
   }
+  out.path = path.empty() ? "/" : path;
   return out;
 }
 
@@ -161,6 +170,108 @@ int connect_ws_socket(const ParsedWsEndpoint& endpoint) {
   }
   freeaddrinfo(result);
   return fd;
+}
+
+void set_socket_timeout(int fd, int timeout_ms) {
+  if (fd < 0 || timeout_ms <= 0) {
+    return;
+  }
+  timeval tv{};
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+bool send_all(int fd, const void* data, std::size_t size) {
+  const auto* bytes = static_cast<const std::uint8_t*>(data);
+  std::size_t sent_total = 0;
+  while (sent_total < size) {
+    const ssize_t sent = ::send(fd, bytes + sent_total, size - sent_total, 0);
+    if (sent <= 0) {
+      return false;
+    }
+    sent_total += static_cast<std::size_t>(sent);
+  }
+  return true;
+}
+
+std::string ascii_lower(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return value;
+}
+
+bool perform_ws_handshake(int fd, const ParsedWsEndpoint& endpoint) {
+  const std::string request =
+      "GET " + endpoint.path + " HTTP/1.1\r\n"
+      "Host: " + endpoint.host + ":" + endpoint.port + "\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+      "Sec-WebSocket-Version: 13\r\n\r\n";
+  if (!send_all(fd, request.data(), request.size())) {
+    return false;
+  }
+
+  std::array<char, 1024> buffer{};
+  std::string response;
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const ssize_t got = ::recv(fd, buffer.data(), buffer.size(), 0);
+    if (got <= 0) {
+      break;
+    }
+    response.append(buffer.data(), static_cast<std::size_t>(got));
+    if (response.find("\r\n\r\n") != std::string::npos) {
+      break;
+    }
+  }
+  if (response.empty()) {
+    return false;
+  }
+
+  const std::string lowered = ascii_lower(response);
+  const bool has_101 = lowered.find(" 101 ") != std::string::npos || lowered.find(" 101\r") != std::string::npos;
+  const bool has_upgrade = lowered.find("upgrade: websocket") != std::string::npos;
+  return has_101 && has_upgrade;
+}
+
+bool send_ws_text_frame(int fd, const char* message) {
+  if (fd < 0 || message == nullptr) {
+    return false;
+  }
+  const std::string payload(message);
+  std::vector<std::uint8_t> frame;
+  frame.reserve(payload.size() + 16);
+  frame.push_back(0x81);  // FIN + text opcode
+
+  const std::size_t n = payload.size();
+  const std::array<std::uint8_t, 4> mask = {0x12, 0x34, 0x56, 0x78};
+  if (n <= 125) {
+    frame.push_back(static_cast<std::uint8_t>(0x80 | n));
+  } else if (n <= 0xFFFF) {
+    frame.push_back(0x80 | 126);
+    frame.push_back(static_cast<std::uint8_t>((n >> 8) & 0xFF));
+    frame.push_back(static_cast<std::uint8_t>(n & 0xFF));
+  } else {
+    frame.push_back(0x80 | 127);
+    for (int shift = 56; shift >= 0; shift -= 8) {
+      frame.push_back(static_cast<std::uint8_t>((static_cast<std::uint64_t>(n) >> shift) & 0xFF));
+    }
+  }
+  frame.insert(frame.end(), mask.begin(), mask.end());
+  for (std::size_t i = 0; i < payload.size(); ++i) {
+    frame.push_back(static_cast<std::uint8_t>(payload[i]) ^ mask[i % mask.size()]);
+  }
+  return send_all(fd, frame.data(), frame.size());
+}
+
+void send_ws_close_frame(int fd) {
+  if (fd < 0) {
+    return;
+  }
+  const std::array<std::uint8_t, 6> close_frame = {0x88, 0x80, 0x12, 0x34, 0x56, 0x78};
+  (void)send_all(fd, close_frame.data(), close_frame.size());
 }
 #endif
 
@@ -265,6 +376,14 @@ int thag_ws_connect(const char* endpoint, int timeout_ms) {
 #if !defined(_WIN32)
   if (const auto parsed = parse_ws_endpoint(endpoint); parsed.has_value()) {
     ws.socket_fd = connect_ws_socket(*parsed);
+    if (ws.socket_fd >= 0) {
+      set_socket_timeout(ws.socket_fd, timeout_ms);
+      ws.websocket_ready = perform_ws_handshake(ws.socket_fd, *parsed);
+      if (!ws.websocket_ready) {
+        ::close(ws.socket_fd);
+        ws.socket_fd = -1;
+      }
+    }
   }
 #endif
   std::lock_guard<std::mutex> lock(g_ws_mutex);
@@ -282,10 +401,9 @@ int thag_ws_send(int handle, const char* message) {
     return 0;
   }
 #if !defined(_WIN32)
-  if (it->second.socket_fd >= 0) {
-    const ssize_t sent = ::send(it->second.socket_fd, message, std::strlen(message), 0);
-    if (sent > 0) {
-      return static_cast<int>(sent);
+  if (it->second.socket_fd >= 0 && it->second.websocket_ready) {
+    if (send_ws_text_frame(it->second.socket_fd, message)) {
+      return static_cast<int>(std::strlen(message));
     }
     return 0;
   }
@@ -301,6 +419,9 @@ int thag_ws_close(int handle) {
   }
 #if !defined(_WIN32)
   if (it->second.socket_fd >= 0) {
+    if (it->second.websocket_ready) {
+      send_ws_close_frame(it->second.socket_fd);
+    }
     ::close(it->second.socket_fd);
   }
 #endif
