@@ -1,13 +1,17 @@
-# Minimal WebSocket client surface.
+# Minimal WebSocket client surface mapped to runtime hooks.
+
+extern func thag_ws_connect(endpoint: ptr, timeout_ms: i32) -> i32
+extern func thag_ws_send(handle: i32, message: ptr) -> i32
+extern func thag_ws_close(handle: i32) -> i32
 
 func ws_ready():
   return 1
 
-func ws_connect():
-  return 0
+func ws_connect(endpoint: ptr, timeout_ms: i32):
+  return thag_ws_connect(endpoint, timeout_ms)
 
-func ws_send():
-  return 0
+func ws_send(handle: i32, message: ptr):
+  return thag_ws_send(handle, message)
 
-func ws_close():
-  return 0
+func ws_close(handle: i32):
+  return thag_ws_close(handle)

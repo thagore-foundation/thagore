@@ -1,11 +1,13 @@
-# Minimal HTTP client surface.
-# This module is intentionally small: one client path, two verbs.
+# Minimal HTTP client surface mapped to runtime hooks.
+
+extern func thag_http_get(url: ptr, timeout_ms: i32) -> i32
+extern func thag_http_post(url: ptr, payload: ptr, timeout_ms: i32) -> i32
 
 func http_ready():
   return 1
 
-func http_get():
-  return 0
+func http_get(url: ptr, timeout_ms: i32):
+  return thag_http_get(url, timeout_ms)
 
-func http_post():
-  return 0
+func http_post(url: ptr, payload: ptr, timeout_ms: i32):
+  return thag_http_post(url, payload, timeout_ms)

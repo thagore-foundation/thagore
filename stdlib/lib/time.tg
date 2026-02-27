@@ -1,7 +1,11 @@
-# Minimal time helpers.
+# Time helpers mapped to runtime hooks.
+
+extern func thag_now_ms() -> i32
+extern func thag_sleep_ms(millis: i32) -> void
 
 func now_ms():
-  return 0
+  return thag_now_ms()
 
-func sleep_ms():
+func sleep_ms(millis: i32):
+  thag_sleep_ms(millis)
   return 0

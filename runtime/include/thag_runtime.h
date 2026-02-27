@@ -11,6 +11,23 @@ typedef struct thag_task_scope thag_task_scope_t;
 void thag_runtime_init(void);
 void thag_print_i32(int value);
 void thag_print_str(const char* text);
+int64_t thag_now_ms(void);
+void thag_sleep_ms(uint64_t millis);
+
+void* thag_map_new(void);
+int thag_map_put(void* map, const char* key, const char* value);
+const char* thag_map_get(void* map, const char* key);
+int thag_map_is_null_ptr(const void* ptr);
+void thag_map_free(void* map);
+
+int thag_http_get(const char* url, int timeout_ms);
+int thag_http_post(const char* url, const char* payload, int timeout_ms);
+int thag_ws_connect(const char* endpoint, int timeout_ms);
+int thag_ws_send(int handle, const char* message);
+int thag_ws_close(int handle);
+int thag_db_connect(const char* dsn);
+int thag_db_query(int handle, const char* query);
+int thag_db_close(int handle);
 
 thag_task_scope_t* thag_task_scope_create(void);
 thag_task_scope_t* thag_nursery_create(void);

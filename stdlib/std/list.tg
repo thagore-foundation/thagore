@@ -1,4 +1,4 @@
-# List helper stubs for compiler parity lane.
+# List helper surface for compiler parity lane.
 
 func size():
   return 0

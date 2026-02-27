@@ -4,6 +4,7 @@ add_library(thag_runtime STATIC
   src/thag_runtime.cpp
   src/print.cpp
   src/string.cpp
+  src/io_stack.cpp
   src/concurrency.cpp
   src/platform_posix.cpp
   src/platform_windows.cpp

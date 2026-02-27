@@ -1,14 +1,23 @@
-# Simple map contract entry points.
-# This implementation is intentionally tiny and deterministic.
+# Deterministic map entry points mapped to runtime hooks.
+
+extern func thag_map_new() -> ptr
+extern func thag_map_put(map: ptr, key: ptr, value: ptr) -> i32
+extern func thag_map_get(map: ptr, key: ptr) -> ptr
+extern func thag_map_is_null_ptr(value: ptr) -> i32
+extern func thag_map_free(map: ptr) -> void
 
 func new():
-  return 0
+  return thag_map_new()
 
-func put():
-  return 0
+func put(map: ptr, key: ptr, value: ptr):
+  return thag_map_put(map, key, value)
 
-func get():
-  return 0
+func get(map: ptr, key: ptr):
+  return thag_map_get(map, key)
 
-func is_null_ptr():
-  return 1
+func is_null_ptr(value: ptr):
+  return thag_map_is_null_ptr(value)
+
+func free(map: ptr):
+  thag_map_free(map)
+  return 0

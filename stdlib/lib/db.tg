@@ -1,13 +1,17 @@
-# Minimal database client surface.
+# Minimal DB client surface mapped to runtime hooks.
+
+extern func thag_db_connect(dsn: ptr) -> i32
+extern func thag_db_query(handle: i32, query: ptr) -> i32
+extern func thag_db_close(handle: i32) -> i32
 
 func db_ready():
   return 1
 
-func db_connect():
-  return 0
+func db_connect(dsn: ptr):
+  return thag_db_connect(dsn)
 
-func db_query():
-  return 0
+func db_query(handle: i32, query: ptr):
+  return thag_db_query(handle, query)
 
-func db_close():
-  return 0
+func db_close(handle: i32):
+  return thag_db_close(handle)
