@@ -30,6 +30,8 @@ enum class TokenKind {
   KeywordFrom,
   KeywordAs,
   KeywordExtern,
+  KeywordAsync,
+  KeywordAwait,
   KeywordFlow,
   KeywordIntent,
   Colon,

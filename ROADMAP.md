@@ -158,26 +158,26 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.7 — Structured Concurrency by Default (Beta)
+## v0.7 — Structured Concurrency by Default (Beta) ✅ Released
 > *"Concurrent code an toàn như single-thread code"*
 
 ### Runtime
-- [ ] Timeout API và propagation semantics
-- [ ] Scheduler fairness — starvation protection
-- [ ] Backpressure mechanism
-- [ ] First deadlock/race regression suite
+- [x] Timeout API và propagation semantics
+- [x] Scheduler fairness — starvation protection
+- [x] Backpressure mechanism
+- [x] First deadlock/race regression suite
 
 ### Language
-- [ ] `async`/`await` syntax hoặc equivalent Thagore construct
-- [ ] Task cancellation propagation qua IO boundaries
-- [ ] Cancellation check trong HTTP/WS/DB calls
+- [x] `async`/`await` syntax hoặc equivalent Thagore construct
+- [x] Task cancellation propagation qua IO boundaries
+- [x] Cancellation check trong HTTP/WS/DB calls
 
 ### Docs
-- [ ] Concurrency debugging playbook
+- [x] Concurrency debugging playbook
 - [ ] Structured concurrency guide cho beginners
 
 ### Gate
-- [ ] Scope/cancel/timeout behavior deterministic dưới stress tests 20-iteration soak
+- [x] Scope/cancel/timeout behavior deterministic dưới stress tests 20-iteration soak
 
 ---
 

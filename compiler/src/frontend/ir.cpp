@@ -145,6 +145,9 @@ static std::string method_name_from_line(const std::string& line) {
   if (starts_with(clean, "pub ")) {
     clean = trim(clean.substr(4));
   }
+  if (starts_with(clean, "async ")) {
+    clean = trim(clean.substr(6));
+  }
   if (!starts_with(clean, "func ")) {
     return "";
   }
@@ -662,6 +665,7 @@ static void collect_feature_counters(const std::string& line, AstProgram& progra
   }
   if (ends_with(line, ":") && line.find(':') != std::string::npos && !starts_with(line, "if ") &&
       !starts_with(line, "while ") && !starts_with(line, "for ") && !starts_with(line, "func ") &&
+      !starts_with(line, "async func ") &&
       !starts_with(line, "struct ") && !starts_with(line, "enum ") && !starts_with(line, "impl ") &&
       !starts_with(line, "trait ") && !starts_with(line, "match ") && !starts_with(line, "else")) {
     ++program.loop_label_count;
@@ -1000,9 +1004,17 @@ static std::string parse_expression_equality(ExprCursor& cursor) {
   return lhs;
 }
 
+static std::string strip_await_prefix(const std::string& expr_text) {
+  std::string clean = trim(expr_text);
+  while (starts_with(clean, "await ")) {
+    clean = trim(clean.substr(6));
+  }
+  return clean;
+}
+
 static ParsedExpression parse_expression_text(const std::string& expr_text) {
   ParsedExpression out;
-  const std::string clean = trim(expr_text);
+  const std::string clean = strip_await_prefix(expr_text);
   if (clean.empty()) {
     out.error = "expression is empty";
     return out;
@@ -1486,15 +1498,18 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       effective_line = trim(effective_line.substr(5));
     }
 
-    if (starts_with(effective_line, "func ")) {
+    if (starts_with(effective_line, "func ") || starts_with(effective_line, "async func ")) {
+      const bool is_async_func = starts_with(effective_line, "async func ");
+      const std::string function_header = is_async_func ? trim(effective_line.substr(6)) : effective_line;
       AstFunction fn;
-      fn.name = function_name_from_header(effective_line);
-      fn.params = function_params_from_header(effective_line);
+      fn.name = function_name_from_header(function_header);
+      fn.params = function_params_from_header(function_header);
       fn.header_line = line.number;
       fn.header_indent = line.indent;
       fn.is_pub = is_pub_decl;
+      fn.is_async = is_async_func;
 
-      if (!ends_with(effective_line, ":")) {
+      if (!ends_with(function_header, ":")) {
         add_parse_error(program, line.number, "function header must be colon-terminated");
       }
       if (fn.name.empty()) {
@@ -1505,8 +1520,8 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
           add_parse_error(program, line.number, "invalid function parameter '" + param + "'");
         }
       }
-      fn.return_type = function_return_type_from_header(effective_line);
-      if (effective_line.find("->") != std::string::npos && fn.return_type.empty()) {
+      fn.return_type = function_return_type_from_header(function_header);
+      if (function_header.find("->") != std::string::npos && fn.return_type.empty()) {
         add_parse_error(program, line.number, "function return annotation '-> type' is not supported");
       }
 
@@ -1670,9 +1685,11 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
             program.impl_for_methods[impl_key].push_back(method);
           }
         }
-        if (is_type_impl && starts_with(effective_member, "func ")) {
+        if (is_type_impl && (starts_with(effective_member, "func ") || starts_with(effective_member, "async func "))) {
+          const bool async_method = starts_with(effective_member, "async func ");
+          const std::string method_header = async_method ? trim(effective_member.substr(6)) : effective_member;
           AstFunction fn;
-          const std::string method_name = function_name_from_header(effective_member);
+          const std::string method_name = function_name_from_header(method_header);
           if (method_name.empty()) {
             add_parse_error(program, member_line.number, "invalid impl method header");
             ++i;
@@ -1682,17 +1699,18 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
             continue;
           }
           fn.name = impl_type_name + "." + method_name;
-          fn.params = function_params_from_header(effective_member);
+          fn.params = function_params_from_header(method_header);
           if (fn.params.empty() || fn.params.front() != "self") {
             fn.params.insert(fn.params.begin(), "self");
           }
           fn.header_line = member_line.number;
           fn.header_indent = member_line.indent;
-          fn.return_type = function_return_type_from_header(effective_member);
-          if (!ends_with(effective_member, ":")) {
+          fn.return_type = function_return_type_from_header(method_header);
+          fn.is_async = async_method;
+          if (!ends_with(method_header, ":")) {
             add_parse_error(program, member_line.number, "impl method header must be colon-terminated");
           }
-          if (effective_member.find("->") != std::string::npos && fn.return_type.empty()) {
+          if (method_header.find("->") != std::string::npos && fn.return_type.empty()) {
             add_parse_error(program, member_line.number, "impl method return annotation '-> type' is not supported");
           }
           if (!method_name.empty()) {

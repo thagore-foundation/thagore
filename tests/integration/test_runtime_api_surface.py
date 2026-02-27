@@ -10,6 +10,7 @@ class RuntimeApiSurfaceTests(unittest.TestCase):
             "thag_nursery_create",
             "thag_task_scope_spawn",
             "thag_task_scope_cancel",
+            "thag_task_scope_set_timeout",
             "thag_task_scope_set_timeout_ms",
             "thag_task_scope_wait",
             "thag_task_scope_cancelled",

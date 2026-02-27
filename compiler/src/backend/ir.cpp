@@ -1605,7 +1605,10 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
                                      std::unordered_map<std::string, ClosureDef>* closures,
                                      llvm::Function* current_function,
                                      support::DiagnosticSink& diag) {
-  const std::string clean = trim(expr_text);
+  std::string clean = trim(expr_text);
+  while (starts_with(clean, "await ")) {
+    clean = trim(clean.substr(6));
+  }
   if (clean.empty()) {
     return ExprValue{builder.getInt32(0), ValueType::I32};
   }

@@ -251,6 +251,17 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 3, msg=run.stderr)
 
+    def test_async_await_surface_compiles_and_runs(self) -> None:
+        _, run = self._build_and_run(
+            "async func add1(v):\n"
+            "  return v + 1\n"
+            "\n"
+            "func main():\n"
+            "  let n = await add1(4)\n"
+            "  return n\n"
+        )
+        self.assertEqual(run.returncode, 5, msg=run.stderr)
+
     def test_typestate_rejects_read_before_open(self) -> None:
         build, _ = self._build(
             "func main():\n"

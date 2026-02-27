@@ -71,6 +71,12 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "extern") {
     return TokenKind::KeywordExtern;
   }
+  if (text == "async") {
+    return TokenKind::KeywordAsync;
+  }
+  if (text == "await") {
+    return TokenKind::KeywordAwait;
+  }
   if (text == "flow") {
     return TokenKind::KeywordFlow;
   }

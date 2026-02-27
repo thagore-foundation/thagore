@@ -10,6 +10,8 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
             "KeywordImpl",
             "KeywordImport",
             "KeywordExtern",
+            "KeywordAsync",
+            "KeywordAwait",
             "Less",
             "LessEqual",
             "Greater",
@@ -21,7 +23,7 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
 
     def test_lexer_recognizes_extended_keywords_and_operators(self) -> None:
         lexer_cpp = Path("compiler/src/frontend/core.cpp").read_text()
-        for keyword in ('text == "struct"', 'text == "impl"', 'text == "import"', 'text == "extern"'):
+        for keyword in ('text == "struct"', 'text == "impl"', 'text == "import"', 'text == "extern"', 'text == "async"', 'text == "await"'):
             self.assertIn(keyword, lexer_cpp)
         for op in ("TokenKind::LessEqual", "TokenKind::GreaterEqual", "TokenKind::EqualEqual", "TokenKind::BangEqual"):
             self.assertIn(op, lexer_cpp)

@@ -32,6 +32,12 @@
 
 namespace {
 
+static constexpr int kIoCancelledCode = -2;
+
+static bool io_cancelled() {
+  return thag_task_is_cancelled() != 0;
+}
+
 struct RuntimeMap {
   std::mutex mutex;
   std::unordered_map<std::string, std::string> values;
@@ -61,6 +67,15 @@ std::atomic<int> g_db_next_handle{1};
 #if defined(THAG_RUNTIME_HAS_CURL)
 std::once_flag g_curl_init_once;
 
+int curl_cancel_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
+  (void)clientp;
+  (void)dltotal;
+  (void)dlnow;
+  (void)ultotal;
+  (void)ulnow;
+  return io_cancelled() ? 1 : 0;
+}
+
 size_t discard_http_body(char* ptr, size_t size, size_t nmemb, void* userdata) {
   (void)ptr;
   (void)userdata;
@@ -72,6 +87,9 @@ void ensure_curl_init() {
 }
 
 int http_request_code(const char* method, const char* url, const char* payload, int timeout_ms) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (url == nullptr || std::strlen(url) == 0 || timeout_ms < 0) {
     return 0;
   }
@@ -84,6 +102,9 @@ int http_request_code(const char* method, const char* url, const char* payload, 
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_http_body);
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+  curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, curl_cancel_callback);
+  curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
   if (timeout_ms > 0) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(timeout_ms));
   }
@@ -98,7 +119,13 @@ int http_request_code(const char* method, const char* url, const char* payload, 
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
   }
   curl_easy_cleanup(curl);
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (rc != CURLE_OK) {
+    if (rc == CURLE_ABORTED_BY_CALLBACK) {
+      return kIoCancelledCode;
+    }
     return 599;
   }
   return static_cast<int>(status);
@@ -187,6 +214,9 @@ bool send_all(int fd, const void* data, std::size_t size) {
   const auto* bytes = static_cast<const std::uint8_t*>(data);
   std::size_t sent_total = 0;
   while (sent_total < size) {
+    if (io_cancelled()) {
+      return false;
+    }
     const ssize_t sent = ::send(fd, bytes + sent_total, size - sent_total, 0);
     if (sent <= 0) {
       return false;
@@ -203,6 +233,9 @@ std::string ascii_lower(std::string value) {
 }
 
 bool perform_ws_handshake(int fd, const ParsedWsEndpoint& endpoint) {
+  if (io_cancelled()) {
+    return false;
+  }
   const std::string request =
       "GET " + endpoint.path + " HTTP/1.1\r\n"
       "Host: " + endpoint.host + ":" + endpoint.port + "\r\n"
@@ -217,6 +250,9 @@ bool perform_ws_handshake(int fd, const ParsedWsEndpoint& endpoint) {
   std::array<char, 1024> buffer{};
   std::string response;
   for (int attempt = 0; attempt < 4; ++attempt) {
+    if (io_cancelled()) {
+      return false;
+    }
     const ssize_t got = ::recv(fd, buffer.data(), buffer.size(), 0);
     if (got <= 0) {
       break;
@@ -345,28 +381,43 @@ void thag_map_free(void* map) {
 }
 
 int thag_http_get(const char* url, int timeout_ms) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
 #if defined(THAG_RUNTIME_HAS_CURL)
   return http_request_code("GET", url, nullptr, timeout_ms);
 #else
   if (url == nullptr || std::strlen(url) == 0 || timeout_ms < 0) {
     return 0;
   }
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   return 200;
 #endif
 }
 
 int thag_http_post(const char* url, const char* payload, int timeout_ms) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
 #if defined(THAG_RUNTIME_HAS_CURL)
   return http_request_code("POST", url, payload, timeout_ms);
 #else
   if (url == nullptr || payload == nullptr || timeout_ms < 0) {
     return 0;
   }
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   return std::strlen(payload) == 0 ? 202 : 201;
 #endif
 }
 
 int thag_ws_connect(const char* endpoint, int timeout_ms) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (endpoint == nullptr || std::strlen(endpoint) == 0 || timeout_ms < 0) {
     return 0;
   }
@@ -377,8 +428,15 @@ int thag_ws_connect(const char* endpoint, int timeout_ms) {
   if (const auto parsed = parse_ws_endpoint(endpoint); parsed.has_value()) {
     ws.socket_fd = connect_ws_socket(*parsed);
     if (ws.socket_fd >= 0) {
+      if (io_cancelled()) {
+        ::close(ws.socket_fd);
+        ws.socket_fd = -1;
+      }
       set_socket_timeout(ws.socket_fd, timeout_ms);
       ws.websocket_ready = perform_ws_handshake(ws.socket_fd, *parsed);
+      if (io_cancelled()) {
+        ws.websocket_ready = false;
+      }
       if (!ws.websocket_ready) {
         ::close(ws.socket_fd);
         ws.socket_fd = -1;
@@ -392,6 +450,9 @@ int thag_ws_connect(const char* endpoint, int timeout_ms) {
 }
 
 int thag_ws_send(int handle, const char* message) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (message == nullptr) {
     return 0;
   }
@@ -402,7 +463,13 @@ int thag_ws_send(int handle, const char* message) {
   }
 #if !defined(_WIN32)
   if (it->second.socket_fd >= 0 && it->second.websocket_ready) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
     if (send_ws_text_frame(it->second.socket_fd, message)) {
+      if (io_cancelled()) {
+        return kIoCancelledCode;
+      }
       return static_cast<int>(std::strlen(message));
     }
     return 0;
@@ -412,6 +479,9 @@ int thag_ws_send(int handle, const char* message) {
 }
 
 int thag_ws_close(int handle) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   std::lock_guard<std::mutex> lock(g_ws_mutex);
   auto it = g_ws_handles.find(handle);
   if (it == g_ws_handles.end()) {
@@ -430,6 +500,9 @@ int thag_ws_close(int handle) {
 }
 
 int thag_db_connect(const char* dsn) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (dsn == nullptr || std::strlen(dsn) == 0) {
     return 0;
   }
@@ -445,6 +518,9 @@ int thag_db_connect(const char* dsn) {
 }
 
 int thag_db_query(int handle, const char* query) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   if (query == nullptr || std::strlen(query) == 0) {
     return 0;
   }
@@ -465,6 +541,9 @@ int thag_db_query(int handle, const char* query) {
     }
     const int step_rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
     if (step_rc == SQLITE_ROW || step_rc == SQLITE_DONE) {
       std::string lower = q;
       std::transform(lower.begin(), lower.end(), lower.begin(),
@@ -484,6 +563,9 @@ int thag_db_query(int handle, const char* query) {
 }
 
 int thag_db_close(int handle) {
+  if (io_cancelled()) {
+    return kIoCancelledCode;
+  }
   std::lock_guard<std::mutex> lock(g_db_mutex);
   auto it = g_db_handles.find(handle);
   if (it == g_db_handles.end()) {

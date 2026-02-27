@@ -59,6 +59,7 @@ struct AstFunction {
   int header_line = 0;
   int header_indent = 0;
   bool is_pub = false;
+  bool is_async = false;
   std::vector<AstStatement> body;
 };
 

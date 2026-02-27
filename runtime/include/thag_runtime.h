@@ -37,6 +37,7 @@ thag_task_scope_t* thag_nursery_create(void);
 void thag_task_scope_destroy(thag_task_scope_t* scope);
 int thag_task_scope_spawn(thag_task_scope_t* scope, thag_task_fn fn, void* user_data);
 void thag_task_scope_cancel(thag_task_scope_t* scope);
+void thag_task_scope_set_timeout(thag_task_scope_t* scope, uint64_t timeout_ms);
 void thag_task_scope_set_timeout_ms(thag_task_scope_t* scope, uint64_t timeout_ms);
 int thag_task_scope_wait(thag_task_scope_t* scope);
 int thag_task_scope_cancelled(const thag_task_scope_t* scope);

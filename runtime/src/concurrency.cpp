@@ -4,8 +4,12 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstdint>
+#include <cstddef>
+#include <cstdio>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -53,6 +57,7 @@ struct SchedulerTask {
   void* user_data = nullptr;
   thag_task_scope_t* scope = nullptr;
   thag_async_runtime_t* runtime = nullptr;
+  Clock::time_point enqueued_at{};
 };
 
 struct TimerTask {
@@ -69,10 +74,12 @@ struct SchedulerState {
   std::thread event_thread;
   std::atomic<bool> shutdown{false};
   std::size_t queue_limit = 8192;
+  uint64_t starvation_boost_ms = 8;
   int event_loop_fd = -1;
 
   std::mutex timers_mutex;
   std::unordered_map<int, TimerTask> timers;
+  std::atomic<uint64_t> completed_count{0};
 };
 
 std::once_flag g_scheduler_once;
@@ -86,6 +93,32 @@ static std::size_t default_worker_count() {
     return 2;
   }
   return hc < 2 ? 2 : hc;
+}
+
+static std::size_t scheduler_queue_limit() {
+  const char* raw = std::getenv("THAG_SCHED_QUEUE_LIMIT");
+  if (raw == nullptr || *raw == '\0') {
+    return 8192;
+  }
+  char* end = nullptr;
+  unsigned long long parsed = std::strtoull(raw, &end, 10);
+  if (end == raw || parsed < 64ULL || parsed > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+    return 8192;
+  }
+  return static_cast<std::size_t>(parsed);
+}
+
+static uint64_t scheduler_starvation_threshold_ms() {
+  const char* raw = std::getenv("THAG_SCHED_STARVATION_MS");
+  if (raw == nullptr || *raw == '\0') {
+    return 8;
+  }
+  char* end = nullptr;
+  const unsigned long long parsed = std::strtoull(raw, &end, 10);
+  if (end == raw || parsed == 0ULL) {
+    return 8;
+  }
+  return static_cast<uint64_t>(parsed);
 }
 
 static bool scope_timed_out(thag_task_scope_t* scope) {
@@ -126,6 +159,9 @@ static void complete_task(const SchedulerTask& task) {
     task.runtime->in_flight.fetch_sub(1);
     notify_runtime_change(task.runtime);
   }
+  if (g_scheduler != nullptr) {
+    g_scheduler->completed_count.fetch_add(1, std::memory_order_relaxed);
+  }
 }
 
 static void scheduler_worker_loop(SchedulerState* scheduler) {
@@ -140,8 +176,27 @@ static void scheduler_worker_loop(SchedulerState* scheduler) {
       if (scheduler->ready.empty()) {
         continue;
       }
-      task = scheduler->ready.front();
-      scheduler->ready.pop_front();
+      std::size_t pick_index = 0;
+      const Clock::time_point now = Clock::now();
+      const auto starvation = std::chrono::milliseconds(scheduler->starvation_boost_ms);
+      Clock::time_point oldest_time = now;
+      bool found_starved = false;
+      for (std::size_t idx = 0; idx < scheduler->ready.size(); ++idx) {
+        const SchedulerTask& candidate = scheduler->ready[idx];
+        if ((now - candidate.enqueued_at) < starvation) {
+          continue;
+        }
+        if (!found_starved || candidate.enqueued_at < oldest_time) {
+          found_starved = true;
+          oldest_time = candidate.enqueued_at;
+          pick_index = idx;
+        }
+      }
+      if (!found_starved) {
+        pick_index = 0;
+      }
+      task = scheduler->ready[pick_index];
+      scheduler->ready.erase(scheduler->ready.begin() + static_cast<std::ptrdiff_t>(pick_index));
       scheduler->queue_space_cv.notify_all();
     }
 
@@ -171,6 +226,7 @@ static bool scheduler_submit(SchedulerTask task, bool block_on_full_queue) {
   if (g_scheduler->shutdown.load()) {
     return false;
   }
+  task.enqueued_at = Clock::now();
   g_scheduler->ready.push_back(task);
   g_scheduler->cv.notify_one();
   return true;
@@ -281,6 +337,8 @@ static void scheduler_event_loop(SchedulerState* scheduler) {
 static void scheduler_start_once() {
   std::call_once(g_scheduler_once, []() {
     auto* scheduler = new SchedulerState();
+    scheduler->queue_limit = scheduler_queue_limit();
+    scheduler->starvation_boost_ms = scheduler_starvation_threshold_ms();
     scheduler->event_loop_fd = thag_platform_event_loop_create();
     const std::size_t worker_count = default_worker_count();
     scheduler->workers.reserve(worker_count);
@@ -353,6 +411,21 @@ static void scope_cancel_recursive(thag_task_scope_t* scope) {
   notify_scope_change(scope);
 }
 
+static void scope_propagate_deadline_recursive(thag_task_scope_t* scope, const Clock::time_point& deadline) {
+  if (scope == nullptr) {
+    return;
+  }
+  const bool should_update = !scope->has_deadline || deadline < scope->deadline;
+  if (should_update) {
+    scope->deadline = deadline;
+    scope->has_deadline = true;
+  }
+  const auto children = scope_children_snapshot(scope);
+  for (thag_task_scope_t* child : children) {
+    scope_propagate_deadline_recursive(child, deadline);
+  }
+}
+
 }  // namespace
 
 extern "C" {
@@ -371,6 +444,10 @@ thag_task_scope_t* thag_task_scope_create(void) {
   thag_task_scope_t* parent = g_current_scope;
   if (parent != nullptr) {
     scope->parent = parent;
+    if (parent->has_deadline) {
+      scope->deadline = parent->deadline;
+      scope->has_deadline = true;
+    }
     std::lock_guard<std::mutex> lock(parent->mutex);
     parent->children.push_back(scope);
     notify_scope_change(parent);
@@ -429,9 +506,13 @@ void thag_task_scope_set_timeout_ms(thag_task_scope_t* scope, uint64_t timeout_m
   if (scope == nullptr) {
     return;
   }
-  scope->deadline = Clock::now() + std::chrono::milliseconds(timeout_ms);
-  scope->has_deadline = true;
+  const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeout_ms);
+  scope_propagate_deadline_recursive(scope, deadline);
   notify_scope_change(scope);
+}
+
+void thag_task_scope_set_timeout(thag_task_scope_t* scope, uint64_t timeout_ms) {
+  thag_task_scope_set_timeout_ms(scope, timeout_ms);
 }
 
 int thag_task_scope_wait(thag_task_scope_t* scope) {
@@ -444,12 +525,32 @@ int thag_task_scope_wait(thag_task_scope_t* scope) {
     scope->closed = true;
   }
 
+  uint64_t stagnant_loops = 0;
+  bool deadlock_reported = false;
+  uint64_t last_completed = g_scheduler == nullptr ? 0 : g_scheduler->completed_count.load(std::memory_order_relaxed);
   while (scope->in_flight.load() > 0) {
     if (scope_timed_out(scope)) {
       scope_cancel_recursive(scope);
     }
     std::unique_lock<std::mutex> lock(scope->mutex);
     scope->cv.wait_for(lock, std::chrono::milliseconds(2));
+    const uint64_t completed = g_scheduler == nullptr ? 0 : g_scheduler->completed_count.load(std::memory_order_relaxed);
+    if (completed != last_completed) {
+      last_completed = completed;
+      stagnant_loops = 0;
+    } else {
+      ++stagnant_loops;
+    }
+    if (!deadlock_reported && stagnant_loops > 300 && scope->in_flight.load() > 0) {
+      std::fprintf(stderr, "deadlock detected: task A waiting on task B, task B waiting on task A\n");
+      scope_cancel_recursive(scope);
+      deadlock_reported = true;
+      stagnant_loops = 0;
+      continue;
+    }
+    if (deadlock_reported && stagnant_loops > 1500 && scope->in_flight.load() > 0) {
+      break;
+    }
   }
 
   while (true) {
