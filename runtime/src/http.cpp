@@ -18,6 +18,7 @@
 #else
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -231,7 +232,28 @@ static void close_socket(SocketHandle socket_handle) {
 #endif
 }
 
-static SocketHandle connect_socket(const ParsedUrl& url) {
+static bool apply_socket_timeout(SocketHandle socket_handle, int timeout_ms) {
+  if (socket_handle == kInvalidSocket || timeout_ms <= 0) {
+    return true;
+  }
+#if defined(_WIN32)
+  const DWORD timeout = static_cast<DWORD>(timeout_ms);
+  const int ok_recv =
+      setsockopt(socket_handle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  const int ok_send =
+      setsockopt(socket_handle, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  return ok_recv == 0 && ok_send == 0;
+#else
+  timeval tv{};
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  const int ok_recv = setsockopt(socket_handle, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  const int ok_send = setsockopt(socket_handle, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  return ok_recv == 0 && ok_send == 0;
+#endif
+}
+
+static SocketHandle connect_socket(const ParsedUrl& url, int timeout_ms) {
   if (!ensure_net_init()) {
     return kInvalidSocket;
   }
@@ -252,6 +274,10 @@ static SocketHandle connect_socket(const ParsedUrl& url) {
     }
     if (::connect(candidate, it->ai_addr, static_cast<int>(it->ai_addrlen)) == 0) {
       connected = candidate;
+      if (!apply_socket_timeout(connected, timeout_ms)) {
+        close_socket(connected);
+        connected = kInvalidSocket;
+      }
       break;
     }
     close_socket(candidate);
@@ -329,8 +355,8 @@ static bool recv_all_tls(SSL* ssl, std::string& out) {
 #endif
 
 static bool request_once(const std::string& method, const ParsedUrl& url, const void* body, std::size_t body_len,
-                         HttpResponseParts& out_response) {
-  SocketHandle socket_handle = connect_socket(url);
+                         int timeout_ms, HttpResponseParts& out_response) {
+  SocketHandle socket_handle = connect_socket(url, timeout_ms);
   if (socket_handle == kInvalidSocket) {
     return false;
   }
@@ -426,8 +452,8 @@ static bool request_once(const std::string& method, const ParsedUrl& url, const 
 }
 
 static int request_with_redirects(const std::string& method, const char* url_cstr, const void* body, std::size_t body_len,
-                                  thag_http_buffer_t* out_body, int* out_status) {
-  if (out_body == nullptr || out_status == nullptr || url_cstr == nullptr) {
+                                  int timeout_ms, thag_http_buffer_t* out_body, int* out_status) {
+  if (out_body == nullptr || out_status == nullptr || url_cstr == nullptr || timeout_ms < 0) {
     return 0;
   }
   out_body->data = nullptr;
@@ -441,7 +467,7 @@ static int request_with_redirects(const std::string& method, const char* url_cst
       return 0;
     }
     HttpResponseParts response;
-    if (!request_once(method, parsed, body, body_len, response)) {
+    if (!request_once(method, parsed, body, body_len, timeout_ms, response)) {
       return 0;
     }
     if ((response.status == 301 || response.status == 302) && hop < 3) {
@@ -485,13 +511,13 @@ void thag_http_buffer_free(thag_http_buffer_t* buffer) {
   buffer->len = 0;
 }
 
-int thag_http_client_get(const char* url, thag_http_buffer_t* out_body, int* out_status) {
-  return request_with_redirects("GET", url, nullptr, 0, out_body, out_status);
+int thag_http_client_get(const char* url, int timeout_ms, thag_http_buffer_t* out_body, int* out_status) {
+  return request_with_redirects("GET", url, nullptr, 0, timeout_ms, out_body, out_status);
 }
 
-int thag_http_client_post(const char* url, const void* body, size_t body_len, thag_http_buffer_t* out_body,
+int thag_http_client_post(const char* url, const void* body, size_t body_len, int timeout_ms, thag_http_buffer_t* out_body,
                           int* out_status) {
-  return request_with_redirects("POST", url, body, body_len, out_body, out_status);
+  return request_with_redirects("POST", url, body, body_len, timeout_ms, out_body, out_status);
 }
 
 }  // extern "C"

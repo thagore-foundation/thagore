@@ -1058,22 +1058,39 @@ static bool is_spawn_statement(const std::string& line) {
 }
 
 static std::string extract_call_arg_ident(const std::string& line, const std::string& callee) {
-  const std::size_t call = line.find(callee + "(");
-  if (call == std::string::npos) {
-    return "";
+  const std::string needle = callee + "(";
+  std::size_t call = line.find(needle);
+  while (call != std::string::npos) {
+    if (call > 0) {
+      const char prev = line[call - 1];
+      // Typestate checks only apply to bare calls (read(x), write(x), ...),
+      // not qualified/member/runtime calls (fs.read(x), thag_fs_read(x), obj.read(x)).
+      if (!is_word_boundary(prev) || prev == '.') {
+        call = line.find(needle, call + 1);
+        continue;
+      }
+    }
+    std::size_t i = call + callee.size() + 1;
+    while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
+      ++i;
+    }
+    if (i >= line.size() || !is_ident_start(line[i])) {
+      return "";
+    }
+    const std::size_t start = i;
+    while (i < line.size() && is_ident_body(line[i])) {
+      ++i;
+    }
+    const std::size_t ident_end = i;
+    while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
+      ++i;
+    }
+    if (i >= line.size() || line[i] != ')') {
+      return "";
+    }
+    return line.substr(start, ident_end - start);
   }
-  std::size_t i = call + callee.size() + 1;
-  while (i < line.size() && std::isspace(static_cast<unsigned char>(line[i]))) {
-    ++i;
-  }
-  if (i >= line.size() || !is_ident_start(line[i])) {
-    return "";
-  }
-  const std::size_t start = i;
-  while (i < line.size() && is_ident_body(line[i])) {
-    ++i;
-  }
-  return line.substr(start, i - start);
+  return "";
 }
 
 static std::string parse_let_annotation(const std::string& line) {

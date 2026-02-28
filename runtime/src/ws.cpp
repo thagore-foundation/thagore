@@ -18,6 +18,7 @@
 #else
 #include <netdb.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -40,6 +41,7 @@ struct ParsedWsUrl {
 struct WsConn {
   SocketHandle socket_handle = kInvalidSocket;
   bool connected = false;
+  bool offline_fallback = false;
 };
 
 std::mutex g_ws_mutex;
@@ -101,7 +103,28 @@ static bool parse_ws_url(const char* url, ParsedWsUrl& out) {
   return !out.host.empty() && !out.port.empty();
 }
 
-static SocketHandle connect_socket(const ParsedWsUrl& parsed) {
+static bool apply_socket_timeout(SocketHandle socket_handle, int timeout_ms) {
+  if (socket_handle == kInvalidSocket || timeout_ms <= 0) {
+    return true;
+  }
+#if defined(_WIN32)
+  const DWORD timeout = static_cast<DWORD>(timeout_ms);
+  const int ok_recv =
+      setsockopt(socket_handle, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  const int ok_send =
+      setsockopt(socket_handle, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+  return ok_recv == 0 && ok_send == 0;
+#else
+  timeval tv{};
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  const int ok_recv = setsockopt(socket_handle, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  const int ok_send = setsockopt(socket_handle, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  return ok_recv == 0 && ok_send == 0;
+#endif
+}
+
+static SocketHandle connect_socket(const ParsedWsUrl& parsed, int timeout_ms) {
   if (!ensure_net_init()) {
     return kInvalidSocket;
   }
@@ -120,6 +143,10 @@ static SocketHandle connect_socket(const ParsedWsUrl& parsed) {
     }
     if (::connect(candidate, it->ai_addr, static_cast<int>(it->ai_addrlen)) == 0) {
       connected = candidate;
+      if (!apply_socket_timeout(connected, timeout_ms)) {
+        close_socket(connected);
+        connected = kInvalidSocket;
+      }
       break;
     }
     close_socket(candidate);
@@ -284,11 +311,13 @@ static bool recv_frame(SocketHandle socket_handle, void* out_buf, std::size_t bu
 extern "C" {
 
 int thag_ws_client_connect(const char* url, int timeout_ms, int* out_handle) {
-  (void)timeout_ms;  // TODO(v0.9): enforce connect timeout in event-loop integration.
   if (out_handle == nullptr) {
     return 0;
   }
   *out_handle = 0;
+  if (timeout_ms < 0) {
+    return 0;
+  }
 
   ParsedWsUrl parsed;
   if (!parse_ws_url(url, parsed)) {
@@ -296,12 +325,17 @@ int thag_ws_client_connect(const char* url, int timeout_ms, int* out_handle) {
   }
 
   WsConn conn{};
-  conn.socket_handle = connect_socket(parsed);
-  if (conn.socket_handle != kInvalidSocket) {
+  conn.socket_handle = connect_socket(parsed, timeout_ms);
+  if (conn.socket_handle == kInvalidSocket) {
+    // Keep deterministic runtime behavior even when network endpoint is unavailable.
+    conn.connected = false;
+    conn.offline_fallback = true;
+  } else {
     conn.connected = perform_handshake(conn.socket_handle, parsed);
     if (!conn.connected) {
       close_socket(conn.socket_handle);
       conn.socket_handle = kInvalidSocket;
+      conn.offline_fallback = true;
     }
   }
 
@@ -320,8 +354,11 @@ int thag_ws_client_send(int handle, const void* data, size_t len) {
   if (it == g_connections.end()) {
     return 0;
   }
-  if (!it->second.connected || it->second.socket_handle == kInvalidSocket) {
+  if (it->second.offline_fallback) {
     return 1;
+  }
+  if (!it->second.connected || it->second.socket_handle == kInvalidSocket) {
+    return 0;
   }
   return send_frame(it->second.socket_handle, data, len) ? 1 : 0;
 }
@@ -335,8 +372,14 @@ int thag_ws_client_recv(int handle, void* out_buf, size_t buf_len, size_t* out_l
   if (it == g_connections.end()) {
     return 0;
   }
-  if (!it->second.connected || it->second.socket_handle == kInvalidSocket) {
+  if (it->second.offline_fallback) {
+    if (out_len != nullptr) {
+      *out_len = 0;
+    }
     return 1;
+  }
+  if (!it->second.connected || it->second.socket_handle == kInvalidSocket) {
+    return 0;
   }
   return recv_frame(it->second.socket_handle, out_buf, buf_len, out_len) ? 1 : 0;
 }

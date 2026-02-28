@@ -3712,12 +3712,19 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
       params.push_back(builder.getPtrTy());
     }
     for (std::size_t i = 0; i < fn_def.params.size(); ++i) {
-      params.push_back(builder.getInt32Ty());
+      ValueType param_type = ValueType::I32;
+      if (i < fn_def.param_types.size()) {
+        const ValueType annotated = value_type_from_return_type(fn_def.param_types[i]);
+        if (annotated != ValueType::Invalid) {
+          param_type = annotated;
+        }
+      }
+      params.push_back(llvm_type_from_value_type(param_type, builder));
     }
     llvm::FunctionType* fn_type =
         llvm::FunctionType::get(llvm_type_from_value_type(return_type, builder), params, false);
-    llvm::Function* fn =
-        llvm::Function::Create(fn_type, llvm::GlobalValue::ExternalLinkage, fn_def.name, module.get());
+    const auto linkage = fn_def.name == "main" ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage;
+    llvm::Function* fn = llvm::Function::Create(fn_type, linkage, fn_def.name, module.get());
     llvm_functions[fn_def.name] = fn;
     function_returns[fn_def.name] = return_type;
     function_async_flags[fn_def.name] = fn_def.is_async && function_contains_await(fn_def);
@@ -3796,9 +3803,17 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         break;
       }
       const std::string& param_name = fn_def.params[param_index];
-      llvm::AllocaInst* alloca = create_entry_alloca(fn, builder.getInt32Ty(), param_name);
+      ValueType param_type = ValueType::I32;
+      if (param_index < fn_def.param_types.size()) {
+        const ValueType annotated = value_type_from_return_type(fn_def.param_types[param_index]);
+        if (annotated != ValueType::Invalid) {
+          param_type = annotated;
+        }
+      }
+      llvm::Type* param_llvm_type = llvm_type_from_value_type(param_type, builder);
+      llvm::AllocaInst* alloca = create_entry_alloca(fn, param_llvm_type, param_name);
       builder.CreateStore(&arg, alloca);
-      variables[param_name] = VariableSlot{alloca, ValueType::I32};
+      variables[param_name] = VariableSlot{alloca, param_type};
       ++param_index;
       ++arg_index;
     }

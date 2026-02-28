@@ -56,6 +56,7 @@ struct AstInterpolatedString {
 struct AstFunction {
   std::string name;
   std::vector<std::string> params;
+  std::vector<std::string> param_types;
   std::string return_type;
   int header_line = 0;
   int header_indent = 0;

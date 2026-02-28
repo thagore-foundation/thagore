@@ -4,14 +4,14 @@ extern func thag_db_connect(dsn: ptr) -> i32
 extern func thag_db_query(handle: i32, query: ptr) -> i32
 extern func thag_db_close(handle: i32) -> i32
 
-func db_ready():
+pub func db_ready() -> i32:
   return 1
 
-func db_connect(dsn: ptr):
+pub func db_connect(dsn: ptr) -> i32:
   return thag_db_connect(dsn)
 
-func db_query(handle: i32, query: ptr):
+pub func db_query(handle: i32, query: ptr) -> i32:
   return thag_db_query(handle, query)
 
-func db_close(handle: i32):
+pub func db_close(handle: i32) -> i32:
   return thag_db_close(handle)

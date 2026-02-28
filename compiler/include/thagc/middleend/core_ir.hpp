@@ -41,6 +41,7 @@ struct CoreFunction {
   std::string owner_type;
   std::string method_name;
   std::vector<std::string> params;
+  std::vector<std::string> param_types;
   std::string return_type;
   int return_literal = 0;
   std::string return_expression;

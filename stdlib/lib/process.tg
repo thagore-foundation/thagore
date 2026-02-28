@@ -1,0 +1,26 @@
+# Process helpers mapped to runtime hooks.
+
+extern func thag_process_run(cmd: ptr) -> i32
+extern func thag_process_capture(cmd: ptr) -> ptr
+extern func thag_process_argv(index: i32) -> ptr
+extern func thag_process_argc() -> i32
+extern func thag_process_env(name: ptr) -> ptr
+extern func thag_process_exit(code: i32) -> void
+
+pub func run(cmd: ptr) -> i32:
+  return thag_process_run(cmd)
+
+pub func capture(cmd: ptr) -> ptr:
+  return thag_process_capture(cmd)
+
+pub func argv(index: i32) -> ptr:
+  return thag_process_argv(index)
+
+pub func argc() -> i32:
+  return thag_process_argc()
+
+pub func env(name: ptr) -> ptr:
+  return thag_process_env(name)
+
+pub func exit(code: i32) -> void:
+  thag_process_exit(code)

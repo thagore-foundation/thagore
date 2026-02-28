@@ -12,8 +12,9 @@ typedef struct thag_http_buffer {
 } thag_http_buffer_t;
 
 void thag_http_buffer_free(thag_http_buffer_t* buffer);
-int thag_http_client_get(const char* url, thag_http_buffer_t* out_body, int* out_status);
-int thag_http_client_post(const char* url, const void* body, size_t body_len, thag_http_buffer_t* out_body, int* out_status);
+int thag_http_client_get(const char* url, int timeout_ms, thag_http_buffer_t* out_body, int* out_status);
+int thag_http_client_post(const char* url, const void* body, size_t body_len, int timeout_ms, thag_http_buffer_t* out_body,
+                          int* out_status);
 
 #ifdef __cplusplus
 }

@@ -107,8 +107,13 @@ static std::string function_name_from_header(const std::string& line) {
   return line.substr(start, end - start);
 }
 
-static std::vector<std::string> function_params_from_header(const std::string& line) {
-  std::vector<std::string> out;
+struct ParsedFunctionParam {
+  std::string name;
+  std::string type;
+};
+
+static std::vector<ParsedFunctionParam> function_param_specs_from_header(const std::string& line) {
+  std::vector<ParsedFunctionParam> out;
   const std::size_t func_pos = line.find("func ");
   if (func_pos == std::string::npos) {
     return out;
@@ -128,14 +133,34 @@ static std::vector<std::string> function_params_from_header(const std::string& l
     std::string part = trim(param_block.substr(i, comma - i));
     if (!part.empty()) {
       const std::size_t colon = part.find(':');
-      if (colon != std::string::npos) {
-        part = trim(part.substr(0, colon));
+      ParsedFunctionParam parsed;
+      if (colon == std::string::npos) {
+        parsed.name = trim(part);
+      } else {
+        parsed.name = trim(part.substr(0, colon));
+        parsed.type = trim(part.substr(colon + 1));
       }
-      if (!part.empty()) {
-        out.push_back(part);
+      if (!parsed.name.empty()) {
+        out.push_back(std::move(parsed));
       }
     }
     i = comma + 1;
+  }
+  return out;
+}
+
+static std::vector<std::string> function_params_from_header(const std::string& line) {
+  std::vector<std::string> out;
+  for (const auto& spec : function_param_specs_from_header(line)) {
+    out.push_back(spec.name);
+  }
+  return out;
+}
+
+static std::vector<std::string> function_param_types_from_header(const std::string& line) {
+  std::vector<std::string> out;
+  for (const auto& spec : function_param_specs_from_header(line)) {
+    out.push_back(spec.type);
   }
   return out;
 }
@@ -1506,6 +1531,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       AstFunction fn;
       fn.name = function_name_from_header(function_header);
       fn.params = function_params_from_header(function_header);
+      fn.param_types = function_param_types_from_header(function_header);
       fn.header_line = line.number;
       fn.header_indent = line.indent;
       fn.is_pub = is_pub_decl;
@@ -1702,8 +1728,10 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
           }
           fn.name = impl_type_name + "." + method_name;
           fn.params = function_params_from_header(method_header);
+          fn.param_types = function_param_types_from_header(method_header);
           if (fn.params.empty() || fn.params.front() != "self") {
             fn.params.insert(fn.params.begin(), "self");
+            fn.param_types.insert(fn.param_types.begin(), "");
           }
           fn.header_line = member_line.number;
           fn.header_indent = member_line.indent;

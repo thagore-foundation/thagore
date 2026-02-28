@@ -2,6 +2,8 @@
 # Rc<T>: single-thread shared ownership.
 # Arc<T>: cross-thread shared ownership (Send/Sync-safe when inner type is Send).
 
+extern func thag_process_exit(code: i32) -> void
+
 pub func ok(val):
   return Ok(val)
 
@@ -11,6 +13,8 @@ pub func fail(msg):
 pub func assert(cond, msg):
   if (cond):
     return 1
+  print(msg)
+  thag_process_exit(1)
   return 0
 
 pub func rc_new(val):

@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -273,6 +274,59 @@ class BuildAndRunE2ETests(unittest.TestCase):
             self.assertIn("3", lines)
             self.assertIn("6", lines)
             self.assertEqual(lines[-1], "99")
+
+    def test_build_and_run_stdlib_io_alpha_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "std").mkdir(parents=True, exist_ok=True)
+            (root / "lib").mkdir(parents=True, exist_ok=True)
+
+            repo_root = Path(__file__).resolve().parents[2]
+            for rel in [
+                "stdlib/std/string.tg",
+                "stdlib/lib/fs.tg",
+                "stdlib/lib/process.tg",
+                "stdlib/lib/toml.tg",
+            ]:
+                src = repo_root / rel
+                dst = root / Path(rel).relative_to("stdlib")
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+
+            src = root / "main.tg"
+            out = root / "main.bin"
+            src.write_text(
+                "import std.string as s\n"
+                "import lib.fs as fs\n"
+                "import lib.process as proc\n"
+                "import lib.toml as toml\n"
+                "\n"
+                "func main():\n"
+                "  fs.mkdir(\"tmp_gate\")\n"
+                "  let cfg = s.concat(\"port=\", \"42\")\n"
+                "  let path = fs.path_join(\"tmp_gate\", \"thagore.toml\")\n"
+                "  fs.write_file(path, cfg)\n"
+                "  let raw = fs.read_file(path)\n"
+                "  let h = toml.parse(raw)\n"
+                "  let port = toml.get_int(h, \"port\")\n"
+                "  toml.free(h)\n"
+                "  let out = proc.capture(\"printf ok\")\n"
+                "  s.contains(out, \"ok\")\n"
+                "  fs.remove(path)\n"
+                "  fs.remove(\"tmp_gate\")\n"
+                "  return port\n"
+            )
+
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], cwd=root, capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 42, msg=run.stderr)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,9 @@ add_library(thag_runtime STATIC
   src/thag_runtime.cpp
   src/print.cpp
   src/string.cpp
+  src/fs.cpp
+  src/process.cpp
+  src/toml.cpp
   src/io_stack.cpp
   src/http.cpp
   src/ws.cpp

@@ -4,14 +4,14 @@ extern func thag_ws_connect(endpoint: ptr, timeout_ms: i32) -> i32
 extern func thag_ws_send(handle: i32, message: ptr) -> i32
 extern func thag_ws_close(handle: i32) -> i32
 
-func ws_ready():
+pub func ws_ready() -> i32:
   return 1
 
-func ws_connect(endpoint: ptr, timeout_ms: i32):
+pub func ws_connect(endpoint: ptr, timeout_ms: i32) -> i32:
   return thag_ws_connect(endpoint, timeout_ms)
 
-func ws_send(handle: i32, message: ptr):
+pub func ws_send(handle: i32, message: ptr) -> i32:
   return thag_ws_send(handle, message)
 
-func ws_close(handle: i32):
+pub func ws_close(handle: i32) -> i32:
   return thag_ws_close(handle)

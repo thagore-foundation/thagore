@@ -5,7 +5,11 @@
 
 #include "thag/db.h"
 #include "thag/event_loop.h"
+#include "thag/fs.h"
 #include "thag/http.h"
+#include "thag/process.h"
+#include "thag/string.h"
+#include "thag/toml.h"
 #include "thag/ws.h"
 
 #ifdef __cplusplus

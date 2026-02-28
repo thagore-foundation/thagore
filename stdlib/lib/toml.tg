@@ -1,0 +1,26 @@
+# TOML helpers mapped to runtime hooks.
+
+extern func thag_toml_parse(content: ptr) -> ptr
+extern func thag_toml_get_str(handle: ptr, key: ptr) -> ptr
+extern func thag_toml_get_int(handle: ptr, key: ptr) -> i64
+extern func thag_toml_get_section(handle: ptr, section: ptr) -> ptr
+extern func thag_toml_get_keys(handle: ptr) -> ptr
+extern func thag_toml_free(handle: ptr) -> void
+
+pub func parse(content: ptr) -> ptr:
+  return thag_toml_parse(content)
+
+pub func get_str(handle: ptr, key: ptr) -> ptr:
+  return thag_toml_get_str(handle, key)
+
+pub func get_int(handle: ptr, key: ptr) -> i64:
+  return thag_toml_get_int(handle, key)
+
+pub func get_section(handle: ptr, section: ptr) -> ptr:
+  return thag_toml_get_section(handle, section)
+
+pub func get_keys(handle: ptr) -> ptr:
+  return thag_toml_get_keys(handle)
+
+pub func free(handle: ptr) -> void:
+  thag_toml_free(handle)

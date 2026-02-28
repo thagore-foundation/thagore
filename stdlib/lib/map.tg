@@ -6,18 +6,17 @@ extern func thag_map_get(map: ptr, key: ptr) -> ptr
 extern func thag_map_is_null_ptr(value: ptr) -> i32
 extern func thag_map_free(map: ptr) -> void
 
-func new():
+pub func new() -> ptr:
   return thag_map_new()
 
-func put(map: ptr, key: ptr, value: ptr):
+pub func put(map: ptr, key: ptr, value: ptr) -> i32:
   return thag_map_put(map, key, value)
 
-func get(map: ptr, key: ptr):
+pub func get(map: ptr, key: ptr) -> ptr:
   return thag_map_get(map, key)
 
-func is_null_ptr(value: ptr):
+pub func is_null_ptr(value: ptr) -> i32:
   return thag_map_is_null_ptr(value)
 
-func free(map: ptr):
+pub func free(map: ptr) -> void:
   thag_map_free(map)
-  return 0

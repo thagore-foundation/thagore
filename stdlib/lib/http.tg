@@ -3,11 +3,11 @@
 extern func thag_http_get(url: ptr, timeout_ms: i32) -> i32
 extern func thag_http_post(url: ptr, payload: ptr, timeout_ms: i32) -> i32
 
-func http_ready():
+pub func http_ready() -> i32:
   return 1
 
-func http_get(url: ptr, timeout_ms: i32):
+pub func http_get(url: ptr, timeout_ms: i32) -> i32:
   return thag_http_get(url, timeout_ms)
 
-func http_post(url: ptr, payload: ptr, timeout_ms: i32):
+pub func http_post(url: ptr, payload: ptr, timeout_ms: i32) -> i32:
   return thag_http_post(url, payload, timeout_ms)

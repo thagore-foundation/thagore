@@ -277,6 +277,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     out.is_pub = fn.is_pub;
     out.is_async = fn.is_async;
     out.params = fn.params;
+    out.param_types = fn.param_types;
     out.return_type = fn.return_type;
     std::string owner;
     std::string method;
@@ -286,6 +287,9 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
       out.method_name = method;
       if (!out.params.empty() && out.params.front() == "self") {
         out.params.erase(out.params.begin());
+        if (!out.param_types.empty()) {
+          out.param_types.erase(out.param_types.begin());
+        }
       }
     }
     std::unordered_map<std::string, std::string> known_values;

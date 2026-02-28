@@ -1,22 +1,54 @@
-# String helper surface for compiler/runtime parity lane.
+# String helpers mapped to runtime hooks.
 
-pub func from_int(n):
-  return n
+extern func thag_str_concat(a: ptr, b: ptr) -> ptr
+extern func thag_str_split(s: ptr, delim: ptr) -> ptr
+extern func thag_str_join(parts: ptr, sep: ptr) -> ptr
+extern func thag_str_trim(s: ptr) -> ptr
+extern func thag_str_contains(s: ptr, sub: ptr) -> i32
+extern func thag_str_starts_with(s: ptr, prefix: ptr) -> i32
+extern func thag_str_equals(a: ptr, b: ptr) -> i32
+extern func thag_str_len(s: ptr) -> i64
+extern func thag_str_from_int(n: i64) -> ptr
+extern func thag_str_to_int(s: ptr) -> i64
+extern func thag_str_substr(s: ptr, start: i64, len: i64) -> ptr
+extern func thag_str_replace(s: ptr, old_part: ptr, new_part: ptr) -> ptr
+extern func thag_str_format(fmt: ptr, args: ptr) -> ptr
 
-pub func from_float(f):
-  return f
+pub func from_int(n: i64) -> ptr:
+  return thag_str_from_int(n)
 
-pub func concat(a, b):
-  return a
+pub func to_int(s: ptr) -> i64:
+  return thag_str_to_int(s)
 
-pub func split(s, delim):
-  return 0
+pub func concat(a: ptr, b: ptr) -> ptr:
+  return thag_str_concat(a, b)
 
-pub func join(parts, sep):
-  return 0
+pub func split(s: ptr, delim: ptr) -> ptr:
+  return thag_str_split(s, delim)
 
-pub func trim(s):
-  return s
+pub func join(parts: ptr, sep: ptr) -> ptr:
+  return thag_str_join(parts, sep)
 
-pub func contains(s, sub):
-  return 0
+pub func trim(s: ptr) -> ptr:
+  return thag_str_trim(s)
+
+pub func contains(s: ptr, sub: ptr) -> i32:
+  return thag_str_contains(s, sub)
+
+pub func starts_with(s: ptr, prefix: ptr) -> i32:
+  return thag_str_starts_with(s, prefix)
+
+pub func equals(a: ptr, b: ptr) -> i32:
+  return thag_str_equals(a, b)
+
+pub func len(s: ptr) -> i64:
+  return thag_str_len(s)
+
+pub func substr(s: ptr, start: i64, count: i64) -> ptr:
+  return thag_str_substr(s, start, count)
+
+pub func replace(s: ptr, old_part: ptr, new_part: ptr) -> ptr:
+  return thag_str_replace(s, old_part, new_part)
+
+pub func format(fmt: ptr, args: ptr) -> ptr:
+  return thag_str_format(fmt, args)

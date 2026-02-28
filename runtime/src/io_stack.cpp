@@ -96,7 +96,7 @@ int thag_http_get(const char* url, int timeout_ms) {
   // TODO(v0.9): enforce timeout_ms through scheduler-aware event loop integration.
   thag_http_buffer_t body{};
   int status = 0;
-  const int ok = thag_http_client_get(url, &body, &status);
+  const int ok = thag_http_client_get(url, timeout_ms, &body, &status);
   thag_http_buffer_free(&body);
 
   if (io_cancelled()) {
@@ -120,7 +120,7 @@ int thag_http_post(const char* url, const char* payload, int timeout_ms) {
   // TODO(v0.9): enforce timeout_ms through scheduler-aware event loop integration.
   thag_http_buffer_t body{};
   int status = 0;
-  const int ok = thag_http_client_post(url, payload, std::strlen(payload), &body, &status);
+  const int ok = thag_http_client_post(url, payload, std::strlen(payload), timeout_ms, &body, &status);
   thag_http_buffer_free(&body);
 
   if (io_cancelled()) {

@@ -297,6 +297,19 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 0, msg=run.stderr)
 
+    def test_typestate_ignores_qualified_runtime_calls(self) -> None:
+        build, _ = self._build(
+            "extern func thag_fs_write(path: ptr, content: ptr) -> i32\n"
+            "extern func thag_fs_read(path: ptr) -> ptr\n"
+            "\n"
+            "func main():\n"
+            "  let p = \"tmp_v09_typestate.txt\"\n"
+            "  thag_fs_write(p, \"ok\")\n"
+            "  thag_fs_read(p)\n"
+            "  return 0\n"
+        )
+        self.assertEqual(build.returncode, 0, msg=build.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

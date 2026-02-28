@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (February 27, 2026): `v0.8` (Memory Model MVP).
-Status note: `v0.6` → `v0.8` gates now pass on the active Linux lane with deterministic stress runs.
+Current effective milestone by code audit (February 28, 2026): `v0.9` (Stdlib & IO Stack Alpha).
+Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -24,7 +24,7 @@ Active implementation policy: finish one milestone completely before starting th
 | Tooling | ~75% | Policy, packaging, compare tools hiện có |
 | CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: compiler + runtime gates through `v0.8` pass on Linux (import pipeline, language completeness, structured concurrency, memory model checks).**
+**Overall: compiler + runtime gates through `v0.9` pass on Linux (import pipeline, language completeness, structured concurrency, memory model checks, stdlib/runtime IO alpha lane).**
 
 Execution order (re-anchored to dependency reality):
 1. Close `v0.2` gate (compiler foundation)
@@ -200,28 +200,75 @@ Execution order (re-anchored to dependency reality):
 
 ---
 
-## v0.9 — IO Stack Alpha
-> *"HTTP, WebSocket, DB — single binary, no dependencies"*
+## v0.9 — Stdlib & IO Stack Alpha
+> *"Stdlib thật sự hoạt động — Drago có thể viết bằng pure Thagore"*
 
-### Runtime
-- [ ] `thag_http_get/post` — real HTTP client (libcurl hoặc native)
-- [ ] `ws_connect/send/close` — real WebSocket implementation
-- [ ] `db_connect/query/close` — real DB client (SQLite ít nhất)
-- [ ] Cancellation/timeout propagate qua IO boundaries
-- [ ] Async scheduler ổn định với IO integration
+### Runtime — Stdlib Backend (C++ trong thagore runtime, gọi qua extern func)
+- [x] `thag_str_concat(a, b)` → real string concatenation
+- [x] `thag_str_split(s, delim)` → split string, trả ptr array
+- [x] `thag_str_join(parts, sep)` → join array thành string
+- [x] `thag_str_trim(s)` → trim whitespace
+- [x] `thag_str_contains(s, sub)` → check substring
+- [x] `thag_str_starts_with(s, prefix)` → check prefix
+- [x] `thag_str_equals(a, b)` → compare strings
+- [x] `thag_str_len(s)` → real string length
+- [x] `thag_str_from_int(n)` → int to string
+- [x] `thag_str_to_int(s)` → string to int
+- [x] `thag_str_substr(s, start, len)` → substring
+- [x] `thag_str_replace(s, old, new)` → replace all occurrences
+- [x] `thag_str_format(fmt, args)` → basic format string
 
-### Stdlib
-- [ ] `lib/http.tg` — production-ready HTTP client wrapper
-- [ ] `lib/ws.tg` — WebSocket wrapper với error handling
-- [ ] `lib/db.tg` — DB wrapper với query builder cơ bản
-- [ ] `lib/time.tg` — `now()`, `sleep()`, duration types
-- [ ] `lib/map.tg` — HashMap thật sự, không phải stub
-- [ ] `std/string.tg` — đầy đủ: format, split, join, parse
-- [ ] `std/list.tg` — append, remove, sort, filter, map, reduce
-- [ ] `std/core.tg` — error types, Result/Option helpers
+### Runtime — File System (C++ trong thagore runtime)
+- [x] `thag_fs_read(path)` → read file to string
+- [x] `thag_fs_write(path, content)` → write string to file
+- [x] `thag_fs_exists(path)` → check file/dir exists
+- [x] `thag_fs_mkdir(path)` → create directory (recursive)
+- [x] `thag_fs_readdir(path)` → list directory entries
+- [x] `thag_fs_remove(path)` → remove file/dir
+- [x] `thag_fs_getcwd()` → current working directory
+- [x] `thag_fs_path_join(a, b)` → join path segments
+- [x] `thag_fs_is_dir(path)` → check if path is directory
+- [x] `thag_fs_filesize(path)` → get file size in bytes
+
+### Runtime — Process Execution (C++ trong thagore runtime)
+- [x] `thag_process_run(cmd)` → run command, return exit code
+- [x] `thag_process_capture(cmd)` → run command, capture stdout
+- [x] `thag_process_argv(index)` → get argv[index]
+- [x] `thag_process_argc()` → get argc
+- [x] `thag_process_env(name)` → get environment variable
+- [x] `thag_process_exit(code)` → exit with code
+
+### Runtime — TOML Parser (C++ trong thagore runtime)
+- [x] `thag_toml_parse(content)` → parse TOML string into key-value handle
+- [x] `thag_toml_get_str(handle, key)` → get string value
+- [x] `thag_toml_get_int(handle, key)` → get int value
+- [x] `thag_toml_get_section(handle, section)` → get sub-section handle
+- [x] `thag_toml_get_keys(handle)` → list all keys
+- [x] `thag_toml_free(handle)` → free parsed TOML
+
+### Runtime — IO Stack
+- [x] `thag_http_get/post` — real HTTP client (already scaffolded, harden)
+- [x] `ws_connect/send/close` — real WebSocket (already scaffolded, harden)
+- [x] `db_connect/query/close` — real DB client (SQLite amalgamation)
+- [x] Cancellation/timeout propagate qua IO boundaries
+- [x] Async scheduler ổn định với IO integration
+
+### Stdlib — Real Implementations (gọi runtime backend qua extern func)
+- [x] `std/string.tg` — đầy đủ: concat, split, join, trim, contains, starts_with, len, from_int, to_int, substr, replace, format
+- [x] `std/list.tg` — append, remove, sort, filter, map, reduce, len
+- [x] `std/core.tg` — error types, Result/Option helpers, assert
+- [x] `lib/fs.tg` — read, write, exists, mkdir, readdir, remove, getcwd, path_join, is_dir, filesize
+- [x] `lib/process.tg` — run, capture, argv, argc, env, exit
+- [x] `lib/toml.tg` — parse, get_str, get_int, get_section, get_keys, free
+- [x] `lib/http.tg` — production-ready HTTP client wrapper
+- [x] `lib/ws.tg` — WebSocket wrapper với error handling
+- [x] `lib/db.tg` — DB wrapper với query builder cơ bản
+- [x] `lib/time.tg` — `now()`, `sleep()`, duration types
+- [x] `lib/map.tg` — HashMap thật sự, không phải stub
 
 ### Gate
-- [ ] End-to-end async IO path pass Linux parity contracts
+- [x] Drago (pure .tg, no C helpers in drago repo) có thể dùng stdlib để: đọc file, parse TOML, chạy process, manipulate strings
+- [x] End-to-end async IO path pass Linux parity contracts
 
 ---
 
@@ -229,6 +276,7 @@ Execution order (re-anchored to dependency reality):
 > *"Single binary. One command. Ship anywhere."*
 
 ### Compiler & Tooling
+- [ ] Static link LLVM vào `thagc` — true standalone binary (~50-80MB), user không cần cài LLVM
 - [ ] Single-binary default — không cần runtime dependency
 - [ ] One-command cross-compile: `thagc build --target aarch64-linux`
 - [ ] Cold-start budget enforced trong CI (< 10ms target)
@@ -237,7 +285,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Drago Package Registry (Production)
 - [ ] Registry stable, versioned packages
-- [ ] `thagc install/update/remove` hoàn chỉnh
+- [ ] `drago install/update/remove` hoàn chỉnh (thay thế `thagc install`)
 - [ ] Package publishing workflow
 - [ ] Dependency resolution + lock file
 
