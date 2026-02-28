@@ -27,6 +27,14 @@ This file defines mandatory engineering rules for all contributors and coding ag
 - Enforce formatting and linting in CI and local workflow.
 - Do not merge changes without passing relevant tests/checks.
 
+### 2.1 No Placeholder Markers (Mandatory)
+
+- Do not leave placeholder implementation markers in tracked files (`TODO:`, `FIXME:`, `TBD:`, `XXX:` and tagged variants such as `TODO(v1.0):`).
+- Every placeholder must be either implemented immediately or converted into a tracked issue outside source/docs.
+- Before creating a commit, run:
+  - `rg -n --hidden --glob '!.git' -g '!AGENTS.md' -P '\b(TODO|FIXME|TBD|XXX)(\([^)]+\))?:' .`
+- Commit is invalid unless the command returns no matches.
+
 ## 3. Versioning & Change Discipline
 
 - Use SemVer for releases.
