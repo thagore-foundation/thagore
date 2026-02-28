@@ -72,6 +72,7 @@ else()
     BitWriter
     AsmPrinter
     ScalarOpts
+    Passes
     coroutines
     CodeGen
     native

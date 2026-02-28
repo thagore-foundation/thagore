@@ -134,9 +134,6 @@ jobs:
           if ("${{ matrix.arch }}" -eq "aarch64") {
             $cmakeArgs += "-DCMAKE_C_COMPILER_TARGET=aarch64-pc-windows-msvc"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_TARGET=aarch64-pc-windows-msvc"
-          } else {
-            $cmakeArgs += "-DCMAKE_C_COMPILER_TARGET=x86_64-pc-windows-msvc"
-            $cmakeArgs += "-DCMAKE_CXX_COMPILER_TARGET=x86_64-pc-windows-msvc"
           }
           cmake @cmakeArgs
           cmake --build build -j 4

@@ -3817,10 +3817,18 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
 bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::string& module_name,
                               const std::string& object_path, const std::string& target_triple,
                               support::DiagnosticSink& diag) const {
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllAsmPrinters();
+  if (llvm::InitializeNativeTarget()) {
+    diag.error("E2003", "cannot initialize native LLVM target");
+    return false;
+  }
+  if (llvm::InitializeNativeTargetAsmParser()) {
+    diag.error("E2003", "cannot initialize native LLVM asm parser");
+    return false;
+  }
+  if (llvm::InitializeNativeTargetAsmPrinter()) {
+    diag.error("E2003", "cannot initialize native LLVM asm printer");
+    return false;
+  }
 
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
