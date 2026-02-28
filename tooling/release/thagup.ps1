@@ -97,6 +97,42 @@ function Verify-Checksum([string]$ArchivePath, [string]$ChecksumPath, [string]$A
   }
 }
 
+function Ensure-UserPath([string]$BinDir) {
+  $normalizedBin = [System.IO.Path]::GetFullPath($BinDir).TrimEnd("\\")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $parts = @()
+  if ($userPath) {
+    $parts = $userPath -split ";" | Where-Object { $_ -ne "" }
+  }
+
+  $hasPath = $false
+  foreach ($part in $parts) {
+    if ($part.TrimEnd("\\").ToLowerInvariant() -eq $normalizedBin.ToLowerInvariant()) {
+      $hasPath = $true
+      break
+    }
+  }
+
+  if (-not $hasPath) {
+    if ($DryRun) {
+      Log "[dry-run] add user PATH entry: $normalizedBin"
+    } else {
+      $newUserPath = if ([string]::IsNullOrEmpty($userPath)) { $normalizedBin } else { "$userPath;$normalizedBin" }
+      [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+      Log "added PATH entry to current user environment"
+    }
+  } else {
+    Log "PATH already contains $normalizedBin"
+  }
+
+  if ($DryRun) {
+    return
+  }
+  if (-not ($env:Path -split ";" | Where-Object { $_.TrimEnd("\\").ToLowerInvariant() -eq $normalizedBin.ToLowerInvariant() })) {
+    $env:Path = "$normalizedBin;$env:Path"
+  }
+}
+
 $ResolvedArch = Resolve-Arch -ExplicitArch $Arch
 if ($Tag -eq "") {
   $Tag = Resolve-LatestTag
@@ -153,6 +189,7 @@ if ($DryRun) {
 } else {
   Copy-Item -Path $targetBinPath -Destination $linkPath -Force
 }
+Ensure-UserPath $linkDir
 
 if ($DryRun) {
   Log "[dry-run] keep temp dir: $workDir"
@@ -163,4 +200,4 @@ if ($DryRun) {
 Log "install completed"
 Log "binary: $targetBinPath"
 Log "launcher: $linkPath"
-Log "add PATH if needed: $InstallRoot\\bin"
+Log "open a new PowerShell window to use thagc from PATH"

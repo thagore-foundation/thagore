@@ -18,7 +18,6 @@ It compiles `.tg` source code to native executables through LLVM.
 ```bash
 curl -fsSL https://thagore.org/thagup.sh -o /tmp/thagup.sh
 bash /tmp/thagup.sh
-export PATH="$HOME/.thagore/bin:$PATH"
 ```
 
 ### Windows (PowerShell)
@@ -28,6 +27,8 @@ $script = Join-Path $env:TEMP "thagup.ps1"
 Invoke-WebRequest https://thagore.org/thagup.ps1 -OutFile $script
 powershell -ExecutionPolicy Bypass -File $script
 ```
+
+Installer scripts now auto-add `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`) to user PATH.
 
 ## Project Layout
 

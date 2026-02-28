@@ -223,6 +223,51 @@ install_link() {
   fi
 }
 
+select_profile_file() {
+  local shell_name
+  shell_name="$(basename "${SHELL:-}")"
+  case "${shell_name}" in
+    zsh)
+      printf '%s\n' "${HOME}/.zshrc"
+      ;;
+    bash)
+      if [[ "$(uname -s)" == "Darwin" && -f "${HOME}/.bash_profile" ]]; then
+        printf '%s\n' "${HOME}/.bash_profile"
+      else
+        printf '%s\n' "${HOME}/.bashrc"
+      fi
+      ;;
+    *)
+      printf '%s\n' "${HOME}/.profile"
+      ;;
+  esac
+}
+
+ensure_path_config() {
+  local bin_dir="$1"
+  local profile_file export_line
+  profile_file="$(select_profile_file)"
+  export_line="export PATH=\"${bin_dir}:\$PATH\""
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "[dry-run] ensure PATH entry in ${profile_file}: ${export_line}"
+    return 0
+  fi
+
+  run_cmd mkdir -p "$(dirname "${profile_file}")"
+  run_cmd touch "${profile_file}"
+  if grep -Fq "${bin_dir}" "${profile_file}"; then
+    log "PATH already configured in ${profile_file}"
+    return 0
+  fi
+
+  {
+    printf '\n# thagore installer\n'
+    printf '%s\n' "${export_line}"
+  } >> "${profile_file}"
+  log "added PATH entry to ${profile_file}"
+}
+
 download_first_available() {
   local output="$1"
   shift
@@ -301,6 +346,7 @@ main() {
   run_cmd tar -xzf "${archive_path}" -C "${channel_dir}"
   run_cmd chmod +x "${target_bin_path}"
   install_link "${target_bin_path}" "${link_dir}"
+  ensure_path_config "${link_dir}"
 
   if [[ "${DRY_RUN}" -eq 0 ]]; then
     run_cmd rm -rf "${work_dir}"
@@ -311,7 +357,7 @@ main() {
   log "install completed"
   log "binary: ${target_bin_path}"
   log "launcher: ${link_dir}/${LINK_NAME}"
-  log "if needed, add PATH: export PATH=\"${INSTALL_ROOT}/bin:\$PATH\""
+  log "open a new terminal to use thagc directly from PATH"
 }
 
 main "$@"
