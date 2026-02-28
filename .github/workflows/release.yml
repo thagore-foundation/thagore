@@ -22,7 +22,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
-          - runner: macos-13
+          - runner: macos-14
             platform: macos
             arch: x86_64
           - runner: macos-14
@@ -118,10 +118,15 @@ jobs:
           print(max(2, os.cpu_count() or 2))
           PY
           )"
+          EXTRA_CMAKE_ARGS=()
+          if [[ "${{ runner.os }}" == "macOS" && "${{ matrix.arch }}" == "x86_64" ]]; then
+            EXTRA_CMAKE_ARGS+=("-DCMAKE_OSX_ARCHITECTURES=x86_64")
+          fi
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER="${CC}" \
             -DCMAKE_CXX_COMPILER="${CXX}" \
-            -DLLVM_DIR="${LLVM_DIR}"
+            -DLLVM_DIR="${LLVM_DIR}" \
+            "${EXTRA_CMAKE_ARGS[@]}"
           cmake --build build -j"${JOBS}"
 
       - name: Configure + build (Windows)
