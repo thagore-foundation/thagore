@@ -9,6 +9,7 @@ TAG=""
 CHANNEL="${DEFAULT_CHANNEL}"
 INSTALL_ROOT="${HOME}/.thagore"
 MODE="auto"
+ARCH=""
 DRY_RUN=0
 FORCE=0
 
@@ -30,14 +31,16 @@ Options:
   --install-root <dir>   Install root (default: ~/.thagore)
   --mode <auto|linux|macos|windows>
                          Target installer mode (default: auto)
+  --arch <x86_64|aarch64>
+                         Override detected CPU architecture
   --dry-run              Print actions without changing files
   --force                Overwrite existing channel directory
   -h, --help             Show help
 
 Examples:
   thagup.sh
-  thagup.sh --tag v0.8.1
-  thagup.sh --mode macos --tag v0.8.1
+  thagup.sh --tag v0.8.2
+  thagup.sh --mode macos --tag v0.8.2
 EOF
 }
 
@@ -92,6 +95,11 @@ parse_args() {
         MODE="$2"
         shift 2
         ;;
+      --arch)
+        [[ $# -ge 2 ]] || fail "--arch requires a value"
+        ARCH="$2"
+        shift 2
+        ;;
       --dry-run)
         DRY_RUN=1
         shift
@@ -130,22 +138,36 @@ normalize_mode() {
 }
 
 resolve_assets() {
+  local raw_arch
+  raw_arch="$(uname -m)"
+  if [[ -z "${ARCH}" ]]; then
+    case "${raw_arch}" in
+      x86_64|amd64) ARCH="x86_64" ;;
+      aarch64|arm64) ARCH="aarch64" ;;
+      *) fail "unsupported CPU architecture: ${raw_arch} (use --arch to override)" ;;
+    esac
+  fi
+  case "${ARCH}" in
+    x86_64|aarch64) ;;
+    *) fail "invalid --arch: ${ARCH}" ;;
+  esac
+
   case "${MODE}" in
     linux)
-      ASSET_NAME="thagc-core-linux.tar.gz"
-      CHECKSUM_NAME="SHA256SUMS-thagc-linux.txt"
+      ASSET_NAME="thagc-core-linux-${ARCH}.tar.gz"
+      CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc"
       LINK_NAME="thagc"
       ;;
     macos)
-      ASSET_NAME="thagc-core-macos.tar.gz"
-      CHECKSUM_NAME="SHA256SUMS-thagc-macos.txt"
+      ASSET_NAME="thagc-core-macos-${ARCH}.tar.gz"
+      CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc"
       LINK_NAME="thagc"
       ;;
     windows)
-      ASSET_NAME="thagc-core-windows.tar.gz"
-      CHECKSUM_NAME="SHA256SUMS-thagc-windows.txt"
+      ASSET_NAME="thagc-core-windows-${ARCH}.tar.gz"
+      CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc.exe"
       LINK_NAME="thagc.exe"
       ;;
@@ -201,6 +223,20 @@ install_link() {
   fi
 }
 
+download_first_available() {
+  local output="$1"
+  shift
+  local url
+  for url in "$@"; do
+    if curl -fsI "${url}" >/dev/null 2>&1; then
+      run_cmd curl -fsSL "${url}" -o "${output}"
+      printf '%s\n' "${url}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 main() {
   parse_args "$@"
 
@@ -216,10 +252,12 @@ main() {
     TAG="$(api_get_latest_tag)" || fail "unable to resolve latest release tag"
   fi
 
-  local base_url archive_url checksum_url
+  local base_url archive_url checksum_url legacy_asset legacy_checksum
   base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${TAG}"
   archive_url="${base_url}/${ASSET_NAME}"
   checksum_url="${base_url}/${CHECKSUM_NAME}"
+  legacy_asset="${base_url}/thagc-core-${MODE}.tar.gz"
+  legacy_checksum="${base_url}/SHA256SUMS-thagc-${MODE}.txt"
 
   local work_dir archive_path checksum_path
   work_dir="$(mktemp -d)"
@@ -234,13 +272,17 @@ main() {
 
   log "release tag: ${TAG}"
   log "mode: ${MODE}"
+  log "arch: ${ARCH}"
   log "channel: ${CHANNEL}"
   log "install root: ${INSTALL_ROOT}"
-  log "download: ${archive_url}"
-  log "download: ${checksum_url}"
+  log "download candidates: ${archive_url} (fallback: ${legacy_asset})"
+  log "checksum candidates: ${checksum_url} (fallback: ${legacy_checksum})"
 
-  run_cmd curl -fsSL "${archive_url}" -o "${archive_path}"
-  run_cmd curl -fsSL "${checksum_url}" -o "${checksum_path}"
+  archive_url="$(download_first_available "${archive_path}" "${archive_url}" "${legacy_asset}")" \
+    || fail "unable to download core archive for mode=${MODE} arch=${ARCH}"
+  checksum_url="$(download_first_available "${checksum_path}" "${checksum_url}" "${legacy_checksum}")" \
+    || fail "unable to download checksum file for mode=${MODE} arch=${ARCH}"
+  ASSET_NAME="$(basename "${archive_url}")"
 
   if [[ "${DRY_RUN}" -eq 0 ]]; then
     verify_checksum "${archive_path}" "${checksum_path}"

@@ -12,9 +12,11 @@ def main() -> None:
     args = parser.parse_args()
 
     out = Path(args.out)
+    bin_path = Path(args.bin)
+    archive_bin_name = "thagc.exe" if bin_path.suffix.lower() == ".exe" else "thagc"
     out.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(out, "w:gz") as tf:
-        tf.add(args.bin, arcname="bin/thagc")
+        tf.add(args.bin, arcname=f"bin/{archive_bin_name}")
         if args.runtime:
             tf.add(args.runtime, arcname="lib/" + Path(args.runtime).name)
     print(f"created {out}")

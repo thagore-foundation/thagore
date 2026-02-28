@@ -11,34 +11,32 @@ import { Aside } from "@astrojs/starlight/components";
 
 Each Thagore release publishes the following artifacts on GitHub Releases:
 
-### Core bundles (compiler binary + installer)
+### Installer entry points
 
-| Artifact | Platform | Contents |
-|----------|----------|----------|
-| `thagc-core-linux.tar.gz` | Linux x86-64 | `thagc` binary, `stage1_helper`, `thagup-init.sh`, target registry |
-| `thagc-core-macos.tar.gz` | macOS ARM64 | `thagc` binary, `stage1_helper`, `thagup-init.sh`, target registry |
-| `thagc-core-windows.tar.gz` | Windows x86-64 | `thagc.exe` binary, `thagup-init.sh`, target registry |
+| Artifact | Purpose |
+|----------|---------|
+| `thagup.sh` | Installer for Linux/macOS (auto-detect OS + CPU arch) |
+| `thagup.ps1` | Installer for Windows PowerShell (auto-detect CPU arch) |
 
-### Target packs (embedded LLVM 21 per target)
+### Core bundles (compiler binary)
 
-| Artifact | Target triple | Contents |
-|----------|--------------|----------|
-| `thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz` | Linux x86-64 | LLVM 21 (clang + lld), `manifest.json` |
-| `thagc-target-aarch64-unknown-linux-gnu-linux.tar.gz` | Linux ARM64 | LLVM 21, `manifest.json` |
-| `thagc-target-aarch64-apple-darwin-macos.tar.gz` | macOS ARM64 | LLVM 21, `manifest.json` |
-| `thagc-target-x86_64-apple-darwin-macos.tar.gz` | macOS x86-64 | LLVM 21, `manifest.json` |
-| `thagc-target-x86_64-pc-windows-msvc-windows.tar.gz` | Windows x86-64 | LLVM 21, `manifest.json` |
+| Artifact | Platform/arch | Contents |
+|----------|---------------|----------|
+| `thagc-core-linux-x86_64.tar.gz` | Linux x86-64 | `thagc` binary |
+| `thagc-core-linux-aarch64.tar.gz` | Linux ARM64 | `thagc` binary |
+| `thagc-core-macos-x86_64.tar.gz` | macOS x86-64 | `thagc` binary |
+| `thagc-core-macos-aarch64.tar.gz` | macOS ARM64 | `thagc` binary |
+| `thagc-core-windows-x86_64.tar.gz` | Windows x86-64 | `thagc.exe` binary |
+| `thagc-core-windows-aarch64.tar.gz` | Windows ARM64 | `thagc.exe` binary |
 
 ### Checksums
 
 | File | Covers |
 |------|--------|
-| `SHA256SUMS-thagc-linux.txt` | All Linux artifacts |
-| `SHA256SUMS-thagc-macos.txt` | All macOS artifacts |
-| `SHA256SUMS-thagc-windows.txt` | All Windows artifacts |
+| `SHA256SUMS-thagc.txt` | Installers + all core artifacts |
 
 <Aside type="note" title="Embedded LLVM">
-Target packs include LLVM 21 prebuilts (clang + lld). Users do **not** need to install LLVM separately.
+Runtime support is already embedded into the released `thagc` binary.
 </Aside>
 
 ## Using Pre-built Releases
@@ -54,8 +52,8 @@ curl -fsSL https://thagore.org/thagup.sh | bash
 Windows:
 
 ```powershell
-Invoke-WebRequest -Uri "https://thagore.org/thagup.exe" -OutFile thagup.exe
-Start-Process -FilePath .\thagup.exe -Wait
+Invoke-WebRequest -Uri "https://thagore.org/thagup.ps1" -OutFile thagup.ps1
+powershell -ExecutionPolicy Bypass -File .\thagup.ps1
 ```
 
 Verify:
@@ -64,23 +62,17 @@ Verify:
 thagc --version
 ```
 
-### Manual installation (Linux example)
+### Manual installation (Linux x86-64 example)
 
 ```bash
 # Download core bundle and verify checksum
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagc-core-linux.tar.gz -o thagc-core-linux.tar.gz
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/SHA256SUMS-thagc-linux.txt -o SHA256SUMS-thagc-linux.txt
-sha256sum --check --ignore-missing SHA256SUMS-thagc-linux.txt
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagc-core-linux-x86_64.tar.gz -o thagc-core-linux-x86_64.tar.gz
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/SHA256SUMS-thagc.txt -o SHA256SUMS-thagc.txt
+sha256sum --check --ignore-missing SHA256SUMS-thagc.txt
 
 # Extract
 mkdir -p ~/.thagore/toolchains/stable
-tar -xzf thagc-core-linux.tar.gz -C ~/.thagore/toolchains/stable
-
-# Download + extract default target pack
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagc-target-x86_64-unknown-linux-gnu-linux.tar.gz \
-  -o thagc-target-x86_64.tar.gz
-mkdir -p ~/.thagore/toolchains/stable/targets/x86_64-unknown-linux-gnu
-tar -xzf thagc-target-x86_64.tar.gz -C ~/.thagore/toolchains/stable/targets/x86_64-unknown-linux-gnu
+tar -xzf thagc-core-linux-x86_64.tar.gz -C ~/.thagore/toolchains/stable
 
 # Add to PATH
 echo 'export PATH="$HOME/.thagore/bin:$PATH"' >> ~/.bashrc
@@ -94,22 +86,19 @@ thagc --version
 
 | Endpoint | Description |
 |----------|-------------|
-| `https://thagore.org/thagup.sh` | Latest stable installer script (Linux/macOS/portable) |
-| `https://thagore.org/thagup.exe` | Latest stable installer executable (Windows x86-64) |
+| `https://thagore.org/thagup.sh` | Latest stable installer script (Linux/macOS) |
+| `https://thagore.org/thagup.ps1` | Latest stable installer script (Windows PowerShell) |
 | `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh` | Raw source (always current `main`) |
 
-## thagup commands
+## thagup installer options
 
-After installation, use `thagup` to manage your Thagore toolchain:
+Use these options when invoking `thagup.sh`:
 
 ```bash
-thagup update                              # update thagc to latest
-thagup install v0.8.1                      # install specific version
-thagup target add aarch64-unknown-linux-gnu  # add a cross-compilation target
-thagup target list                         # list installed targets
-thagup target remove aarch64-unknown-linux-gnu
-thagup self-update                         # update thagup itself
-thagup show                                # show installed version + targets
+thagup.sh --tag v0.8.2               # install a specific release
+thagup.sh --channel nightly           # install into custom channel directory
+thagup.sh --install-root /opt/thagore # custom install root
+thagup.sh --force                     # overwrite existing channel
 ```
 
 ## CI/CD Pipelines

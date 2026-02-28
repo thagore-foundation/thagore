@@ -20,7 +20,7 @@ Use the official `thagup` installer — one command installs `thagc` with embedd
 curl -fsSL https://thagore.org/thagup.sh | bash
 ```
 
-Installs `thagc` to `~/.thagore/bin`, downloads LLVM 21 per target pack (embedded — no system LLVM needed), and adds PATH automatically.
+Installs `thagc` to `~/.thagore/bin` (embedded runtime, no system LLVM needed).
 
   </TabItem>
   <TabItem label="Linux (generic)">
@@ -37,18 +37,11 @@ curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode macos
 ```
 
   </TabItem>
-  <TabItem label="Portable (Android/BSD/other)">
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode portable
-```
-
-  </TabItem>
   <TabItem label="Windows">
 
 ```powershell
-Invoke-WebRequest -Uri "https://thagore.org/thagup.exe" -OutFile thagup.exe
-Start-Process -FilePath .\thagup.exe -Wait
+Invoke-WebRequest -Uri "https://thagore.org/thagup.ps1" -OutFile thagup.ps1
+powershell -ExecutionPolicy Bypass -File .\thagup.ps1
 ```
 
   </TabItem>
@@ -57,14 +50,10 @@ Start-Process -FilePath .\thagup.exe -Wait
 Or install a specific version:
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --tag v0.8.1
+curl -fsSL https://thagore.org/thagup.sh | bash -s -- --tag v0.8.2
 ```
 
-Install with custom target selection:
-
-```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --profile custom --targets x86_64-unknown-linux-gnu,aarch64-apple-darwin
-```
+`thagup` auto-detects OS + CPU architecture by default. Use `--mode` / `--arch` only when you need to override detection.
 
 **Verify:**
 
@@ -73,7 +62,8 @@ thagc --version
 ```
 
 <Aside type="tip" title="PATH">
-The installer adds `~/.thagore/bin` to PATH automatically via `.bashrc`/`.zshrc`. Restart your shell or run `source ~/.thagore/env` to activate immediately.
+Add `~/.thagore/bin` to PATH if `thagc` is not found:
+`export PATH="$HOME/.thagore/bin:$PATH"`.
 </Aside>
 
 ## Step 2: Write Your First Program
@@ -82,8 +72,8 @@ Create `hello.tg`:
 
 ```python title="hello.tg"
 func main() -> i32:
-    print("Hello, Thagore!")
-    return 0
+  print("Hello, Thagore!")
+  return 0
 ```
 
 Compile and run:
@@ -108,12 +98,12 @@ thagc build hello.tg -o hello.exe
 </Tabs>
 
 <Aside type="note" title="No system LLVM required">
-`thagc` ships with embedded LLVM 21 in each target pack — no separate LLVM installation needed.
+`thagc` release artifacts are self-contained for end users — no separate LLVM installation needed.
 </Aside>
 
 ## Links
 
-- Bootstrap script (Linux/macOS/portable): `https://thagore.org/thagup.sh`
-- Bootstrap executable (Windows x86-64): `https://thagore.org/thagup.exe`
+- Bootstrap script (Linux/macOS): `https://thagore.org/thagup.sh`
+- Bootstrap script (Windows PowerShell): `https://thagore.org/thagup.ps1`
 - Raw bootstrap source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh`
 - All releases: `https://github.com/thagore-foundation/thagore/releases`
