@@ -65,6 +65,12 @@ struct TimerTask {
   SchedulerTask task;
 };
 
+struct CoroutineFrame {
+  using ResumeFn = void (*)(void*);
+  ResumeFn resume = nullptr;
+  ResumeFn destroy = nullptr;
+};
+
 struct SchedulerState {
   std::mutex mutex;
   std::condition_variable cv;
@@ -439,13 +445,21 @@ void thag_concurrency_runtime_shutdown(void) {
 }
 
 void thag_coro_resume(void* coro_handle) {
-  // TODO(v0.9): wire coroutine handles to scheduler-owned resumable tasks.
-  (void)coro_handle;
+  if (coro_handle == nullptr) {
+    return;
+  }
+  auto* frame = static_cast<CoroutineFrame*>(coro_handle);
+  if (frame->resume != nullptr) {
+    frame->resume(coro_handle);
+  }
 }
 
 bool thag_coro_done(void* coro_handle) {
-  // TODO(v0.9): query coroutine completion state from runtime coroutine table.
-  return coro_handle == nullptr;
+  if (coro_handle == nullptr) {
+    return true;
+  }
+  auto* frame = static_cast<CoroutineFrame*>(coro_handle);
+  return frame->resume == nullptr;
 }
 
 thag_task_scope_t* thag_task_scope_create(void) {

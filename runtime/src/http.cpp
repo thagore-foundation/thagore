@@ -427,7 +427,7 @@ static bool request_once(const std::string& method, const ParsedUrl& url, const 
 #endif
   {
     if (url.tls) {
-      // TODO(v0.9): add OS-native TLS backend when OpenSSL is unavailable.
+      // HTTPS is only supported when runtime is built with OpenSSL.
       close_socket(socket_handle);
       return false;
     }

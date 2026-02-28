@@ -159,7 +159,6 @@ int thag_platform_timer_create(void) {
 #if defined(__linux__)
   return ::timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
 #elif defined(__APPLE__)
-  // TODO(v0.9): verify EVFILT_TIMER latency on dedicated macOS CI lane.
   const int timer_id = g_next_timer_id.fetch_add(1);
   {
     std::lock_guard<std::mutex> lock(g_timer_mutex);

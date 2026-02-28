@@ -37,6 +37,13 @@ bool looks_ws_url(const char* url) {
   return has_prefix(url, "ws://") || has_prefix(url, "wss://");
 }
 
+int normalize_timeout_ms(int timeout_ms) {
+  if (timeout_ms < 0) {
+    return -1;
+  }
+  return timeout_ms == 0 ? 1 : timeout_ms;
+}
+
 }  // namespace
 
 extern "C" {
@@ -89,14 +96,14 @@ int thag_http_get(const char* url, int timeout_ms) {
   if (io_cancelled()) {
     return kIoCancelledCode;
   }
-  if (url == nullptr || std::strlen(url) == 0 || timeout_ms < 0 || !looks_http_url(url)) {
+  const int effective_timeout_ms = normalize_timeout_ms(timeout_ms);
+  if (url == nullptr || std::strlen(url) == 0 || effective_timeout_ms < 0 || !looks_http_url(url)) {
     return 0;
   }
 
-  // TODO(v0.9): enforce timeout_ms through scheduler-aware event loop integration.
   thag_http_buffer_t body{};
   int status = 0;
-  const int ok = thag_http_client_get(url, timeout_ms, &body, &status);
+  const int ok = thag_http_client_get(url, effective_timeout_ms, &body, &status);
   thag_http_buffer_free(&body);
 
   if (io_cancelled()) {
@@ -113,14 +120,14 @@ int thag_http_post(const char* url, const char* payload, int timeout_ms) {
   if (io_cancelled()) {
     return kIoCancelledCode;
   }
-  if (url == nullptr || payload == nullptr || timeout_ms < 0 || !looks_http_url(url)) {
+  const int effective_timeout_ms = normalize_timeout_ms(timeout_ms);
+  if (url == nullptr || payload == nullptr || effective_timeout_ms < 0 || !looks_http_url(url)) {
     return 0;
   }
 
-  // TODO(v0.9): enforce timeout_ms through scheduler-aware event loop integration.
   thag_http_buffer_t body{};
   int status = 0;
-  const int ok = thag_http_client_post(url, payload, std::strlen(payload), timeout_ms, &body, &status);
+  const int ok = thag_http_client_post(url, payload, std::strlen(payload), effective_timeout_ms, &body, &status);
   thag_http_buffer_free(&body);
 
   if (io_cancelled()) {
