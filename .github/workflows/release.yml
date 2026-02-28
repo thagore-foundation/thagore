@@ -42,9 +42,12 @@ jobs:
           python3 tooling/packaging/pack_core.py \
             --bin build/compiler/thagc \
             --out dist/thagc-core-linux.tar.gz
+          cp tooling/release/thagup.sh dist/thagup.sh
+          chmod +x dist/thagup.sh
           python3 tooling/packaging/make_checksums.py \
             --out dist/SHA256SUMS-thagc-linux.txt \
-            dist/thagc-core-linux.tar.gz
+            dist/thagc-core-linux.tar.gz \
+            dist/thagup.sh
 
       - name: Publish release artifact
         env:
@@ -54,7 +57,9 @@ jobs:
             --title "thagc ${{ inputs.tag }}" \
             --notes "Initial C++/LLVM direct API release lane." \
             dist/thagc-core-linux.tar.gz \
+            dist/thagup.sh \
             dist/SHA256SUMS-thagc-linux.txt \
             || gh release upload "${{ inputs.tag }}" \
             dist/thagc-core-linux.tar.gz \
+            dist/thagup.sh \
             dist/SHA256SUMS-thagc-linux.txt --clobber
