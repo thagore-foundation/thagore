@@ -39,8 +39,8 @@ Options:
 
 Examples:
   thagup.sh
-  thagup.sh --tag v0.8.2
-  thagup.sh --mode macos --tag v0.8.2
+  thagup.sh --tag v0.8.3
+  thagup.sh --mode macos --tag v0.8.3
 EOF
 }
 
