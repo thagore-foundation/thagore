@@ -401,7 +401,7 @@ static bool request_once(const std::string& method, const ParsedUrl& url, const 
 #endif
   {
     if (url.tls) {
-      // TODO(v0.6): add OS-native TLS backend when OpenSSL is unavailable.
+      // TODO(v0.9): add OS-native TLS backend when OpenSSL is unavailable.
       close_socket(socket_handle);
       return false;
     }

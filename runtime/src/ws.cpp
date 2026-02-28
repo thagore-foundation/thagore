@@ -284,7 +284,7 @@ static bool recv_frame(SocketHandle socket_handle, void* out_buf, std::size_t bu
 extern "C" {
 
 int thag_ws_client_connect(const char* url, int timeout_ms, int* out_handle) {
-  (void)timeout_ms;  // TODO(v0.6): enforce connect timeout in event-loop integration.
+  (void)timeout_ms;  // TODO(v0.9): enforce connect timeout in event-loop integration.
   if (out_handle == nullptr) {
     return 0;
   }
