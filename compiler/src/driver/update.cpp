@@ -10,6 +10,7 @@
 #include "thagc/driver/common.hpp"
 #include "thagc/shared/filesystem.hpp"
 #include "thagc/shared/process.hpp"
+#include "thagc/shared/version.hpp"
 
 namespace thagc::driver {
 
@@ -107,7 +108,7 @@ int handle_update(const ParsedCommand& cmd) {
   const std::string latest_file = home + "/latest-version.txt";
   const std::string rollback_file = home + "/rollback-version.txt";
   const std::string channel_file = home + "/update-channel.txt";
-  std::string current = read_or_default(current_file, "0.1.0");
+  std::string current = read_or_default(current_file, std::string(support::kCompilerVersion));
   std::string latest = read_or_default(latest_file, current);
 
   bool dry_run = false;

@@ -2,10 +2,12 @@
 
 #include <iostream>
 
+#include "thagc/shared/version.hpp"
+
 namespace thagc::driver {
 
 int handle_help() {
-  std::cout << "thagore 0.1.0\n";
+  std::cout << "thagore " << support::kCompilerVersion << "\n";
   std::cout << "Usage:\n";
   std::cout << "  thagore --help\n";
   std::cout << "  thagore --version\n";
@@ -22,7 +24,7 @@ int handle_help() {
 }
 
 int handle_version() {
-  std::cout << "thagore 0.1.0\n";
+  std::cout << "thagore " << support::kCompilerVersion << "\n";
   return 0;
 }
 
