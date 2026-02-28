@@ -19,6 +19,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Config/llvm-config.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
@@ -3763,6 +3764,26 @@ static void run_coroutine_passes(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
+static void set_module_target_triple(llvm::Module& module, const llvm::Triple& triple) {
+#if LLVM_VERSION_MAJOR >= 21
+  module.setTargetTriple(triple);
+#else
+  module.setTargetTriple(triple.getTriple());
+#endif
+}
+
+static std::unique_ptr<llvm::TargetMachine> create_target_machine_compat(const llvm::Target* target,
+                                                                          const llvm::Triple& triple,
+                                                                          const llvm::TargetOptions& options) {
+#if LLVM_VERSION_MAJOR >= 21
+  return std::unique_ptr<llvm::TargetMachine>(
+      target->createTargetMachine(triple, "generic", "", options, std::nullopt));
+#else
+  return std::unique_ptr<llvm::TargetMachine>(
+      target->createTargetMachine(triple.getTriple(), "generic", "", options, std::nullopt));
+#endif
+}
+
 bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
                                const std::string& llvm_ir_path, const std::string& target_triple,
                                support::DiagnosticSink& diag) const {
@@ -3772,7 +3793,7 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
     return false;
   }
   if (!target_triple.empty()) {
-    module->setTargetTriple(llvm::Triple(target_triple));
+    set_module_target_triple(*module, llvm::Triple(target_triple));
   }
   run_coroutine_passes(*module);
   std::string verify_error;
@@ -3810,7 +3831,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   std::string error;
   const std::string triple_value = target_triple.empty() ? llvm::sys::getDefaultTargetTriple() : target_triple;
   const llvm::Triple triple(triple_value);
-  module->setTargetTriple(triple);
+  set_module_target_triple(*module, triple);
 
   const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (!target) {
@@ -3819,8 +3840,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
 
   llvm::TargetOptions options;
-  std::unique_ptr<llvm::TargetMachine> target_machine(
-      target->createTargetMachine(triple, "generic", "", options, std::nullopt));
+  std::unique_ptr<llvm::TargetMachine> target_machine(create_target_machine_compat(target, triple, options));
   if (!target_machine) {
     diag.error("E2004", "cannot create LLVM target machine");
     return false;
