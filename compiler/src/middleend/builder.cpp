@@ -357,6 +357,13 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
       if (parse_i32_literal(last.expression_normalized, top_ret)) {
         script_main.return_literal = top_ret;
       }
+      if (!script_main.statements.empty()) {
+        CoreStmt& implicit_ret = script_main.statements.back();
+        implicit_ret.kind = CoreStmtKind::Return;
+        implicit_ret.has_expression = true;
+        implicit_ret.expression = last.expression_normalized;
+        implicit_ret.text = "return " + last.expression_normalized;
+      }
     } else {
       script_main.return_literal = 0;
       script_main.return_expression = "0";

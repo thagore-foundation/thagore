@@ -51,6 +51,29 @@ class BuildAndRunE2ETests(unittest.TestCase):
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 7, msg=run.stderr)
 
+    def test_build_script_last_expression_is_evaluated_once(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "script_once.tg"
+            out = root / "script_once.bin"
+            src.write_text(
+                "func hello():\n"
+                "  print(\"Hello\")\n"
+                "\n"
+                "hello()\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
+            lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+            self.assertEqual(lines, ["Hello"])
+
     def test_build_and_run_multi_function_program(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
