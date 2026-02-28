@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (February 28, 2026): `v0.9` (Stdlib & IO Stack Alpha).
-Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs.
+Current effective milestone by code audit (February 28, 2026): `v1.0` (Deploy Baseline, in progress).
+Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs; `v1.0` compiler/tooling + FFI + docs checklist is complete, Drago + final gate remain.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -276,12 +276,12 @@ Execution order (re-anchored to dependency reality):
 > *"Single binary. One command. Ship anywhere."*
 
 ### Compiler & Tooling
-- [ ] Static link LLVM vào `thagc` — true standalone binary (~50-80MB), user không cần cài LLVM
-- [ ] Single-binary default — không cần runtime dependency
-- [ ] One-command cross-compile: `thagc build --target aarch64-linux`
-- [ ] Cold-start budget enforced trong CI (< 10ms target)
-- [ ] Binary-size baseline trong CI
-- [ ] `thagc target` + `thagc build` recipes đầy đủ documented
+- [x] Static link LLVM vào `thagc` — true standalone binary (~50-80MB), user không cần cài LLVM
+- [x] Single-binary default — không cần runtime dependency
+- [x] One-command cross-compile: `thagc build --target aarch64-linux`
+- [x] Cold-start budget enforced trong CI (< 10ms target)
+- [x] Binary-size baseline trong CI
+- [x] `thagc target` + `thagc build` recipes đầy đủ documented
 
 ### Drago Package Registry (Production)
 - [ ] Registry stable, versioned packages
@@ -290,14 +290,14 @@ Execution order (re-anchored to dependency reality):
 - [ ] Dependency resolution + lock file
 
 ### FFI
-- [ ] `extern` C function calls hoạt động đầy đủ
-- [ ] C library linking trong build pipeline
-- [ ] FFI safety guidelines documented
+- [x] `extern` C function calls hoạt động đầy đủ
+- [x] C library linking trong build pipeline
+- [x] FFI safety guidelines documented
 
 ### Docs
-- [ ] Getting started guide — từ install đến hello world trong 60 giây
-- [ ] Beginner tutorial — học giải thuật bằng Thagore
-- [ ] API reference cơ bản
+- [x] Getting started guide — từ install đến hello world trong 60 giây
+- [x] Beginner tutorial — học giải thuật bằng Thagore
+- [x] API reference cơ bản
 
 ### Gate
 - [ ] Một CLI tool thực tế được build, cross-compiled, và distributed dưới dạng single binary
@@ -501,8 +501,8 @@ Execution order (re-anchored to dependency reality):
 | v0.6 | Concurrency alpha | ✅ Released |
 | v0.7 | Structured concurrency | ✅ Released |
 | v0.8 | Memory model MVP | ✅ Released |
-| v0.9 | IO stack alpha | 🔲 Planned |
-| v1.0 | Deploy baseline | 🔲 Planned |
+| v0.9 | IO stack alpha | ✅ Released |
+| v1.0 | Deploy baseline | 🟡 In Progress (Drago + gate pending) |
 | v1.1 | Concurrency GA | 🔲 Planned |
 | v1.2 | IO stack GA | 🔲 Planned |
 | v1.3 | Performance lockdown | 🔲 Planned |

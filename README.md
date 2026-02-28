@@ -9,6 +9,7 @@ It compiles `.tg` source code to native executables through LLVM.
 - Static typing and native code generation.
 - LLVM direct API backend.
 - Cross-platform targets: Linux, macOS, Windows.
+- `thagc` links LLVM statically by default (single compiler binary deploy baseline).
 - Deterministic and parity-oriented release gates.
 
 ## Install
@@ -30,9 +31,9 @@ powershell -ExecutionPolicy Bypass -File $script
 
 Installer scripts now auto-add `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`) to user PATH.
 
-Release archives are self-contained for user-space dependencies:
-- `thagc` launcher + bundled shared libraries are shipped together.
-- No separate LLVM installation is required on end-user machines.
+Release archives are self-contained:
+- no separate LLVM installation is required on end-user machines.
+- runtime archive is embedded into `thagc` (no external `libthag_runtime.a` lookup at build time).
 
 ## Update
 
@@ -84,12 +85,46 @@ cmake -S . -B build -G Ninja
 cmake --build build -j
 ```
 
+`thagc` now links LLVM statically by default. Disable only when needed:
+
+```bash
+cmake -S . -B build -G Ninja -DTHAGC_STATIC_LLVM=OFF
+```
+
 ### Run
 
 ```bash
 ./build/compiler/thagc --help
 ./build/compiler/thagc build /tmp/hello.tg -o /tmp/hello_bin --emit-llvm
 ```
+
+### One-command cross-compile
+
+```bash
+# 1) register target toolchain once (or let build auto-init)
+thagc target add aarch64-unknown-linux-gnu --cc=clang --cxx=clang++ --linker=clang
+
+# 2) build for target in one command
+thagc build app.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
+```
+
+### FFI and C library linking
+
+```bash
+# Example: link libm for extern math symbols
+thagc build ffi_math.tg -o ffi_math.bin --link-lib=m
+
+# Extra linker search directory and raw linker arg
+thagc build app.tg -o app.bin --link-dir=/opt/mylib/lib --link-lib=mylib --link-arg=-Wl,-rpath,/opt/mylib/lib
+```
+
+FFI safety checklist:
+- keep `extern func` signatures exact with C ABI types and widths.
+- do not pass dangling pointers across FFI boundaries.
+- isolate unsafe pointer manipulation in small wrappers.
+- validate ownership conventions (who allocates/frees).
+
+Detailed guide: `docs/runbooks/ffi-safety-guidelines.md`.
 
 ## Tests
 

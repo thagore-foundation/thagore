@@ -1,0 +1,53 @@
+---
+title: FFI Safety Guidelines
+description: ABI and memory safety checklist for Thagore extern C integrations.
+---
+
+# FFI Safety Guidelines
+
+Use this checklist before shipping any `extern func` integration.
+
+## ABI correctness
+
+- match function names and argument/return widths exactly.
+- avoid ambiguous C aliases (`long`, `size_t`) unless you control both sides.
+- keep platform differences explicit in wrappers.
+
+## Memory ownership
+
+- define who allocates and who frees each pointer.
+- avoid returning borrowed pointers as owned values.
+- wrap unsafe ownership edges in small helper functions.
+
+## Pointer lifetime
+
+- do not pass stack addresses beyond call scope.
+- validate null pointers before use in runtime wrappers.
+- avoid aliasing writes unless explicitly supported.
+
+## Concurrency
+
+- assume C libraries are not thread-safe unless documented otherwise.
+- synchronize mutable shared native state across tasks.
+- prefer immutable handoff between tasks.
+
+## Linking
+
+Use explicit build flags:
+
+```bash
+thagc build app.tg -o app \
+  --link-dir=/opt/vendor/lib \
+  --link-lib=vendor \
+  --link-arg=-Wl,-rpath,/opt/vendor/lib
+```
+
+## Test minimum
+
+- one positive integration test (happy path),
+- one negative test (bad input/error path),
+- one build test for missing-library diagnostics.
+
+Repository runbook mirror:
+
+- `docs/runbooks/ffi-safety-guidelines.md`

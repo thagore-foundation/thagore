@@ -1,0 +1,6 @@
+{
+  "linux-x86_64": {
+    "iterations": 25,
+    "max_p95_ms": 10.0
+  }
+}

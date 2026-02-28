@@ -27,7 +27,11 @@ thagore build <input.tg> -o <output> [options]
 | Flag | Description |
 |------|-------------|
 | `-o <path>` | Output file path (default: derived from input name) |
+| `--target=<triple>` / `-t <triple>` | Compile and link for a configured target triple |
 | `--emit-llvm` | Emit LLVM IR (`.ll`) instead of linking a binary |
+| `--link-lib=<name>` / `-l<name>` | Link an extra C library (`-l<name>`) |
+| `--link-dir=<path>` / `-L<path>` | Add linker search directory |
+| `--link-arg=<arg>` | Pass raw argument to linker invocation |
 | `--autofix=<mode>` | Enable autofix (`safe`, `aggressive`, or `off`) |
 | `--autofix-lock=<path>` | Lock file for autofix session (default: `thagore.fix.lock`) |
 | `--autofix-lock-strict` | Strict lock enforcement |
@@ -48,6 +52,12 @@ thagore examples/hello.tg -o hello.exe
 
 # Emit LLVM IR for inspection
 thagore build examples/fib.tg --emit-llvm
+
+# Cross-compile in one command
+thagore build app.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
+
+# Link against libm for extern math symbols
+thagore build ffi_math.tg -o ffi_math --link-lib=m
 
 # Build with safe autofix
 thagore build src/app.tg -o app.exe --autofix=safe
@@ -133,6 +143,13 @@ Common subcommands:
 - `target doctor [triple]`
 - `target show <triple>`
 - `target remove <triple>`
+
+One-command cross-compile recipe:
+
+```bash
+thagore target add aarch64-unknown-linux-gnu --cc=clang --cxx=clang++ --linker=clang
+thagore build src/main.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
+```
 
 ### `update` — Compiler update lane
 

@@ -9,6 +9,9 @@ find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION}")
 
+option(THAGC_STATIC_LLVM "Link LLVM component libraries statically into thagc" ON)
+option(THAGC_STATIC_CXX_RUNTIME "Link libstdc++/libgcc statically when supported" ON)
+
 add_executable(thagc
   src/main.cpp
   src/application/builder.cpp
@@ -58,9 +61,8 @@ target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(thagc PRIVATE ${LLVM_DEFINITIONS})
 
-if (TARGET LLVM)
-  target_link_libraries(thagc PRIVATE LLVM)
-else()
+if (THAGC_STATIC_LLVM)
+  message(STATUS "thagc LLVM linkage mode: static components")
   llvm_map_components_to_libnames(LLVM_LIBS
     Core
     Support
@@ -77,8 +79,44 @@ else()
     CodeGen
     native
     nativecodegen
+    AArch64
+    ARM
+    X86
+  )
+  if (NOT LLVM_LIBS)
+    message(FATAL_ERROR "THAGC_STATIC_LLVM=ON but llvm_map_components_to_libnames returned empty library set")
+  endif()
+  target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
+elseif (TARGET LLVM)
+  message(STATUS "thagc LLVM linkage mode: shared LLVM target")
+  target_link_libraries(thagc PRIVATE LLVM)
+else()
+  message(STATUS "thagc LLVM linkage mode: fallback component map")
+  llvm_map_components_to_libnames(LLVM_LIBS
+    Core
+    Support
+    Target
+    TargetParser
+    MC
+    MCParser
+    Object
+    BitWriter
+    AsmPrinter
+    ScalarOpts
+    Passes
+    coroutines
+    CodeGen
+    native
+    nativecodegen
+    AArch64
+    ARM
+    X86
   )
   target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
+endif()
+
+if(THAGC_STATIC_CXX_RUNTIME AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT APPLE AND NOT WIN32)
+  target_link_options(thagc PRIVATE -static-libstdc++ -static-libgcc)
 endif()
 
 if(THAG_RUNTIME_USES_OPENSSL)

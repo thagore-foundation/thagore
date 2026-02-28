@@ -4048,6 +4048,25 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
     return false;
   }
 
+  // Keep one-command cross-compile available for primary Linux targets.
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
   if (!module) {

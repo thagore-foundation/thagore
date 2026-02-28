@@ -1,0 +1,56 @@
+---
+title: Basic API Reference
+description: Quick API reference for thagc CLI, core stdlib modules, and FFI/link flags.
+---
+
+# Basic API Reference
+
+## Compiler CLI
+
+| Command | Purpose |
+| --- | --- |
+| `thagc build <file.tg> -o <bin>` | Compile source to native executable |
+| `thagc run <file.tg>` | Build and run |
+| `thagc test --workspace` | Discover and run tests |
+| `thagc target add <triple> ...` | Configure target toolchain manifest |
+| `thagc update check/apply` | Check and apply compiler updates |
+
+## Build/link flags
+
+| Flag | Meaning |
+| --- | --- |
+| `--target=<triple>` | Build for configured target triple |
+| `--emit-llvm` | Emit `.ll` IR instead of linking binary |
+| `--link-lib=<name>` | Add `-l<name>` to linker |
+| `--link-dir=<path>` | Add `-L<path>` to linker |
+| `--link-arg=<arg>` | Pass raw linker argument |
+
+## Common stdlib modules
+
+| Module | Key functions |
+| --- | --- |
+| `lib.fs` | `read_file`, `write_file`, `exists`, `mkdir`, `remove` |
+| `lib.process` | `run`, `capture`, `env`, `arg_count`, `arg_at` |
+| `lib.string` | `trim`, `contains`, `split`, `join`, `replace` |
+| `lib.toml` | `parse`, `get_int`, `get_str`, `free` |
+| `lib.http` | `http_get`, `http_post` |
+
+## FFI declaration form
+
+```python
+extern func symbol_name(arg1: i32, arg2: ptr) -> i32
+```
+
+Guidelines:
+
+- signature must match the C symbol ABI exactly.
+- manage ownership and lifetime for all pointer values.
+- add explicit link flags (`--link-lib`, `--link-dir`) for external libraries.
+
+Read the full checklist in `/integration/ffi-safety-guidelines`.
+
+## Compatibility matrix
+
+Platform and LLVM compatibility details:
+
+- `/reference/compatibility-matrix`

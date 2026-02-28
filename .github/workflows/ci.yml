@@ -61,6 +61,17 @@ jobs:
       - name: Build
         run: cmake --build build -j
 
+      - name: Enforce startup and binary size budgets
+        run: |
+          python tooling/policy/check_startup_budget.py \
+            --bin build/compiler/thagc \
+            --budgets contracts/perf/startup_budget.json \
+            --key linux-x86_64
+          python tooling/policy/check_binary_size_budget.py \
+            --bin build/compiler/thagc \
+            --budgets contracts/perf/binary_size_budget.json \
+            --key linux-x86_64
+
       - name: Run full Python suites with built compiler
         env:
           THAGC_BIN: build/compiler/thagc

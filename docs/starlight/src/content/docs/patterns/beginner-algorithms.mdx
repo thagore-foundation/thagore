@@ -1,0 +1,77 @@
+---
+title: Beginner Algorithms Tutorial
+description: Learn core algorithm patterns in Thagore with beginner-friendly examples.
+---
+
+# Beginner Algorithms Tutorial
+
+This guide is for new users who want to learn practical problem solving in Thagore.
+
+## 1. Conditionals and loops
+
+```python
+func abs_i32(x: i32) -> i32:
+  if (x < 0):
+    return 0 - x
+  return x
+
+func sum_to(n: i32) -> i32:
+  let i: i32 = 1
+  let total: i32 = 0
+  while (i <= n):
+    total = total + i
+    i = i + 1
+  return total
+```
+
+## 2. Linear search
+
+```python
+func find_index(arr: [i32; 5], target: i32) -> i32:
+  let i: i32 = 0
+  while (i < len(arr)):
+    if (arr[i] == target):
+      return i
+    i = i + 1
+  return -1
+```
+
+## 3. Insertion sort
+
+```python
+func insertion_sort(data: [i32; 6]) -> [i32; 6]:
+  let i: i32 = 1
+  while (i < len(data)):
+    let key = data[i]
+    let j: i32 = i - 1
+    while (j >= 0 && data[j] > key):
+      data[j + 1] = data[j]
+      j = j - 1
+    data[j + 1] = key
+    i = i + 1
+  return data
+```
+
+## 4. Full beginner exercise
+
+```python
+func main() -> i32:
+  let arr = [9, 4, 7, 1, 6, 2]
+  let sorted = insertion_sort(arr)
+  let idx = find_index(sorted, 7)
+  print(idx)
+  return 0
+```
+
+Compile and run:
+
+```bash
+thagc build beginner.tg -o beginner
+./beginner
+```
+
+## Next steps
+
+1. Replace fixed-size arrays with user input.
+2. Add duplicate handling to `find_index`.
+3. Add a benchmark loop and compare different sorting algorithms.

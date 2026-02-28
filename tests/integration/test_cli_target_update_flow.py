@@ -135,6 +135,53 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             manifest = root / ".thagc" / "targets" / triple / "manifest.json"
             self.assertTrue(manifest.exists(), msg=f"missing manifest {manifest}")
 
+    def test_build_cross_target_uses_one_command_manifest_and_target_flag(self) -> None:
+        if os.name == "nt":
+            self.skipTest("posix-only fake linker harness")
+        targets = subprocess.run(["llvm-config", "--targets-built"], capture_output=True, text=True, check=False)
+        if targets.returncode != 0 or "AArch64" not in targets.stdout:
+            self.skipTest("LLVM build does not include AArch64 target")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "main.tg"
+            out = root / "main-cross.bin"
+            log = root / "fake-linker.log"
+            linker = root / "fake-linker.sh"
+            linker.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "printf '%s\\n' \"$@\" > " + "'" + str(log) + "'\n"
+                "out=''\n"
+                "args=(\"$@\")\n"
+                "for ((i=0; i<${#args[@]}; ++i)); do\n"
+                "  if [[ \"${args[$i]}\" == '-o' && $((i+1)) -lt ${#args[@]} ]]; then\n"
+                "    out=\"${args[$((i+1))]}\"\n"
+                "  fi\n"
+                "done\n"
+                "if [[ -n \"$out\" ]]; then\n"
+                "  : > \"$out\"\n"
+                "fi\n"
+            )
+            linker.chmod(0o755)
+            src.write_text("func main():\n  return 0\n")
+
+            add = self._run(
+                root,
+                "target",
+                "add",
+                "aarch64-unknown-linux-gnu",
+                "--cc=clang",
+                "--cxx=clang++",
+                f"--linker={linker}",
+            )
+            self.assertEqual(add.returncode, 0, msg=add.stderr)
+            build = self._run(root, "build", str(src), "-o", str(out), "--target=aarch64-unknown-linux-gnu")
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            self.assertTrue(out.exists(), msg=f"missing output from fake linker: {out}")
+            self.assertTrue(log.exists(), msg="fake linker log missing")
+            args_text = log.read_text()
+            self.assertIn("--target=aarch64-unknown-linux-gnu", args_text)
+
 
 if __name__ == "__main__":
     unittest.main()
