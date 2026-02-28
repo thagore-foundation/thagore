@@ -1,6 +1,9 @@
 #include "thagc/backend/llvm_emitter.hpp"
 
 #include <cctype>
+#include <cstdint>
+#include <exception>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,6 +53,7 @@ struct ExprTok {
 
 enum class ValueType {
   I32,
+  I64,
   F32,
   F64,
   I1,
@@ -825,13 +829,18 @@ static ExprValue parse_primary(ExprCursor& cursor) {
   if (tok.kind == ExprTokKind::Op && tok.text == "-") {
     ++cursor.index;
     ExprValue rhs = parse_primary(cursor);
-    const bool numeric = rhs.type == ValueType::I32 || rhs.type == ValueType::F32 || rhs.type == ValueType::F64;
+    const bool numeric =
+        rhs.type == ValueType::I32 || rhs.type == ValueType::I64 || rhs.type == ValueType::F32 ||
+        rhs.type == ValueType::F64;
     if (!numeric || rhs.value == nullptr) {
       cursor.error = cursor.error.empty() ? "unary '-' requires numeric operand" : cursor.error;
       return {};
     }
     if (rhs.type == ValueType::I32) {
       return ExprValue{cursor.builder->CreateNeg(rhs.value), ValueType::I32};
+    }
+    if (rhs.type == ValueType::I64) {
+      return ExprValue{cursor.builder->CreateNeg(rhs.value), ValueType::I64};
     }
     if (rhs.type == ValueType::F32) {
       return ExprValue{cursor.builder->CreateFNeg(rhs.value), ValueType::F32};
@@ -1142,10 +1151,22 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             if (target_ty->isIntegerTy(32)) {
               if (value.type == ValueType::I32) {
                 coerced = value.value;
+              } else if (value.type == ValueType::I64) {
+                coerced = cursor.builder->CreateTrunc(value.value, cursor.builder->getInt32Ty());
               } else if (value.type == ValueType::I1) {
                 coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt32Ty());
               } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
                 coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt32Ty());
+              }
+            } else if (target_ty->isIntegerTy(64)) {
+              if (value.type == ValueType::I64) {
+                coerced = value.value;
+              } else if (value.type == ValueType::I32) {
+                coerced = cursor.builder->CreateSExt(value.value, cursor.builder->getInt64Ty());
+              } else if (value.type == ValueType::I1) {
+                coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt64Ty());
+              } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+                coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt64Ty());
               }
             } else if (target_ty->isFloatTy()) {
               if (value.type == ValueType::F32) {
@@ -1153,6 +1174,8 @@ static ExprValue parse_primary(ExprCursor& cursor) {
               } else if (value.type == ValueType::F64) {
                 coerced = cursor.builder->CreateFPTrunc(value.value, cursor.builder->getFloatTy());
               } else if (value.type == ValueType::I32) {
+                coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
+              } else if (value.type == ValueType::I64) {
                 coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
               }
             } else if (target_ty->isDoubleTy()) {
@@ -1162,12 +1185,16 @@ static ExprValue parse_primary(ExprCursor& cursor) {
                 coerced = cursor.builder->CreateFPExt(value.value, cursor.builder->getDoubleTy());
               } else if (value.type == ValueType::I32) {
                 coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
+              } else if (value.type == ValueType::I64) {
+                coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
               }
             } else if (target_ty->isIntegerTy(1)) {
               if (value.type == ValueType::I1) {
                 coerced = value.value;
               } else if (value.type == ValueType::I32) {
                 coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt32(0));
+              } else if (value.type == ValueType::I64) {
+                coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt64(0));
               }
             } else if (target_ty->isPointerTy()) {
               if (value.type == ValueType::I8Ptr) {
@@ -1221,6 +1248,8 @@ static ExprValue parse_primary(ExprCursor& cursor) {
         if (target_ty->isIntegerTy(32)) {
           if (value.type == ValueType::I32) {
             coerced = value.value;
+          } else if (value.type == ValueType::I64) {
+            coerced = cursor.builder->CreateTrunc(value.value, cursor.builder->getInt32Ty());
           } else if (value.type == ValueType::I1) {
             coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt32Ty());
           } else if (value.type == ValueType::F32) {
@@ -1228,12 +1257,24 @@ static ExprValue parse_primary(ExprCursor& cursor) {
           } else if (value.type == ValueType::F64) {
             coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt32Ty());
           }
+        } else if (target_ty->isIntegerTy(64)) {
+          if (value.type == ValueType::I64) {
+            coerced = value.value;
+          } else if (value.type == ValueType::I32) {
+            coerced = cursor.builder->CreateSExt(value.value, cursor.builder->getInt64Ty());
+          } else if (value.type == ValueType::I1) {
+            coerced = cursor.builder->CreateZExt(value.value, cursor.builder->getInt64Ty());
+          } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+            coerced = cursor.builder->CreateFPToSI(value.value, cursor.builder->getInt64Ty());
+          }
         } else if (target_ty->isFloatTy()) {
           if (value.type == ValueType::F32) {
             coerced = value.value;
           } else if (value.type == ValueType::F64) {
             coerced = cursor.builder->CreateFPTrunc(value.value, cursor.builder->getFloatTy());
           } else if (value.type == ValueType::I32) {
+            coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
+          } else if (value.type == ValueType::I64) {
             coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getFloatTy());
           }
         } else if (target_ty->isDoubleTy()) {
@@ -1243,12 +1284,16 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             coerced = cursor.builder->CreateFPExt(value.value, cursor.builder->getDoubleTy());
           } else if (value.type == ValueType::I32) {
             coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
+          } else if (value.type == ValueType::I64) {
+            coerced = cursor.builder->CreateSIToFP(value.value, cursor.builder->getDoubleTy());
           }
         } else if (target_ty->isIntegerTy(1)) {
           if (value.type == ValueType::I1) {
             coerced = value.value;
           } else if (value.type == ValueType::I32) {
             coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt32(0));
+          } else if (value.type == ValueType::I64) {
+            coerced = cursor.builder->CreateICmpNE(value.value, cursor.builder->getInt64(0));
           }
         } else if (target_ty->isPointerTy()) {
           if (value.type == ValueType::I8Ptr) {
@@ -1276,7 +1321,18 @@ static ExprValue parse_primary(ExprCursor& cursor) {
       return ExprValue{cursor.builder->getInt1(false), ValueType::I1};
     }
     if (is_integer_atom(tok.text)) {
-      return ExprValue{cursor.builder->getInt32(std::stoi(tok.text)), ValueType::I32};
+      std::int64_t parsed = 0;
+      try {
+        parsed = std::stoll(tok.text);
+      } catch (const std::exception&) {
+        cursor.error = "invalid integer literal: '" + tok.text + "'";
+        return {};
+      }
+      if (parsed >= std::numeric_limits<std::int32_t>::min() &&
+          parsed <= std::numeric_limits<std::int32_t>::max()) {
+        return ExprValue{cursor.builder->getInt32(static_cast<int32_t>(parsed)), ValueType::I32};
+      }
+      return ExprValue{cursor.builder->getInt64(parsed), ValueType::I64};
     }
     if (is_float_atom(tok.text)) {
       return ExprValue{llvm::ConstantFP::get(cursor.builder->getDoubleTy(), std::stod(tok.text)), ValueType::F64};
@@ -1392,7 +1448,59 @@ static ExprValue parse_primary(ExprCursor& cursor) {
 }
 
 static bool is_numeric_type(ValueType type) {
-  return type == ValueType::I32 || type == ValueType::F32 || type == ValueType::F64;
+  return type == ValueType::I32 || type == ValueType::I64 || type == ValueType::F32 || type == ValueType::F64;
+}
+
+static bool is_float_type(ValueType type) {
+  return type == ValueType::F32 || type == ValueType::F64;
+}
+
+static bool is_integer_numeric_type(ValueType type) {
+  return type == ValueType::I32 || type == ValueType::I64;
+}
+
+static ValueType promoted_integer_type(ValueType lhs, ValueType rhs) {
+  if (lhs == ValueType::I64 || rhs == ValueType::I64) {
+    return ValueType::I64;
+  }
+  return ValueType::I32;
+}
+
+static llvm::Value* to_integer_numeric_value(ExprValue value, ValueType target, llvm::IRBuilder<>& builder) {
+  if (value.value == nullptr) {
+    return nullptr;
+  }
+  if (target != ValueType::I32 && target != ValueType::I64) {
+    return nullptr;
+  }
+  if (target == ValueType::I32) {
+    if (value.type == ValueType::I32) {
+      return value.value;
+    }
+    if (value.type == ValueType::I64) {
+      return builder.CreateTrunc(value.value, builder.getInt32Ty());
+    }
+    if (value.type == ValueType::I1) {
+      return builder.CreateZExt(value.value, builder.getInt32Ty());
+    }
+    if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+      return builder.CreateFPToSI(value.value, builder.getInt32Ty());
+    }
+    return nullptr;
+  }
+  if (value.type == ValueType::I64) {
+    return value.value;
+  }
+  if (value.type == ValueType::I32) {
+    return builder.CreateSExt(value.value, builder.getInt64Ty());
+  }
+  if (value.type == ValueType::I1) {
+    return builder.CreateZExt(value.value, builder.getInt64Ty());
+  }
+  if (value.type == ValueType::F32 || value.type == ValueType::F64) {
+    return builder.CreateFPToSI(value.value, builder.getInt64Ty());
+  }
+  return nullptr;
 }
 
 static ValueType promoted_float_type(ValueType lhs, ValueType rhs) {
@@ -1422,6 +1530,9 @@ static llvm::Value* to_float_value(ExprValue value, ValueType target, llvm::IRBu
     if (value.type == ValueType::I32) {
       return builder.CreateSIToFP(value.value, builder.getDoubleTy());
     }
+    if (value.type == ValueType::I64) {
+      return builder.CreateSIToFP(value.value, builder.getDoubleTy());
+    }
     if (value.type == ValueType::I1) {
       llvm::Value* as_i32 = builder.CreateZExt(value.value, builder.getInt32Ty());
       return builder.CreateSIToFP(as_i32, builder.getDoubleTy());
@@ -1435,6 +1546,9 @@ static llvm::Value* to_float_value(ExprValue value, ValueType target, llvm::IRBu
     return builder.CreateFPTrunc(value.value, builder.getFloatTy());
   }
   if (value.type == ValueType::I32) {
+    return builder.CreateSIToFP(value.value, builder.getFloatTy());
+  }
+  if (value.type == ValueType::I64) {
     return builder.CreateSIToFP(value.value, builder.getFloatTy());
   }
   if (value.type == ValueType::I1) {
@@ -1461,7 +1575,7 @@ static ExprValue parse_multiplicative(ExprCursor& cursor) {
       cursor.error = "operator '" + op + "' requires numeric operands";
       return {};
     }
-    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    const bool use_float = is_float_type(lhs.type) || is_float_type(rhs.type);
     if (use_float) {
       const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
       llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
@@ -1473,9 +1587,15 @@ static ExprValue parse_multiplicative(ExprCursor& cursor) {
       lhs.value = (op == "*") ? cursor.builder->CreateFMul(lhs_f, rhs_f) : cursor.builder->CreateFDiv(lhs_f, rhs_f);
       lhs.type = float_type;
     } else {
-      lhs.value = (op == "*") ? cursor.builder->CreateMul(lhs.value, rhs.value)
-                              : cursor.builder->CreateSDiv(lhs.value, rhs.value);
-      lhs.type = ValueType::I32;
+      const ValueType int_type = promoted_integer_type(lhs.type, rhs.type);
+      llvm::Value* lhs_i = to_integer_numeric_value(lhs, int_type, *cursor.builder);
+      llvm::Value* rhs_i = to_integer_numeric_value(rhs, int_type, *cursor.builder);
+      if (lhs_i == nullptr || rhs_i == nullptr) {
+        cursor.error = "cannot convert operands to integer for operator '" + op + "'";
+        return {};
+      }
+      lhs.value = (op == "*") ? cursor.builder->CreateMul(lhs_i, rhs_i) : cursor.builder->CreateSDiv(lhs_i, rhs_i);
+      lhs.type = int_type;
     }
   }
   return lhs;
@@ -1494,7 +1614,7 @@ static ExprValue parse_additive(ExprCursor& cursor) {
       cursor.error = "operator '" + op + "' requires numeric operands";
       return {};
     }
-    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    const bool use_float = is_float_type(lhs.type) || is_float_type(rhs.type);
     if (use_float) {
       const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
       llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
@@ -1506,9 +1626,15 @@ static ExprValue parse_additive(ExprCursor& cursor) {
       lhs.value = (op == "+") ? cursor.builder->CreateFAdd(lhs_f, rhs_f) : cursor.builder->CreateFSub(lhs_f, rhs_f);
       lhs.type = float_type;
     } else {
-      lhs.value = (op == "+") ? cursor.builder->CreateAdd(lhs.value, rhs.value)
-                              : cursor.builder->CreateSub(lhs.value, rhs.value);
-      lhs.type = ValueType::I32;
+      const ValueType int_type = promoted_integer_type(lhs.type, rhs.type);
+      llvm::Value* lhs_i = to_integer_numeric_value(lhs, int_type, *cursor.builder);
+      llvm::Value* rhs_i = to_integer_numeric_value(rhs, int_type, *cursor.builder);
+      if (lhs_i == nullptr || rhs_i == nullptr) {
+        cursor.error = "cannot convert operands to integer for operator '" + op + "'";
+        return {};
+      }
+      lhs.value = (op == "+") ? cursor.builder->CreateAdd(lhs_i, rhs_i) : cursor.builder->CreateSub(lhs_i, rhs_i);
+      lhs.type = int_type;
     }
   }
   return lhs;
@@ -1529,7 +1655,7 @@ static ExprValue parse_comparison(ExprCursor& cursor) {
       cursor.error = "comparison operator '" + op + "' requires numeric operands";
       return {};
     }
-    const bool use_float = lhs.type != ValueType::I32 || rhs.type != ValueType::I32;
+    const bool use_float = is_float_type(lhs.type) || is_float_type(rhs.type);
     if (use_float) {
       const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
       llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
@@ -1548,14 +1674,21 @@ static ExprValue parse_comparison(ExprCursor& cursor) {
         lhs.value = cursor.builder->CreateFCmpOGE(lhs_f, rhs_f);
       }
     } else {
+      const ValueType int_type = promoted_integer_type(lhs.type, rhs.type);
+      llvm::Value* lhs_i = to_integer_numeric_value(lhs, int_type, *cursor.builder);
+      llvm::Value* rhs_i = to_integer_numeric_value(rhs, int_type, *cursor.builder);
+      if (lhs_i == nullptr || rhs_i == nullptr) {
+        cursor.error = "cannot convert operands to integer for comparison";
+        return {};
+      }
       if (op == "<") {
-        lhs.value = cursor.builder->CreateICmpSLT(lhs.value, rhs.value);
+        lhs.value = cursor.builder->CreateICmpSLT(lhs_i, rhs_i);
       } else if (op == "<=") {
-        lhs.value = cursor.builder->CreateICmpSLE(lhs.value, rhs.value);
+        lhs.value = cursor.builder->CreateICmpSLE(lhs_i, rhs_i);
       } else if (op == ">") {
-        lhs.value = cursor.builder->CreateICmpSGT(lhs.value, rhs.value);
+        lhs.value = cursor.builder->CreateICmpSGT(lhs_i, rhs_i);
       } else {
-        lhs.value = cursor.builder->CreateICmpSGE(lhs.value, rhs.value);
+        lhs.value = cursor.builder->CreateICmpSGE(lhs_i, rhs_i);
       }
     }
     lhs.type = ValueType::I1;
@@ -1586,9 +1719,16 @@ static ExprValue parse_expression_equality(ExprCursor& cursor) {
       return {};
     }
     if (is_numeric_type(lhs.type) && is_numeric_type(rhs.type)) {
-      if (lhs.type == ValueType::I32 && rhs.type == ValueType::I32) {
-        lhs.value = (op == "==") ? cursor.builder->CreateICmpEQ(lhs.value, rhs.value)
-                                 : cursor.builder->CreateICmpNE(lhs.value, rhs.value);
+      if (is_integer_numeric_type(lhs.type) && is_integer_numeric_type(rhs.type)) {
+        const ValueType int_type = promoted_integer_type(lhs.type, rhs.type);
+        llvm::Value* lhs_i = to_integer_numeric_value(lhs, int_type, *cursor.builder);
+        llvm::Value* rhs_i = to_integer_numeric_value(rhs, int_type, *cursor.builder);
+        if (lhs_i == nullptr || rhs_i == nullptr) {
+          cursor.error = "cannot convert operands for equality operator '" + op + "'";
+          return {};
+        }
+        lhs.value = (op == "==") ? cursor.builder->CreateICmpEQ(lhs_i, rhs_i)
+                                 : cursor.builder->CreateICmpNE(lhs_i, rhs_i);
       } else {
         const ValueType float_type = promoted_float_type(lhs.type, rhs.type);
         llvm::Value* lhs_f = to_float_value(lhs, float_type, *cursor.builder);
@@ -1684,6 +1824,8 @@ static ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuild
       llvm::Value* index_i32 = nullptr;
       if (index_value.type == ValueType::I32) {
         index_i32 = index_value.value;
+      } else if (index_value.type == ValueType::I64) {
+        index_i32 = builder.CreateTrunc(index_value.value, builder.getInt32Ty());
       } else if (index_value.type == ValueType::I1) {
         index_i32 = builder.CreateZExt(index_value.value, builder.getInt32Ty());
       } else if (index_value.type == ValueType::F32 || index_value.type == ValueType::F64) {
@@ -1812,7 +1954,8 @@ static bool parse_interpolated_chunks(const std::string& literal, std::vector<In
 static bool emit_expression_statement(const std::string& line, bool has_expression, const std::string& expression,
                                       llvm::IRBuilder<>& builder, llvm::Function* fn, llvm::FunctionCallee printf_fn,
                                       llvm::Value* printf_i32_fmt, llvm::Value* printf_f64_fmt,
-                                      llvm::Value* printf_str_fmt, llvm::Value* printf_i32_raw_fmt,
+                                      llvm::Value* printf_i64_fmt, llvm::Value* printf_str_fmt,
+                                      llvm::Value* printf_i32_raw_fmt, llvm::Value* printf_i64_raw_fmt,
                                       llvm::Value* printf_f64_raw_fmt, llvm::Value* printf_raw_str_fmt,
                                       llvm::Value* printf_newline_fmt,
                                       std::unordered_map<std::string, VariableSlot>& variables,
@@ -1859,6 +2002,13 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
         }
         if (value.type == ValueType::I8Ptr) {
           builder.CreateCall(printf_fn, {printf_raw_str_fmt, value.value});
+        } else if (value.type == ValueType::I64) {
+          llvm::Value* as_i64 = to_i64(value, builder);
+          if (as_i64 == nullptr) {
+            diag.error("E2032", "interpolation expects i64/i32/bool/string-compatible expressions");
+            return false;
+          }
+          builder.CreateCall(printf_fn, {printf_i64_raw_fmt, as_i64});
         } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
           llvm::Value* as_f64 = to_f64_value(value, builder);
           if (as_f64 == nullptr) {
@@ -1891,6 +2041,13 @@ static bool emit_expression_statement(const std::string& line, bool has_expressi
     }
     if (value.type == ValueType::I8Ptr) {
       builder.CreateCall(printf_fn, {printf_str_fmt, value.value});
+    } else if (value.type == ValueType::I64) {
+      llvm::Value* as_i64 = to_i64(value, builder);
+      if (as_i64 == nullptr) {
+        diag.error("E2012", "print() failed i64 conversion");
+        return false;
+      }
+      builder.CreateCall(printf_fn, {printf_i64_fmt, as_i64});
     } else if (value.type == ValueType::F32 || value.type == ValueType::F64) {
       llvm::Value* as_f64 = to_f64_value(value, builder);
       if (as_f64 == nullptr) {
@@ -1936,6 +2093,9 @@ static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.type == ValueType::I32) {
     return value.value;
   }
+  if (value.type == ValueType::I64) {
+    return builder.CreateTrunc(value.value, builder.getInt32Ty());
+  }
   if (value.type == ValueType::I1) {
     return builder.CreateZExt(value.value, builder.getInt32Ty());
   }
@@ -1948,6 +2108,9 @@ static llvm::Value* to_i32(ExprValue value, llvm::IRBuilder<>& builder) {
 static llvm::Value* to_i64(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.value == nullptr) {
     return nullptr;
+  }
+  if (value.type == ValueType::I64) {
+    return value.value;
   }
   if (value.type == ValueType::I32) {
     return builder.CreateSExt(value.value, builder.getInt64Ty());
@@ -2019,6 +2182,9 @@ static llvm::Value* to_i1(ExprValue value, llvm::IRBuilder<>& builder) {
   if (value.type == ValueType::I32) {
     return builder.CreateICmpNE(value.value, builder.getInt32(0));
   }
+  if (value.type == ValueType::I64) {
+    return builder.CreateICmpNE(value.value, builder.getInt64(0));
+  }
   if (value.type == ValueType::F32) {
     return builder.CreateFCmpONE(value.value, llvm::ConstantFP::get(builder.getFloatTy(), 0.0));
   }
@@ -2031,6 +2197,9 @@ static llvm::Value* to_i1(ExprValue value, llvm::IRBuilder<>& builder) {
 static ValueType value_type_from_return_type(const std::string& type_name) {
   if (type_name == "i32" || type_name.empty()) {
     return ValueType::I32;
+  }
+  if (type_name == "i64") {
+    return ValueType::I64;
   }
   if (type_name == "f32") {
     return ValueType::F32;
@@ -2060,6 +2229,9 @@ static ValueType value_type_from_return_type(const std::string& type_name) {
 static llvm::Type* llvm_type_from_value_type(ValueType type, llvm::IRBuilder<>& builder) {
   if (type == ValueType::I32) {
     return builder.getInt32Ty();
+  }
+  if (type == ValueType::I64) {
+    return builder.getInt64Ty();
   }
   if (type == ValueType::F32) {
     return builder.getFloatTy();
@@ -2092,6 +2264,9 @@ static llvm::Value* cast_value_to_type(ExprValue value, ValueType target, llvm::
   if (target == ValueType::I32) {
     return to_i32(value, builder);
   }
+  if (target == ValueType::I64) {
+    return to_i64(value, builder);
+  }
   if (target == ValueType::I1) {
     return to_i1(value, builder);
   }
@@ -2117,6 +2292,9 @@ static llvm::Value* cast_value_to_type(ExprValue value, ValueType target, llvm::
 static llvm::Value* default_value_for_type(ValueType type, llvm::IRBuilder<>& builder) {
   if (type == ValueType::I1) {
     return builder.getInt1(false);
+  }
+  if (type == ValueType::I64) {
+    return builder.getInt64(0);
   }
   if (type == ValueType::F32) {
     return llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
@@ -2285,6 +2463,9 @@ static std::string parse_constructor_call_name(
 static ValueType value_type_from_field_annotation(const std::string& type_name) {
   if (type_name == "i32" || type_name.empty()) {
     return ValueType::I32;
+  }
+  if (type_name == "i64") {
+    return ValueType::I64;
   }
   if (type_name == "f32") {
     return ValueType::F32;
@@ -2497,9 +2678,18 @@ static MatchArmLabel parse_match_arm_label(const std::string& line,
       return out;
     }
   }
+  long long parsed = 0;
+  try {
+    parsed = std::stoll(text.substr(i));
+  } catch (const std::exception&) {
+    return out;
+  }
+  if (parsed > std::numeric_limits<int>::max() || parsed < std::numeric_limits<int>::min()) {
+    return out;
+  }
   out.valid = true;
-  const int parsed = std::stoi(text.substr(i));
-  out.value = neg ? -parsed : parsed;
+  const int as_int = static_cast<int>(parsed);
+  out.value = neg ? -as_int : as_int;
   return out;
 }
 
@@ -2524,9 +2714,11 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       "printf",
       llvm::FunctionType::get(builder.getInt32Ty(), builder.getPtrTy(), true));
   llvm::Value* printf_i32_fmt = create_global_cstr_ptr(builder, "%d\n", "printf_i32_fmt");
+  llvm::Value* printf_i64_fmt = create_global_cstr_ptr(builder, "%lld\n", "printf_i64_fmt");
   llvm::Value* printf_f64_fmt = create_global_cstr_ptr(builder, "%f\n", "printf_f64_fmt");
   llvm::Value* printf_str_fmt = create_global_cstr_ptr(builder, "%s\n", "printf_str_fmt");
   llvm::Value* printf_i32_raw_fmt = create_global_cstr_ptr(builder, "%d", "printf_i32_raw_fmt");
+  llvm::Value* printf_i64_raw_fmt = create_global_cstr_ptr(builder, "%lld", "printf_i64_raw_fmt");
   llvm::Value* printf_f64_raw_fmt = create_global_cstr_ptr(builder, "%f", "printf_f64_raw_fmt");
   llvm::Value* printf_raw_str_fmt = create_global_cstr_ptr(builder, "%s", "printf_raw_str_fmt");
   llvm::Value* printf_newline_fmt = create_global_cstr_ptr(builder, "\n", "printf_newline_fmt");
@@ -2536,7 +2728,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
       const std::string deferred_line = it->has_expression ? trim(it->expression) : trim(it->text);
       if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
-                                     printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
+                                     printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
+                                     printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
                                      tuple_instances, array_instances, functions, function_returns, function_async_flags,
@@ -2606,7 +2799,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
       const std::string deferred_line = it->has_expression ? trim(it->expression) : trim(it->text);
       if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
-                                     printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
+                                     printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
+                                     printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
                                      tuple_instances, array_instances, functions, function_returns, function_async_flags,
@@ -2851,6 +3045,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         if (annotation == "i32" || annotation == "Option" || annotation == "Result" ||
             starts_with(annotation, "Option<") || starts_with(annotation, "Result<")) {
           declared_type = ValueType::I32;
+        } else if (annotation == "i64") {
+          declared_type = ValueType::I64;
         } else if (annotation == "f32") {
           declared_type = ValueType::F32;
         } else if (annotation == "f64") {
@@ -3065,7 +3261,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
 
     if (st.kind == lowering::CoreStmtKind::Expr) {
       if (!emit_expression_statement(trim(st.text), st.has_expression, st.expression, builder, fn, printf_fn,
-                                     printf_i32_fmt, printf_f64_fmt, printf_str_fmt, printf_i32_raw_fmt,
+                                     printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
+                                     printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
                                      enum_variant_tags, struct_fields, struct_field_types, struct_instances,
                                      tuple_instances, array_instances, functions, function_returns, function_async_flags,
@@ -3091,6 +3288,8 @@ static bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       } else if (expected_return_type != ValueType::Void) {
         if (expected_return_type == ValueType::I1) {
           ret = builder.getInt1(false);
+        } else if (expected_return_type == ValueType::I64) {
+          ret = builder.getInt64(0);
         } else if (expected_return_type == ValueType::F32) {
           ret = llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
         } else if (expected_return_type == ValueType::F64) {
@@ -3643,6 +3842,8 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
           if (fallback == nullptr) {
             if (expected == ValueType::I32) {
               fallback = builder.getInt32(fn_def.return_literal);
+            } else if (expected == ValueType::I64) {
+              fallback = builder.getInt64(fn_def.return_literal);
             } else {
               fallback = default_value_for_type(expected, builder);
             }
@@ -3716,6 +3917,8 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         if (fallback == nullptr) {
           if (expected == ValueType::I1) {
             fallback = builder.getInt1(false);
+          } else if (expected == ValueType::I64) {
+            fallback = builder.getInt64(fn_def.return_literal);
           } else if (expected == ValueType::F32) {
             fallback = llvm::ConstantFP::get(builder.getFloatTy(), 0.0);
           } else if (expected == ValueType::F64) {

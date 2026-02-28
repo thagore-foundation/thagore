@@ -153,13 +153,17 @@ int handle_update(const ParsedCommand& cmd) {
     return 0;
   }
   if (sub == "apply") {
-    if (compare_versions(current, latest) >= 0) {
-      std::cout << "update apply: nothing to apply (current " << current << ", latest " << latest << ")\n";
+    if (dry_run) {
+      if (compare_versions(current, latest) >= 0) {
+        std::cout << "[dry-run] update apply: nothing to apply (current " << current << ", latest " << latest << ")\n";
+      } else {
+        std::cout << "[dry-run] would update " << current << " -> " << latest << "\n";
+        std::cout << "[dry-run] would write rollback marker: " << rollback_file << "\n";
+      }
       return 0;
     }
-    if (dry_run) {
-      std::cout << "[dry-run] would update " << current << " -> " << latest << "\n";
-      std::cout << "[dry-run] would write rollback marker: " << rollback_file << "\n";
+    if (compare_versions(current, latest) >= 0) {
+      std::cout << "update apply: nothing to apply (current " << current << ", latest " << latest << ")\n";
       return 0;
     }
     if (!yes) {

@@ -4,6 +4,7 @@ namespace thagc::semantics {
 
 enum class TypeKind {
   I32,
+  I64,
   F32,
   F64,
   Bool,

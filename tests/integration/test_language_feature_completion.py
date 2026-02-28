@@ -73,6 +73,20 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         self.assertEqual(run.returncode, 1, msg=run.stderr)
         self.assertIn("3.500000", run.stdout)
 
+    def test_extern_i64_return_compiles_and_runs(self) -> None:
+        _, run = self._build_and_run(
+            "extern func thag_now_ms() -> i64\n"
+            "\n"
+            "func main():\n"
+            "  let now: i64 = thag_now_ms()\n"
+            "  print(now)\n"
+            "  if (now > 0):\n"
+            "    return 0\n"
+            "  return 1\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+        self.assertRegex(run.stdout.strip(), r"^-?\d+$")
+
     def test_typechecker_rejects_wrong_argument_count(self) -> None:
         build, _ = self._build(
             "func add(a, b):\n"

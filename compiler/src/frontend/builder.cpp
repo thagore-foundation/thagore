@@ -64,7 +64,7 @@ static bool is_array_type_syntax(const std::string& type_name) {
 }
 
 static bool is_supported_type(const std::string& type_name) {
-  if (type_name == "i32" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
+  if (type_name == "i32" || type_name == "i64" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
       type_name == "string" || type_name == "String" || type_name == "ptr" || type_name == "void" ||
       type_name == "Option" || type_name == "Result" || type_name == "List" || type_name == "Rc" ||
       type_name == "Arc" || type_name == "Fn") {
@@ -83,6 +83,7 @@ static bool is_supported_type(const std::string& type_name) {
 
 static std::string type_name(TypeKind kind) {
   if (kind == TypeKind::I32) return "i32";
+  if (kind == TypeKind::I64) return "i64";
   if (kind == TypeKind::F32) return "f32";
   if (kind == TypeKind::F64) return "f64";
   if (kind == TypeKind::Bool) return "bool";
@@ -105,6 +106,7 @@ static std::string type_name(TypeKind kind) {
 static TypeKind parse_type_name(const std::string& type_name) {
   const std::string clean = trim_copy(type_name);
   if (clean == "i32") return TypeKind::I32;
+  if (clean == "i64") return TypeKind::I64;
   if (clean == "f32") return TypeKind::F32;
   if (clean == "f64") return TypeKind::F64;
   if (clean == "bool") return TypeKind::Bool;
@@ -818,7 +820,7 @@ static bool is_arithmetic_op(const std::string& op) {
 }
 
 static bool is_numeric_type(TypeKind kind) {
-  return kind == TypeKind::I32 || kind == TypeKind::F32 || kind == TypeKind::F64;
+  return kind == TypeKind::I32 || kind == TypeKind::I64 || kind == TypeKind::F32 || kind == TypeKind::F64;
 }
 
 static TypeKind combine_numeric(TypeKind lhs, TypeKind rhs) {
@@ -827,6 +829,9 @@ static TypeKind combine_numeric(TypeKind lhs, TypeKind rhs) {
   }
   if (lhs == TypeKind::F32 || rhs == TypeKind::F32) {
     return TypeKind::F32;
+  }
+  if (lhs == TypeKind::I64 || rhs == TypeKind::I64) {
+    return TypeKind::I64;
   }
   if (lhs == TypeKind::I32 && rhs == TypeKind::I32) {
     return TypeKind::I32;
@@ -1272,6 +1277,9 @@ static bool is_assignable_type(TypeKind declared, TypeKind actual) {
   }
   if ((declared == TypeKind::Rc || declared == TypeKind::Arc || declared == TypeKind::List) &&
       actual != TypeKind::Void && actual != TypeKind::Unknown) {
+    return true;
+  }
+  if (declared == TypeKind::I64 && actual == TypeKind::I32) {
     return true;
   }
   if (declared == TypeKind::F64 && (actual == TypeKind::F32 || actual == TypeKind::I32)) {
@@ -2114,7 +2122,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
       }
       if (st.kind == syntax::StatementKind::Match) {
-        if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
+        if (expr_type != TypeKind::I32 && expr_type != TypeKind::I64 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
             expr_type != TypeKind::Result && expr_type != TypeKind::EnumType) {
           diag.error("E_TYPE_MATCH_MISSING_ENUM",
                      "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
@@ -2331,7 +2339,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
     }
     if (st.kind == syntax::StatementKind::Match) {
-      if (expr_type != TypeKind::I32 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
+      if (expr_type != TypeKind::I32 && expr_type != TypeKind::I64 && expr_type != TypeKind::Bool && expr_type != TypeKind::Option &&
           expr_type != TypeKind::Result && expr_type != TypeKind::EnumType) {
         diag.error("E_TYPE_MATCH_MISSING_ENUM",
                    "line " + std::to_string(st.line) + ": match expression must be i32/bool-compatible");
