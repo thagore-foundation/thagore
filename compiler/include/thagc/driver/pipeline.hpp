@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "thagc/shared/diag.hpp"
 
@@ -12,6 +13,7 @@ struct BuildOptions {
   std::string target_triple;
   std::string target_linker;
   std::string target_sysroot;
+  std::vector<std::string> extra_link_args;
   bool emit_llvm = false;
   std::string llvm_ir_path;
 };

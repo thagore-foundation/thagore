@@ -122,6 +122,7 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
   options.input_path = cmd.input_path;
   options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
   options.target_triple = cmd.target_triple;
+  options.extra_link_args = compose_link_extra_args(cmd);
   options.emit_llvm = cmd.emit_llvm;
   if (!apply_target_config(options, cmd.target_triple, diag)) {
     for (const auto& d : diag.diagnostics()) {
@@ -198,6 +199,7 @@ int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
       options.output_path = cmd.output_path + "." + std::to_string(idx);
     }
     options.target_triple = cmd.target_triple;
+    options.extra_link_args = compose_link_extra_args(cmd);
     options.emit_llvm = cmd.emit_llvm;
     support::DiagnosticSink test_diag;
     if (!apply_target_config(options, cmd.target_triple, test_diag)) {

@@ -474,6 +474,7 @@ bool CompilerPipeline::build(const BuildOptions& options, support::DiagnosticSin
     request.target_triple = options.target_triple;
     request.target_linker = options.target_linker;
     request.target_sysroot = options.target_sysroot;
+    request.link_extra_args = options.extra_link_args;
     request.emit_llvm = options.emit_llvm;
     request.llvm_ir_path = options.llvm_ir_path;
 

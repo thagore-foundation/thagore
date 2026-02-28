@@ -17,6 +17,7 @@ struct BuildRequest {
   std::string target_triple;
   std::string target_sysroot;
   std::string target_linker;
+  std::vector<std::string> link_extra_args;
   bool emit_llvm = false;
   std::string llvm_ir_path;
 };

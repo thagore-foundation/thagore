@@ -27,6 +27,9 @@ struct ParsedCommand {
   std::string input_path;
   std::string output_path;
   std::string target_triple;
+  std::vector<std::string> link_libs;
+  std::vector<std::string> link_dirs;
+  std::vector<std::string> link_args;
   bool emit_llvm = false;
   std::string autofix_mode;
   std::string autofix_lock_path;

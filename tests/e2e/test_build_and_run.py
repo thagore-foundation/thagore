@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import tempfile
@@ -145,6 +146,32 @@ class BuildAndRunE2ETests(unittest.TestCase):
             self.assertEqual(build.returncode, 0, msg=build.stderr)
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 1, msg=run.stderr)
+
+    def test_build_and_run_ffi_with_explicit_c_library_link(self) -> None:
+        if shutil.which("clang") is None:
+            self.skipTest("clang not found")
+        if shutil.which("ld") is None:
+            self.skipTest("linker not found")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "ffi_math.tg"
+            out = root / "ffi_math.bin"
+            src.write_text(
+                "extern func cos(x: f64) -> f64\n"
+                "\n"
+                "func main():\n"
+                "  let v: f64 = cos(0.0)\n"
+                "  if (v > 0.5):\n"
+                "    return 0\n"
+                "  return 1\n"
+            )
+            cmd = [str(self.bin), "build", str(src), "-o", str(out)]
+            if os.name != "nt":
+                cmd.extend(["--link-lib", "m"])
+            build = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
 
     def test_build_and_run_struct_method_and_enum_payload(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -49,6 +49,7 @@ int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
   options.input_path = cmd.input_path;
   options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
   options.target_triple = cmd.target_triple;
+  options.extra_link_args = compose_link_extra_args(cmd);
   options.emit_llvm = cmd.emit_llvm;
   if (!apply_target_config(options, cmd.target_triple, diag)) {
     print_diagnostics(cmd, diag);

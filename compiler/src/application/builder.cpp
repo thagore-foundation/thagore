@@ -34,6 +34,7 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
   link_plan.target_triple = request.target_triple;
   link_plan.sysroot = request.target_sysroot;
   link_plan.linker_path = request.target_linker;
+  link_plan.extra_args = request.link_extra_args;
   const domain::LinkResult link_result = linker_.link_executable(link_plan, diag);
   if (!link_result.success) {
     const std::string detail = link_result.error.empty() ? "link step failed" : link_result.error;

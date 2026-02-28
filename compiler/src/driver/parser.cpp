@@ -61,6 +61,50 @@ static void parse_build_like_options(ParsedCommand& out, int argc, char** argv, 
       out.target_triple = arg.substr(std::string("--target=").size());
       continue;
     }
+    if (arg == "--link-lib" && i + 1 < argc) {
+      out.link_libs.push_back(argv[++i]);
+      continue;
+    }
+    if (starts_with(arg, "--link-lib=")) {
+      out.link_libs.push_back(arg.substr(std::string("--link-lib=").size()));
+      continue;
+    }
+    if (arg == "--link-dir" && i + 1 < argc) {
+      out.link_dirs.push_back(argv[++i]);
+      continue;
+    }
+    if (starts_with(arg, "--link-dir=")) {
+      out.link_dirs.push_back(arg.substr(std::string("--link-dir=").size()));
+      continue;
+    }
+    if (arg == "--link-arg" && i + 1 < argc) {
+      out.link_args.push_back(argv[++i]);
+      continue;
+    }
+    if (starts_with(arg, "--link-arg=")) {
+      out.link_args.push_back(arg.substr(std::string("--link-arg=").size()));
+      continue;
+    }
+    if (arg == "-l" && i + 1 < argc) {
+      out.link_libs.push_back(argv[++i]);
+      continue;
+    }
+    if (arg.size() > 2 && starts_with(arg, "-l")) {
+      out.link_libs.push_back(arg.substr(2));
+      continue;
+    }
+    if (arg == "-L" && i + 1 < argc) {
+      out.link_dirs.push_back(argv[++i]);
+      continue;
+    }
+    if (arg.size() > 2 && starts_with(arg, "-L")) {
+      out.link_dirs.push_back(arg.substr(2));
+      continue;
+    }
+    if (starts_with(arg, "-Wl,")) {
+      out.link_args.push_back(arg);
+      continue;
+    }
     if (arg == "--emit-llvm") {
       out.emit_llvm = true;
       continue;

@@ -60,6 +60,32 @@ std::string toolchain_home_dir() {
   return fallback.string();
 }
 
+std::vector<std::string> compose_link_extra_args(const ParsedCommand& cmd) {
+  std::vector<std::string> args;
+  args.reserve(cmd.link_dirs.size() + cmd.link_libs.size() + cmd.link_args.size());
+  for (const std::string& dir : cmd.link_dirs) {
+    if (!dir.empty()) {
+      args.push_back("-L" + dir);
+    }
+  }
+  for (const std::string& lib : cmd.link_libs) {
+    if (lib.empty()) {
+      continue;
+    }
+    if (lib.rfind("-l", 0) == 0) {
+      args.push_back(lib);
+    } else {
+      args.push_back("-l" + lib);
+    }
+  }
+  for (const std::string& arg : cmd.link_args) {
+    if (!arg.empty()) {
+      args.push_back(arg);
+    }
+  }
+  return args;
+}
+
 static std::string extract_json_string(const std::string& json, const std::string& key) {
   std::smatch m;
   const std::regex re("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
