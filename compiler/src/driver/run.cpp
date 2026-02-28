@@ -145,7 +145,10 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
     return 0;
   }
 
-  const int rc = support::run_process({options.output_path});
+  const std::string exe = (std::filesystem::path(options.output_path).is_relative())
+                              ? ("./" + options.output_path)
+                              : options.output_path;
+  const int rc = support::run_process({exe});
   if (rc != 0) {
     std::cerr << "ERROR: run failed with exit code " << rc << "\n";
     return 1;
@@ -234,7 +237,10 @@ int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
       continue;
     }
 
-    const int rc = support::run_process({options.output_path});
+    const std::string test_exe = (std::filesystem::path(options.output_path).is_relative())
+                                    ? ("./" + options.output_path)
+                                    : options.output_path;
+    const int rc = support::run_process({test_exe});
     r.run_exit_code = rc;
     r.run_ok = (rc == 0);
     if (!r.run_ok) {
