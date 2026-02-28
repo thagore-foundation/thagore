@@ -1,13 +1,42 @@
 #include "thagc/driver/command_handlers.hpp"
 
+#include <cctype>
+#include <filesystem>
 #include <iostream>
+#include <string>
 
+#include "thagc/shared/filesystem.hpp"
 #include "thagc/shared/version.hpp"
 
 namespace thagc::driver {
 
+static std::string trim_copy(const std::string& text) {
+  std::size_t begin = 0;
+  while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin]))) {
+    ++begin;
+  }
+  std::size_t end = text.size();
+  while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return text.substr(begin, end - begin);
+}
+
+static std::string display_compiler_version() {
+  const std::string current_version_file =
+      (std::filesystem::current_path() / ".thagc" / "current-version.txt").string();
+  if (!support::file_exists(current_version_file)) {
+    return std::string(support::kCompilerVersion);
+  }
+  const std::string current = trim_copy(support::read_text_file(current_version_file));
+  if (current.empty()) {
+    return std::string(support::kCompilerVersion);
+  }
+  return current;
+}
+
 int handle_help() {
-  std::cout << "thagore " << support::kCompilerVersion << "\n";
+  std::cout << "thagore " << display_compiler_version() << "\n";
   std::cout << "Usage:\n";
   std::cout << "  thagore --help\n";
   std::cout << "  thagore --version\n";
@@ -24,7 +53,7 @@ int handle_help() {
 }
 
 int handle_version() {
-  std::cout << "thagore " << support::kCompilerVersion << "\n";
+  std::cout << "thagore " << display_compiler_version() << "\n";
   return 0;
 }
 

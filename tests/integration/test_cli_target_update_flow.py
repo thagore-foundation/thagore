@@ -58,6 +58,17 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             self.assertEqual(dry.returncode, 0, msg=dry.stderr)
             self.assertIn("[dry-run]", dry.stdout)
 
+    def test_update_apply_changes_reported_version(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            apply = self._run(root, "update", "apply", "v9.9.9", "--yes")
+            self.assertEqual(apply.returncode, 0, msg=apply.stderr)
+            self.assertIn("updated to v9.9.9", apply.stdout)
+
+            version = self._run(root, "--version")
+            self.assertEqual(version.returncode, 0, msg=version.stderr)
+            self.assertIn("thagore v9.9.9", version.stdout)
+
     def test_build_target_one_command_auto_init(self) -> None:
         triple = self._host_triple()
         if not triple:
