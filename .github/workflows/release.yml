@@ -131,6 +131,13 @@ jobs:
           $cmakeArgs = @("-S", ".", "-B", "build", "-G", "Ninja", "-DLLVM_DIR=$env:LLVM_DIR")
           if ($env:CC) { $cmakeArgs += "-DCMAKE_C_COMPILER=$env:CC" }
           if ($env:CXX) { $cmakeArgs += "-DCMAKE_CXX_COMPILER=$env:CXX" }
+          if ("${{ matrix.arch }}" -eq "aarch64") {
+            $cmakeArgs += "-DCMAKE_C_COMPILER_TARGET=aarch64-pc-windows-msvc"
+            $cmakeArgs += "-DCMAKE_CXX_COMPILER_TARGET=aarch64-pc-windows-msvc"
+          } else {
+            $cmakeArgs += "-DCMAKE_C_COMPILER_TARGET=x86_64-pc-windows-msvc"
+            $cmakeArgs += "-DCMAKE_CXX_COMPILER_TARGET=x86_64-pc-windows-msvc"
+          }
           cmake @cmakeArgs
           cmake --build build -j 4
 
