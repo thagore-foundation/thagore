@@ -12,6 +12,7 @@ jobs:
   build-core:
     name: build-${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +26,7 @@ jobs:
           - runner: macos-14
             platform: macos
             arch: x86_64
+            optional: true
           - runner: macos-14
             platform: macos
             arch: aarch64
