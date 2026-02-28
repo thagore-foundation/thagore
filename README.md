@@ -11,6 +11,24 @@ It compiles `.tg` source code to native executables through LLVM.
 - Cross-platform targets: Linux, macOS, Windows.
 - Deterministic and parity-oriented release gates.
 
+## Install
+
+### Linux / macOS
+
+```bash
+curl -fsSL https://thagore.org/thagup.sh -o /tmp/thagup.sh
+bash /tmp/thagup.sh
+export PATH="$HOME/.thagore/bin:$PATH"
+```
+
+### Windows (PowerShell)
+
+```powershell
+$script = Join-Path $env:TEMP "thagup.ps1"
+Invoke-WebRequest https://thagore.org/thagup.ps1 -OutFile $script
+powershell -ExecutionPolicy Bypass -File $script
+```
+
 ## Project Layout
 
 ```text
