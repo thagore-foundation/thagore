@@ -75,7 +75,40 @@ jobs:
         run: |
           choco install llvm -y
           choco install ninja -y
-          "LLVM_DIR=C:\Program Files\LLVM\lib\cmake\llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM\lib\cmake\llvm\LLVMConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $llvmConfig) {
+            $llvmConfig = Get-ChildItem -Path "C:\" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $llvmConfig) {
+            throw "LLVMConfig.cmake not found"
+          }
+          $llvmDir = Split-Path -Parent $llvmConfig.FullName
+          $llvmRoot = Resolve-Path (Join-Path $llvmDir "..\..\..")
+          $clang = Join-Path $llvmRoot "bin\clang.exe"
+          $clangxx = Join-Path $llvmRoot "bin\clang++.exe"
+          if (Test-Path $clang) {
+            "CC=$clang" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          if (Test-Path $clangxx) {
+            "CXX=$clangxx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          "LLVM_DIR=$llvmDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare Visual Studio DIA path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vsRoot = "C:\Program Files\Microsoft Visual Studio\2022"
+          $communityDir = Join-Path $vsRoot "Community"
+          if (-not (Test-Path $communityDir)) {
+            $candidate = @("Enterprise", "Professional", "BuildTools") `
+              | ForEach-Object { Join-Path $vsRoot $_ } `
+              | Where-Object { Test-Path $_ } `
+              | Select-Object -First 1
+            if ($candidate) {
+              New-Item -ItemType Junction -Path $communityDir -Target $candidate -Force | Out-Null
+            }
+          }
 
       - name: Configure + build (non-Windows)
         if: runner.os != 'Windows'
@@ -95,7 +128,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake -S . -B build -G Ninja -DLLVM_DIR="$env:LLVM_DIR"
+          $cmakeArgs = @("-S", ".", "-B", "build", "-G", "Ninja", "-DLLVM_DIR=$env:LLVM_DIR")
+          if ($env:CC) { $cmakeArgs += "-DCMAKE_C_COMPILER=$env:CC" }
+          if ($env:CXX) { $cmakeArgs += "-DCMAKE_CXX_COMPILER=$env:CXX" }
+          cmake @cmakeArgs
           cmake --build build -j 4
 
       - name: Package core archive

@@ -80,8 +80,16 @@ int thag_platform_event_add_read(int loop_fd, int fd, uint64_t user_data) {
       }
     }
     struct kevent kev{};
-    EV_SET(&kev, static_cast<uintptr_t>(fd), EVFILT_TIMER, EV_ADD | EV_ENABLE | EV_ONESHOT, NOTE_MSECONDS,
-           static_cast<intptr_t>(delay_ms), reinterpret_cast<void*>(static_cast<uintptr_t>(user_data)));
+    int16_t timer_flags = 0;
+    intptr_t timer_data = static_cast<intptr_t>(delay_ms);
+#if defined(NOTE_MSECONDS)
+    timer_flags = NOTE_MSECONDS;
+#elif defined(NOTE_USECONDS)
+    timer_flags = NOTE_USECONDS;
+    timer_data = static_cast<intptr_t>(delay_ms * 1000);
+#endif
+    EV_SET(&kev, static_cast<uintptr_t>(fd), EVFILT_TIMER, EV_ADD | EV_ENABLE | EV_ONESHOT, timer_flags, timer_data,
+           reinterpret_cast<void*>(static_cast<uintptr_t>(user_data)));
     return ::kevent(loop_fd, &kev, 1, nullptr, 0, nullptr) == 0 ? 1 : 0;
   }
   struct kevent kev{};
