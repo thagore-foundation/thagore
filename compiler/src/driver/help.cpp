@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 
+#include "thagc/driver/common.hpp"
 #include "thagc/shared/filesystem.hpp"
 #include "thagc/shared/version.hpp"
 
@@ -23,16 +24,22 @@ static std::string trim_copy(const std::string& text) {
 }
 
 static std::string display_compiler_version() {
-  const std::string current_version_file =
-      (std::filesystem::current_path() / ".thagc" / "current-version.txt").string();
-  if (!support::file_exists(current_version_file)) {
-    return std::string(support::kCompilerVersion);
+  const std::string global_version_file = (std::filesystem::path(toolchain_home_dir()) / "current-version.txt").string();
+  if (support::file_exists(global_version_file)) {
+    const std::string current = trim_copy(support::read_text_file(global_version_file));
+    if (!current.empty()) {
+      return current;
+    }
   }
-  const std::string current = trim_copy(support::read_text_file(current_version_file));
-  if (current.empty()) {
-    return std::string(support::kCompilerVersion);
+
+  const std::string local_version_file = (std::filesystem::current_path() / ".thagc" / "current-version.txt").string();
+  if (support::file_exists(local_version_file)) {
+    const std::string current = trim_copy(support::read_text_file(local_version_file));
+    if (!current.empty()) {
+      return current;
+    }
   }
-  return current;
+  return std::string(support::kCompilerVersion);
 }
 
 int handle_help() {

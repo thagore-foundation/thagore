@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <iostream>
 #include <regex>
 #include <string>
@@ -93,6 +96,105 @@ static std::string fetch_latest_tag() {
   return parse_latest_tag(payload);
 }
 
+static std::string compiler_binary_name() {
+#if defined(_WIN32)
+  return "thagc.exe";
+#else
+  return "thagc";
+#endif
+}
+
+static std::string resolve_update_home(bool* has_installed_toolchain) {
+  const std::string global_home = toolchain_home_dir();
+  const std::filesystem::path toolchain_bin =
+      std::filesystem::path(global_home) / "toolchains" / "stable" / "bin" / compiler_binary_name();
+  std::error_code ec;
+  if (std::filesystem::exists(toolchain_bin, ec) && !ec) {
+    if (has_installed_toolchain != nullptr) {
+      *has_installed_toolchain = true;
+    }
+    return global_home;
+  }
+  if (has_installed_toolchain != nullptr) {
+    *has_installed_toolchain = false;
+  }
+  return compiler_home_dir();
+}
+
+static bool download_installer_script(const std::vector<std::string>& urls, const std::string& out_path) {
+  for (const std::string& url : urls) {
+    if (url.empty()) {
+      continue;
+    }
+    const int rc = support::run_process({"curl", "-fsSL", url, "-o", out_path});
+    if (rc == 0 && support::file_exists(out_path)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool run_release_installer(const std::string& tag, const std::string& install_root, bool dry_run,
+                                  std::string& error) {
+  std::error_code ec;
+  const std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path(ec) / ("thagc-update-" + std::to_string(std::time(nullptr)));
+  if (ec) {
+    error = "cannot resolve temp directory for updater";
+    return false;
+  }
+  std::filesystem::create_directories(temp_dir, ec);
+  if (ec) {
+    error = "cannot create temp directory for updater: " + temp_dir.string();
+    return false;
+  }
+
+#if defined(_WIN32)
+  const std::string script_name = "thagup.ps1";
+#else
+  const std::string script_name = "thagup.sh";
+#endif
+  const std::filesystem::path script_path = temp_dir / script_name;
+  const char* override_url = std::getenv("THAGC_UPDATE_SCRIPT_URL");
+  std::vector<std::string> script_urls;
+  if (override_url != nullptr && *override_url != '\0') {
+    script_urls.push_back(std::string(override_url));
+  } else {
+    script_urls.push_back("https://github.com/thagore-foundation/thagore/releases/download/" + tag + "/" + script_name);
+    script_urls.push_back("https://thagore.org/" + script_name);
+  }
+  if (!download_installer_script(script_urls, script_path.string())) {
+    std::filesystem::remove_all(temp_dir, ec);
+    error = "cannot download updater script";
+    return false;
+  }
+
+  int rc = 0;
+#if defined(_WIN32)
+  std::vector<std::string> apply_cmd = {"powershell", "-ExecutionPolicy", "Bypass", "-File", script_path.string(),
+                                        "-Tag", tag, "-Channel", "stable", "-InstallRoot", install_root, "-Force"};
+  if (dry_run) {
+    apply_cmd.push_back("-DryRun");
+  }
+  rc = support::run_process(apply_cmd);
+#else
+  support::run_process({"chmod", "+x", script_path.string()});
+  std::vector<std::string> apply_cmd = {"bash", script_path.string(), "--tag", tag, "--channel", "stable",
+                                        "--install-root", install_root, "--force"};
+  if (dry_run) {
+    apply_cmd.push_back("--dry-run");
+  }
+  rc = support::run_process(apply_cmd);
+#endif
+
+  std::filesystem::remove_all(temp_dir, ec);
+  if (rc != 0) {
+    error = "installer exited with status " + std::to_string(rc);
+    return false;
+  }
+  return true;
+}
+
 int handle_update(const ParsedCommand& cmd) {
   if (cmd.args.empty()) {
     std::cerr << "ERROR: update requires subcommand (check|apply|rollback)\n";
@@ -103,7 +205,8 @@ int handle_update(const ParsedCommand& cmd) {
     std::cerr << "ERROR: unknown update subcommand: " << sub << "\n";
     return 1;
   }
-  const std::string home = compiler_home_dir();
+  bool has_installed_toolchain = false;
+  const std::string home = resolve_update_home(&has_installed_toolchain);
   const std::string current_file = home + "/current-version.txt";
   const std::string latest_file = home + "/latest-version.txt";
   const std::string rollback_file = home + "/rollback-version.txt";
@@ -157,6 +260,15 @@ int handle_update(const ParsedCommand& cmd) {
       if (compare_versions(current, latest) >= 0) {
         std::cout << "[dry-run] update apply: nothing to apply (current " << current << ", latest " << latest << ")\n";
       } else {
+        if (has_installed_toolchain) {
+          std::string install_error;
+          if (!run_release_installer(latest, home, true, install_error)) {
+            std::cerr << "ERROR: update apply dry-run failed: " << install_error << "\n";
+            return 1;
+          }
+        } else {
+          std::cout << "[dry-run] no managed toolchain found; would run state-only update mode\n";
+        }
         std::cout << "[dry-run] would update " << current << " -> " << latest << "\n";
         std::cout << "[dry-run] would write rollback marker: " << rollback_file << "\n";
       }
@@ -175,10 +287,22 @@ int handle_update(const ParsedCommand& cmd) {
         return 0;
       }
     }
+    if (has_installed_toolchain) {
+      std::string install_error;
+      if (!run_release_installer(latest, home, false, install_error)) {
+        std::cerr << "ERROR: update apply failed: " << install_error << "\n";
+        return 1;
+      }
+    }
     support::write_text_file(rollback_file, current + "\n");
     support::write_text_file(current_file, latest + "\n");
     support::write_text_file(home + "/update-state.txt", "applied:" + latest + "\n");
-    std::cout << "update apply: updated to " << latest << "\n";
+    if (has_installed_toolchain) {
+      std::cout << "update apply: updated toolchain to " << latest << "\n";
+    } else {
+      std::cout << "update apply: updated version state to " << latest
+                << " (toolchain not installed under managed root)\n";
+    }
     return 0;
   }
   if (!support::file_exists(rollback_file)) {
@@ -196,12 +320,30 @@ int handle_update(const ParsedCommand& cmd) {
   }
   const std::string rollback = read_or_default(rollback_file, current);
   if (dry_run) {
+    if (has_installed_toolchain) {
+      std::string install_error;
+      if (!run_release_installer(rollback, home, true, install_error)) {
+        std::cerr << "ERROR: update rollback dry-run failed: " << install_error << "\n";
+        return 1;
+      }
+    }
     std::cout << "[dry-run] would rollback " << current << " -> " << rollback << "\n";
     return 0;
   }
+  if (has_installed_toolchain) {
+    std::string install_error;
+    if (!run_release_installer(rollback, home, false, install_error)) {
+      std::cerr << "ERROR: update rollback failed: " << install_error << "\n";
+      return 1;
+    }
+  }
   support::write_text_file(current_file, rollback + "\n");
   support::write_text_file(home + "/update-state.txt", "rollback:" + rollback + "\n");
-  std::cout << "update rollback: restored " << rollback << "\n";
+  if (has_installed_toolchain) {
+    std::cout << "update rollback: restored toolchain " << rollback << "\n";
+  } else {
+    std::cout << "update rollback: restored version state " << rollback << "\n";
+  }
   return 0;
 }
 

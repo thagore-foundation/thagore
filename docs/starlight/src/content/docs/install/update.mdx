@@ -45,7 +45,7 @@ Run `thagore update apply` to install.
 
 ## `thagore update apply`
 
-Downloads the latest **official public release** for your platform and replaces the current binary.
+Downloads the latest **official public release** for your platform and updates the managed toolchain at `~/.thagore/toolchains/stable` (or `%USERPROFILE%\.thagore\toolchains\stable` on Windows).
 
 ```bash
 thagore update apply
@@ -77,7 +77,7 @@ No files were changed.
 ```
 
 <Aside type="tip" title="What gets updated">
-`update apply` replaces only the `thagore` binary itself. Your source files, standard library, and project configurations are not touched.
+`update apply` updates the managed toolchain (`bin` + bundled shared libraries) and version metadata. Your source files and project configurations are not touched.
 </Aside>
 
 ---
@@ -103,7 +103,7 @@ thagore update rollback --yes
 ```
 
 <Aside type="caution" title="Only one level of rollback">
-Rollback restores the **immediately previous** binary only. Running `update apply` twice without a rollback in between will overwrite the backup.
+Rollback restores the **immediately previous** managed toolchain version only. Running `update apply` twice without a rollback in between will overwrite the backup.
 </Aside>
 
 ---

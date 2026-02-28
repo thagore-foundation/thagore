@@ -30,6 +30,20 @@ powershell -ExecutionPolicy Bypass -File $script
 
 Installer scripts now auto-add `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`) to user PATH.
 
+Release archives are self-contained for user-space dependencies:
+- `thagc` launcher + bundled shared libraries are shipped together.
+- No separate LLVM installation is required on end-user machines.
+
+## Update
+
+```bash
+thagc update check
+thagc update apply --yes
+thagc --version
+```
+
+`update apply` now runs the official `thagup` installer flow for the selected tag and updates the managed toolchain under `~/.thagore/toolchains/stable`.
+
 ## Project Layout
 
 ```text

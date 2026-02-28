@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 import unittest
@@ -12,8 +13,12 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
         if self.bin is None:
             self.skipTest("thagc binary not found; set THAGC_BIN or build compiler first")
 
-    def _run(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([str(self.bin), *args], cwd=cwd, capture_output=True, text=True, check=False)
+    def _run(self, cwd: Path, *args: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        env = dict(os.environ)
+        env["THAGORE_HOME"] = str(cwd / ".thagore-home")
+        if extra_env:
+            env.update(extra_env)
+        return subprocess.run([str(self.bin), *args], cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
     def _host_triple(self) -> str | None:
         for tool in ("clang", "gcc"):
@@ -63,11 +68,57 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             root = Path(td)
             apply = self._run(root, "update", "apply", "v9.9.9", "--yes")
             self.assertEqual(apply.returncode, 0, msg=apply.stderr)
-            self.assertIn("updated to v9.9.9", apply.stdout)
+            self.assertIn("v9.9.9", apply.stdout)
 
             version = self._run(root, "--version")
             self.assertEqual(version.returncode, 0, msg=version.stderr)
             self.assertIn("thagore v9.9.9", version.stdout)
+
+    def test_update_apply_runs_installer_when_managed_toolchain_present(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            home = root / ".thagore-home"
+            bin_name = "thagc.exe" if os.name == "nt" else "thagc"
+            managed_bin = home / "toolchains" / "stable" / "bin" / bin_name
+            managed_bin.parent.mkdir(parents=True, exist_ok=True)
+            managed_bin.write_text("placeholder\n")
+
+            marker = root / "installer-args.txt"
+            if os.name == "nt":
+                script = root / "fake_thagup.ps1"
+                script.write_text(
+                    "$args | Out-File -FilePath "
+                    + "'" + str(marker).replace("\\", "\\\\") + "'"
+                    + " -Encoding utf8\n"
+                )
+            else:
+                script = root / "fake_thagup.sh"
+                script.write_text(
+                    "#!/usr/bin/env bash\n"
+                    "set -euo pipefail\n"
+                    "printf '%s\\n' \"$@\" > " + "'" + str(marker) + "'\n"
+                )
+                script.chmod(0o755)
+
+            apply = self._run(
+                root,
+                "update",
+                "apply",
+                "v1.2.3",
+                "--yes",
+                extra_env={"THAGC_UPDATE_SCRIPT_URL": script.resolve().as_uri()},
+            )
+            self.assertEqual(apply.returncode, 0, msg=apply.stderr)
+            self.assertTrue(marker.exists(), msg="installer script did not run")
+            args_text = marker.read_text()
+            if os.name == "nt":
+                self.assertIn("-Tag", args_text)
+                self.assertIn("v1.2.3", args_text)
+            else:
+                self.assertIn("--tag", args_text)
+                self.assertIn("v1.2.3", args_text)
+            current = (home / "current-version.txt").read_text().strip()
+            self.assertEqual(current, "v1.2.3")
 
     def test_build_target_one_command_auto_init(self) -> None:
         triple = self._host_triple()

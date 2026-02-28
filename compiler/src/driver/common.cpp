@@ -33,6 +33,33 @@ std::string compiler_home_dir() {
   return root.string();
 }
 
+std::string toolchain_home_dir() {
+  const char* explicit_home = std::getenv("THAGORE_HOME");
+  if (explicit_home != nullptr && *explicit_home != '\0') {
+    std::filesystem::path root(explicit_home);
+    std::filesystem::create_directories(root);
+    return root.string();
+  }
+#if defined(_WIN32)
+  const char* user_profile = std::getenv("USERPROFILE");
+  if (user_profile != nullptr && *user_profile != '\0') {
+    std::filesystem::path root = std::filesystem::path(user_profile) / ".thagore";
+    std::filesystem::create_directories(root);
+    return root.string();
+  }
+#else
+  const char* home = std::getenv("HOME");
+  if (home != nullptr && *home != '\0') {
+    std::filesystem::path root = std::filesystem::path(home) / ".thagore";
+    std::filesystem::create_directories(root);
+    return root.string();
+  }
+#endif
+  std::filesystem::path fallback = std::filesystem::current_path() / ".thagore";
+  std::filesystem::create_directories(fallback);
+  return fallback.string();
+}
+
 static std::string extract_json_string(const std::string& json, const std::string& key) {
   std::smatch m;
   const std::regex re("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");

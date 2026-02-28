@@ -154,7 +154,11 @@ jobs:
             BIN_PATH="build/compiler/thagc.exe"
           fi
           OUT="dist/thagc-core-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz"
-          python3 tooling/packaging/pack_core.py --bin "${BIN_PATH}" --out "${OUT}"
+          python3 tooling/packaging/pack_core.py \
+            --bin "${BIN_PATH}" \
+            --mode "${{ matrix.platform }}" \
+            --bundle-deps \
+            --out "${OUT}"
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4

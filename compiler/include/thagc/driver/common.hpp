@@ -20,6 +20,7 @@ struct TargetConfig {
 std::string arg_or_empty(const ParsedCommand& cmd, std::size_t index);
 std::string choose_output_path(const ParsedCommand& cmd, const std::string& fallback_suffix);
 std::string compiler_home_dir();
+std::string toolchain_home_dir();
 bool apply_target_config(BuildOptions& options, const std::string& triple, support::DiagnosticSink& diag);
 bool load_target_config(const std::string& triple, TargetConfig& out);
 
