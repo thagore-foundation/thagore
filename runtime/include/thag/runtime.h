@@ -4,9 +4,11 @@
 #include <stdint.h>
 
 #include "thag/db.h"
+#include "thag/crypto.h"
 #include "thag/event_loop.h"
 #include "thag/fs.h"
 #include "thag/http.h"
+#include "thag/json.h"
 #include "thag/process.h"
 #include "thag/string.h"
 #include "thag/toml.h"

@@ -2,6 +2,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import ctypes.util
 from pathlib import Path
 
 from tests._support import resolve_thagc_bin
@@ -88,7 +89,23 @@ class CompilerSoakTests(unittest.TestCase):
                 "-o",
                 str(out),
             ]
+            if ctypes.util.find_library("curl"):
+                compile_cmd.insert(-2, "-lcurl")
+            if ctypes.util.find_library("sqlite3"):
+                compile_cmd.insert(-2, "-lsqlite3")
+            if ctypes.util.find_library("ssl"):
+                compile_cmd.insert(-2, "-lssl")
+            if ctypes.util.find_library("crypto"):
+                compile_cmd.insert(-2, "-lcrypto")
             comp = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lcurl" in compile_cmd and "cannot find -lcurl" in comp.stderr:
+                comp = subprocess.run([arg for arg in compile_cmd if arg != "-lcurl"], capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lsqlite3" in compile_cmd and "cannot find -lsqlite3" in comp.stderr:
+                comp = subprocess.run([arg for arg in compile_cmd if arg != "-lsqlite3"], capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lssl" in compile_cmd and "cannot find -lssl" in comp.stderr:
+                comp = subprocess.run([arg for arg in compile_cmd if arg != "-lssl"], capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lcrypto" in compile_cmd and "cannot find -lcrypto" in comp.stderr:
+                comp = subprocess.run([arg for arg in compile_cmd if arg != "-lcrypto"], capture_output=True, text=True, check=False)
             if comp.returncode != 0:
                 self.fail(comp.stderr)
             for i in range(loops):

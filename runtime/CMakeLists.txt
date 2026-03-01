@@ -4,6 +4,8 @@ add_library(thag_runtime STATIC
   src/thag_runtime.cpp
   src/print.cpp
   src/string.cpp
+  src/json.cpp
+  src/crypto.cpp
   src/fs.cpp
   src/process.cpp
   src/toml.cpp
@@ -20,7 +22,7 @@ add_library(thag_runtime STATIC
 target_include_directories(thag_runtime PUBLIC include)
 target_compile_features(thag_runtime PUBLIC cxx_std_20)
 
-option(THAG_RUNTIME_USE_SYSTEM_OPENSSL "Enable OpenSSL-backed HTTPS support in runtime HTTP client" OFF)
+option(THAG_RUNTIME_USE_SYSTEM_OPENSSL "Enable OpenSSL-backed HTTPS/crypto support in runtime" ON)
 
 if(NOT WIN32)
   find_package(Threads REQUIRED)

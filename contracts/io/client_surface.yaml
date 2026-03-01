@@ -4,12 +4,12 @@ runtime:
 clients:
   http:
     required: true
-    minimum_surface: [http_get, http_post]
+    minimum_surface: [http_get, http_post, http_get_retry, http_post_retry]
   websocket:
     required: true
-    minimum_surface: [ws_connect, ws_send, ws_close]
+    minimum_surface: [ws_connect, ws_send, ws_close, ws_connect_retry]
   db:
     required: true
-    minimum_surface: [db_connect, db_query, db_close]
+    minimum_surface: [db_connect, db_query, db_close, db_connect_retry, db_query_retry]
 policy:
   surface_area: minimal

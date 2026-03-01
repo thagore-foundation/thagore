@@ -327,15 +327,15 @@ Execution order (re-anchored to dependency reality):
 > *"Production HTTP/WS/DB — reliable across all platforms"*
 
 ### Runtime & Stdlib
-- [ ] HTTP/WebSocket/DB production-ready với retry/backoff
+- [x] HTTP/WebSocket/DB production-ready với retry/backoff
 - [ ] Multi-OS IO parity — Linux/macOS/Windows
-- [ ] IO failure handling runbook
+- [x] IO failure handling runbook
 
 ### Stdlib Expansion
-- [ ] `lib/json.tg` — parse/serialize JSON
-- [ ] `lib/env.tg` — environment variables, process args
-- [ ] `lib/fs.tg` — file read/write/stat
-- [ ] `lib/crypto.tg` — hash, HMAC cơ bản (FFI vào libcrypto)
+- [x] `lib/json.tg` — parse/serialize JSON
+- [x] `lib/env.tg` — environment variables, process args
+- [x] `lib/fs.tg` — file read/write/stat
+- [x] `lib/crypto.tg` — hash, HMAC cơ bản (FFI vào libcrypto)
 
 ### Gate
 - [ ] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI

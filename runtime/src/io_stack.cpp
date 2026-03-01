@@ -1,5 +1,6 @@
 #include "thag_runtime.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -11,6 +12,8 @@
 namespace {
 
 static constexpr int kIoCancelledCode = -2;
+static constexpr int kMaxRetryAttempts = 8;
+static constexpr int kMaxBackoffMs = 2000;
 
 struct RuntimeMap {
   std::mutex mutex;
@@ -42,6 +45,28 @@ int normalize_timeout_ms(int timeout_ms) {
     return -1;
   }
   return timeout_ms == 0 ? 1 : timeout_ms;
+}
+
+int normalize_retry_count(int retries) {
+  if (retries < 0) {
+    return 0;
+  }
+  return retries > kMaxRetryAttempts ? kMaxRetryAttempts : retries;
+}
+
+int normalize_backoff_ms(int backoff_ms) {
+  if (backoff_ms <= 0) {
+    return 1;
+  }
+  return backoff_ms > kMaxBackoffMs ? kMaxBackoffMs : backoff_ms;
+}
+
+bool retryable_http_status(int status_code) {
+  return status_code == 0 || status_code == 408 || status_code == 425 || status_code == 429 || status_code >= 500;
+}
+
+void sleep_backoff_ms(int backoff_ms) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
 }
 
 }  // namespace
@@ -139,6 +164,56 @@ int thag_http_post(const char* url, const char* payload, int timeout_ms) {
   return status > 0 ? status : 0;
 }
 
+int thag_http_get_retry(const char* url, int timeout_ms, int retries, int backoff_ms) {
+  const int attempts = normalize_retry_count(retries) + 1;
+  int current_backoff = normalize_backoff_ms(backoff_ms);
+  int last_status = 0;
+  for (int i = 0; i < attempts; ++i) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
+    const int status = thag_http_get(url, timeout_ms);
+    if (status == kIoCancelledCode) {
+      return status;
+    }
+    if (!retryable_http_status(status)) {
+      return status;
+    }
+    last_status = status;
+    if (i + 1 >= attempts) {
+      break;
+    }
+    sleep_backoff_ms(current_backoff);
+    current_backoff = std::min(current_backoff * 2, kMaxBackoffMs);
+  }
+  return last_status;
+}
+
+int thag_http_post_retry(const char* url, const char* payload, int timeout_ms, int retries, int backoff_ms) {
+  const int attempts = normalize_retry_count(retries) + 1;
+  int current_backoff = normalize_backoff_ms(backoff_ms);
+  int last_status = 0;
+  for (int i = 0; i < attempts; ++i) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
+    const int status = thag_http_post(url, payload, timeout_ms);
+    if (status == kIoCancelledCode) {
+      return status;
+    }
+    if (!retryable_http_status(status)) {
+      return status;
+    }
+    last_status = status;
+    if (i + 1 >= attempts) {
+      break;
+    }
+    sleep_backoff_ms(current_backoff);
+    current_backoff = std::min(current_backoff * 2, kMaxBackoffMs);
+  }
+  return last_status;
+}
+
 int thag_ws_connect(const char* endpoint, int timeout_ms) {
   if (io_cancelled()) {
     return kIoCancelledCode;
@@ -156,6 +231,30 @@ int thag_ws_connect(const char* endpoint, int timeout_ms) {
     return kIoCancelledCode;
   }
   return ok ? handle : 0;
+}
+
+int thag_ws_connect_retry(const char* endpoint, int timeout_ms, int retries, int backoff_ms) {
+  const int attempts = normalize_retry_count(retries) + 1;
+  int current_backoff = normalize_backoff_ms(backoff_ms);
+  int handle = 0;
+  for (int i = 0; i < attempts; ++i) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
+    handle = thag_ws_connect(endpoint, timeout_ms);
+    if (handle == kIoCancelledCode) {
+      return handle;
+    }
+    if (handle > 0) {
+      return handle;
+    }
+    if (i + 1 >= attempts) {
+      break;
+    }
+    sleep_backoff_ms(current_backoff);
+    current_backoff = std::min(current_backoff * 2, kMaxBackoffMs);
+  }
+  return 0;
 }
 
 int thag_ws_send(int handle, const char* message) {
@@ -204,6 +303,29 @@ int thag_db_connect(const char* dsn) {
   return ok ? handle : 0;
 }
 
+int thag_db_connect_retry(const char* dsn, int retries, int backoff_ms) {
+  const int attempts = normalize_retry_count(retries) + 1;
+  int current_backoff = normalize_backoff_ms(backoff_ms);
+  for (int i = 0; i < attempts; ++i) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
+    const int handle = thag_db_connect(dsn);
+    if (handle == kIoCancelledCode) {
+      return handle;
+    }
+    if (handle > 0) {
+      return handle;
+    }
+    if (i + 1 >= attempts) {
+      break;
+    }
+    sleep_backoff_ms(current_backoff);
+    current_backoff = std::min(current_backoff * 2, kMaxBackoffMs);
+  }
+  return 0;
+}
+
 int thag_db_query(int handle, const char* query) {
   if (io_cancelled()) {
     return kIoCancelledCode;
@@ -218,6 +340,30 @@ int thag_db_query(int handle, const char* query) {
     return kIoCancelledCode;
   }
   return ok ? result : 0;
+}
+
+int thag_db_query_retry(int handle, const char* query, int retries, int backoff_ms) {
+  const int attempts = normalize_retry_count(retries) + 1;
+  int current_backoff = normalize_backoff_ms(backoff_ms);
+  int result = 0;
+  for (int i = 0; i < attempts; ++i) {
+    if (io_cancelled()) {
+      return kIoCancelledCode;
+    }
+    result = thag_db_query(handle, query);
+    if (result == kIoCancelledCode) {
+      return result;
+    }
+    if (result > 0) {
+      return result;
+    }
+    if (i + 1 >= attempts) {
+      break;
+    }
+    sleep_backoff_ms(current_backoff);
+    current_backoff = std::min(current_backoff * 2, kMaxBackoffMs);
+  }
+  return result;
 }
 
 int thag_db_close(int handle) {

@@ -65,6 +65,21 @@ class RuntimeApiSurfaceTests(unittest.TestCase):
             "thag_toml_get_section",
             "thag_toml_get_keys",
             "thag_toml_free",
+            "thag_json_parse",
+            "thag_json_get_str",
+            "thag_json_get_int",
+            "thag_json_set_str",
+            "thag_json_set_int",
+            "thag_json_stringify",
+            "thag_json_free",
+            "thag_crypto_sha256_hex",
+            "thag_crypto_hmac_sha256_hex",
+            "thag_crypto_available",
+            "thag_http_get_retry",
+            "thag_http_post_retry",
+            "thag_ws_connect_retry",
+            "thag_db_connect_retry",
+            "thag_db_query_retry",
         ]
         for symbol in required:
             self.assertIn(symbol, header)
@@ -83,6 +98,8 @@ class RuntimeApiSurfaceTests(unittest.TestCase):
             "src/http.cpp",
             "src/ws.cpp",
             "src/db.cpp",
+            "src/json.cpp",
+            "src/crypto.cpp",
         ]
         for source in required:
             self.assertIn(source, cmake)

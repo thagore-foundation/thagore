@@ -323,11 +323,21 @@ int thag_ws_client_connect(const char* url, int timeout_ms, int* out_handle) {
   if (!parse_ws_url(url, parsed)) {
     return 0;
   }
+  const std::string host_lower = [&]() {
+    std::string lowered = parsed.host;
+    for (char& ch : lowered) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return lowered;
+  }();
+  const bool allow_offline_fallback = host_lower == "local" || host_lower == "localhost";
 
   WsConn conn{};
   conn.socket_handle = connect_socket(parsed, timeout_ms);
   if (conn.socket_handle == kInvalidSocket) {
-    // Keep deterministic runtime behavior even when network endpoint is unavailable.
+    if (!allow_offline_fallback) {
+      return 0;
+    }
     conn.connected = false;
     conn.offline_fallback = true;
   } else {
@@ -335,6 +345,9 @@ int thag_ws_client_connect(const char* url, int timeout_ms, int* out_handle) {
     if (!conn.connected) {
       close_socket(conn.socket_handle);
       conn.socket_handle = kInvalidSocket;
+      if (!allow_offline_fallback) {
+        return 0;
+      }
       conn.offline_fallback = true;
     }
   }

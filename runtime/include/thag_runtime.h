@@ -75,12 +75,29 @@ void thag_map_free(void* map);
 
 int thag_http_get(const char* url, int timeout_ms);
 int thag_http_post(const char* url, const char* payload, int timeout_ms);
+int thag_http_get_retry(const char* url, int timeout_ms, int retries, int backoff_ms);
+int thag_http_post_retry(const char* url, const char* payload, int timeout_ms, int retries, int backoff_ms);
 int thag_ws_connect(const char* endpoint, int timeout_ms);
+int thag_ws_connect_retry(const char* endpoint, int timeout_ms, int retries, int backoff_ms);
 int thag_ws_send(int handle, const char* message);
 int thag_ws_close(int handle);
 int thag_db_connect(const char* dsn);
+int thag_db_connect_retry(const char* dsn, int retries, int backoff_ms);
 int thag_db_query(int handle, const char* query);
+int thag_db_query_retry(int handle, const char* query, int retries, int backoff_ms);
 int thag_db_close(int handle);
+
+void* thag_json_parse(const char* content);
+const char* thag_json_get_str(const void* handle, const char* key);
+int64_t thag_json_get_int(const void* handle, const char* key);
+int thag_json_set_str(void* handle, const char* key, const char* value);
+int thag_json_set_int(void* handle, const char* key, int64_t value);
+const char* thag_json_stringify(const void* handle);
+void thag_json_free(void* handle);
+
+const char* thag_crypto_sha256_hex(const char* text);
+const char* thag_crypto_hmac_sha256_hex(const char* key, const char* text);
+int thag_crypto_available(void);
 
 thag_task_scope_t* thag_task_scope_create(void);
 thag_task_scope_t* thag_nursery_create(void);

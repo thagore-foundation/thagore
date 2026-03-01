@@ -1,0 +1,15 @@
+# Crypto helpers mapped to runtime hooks.
+# Requires runtime build with OpenSSL support (`THAG_RUNTIME_USE_SYSTEM_OPENSSL=ON` + OpenSSL found).
+
+extern func thag_crypto_sha256_hex(text: ptr) -> ptr
+extern func thag_crypto_hmac_sha256_hex(key: ptr, text: ptr) -> ptr
+extern func thag_crypto_available() -> i32
+
+pub func available() -> i32:
+  return thag_crypto_available()
+
+pub func sha256_hex(text: ptr) -> ptr:
+  return thag_crypto_sha256_hex(text)
+
+pub func hmac_sha256_hex(key: ptr, text: ptr) -> ptr:
+  return thag_crypto_hmac_sha256_hex(key, text)

@@ -44,6 +44,20 @@ bool is_select_query(const char* sql) {
   return lower_copy(trimmed).rfind("select", 0) == 0;
 }
 
+bool is_supported_dsn(const char* dsn) {
+  if (dsn == nullptr || *dsn == '\0') {
+    return false;
+  }
+  const std::string text(dsn);
+  if (text == "memory://") {
+    return true;
+  }
+  if (text.rfind("sqlite://", 0) == 0) {
+    return true;
+  }
+  return text.find("://") == std::string::npos;
+}
+
 #if defined(THAG_RUNTIME_HAS_SQLITE3)
 sqlite3* open_sqlite_from_dsn(const char* dsn) {
   if (dsn == nullptr || *dsn == '\0') {
@@ -79,7 +93,7 @@ int thag_db_client_connect(const char* path, int* out_handle) {
     return 0;
   }
   *out_handle = 0;
-  if (path == nullptr || std::strlen(path) == 0) {
+  if (path == nullptr || std::strlen(path) == 0 || !is_supported_dsn(path)) {
     return 0;
   }
 

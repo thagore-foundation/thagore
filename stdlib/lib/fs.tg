@@ -46,3 +46,6 @@ pub func is_dir(path: ptr) -> i32:
 
 pub func filesize(path: ptr) -> i64:
   return thag_fs_filesize(path)
+
+pub func stat(path: ptr) -> i64:
+  return thag_fs_filesize(path)

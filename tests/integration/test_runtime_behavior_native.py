@@ -117,6 +117,18 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "  thag_toml_free(app);\n"
                 "  thag_toml_free(toml);\n"
                 "\n"
+                "  void* json = thag_json_parse(\"{\\\"name\\\":\\\"drago\\\",\\\"count\\\":7}\");\n"
+                "  if (!json) return 66;\n"
+                "  const char* jname = thag_json_get_str(json, \"name\");\n"
+                "  if (!jname || std::strcmp(jname, \"drago\") != 0) return 67;\n"
+                "  thag_str_free(jname);\n"
+                "  if (thag_json_get_int(json, \"count\") != 7) return 68;\n"
+                "  if (!thag_json_set_int(json, \"count\", 9)) return 69;\n"
+                "  const char* json_text = thag_json_stringify(json);\n"
+                "  if (!json_text || !thag_str_contains(json_text, \"\\\"count\\\":9\")) return 70;\n"
+                "  thag_str_free(json_text);\n"
+                "  thag_json_free(json);\n"
+                "\n"
                 "#if defined(_WIN32)\n"
                 "  const char* run_cmd = \"cmd /c exit 0\";\n"
                 "  const char* capture_cmd = \"cmd /c echo ok\";\n"
@@ -135,16 +147,42 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "\n"
                 "  if (thag_http_get(\"https://example.com\", 10) <= 0) return 46;\n"
                 "  if (thag_http_post(\"https://example.com\", \"x\", 10) <= 0) return 47;\n"
+                "  int64_t h0 = thag_now_ms();\n"
+                "  int h_retry = thag_http_get_retry(\"http://127.0.0.1:1\", 5, 2, 20);\n"
+                "  int64_t h1 = thag_now_ms();\n"
+                "  if (h_retry != 599 && h_retry != -2) return 71;\n"
+                "  if (h_retry != -2 && h1 - h0 < 50) return 72;\n"
                 "\n"
                 "  int ws = thag_ws_connect(\"ws://local\", 10);\n"
                 "  if (ws <= 0) return 48;\n"
                 "  if (thag_ws_send(ws, \"hello\") <= 0) return 49;\n"
                 "  if (!thag_ws_close(ws)) return 50;\n"
+                "  int64_t w0 = thag_now_ms();\n"
+                "  int ws_retry = thag_ws_connect_retry(\"ws://127.0.0.1:1\", 5, 2, 20);\n"
+                "  int64_t w1 = thag_now_ms();\n"
+                "  if (ws_retry != 0 && ws_retry != -2) return 73;\n"
+                "  if (ws_retry == 0 && w1 - w0 < 50) return 74;\n"
+                "  if (ws_retry > 0) thag_ws_close(ws_retry);\n"
                 "\n"
                 "  int db = thag_db_connect(\"memory://\");\n"
                 "  if (db <= 0) return 51;\n"
                 "  if (thag_db_query(db, \"SELECT 1\") != 1) return 52;\n"
+                "  if (thag_db_query_retry(db, \"SELECT 1\", 2, 5) != 1) return 75;\n"
                 "  if (!thag_db_close(db)) return 53;\n"
+                "  int64_t d0 = thag_now_ms();\n"
+                "  int db_retry = thag_db_connect_retry(\"bad://dsn\", 2, 20);\n"
+                "  int64_t d1 = thag_now_ms();\n"
+                "  if (db_retry != 0 && db_retry != -2) return 76;\n"
+                "  if (db_retry == 0 && d1 - d0 < 50) return 77;\n"
+                "\n"
+                "  if (thag_crypto_available()) {\n"
+                "    const char* sha = thag_crypto_sha256_hex(\"abc\");\n"
+                "    if (!sha || std::strlen(sha) != 64) return 78;\n"
+                "    const char* hmac = thag_crypto_hmac_sha256_hex(\"k\", \"abc\");\n"
+                "    if (!hmac || std::strlen(hmac) != 64) return 79;\n"
+                "    thag_str_free(sha);\n"
+                "    thag_str_free(hmac);\n"
+                "  }\n"
                 "\n"
                 "  thag_task_scope_t* scope = thag_task_scope_create();\n"
                 "  if (!scope) return 54;\n"
@@ -162,8 +200,8 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "  thag_async_runtime_destroy(rt);\n"
                 "  if (g_async.load() != 2) return 63;\n"
                 "\n"
-                "  if (!thag_fs_remove(cfg_path)) return 64;\n"
-                "  if (!thag_fs_remove(\"tmp_io\")) return 65;\n"
+                "  if (!thag_fs_remove(cfg_path)) return 80;\n"
+                "  if (!thag_fs_remove(\"tmp_io\")) return 81;\n"
                 "  thag_str_free(cfg_path);\n"
                 "  return 0;\n"
                 "}\n"
@@ -183,6 +221,10 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 compile_cmd.insert(-2, "-lcurl")
             if ctypes.util.find_library("sqlite3"):
                 compile_cmd.insert(-2, "-lsqlite3")
+            if ctypes.util.find_library("ssl"):
+                compile_cmd.insert(-2, "-lssl")
+            if ctypes.util.find_library("crypto"):
+                compile_cmd.insert(-2, "-lcrypto")
             comp = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
             if comp.returncode != 0 and "-lcurl" in compile_cmd and "cannot find -lcurl" in comp.stderr:
                 retry_cmd = [arg for arg in compile_cmd if arg != "-lcurl"]
@@ -195,6 +237,12 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
             elif comp.returncode != 0 and "-lsqlite3" not in compile_cmd and "sqlite3_" in comp.stderr:
                 retry_cmd = compile_cmd[:-2] + ["-lsqlite3"] + compile_cmd[-2:]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lssl" in compile_cmd and "cannot find -lssl" in comp.stderr:
+                retry_cmd = [arg for arg in compile_cmd if arg != "-lssl"]
+                comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+            if comp.returncode != 0 and "-lcrypto" in compile_cmd and "cannot find -lcrypto" in comp.stderr:
+                retry_cmd = [arg for arg in compile_cmd if arg != "-lcrypto"]
                 comp = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
             self.assertEqual(comp.returncode, 0, msg=comp.stderr)
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False, cwd=root)
