@@ -1137,6 +1137,52 @@ static std::string expression_from_for(const std::string& line) {
   return trim(body.substr(in_pos + 4));
 }
 
+static bool is_parenthesized_tuple_expression(const std::string& expr) {
+  const std::string clean = trim(expr);
+  if (clean.size() < 2 || clean.front() != '(' || clean.back() != ')') {
+    return false;
+  }
+
+  int nested = 0;
+  bool in_string = false;
+  bool escaping = false;
+  for (std::size_t i = 1; i + 1 < clean.size(); ++i) {
+    const char ch = clean[i];
+    if (in_string) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (ch == '\\') {
+        escaping = true;
+        continue;
+      }
+      if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      continue;
+    }
+    if (ch == '(' || ch == '[' || ch == '{') {
+      ++nested;
+      continue;
+    }
+    if (ch == ')' || ch == ']' || ch == '}') {
+      if (nested > 0) {
+        --nested;
+      }
+      continue;
+    }
+    if (ch == ',' && nested == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool should_accept_raw_expression(const std::string& expr) {
   const std::string clean = trim(expr);
   if (clean.empty()) {
@@ -1145,7 +1191,7 @@ static bool should_accept_raw_expression(const std::string& expr) {
   if (clean.find('[') != std::string::npos || clean.find(']') != std::string::npos) {
     return true;
   }
-  if (clean.size() >= 2 && clean.front() == '(' && clean.back() == ')' && clean.find(',') != std::string::npos) {
+  if (is_parenthesized_tuple_expression(clean)) {
     return true;
   }
   if (!clean.empty() && clean.back() == '?') {

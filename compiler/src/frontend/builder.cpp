@@ -892,7 +892,7 @@ static TypeKind parse_expr_type(ExprTypeCursor& cursor) {
       continue;
     }
     if (is_equality_op(op)) {
-      if (lhs != rhs) {
+      if (lhs != rhs && !(is_numeric_type(lhs) && is_numeric_type(rhs))) {
         cursor.error = "operator '" + op + "' requires operands of same type";
         return TypeKind::Unknown;
       }
@@ -1730,6 +1730,52 @@ static bool parse_array_index_expr(const std::string& expr, std::string& base, s
   return true;
 }
 
+static bool is_parenthesized_tuple_expr(const std::string& expr) {
+  const std::string clean = trim_copy(expr);
+  if (clean.size() < 2 || clean.front() != '(' || clean.back() != ')') {
+    return false;
+  }
+
+  int nested = 0;
+  bool in_string = false;
+  bool escaping = false;
+  for (std::size_t i = 1; i + 1 < clean.size(); ++i) {
+    const char ch = clean[i];
+    if (in_string) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (ch == '\\') {
+        escaping = true;
+        continue;
+      }
+      if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      continue;
+    }
+    if (ch == '(' || ch == '[' || ch == '{') {
+      ++nested;
+      continue;
+    }
+    if (ch == ')' || ch == ']' || ch == '}') {
+      if (nested > 0) {
+        --nested;
+      }
+      continue;
+    }
+    if (ch == ',' && nested == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool typecheck_statement_expression(const syntax::AstStatement& st, int line,
                                            const std::unordered_map<std::string, TypeKind>& scope,
                                            const std::unordered_map<std::string, int>& enum_variants,
@@ -1755,8 +1801,7 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
     out = TypeKind::ArrayType;
     return true;
   }
-  if (clean_expr.size() >= 2 && clean_expr.front() == '(' && clean_expr.back() == ')' &&
-      clean_expr.find(',') != std::string::npos) {
+  if (is_parenthesized_tuple_expr(clean_expr)) {
     out = TypeKind::TupleType;
     return true;
   }
@@ -1950,13 +1995,24 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     std::string method_name;
     const bool is_method =
         split_owner_and_method(fn.name, method_owner, method_name) && struct_names.find(method_owner) != struct_names.end();
-    for (const std::string& param : fn.params) {
+    for (std::size_t param_index = 0; param_index < fn.params.size(); ++param_index) {
+      const std::string& param = fn.params[param_index];
       if (!param.empty()) {
         if (is_method && param == "self") {
           scope[param] = TypeKind::StructType;
           struct_bindings[param] = method_owner;
         } else {
-          scope[param] = TypeKind::I32;
+          TypeKind param_type = TypeKind::I32;
+          if (param_index < fn.param_types.size()) {
+            const std::string& declared_param = fn.param_types[param_index];
+            if (!declared_param.empty()) {
+              const TypeKind resolved = resolve_declared_user_type(declared_param, aliases, struct_names, enum_names);
+              if (resolved != TypeKind::Unknown) {
+                param_type = resolved;
+              }
+            }
+          }
+          scope[param] = param_type;
         }
       }
     }
