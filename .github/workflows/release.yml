@@ -22,7 +22,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
-          - runner: macos-13
+          - runner: macos-14
             platform: macos
             arch: x86_64
           - runner: macos-14
@@ -66,8 +66,8 @@ jobs:
           brew install llvm@21 ninja cmake
           LLVM_PREFIX="$(brew --prefix llvm@21)"
           echo "LLVM_DIR=${LLVM_PREFIX}/lib/cmake/llvm" >> "$GITHUB_ENV"
-          echo "CC=${LLVM_PREFIX}/bin/clang" >> "$GITHUB_ENV"
-          echo "CXX=${LLVM_PREFIX}/bin/clang++" >> "$GITHUB_ENV"
+          echo "CC=/usr/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=/usr/bin/clang++" >> "$GITHUB_ENV"
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
@@ -75,7 +75,13 @@ jobs:
         run: |
           choco install llvm --version=21.1.8 -y --no-progress
           choco install ninja -y
-          $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $llvmConfigPath = "C:\Program Files\LLVM\lib\cmake\llvm\LLVMConfig.cmake"
+          $llvmConfig = $null
+          if (Test-Path $llvmConfigPath) {
+            $llvmConfig = Get-Item $llvmConfigPath
+          } else {
+            $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
           if (-not $llvmConfig) {
             throw "LLVMConfig.cmake not found"
           }
