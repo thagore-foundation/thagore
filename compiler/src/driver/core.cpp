@@ -21,24 +21,12 @@ int CommandRouter::run(int argc, char** argv) const {
       return driver::handle_build(cmd, pipeline, diag);
     case driver::CommandKind::Run:
       return driver::handle_run(cmd, pipeline, diag);
-    case driver::CommandKind::Test:
-      return driver::handle_test(cmd, pipeline, diag);
-    case driver::CommandKind::Fix:
-      return driver::handle_fix(cmd);
-    case driver::CommandKind::Intent:
-      return driver::handle_intent(cmd, pipeline, diag);
-    case driver::CommandKind::State:
-      return driver::handle_state(cmd, pipeline, diag);
-    case driver::CommandKind::Install:
-      return driver::handle_install(cmd);
-    case driver::CommandKind::Target:
-      return driver::handle_target(cmd);
-    case driver::CommandKind::Update:
-      return driver::handle_update(cmd);
+    case driver::CommandKind::Check:
+      return driver::handle_check(cmd, pipeline, diag);
+    case driver::CommandKind::Fmt:
+      return driver::handle_fmt(cmd);
     case driver::CommandKind::Migrate:
       return driver::handle_migrate(cmd);
-    case driver::CommandKind::Flow:
-      return driver::handle_flow(cmd, pipeline, diag);
     case driver::CommandKind::Unknown:
       return driver::handle_unknown();
   }

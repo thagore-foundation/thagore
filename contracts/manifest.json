@@ -8,14 +8,8 @@
   "required_cli_groups": [
     "build",
     "run",
-    "test",
-    "fix",
-    "intent",
-    "state",
-    "install",
-    "target",
-    "update",
-    "flow"
+    "check",
+    "fmt"
   ],
   "v15_contracts": {
     "concurrency": "contracts/concurrency/structured_concurrency.yaml",

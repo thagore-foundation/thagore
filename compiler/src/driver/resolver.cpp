@@ -17,7 +17,6 @@ namespace thagc::driver {
 namespace {
 
 static constexpr const char* kPrimaryManifestName = "drago.toml";
-static constexpr const char* kLegacyManifestName = "thagore.toml";
 
 static std::string trim_copy(const std::string& text) {
   std::size_t left = 0;
@@ -36,7 +35,7 @@ static bool starts_with(const std::string& text, const std::string& prefix) {
 }
 
 static std::vector<std::string> manifest_candidates() {
-  return {kPrimaryManifestName, kLegacyManifestName};
+  return {kPrimaryManifestName};
 }
 
 static std::string strip_inline_comment(const std::string& line) {
@@ -411,7 +410,7 @@ bool ModuleResolver::load_project_manifest(const std::string& start_path, Projec
 
   out.found = true;
   out.manifest_path = selected_manifest.string();
-  out.lock_name = out.manifest_name == kPrimaryManifestName ? "drago.lock" : "thagore.lock";
+  out.lock_name = "drago.lock";
   return parse_manifest_file(selected_manifest, out.manifest_name, out, diag);
 }
 
@@ -451,7 +450,8 @@ bool ModuleResolver::write_lock_file(const ProjectManifest& manifest, support::D
 }
 
 bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const std::string& importer_path,
-                                    const ProjectManifest& manifest, ResolvedImport& out,
+                                    const ProjectManifest& manifest, const std::vector<std::string>& include_paths,
+                                    ResolvedImport& out,
                                     support::DiagnosticSink& diag) const {
   (void)importer_path;
   out = ResolvedImport{};
@@ -480,17 +480,10 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
   if (single_segment) {
     auto dep = manifest.dependencies.find(first);
     if (dep != manifest.dependencies.end()) {
-      const std::filesystem::path cache_root = home_directory_path() / ".thagore" / "packages" / first;
-      std::filesystem::path package_root = cache_root;
-      std::error_code ec;
-      if (!std::filesystem::exists(package_root, ec) || ec) {
-        const std::filesystem::path local_fallback = resolve_dependency_source(dep->second, manifest.root_path);
-        if (!local_fallback.empty()) {
-          package_root = local_fallback;
-        } else {
-          diag.error("E_MOD_105", "package `" + first + "` is declared but not installed");
-          return false;
-        }
+      const std::filesystem::path package_root = resolve_dependency_source(dep->second, manifest.root_path);
+      if (package_root.empty()) {
+        diag.error("E_MOD_105", "package `" + first + "` is declared but not resolved by drago");
+        return false;
       }
       const std::filesystem::path entry = locate_package_entry(package_root, first);
       if (entry.empty()) {
@@ -502,6 +495,25 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
       out.module_key = out.absolute_path;
       out.display_name = first;
       return true;
+    }
+
+    for (const std::string& include : include_paths) {
+      if (include.empty()) {
+        continue;
+      }
+      std::filesystem::path include_root(include);
+      if (include_root.is_relative()) {
+        include_root = root / include_root;
+      }
+      const std::filesystem::path pkg_root = canonical_or_absolute(include_root / first);
+      const std::filesystem::path entry = locate_package_entry(pkg_root, first);
+      if (!entry.empty()) {
+        out.is_package = true;
+        out.absolute_path = entry.string();
+        out.module_key = out.absolute_path;
+        out.display_name = first;
+        return true;
+      }
     }
   }
 

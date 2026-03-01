@@ -3,15 +3,8 @@
   "commands_expected": [
     "build",
     "run",
-    "test",
-    "fix",
-    "intent",
-    "state",
-    "install",
-    "target",
-    "update",
-    "flow"
+    "check",
+    "fmt"
   ],
   "notes": "Generated and frozen for parity 1:1 migration."
 }
-

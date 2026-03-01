@@ -9,7 +9,7 @@ import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Quick Start: Install Thagore
 
-Use the official `thagup` installer — one command installs `thagc` with embedded LLVM. No separate LLVM installation required.
+Use the official `thagup-init` installer — one command installs `thagc` + `drago`. No separate LLVM installation required.
 
 ## Step 1: Install
 
@@ -17,10 +17,10 @@ Use the official `thagup` installer — one command installs `thagc` with embedd
   <TabItem label="Linux (Ubuntu/Debian)">
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh | bash
+curl -fsSL https://thagore.org/thagup-init.sh | bash
 ```
 
-Installs `thagc` to `~/.thagore/bin` (embedded runtime, no system LLVM needed).
+Installs `thagc` and `drago` to `~/.thagore/bin` (embedded runtime, no system LLVM needed).
 
   </TabItem>
   <TabItem label="Linux (generic)">
@@ -59,6 +59,7 @@ curl -fsSL https://thagore.org/thagup.sh | bash -s -- --tag v1.0.0
 
 ```bash
 thagc --version
+drago --version
 ```
 
 <Aside type="tip" title="PATH">
@@ -66,30 +67,26 @@ thagc --version
 Open a new terminal if `thagc` is not found in the current shell.
 </Aside>
 
-## Step 2: Write Your First Program
+## Step 2: First Drago Project
 
-Create `hello.tg`:
-
-```python title="hello.tg"
-print("Hello, Thagore!")
-```
-
-Compile and run:
+Create and run:
 
 <Tabs>
   <TabItem label="Linux/macOS">
 
 ```bash
-thagc build hello.tg -o hello
-./hello
+drago new hello
+cd hello
+drago run
 ```
 
   </TabItem>
   <TabItem label="Windows">
 
 ```powershell
-thagc build hello.tg -o hello.exe
-.\hello.exe
+drago new hello
+cd hello
+drago run
 ```
 
   </TabItem>
@@ -101,7 +98,7 @@ thagc build hello.tg -o hello.exe
 
 ## Links
 
-- Bootstrap script (Linux/macOS): `https://thagore.org/thagup.sh`
+- Bootstrap script (Linux/macOS): `https://thagore.org/thagup-init.sh`
 - Bootstrap script (Windows PowerShell): `https://thagore.org/thagup.ps1`
 - Raw bootstrap source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh`
 - All releases: `https://github.com/thagore-foundation/thagore/releases`

@@ -68,13 +68,13 @@ After both releases are published:
 curl -fsSL https://thagore.org/thagup.sh | bash
 thagc --version
 drago --version
-thagc update check
+drago update
 ```
 
 Validate:
 - Installer deploys both `thagc` and `drago`.
 - PATH shims exist in `~/.thagore/bin`.
-- `thagc update apply --yes` updates binary and reports the new version correctly.
+- `drago update` completes and both `thagc --version` / `drago --version` remain healthy.
 
 ## 5) Landing sync
 

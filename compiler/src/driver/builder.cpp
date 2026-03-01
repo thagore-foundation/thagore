@@ -242,7 +242,8 @@ static bool parse_module_source(const std::string& path, const std::string& sour
 }
 
 static bool load_module_recursive(const std::string& path, bool is_entry, ModuleResolver& resolver,
-                                  const ProjectManifest& manifest, std::unordered_map<std::string, ModuleNode>& modules,
+                                  const ProjectManifest& manifest, const std::vector<std::string>& include_paths,
+                                  std::unordered_map<std::string, ModuleNode>& modules,
                                   std::unordered_set<std::string>& visiting, std::unordered_set<std::string>& loaded,
                                   std::vector<std::string>& stack, std::vector<std::string>& postorder,
                                   support::DiagnosticSink& diag) {
@@ -290,7 +291,7 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
 
   for (const auto& import_decl : node.ast.imports) {
     ResolvedImport resolved;
-    if (!resolver.resolve_import(import_decl, key, manifest, resolved, diag)) {
+    if (!resolver.resolve_import(import_decl, key, manifest, include_paths, resolved, diag)) {
       stack.pop_back();
       visiting.erase(key);
       return false;
@@ -300,8 +301,8 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
 
   modules[key] = node;
   for (const auto& binding : modules[key].imports) {
-    if (!load_module_recursive(binding.resolved.absolute_path, false, resolver, manifest, modules, visiting, loaded, stack,
-                               postorder, diag)) {
+    if (!load_module_recursive(binding.resolved.absolute_path, false, resolver, manifest, include_paths, modules,
+                               visiting, loaded, stack, postorder, diag)) {
       stack.pop_back();
       visiting.erase(key);
       return false;
@@ -415,7 +416,8 @@ static std::string rewrite_module_source(const ModuleNode& module, const std::un
 }
 
 static bool build_merged_source(const std::string& entry_path, ModuleResolver& resolver, ProjectManifest& manifest,
-                                std::string& out_source, support::DiagnosticSink& diag) {
+                                const std::vector<std::string>& include_paths, std::string& out_source,
+                                support::DiagnosticSink& diag) {
   if (!resolver.load_project_manifest(entry_path, manifest, diag)) {
     return false;
   }
@@ -428,7 +430,8 @@ static bool build_merged_source(const std::string& entry_path, ModuleResolver& r
   std::unordered_set<std::string> loaded;
   std::vector<std::string> stack;
   std::vector<std::string> postorder;
-  if (!load_module_recursive(entry_path, true, resolver, manifest, modules, visiting, loaded, stack, postorder, diag)) {
+  if (!load_module_recursive(entry_path, true, resolver, manifest, include_paths, modules, visiting, loaded, stack,
+                             postorder, diag)) {
     return false;
   }
   if (!validate_import_bindings(modules, diag)) {
@@ -463,7 +466,7 @@ bool CompilerPipeline::build(const BuildOptions& options, support::DiagnosticSin
     domain::BuildRequest request;
     request.input_path = options.input_path;
     ProjectManifest manifest;
-    if (!build_merged_source(options.input_path, resolver, manifest, request.source_text, diag)) {
+    if (!build_merged_source(options.input_path, resolver, manifest, options.include_paths, request.source_text, diag)) {
       return false;
     }
     if (request.source_text.empty()) {

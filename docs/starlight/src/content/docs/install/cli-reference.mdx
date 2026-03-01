@@ -1,174 +1,71 @@
 ---
 title: CLI Reference
-description: Complete reference for the Thagore compiler CLI commands, flags, and options.
+description: Current thagc command surface and drago ownership boundaries.
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 # CLI Reference
 
-The Thagore compiler (`stage2.exe` / `thagore`) provides a rich command-line interface for building, testing, fixing, and managing Thagore projects.
+`thagc` is now focused on compile/run flows. Project/dependency/update flows are handled by `drago`.
 
 ## Usage
 
-```
-thagore <command> [options]
-thagore <file.tg> [options]        # shorthand for 'build'
+```bash
+thagc <command> [options]
+thagc <file.tg> [options]        # shorthand for build
 ```
 
 ## Commands
 
-### `build` — Compile a Thagore source file
+### `build`
 
 ```bash
-thagore build <input.tg> -o <output> [options]
+thagc build <input.tg> -o <output> [options]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `-o <path>` | Output file path (default: derived from input name) |
-| `--target=<triple>` / `-t <triple>` | Compile and link for a configured target triple |
-| `--emit-llvm` | Emit LLVM IR (`.ll`) instead of linking a binary |
-| `--link-lib=<name>` / `-l<name>` | Link an extra C library (`-l<name>`) |
-| `--link-dir=<path>` / `-L<path>` | Add linker search directory |
-| `--link-arg=<arg>` | Pass raw argument to linker invocation |
-| `--autofix=<mode>` | Enable autofix (`safe`, `aggressive`, or `off`) |
-| `--autofix-lock=<path>` | Lock file for autofix session (default: `thagore.fix.lock`) |
-| `--autofix-lock-strict` | Strict lock enforcement |
-| `--autofix-locked` | Only apply fixes from existing lock |
-| `--autofix-max-iterations=<n>` | Max autofix iterations (default: 3) |
-| `--autofix-max-files=<n>` | Max files to process (default: 10) |
-| `--autofix-workspace` | Run autofix across entire workspace |
-| `--autofix-exclude=<pattern>` | Exclude files matching pattern |
+| `-o <path>` | Output binary path |
+| `--target=<triple>` | Compile for target triple |
+| `--emit-llvm` | Emit LLVM IR (`.ll`) only |
+| `--include-path=<dir>` / `-I<dir>` | Additional import root (typically passed by drago) |
+| `--link-lib=<name>` | Extra link library |
+| `--link-dir=<path>` | Extra link directory |
+| `--link-arg=<arg>` | Raw linker arg |
 
-**Examples:**
+### `run`
 
 ```bash
-# Basic build
-thagore build examples/hello.tg -o hello.exe
-
-# Shorthand (omit 'build' keyword)
-thagore examples/hello.tg -o hello.exe
-
-# Emit LLVM IR for inspection
-thagore build examples/fib.tg --emit-llvm
-
-# Cross-compile in one command
-thagore build app.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
-
-# Link against libm for extern math symbols
-thagore build ffi_math.tg -o ffi_math --link-lib=m
-
-# Build with safe autofix
-thagore build src/app.tg -o app.exe --autofix=safe
+thagc run <input.tg> [build-options]
 ```
 
-### `test` — Run test suites
+Builds then executes the produced binary.
+
+### `check`
 
 ```bash
-thagore test [filter] [options]
+thagc check <input.tg> [--target=<triple>] [--include-path=<dir>]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--workspace` / `--all` | Discover and run all tests in workspace |
-| `--no-run` | Compile tests but don't execute |
-| `--fail-fast` | Stop on first failure |
-| `--json` | Output results as JSON |
-| `--list` | List discovered tests without running |
-| `--package=<name>` / `-p <name>` | Filter by package name |
-| `--exclude=<pattern>` | Exclude tests matching pattern |
-| `--exclude-package=<name>` | Exclude entire packages |
-| `--message-format=<fmt>` | Output format: `json` or `human` |
+Performs parse/type/lowering/codegen validation without final link step.
 
-**Examples:**
+### `fmt`
 
 ```bash
-# Run all workspace tests
-thagore test --workspace
-
-# Run tests matching a filter
-thagore test test_syntax
-
-# List available tests
-thagore test --list --workspace
+thagc fmt <input.tg>
 ```
 
-### `fix` — Autofix code issues
+Normalizes indentation and trailing whitespace in-place.
+
+### `migrate`
 
 ```bash
-thagore fix <subcommand> <entry.tg> [options]
+thagc migrate [--force]
 ```
 
-**Subcommands:**
+Migrates legacy project files to `drago.toml` / `drago.lock`.
 
-| Subcommand | Description |
-|------------|-------------|
-| `doctor` | Diagnose issues without applying fixes |
-| `dry-run` | Show what fixes would be applied |
-| `apply` | Apply fixes to source files |
-| `explain` | Show detailed explanations for each fix |
-| `rollback <session-id>` | Undo a previous fix session |
+## Managed by drago
 
-| Flag | Description |
-|------|-------------|
-| `--level=<level>` | Fix aggressiveness (default: `safe`) |
-| `--workspace` / `--all` | Fix across entire workspace |
-| `--lock=<path>` | Lock file path |
-| `--lock-strict` | Strict lock enforcement |
-| `--locked` | Only apply locked fixes |
-| `--exclude=<pattern>` | Exclude files |
-| `--max-files=<n>` | Max files to fix (default: 25) |
-| `--max-iterations=<n>` | Max fix iterations (default: 3) |
-| `--json` | JSON output |
-
-### `install` — Toolchain management
-
-```bash
-thagore install toolchain [options]
-```
-
-Installs or updates the Thagore toolchain (LLVM, runtime ABI, etc.).
-
-### `target` — Target manifest management
-
-```bash
-thagore target <subcommand> [options]
-```
-
-Common subcommands:
-
-- `target add <triple> [--cc=...] [--cxx=...] [--linker=...] [--sysroot=...]`
-- `target list`
-- `target doctor [triple]`
-- `target show <triple>`
-- `target remove <triple>`
-
-One-command cross-compile recipe:
-
-```bash
-thagore target add aarch64-unknown-linux-gnu --cc=clang --cxx=clang++ --linker=clang
-thagore build src/main.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
-```
-
-### `update` — Compiler update lane
-
-```bash
-thagore update <check|apply|rollback> [options]
-```
-
-Common flags:
-
-- `--dry-run` (preview only)
-- `--yes` (skip confirmation prompts)
-
-### Global Options
-
-| Flag | Description |
-|------|-------------|
-| `--help` / `help` | Show help message |
-| `--version` / `version` | Show compiler version |
-
-<Aside type="note" title="Internal Flag">
-`--emit-llvm-internal` is used internally by the compiler during the bootstrap process. It emits raw LLVM IR without linking.
-</Aside>
+- `drago add/install/update/remove`
+- `drago build/run/test`
+- Registry interaction and lock resolution

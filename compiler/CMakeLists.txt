@@ -20,14 +20,9 @@ add_executable(thagc
   src/driver/help.cpp
   src/driver/build.cpp
   src/driver/run.cpp
-  src/driver/fix.cpp
-  src/driver/intent.cpp
-  src/driver/state.cpp
-  src/driver/install.cpp
-  src/driver/target.cpp
-  src/driver/update.cpp
+  src/driver/check.cpp
+  src/driver/fmt.cpp
   src/driver/migrate.cpp
-  src/driver/flow.cpp
   src/driver/common.cpp
   src/driver/resolver.cpp
   src/driver/unknown.cpp

@@ -219,11 +219,14 @@ jobs:
       - name: Prepare installer + checksums
         shell: bash
         run: |
+          cp tooling/release/thagup-init.sh dist/thagup-init.sh
           cp tooling/release/thagup.sh dist/thagup.sh
           cp tooling/release/thagup.ps1 dist/thagup.ps1
+          chmod +x dist/thagup-init.sh
           chmod +x dist/thagup.sh
           python3 tooling/packaging/make_checksums.py \
             --out dist/SHA256SUMS-thagc.txt \
+            dist/thagup-init.sh \
             dist/thagup.sh \
             dist/thagup.ps1 \
             dist/thagc-core-*.tar.gz
@@ -235,7 +238,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          ASSETS=(dist/thagup.sh dist/thagup.ps1 dist/SHA256SUMS-thagc.txt dist/thagc-core-*.tar.gz)
+          ASSETS=(dist/thagup-init.sh dist/thagup.sh dist/thagup.ps1 dist/SHA256SUMS-thagc.txt dist/thagc-core-*.tar.gz)
           gh release create "${{ inputs.tag }}" \
             --title "Thagore ${{ inputs.tag }}" \
             --notes "Multi-platform core release with Linux/macOS/Windows artifacts for x86_64 + aarch64." \
@@ -274,6 +277,7 @@ jobs:
           mkdir -p release-assets
           gh release download "${RELEASE_TAG}" -R thagore-foundation/thagore \
             -D release-assets \
+            -p thagup-init.sh \
             -p thagup.sh \
             -p thagup.ps1 \
             -p SHA256SUMS-thagc.txt
@@ -291,6 +295,7 @@ jobs:
         if: env.LANDING_SYNC_TOKEN != ''
         shell: bash
         run: |
+          cp release-assets/thagup-init.sh landing/thagup-init.sh
           cp release-assets/thagup.sh landing/thagup.sh
           cp release-assets/thagup.ps1 landing/thagup.ps1
           cp release-assets/SHA256SUMS-thagc.txt landing/SHA256SUMS-thagc.txt
@@ -306,6 +311,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add thagup.sh thagup.ps1 SHA256SUMS-thagc.txt
+          git add thagup-init.sh thagup.sh thagup.ps1 SHA256SUMS-thagc.txt
           git commit -m "chore(release): sync installer scripts for ${RELEASE_TAG}"
           git push

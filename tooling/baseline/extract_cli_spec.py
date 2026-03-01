@@ -43,14 +43,8 @@ def main() -> None:
         "commands_expected": [
             "build",
             "run",
-            "test",
-            "fix",
-            "intent",
-            "state",
-            "install",
-            "target",
-            "update",
-            "flow",
+            "check",
+            "fmt",
         ],
     }
     out_path = Path(args.out)
@@ -60,4 +54,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

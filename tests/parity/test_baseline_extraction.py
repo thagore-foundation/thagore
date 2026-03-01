@@ -23,8 +23,8 @@ class BaselineExtractionTests(unittest.TestCase):
                 ]
             )
             data = json.loads(out.read_text())
-            self.assertIn("build", data["commands_expected"])
-            self.assertIn("target", data["commands_expected"])
+            expected = {"build", "run", "check", "fmt"}
+            self.assertEqual(set(data["commands_expected"]), expected)
 
     def test_extract_grammar_and_semantics(self) -> None:
         with tempfile.TemporaryDirectory() as td:

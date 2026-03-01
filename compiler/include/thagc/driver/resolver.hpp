@@ -31,7 +31,8 @@ class ModuleResolver {
  public:
   bool load_project_manifest(const std::string& start_path, ProjectManifest& out, support::DiagnosticSink& diag) const;
   bool write_lock_file(const ProjectManifest& manifest, support::DiagnosticSink& diag) const;
-  bool resolve_import(const syntax::AstImport& import_decl, const std::string& importer_path, const ProjectManifest& manifest,
+  bool resolve_import(const syntax::AstImport& import_decl, const std::string& importer_path,
+                      const ProjectManifest& manifest, const std::vector<std::string>& include_paths,
                       ResolvedImport& out, support::DiagnosticSink& diag) const;
 };
 

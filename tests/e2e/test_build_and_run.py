@@ -348,7 +348,7 @@ class BuildAndRunE2ETests(unittest.TestCase):
                 "func main():\n"
                 "  fs.mkdir(\"tmp_gate\")\n"
                 "  let cfg = s.concat(\"port=\", \"42\")\n"
-                "  let path = fs.path_join(\"tmp_gate\", \"thagore.toml\")\n"
+                "  let path = fs.path_join(\"tmp_gate\", \"drago.toml\")\n"
                 "  fs.write_file(path, cfg)\n"
                 "  let raw = fs.read_file(path)\n"
                 "  let h = toml.parse(raw)\n"

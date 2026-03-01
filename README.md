@@ -17,8 +17,7 @@ It compiles `.tg` source code to native executables through LLVM.
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh -o /tmp/thagup.sh
-bash /tmp/thagup.sh
+curl -fsSL https://thagore.org/thagup-init.sh | bash
 ```
 
 ### Windows (PowerShell)
@@ -36,19 +35,27 @@ thagc --version
 drago --version
 ```
 
+First-run:
+
+```bash
+drago new myapp
+cd myapp
+drago run
+```
+
 Release archives are self-contained:
 - no separate LLVM installation is required on end-user machines.
 - runtime archive is embedded into `thagc` (no external `libthag_runtime.a` lookup at build time).
 
-## Update
+## Updates
 
 ```bash
-thagc update check
-thagc update apply --yes
+drago update
 thagc --version
+drago --version
 ```
 
-`update apply` now runs the official `thagup` installer flow for the selected tag and updates the managed toolchain under `~/.thagore/toolchains/stable`.
+Package and toolchain update flows are managed through `drago`.
 
 ## Project Layout
 
@@ -106,10 +113,7 @@ cmake -S . -B build -G Ninja -DTHAGC_STATIC_LLVM=OFF
 ### One-command cross-compile
 
 ```bash
-# 1) register target toolchain once (or let build auto-init)
-thagc target add aarch64-unknown-linux-gnu --cc=clang --cxx=clang++ --linker=clang
-
-# 2) build for target in one command
+# build for target in one command (toolchain config auto-initializes)
 thagc build app.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
 ```
 

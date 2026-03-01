@@ -14,14 +14,21 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             self.skipTest("thagc binary not found; set THAGC_BIN or build compiler first")
 
     def _build(
-        self, root: Path, entry: Path, extra_env: dict[str, str] | None = None
+        self,
+        root: Path,
+        entry: Path,
+        extra_env: dict[str, str] | None = None,
+        extra_args: list[str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         out = root / "main.bin"
         env = dict(os.environ)
         if extra_env:
             env.update(extra_env)
+        args = [str(self.bin), "build", str(entry), "-o", str(out)]
+        if extra_args:
+            args.extend(extra_args)
         return subprocess.run(
-            [str(self.bin), "build", str(entry), "-o", str(out)],
+            args,
             cwd=root,
             env=env,
             capture_output=True,
@@ -262,6 +269,86 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             self.assertEqual(build.returncode, 0, msg=build.stderr)
             run = subprocess.run([str(root / "main.bin")], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 7, msg=run.stderr)
+
+    def test_include_path_resolves_package_module_from_drago(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            deps = root / "deps" / "mathpkg"
+            deps.mkdir(parents=True)
+            (deps / "main.tg").write_text(
+                "pub func inc(v):\n"
+                "  return v + 1\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "import mathpkg\n"
+                "\n"
+                "func main():\n"
+                "  return mathpkg.inc(4)\n"
+            )
+            build = self._build(root, entry, extra_args=["--include-path", str(root / "deps")])
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(root / "main.bin")], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 5, msg=run.stderr)
+
+    def test_legacy_thagore_manifest_is_not_used_for_dependency_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "deps" / "mathpkg").mkdir(parents=True)
+            (root / "deps" / "mathpkg" / "main.tg").write_text(
+                "pub func inc(v):\n"
+                "  return v + 1\n"
+            )
+            (root / "thagore.toml").write_text(
+                "[package]\n"
+                "name = \"legacy\"\n"
+                "version = \"0.1.0\"\n"
+                "\n"
+                "[dependencies]\n"
+                "mathpkg = \"path:./deps/mathpkg\"\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "import mathpkg\n"
+                "\n"
+                "func main():\n"
+                "  return mathpkg.inc(3)\n"
+            )
+            build = self._build(root, entry)
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("package `mathpkg` not found in dependencies", build.stderr)
+
+    def test_declared_version_only_dependency_requires_drago_resolved_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            fake_home = root / ".fake-home"
+            cached_a = fake_home / "packages" / "mathpkg"
+            cached_b = fake_home / ".thagore" / "packages" / "mathpkg"
+            cached_a.mkdir(parents=True)
+            cached_b.mkdir(parents=True)
+            for cached in (cached_a, cached_b):
+                (cached / "main.tg").write_text(
+                    "pub func inc(v):\n"
+                    "  return v + 10\n"
+                )
+            (root / "drago.toml").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+                "\n"
+                "[dependencies]\n"
+                "mathpkg = \"1.2.3\"\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "import mathpkg\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            build = self._build(root, entry, {"THAGORE_HOME": str(fake_home), "HOME": str(fake_home)})
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("declared but not resolved by drago", build.stderr)
 
 
 if __name__ == "__main__":

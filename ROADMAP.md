@@ -365,37 +365,37 @@ Hai hệ thống song song, gây nhầm lẫn. Cần thống nhất: **drago là
 cho project management**, thagc chỉ là compiler backend thuần.
 
 ### Manifest unification
-- [ ] `drago.toml` là manifest chính thức duy nhất — xóa bỏ `thagore.toml`
+- [x] `drago.toml` là manifest chính thức duy nhất cho compile/dependency resolution; `thagore.toml` chỉ còn dùng cho migration
 - [x] `thagc` đọc `drago.toml` khi cần resolve dependencies (thay vì `thagore.toml`)
 - [x] Migration tool: `thagc migrate` convert `thagore.toml` → `drago.toml` (+ `thagore.lock` → `drago.lock`)
-- [ ] `drago.lock` là lock file duy nhất — xóa bỏ `thagore.lock`
+- [x] `drago.lock` là lock file duy nhất cho active workflow; `thagore.lock` chỉ còn input của `thagc migrate`
 
 ### CLI unification
-- [ ] Xóa `thagc install` — chuyển hoàn toàn sang `drago add/install`
-- [ ] Xóa `thagc update` — chuyển sang `drago update`
-- [ ] `thagc` chỉ giữ: `thagc build`, `thagc run` (compile file đơn), `thagc check`, `thagc fmt`
-- [ ] `drago build/run/test` gọi `thagc` ngầm — user dùng drago cho mọi thứ
+- [x] Xóa `thagc install` — chuyển hoàn toàn sang `drago add/install`
+- [x] Xóa `thagc update` — chuyển sang `drago update`
+- [x] `thagc` chỉ giữ compile surface tối giản: `build`, `run` (compile file đơn), `check`, `fmt` (+ `migrate` transitional)
+- [x] `drago build/run/test` gọi `thagc` ngầm — user dùng drago cho project workflows
 - [x] `thagc build` khi thấy `drago.toml` trong cwd → tự delegate sang `drago build`
 
 ### Package cache unification
-- [ ] `~/.thagore/packages/` — chỉ drago quản lý, thagc không đọc/ghi trực tiếp
-- [ ] thagc nhận package paths từ drago qua CLI args hoặc manifest
-- [ ] `drago` resolve dependencies → pass `--include-path` cho `thagc`
+- [x] `~/.thagore/packages/` — chỉ drago quản lý, thagc không đọc/ghi trực tiếp
+- [x] thagc nhận package paths từ drago qua CLI args hoặc manifest
+- [x] `drago` resolve dependencies → pass `--include-path` cho `thagc`
 
 ### Registry unification
-- [ ] `thagore-lang/registry` — drago là client duy nhất tương tác với registry
-- [ ] `thagc` không biết registry tồn tại — nó chỉ compile files được đưa cho
+- [x] `thagore-lang/registry` — drago là client duy nhất tương tác với registry
+- [x] `thagc` không biết registry tồn tại — nó chỉ compile files được đưa cho
 
 ### Installer unification
-- [ ] `thagup-init.sh` cài cả `thagc` + `drago` — user dùng `drago` ngay từ đầu
-- [ ] First-run experience: `drago new myapp && cd myapp && drago run`
-- [ ] Không ai cần biết `thagc` tồn tại trừ khi compile file lẻ
+- [x] `thagup-init.sh` cài cả `thagc` + `drago` — user dùng `drago` ngay từ đầu
+- [x] First-run experience: `drago new myapp && cd myapp && drago run`
+- [x] Không ai cần biết `thagc` tồn tại trừ khi compile file lẻ
 
 ### Gate
-- [ ] `thagore.toml` không còn được reference trong bất kỳ code/doc nào
-- [ ] `thagc install` / `thagc update` bị xóa hoàn toàn
-- [ ] `drago build` → `drago run` → `drago test` hoạt động end-to-end với `drago.toml`
-- [ ] Mọi documentation hướng dẫn dùng `drago`, không phải `thagc`
+- [x] `thagore.toml` không còn nằm trong active compile flow hoặc docs hướng dẫn chính (chỉ còn trong migrate + tests migration)
+- [x] `thagc install` / `thagc update` bị xóa hoàn toàn
+- [x] `drago build` → `drago run` → `drago test` hoạt động end-to-end với `drago.toml`
+- [x] Documentation user-flow dùng `drago` cho project/dependency/update workflows
 
 ---
 

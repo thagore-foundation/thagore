@@ -11,9 +11,11 @@ description: Quick API reference for thagc CLI, core stdlib modules, and FFI/lin
 | --- | --- |
 | `thagc build <file.tg> -o <bin>` | Compile source to native executable |
 | `thagc run <file.tg>` | Build and run |
-| `thagc test --workspace` | Discover and run tests |
-| `thagc target add <triple> ...` | Configure target toolchain manifest |
-| `thagc update check/apply` | Check and apply compiler updates |
+| `thagc check <file.tg>` | Validate parse/type/codegen without final link |
+| `thagc fmt <file.tg>` | Normalize source formatting |
+| `thagc migrate` | Migrate legacy project metadata to drago manifest |
+
+Dependency, registry, and update flows are handled by `drago`.
 
 ## Build/link flags
 

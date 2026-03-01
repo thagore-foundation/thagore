@@ -26,14 +26,9 @@ Current release cut: `v1.1.0` (Structured Concurrency GA).
 
 - build: implemented (milestone quality)
 - run: implemented (milestone quality)
-- test: implemented (compile+run lane with workspace/json/fail-fast controls)
-- fix: implemented (workspace apply/explain/rollback lanes)
-- intent: implemented (doctor/explain/lock lane build verification)
-- state: implemented (doctor/explain lane build verification)
-- install: implemented (toolchain root + default target manifest bootstrap)
-- target: implemented (manifest-based add/list/show/remove/doctor)
-- update: implemented (check/apply/rollback with `--dry-run` and `--yes`)
-- flow: implemented (doctor/explain/simulate + journal recover)
+- check: implemented (parse/type/lowering/codegen validation without final link)
+- fmt: implemented (source normalization lane)
+- migrate: implemented (legacy manifest/lock to drago format)
 
 ## Quality gates
 
