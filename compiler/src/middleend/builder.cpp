@@ -157,6 +157,12 @@ static bool should_track_known_value(const std::string& expr) {
   return true;
 }
 
+static bool is_print_like_expression(const std::string& expr) {
+  const std::string normalized = trim_copy(expr);
+  return (normalized.rfind("print(", 0) == 0 && !normalized.empty() && normalized.back() == ')') ||
+         (normalized.rfind("print_raw(", 0) == 0 && !normalized.empty() && normalized.back() == ')');
+}
+
 static CoreStmtKind map_stmt_kind(syntax::StatementKind kind) {
   switch (kind) {
     case syntax::StatementKind::Let:
@@ -330,12 +336,25 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     core.closures.push_back(std::move(out));
   }
 
-  for (const auto& fn : core.functions) {
-    if (fn.name == "main") {
-      core.main_statements = fn.statements;
-      core.main_return_expression = fn.return_expression;
-      core.main_return_literal = fn.return_literal;
-      break;
+  if (program.has_main && !program.top_level_statements.empty()) {
+    auto main_it =
+        std::find_if(core.functions.begin(), core.functions.end(), [](const CoreFunction& fn) { return fn.name == "main"; });
+    if (main_it != core.functions.end()) {
+      std::vector<CoreStmt> prelude;
+      prelude.reserve(program.top_level_statements.size());
+      std::unordered_map<std::string, std::string> no_known_values;
+      for (const auto& st : program.top_level_statements) {
+        append_core_statement(prelude, st, no_known_values);
+      }
+      std::vector<CoreStmt> merged;
+      merged.reserve(prelude.size() + main_it->statements.size());
+      for (auto& st : prelude) {
+        merged.push_back(std::move(st));
+      }
+      for (auto& st : main_it->statements) {
+        merged.push_back(std::move(st));
+      }
+      main_it->statements = std::move(merged);
     }
   }
 
@@ -357,25 +376,52 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     }
     int top_ret = 0;
     if (last.kind == syntax::StatementKind::Expr && last.has_expression && last.expression_valid) {
-      script_main.return_expression = substitute_identifiers(last.expression_normalized, known_values);
-      if (parse_i32_literal(last.expression_normalized, top_ret)) {
-        script_main.return_literal = top_ret;
-      }
-      if (!script_main.statements.empty()) {
-        CoreStmt& implicit_ret = script_main.statements.back();
-        implicit_ret.kind = CoreStmtKind::Return;
-        implicit_ret.has_expression = true;
-        implicit_ret.expression = last.expression_normalized;
-        implicit_ret.text = "return " + last.expression_normalized;
+      const std::string& expr = last.expression_normalized;
+      if (is_print_like_expression(last.text)) {
+        script_main.return_literal = 0;
+        script_main.return_expression = "0";
+        CoreStmt ret_zero;
+        ret_zero.kind = CoreStmtKind::Return;
+        ret_zero.has_expression = true;
+        ret_zero.expression = "0";
+        ret_zero.text = "return 0";
+        script_main.statements.push_back(std::move(ret_zero));
+      } else {
+        script_main.return_expression = substitute_identifiers(expr, known_values);
+        if (parse_i32_literal(expr, top_ret)) {
+          script_main.return_literal = top_ret;
+        }
+        if (!script_main.statements.empty()) {
+          CoreStmt& implicit_ret = script_main.statements.back();
+          implicit_ret.kind = CoreStmtKind::Return;
+          implicit_ret.has_expression = true;
+          implicit_ret.expression = expr;
+          implicit_ret.text = "return " + expr;
+        }
       }
     } else {
       script_main.return_literal = 0;
       script_main.return_expression = "0";
+      CoreStmt ret_zero;
+      ret_zero.kind = CoreStmtKind::Return;
+      ret_zero.has_expression = true;
+      ret_zero.expression = "0";
+      ret_zero.text = "return 0";
+      script_main.statements.push_back(std::move(ret_zero));
     }
     core.main_statements = script_main.statements;
     core.main_return_expression = script_main.return_expression;
     core.main_return_literal = script_main.return_literal;
     core.functions.push_back(std::move(script_main));
+  }
+
+  for (const auto& fn : core.functions) {
+    if (fn.name == "main") {
+      core.main_statements = fn.statements;
+      core.main_return_expression = fn.return_expression;
+      core.main_return_literal = fn.return_literal;
+      break;
+    }
   }
 
   if (core.main_return_expression.empty()) {

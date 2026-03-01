@@ -76,6 +76,48 @@ class BuildAndRunE2ETests(unittest.TestCase):
             lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
             self.assertEqual(lines, ["Hello"])
 
+    def test_build_script_top_level_print_outputs_text(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "script_print.tg"
+            out = root / "script_print.bin"
+            src.write_text('print("ok")\n')
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
+            lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+            self.assertEqual(lines, ["ok"])
+
+    def test_build_main_and_top_level_statements_execute(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "main_and_top_level.tg"
+            out = root / "main_and_top_level.bin"
+            src.write_text(
+                "func main() -> i32:\n"
+                "  print(\"Hello\")\n"
+                "  return 0\n"
+                "\n"
+                "print(\"ok\")\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
+            lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+            self.assertEqual(lines, ["ok", "Hello"])
+
     def test_build_and_run_multi_function_program(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
