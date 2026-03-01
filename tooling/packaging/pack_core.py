@@ -90,10 +90,10 @@ def parse_otool_deps(bin_path: Path) -> list[Path]:
 def parse_dumpbin_dependents(bin_path: Path) -> list[str]:
     try:
         output = run_capture(["dumpbin", "/nologo", "/dependents", str(bin_path)])
-    except RuntimeError:
+    except (RuntimeError, FileNotFoundError):
         try:
             output = run_capture(["llvm-objdump", "-p", str(bin_path)])
-        except RuntimeError:
+        except (RuntimeError, FileNotFoundError):
             # Some Windows runners do not expose dumpbin/llvm-objdump in PATH.
             # In that case, skip dependency scanning and rely on the bare binary.
             return []
