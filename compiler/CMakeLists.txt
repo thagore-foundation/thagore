@@ -26,6 +26,7 @@ add_executable(thagc
   src/driver/install.cpp
   src/driver/target.cpp
   src/driver/update.cpp
+  src/driver/migrate.cpp
   src/driver/flow.cpp
   src/driver/common.cpp
   src/driver/resolver.cpp
@@ -56,6 +57,43 @@ add_custom_command(
 )
 target_sources(thagc PRIVATE "${THAG_EMBEDDED_RUNTIME_CPP}")
 add_dependencies(thagc thag_runtime)
+
+set(THAG_STDLIB_EMBED_TOOL "${CMAKE_SOURCE_DIR}/tooling/packaging/embed_stdlib_sources.py")
+set(THAG_EMBEDDED_STDLIB_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_stdlib.cpp")
+set(THAG_STDLIB_ROOT "${CMAKE_SOURCE_DIR}/stdlib")
+set(THAG_STDLIB_MODULES
+  std/core.tg
+  std/string.tg
+  std/list.tg
+  lib/fs.tg
+  lib/process.tg
+  lib/toml.tg
+  lib/http.tg
+  lib/ws.tg
+  lib/db.tg
+  lib/time.tg
+  lib/map.tg
+  lib/json.tg
+  lib/env.tg
+  lib/crypto.tg
+)
+set(THAG_STDLIB_DEPENDS)
+set(THAG_STDLIB_EMBED_ARGS)
+foreach(THAG_STDLIB_MODULE IN LISTS THAG_STDLIB_MODULES)
+  list(APPEND THAG_STDLIB_DEPENDS "${THAG_STDLIB_ROOT}/${THAG_STDLIB_MODULE}")
+  list(APPEND THAG_STDLIB_EMBED_ARGS --module "${THAG_STDLIB_MODULE}")
+endforeach()
+add_custom_command(
+  OUTPUT "${THAG_EMBEDDED_STDLIB_CPP}"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/generated"
+  COMMAND "${Python3_EXECUTABLE}" "${THAG_STDLIB_EMBED_TOOL}"
+          --root "${THAG_STDLIB_ROOT}"
+          --output "${THAG_EMBEDDED_STDLIB_CPP}"
+          ${THAG_STDLIB_EMBED_ARGS}
+  DEPENDS "${THAG_STDLIB_EMBED_TOOL}" ${THAG_STDLIB_DEPENDS}
+  VERBATIM
+)
+target_sources(thagc PRIVATE "${THAG_EMBEDDED_STDLIB_CPP}")
 
 target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})

@@ -266,9 +266,23 @@ Execution order (re-anchored to dependency reality):
 - [x] `lib/time.tg` — `now()`, `sleep()`, duration types
 - [x] `lib/map.tg` — HashMap thật sự, không phải stub
 
+### Stdlib Auto-Resolution (compiler tự tìm stdlib, không cần copy vào project)
+- [x] Embed stdlib `.tg` files vào `thagc` binary (giống embed `libthag_runtime.a`)
+  - Khi compile `import std.string` hoặc `from lib.fs import read`, compiler extract stdlib `.tg` từ embedded data
+  - Không cần `~/.thagore/stdlib/`, không cần copy file, không cần env var
+  - Có fallback `THAG_STDLIB_PATH` cho development
+- [x] Import resolution order cho `std.*` và `lib.*`:
+  1. Project-local file (nếu tồn tại) — cho phép override
+  2. Embedded stdlib trong `thagc` binary
+  3. `THAG_STDLIB_PATH` env var (optional, cho development)
+- [x] `from std.string import concat` hoạt động mà không cần copy `stdlib/` vào project
+- [x] `from lib.fs import read` hoạt động mà không cần copy `stdlib/` vào project
+- [x] Tất cả stdlib modules được embed: `std/core.tg`, `std/string.tg`, `std/list.tg`, `lib/fs.tg`, `lib/process.tg`, `lib/toml.tg`, `lib/http.tg`, `lib/ws.tg`, `lib/db.tg`, `lib/time.tg`, `lib/map.tg`
+
 ### Gate
 - [x] Drago (pure .tg, no C helpers in drago repo) có thể dùng stdlib để: đọc file, parse TOML, chạy process, manipulate strings
 - [x] End-to-end async IO path pass Linux parity contracts
+- [x] `import std.string` / `from lib.fs import read` hoạt động out-of-the-box, zero setup
 
 ---
 
@@ -339,6 +353,49 @@ Execution order (re-anchored to dependency reality):
 
 ### Gate
 - [ ] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI
+
+---
+
+## v1.2b — Drago–Thagc Unification
+> *"Một manifest, một tool, một ecosystem — không mâu thuẫn"*
+
+### Vấn đề hiện tại
+thagc có `thagc install` + `thagore.toml`, drago có `drago add/install` + `drago.toml`.
+Hai hệ thống song song, gây nhầm lẫn. Cần thống nhất: **drago là frontend duy nhất
+cho project management**, thagc chỉ là compiler backend thuần.
+
+### Manifest unification
+- [ ] `drago.toml` là manifest chính thức duy nhất — xóa bỏ `thagore.toml`
+- [x] `thagc` đọc `drago.toml` khi cần resolve dependencies (thay vì `thagore.toml`)
+- [x] Migration tool: `thagc migrate` convert `thagore.toml` → `drago.toml` (+ `thagore.lock` → `drago.lock`)
+- [ ] `drago.lock` là lock file duy nhất — xóa bỏ `thagore.lock`
+
+### CLI unification
+- [ ] Xóa `thagc install` — chuyển hoàn toàn sang `drago add/install`
+- [ ] Xóa `thagc update` — chuyển sang `drago update`
+- [ ] `thagc` chỉ giữ: `thagc build`, `thagc run` (compile file đơn), `thagc check`, `thagc fmt`
+- [ ] `drago build/run/test` gọi `thagc` ngầm — user dùng drago cho mọi thứ
+- [x] `thagc build` khi thấy `drago.toml` trong cwd → tự delegate sang `drago build`
+
+### Package cache unification
+- [ ] `~/.thagore/packages/` — chỉ drago quản lý, thagc không đọc/ghi trực tiếp
+- [ ] thagc nhận package paths từ drago qua CLI args hoặc manifest
+- [ ] `drago` resolve dependencies → pass `--include-path` cho `thagc`
+
+### Registry unification
+- [ ] `thagore-lang/registry` — drago là client duy nhất tương tác với registry
+- [ ] `thagc` không biết registry tồn tại — nó chỉ compile files được đưa cho
+
+### Installer unification
+- [ ] `thagup-init.sh` cài cả `thagc` + `drago` — user dùng `drago` ngay từ đầu
+- [ ] First-run experience: `drago new myapp && cd myapp && drago run`
+- [ ] Không ai cần biết `thagc` tồn tại trừ khi compile file lẻ
+
+### Gate
+- [ ] `thagore.toml` không còn được reference trong bất kỳ code/doc nào
+- [ ] `thagc install` / `thagc update` bị xóa hoàn toàn
+- [ ] `drago build` → `drago run` → `drago test` hoạt động end-to-end với `drago.toml`
+- [ ] Mọi documentation hướng dẫn dùng `drago`, không phải `thagc`
 
 ---
 
@@ -506,6 +563,7 @@ Execution order (re-anchored to dependency reality):
 | v1.0 | Deploy baseline | ✅ Released |
 | v1.1 | Concurrency GA | ✅ Released |
 | v1.2 | IO stack GA | 🔲 Planned |
+| v1.2b | Drago–Thagc unification | 🔲 Planned |
 | v1.3 | Performance lockdown | 🔲 Planned |
 | v1.4 | Platform hardening + DX | 🔲 Planned |
 | v1.5 | **Stable release** | 🔲 Planned |

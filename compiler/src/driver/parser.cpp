@@ -42,6 +42,7 @@ static CommandKind parse_kind(const std::string& cmd) {
   if (cmd == "install") return CommandKind::Install;
   if (cmd == "target") return CommandKind::Target;
   if (cmd == "update") return CommandKind::Update;
+  if (cmd == "migrate") return CommandKind::Migrate;
   if (cmd == "flow") return CommandKind::Flow;
   return CommandKind::Unknown;
 }

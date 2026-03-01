@@ -17,6 +17,7 @@ enum class CommandKind {
   Install,
   Target,
   Update,
+  Migrate,
   Flow,
   Unknown,
 };

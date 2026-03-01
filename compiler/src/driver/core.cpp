@@ -35,6 +35,8 @@ int CommandRouter::run(int argc, char** argv) const {
       return driver::handle_target(cmd);
     case driver::CommandKind::Update:
       return driver::handle_update(cmd);
+    case driver::CommandKind::Migrate:
+      return driver::handle_migrate(cmd);
     case driver::CommandKind::Flow:
       return driver::handle_flow(cmd, pipeline, diag);
     case driver::CommandKind::Unknown:

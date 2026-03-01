@@ -251,6 +251,60 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             args_text = log.read_text()
             self.assertIn("--target=aarch64-unknown-linux-gnu", args_text)
 
+    def test_migrate_converts_legacy_manifest_and_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "thagore.toml").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+                "\n"
+                "[dependencies]\n"
+                "json = \"1.2.0\"\n"
+            )
+            (root / "thagore.lock").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+            )
+
+            migrate = self._run(root, "migrate")
+            self.assertEqual(migrate.returncode, 0, msg=migrate.stderr)
+            self.assertTrue((root / "drago.toml").exists())
+            self.assertTrue((root / "drago.lock").exists())
+            self.assertIn("migrate: wrote", migrate.stdout)
+
+    def test_build_delegates_to_drago_when_project_has_drago_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "drago.toml").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+            )
+            marker = root / "drago-build.log"
+            if os.name == "nt":
+                drago = root / "drago.bat"
+                drago.write_text(
+                    "@echo off\n"
+                    "echo %* > " + str(marker) + "\n"
+                    "exit /b 0\n"
+                )
+            else:
+                drago = root / "drago"
+                drago.write_text(
+                    "#!/usr/bin/env bash\n"
+                    "set -euo pipefail\n"
+                    "printf '%s\\n' \"$*\" > " + "'" + str(marker) + "'\n"
+                )
+                drago.chmod(0o755)
+
+            env = {"PATH": str(root) + os.pathsep + os.environ.get("PATH", "")}
+            build = self._run(root, "build", extra_env=env)
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            self.assertTrue(marker.exists())
+            self.assertIn("build", marker.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

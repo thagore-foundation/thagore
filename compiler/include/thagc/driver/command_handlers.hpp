@@ -18,6 +18,7 @@ int handle_state(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
 int handle_install(const ParsedCommand& cmd);
 int handle_target(const ParsedCommand& cmd);
 int handle_update(const ParsedCommand& cmd);
+int handle_migrate(const ParsedCommand& cmd);
 int handle_flow(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
 int handle_unknown();
 

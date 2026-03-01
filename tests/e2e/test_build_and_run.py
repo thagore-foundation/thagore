@@ -258,7 +258,7 @@ class BuildAndRunE2ETests(unittest.TestCase):
                 "pub func inc(x):\n"
                 "  return x + 1\n"
             )
-            (root / "deps" / "mathpkg" / "thagore.toml").write_text(
+            (root / "deps" / "mathpkg" / "drago.toml").write_text(
                 "[package]\n"
                 "name = \"mathpkg\"\n"
                 "version = \"0.1.0\"\n"
@@ -267,7 +267,7 @@ class BuildAndRunE2ETests(unittest.TestCase):
                 "pub func pkg_double(v):\n"
                 "  return v * 2\n"
             )
-            (root / "thagore.toml").write_text(
+            (root / "drago.toml").write_text(
                 "[package]\n"
                 "name = \"demo\"\n"
                 "version = \"0.1.0\"\n"
@@ -284,14 +284,6 @@ class BuildAndRunE2ETests(unittest.TestCase):
                 "func main():\n"
                 "  return c.inc(mathpkg.pkg_double(4))\n"
             )
-            install = subprocess.run(
-                [str(self.bin), "install"],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(install.returncode, 0, msg=install.stderr)
             build = subprocess.run(
                 [str(self.bin), "build", str(src), "-o", str(out)],
                 cwd=root,
@@ -344,20 +336,6 @@ class BuildAndRunE2ETests(unittest.TestCase):
     def test_build_and_run_stdlib_io_alpha_gate(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "std").mkdir(parents=True, exist_ok=True)
-            (root / "lib").mkdir(parents=True, exist_ok=True)
-
-            repo_root = Path(__file__).resolve().parents[2]
-            for rel in [
-                "stdlib/std/string.tg",
-                "stdlib/lib/fs.tg",
-                "stdlib/lib/process.tg",
-                "stdlib/lib/toml.tg",
-            ]:
-                src = repo_root / rel
-                dst = root / Path(rel).relative_to("stdlib")
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
 
             src = root / "main.tg"
             out = root / "main.bin"

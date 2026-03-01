@@ -12,6 +12,9 @@ namespace thagc::driver {
 struct ProjectManifest {
   bool found = false;
   std::string root_path;
+  std::string manifest_path;
+  std::string manifest_name;
+  std::string lock_name;
   std::string package_name;
   std::string package_version;
   std::unordered_map<std::string, std::string> dependencies;

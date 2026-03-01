@@ -1,11 +1,13 @@
 #include "thagc/driver/command_handlers.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 #include <regex>
 
 #include "thagc/driver/common.hpp"
 #include "thagc/driver/pipeline.hpp"
+#include "thagc/shared/process.hpp"
 
 namespace thagc::driver {
 
@@ -41,6 +43,16 @@ static void print_diagnostics(const ParsedCommand& cmd, const support::Diagnosti
 
 int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag) {
   if (cmd.input_path.empty()) {
+    std::error_code ec;
+    const bool has_drago_manifest = std::filesystem::exists("drago.toml", ec) && !ec;
+    if (has_drago_manifest) {
+      const int rc = support::run_process({"drago", "build"});
+      if (rc != 0) {
+        std::cerr << "ERROR: delegated drago build failed with exit code " << rc << "\n";
+        return 1;
+      }
+      return 0;
+    }
     std::cerr << "ERROR: missing input path for build\n";
     return 1;
   }

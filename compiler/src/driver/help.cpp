@@ -60,7 +60,8 @@ int handle_help() {
   std::cout << "  thagore target add <triple> [--cc=clang] [--cxx=clang++] [--linker=clang] [--sysroot=...]\n";
   std::cout << "  thagore target doctor [triple] | target show <triple>\n";
   std::cout << "  thagore update check | update apply [--yes] [--dry-run] | update rollback [--yes]\n";
-  std::cout << "  thagore fix|intent|state|install|target|update|flow ...\n";
+  std::cout << "  thagore migrate [--force]  # convert thagore.toml -> drago.toml\n";
+  std::cout << "  thagore fix|intent|state|install|target|update|migrate|flow ...\n";
   return 0;
 }
 

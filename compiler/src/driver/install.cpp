@@ -138,10 +138,14 @@ static std::filesystem::path resolve_dependency_source_path(const std::string& v
 }
 
 static std::string read_package_name(const std::filesystem::path& package_dir) {
-  const std::filesystem::path manifest = package_dir / "thagore.toml";
+  std::filesystem::path manifest = package_dir / "drago.toml";
   std::error_code ec;
   if (!std::filesystem::exists(manifest, ec) || ec) {
-    return package_dir.filename().string();
+    ec.clear();
+    manifest = package_dir / "thagore.toml";
+    if (!std::filesystem::exists(manifest, ec) || ec) {
+      return package_dir.filename().string();
+    }
   }
   std::string content;
   try {
@@ -297,6 +301,8 @@ int handle_install(const ParsedCommand& cmd) {
     return 0;
   }
 
+  std::cerr << "WARN: thagc install is legacy; prefer `drago add` / `drago install` for dependency management\n";
+
   ModuleResolver resolver;
   ProjectManifest manifest;
   support::DiagnosticSink diag;
@@ -308,7 +314,7 @@ int handle_install(const ParsedCommand& cmd) {
 
   if (cmd.args.empty()) {
     if (!manifest.found) {
-      std::cerr << "ERROR: thagore.toml not found; cannot install dependencies\n";
+      std::cerr << "ERROR: drago.toml/thagore.toml not found; cannot install dependencies\n";
       return 1;
     }
     std::vector<std::string> deps;
@@ -350,13 +356,13 @@ int handle_install(const ParsedCommand& cmd) {
   }
 
   if (!manifest.found) {
-    std::cerr << "ERROR: thagore.toml not found; cannot resolve package '" << package_arg << "'\n";
+    std::cerr << "ERROR: drago.toml/thagore.toml not found; cannot resolve package '" << package_arg << "'\n";
     return 1;
   }
   auto dep = manifest.dependencies.find(package_arg);
   if (dep == manifest.dependencies.end()) {
-    std::cerr << "ERROR: package `" << package_arg << "` not found in dependencies, run: thagc install " << package_arg
-              << "\n";
+    std::cerr << "ERROR: package `" << package_arg
+              << "` not found in dependencies, use drago add " << package_arg << " or drago install\n";
     return 1;
   }
   if (!install_from_dependency(package_arg, dep->second, manifest.root_path)) {

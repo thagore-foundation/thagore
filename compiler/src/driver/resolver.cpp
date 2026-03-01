@@ -5,14 +5,19 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
+#include "thagc/driver/embedded_stdlib.hpp"
 #include "thagc/shared/filesystem.hpp"
 
 namespace thagc::driver {
 
 namespace {
+
+static constexpr const char* kPrimaryManifestName = "drago.toml";
+static constexpr const char* kLegacyManifestName = "thagore.toml";
 
 static std::string trim_copy(const std::string& text) {
   std::size_t left = 0;
@@ -28,6 +33,10 @@ static std::string trim_copy(const std::string& text) {
 
 static bool starts_with(const std::string& text, const std::string& prefix) {
   return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+}
+
+static std::vector<std::string> manifest_candidates() {
+  return {kPrimaryManifestName, kLegacyManifestName};
 }
 
 static std::string strip_inline_comment(const std::string& line) {
@@ -78,9 +87,13 @@ static std::filesystem::path discover_project_root(const std::string& start_path
   if (current.empty()) {
     current = std::filesystem::current_path();
   }
+  const std::vector<std::string> manifests = manifest_candidates();
   for (;;) {
-    if (std::filesystem::exists(current / "thagore.toml", ec) && !ec) {
-      return current;
+    for (const auto& manifest : manifests) {
+      if (std::filesystem::exists(current / manifest, ec) && !ec) {
+        return current;
+      }
+      ec.clear();
     }
     if (current == current.root_path()) {
       break;
@@ -98,13 +111,13 @@ static std::filesystem::path discover_project_root(const std::string& start_path
   return fallback;
 }
 
-static bool parse_manifest_file(const std::filesystem::path& manifest_path, ProjectManifest& out,
-                                support::DiagnosticSink& diag) {
+static bool parse_manifest_file(const std::filesystem::path& manifest_path, const std::string& manifest_name,
+                                ProjectManifest& out, support::DiagnosticSink& diag) {
   std::string data;
   try {
     data = support::read_text_file(manifest_path.string());
   } catch (const std::exception& ex) {
-    diag.error("E_MOD_100", "cannot read thagore.toml: " + std::string(ex.what()));
+    diag.error("E_MOD_100", "cannot read " + manifest_name + ": " + std::string(ex.what()));
     return false;
   }
 
@@ -145,7 +158,7 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, Proj
     std::string value;
     if (!parse_key_value(line, key, value)) {
       diag.error("E_MOD_101",
-                 "invalid thagore.toml line " + std::to_string(line_no) + ": expected key=value");
+                 "invalid " + manifest_name + " line " + std::to_string(line_no) + ": expected key=value");
       return false;
     }
     if (section == Section::Package) {
@@ -163,7 +176,7 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, Proj
   }
 
   if (out.package_name.empty() || out.package_version.empty()) {
-    diag.error("E_MOD_102", "thagore.toml requires [package] name and version");
+    diag.error("E_MOD_102", manifest_name + " requires [package] name and version");
     return false;
   }
   return true;
@@ -189,6 +202,112 @@ static std::filesystem::path home_directory_path() {
   return std::filesystem::current_path();
 }
 
+static std::filesystem::path thagore_home_path() {
+  const char* explicit_home = std::getenv("THAGORE_HOME");
+  if (explicit_home != nullptr && *explicit_home != '\0') {
+    return std::filesystem::path(explicit_home);
+  }
+  return home_directory_path() / ".thagore";
+}
+
+static bool ensure_writable_directory(const std::filesystem::path& dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    return false;
+  }
+  const std::filesystem::path probe = dir / ".write-test";
+  {
+    std::ofstream out(probe, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+      return false;
+    }
+    out << "ok";
+    if (!out.good()) {
+      return false;
+    }
+  }
+  std::filesystem::remove(probe, ec);
+  return true;
+}
+
+static bool ensure_parent_dir(const std::filesystem::path& file_path) {
+  std::error_code ec;
+  const std::filesystem::path parent = file_path.parent_path();
+  if (parent.empty()) {
+    return true;
+  }
+  std::filesystem::create_directories(parent, ec);
+  return !ec;
+}
+
+static bool write_embedded_stdlib_file(const std::filesystem::path& target, const EmbeddedStdlibFile& source) {
+  if (!ensure_parent_dir(target)) {
+    return false;
+  }
+  std::ofstream out(target, std::ios::binary | std::ios::trunc);
+  if (!out.is_open()) {
+    return false;
+  }
+  out.write(reinterpret_cast<const char*>(source.data), static_cast<std::streamsize>(source.size));
+  out.flush();
+  return out.good();
+}
+
+static std::filesystem::path embedded_stdlib_root() {
+  std::error_code ec;
+  std::filesystem::path temp_root = std::filesystem::temp_directory_path(ec);
+  if (ec) {
+    temp_root = std::filesystem::current_path();
+  }
+  const std::vector<std::filesystem::path> candidates = {
+      thagore_home_path() / "stdlib-embedded",
+      std::filesystem::current_path() / ".thagore" / "stdlib-embedded",
+      temp_root / "thagore" / "stdlib-embedded",
+  };
+  for (const auto& candidate : candidates) {
+    if (ensure_writable_directory(candidate)) {
+      return candidate;
+    }
+  }
+  return {};
+}
+
+static std::filesystem::path materialize_embedded_stdlib_module(const std::string& rel) {
+  const std::filesystem::path cache_root = embedded_stdlib_root();
+  if (cache_root.empty()) {
+    return {};
+  }
+  std::error_code ec;
+  std::filesystem::create_directories(cache_root, ec);
+  if (ec) {
+    return {};
+  }
+
+  for (unsigned int i = 0; i < kEmbeddedStdlibFileCount; ++i) {
+    const EmbeddedStdlibFile& item = kEmbeddedStdlibFiles[i];
+    if (rel != item.relative_path) {
+      continue;
+    }
+    const std::filesystem::path target = cache_root / item.relative_path;
+    bool need_write = true;
+    const bool exists = std::filesystem::exists(target, ec) && !ec;
+    ec.clear();
+    if (exists) {
+      const std::uintmax_t size = std::filesystem::file_size(target, ec);
+      if (!ec && size == static_cast<std::uintmax_t>(item.size)) {
+        need_write = false;
+      }
+      ec.clear();
+    }
+    if (need_write && !write_embedded_stdlib_file(target, item)) {
+      return {};
+    }
+    return canonical_or_absolute(target);
+  }
+  return {};
+}
+
 static std::filesystem::path resolve_dependency_source(const std::string& value, const std::string& project_root) {
   std::string path = trim_copy(value);
   if (starts_with(path, "path:")) {
@@ -208,6 +327,34 @@ static std::filesystem::path resolve_dependency_source(const std::string& value,
     return canonical_or_absolute(candidate);
   }
   return {};
+}
+
+static std::filesystem::path resolve_stdlib_from_env(const std::string& rel) {
+  const char* base = std::getenv("THAG_STDLIB_PATH");
+  if (base == nullptr || *base == '\0') {
+    return {};
+  }
+  const std::filesystem::path candidate = std::filesystem::path(base) / rel;
+  std::error_code ec;
+  if (std::filesystem::exists(candidate, ec) && !ec) {
+    return canonical_or_absolute(candidate);
+  }
+  return {};
+}
+
+static std::filesystem::path resolve_stdlib_import(const std::filesystem::path& project_root, const std::string& rel) {
+  std::error_code ec;
+  const std::filesystem::path project_candidate = project_root / rel;
+  if (std::filesystem::exists(project_candidate, ec) && !ec) {
+    return canonical_or_absolute(project_candidate);
+  }
+  ec.clear();
+
+  const std::filesystem::path embedded = materialize_embedded_stdlib_module(rel);
+  if (!embedded.empty()) {
+    return embedded;
+  }
+  return resolve_stdlib_from_env(rel);
 }
 
 static std::filesystem::path locate_package_entry(const std::filesystem::path& package_root, const std::string& package_name) {
@@ -242,14 +389,30 @@ bool ModuleResolver::load_project_manifest(const std::string& start_path, Projec
   out = ProjectManifest{};
   const std::filesystem::path root = discover_project_root(start_path);
   out.root_path = root.string();
-  const std::filesystem::path manifest_path = root / "thagore.toml";
   std::error_code ec;
-  if (!std::filesystem::exists(manifest_path, ec) || ec) {
+
+  std::filesystem::path selected_manifest;
+  for (const auto& name : manifest_candidates()) {
+    const std::filesystem::path candidate = root / name;
+    if (std::filesystem::exists(candidate, ec) && !ec) {
+      selected_manifest = candidate;
+      out.manifest_name = name;
+      break;
+    }
+    ec.clear();
+  }
+
+  if (selected_manifest.empty()) {
     out.found = false;
+    out.manifest_name = kPrimaryManifestName;
+    out.lock_name = "drago.lock";
     return true;
   }
+
   out.found = true;
-  return parse_manifest_file(manifest_path, out, diag);
+  out.manifest_path = selected_manifest.string();
+  out.lock_name = out.manifest_name == kPrimaryManifestName ? "drago.lock" : "thagore.lock";
+  return parse_manifest_file(selected_manifest, out.manifest_name, out, diag);
 }
 
 bool ModuleResolver::write_lock_file(const ProjectManifest& manifest, support::DiagnosticSink& diag) const {
@@ -277,9 +440,11 @@ bool ModuleResolver::write_lock_file(const ProjectManifest& manifest, support::D
     content += name + " = \"" + it->second + "\"\n";
   }
   try {
-    support::write_text_file((std::filesystem::path(manifest.root_path) / "thagore.lock").string(), content);
+    const std::string lock_name = manifest.lock_name.empty() ? "drago.lock" : manifest.lock_name;
+    support::write_text_file((std::filesystem::path(manifest.root_path) / lock_name).string(), content);
   } catch (const std::exception& ex) {
-    diag.error("E_MOD_103", "cannot write thagore.lock: " + std::string(ex.what()));
+    const std::string lock_name = manifest.lock_name.empty() ? "drago.lock" : manifest.lock_name;
+    diag.error("E_MOD_103", "cannot write " + lock_name + ": " + std::string(ex.what()));
     return false;
   }
   return true;
@@ -299,6 +464,18 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
   const std::string first = import_decl.module_path.front();
   const std::filesystem::path root = manifest.root_path.empty() ? std::filesystem::current_path()
                                                                  : std::filesystem::path(manifest.root_path);
+  const std::string rel = module_relpath(import_decl);
+
+  if (first == "std" || first == "lib") {
+    const std::filesystem::path stdlib_path = resolve_stdlib_import(root, rel);
+    if (!stdlib_path.empty()) {
+      out.is_package = false;
+      out.absolute_path = stdlib_path.string();
+      out.module_key = out.absolute_path;
+      out.display_name = rel;
+      return true;
+    }
+  }
 
   if (single_segment) {
     auto dep = manifest.dependencies.find(first);
@@ -328,7 +505,6 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
     }
   }
 
-  const std::string rel = module_relpath(import_decl);
   const std::filesystem::path file_path = root / rel;
   std::error_code ec;
   if (std::filesystem::exists(file_path, ec) && !ec) {
@@ -341,7 +517,8 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
   }
 
   if (single_segment) {
-    diag.error("E_MOD_107", "package `" + first + "` not found in dependencies, run: thagc install " + first);
+    diag.error("E_MOD_107",
+               "package `" + first + "` not found in dependencies, use drago add " + first + " or drago install");
     return false;
   }
   diag.error("E_MOD_108", "module `" + rel + "` not found");
