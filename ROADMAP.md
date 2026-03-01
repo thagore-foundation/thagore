@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
-Current effective milestone by code audit (March 1, 2026): `v1.2` (IO Stack GA, released).
-Status note: `v0.6` → `v1.2` gates pass on the active release lane; `v1.2` closes runtime IO GA with retry/backoff + stdlib `json/env/fs/crypto` and CI parity lanes across Linux/macOS/Windows.
+Current effective milestone by code audit (March 1, 2026): `v1.0` (Deploy Baseline, released).
+Status note: `v0.6` → `v1.0` gates pass on the active release lane; `v1.0.0` release train ships multi-platform Thagore core archives + multi-platform Drago bundles with installer/updater integration.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -24,7 +24,7 @@ Active implementation policy: finish one milestone completely before starting th
 | Tooling | ~75% | Policy, packaging, compare tools hiện có |
 | CI / Release | ~55% | Linux/macOS tốt hơn, Windows build gate chưa ổn định |
 
-**Overall: compiler + runtime gates through `v1.2` are closed on the active lane (import pipeline, language completeness, structured concurrency, memory model checks, runtime IO GA contracts + stdlib IO helpers).**
+**Overall: compiler + runtime gates through `v0.9` pass on Linux (import pipeline, language completeness, structured concurrency, memory model checks, stdlib/runtime IO alpha lane).**
 
 Execution order (re-anchored to dependency reality):
 1. Close `v0.2` gate (compiler foundation)
@@ -328,7 +328,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Runtime & Stdlib
 - [x] HTTP/WebSocket/DB production-ready với retry/backoff
-- [x] Multi-OS IO parity — Linux/macOS/Windows
+- [ ] Multi-OS IO parity — Linux/macOS/Windows
 - [x] IO failure handling runbook
 
 ### Stdlib Expansion
@@ -338,7 +338,7 @@ Execution order (re-anchored to dependency reality):
 - [x] `lib/crypto.tg` — hash, HMAC cơ bản (FFI vào libcrypto)
 
 ### Gate
-- [x] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI (`tests/integration/test_io_stack_ga.py` + CI matrix `ubuntu-latest/macos-latest/windows-latest`)
+- [ ] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI
 
 ---
 
@@ -505,7 +505,7 @@ Execution order (re-anchored to dependency reality):
 | v0.9 | IO stack alpha | ✅ Released |
 | v1.0 | Deploy baseline | ✅ Released |
 | v1.1 | Concurrency GA | ✅ Released |
-| v1.2 | IO stack GA | ✅ Released |
+| v1.2 | IO stack GA | 🔲 Planned |
 | v1.3 | Performance lockdown | 🔲 Planned |
 | v1.4 | Platform hardening + DX | 🔲 Planned |
 | v1.5 | **Stable release** | 🔲 Planned |
