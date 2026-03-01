@@ -74,6 +74,21 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             self.assertEqual(version.returncode, 0, msg=version.stderr)
             self.assertIn("thagore v9.9.9", version.stdout)
 
+    def test_update_apply_ignores_stale_global_state_without_managed_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            home = root / ".thagore-home"
+            home.mkdir(parents=True, exist_ok=True)
+            (home / "current-version.txt").write_text("v0.8.2\n")
+
+            apply = self._run(root, "update", "apply", "v9.9.9", "--yes")
+            self.assertEqual(apply.returncode, 0, msg=apply.stderr)
+            self.assertIn("updated version state", apply.stdout)
+
+            version = self._run(root, "--version")
+            self.assertEqual(version.returncode, 0, msg=version.stderr)
+            self.assertIn("thagore v9.9.9", version.stdout)
+
     def test_update_apply_runs_installer_when_managed_toolchain_present(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

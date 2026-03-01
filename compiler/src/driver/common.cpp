@@ -60,6 +60,30 @@ std::string toolchain_home_dir() {
   return fallback.string();
 }
 
+bool has_installed_toolchain(const std::string& home) {
+  std::filesystem::path toolchain_bin =
+      std::filesystem::path(home) / "toolchains" / "stable" / "bin"
+#if defined(_WIN32)
+      / "thagc.exe";
+#else
+      / "thagc";
+#endif
+  std::error_code ec;
+  return std::filesystem::exists(toolchain_bin, ec) && !ec;
+}
+
+std::string resolve_update_state_home(bool* has_installed) {
+  const std::string global_home = toolchain_home_dir();
+  const bool installed = has_installed_toolchain(global_home);
+  if (has_installed != nullptr) {
+    *has_installed = installed;
+  }
+  if (installed) {
+    return global_home;
+  }
+  return compiler_home_dir();
+}
+
 std::vector<std::string> compose_link_extra_args(const ParsedCommand& cmd) {
   std::vector<std::string> args;
   args.reserve(cmd.link_dirs.size() + cmd.link_libs.size() + cmd.link_args.size());

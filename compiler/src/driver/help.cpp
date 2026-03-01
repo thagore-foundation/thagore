@@ -24,17 +24,20 @@ static std::string trim_copy(const std::string& text) {
 }
 
 static std::string display_compiler_version() {
-  const std::string global_version_file = (std::filesystem::path(toolchain_home_dir()) / "current-version.txt").string();
-  if (support::file_exists(global_version_file)) {
-    const std::string current = trim_copy(support::read_text_file(global_version_file));
+  bool has_installed = false;
+  const std::string primary_home = resolve_update_state_home(&has_installed);
+  const std::string fallback_home = has_installed ? compiler_home_dir() : toolchain_home_dir();
+  const std::string primary_version_file = (std::filesystem::path(primary_home) / "current-version.txt").string();
+  if (support::file_exists(primary_version_file)) {
+    const std::string current = trim_copy(support::read_text_file(primary_version_file));
     if (!current.empty()) {
       return current;
     }
   }
 
-  const std::string local_version_file = (std::filesystem::current_path() / ".thagc" / "current-version.txt").string();
-  if (support::file_exists(local_version_file)) {
-    const std::string current = trim_copy(support::read_text_file(local_version_file));
+  const std::string fallback_version_file = (std::filesystem::path(fallback_home) / "current-version.txt").string();
+  if (support::file_exists(fallback_version_file)) {
+    const std::string current = trim_copy(support::read_text_file(fallback_version_file));
     if (!current.empty()) {
       return current;
     }

@@ -96,31 +96,6 @@ static std::string fetch_latest_tag() {
   return parse_latest_tag(payload);
 }
 
-static std::string compiler_binary_name() {
-#if defined(_WIN32)
-  return "thagc.exe";
-#else
-  return "thagc";
-#endif
-}
-
-static std::string resolve_update_home(bool* has_installed_toolchain) {
-  const std::string global_home = toolchain_home_dir();
-  const std::filesystem::path toolchain_bin =
-      std::filesystem::path(global_home) / "toolchains" / "stable" / "bin" / compiler_binary_name();
-  std::error_code ec;
-  if (std::filesystem::exists(toolchain_bin, ec) && !ec) {
-    if (has_installed_toolchain != nullptr) {
-      *has_installed_toolchain = true;
-    }
-    return global_home;
-  }
-  if (has_installed_toolchain != nullptr) {
-    *has_installed_toolchain = false;
-  }
-  return compiler_home_dir();
-}
-
 static bool download_installer_script(const std::vector<std::string>& urls, const std::string& out_path) {
   for (const std::string& url : urls) {
     if (url.empty()) {
@@ -206,7 +181,7 @@ int handle_update(const ParsedCommand& cmd) {
     return 1;
   }
   bool has_installed_toolchain = false;
-  const std::string home = resolve_update_home(&has_installed_toolchain);
+  const std::string home = resolve_update_state_home(&has_installed_toolchain);
   const std::string current_file = home + "/current-version.txt";
   const std::string latest_file = home + "/latest-version.txt";
   const std::string rollback_file = home + "/rollback-version.txt";
