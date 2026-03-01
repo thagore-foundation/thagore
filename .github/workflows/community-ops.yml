@@ -1,0 +1,73 @@
+name: Community Ops
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag for announcement"
+        required: false
+        type: string
+
+jobs:
+  announce-and-record:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      discussions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+            URL="${{ github.event.release.html_url }}"
+          else
+            TAG="${{ inputs.release_tag }}"
+            if [[ -z "${TAG}" ]]; then
+              TAG="manual-dispatch"
+            fi
+            URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Announce to Discord
+        if: secrets.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_URL: ${{ steps.meta.outputs.url }}
+        shell: bash
+        run: |
+          payload="$(cat <<JSON
+          {
+            "content": "📢 Thagore release ${RELEASE_TAG} is now live. ${RELEASE_URL}"
+          }
+          JSON
+          )"
+          curl -fsSL -X POST \
+            -H 'Content-Type: application/json' \
+            -d "${payload}" \
+            "${DISCORD_WEBHOOK_URL}"
+
+      - name: Open GitHub Discussion Announcement
+        if: secrets.GH_DISCUSSION_CATEGORY_ID != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_DISCUSSION_CATEGORY_ID: ${{ secrets.GH_DISCUSSION_CATEGORY_ID }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_URL: ${{ steps.meta.outputs.url }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          python3 tooling/community/create_release_discussion.py \
+            --repo "${REPO}" \
+            --category-id "${GH_DISCUSSION_CATEGORY_ID}" \
+            --title "Thagore ${RELEASE_TAG} released" \
+            --body "Release ${RELEASE_TAG} is published: ${RELEASE_URL}"

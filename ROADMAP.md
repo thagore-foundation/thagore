@@ -445,10 +445,10 @@ cho project management**, thagc chỉ là compiler backend thuần.
 - [x] Compile-time wrong-state-use prevention
 
 ### Community
-- [ ] Drago Registry public launch
-- [ ] Contributor guide hoàn chỉnh
-- [ ] Discord/GitHub Discussions active
-- [ ] First external contributor PR merged
+- [x] Drago Registry public launch
+- [x] Contributor guide hoàn chỉnh
+- [x] Discord/GitHub Discussions active
+- [x] First external contributor PR merged
 
 ### Gate
 - [x] Cross-compile + deploy stable trên cả 3 OS

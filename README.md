@@ -163,4 +163,8 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - Rewrite status: `docs/architecture/rewrite-status.md`
 - v1.5 roadmap: `docs/architecture/v1.5-roadmap.md`
 - New contributor map: `docs/contributor-guide/where-to-change.md`
+- Complete contributor guide: `docs/contributor-guide/complete.md`
 - v1.0 release runbook (Thagore + Drago): `docs/runbooks/v1-0-release-thagore-drago.md`
+- v1.4 migration/rollback playbook: `docs/runbooks/v1.4-migration-and-rollback.md`
+- v1.4 LSP VS Code runbook: `docs/runbooks/lsp-vscode-v1.4.md`
+- Community launch docs: `docs/community/registry-public-launch.md`
