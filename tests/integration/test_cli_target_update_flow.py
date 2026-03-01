@@ -95,7 +95,39 @@ class CliSurfaceV12bTests(unittest.TestCase):
             self.assertTrue(marker.exists())
             self.assertIn("build", marker.read_text())
 
+    def test_target_init_show_list_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            triple = "v15-test-triple"
+            init = self._run(root, "target", "init", triple)
+            self.assertEqual(init.returncode, 0, msg=init.stderr)
+            show = self._run(root, "target", "show", triple)
+            self.assertEqual(show.returncode, 0, msg=show.stderr)
+            self.assertIn(f"target: {triple}", show.stdout)
+            listed = self._run(root, "target", "list")
+            self.assertEqual(listed.returncode, 0, msg=listed.stderr)
+            self.assertIn(triple, listed.stdout)
+
+    def test_state_explain_json_reports_typestate_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "state_fail.tg"
+            src.write_text(
+                "state Session: Init | Ready\n"
+                "type Session = i32\n"
+                "\n"
+                "func need_ready(s: Session[Ready]) -> i32:\n"
+                "  return 0\n"
+                "\n"
+                "func main():\n"
+                "  let s = 1\n"
+                "  return need_ready(s)\n"
+            )
+            explain = self._run(root, "state", "explain", str(src), "--json")
+            self.assertNotEqual(explain.returncode, 0)
+            self.assertIn("\"findings\":", explain.stdout)
+            self.assertIn("E_STATE_", explain.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
-

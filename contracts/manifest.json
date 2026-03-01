@@ -9,7 +9,13 @@
     "build",
     "run",
     "check",
-    "fmt"
+    "fmt",
+    "fix",
+    "repl",
+    "lsp",
+    "target",
+    "state",
+    "migrate"
   ],
   "v15_contracts": {
     "concurrency": "contracts/concurrency/structured_concurrency.yaml",

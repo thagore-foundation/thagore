@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v1.5`: `docs/architecture/v1.5-roadmap.md`.
-Current release cut: `v1.1.0` (Structured Concurrency GA).
+Current release cut: `v1.5.0` (Stable Release).
 
 ## Frontend
 
@@ -28,6 +28,11 @@ Current release cut: `v1.1.0` (Structured Concurrency GA).
 - run: implemented (milestone quality)
 - check: implemented (parse/type/lowering/codegen validation without final link)
 - fmt: implemented (source normalization lane)
+- fix: implemented (safe autofix lane for common syntax issues)
+- repl: implemented (interactive execution lane)
+- lsp: implemented (`--stdio` MVP for completion/definition)
+- target: implemented (target init/list/show)
+- state: implemented (typestate explain/doctor)
 - migrate: implemented (legacy manifest/lock to drago format)
 
 ## Quality gates
@@ -37,4 +42,4 @@ Current release cut: `v1.1.0` (Structured Concurrency GA).
 - E2E parity: implemented
 - Deterministic gate: implemented
 - Soak gate: implemented
-- 3-OS matrix release gate: in progress
+- 3-OS matrix release gate: implemented

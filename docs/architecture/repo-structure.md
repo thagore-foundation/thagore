@@ -11,6 +11,7 @@ This document maps responsibilities to folders so contributors can navigate quic
 - `tooling/`: extraction, comparison, packaging, and policy scripts.
 - `tests/`: unit/integration/e2e/parity/soak lanes.
 - `docs/`: architecture, contributor guides, ADRs, and runbooks.
+- `examples/`: reference app templates (CLI, REST API, bot, algorithm visualizer).
 
 ## Compiler pipeline map
 
@@ -25,4 +26,3 @@ This document maps responsibilities to folders so contributors can navigate quic
 - Domain -> Application -> Infrastructure (inward dependencies only).
 - No circular imports/includes between modules.
 - Backend-specific concerns must not leak into frontend/middleend domain models.
-

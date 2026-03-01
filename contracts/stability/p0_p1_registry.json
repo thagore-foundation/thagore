@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "owner": "release-stability",
+  "scope": [
+    "concurrency",
+    "memory",
+    "io",
+    "deploy"
+  ],
+  "issues": []
+}

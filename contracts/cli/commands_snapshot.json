@@ -4,7 +4,13 @@
     "build",
     "run",
     "check",
-    "fmt"
+    "fmt",
+    "fix",
+    "repl",
+    "lsp",
+    "target",
+    "state",
+    "migrate"
   ],
-  "notes": "Generated and frozen for parity 1:1 migration."
+  "notes": "Expanded in v1.5 to stable CLI command groups."
 }

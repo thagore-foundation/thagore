@@ -15,6 +15,8 @@ enum class CommandKind {
   Fix,
   Repl,
   Lsp,
+  Target,
+  State,
   Migrate,
   Unknown,
 };

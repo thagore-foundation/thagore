@@ -9,6 +9,16 @@
     "--target",
     "--emit-llvm"
   ],
-  "notes": "Will be expanded by automated extraction in future parity iterations."
+  "target_flags": [
+    "list",
+    "show",
+    "init"
+  ],
+  "state_flags": [
+    "explain",
+    "doctor",
+    "--json",
+    "--out"
+  ],
+  "notes": "Expanded in v1.5 to cover stable CLI command groups."
 }
-

@@ -73,6 +73,7 @@ contracts/
 tooling/
 tests/
 docs/
+examples/
 .github/workflows/
 ```
 
@@ -148,6 +149,8 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - `Policy`: baseline contract and architecture boundary checks.
 - `Selfhost Readiness`: deterministic gate entry.
 - `Release`: packaging, GitHub release publish, and installer sync.
+- `Cross Platform Smoke`: deploy smoke lane on Linux/macOS/Windows.
+- `Community Ops`: release announcement flow for Discord/GitHub Discussions.
 
 ## Versioning and Commits
 
@@ -168,3 +171,10 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.4 migration/rollback playbook: `docs/runbooks/v1.4-migration-and-rollback.md`
 - v1.4 LSP VS Code runbook: `docs/runbooks/lsp-vscode-v1.4.md`
 - Community launch docs: `docs/community/registry-public-launch.md`
+- v1.5 language reference: `docs/reference/language-reference-v1.5.md`
+- v1.5 stdlib reference: `docs/reference/stdlib-reference-v1.5.md`
+- v1.5 CLI groups: `docs/reference/cli-command-groups-v1.5.md`
+- v1.5 tutorial series: `docs/tutorials/`
+- v1.5 Vietnamese guide: `docs/vi/huong-dan-v1.5.md`
+- v1.5 release checklist: `docs/release/v1.5-stable-checklist.md`
+- v1.5 examples: `examples/`

@@ -28,6 +28,8 @@ static CommandKind parse_kind(const std::string& cmd) {
   if (cmd == "fix") return CommandKind::Fix;
   if (cmd == "repl") return CommandKind::Repl;
   if (cmd == "lsp") return CommandKind::Lsp;
+  if (cmd == "target") return CommandKind::Target;
+  if (cmd == "state") return CommandKind::State;
   if (cmd == "migrate") return CommandKind::Migrate;
   return CommandKind::Unknown;
 }

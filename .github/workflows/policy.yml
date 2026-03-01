@@ -30,3 +30,8 @@ jobs:
 
       - name: Verify no legacy runtime link path
         run: python3 tooling/policy/check_no_legacy_runtime_link.py --root compiler
+
+      - name: Verify no open P0/P1 release issues
+        run: |
+          python3 tooling/policy/check_p0_p1_registry.py --registry contracts/concurrency/p0_p1_registry.json
+          python3 tooling/policy/check_p0_p1_registry.py --registry contracts/stability/p0_p1_registry.json

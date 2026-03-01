@@ -25,6 +25,8 @@ add_executable(thagc
   src/driver/fix.cpp
   src/driver/repl.cpp
   src/driver/lsp.cpp
+  src/driver/target.cpp
+  src/driver/state.cpp
   src/driver/migrate.cpp
   src/driver/common.cpp
   src/driver/resolver.cpp

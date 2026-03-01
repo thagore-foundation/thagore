@@ -460,26 +460,26 @@ cho project management**, thagc chỉ là compiler backend thuần.
 > *"Ready for production. Ready for beginners. Ready for Vietnam."*
 
 ### Final Hardening
-- [ ] Tất cả P0/P1 bugs closed
-- [ ] Concurrency, memory, IO, deploy UX đều hoàn chỉnh
-- [ ] 1:1 syntax/semantics parity với baseline contracts
-- [ ] Tất cả 10 CLI command groups đầy đủ và documented
-- [ ] Release gate: Linux + macOS + Windows deterministic ✓
+- [x] Tất cả P0/P1 bugs closed
+- [x] Concurrency, memory, IO, deploy UX đều hoàn chỉnh
+- [x] 1:1 syntax/semantics parity với baseline contracts
+- [x] Tất cả 10 CLI command groups đầy đủ và documented
+- [x] Release gate: Linux + macOS + Windows deterministic ✓
 
 ### Documentation Complete
-- [ ] Language reference đầy đủ
-- [ ] Standard library docs
-- [ ] Tutorial series: beginner → intermediate → advanced
-- [ ] "Build a bot in Thagore" tutorial cho người mới học
-- [ ] Vietnamese documentation
+- [x] Language reference đầy đủ
+- [x] Standard library docs
+- [x] Tutorial series: beginner → intermediate → advanced
+- [x] "Build a bot in Thagore" tutorial cho người mới học
+- [x] Vietnamese documentation
 
 ### Ecosystem
-- [ ] 20+ packages trên Drago Registry
-- [ ] Selfhost milestone — compiler tự compile một phần code của mình
-- [ ] Example projects: CLI tool, REST API, bot, algorithm visualizer
+- [x] 20+ packages trên Drago Registry
+- [x] Selfhost milestone — compiler tự compile một phần code của mình
+- [x] Example projects: CLI tool, REST API, bot, algorithm visualizer
 
 ### Gate
-- [ ] Một người không biết lập trình có thể follow tutorial và build bot trong 2 giờ
+- [x] Một người không biết lập trình có thể follow tutorial và build bot trong 2 giờ
 
 ---
 
@@ -562,11 +562,11 @@ cho project management**, thagc chỉ là compiler backend thuần.
 | v0.9 | IO stack alpha | ✅ Released |
 | v1.0 | Deploy baseline | ✅ Released |
 | v1.1 | Concurrency GA | ✅ Released |
-| v1.2 | IO stack GA | 🔲 Planned |
-| v1.2b | Drago–Thagc unification | 🔲 Planned |
-| v1.3 | Performance lockdown | 🔲 Planned |
-| v1.4 | Platform hardening + DX | 🔲 Planned |
-| v1.5 | **Stable release** | 🔲 Planned |
+| v1.2 | IO stack GA | ✅ Released |
+| v1.2b | Drago–Thagc unification | ✅ Released |
+| v1.3 | Performance lockdown | ✅ Released |
+| v1.4 | Platform hardening + DX | ✅ Released |
+| v1.5 | **Stable release** | ✅ Released |
 | v1.6 | Joy release (GUI, WASM) | 🔲 Planned |
 | v1.7 | AI & scale | 🔲 Planned |
 | v1.8 | **Stable & complete** | 🔲 Planned |
