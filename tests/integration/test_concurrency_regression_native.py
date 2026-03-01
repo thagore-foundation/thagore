@@ -166,6 +166,29 @@ class ConcurrencyRegressionNativeTests(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 0, msg=run.stderr)
 
+    def test_nursery_scope_enforces_child_lifetime(self) -> None:
+        run = self._compile_and_run(
+            "#include <atomic>\n"
+            "#include \"thag_runtime.h\"\n"
+            "static std::atomic<int> g_done{0};\n"
+            "static void worker(void*) {\n"
+            "  thag_sleep_ms(1);\n"
+            "  g_done.fetch_add(1);\n"
+            "}\n"
+            "int main() {\n"
+            "  thag_task_scope_t* nursery = thag_nursery_create();\n"
+            "  if (!nursery) return 60;\n"
+            "  for (int i = 0; i < 64; ++i) {\n"
+            "    if (!thag_task_scope_spawn(nursery, worker, nullptr)) return 61;\n"
+            "  }\n"
+            "  int ok = thag_task_scope_wait(nursery);\n"
+            "  thag_task_scope_destroy(nursery);\n"
+            "  if (!ok) return 62;\n"
+            "  return g_done.load() == 64 ? 0 : 63;\n"
+            "}\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
     def test_rc_rejected_across_task_boundary(self) -> None:
         if self.thagc is None:
             self.skipTest("thagc binary not found; set THAGC_BIN or build compiler first")

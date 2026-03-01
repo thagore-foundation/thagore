@@ -311,7 +311,7 @@ Execution order (re-anchored to dependency reality):
 ### Runtime
 - [x] Soak tests cho long-running scoped workloads (1h+) (`tests/soak/test_concurrency_long_running.py`, env-gated)
 - [x] Task tree diagnosis / tracing hooks
-- [ ] No open P0/P1 bugs cho scope/cancel/timeout/nursery
+- [x] No open P0/P1 bugs cho scope/cancel/timeout/nursery (`contracts/concurrency/p0_p1_registry.json` gate)
 - [x] Deadlock detection với helpful error message
 
 ### Language
@@ -319,7 +319,7 @@ Execution order (re-anchored to dependency reality):
 - [x] Flow compile-time validation — undo/retry semantics enforced
 
 ### Gate
-- [ ] No open P0/P1 concurrency bugs, soak tests stable
+- [x] No open P0/P1 concurrency bugs, soak tests stable
 
 ---
 
@@ -504,7 +504,7 @@ Execution order (re-anchored to dependency reality):
 | v0.8 | Memory model MVP | ✅ Released |
 | v0.9 | IO stack alpha | ✅ Released |
 | v1.0 | Deploy baseline | ✅ Released |
-| v1.1 | Concurrency GA | 🔲 Planned |
+| v1.1 | Concurrency GA | ✅ Released |
 | v1.2 | IO stack GA | 🔲 Planned |
 | v1.3 | Performance lockdown | 🔲 Planned |
 | v1.4 | Platform hardening + DX | 🔲 Planned |

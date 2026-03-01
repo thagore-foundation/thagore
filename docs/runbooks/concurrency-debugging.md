@@ -83,6 +83,9 @@ Usage patterns:
 - Attach a custom hook to aggregate/scrape traces during integration tests.
 - Call `thag_task_scope_dump_tree(scope)` before destroy for manual inspection.
 
+P0/P1 gate source of truth:
+- `contracts/concurrency/p0_p1_registry.json` must not contain open `P0`/`P1` issues.
+
 ## 7. Scheduler Tuning (for repro or stress)
 
 Environment variables:

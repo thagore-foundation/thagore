@@ -85,6 +85,7 @@ struct SchedulerState {
   std::vector<std::thread> workers;
   std::thread event_thread;
   std::atomic<bool> shutdown{false};
+  std::atomic<int> active_workers{0};
   std::size_t queue_limit = 8192;
   uint64_t starvation_boost_ms = 8;
   int event_loop_fd = -1;
@@ -314,13 +315,33 @@ static void scheduler_worker_loop(SchedulerState* scheduler) {
 
     thag_task_scope_t* previous_scope = g_current_scope;
     g_current_scope = task.scope;
+    scheduler->active_workers.fetch_add(1, std::memory_order_relaxed);
     const bool cancelled = task.scope != nullptr && (task.scope->cancelled.load() || scope_timed_out(task.scope));
     if (!cancelled && task.fn != nullptr) {
       task.fn(task.user_data);
     }
+    scheduler->active_workers.fetch_sub(1, std::memory_order_relaxed);
     g_current_scope = previous_scope;
     complete_task(task);
   }
+}
+
+static bool scheduler_is_quiescent() {
+  if (g_scheduler == nullptr) {
+    return false;
+  }
+  std::size_t ready_count = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_scheduler->mutex);
+    ready_count = g_scheduler->ready.size();
+  }
+  std::size_t timer_count = 0;
+  {
+    std::lock_guard<std::mutex> lock(g_scheduler->timers_mutex);
+    timer_count = g_scheduler->timers.size();
+  }
+  const int active = g_scheduler->active_workers.load(std::memory_order_relaxed);
+  return ready_count == 0 && timer_count == 0 && active == 0;
 }
 
 static bool scheduler_submit(SchedulerTask task, bool block_on_full_queue) {
@@ -694,7 +715,16 @@ int thag_task_scope_wait(thag_task_scope_t* scope) {
     } else {
       ++stagnant_loops;
     }
-    const bool report_deadlock = !deadlock_reported && stagnant_loops > 300 && scope->in_flight.load() > 0;
+    const int in_flight_now = scope->in_flight.load();
+    const uint64_t deadlock_threshold = in_flight_now <= 1 ? 4000 : 15000;
+    bool report_deadlock = false;
+    if (!deadlock_reported && stagnant_loops > deadlock_threshold && in_flight_now > 0) {
+      if (in_flight_now == 1) {
+        report_deadlock = true;
+      } else if (scheduler_is_quiescent()) {
+        report_deadlock = true;
+      }
+    }
     if (report_deadlock) {
       lock.unlock();
       std::fprintf(stderr,

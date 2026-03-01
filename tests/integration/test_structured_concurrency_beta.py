@@ -1,4 +1,5 @@
 import ctypes.util
+import json
 import os
 import shutil
 import subprocess
@@ -203,6 +204,40 @@ class StructuredConcurrencyBetaTests(unittest.TestCase):
             timeout=20.0,
         )
         self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_no_false_deadlock_under_batched_short_tasks(self) -> None:
+        run = self._compile_and_run(
+            "#include \"thag_runtime.h\"\n"
+            "static void worker(void*) { thag_sleep_ms(1); }\n"
+            "int main() {\n"
+            "  for (int round = 0; round < 200; ++round) {\n"
+            "    thag_task_scope_t* scope = thag_task_scope_create();\n"
+            "    if (!scope) return 70;\n"
+            "    for (int i = 0; i < 128; ++i) {\n"
+            "      if (!thag_task_scope_spawn(scope, worker, nullptr)) return 71;\n"
+            "    }\n"
+            "    if (!thag_task_scope_wait(scope)) return 72;\n"
+            "    thag_task_scope_destroy(scope);\n"
+            "  }\n"
+            "  return 0;\n"
+            "}\n",
+            timeout=40.0,
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+        self.assertNotIn("deadlock detected:", run.stderr)
+
+    def test_no_open_p0_p1_concurrency_registry(self) -> None:
+        registry_path = Path("contracts/concurrency/p0_p1_registry.json")
+        self.assertTrue(registry_path.exists(), msg=f"missing registry file: {registry_path}")
+        data = json.loads(registry_path.read_text())
+        issues = data.get("issues", [])
+        open_critical = []
+        for issue in issues:
+            severity = str(issue.get("severity", "")).upper()
+            status = str(issue.get("status", "")).lower()
+            if severity in {"P0", "P1"} and status not in {"closed", "resolved", "done"}:
+                open_critical.append(issue)
+        self.assertEqual(open_critical, [], msg=f"open P0/P1 concurrency bugs: {open_critical}")
 
 
 if __name__ == "__main__":
