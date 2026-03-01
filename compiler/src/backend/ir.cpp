@@ -150,6 +150,20 @@ static std::string trim(const std::string& text) {
 }
 
 static std::string unescape_string_body(const std::string& body) {
+  auto hex_value = [](char ch) -> int {
+    if (ch >= '0' && ch <= '9') {
+      return static_cast<int>(ch - '0');
+    }
+    if (ch >= 'a' && ch <= 'f') {
+      return 10 + static_cast<int>(ch - 'a');
+    }
+    if (ch >= 'A' && ch <= 'F') {
+      return 10 + static_cast<int>(ch - 'A');
+    }
+    return -1;
+  };
+  auto is_octal = [](char ch) -> bool { return ch >= '0' && ch <= '7'; };
+
   std::string out;
   out.reserve(body.size());
   for (std::size_t i = 0; i < body.size(); ++i) {
@@ -177,6 +191,34 @@ static std::string unescape_string_body(const std::string& body) {
     }
     if (esc == '"') {
       out.push_back('"');
+      continue;
+    }
+    if (esc == 'e' || esc == 'E') {
+      out.push_back(static_cast<char>(27));
+      continue;
+    }
+    if (esc == 'x' || esc == 'X') {
+      if (i + 2 < body.size()) {
+        const int hi = hex_value(body[i + 1]);
+        const int lo = hex_value(body[i + 2]);
+        if (hi >= 0 && lo >= 0) {
+          out.push_back(static_cast<char>((hi << 4) | lo));
+          i += 2;
+          continue;
+        }
+      }
+      out.push_back('x');
+      continue;
+    }
+    if (is_octal(esc)) {
+      int value = static_cast<int>(esc - '0');
+      int consumed = 0;
+      while (consumed < 2 && i + 1 < body.size() && is_octal(body[i + 1])) {
+        value = (value * 8) + static_cast<int>(body[i + 1] - '0');
+        ++i;
+        ++consumed;
+      }
+      out.push_back(static_cast<char>(value & 0xFF));
       continue;
     }
     out.push_back(esc);
