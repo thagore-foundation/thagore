@@ -102,12 +102,12 @@ def parse_dumpbin_dependents(bin_path: Path) -> list[str]:
         line = raw.strip()
         if not line:
             continue
-        if line.upper().endswith(".DLL"):
-            dll_names.append(line)
-            continue
         m = re.search(r"DLL Name:\s*([A-Za-z0-9_.-]+\.dll)", line, re.IGNORECASE)
         if m:
             dll_names.append(m.group(1))
+            continue
+        if line.upper().endswith(".DLL"):
+            dll_names.append(Path(line).name)
     unique = sorted({name.lower(): name for name in dll_names}.values(), key=lambda x: x.lower())
     return unique
 
