@@ -12,7 +12,6 @@ jobs:
   build-core:
     name: build-${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -23,18 +22,15 @@ jobs:
           - runner: ubuntu-24.04-arm
             platform: linux
             arch: aarch64
-          - runner: macos-14
+          - runner: macos-13
             platform: macos
             arch: x86_64
-            optional: true
           - runner: macos-14
             platform: macos
             arch: aarch64
-            optional: true
           - runner: windows-latest
             platform: windows
             arch: x86_64
-            optional: true
           - runner: windows-11-arm
             platform: windows
             arch: aarch64
