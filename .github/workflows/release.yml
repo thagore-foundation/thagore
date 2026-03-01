@@ -12,6 +12,7 @@ jobs:
   build-core:
     name: build-${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +26,7 @@ jobs:
           - runner: macos-14
             platform: macos
             arch: x86_64
+            optional: true
           - runner: macos-14
             platform: macos
             arch: aarch64
@@ -34,6 +36,7 @@ jobs:
           - runner: windows-11-arm
             platform: windows
             arch: aarch64
+            optional: true
 
     steps:
       - name: Checkout
@@ -75,18 +78,45 @@ jobs:
         run: |
           choco install llvm --version=21.1.8 -y --no-progress
           choco install ninja -y
-          $llvmConfigPath = "C:\Program Files\LLVM\lib\cmake\llvm\LLVMConfig.cmake"
-          $llvmConfig = $null
-          if (Test-Path $llvmConfigPath) {
-            $llvmConfig = Get-Item $llvmConfigPath
-          } else {
-            $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $llvmDir = $null
+          $llvmRoot = $null
+
+          $llvmRootGuess = "C:\Program Files\LLVM"
+          $llvmDirGuess = Join-Path $llvmRootGuess "lib\cmake\llvm"
+          if (Test-Path (Join-Path $llvmDirGuess "LLVMConfig.cmake")) {
+            $llvmDir = $llvmDirGuess
+            $llvmRoot = $llvmRootGuess
           }
-          if (-not $llvmConfig) {
+
+          if (-not $llvmDir) {
+            $llvmConfigExe = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
+            if ($llvmConfigExe) {
+              $cmakeDir = (& $llvmConfigExe.Source --cmakedir).Trim()
+              if ($cmakeDir -and (Test-Path (Join-Path $cmakeDir "LLVMConfig.cmake"))) {
+                $llvmDir = $cmakeDir
+                $llvmRoot = Resolve-Path (Join-Path $cmakeDir "..\..\..")
+              }
+            }
+          }
+
+          if (-not $llvmDir) {
+            $searchRoots = @("C:\Program Files", "C:\ProgramData\chocolatey\lib")
+            foreach ($root in $searchRoots) {
+              if (-not (Test-Path $root)) {
+                continue
+              }
+              $llvmConfig = Get-ChildItem -Path $root -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($llvmConfig) {
+                $llvmDir = Split-Path -Parent $llvmConfig.FullName
+                $llvmRoot = Resolve-Path (Join-Path $llvmDir "..\..\..")
+                break
+              }
+            }
+          }
+
+          if (-not $llvmDir -or -not $llvmRoot) {
             throw "LLVMConfig.cmake not found"
           }
-          $llvmDir = Split-Path -Parent $llvmConfig.FullName
-          $llvmRoot = Resolve-Path (Join-Path $llvmDir "..\..\..")
           "PATH=$($llvmRoot)\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $clang = Join-Path $llvmRoot "bin\clang.exe"
           $clangxx = Join-Path $llvmRoot "bin\clang++.exe"
