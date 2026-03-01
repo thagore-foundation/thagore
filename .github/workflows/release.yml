@@ -122,6 +122,22 @@ jobs:
             }
           }
 
+          $legacyDiaLibDir = "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\DIA SDK\lib\amd64"
+          $legacyDiaLib = Join-Path $legacyDiaLibDir "diaguids.lib"
+          if (-not (Test-Path $legacyDiaLib)) {
+            $diaCandidates = @(
+              "C:\Program Files\Microsoft Visual Studio\2022\Community\DIA SDK\lib\amd64\diaguids.lib",
+              "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\DIA SDK\lib\amd64\diaguids.lib",
+              "C:\Program Files\Microsoft Visual Studio\2022\Professional\DIA SDK\lib\amd64\diaguids.lib",
+              "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\DIA SDK\lib\amd64\diaguids.lib"
+            )
+            $diaSource = $diaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if ($diaSource) {
+              New-Item -ItemType Directory -Path $legacyDiaLibDir -Force | Out-Null
+              Copy-Item -Path $diaSource -Destination $legacyDiaLib -Force
+            }
+          }
+
       - name: Configure + build (non-Windows)
         if: runner.os != 'Windows'
         run: |
