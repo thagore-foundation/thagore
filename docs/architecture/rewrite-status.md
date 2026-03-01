@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v1.5`: `docs/architecture/v1.5-roadmap.md`.
-Current release cut: `v1.0.0` (Deploy Baseline).
+Current release cut: `v1.1.0` (Structured Concurrency GA).
 
 ## Frontend
 
