@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
 Current effective milestone by code audit (February 28, 2026): `v1.0` (Deploy Baseline, in progress).
-Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs; `v1.0` compiler/tooling + FFI + docs checklist is complete, Drago + final gate remain.
+Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs; `v1.0` compiler/tooling + FFI + docs + Drago checklist is complete, final cross-compile/distribution gate remains.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -284,10 +284,10 @@ Execution order (re-anchored to dependency reality):
 - [x] `thagc target` + `thagc build` recipes đầy đủ documented
 
 ### Drago Package Registry (Production)
-- [ ] Registry stable, versioned packages
-- [ ] `drago install/update/remove` hoàn chỉnh (thay thế `thagc install`)
-- [ ] Package publishing workflow
-- [ ] Dependency resolution + lock file
+- [x] Registry stable, versioned packages
+- [x] `drago install/update/remove` hoàn chỉnh (thay thế `thagc install`)
+- [x] Package publishing workflow
+- [x] Dependency resolution + lock file
 
 ### FFI
 - [x] `extern` C function calls hoạt động đầy đủ
@@ -502,7 +502,7 @@ Execution order (re-anchored to dependency reality):
 | v0.7 | Structured concurrency | ✅ Released |
 | v0.8 | Memory model MVP | ✅ Released |
 | v0.9 | IO stack alpha | ✅ Released |
-| v1.0 | Deploy baseline | 🟡 In Progress (Drago + gate pending) |
+| v1.0 | Deploy baseline | 🟡 In Progress (final gate pending: cross-compiled distributed CLI) |
 | v1.1 | Concurrency GA | 🔲 Planned |
 | v1.2 | IO stack GA | 🔲 Planned |
 | v1.3 | Performance lockdown | 🔲 Planned |
