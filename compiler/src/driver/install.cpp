@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -69,11 +70,50 @@ static std::string detect_host_triple() {
 }
 
 static std::filesystem::path home_dir() {
+  const char* explicit_home = std::getenv("THAGORE_HOME");
+  if (explicit_home != nullptr && *explicit_home != '\0') {
+    return std::filesystem::path(explicit_home);
+  }
   const char* home = std::getenv("HOME");
   if (home != nullptr && *home != '\0') {
-    return std::filesystem::path(home);
+    return std::filesystem::path(home) / ".thagore";
   }
-  return std::filesystem::current_path();
+  return std::filesystem::current_path() / ".thagore";
+}
+
+static bool can_write_directory(const std::filesystem::path& dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    return false;
+  }
+  const std::filesystem::path probe = dir / ".thagore-write-test";
+  {
+    std::ofstream stream(probe, std::ios::binary | std::ios::trunc);
+    if (!stream.good()) {
+      return false;
+    }
+    stream << "ok";
+    if (!stream.good()) {
+      return false;
+    }
+  }
+  std::filesystem::remove(probe, ec);
+  return true;
+}
+
+static std::filesystem::path resolve_package_cache_root() {
+  const std::vector<std::filesystem::path> candidates = {
+      home_dir() / "packages",
+      std::filesystem::current_path() / ".thagore" / "packages",
+      std::filesystem::temp_directory_path() / "thagore" / "packages",
+  };
+  for (const auto& candidate : candidates) {
+    if (can_write_directory(candidate)) {
+      return candidate;
+    }
+  }
+  return {};
 }
 
 static std::filesystem::path resolve_dependency_source_path(const std::string& value, const std::string& project_root) {
@@ -159,19 +199,19 @@ static std::string read_package_name(const std::filesystem::path& package_dir) {
 }
 
 static bool copy_package_to_cache(const std::string& package_name, const std::filesystem::path& source,
-                                  std::string& error) {
+                                  std::filesystem::path& out_dest, std::string& error) {
+  out_dest.clear();
   std::error_code ec;
   if (!std::filesystem::exists(source, ec) || ec || !std::filesystem::is_directory(source, ec)) {
     error = "package source directory does not exist: " + source.string();
     return false;
   }
-  const std::filesystem::path cache_root = home_dir() / ".thagore" / "packages";
-  const std::filesystem::path dest = cache_root / package_name;
-  std::filesystem::create_directories(cache_root, ec);
-  if (ec) {
-    error = "cannot create package cache directory: " + cache_root.string();
+  const std::filesystem::path cache_root = resolve_package_cache_root();
+  if (cache_root.empty()) {
+    error = "cannot find writable package cache directory";
     return false;
   }
+  const std::filesystem::path dest = cache_root / package_name;
   std::filesystem::remove_all(dest, ec);
   ec.clear();
   std::filesystem::copy(source, dest,
@@ -180,6 +220,7 @@ static bool copy_package_to_cache(const std::string& package_name, const std::fi
     error = "cannot copy package to cache: " + ec.message();
     return false;
   }
+  out_dest = dest;
   return true;
 }
 
@@ -206,12 +247,13 @@ static bool install_from_dependency(const std::string& name, const std::string& 
               << "' does not point to a local package path (v0.4 supports local directory packages only)\n";
     return false;
   }
+  std::filesystem::path install_path;
   std::string error;
-  if (!copy_package_to_cache(name, source, error)) {
+  if (!copy_package_to_cache(name, source, install_path, error)) {
     std::cerr << "ERROR: " << error << "\n";
     return false;
   }
-  std::cout << "installed package '" << name << "' to " << (home_dir() / ".thagore" / "packages" / name).string() << "\n";
+  std::cout << "installed package '" << name << "' to " << install_path.string() << "\n";
   return true;
 }
 
@@ -297,13 +339,13 @@ int handle_install(const ParsedCommand& cmd) {
   if (std::filesystem::exists(arg_path, ec) && !ec && std::filesystem::is_directory(arg_path, ec)) {
     const std::filesystem::path source = std::filesystem::weakly_canonical(arg_path);
     const std::string package_name = read_package_name(source);
+    std::filesystem::path install_path;
     std::string error;
-    if (!copy_package_to_cache(package_name, source, error)) {
+    if (!copy_package_to_cache(package_name, source, install_path, error)) {
       std::cerr << "ERROR: " << error << "\n";
       return 1;
     }
-    std::cout << "installed package '" << package_name << "' to "
-              << (home_dir() / ".thagore" / "packages" / package_name).string() << "\n";
+    std::cout << "installed package '" << package_name << "' to " << install_path.string() << "\n";
     return 0;
   }
 
