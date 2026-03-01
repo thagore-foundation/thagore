@@ -72,6 +72,30 @@ jobs:
             --budgets contracts/perf/binary_size_budget.json \
             --key linux-x86_64
 
+      - name: Benchmark automation and latency budget gate
+        run: |
+          mkdir -p dist
+          python tooling/bench/run_benchmarks.py \
+            --thagc build/compiler/thagc \
+            --out-json dist/perf-metrics.json \
+            --out-markdown dist/perf-report.md \
+            --startup-iterations 20 \
+            --build-iterations 8 \
+            --run-iterations 12
+          python tooling/policy/check_latency_budget.py \
+            --metrics dist/perf-metrics.json \
+            --budgets contracts/perf/latency_budget.json \
+            --key linux-x86_64
+
+      - name: Upload performance metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-metrics-${{ github.sha }}
+          path: |
+            dist/perf-metrics.json
+            dist/perf-report.md
+          if-no-files-found: error
+
       - name: Run full Python suites with built compiler
         env:
           THAGC_BIN: build/compiler/thagc

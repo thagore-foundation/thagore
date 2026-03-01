@@ -403,23 +403,23 @@ cho project management**, thagc chỉ là compiler backend thuần.
 > *"Fast enough to replace Go. Simple enough to teach beginners."*
 
 ### Compiler
-- [ ] LLVM optimization passes được enable đúng cách
-- [ ] Codegen cho tight loops không có overhead
-- [ ] Inlining hints cho small functions
+- [x] LLVM optimization passes được enable đúng cách (`run_performance_passes`, O3 pipeline, aggressive codegen opt level)
+- [x] Codegen cho tight loops không có overhead đáng kể (loop unroll/vectorization/interleaving in optimization pipeline)
+- [x] Inlining hints cho small functions (`InlineHint` cho small non-async functions)
 
 ### Tooling
-- [ ] Benchmark automation — `tooling/bench/`
-- [ ] Performance threshold alerts trong CI
-- [ ] p95 latency và startup metrics tracked per commit
+- [x] Benchmark automation — `tooling/bench/` (`run_benchmarks.py`)
+- [x] Performance threshold alerts trong CI (`check_latency_budget.py` + CI gate)
+- [x] p95 latency và startup metrics tracked per commit (artifact `perf-metrics-${sha}`)
 
 ### AI/ML Foundation (Preview)
-- [ ] FFI bindings cho CUDA/OpenCL basic
-- [ ] `lib/tensor.tg` stub — groundwork cho AI use case
-- [ ] PyTorch interop proof of concept (call C++ kernel từ Thagore)
+- [x] FFI bindings cho CUDA/OpenCL basic (`thag_cuda_available`, `thag_opencl_available`)
+- [x] `lib/tensor.tg` runtime-backed module — groundwork cho AI use case
+- [x] PyTorch interop proof of concept (Thagore gọi `thag_pytorch_axpy_i64` C++ kernel path)
 
 ### Gate
-- [ ] p95 latency và startup metrics đạt release budgets
-- [ ] Benchmark so sánh với Go, Rust, Python được publish
+- [x] p95 latency và startup metrics đạt release budgets (`contracts/perf/latency_budget.json`)
+- [x] Benchmark so sánh với Go, Rust, Python được publish (`docs/perf/benchmark-v1.3.md`)
 
 ---
 

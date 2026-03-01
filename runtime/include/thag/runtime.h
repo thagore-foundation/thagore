@@ -9,6 +9,7 @@
 #include "thag/fs.h"
 #include "thag/http.h"
 #include "thag/json.h"
+#include "thag/tensor.h"
 #include "thag/process.h"
 #include "thag/string.h"
 #include "thag/toml.h"

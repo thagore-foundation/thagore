@@ -1,4 +1,5 @@
 import ctypes.util
+import os
 import shutil
 import subprocess
 import tempfile
@@ -129,6 +130,25 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "  thag_str_free(json_text);\n"
                 "  thag_json_free(json);\n"
                 "\n"
+                "  if (thag_cuda_available() < 0) return 82;\n"
+                "  if (thag_opencl_available() < 0) return 83;\n"
+                "  void* tx = thag_tensor_new_i64(3);\n"
+                "  void* ty = thag_tensor_new_i64(3);\n"
+                "  void* tout = thag_tensor_new_i64(3);\n"
+                "  if (!tx || !ty || !tout) return 84;\n"
+                "  if (!thag_tensor_fill_i64(tx, 2)) return 85;\n"
+                "  if (!thag_tensor_fill_i64(ty, 5)) return 86;\n"
+                "  if (!thag_tensor_axpy_i64(tout, tx, ty, 3)) return 87;\n"
+                "  if (!thag_pytorch_axpy_i64(tout, tx, ty, 3)) return 88;\n"
+                "  if (thag_tensor_len(tout) != 3) return 89;\n"
+                "  if (thag_tensor_sum_i64(tout) != 33) return 90;\n"
+                "  if (thag_tensor_get_i64(tout, 0) != 11) return 91;\n"
+                "  if (!thag_tensor_set_i64(tout, 1, 7)) return 92;\n"
+                "  if (thag_tensor_get_i64(tout, 1) != 7) return 93;\n"
+                "  thag_tensor_free(tx);\n"
+                "  thag_tensor_free(ty);\n"
+                "  thag_tensor_free(tout);\n"
+                "\n"
                 "#if defined(_WIN32)\n"
                 "  const char* run_cmd = \"cmd /c exit 0\";\n"
                 "  const char* capture_cmd = \"cmd /c echo ok\";\n"
@@ -217,6 +237,8 @@ class RuntimeNativeBehaviorTests(unittest.TestCase):
                 "-o",
                 str(out),
             ]
+            if os.name != "nt":
+                compile_cmd.insert(-2, "-ldl")
             if ctypes.util.find_library("curl"):
                 compile_cmd.insert(-2, "-lcurl")
             if ctypes.util.find_library("sqlite3"):

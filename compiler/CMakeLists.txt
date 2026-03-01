@@ -71,6 +71,7 @@ set(THAG_STDLIB_MODULES
   lib/json.tg
   lib/env.tg
   lib/crypto.tg
+  lib/tensor.tg
 )
 set(THAG_STDLIB_DEPENDS)
 set(THAG_STDLIB_EMBED_ARGS)

@@ -22,7 +22,9 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Config/llvm-config.h>
+#include <llvm/Support/CodeGen.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
@@ -3803,6 +3805,9 @@ static std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, co
         llvm::FunctionType::get(llvm_type_from_value_type(return_type, builder), params, false);
     const auto linkage = fn_def.name == "main" ? llvm::GlobalValue::ExternalLinkage : llvm::GlobalValue::InternalLinkage;
     llvm::Function* fn = llvm::Function::Create(fn_type, linkage, fn_def.name, module.get());
+    if (fn_def.name != "main" && !fn_def.is_async && fn_def.statements.size() <= 3) {
+      fn->addFnAttr(llvm::Attribute::InlineHint);
+    }
     llvm_functions[fn_def.name] = fn;
     function_returns[fn_def.name] = return_type;
     function_async_flags[fn_def.name] = fn_def.is_async && function_contains_await(fn_def);
@@ -4060,6 +4065,29 @@ static void run_coroutine_passes(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
+static void run_performance_passes(llvm::Module& module, llvm::TargetMachine* target_machine) {
+  llvm::PipelineTuningOptions tuning;
+  tuning.LoopInterleaving = true;
+  tuning.LoopVectorization = true;
+  tuning.SLPVectorization = true;
+  tuning.LoopUnrolling = true;
+  tuning.ForgetAllSCEVInLoopUnroll = true;
+
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+  llvm::PassBuilder pb(target_machine, tuning);
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  llvm::ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+  mpm.run(module, mam);
+}
+
 static void set_module_target_triple(llvm::Module& module, const llvm::Triple& triple) {
 #if LLVM_VERSION_MAJOR >= 21
   module.setTargetTriple(triple);
@@ -4073,10 +4101,12 @@ static std::unique_ptr<llvm::TargetMachine> create_target_machine_compat(const l
                                                                           const llvm::TargetOptions& options) {
 #if LLVM_VERSION_MAJOR >= 21
   return std::unique_ptr<llvm::TargetMachine>(
-      target->createTargetMachine(triple, "generic", "", options, std::nullopt));
+      target->createTargetMachine(triple, "generic", "", options, std::nullopt, std::nullopt,
+                                  llvm::CodeGenOptLevel::Aggressive));
 #else
   return std::unique_ptr<llvm::TargetMachine>(
-      target->createTargetMachine(triple.getTriple(), "generic", "", options, std::nullopt));
+      target->createTargetMachine(triple.getTriple(), "generic", "", options, std::nullopt, std::nullopt,
+                                  llvm::CodeGenOptLevel::Aggressive));
 #endif
 }
 
@@ -4092,6 +4122,7 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
     set_module_target_triple(*module, llvm::Triple(target_triple));
   }
   run_coroutine_passes(*module);
+  run_performance_passes(*module, nullptr);
   std::string verify_error;
   llvm::raw_string_ostream verify_stream(verify_error);
   if (llvm::verifyModule(*module, &verify_stream)) {
@@ -4170,6 +4201,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
   module->setDataLayout(target_machine->createDataLayout());
   run_coroutine_passes(*module);
+  run_performance_passes(*module, target_machine.get());
 
   std::string verify_error;
   llvm::raw_string_ostream verify_stream(verify_error);

@@ -372,6 +372,39 @@ class BuildAndRunE2ETests(unittest.TestCase):
             run = subprocess.run([str(out)], cwd=root, capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 42, msg=run.stderr)
 
+    def test_build_and_run_tensor_runtime_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "tensor_preview.tg"
+            out = root / "tensor_preview.bin"
+            src.write_text(
+                "import lib.tensor as t\n"
+                "\n"
+                "func main() -> i32:\n"
+                "  let x = t.new_i64(4)\n"
+                "  let y = t.new_i64(4)\n"
+                "  let z = t.new_i64(4)\n"
+                "  t.fill_i64(x, 1)\n"
+                "  t.fill_i64(y, 2)\n"
+                "  t.axpy_i64(z, x, y, 3)\n"
+                "  t.pytorch_axpy_i64(z, x, y, 3)\n"
+                "  print(t.sum_i64(z))\n"
+                "  t.free(x)\n"
+                "  t.free(y)\n"
+                "  t.free(z)\n"
+                "  return 0\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
+            self.assertIn("20", run.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

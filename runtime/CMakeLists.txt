@@ -5,6 +5,7 @@ add_library(thag_runtime STATIC
   src/print.cpp
   src/string.cpp
   src/json.cpp
+  src/tensor.cpp
   src/crypto.cpp
   src/fs.cpp
   src/process.cpp
@@ -27,6 +28,9 @@ option(THAG_RUNTIME_USE_SYSTEM_OPENSSL "Enable OpenSSL-backed HTTPS/crypto suppo
 if(NOT WIN32)
   find_package(Threads REQUIRED)
   target_link_libraries(thag_runtime PUBLIC Threads::Threads)
+  if(NOT APPLE)
+    target_link_libraries(thag_runtime PUBLIC dl)
+  endif()
 endif()
 
 # Optional system OpenSSL for HTTPS support in self-implemented HTTP client.
