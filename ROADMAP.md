@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v1.8 Stable
 
 Current effective milestone by code audit (February 28, 2026): `v1.0` (Deploy Baseline, in progress).
-Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs; `v1.0` compiler/tooling + FFI + docs + Drago checklist is complete, final cross-compile/distribution gate remains.
+Status note: `v0.6` → `v0.9` gates now pass on the active Linux lane with deterministic stress runs; `v1.0` compiler/tooling + FFI + docs + Drago checklist is complete, final cross-compile/distribution gate remains (multi-OS Drago CI/release matrix is now in place).
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -301,6 +301,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Gate
 - [ ] Một CLI tool thực tế được build, cross-compiled, và distributed dưới dạng single binary
+- Release execution runbook: `docs/runbooks/v1-0-release-thagore-drago.md`
 
 ---
 

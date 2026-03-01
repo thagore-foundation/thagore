@@ -143,7 +143,7 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - `CI`: lint + tests + Linux build.
 - `Policy`: baseline contract and architecture boundary checks.
 - `Selfhost Readiness`: deterministic gate entry.
-- `Release`: packaging and GitHub release publish.
+- `Release`: packaging, GitHub release publish, and installer sync.
 
 ## Versioning and Commits
 
@@ -159,3 +159,4 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - Rewrite status: `docs/architecture/rewrite-status.md`
 - v1.5 roadmap: `docs/architecture/v1.5-roadmap.md`
 - New contributor map: `docs/contributor-guide/where-to-change.md`
+- v1.0 release runbook (Thagore + Drago): `docs/runbooks/v1-0-release-thagore-drago.md`
