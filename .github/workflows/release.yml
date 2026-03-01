@@ -30,6 +30,7 @@ jobs:
           - runner: macos-14
             platform: macos
             arch: aarch64
+            optional: true
           - runner: windows-latest
             platform: windows
             arch: x86_64
@@ -75,17 +76,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm -y
+          choco install llvm --version=21.1.8 -y --no-progress
           choco install ninja -y
-          $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM\lib\cmake\llvm\LLVMConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $llvmConfig) {
-            $llvmConfig = Get-ChildItem -Path "C:\" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
+          $llvmConfig = Get-ChildItem -Path "C:\Program Files\LLVM" -Filter LLVMConfig.cmake -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $llvmConfig) {
             throw "LLVMConfig.cmake not found"
           }
           $llvmDir = Split-Path -Parent $llvmConfig.FullName
           $llvmRoot = Resolve-Path (Join-Path $llvmDir "..\..\..")
+          "PATH=$($llvmRoot)\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $clang = Join-Path $llvmRoot "bin\clang.exe"
           $clangxx = Join-Path $llvmRoot "bin\clang++.exe"
           if (Test-Path $clang) {

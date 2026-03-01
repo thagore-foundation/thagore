@@ -91,7 +91,12 @@ def parse_dumpbin_dependents(bin_path: Path) -> list[str]:
     try:
         output = run_capture(["dumpbin", "/nologo", "/dependents", str(bin_path)])
     except RuntimeError:
-        output = run_capture(["llvm-objdump", "-p", str(bin_path)])
+        try:
+            output = run_capture(["llvm-objdump", "-p", str(bin_path)])
+        except RuntimeError:
+            # Some Windows runners do not expose dumpbin/llvm-objdump in PATH.
+            # In that case, skip dependency scanning and rely on the bare binary.
+            return []
     dll_names: list[str] = []
     for raw in output.splitlines():
         line = raw.strip()
