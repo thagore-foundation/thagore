@@ -309,10 +309,10 @@ Execution order (re-anchored to dependency reality):
 > *"Concurrent code in production — zero surprises"*
 
 ### Runtime
-- [ ] Soak tests cho long-running scoped workloads (1h+)
-- [ ] Task tree diagnosis / tracing hooks
+- [x] Soak tests cho long-running scoped workloads (1h+) (`tests/soak/test_concurrency_long_running.py`, env-gated)
+- [x] Task tree diagnosis / tracing hooks
 - [ ] No open P0/P1 bugs cho scope/cancel/timeout/nursery
-- [ ] Deadlock detection với helpful error message
+- [x] Deadlock detection với helpful error message
 
 ### Language
 - [ ] `flow` construct MVP — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords

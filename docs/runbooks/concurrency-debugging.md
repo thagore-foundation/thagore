@@ -9,6 +9,8 @@ This runbook covers task-scope leaks, cancellation regressions, timeout behavior
   - `cmake --build build-llvm21 -j"$(nproc)"`
 - Run core concurrency suites:
   - `THAGC_BIN=build-llvm21/compiler/thagc python3 -m unittest tests.integration.test_concurrency_regression_native tests.integration.test_structured_concurrency_beta tests.soak.test_compiler_stress`
+- Run long soak lane (1h+ contract):
+  - `THAG_SOAK_LONG_SECONDS=3600 python3 -m unittest tests.soak.test_concurrency_long_running`
 
 ## 2. Task Leaks (child outlives parent)
 
@@ -64,10 +66,24 @@ Symptoms:
 Checks:
 - Capture stderr from native test binaries.
 - Look for runtime message:
-  - `deadlock detected: task A waiting on task B, task B waiting on task A`
+  - `deadlock detected: task A waiting on task B, task B waiting on task A [scope#<id>]`
+- Inspect auto-dumped task tree that follows the deadlock line.
 - Verify waiting tasks periodically check cancellation so runtime can unwind after detection.
 
-## 6. Scheduler Tuning (for repro or stress)
+## 6. Task Tree Tracing Hooks
+
+Runtime API:
+- `thag_task_trace_set_enabled(int enabled)`
+- `thag_task_trace_enabled()`
+- `thag_task_trace_set_hook(thag_task_trace_hook_t hook, void* user_data)`
+- `thag_task_scope_dump_tree(const thag_task_scope_t* scope)`
+
+Usage patterns:
+- Enable stderr tracing via `THAG_TRACE_TASK_TREE=1`.
+- Attach a custom hook to aggregate/scrape traces during integration tests.
+- Call `thag_task_scope_dump_tree(scope)` before destroy for manual inspection.
+
+## 7. Scheduler Tuning (for repro or stress)
 
 Environment variables:
 - `THAG_SCHED_QUEUE_LIMIT`: max queue size before spawn backpressure blocks.
@@ -76,7 +92,7 @@ Environment variables:
 Use small limits in tests to force backpressure behavior:
 - `THAG_SCHED_QUEUE_LIMIT=64`
 
-## 7. Common Failure Patterns
+## 8. Common Failure Patterns
 
 - Missing cancellation checkpoints inside worker loops.
 - Blocking IO without pre/post cancel check.

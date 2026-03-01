@@ -5,12 +5,15 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <cctype>
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <sstream>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -32,11 +35,14 @@ struct thag_task_scope {
   std::condition_variable cv;
   std::atomic<bool> cancelled{false};
   std::atomic<int> in_flight{0};
+  std::atomic<uint64_t> spawned_total{0};
+  std::atomic<uint64_t> completed_total{0};
   bool waiting = false;
   bool closed = false;
   bool completed = false;
   bool has_deadline = false;
   std::chrono::steady_clock::time_point deadline{};
+  uint64_t id = 0;
   thag_task_scope_t* parent = nullptr;
   std::vector<thag_task_scope_t*> children;
 };
@@ -90,8 +96,106 @@ struct SchedulerState {
 
 std::once_flag g_scheduler_once;
 SchedulerState* g_scheduler = nullptr;
+std::atomic<uint64_t> g_scope_sequence{1};
+std::atomic<bool> g_trace_enabled{false};
+std::mutex g_trace_hook_mutex;
+thag_task_trace_hook_t g_trace_hook = nullptr;
+void* g_trace_hook_user_data = nullptr;
 
 thread_local thag_task_scope_t* g_current_scope = nullptr;
+
+static bool env_truthy(const char* raw) {
+  if (raw == nullptr || *raw == '\0') {
+    return false;
+  }
+  std::string value(raw);
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+static void emit_trace_message(const std::string& message) {
+  thag_task_trace_hook_t hook = nullptr;
+  void* hook_user_data = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_trace_hook_mutex);
+    hook = g_trace_hook;
+    hook_user_data = g_trace_hook_user_data;
+  }
+  const bool enabled = g_trace_enabled.load(std::memory_order_relaxed);
+  if (!enabled && hook == nullptr) {
+    return;
+  }
+  if (enabled) {
+    std::fprintf(stderr, "thagore trace: %s\n", message.c_str());
+  }
+  if (hook != nullptr) {
+    hook(message.c_str(), hook_user_data);
+  }
+}
+
+static bool trace_active() {
+  if (g_trace_enabled.load(std::memory_order_relaxed)) {
+    return true;
+  }
+  std::lock_guard<std::mutex> lock(g_trace_hook_mutex);
+  return g_trace_hook != nullptr;
+}
+
+static std::string scope_snapshot_line(const thag_task_scope_t* scope) {
+  if (scope == nullptr) {
+    return "scope#<null>";
+  }
+  std::ostringstream oss;
+  oss << "scope#" << scope->id << " in_flight=" << scope->in_flight.load() << " spawned=" << scope->spawned_total.load()
+      << " completed=" << scope->completed_total.load() << " cancelled=" << (scope->cancelled.load() ? 1 : 0);
+  return oss.str();
+}
+
+static void append_scope_tree_dump(const thag_task_scope_t* scope, int depth, std::ostringstream& oss) {
+  if (scope == nullptr) {
+    return;
+  }
+  std::vector<thag_task_scope_t*> children;
+  bool waiting = false;
+  bool closed = false;
+  bool completed = false;
+  bool has_deadline = false;
+  {
+    std::lock_guard<std::mutex> lock(scope->mutex);
+    children = scope->children;
+    waiting = scope->waiting;
+    closed = scope->closed;
+    completed = scope->completed;
+    has_deadline = scope->has_deadline;
+  }
+  for (int i = 0; i < depth; ++i) {
+    oss << "  ";
+  }
+  oss << "- " << scope_snapshot_line(scope) << " waiting=" << (waiting ? 1 : 0) << " closed=" << (closed ? 1 : 0)
+      << " completed_flag=" << (completed ? 1 : 0) << " deadline=" << (has_deadline ? 1 : 0) << "\n";
+  for (thag_task_scope_t* child : children) {
+    append_scope_tree_dump(child, depth + 1, oss);
+  }
+}
+
+static std::string build_scope_tree_dump(const thag_task_scope_t* scope) {
+  std::ostringstream oss;
+  append_scope_tree_dump(scope, 0, oss);
+  return oss.str();
+}
+
+static void emit_scope_event(const char* event, const thag_task_scope_t* scope, const std::string& detail = {}) {
+  if (!trace_active()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << event << ": " << scope_snapshot_line(scope);
+  if (!detail.empty()) {
+    oss << " " << detail;
+  }
+  emit_trace_message(oss.str());
+}
 
 static std::size_t default_worker_count() {
   const std::size_t hc = std::thread::hardware_concurrency();
@@ -159,7 +263,9 @@ static void notify_runtime_change(thag_async_runtime_t* runtime) {
 static void complete_task(const SchedulerTask& task) {
   if (task.scope != nullptr) {
     task.scope->in_flight.fetch_sub(1);
+    task.scope->completed_total.fetch_add(1);
     notify_scope_change(task.scope);
+    emit_scope_event("task_complete", task.scope);
   }
   if (task.runtime != nullptr) {
     task.runtime->in_flight.fetch_sub(1);
@@ -342,6 +448,7 @@ static void scheduler_event_loop(SchedulerState* scheduler) {
 
 static void scheduler_start_once() {
   std::call_once(g_scheduler_once, []() {
+    g_trace_enabled.store(env_truthy(std::getenv("THAG_TRACE_TASK_TREE")));
     auto* scheduler = new SchedulerState();
     scheduler->queue_limit = scheduler_queue_limit();
     scheduler->starvation_boost_ms = scheduler_starvation_threshold_ms();
@@ -353,6 +460,8 @@ static void scheduler_start_once() {
     }
     scheduler->event_thread = std::thread([scheduler]() { scheduler_event_loop(scheduler); });
     g_scheduler = scheduler;
+    emit_trace_message("scheduler_start: workers=" + std::to_string(worker_count) +
+                       " queue_limit=" + std::to_string(scheduler->queue_limit));
   });
 }
 
@@ -360,6 +469,7 @@ static void scheduler_shutdown() {
   if (g_scheduler == nullptr) {
     return;
   }
+  emit_trace_message("scheduler_shutdown: begin");
   g_scheduler->shutdown.store(true);
   g_scheduler->cv.notify_all();
   g_scheduler->queue_space_cv.notify_all();
@@ -382,6 +492,7 @@ static void scheduler_shutdown() {
   (void)thag_platform_event_loop_close(g_scheduler->event_loop_fd);
   delete g_scheduler;
   g_scheduler = nullptr;
+  emit_trace_message("scheduler_shutdown: done");
 }
 
 static std::vector<thag_task_scope_t*> scope_children_snapshot(thag_task_scope_t* scope) {
@@ -410,6 +521,7 @@ static void scope_cancel_recursive(thag_task_scope_t* scope) {
   if (already_cancelled) {
     return;
   }
+  emit_scope_event("scope_cancel", scope);
   const auto children = scope_children_snapshot(scope);
   for (thag_task_scope_t* child : children) {
     scope_cancel_recursive(child);
@@ -438,9 +550,11 @@ extern "C" {
 
 void thag_concurrency_runtime_init(void) {
   scheduler_start_once();
+  emit_trace_message("concurrency_runtime_init");
 }
 
 void thag_concurrency_runtime_shutdown(void) {
+  emit_trace_message("concurrency_runtime_shutdown");
   scheduler_shutdown();
 }
 
@@ -465,6 +579,7 @@ bool thag_coro_done(void* coro_handle) {
 thag_task_scope_t* thag_task_scope_create(void) {
   scheduler_start_once();
   auto* scope = new thag_task_scope();
+  scope->id = g_scope_sequence.fetch_add(1, std::memory_order_relaxed);
   thag_task_scope_t* parent = g_current_scope;
   if (parent != nullptr) {
     scope->parent = parent;
@@ -475,6 +590,11 @@ thag_task_scope_t* thag_task_scope_create(void) {
     std::lock_guard<std::mutex> lock(parent->mutex);
     parent->children.push_back(scope);
     notify_scope_change(parent);
+  }
+  if (parent != nullptr) {
+    emit_scope_event("scope_create", scope, "parent=#" + std::to_string(parent->id));
+  } else {
+    emit_scope_event("scope_create", scope, "parent=<root>");
   }
   return scope;
 }
@@ -487,9 +607,11 @@ void thag_task_scope_destroy(thag_task_scope_t* scope) {
   if (scope == nullptr) {
     return;
   }
+  emit_scope_event("scope_destroy_begin", scope);
   thag_task_scope_cancel(scope);
   (void)thag_task_scope_wait(scope);
   scope_detach_parent(scope);
+  emit_scope_event("scope_destroy_end", scope);
   delete scope;
 }
 
@@ -499,11 +621,13 @@ int thag_task_scope_spawn(thag_task_scope_t* scope, thag_task_fn fn, void* user_
   }
   if (scope->cancelled.load() || scope_timed_out(scope)) {
     scope->cancelled.store(true);
+    emit_scope_event("task_spawn_reject", scope, "reason=cancelled_or_timeout");
     return 0;
   }
   {
     std::lock_guard<std::mutex> lock(scope->mutex);
     if (scope->waiting || scope->closed) {
+      emit_scope_event("task_spawn_reject", scope, "reason=scope_closed");
       return 0;
     }
   }
@@ -517,8 +641,11 @@ int thag_task_scope_spawn(thag_task_scope_t* scope, thag_task_fn fn, void* user_
   if (!scheduler_submit(task, true)) {
     scope->in_flight.fetch_sub(1);
     notify_scope_change(scope);
+    emit_scope_event("task_spawn_reject", scope, "reason=scheduler_queue_full");
     return 0;
   }
+  scope->spawned_total.fetch_add(1);
+  emit_scope_event("task_spawn", scope);
   return 1;
 }
 
@@ -533,6 +660,7 @@ void thag_task_scope_set_timeout_ms(thag_task_scope_t* scope, uint64_t timeout_m
   const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeout_ms);
   scope_propagate_deadline_recursive(scope, deadline);
   notify_scope_change(scope);
+  emit_scope_event("scope_timeout_set", scope, "timeout_ms=" + std::to_string(timeout_ms));
 }
 
 void thag_task_scope_set_timeout(thag_task_scope_t* scope, uint64_t timeout_ms) {
@@ -543,6 +671,7 @@ int thag_task_scope_wait(thag_task_scope_t* scope) {
   if (scope == nullptr) {
     return 0;
   }
+  emit_scope_event("scope_wait_begin", scope);
   {
     std::lock_guard<std::mutex> lock(scope->mutex);
     scope->waiting = true;
@@ -565,8 +694,15 @@ int thag_task_scope_wait(thag_task_scope_t* scope) {
     } else {
       ++stagnant_loops;
     }
-    if (!deadlock_reported && stagnant_loops > 300 && scope->in_flight.load() > 0) {
-      std::fprintf(stderr, "deadlock detected: task A waiting on task B, task B waiting on task A\n");
+    const bool report_deadlock = !deadlock_reported && stagnant_loops > 300 && scope->in_flight.load() > 0;
+    if (report_deadlock) {
+      lock.unlock();
+      std::fprintf(stderr,
+                   "deadlock detected: task A waiting on task B, task B waiting on task A [scope#%llu]\n",
+                   static_cast<unsigned long long>(scope->id));
+      const std::string tree = build_scope_tree_dump(scope);
+      std::fprintf(stderr, "task tree:\n%s", tree.c_str());
+      emit_scope_event("scope_deadlock_detected", scope);
       scope_cancel_recursive(scope);
       deadlock_reported = true;
       stagnant_loops = 0;
@@ -608,6 +744,7 @@ int thag_task_scope_wait(thag_task_scope_t* scope) {
     scope->waiting = false;
   }
   notify_scope_change(scope);
+  emit_scope_event("scope_wait_end", scope, std::string("result=") + (scope->cancelled.load() ? "cancelled" : "ok"));
   return scope->cancelled.load() ? 0 : 1;
 }
 
@@ -620,6 +757,29 @@ int thag_task_scope_cancelled(const thag_task_scope_t* scope) {
 
 int thag_task_is_cancelled(void) {
   return (g_current_scope != nullptr && g_current_scope->cancelled.load()) ? 1 : 0;
+}
+
+void thag_task_trace_set_enabled(int enabled) {
+  g_trace_enabled.store(enabled != 0, std::memory_order_relaxed);
+}
+
+int thag_task_trace_enabled(void) {
+  return g_trace_enabled.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
+void thag_task_trace_set_hook(thag_task_trace_hook_t hook, void* user_data) {
+  std::lock_guard<std::mutex> lock(g_trace_hook_mutex);
+  g_trace_hook = hook;
+  g_trace_hook_user_data = user_data;
+}
+
+void thag_task_scope_dump_tree(const thag_task_scope_t* scope) {
+  if (scope == nullptr) {
+    std::fprintf(stderr, "task tree: <null scope>\n");
+    return;
+  }
+  const std::string tree = build_scope_tree_dump(scope);
+  std::fprintf(stderr, "task tree:\n%s", tree.c_str());
 }
 
 thag_async_runtime_t* thag_async_runtime_create(void) {

@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 typedef void (*thag_task_fn)(void* user_data);
+typedef void (*thag_task_trace_hook_t)(const char* message, void* user_data);
 typedef struct thag_task_scope thag_task_scope_t;
 typedef struct thag_async_runtime thag_async_runtime_t;
 
@@ -91,6 +92,10 @@ void thag_task_scope_set_timeout_ms(thag_task_scope_t* scope, uint64_t timeout_m
 int thag_task_scope_wait(thag_task_scope_t* scope);
 int thag_task_scope_cancelled(const thag_task_scope_t* scope);
 int thag_task_is_cancelled(void);
+void thag_task_trace_set_enabled(int enabled);
+int thag_task_trace_enabled(void);
+void thag_task_trace_set_hook(thag_task_trace_hook_t hook, void* user_data);
+void thag_task_scope_dump_tree(const thag_task_scope_t* scope);
 
 thag_async_runtime_t* thag_async_runtime_create(void);
 void thag_async_runtime_destroy(thag_async_runtime_t* runtime);

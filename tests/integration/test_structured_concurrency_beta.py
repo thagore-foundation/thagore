@@ -149,11 +149,60 @@ class StructuredConcurrencyBetaTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, msg=run.stderr)
 
     def test_deadlock_detection_emits_message(self) -> None:
-        runtime_src = Path("runtime/src/concurrency.cpp").read_text()
-        self.assertIn(
-            "deadlock detected: task A waiting on task B, task B waiting on task A",
-            runtime_src,
+        run = self._compile_and_run(
+            "#include \"thag_runtime.h\"\n"
+            "static void stalled(void*) {\n"
+            "  while (!thag_task_is_cancelled()) {\n"
+            "    thag_sleep_ms(1);\n"
+            "  }\n"
+            "}\n"
+            "int main() {\n"
+            "  thag_task_scope_t* scope = thag_task_scope_create();\n"
+            "  if (!scope) return 40;\n"
+            "  if (!thag_task_scope_spawn(scope, stalled, nullptr)) return 41;\n"
+            "  int ok = thag_task_scope_wait(scope);\n"
+            "  thag_task_scope_destroy(scope);\n"
+            "  return ok == 0 ? 0 : 42;\n"
+            "}\n",
+            timeout=20.0,
         )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+        self.assertIn("deadlock detected: task A waiting on task B, task B waiting on task A", run.stderr)
+        self.assertIn("task tree:", run.stderr)
+        self.assertIn("scope#", run.stderr)
+
+    def test_task_tree_trace_hook_emits_scope_events(self) -> None:
+        run = self._compile_and_run(
+            "#include <atomic>\n"
+            "#include <cstring>\n"
+            "#include \"thag_runtime.h\"\n"
+            "static std::atomic<int> g_trace_count{0};\n"
+            "static std::atomic<int> g_has_create{0};\n"
+            "static void worker(void*) { thag_sleep_ms(1); }\n"
+            "static void trace_hook(const char* message, void*) {\n"
+            "  g_trace_count.fetch_add(1);\n"
+            "  if (message != nullptr && std::strstr(message, \"scope_create\") != nullptr) {\n"
+            "    g_has_create.store(1);\n"
+            "  }\n"
+            "}\n"
+            "int main() {\n"
+            "  thag_task_trace_set_hook(trace_hook, nullptr);\n"
+            "  thag_task_trace_set_enabled(1);\n"
+            "  thag_task_scope_t* scope = thag_task_scope_create();\n"
+            "  if (!scope) return 50;\n"
+            "  if (!thag_task_scope_spawn(scope, worker, nullptr)) return 51;\n"
+            "  int ok = thag_task_scope_wait(scope);\n"
+            "  thag_task_scope_dump_tree(scope);\n"
+            "  thag_task_scope_destroy(scope);\n"
+            "  thag_task_trace_set_enabled(0);\n"
+            "  thag_task_trace_set_hook(nullptr, nullptr);\n"
+            "  if (!ok) return 52;\n"
+            "  if (g_has_create.load() != 1) return 53;\n"
+            "  return g_trace_count.load() >= 4 ? 0 : 54;\n"
+            "}\n",
+            timeout=20.0,
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
 
 
 if __name__ == "__main__":

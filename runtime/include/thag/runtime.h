@@ -16,8 +16,16 @@
 extern "C" {
 #endif
 
+typedef void (*thag_task_trace_hook_t)(const char* message, void* user_data);
+typedef struct thag_task_scope thag_task_scope_t;
+
 void thag_coro_resume(void* coro_handle);
 bool thag_coro_done(void* coro_handle);
+
+void thag_task_trace_set_enabled(int enabled);
+int thag_task_trace_enabled(void);
+void thag_task_trace_set_hook(thag_task_trace_hook_t hook, void* user_data);
+void thag_task_scope_dump_tree(const thag_task_scope_t* scope);
 
 int64_t thag_rc_alloc_count(void);
 int64_t thag_arc_alloc_count(void);
