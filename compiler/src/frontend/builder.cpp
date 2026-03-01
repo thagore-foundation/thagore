@@ -1974,6 +1974,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     diag.error("E0002", "missing entrypoint: define func main() or provide top-level executable statements");
     return false;
   }
+  if (program.has_main && !program.top_level_statements.empty()) {
+    const auto& st = program.top_level_statements.front();
+    diag.error("E0029",
+               "line " + std::to_string(st.line) +
+                   ": top-level executable statements are not allowed when func main() is defined");
+    return false;
+  }
   for (const auto& fn : program.functions) {
     if (fn.name.empty()) {
       diag.error("E0003", "invalid function header at line " + std::to_string(fn.header_line));

@@ -336,28 +336,6 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     core.closures.push_back(std::move(out));
   }
 
-  if (program.has_main && !program.top_level_statements.empty()) {
-    auto main_it =
-        std::find_if(core.functions.begin(), core.functions.end(), [](const CoreFunction& fn) { return fn.name == "main"; });
-    if (main_it != core.functions.end()) {
-      std::vector<CoreStmt> prelude;
-      prelude.reserve(program.top_level_statements.size());
-      std::unordered_map<std::string, std::string> no_known_values;
-      for (const auto& st : program.top_level_statements) {
-        append_core_statement(prelude, st, no_known_values);
-      }
-      std::vector<CoreStmt> merged;
-      merged.reserve(prelude.size() + main_it->statements.size());
-      for (auto& st : prelude) {
-        merged.push_back(std::move(st));
-      }
-      for (auto& st : main_it->statements) {
-        merged.push_back(std::move(st));
-      }
-      main_it->statements = std::move(merged);
-    }
-  }
-
   if (!program.has_main && !program.top_level_statements.empty()) {
     std::unordered_map<std::string, std::string> known_values;
     const syntax::AstStatement& last = program.top_level_statements.back();
