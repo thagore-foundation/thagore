@@ -42,7 +42,8 @@ jobs:
           sudo apt-get install -y \
             clang-21 lld-21 llvm-21-dev \
             cmake ninja-build clang-format \
-            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev \
+            golang-go rustc cargo
 
       - name: Format check (C++)
         run: |
@@ -81,7 +82,8 @@ jobs:
             --out-markdown dist/perf-report.md \
             --startup-iterations 20 \
             --build-iterations 8 \
-            --run-iterations 12
+            --run-iterations 12 \
+            --require-runtimes go,rust,python
           python tooling/policy/check_latency_budget.py \
             --metrics dist/perf-metrics.json \
             --budgets contracts/perf/latency_budget.json \

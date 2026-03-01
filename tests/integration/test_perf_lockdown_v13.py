@@ -95,6 +95,34 @@ class PerfLockdownV13Tests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
 
+    def test_benchmark_require_runtimes_fails_when_toolchain_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out_json = root / "metrics.json"
+            proc = subprocess.run(
+                [
+                    "python3",
+                    "tooling/bench/run_benchmarks.py",
+                    "--thagc",
+                    str(self.bin),
+                    "--out-json",
+                    str(out_json),
+                    "--startup-iterations",
+                    "1",
+                    "--build-iterations",
+                    "1",
+                    "--run-iterations",
+                    "1",
+                    "--require-runtimes",
+                    "go",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("required runtime comparisons unavailable", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

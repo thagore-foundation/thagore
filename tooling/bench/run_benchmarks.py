@@ -173,6 +173,11 @@ def main() -> None:
     parser.add_argument("--startup-iterations", type=int, default=20)
     parser.add_argument("--build-iterations", type=int, default=10)
     parser.add_argument("--run-iterations", type=int, default=20)
+    parser.add_argument(
+        "--require-runtimes",
+        default="",
+        help="Comma-separated runtime names that must be available in comparisons (for example: go,rust,python)",
+    )
     args = parser.parse_args()
 
     thagc_bin = Path(args.thagc)
@@ -217,6 +222,14 @@ def main() -> None:
         }
 
         comparisons = run_language_comparison(root, thagc_bin, args.run_iterations)
+        required = [name.strip() for name in args.require_runtimes.split(",") if name.strip()]
+        missing_required = [name for name in required if not comparisons.get(name, {}).get("available", False)]
+        if missing_required:
+            raise RuntimeError(
+                "required runtime comparisons unavailable: "
+                + ", ".join(missing_required)
+                + ". install missing toolchains or relax --require-runtimes."
+            )
 
         payload: dict[str, object] = {
             "commit": maybe_git_commit_short(),
