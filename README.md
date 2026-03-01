@@ -29,7 +29,12 @@ Invoke-WebRequest https://thagore.org/thagup.ps1 -OutFile $script
 powershell -ExecutionPolicy Bypass -File $script
 ```
 
-Installer scripts now auto-add `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`) to user PATH.
+Installer scripts now install both `thagc` and `drago`, and auto-add `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`) to user PATH.
+
+```bash
+thagc --version
+drago --version
+```
 
 Release archives are self-contained:
 - no separate LLVM installation is required on end-user machines.

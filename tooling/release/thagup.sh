@@ -3,30 +3,36 @@ set -euo pipefail
 
 REPO_OWNER="thagore-foundation"
 REPO_NAME="thagore"
+DRAGO_REPO_OWNER="thagore-foundation"
+DRAGO_REPO_NAME="drago"
 DEFAULT_CHANNEL="stable"
 
 TAG=""
+DRAGO_TAG=""
 CHANNEL="${DEFAULT_CHANNEL}"
 INSTALL_ROOT="${HOME}/.thagore"
 MODE="auto"
 ARCH=""
 DRY_RUN=0
 FORCE=0
+INSTALL_DRAGO=1
 
 ASSET_NAME=""
 CHECKSUM_NAME=""
 BIN_RELATIVE_PATH=""
-LINK_NAME=""
+THAGC_LINK_NAME=""
 
 usage() {
   cat <<'EOF'
-thagup.sh - Install Thagore compiler (thagc) from GitHub Releases.
+thagup.sh - Install Thagore toolchain (thagc + drago) from GitHub Releases.
 
 Usage:
   thagup.sh [options]
 
 Options:
-  --tag <vX.Y.Z>         Install specific tag (default: latest release)
+  --tag <vX.Y.Z>         Install specific thagc tag (default: latest release)
+  --drago-tag <vX.Y.Z>   Install specific drago tag (default: latest release)
+  --without-drago        Install thagc only
   --channel <name>       Install channel under ~/.thagore/toolchains (default: stable)
   --install-root <dir>   Install root (default: ~/.thagore)
   --mode <auto|linux|macos|windows>
@@ -39,8 +45,8 @@ Options:
 
 Examples:
   thagup.sh
-  thagup.sh --tag v0.8.3
-  thagup.sh --mode macos --tag v0.8.3
+  thagup.sh --tag v0.8.4 --drago-tag v0.1.0
+  thagup.sh --without-drago
 EOF
 }
 
@@ -79,6 +85,15 @@ parse_args() {
         [[ $# -ge 2 ]] || fail "--tag requires a value"
         TAG="$2"
         shift 2
+        ;;
+      --drago-tag)
+        [[ $# -ge 2 ]] || fail "--drago-tag requires a value"
+        DRAGO_TAG="$2"
+        shift 2
+        ;;
+      --without-drago)
+        INSTALL_DRAGO=0
+        shift
         ;;
       --channel)
         [[ $# -ge 2 ]] || fail "--channel requires a value"
@@ -157,19 +172,19 @@ resolve_assets() {
       ASSET_NAME="thagc-core-linux-${ARCH}.tar.gz"
       CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc"
-      LINK_NAME="thagc"
+      THAGC_LINK_NAME="thagc"
       ;;
     macos)
       ASSET_NAME="thagc-core-macos-${ARCH}.tar.gz"
       CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc"
-      LINK_NAME="thagc"
+      THAGC_LINK_NAME="thagc"
       ;;
     windows)
       ASSET_NAME="thagc-core-windows-${ARCH}.tar.gz"
       CHECKSUM_NAME="SHA256SUMS-thagc.txt"
       BIN_RELATIVE_PATH="bin/thagc.exe"
-      LINK_NAME="thagc.exe"
+      THAGC_LINK_NAME="thagc.exe"
       ;;
     *)
       fail "internal error: unresolved mode ${MODE}"
@@ -177,13 +192,19 @@ resolve_assets() {
   esac
 }
 
-api_get_latest_tag() {
+api_get_latest_tag_for_repo() {
+  local owner="$1"
+  local name="$2"
   local api_url payload tag
-  api_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
+  api_url="https://api.github.com/repos/${owner}/${name}/releases/latest"
   payload="$(curl -fsSL "${api_url}")" || return 1
   tag="$(printf '%s' "${payload}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
   [[ -n "${tag}" ]] || return 1
   printf '%s\n' "${tag}"
+}
+
+api_get_latest_tag() {
+  api_get_latest_tag_for_repo "${REPO_OWNER}" "${REPO_NAME}"
 }
 
 sha256_file() {
@@ -202,25 +223,44 @@ sha256_file() {
 verify_checksum() {
   local archive="$1"
   local checksum_file="$2"
+  local asset_name="$3"
   local expected actual
-  expected="$(awk -v asset="${ASSET_NAME}" '$2 == asset {print $1}' "${checksum_file}" | head -n 1)"
-  [[ -n "${expected}" ]] || fail "cannot parse expected checksum for ${ASSET_NAME}"
+  expected="$(awk -v asset="${asset_name}" '$2 == asset {print $1}' "${checksum_file}" | head -n 1)"
+  [[ -n "${expected}" ]] || fail "cannot parse expected checksum for ${asset_name}"
   actual="$(sha256_file "${archive}")"
   if [[ "${actual}" != "${expected}" ]]; then
-    fail "checksum mismatch for ${ASSET_NAME}: expected ${expected}, got ${actual}"
+    fail "checksum mismatch for ${asset_name}: expected ${expected}, got ${actual}"
   fi
 }
 
 install_link() {
   local target_path="$1"
   local link_dir="$2"
-  local link_path="${link_dir}/${LINK_NAME}"
+  local link_name="$3"
+  local link_path="${link_dir}/${link_name}"
   run_cmd mkdir -p "${link_dir}"
   if [[ "${MODE}" == "windows" ]]; then
     run_cmd cp -f "${target_path}" "${link_path}"
   else
     run_cmd ln -sfn "${target_path}" "${link_path}"
   fi
+}
+
+extract_archive() {
+  local archive_path="$1"
+  local dest_dir="$2"
+  case "${archive_path}" in
+    *.tar.gz|*.tgz)
+      run_cmd tar -xzf "${archive_path}" -C "${dest_dir}"
+      ;;
+    *.zip)
+      require_cmd unzip
+      run_cmd unzip -oq "${archive_path}" -d "${dest_dir}"
+      ;;
+    *)
+      fail "unsupported archive format: ${archive_path}"
+      ;;
+  esac
 }
 
 select_profile_file() {
@@ -282,6 +322,135 @@ download_first_available() {
   return 1
 }
 
+install_drago() {
+  local work_dir="$1"
+  local channel_dir="$2"
+  local link_dir="$3"
+  local thagc_bin="$4"
+
+  if [[ "${INSTALL_DRAGO}" -eq 0 ]]; then
+    log "skip drago installation (--without-drago)"
+    return 0
+  fi
+
+  if [[ -z "${DRAGO_TAG}" ]]; then
+    log "resolving latest drago release tag..."
+    DRAGO_TAG="$(api_get_latest_tag_for_repo "${DRAGO_REPO_OWNER}" "${DRAGO_REPO_NAME}")" \
+      || fail "unable to resolve latest drago release tag"
+  fi
+
+  local drago_link_name drago_target_path
+  if [[ "${MODE}" == "windows" ]]; then
+    drago_link_name="drago.exe"
+  else
+    drago_link_name="drago"
+  fi
+  drago_target_path="${channel_dir}/bin/${drago_link_name}"
+  run_cmd mkdir -p "$(dirname "${drago_target_path}")"
+
+  local drago_base_url drago_source_base
+  drago_base_url="https://github.com/${DRAGO_REPO_OWNER}/${DRAGO_REPO_NAME}/releases/download/${DRAGO_TAG}"
+  drago_source_base="https://github.com/${DRAGO_REPO_OWNER}/${DRAGO_REPO_NAME}/archive/refs"
+
+  local arch_labels=()
+  case "${ARCH}" in
+    x86_64) arch_labels=("x86_64" "X64" "amd64") ;;
+    aarch64) arch_labels=("aarch64" "ARM64" "arm64") ;;
+    *) arch_labels=("${ARCH}") ;;
+  esac
+
+  local drago_asset_names=()
+  local label
+  for label in "${arch_labels[@]}"; do
+    drago_asset_names+=("drago-${DRAGO_TAG}-${MODE}-${label}.tar.gz")
+    drago_asset_names+=("drago-${DRAGO_TAG}-${MODE}-${label}.zip")
+  done
+  drago_asset_names+=("drago-${DRAGO_TAG}-${MODE}.tar.gz")
+  drago_asset_names+=("drago-${DRAGO_TAG}-${MODE}.zip")
+
+  local drago_urls=()
+  local asset
+  for asset in "${drago_asset_names[@]}"; do
+    drago_urls+=("${drago_base_url}/${asset}")
+  done
+
+  local drago_work_dir drago_download_tmp drago_download_url
+  drago_work_dir="${work_dir}/drago"
+  drago_download_tmp="${drago_work_dir}/download.tmp"
+  run_cmd mkdir -p "${drago_work_dir}"
+
+  log "drago tag: ${DRAGO_TAG}"
+  if drago_download_url="$(download_first_available "${drago_download_tmp}" "${drago_urls[@]}")"; then
+    local drago_asset_name drago_archive drago_extract_dir drago_release_bin
+    drago_asset_name="$(basename "${drago_download_url}")"
+    drago_archive="${drago_work_dir}/${drago_asset_name}"
+    drago_extract_dir="${drago_work_dir}/release"
+
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+      log "[dry-run] install drago from release asset: ${drago_asset_name}"
+      install_link "${drago_target_path}" "${link_dir}" "${drago_link_name}"
+      return 0
+    fi
+
+    mv "${drago_download_tmp}" "${drago_archive}"
+    run_cmd mkdir -p "${drago_extract_dir}"
+    extract_archive "${drago_archive}" "${drago_extract_dir}"
+    drago_release_bin="$(find "${drago_extract_dir}" -type f \( -name 'drago' -o -name 'drago.bin' -o -name 'drago.exe' \) | head -n 1 || true)"
+
+    if [[ -n "${drago_release_bin}" ]]; then
+      run_cmd cp -f "${drago_release_bin}" "${drago_target_path}"
+      if [[ "${MODE}" != "windows" ]]; then
+        run_cmd chmod +x "${drago_target_path}"
+      fi
+      install_link "${drago_target_path}" "${link_dir}" "${drago_link_name}"
+      log "installed drago from release asset: ${drago_asset_name}"
+      return 0
+    fi
+
+    log "drago release asset does not contain executable; fallback to source build"
+  else
+    log "drago release asset unavailable for mode=${MODE} arch=${ARCH}; fallback to source build"
+  fi
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "[dry-run] build drago from source with thagc"
+    install_link "${drago_target_path}" "${link_dir}" "${drago_link_name}"
+    return 0
+  fi
+
+  local drago_source_urls drago_source_tmp drago_source_url drago_source_archive drago_source_extract
+  drago_source_urls=(
+    "${drago_source_base}/tags/${DRAGO_TAG}.tar.gz"
+    "${drago_source_base}/heads/main.tar.gz"
+  )
+  drago_source_tmp="${drago_work_dir}/source-download.tmp"
+  drago_source_extract="${drago_work_dir}/source"
+  drago_source_url="$(download_first_available "${drago_source_tmp}" "${drago_source_urls[@]}")" \
+    || fail "unable to download drago source archive"
+  drago_source_archive="${drago_work_dir}/$(basename "${drago_source_url}")"
+  mv "${drago_source_tmp}" "${drago_source_archive}"
+  run_cmd mkdir -p "${drago_source_extract}"
+  extract_archive "${drago_source_archive}" "${drago_source_extract}"
+
+  local drago_main drago_build_out
+  drago_main="$(find "${drago_source_extract}" -type f -path '*/src/main.tg' | head -n 1 || true)"
+  [[ -n "${drago_main}" ]] || fail "unable to locate drago src/main.tg from source archive"
+
+  if [[ "${MODE}" == "windows" ]]; then
+    drago_build_out="${drago_work_dir}/drago.exe"
+  else
+    drago_build_out="${drago_work_dir}/drago.bin"
+  fi
+
+  run_cmd "${thagc_bin}" build "${drago_main}" -o "${drago_build_out}"
+  run_cmd cp -f "${drago_build_out}" "${drago_target_path}"
+  if [[ "${MODE}" != "windows" ]]; then
+    run_cmd chmod +x "${drago_target_path}"
+  fi
+  install_link "${drago_target_path}" "${link_dir}" "${drago_link_name}"
+  log "installed drago from source archive"
+}
+
 main() {
   parse_args "$@"
 
@@ -309,7 +478,7 @@ main() {
   archive_path="${work_dir}/${ASSET_NAME}"
   checksum_path="${work_dir}/${CHECKSUM_NAME}"
 
-  local toolchains_dir channel_dir target_bin_path link_dir
+  local toolchains_dir channel_dir target_bin_path link_dir core_asset_name
   toolchains_dir="${INSTALL_ROOT}/toolchains"
   channel_dir="${toolchains_dir}/${CHANNEL}"
   target_bin_path="${channel_dir}/${BIN_RELATIVE_PATH}"
@@ -327,10 +496,10 @@ main() {
     || fail "unable to download core archive for mode=${MODE} arch=${ARCH}"
   checksum_url="$(download_first_available "${checksum_path}" "${checksum_url}" "${legacy_checksum}")" \
     || fail "unable to download checksum file for mode=${MODE} arch=${ARCH}"
-  ASSET_NAME="$(basename "${archive_url}")"
+  core_asset_name="$(basename "${archive_url}")"
 
   if [[ "${DRY_RUN}" -eq 0 ]]; then
-    verify_checksum "${archive_path}" "${checksum_path}"
+    verify_checksum "${archive_path}" "${checksum_path}" "${core_asset_name}"
   else
     log "[dry-run] skip checksum verification"
   fi
@@ -345,7 +514,9 @@ main() {
   run_cmd mkdir -p "${channel_dir}"
   run_cmd tar -xzf "${archive_path}" -C "${channel_dir}"
   run_cmd chmod +x "${target_bin_path}"
-  install_link "${target_bin_path}" "${link_dir}"
+  install_link "${target_bin_path}" "${link_dir}" "${THAGC_LINK_NAME}"
+
+  install_drago "${work_dir}" "${channel_dir}" "${link_dir}" "${target_bin_path}"
   ensure_path_config "${link_dir}"
 
   if [[ "${DRY_RUN}" -eq 0 ]]; then
@@ -355,8 +526,17 @@ main() {
   fi
 
   log "install completed"
-  log "binary: ${target_bin_path}"
-  log "launcher: ${link_dir}/${LINK_NAME}"
+  log "thagc binary: ${target_bin_path}"
+  log "thagc launcher: ${link_dir}/${THAGC_LINK_NAME}"
+  if [[ "${INSTALL_DRAGO}" -eq 1 ]]; then
+    if [[ "${MODE}" == "windows" ]]; then
+      log "drago launcher: ${link_dir}/drago.exe"
+    else
+      log "drago launcher: ${link_dir}/drago"
+    fi
+    log "open a new terminal to use thagc and drago directly from PATH"
+    return
+  fi
   log "open a new terminal to use thagc directly from PATH"
 }
 

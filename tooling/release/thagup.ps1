@@ -1,17 +1,21 @@
 param(
   [string]$Tag = "",
+  [string]$DragoTag = "",
   [string]$Channel = "stable",
   [string]$InstallRoot = "$HOME\\.thagore",
   [ValidateSet("x86_64", "aarch64")]
   [string]$Arch = "",
   [switch]$DryRun,
-  [switch]$Force
+  [switch]$Force,
+  [switch]$WithoutDrago
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoOwner = "thagore-foundation"
 $RepoName = "thagore"
+$DragoRepoOwner = "thagore-foundation"
+$DragoRepoName = "drago"
 
 function Log([string]$Message) {
   Write-Host "[thagup.ps1] $Message"
@@ -33,19 +37,24 @@ function Resolve-Arch([string]$ExplicitArch) {
   }
 }
 
-function Resolve-LatestTag {
-  $uri = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
+function Resolve-LatestTagForRepo([string]$Owner, [string]$Name) {
+  $uri = "https://api.github.com/repos/$Owner/$Name/releases/latest"
   $json = Invoke-RestMethod -Uri $uri
   if (-not $json.tag_name) {
-    Fail "unable to resolve latest release tag"
+    Fail "unable to resolve latest release tag for $Owner/$Name"
   }
   return [string]$json.tag_name
+}
+
+function Resolve-LatestTag {
+  return Resolve-LatestTagForRepo -Owner $RepoOwner -Name $RepoName
 }
 
 function Download-FirstAvailable {
   param(
     [string[]]$Urls,
-    [string]$OutFile
+    [string]$OutFile,
+    [switch]$AllowMissing
   )
 
   foreach ($url in $Urls) {
@@ -59,6 +68,10 @@ function Download-FirstAvailable {
     } catch {
       continue
     }
+  }
+
+  if ($AllowMissing) {
+    return ""
   }
   Fail "no downloadable URL found"
 }
@@ -97,6 +110,28 @@ function Verify-Checksum([string]$ArchivePath, [string]$ChecksumPath, [string]$A
   }
 }
 
+function Extract-Archive([string]$ArchivePath, [string]$DestDir) {
+  if ($ArchivePath.ToLowerInvariant().EndsWith(".zip")) {
+    if ($DryRun) {
+      Log "[dry-run] Expand-Archive $ArchivePath -> $DestDir"
+      return
+    }
+    Expand-Archive -Path $ArchivePath -DestinationPath $DestDir -Force
+    return
+  }
+
+  if ($ArchivePath.ToLowerInvariant().EndsWith(".tar.gz") -or $ArchivePath.ToLowerInvariant().EndsWith(".tgz")) {
+    if ($DryRun) {
+      Log "[dry-run] tar -xzf $ArchivePath -C $DestDir"
+      return
+    }
+    tar -xzf $ArchivePath -C $DestDir
+    return
+  }
+
+  Fail "unsupported archive format: $ArchivePath"
+}
+
 function Ensure-UserPath([string]$BinDir) {
   $normalizedBin = [System.IO.Path]::GetFullPath($BinDir).TrimEnd("\\")
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -131,6 +166,116 @@ function Ensure-UserPath([string]$BinDir) {
   if (-not ($env:Path -split ";" | Where-Object { $_.TrimEnd("\\").ToLowerInvariant() -eq $normalizedBin.ToLowerInvariant() })) {
     $env:Path = "$normalizedBin;$env:Path"
   }
+}
+
+function Find-DragoBinary([string]$Root) {
+  $candidates = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object {
+      $_.Name -eq "drago.exe" -or $_.Name -eq "drago.bin" -or $_.Name -eq "drago"
+    } |
+    Select-Object -First 1
+  if ($null -eq $candidates) {
+    return ""
+  }
+  return $candidates.FullName
+}
+
+function Install-Drago([string]$ThagcBinPath, [string]$ChannelDir, [string]$LinkDir, [string]$ResolvedArch, [string]$WorkDir) {
+  if ($WithoutDrago) {
+    Log "skip drago installation (-WithoutDrago)"
+    return
+  }
+
+  if ([string]::IsNullOrWhiteSpace($DragoTag)) {
+    $script:DragoTag = Resolve-LatestTagForRepo -Owner $DragoRepoOwner -Name $DragoRepoName
+  }
+
+  Log "drago tag: $DragoTag"
+  $dragoTargetPath = Join-Path $ChannelDir "bin\\drago.exe"
+  $dragoLinkPath = Join-Path $LinkDir "drago.exe"
+  Ensure-Dir (Split-Path -Parent $dragoTargetPath)
+
+  $archLabels = @()
+  switch ($ResolvedArch) {
+    "x86_64" { $archLabels = @("x86_64", "X64", "amd64") }
+    "aarch64" { $archLabels = @("aarch64", "ARM64", "arm64") }
+    default { $archLabels = @($ResolvedArch) }
+  }
+
+  $dragoBaseUrl = "https://github.com/$DragoRepoOwner/$DragoRepoName/releases/download/$DragoTag"
+  $dragoAssetUrls = @()
+  foreach ($label in $archLabels) {
+    $dragoAssetUrls += "$dragoBaseUrl/drago-$DragoTag-windows-$label.zip"
+    $dragoAssetUrls += "$dragoBaseUrl/drago-$DragoTag-windows-$label.tar.gz"
+  }
+  $dragoAssetUrls += "$dragoBaseUrl/drago-$DragoTag-windows.zip"
+  $dragoAssetUrls += "$dragoBaseUrl/drago-$DragoTag-windows.tar.gz"
+
+  $dragoWork = Join-Path $WorkDir "drago"
+  Ensure-Dir $dragoWork
+  $dragoDownloadTmp = Join-Path $dragoWork "release.download"
+  $dragoReleaseUrl = Download-FirstAvailable -Urls $dragoAssetUrls -OutFile $dragoDownloadTmp -AllowMissing
+
+  if ($DryRun) {
+    if ($dragoReleaseUrl -ne "") {
+      Log "[dry-run] install drago from release asset: $dragoReleaseUrl"
+    } else {
+      Log "[dry-run] drago release asset not found; fallback build from source"
+    }
+    Log "[dry-run] copy $dragoTargetPath -> $dragoLinkPath"
+    return
+  }
+
+  if ($dragoReleaseUrl -ne "") {
+    $dragoReleaseAsset = [System.IO.Path]::GetFileName($dragoReleaseUrl)
+    $dragoReleaseArchive = Join-Path $dragoWork $dragoReleaseAsset
+    Move-Item -Force $dragoDownloadTmp $dragoReleaseArchive
+    $dragoReleaseExtract = Join-Path $dragoWork "release"
+    Ensure-Dir $dragoReleaseExtract
+    Extract-Archive -ArchivePath $dragoReleaseArchive -DestDir $dragoReleaseExtract
+
+    $releaseBin = Find-DragoBinary -Root $dragoReleaseExtract
+    if ($releaseBin -ne "") {
+      Copy-Item -Path $releaseBin -Destination $dragoTargetPath -Force
+      Copy-Item -Path $dragoTargetPath -Destination $dragoLinkPath -Force
+      Log "installed drago from release asset: $dragoReleaseAsset"
+      return
+    }
+
+    Log "drago release asset did not contain executable; fallback to source build"
+  } else {
+    Log "drago release asset unavailable for windows/$ResolvedArch; fallback to source build"
+  }
+
+  $dragoSourceBase = "https://github.com/$DragoRepoOwner/$DragoRepoName/archive/refs"
+  $dragoSourceUrls = @(
+    "$dragoSourceBase/tags/$DragoTag.tar.gz",
+    "$dragoSourceBase/heads/main.tar.gz"
+  )
+  $dragoSourceTmp = Join-Path $dragoWork "source.download"
+  $dragoSourceUrl = Download-FirstAvailable -Urls $dragoSourceUrls -OutFile $dragoSourceTmp
+  $dragoSourceArchive = Join-Path $dragoWork ([System.IO.Path]::GetFileName($dragoSourceUrl))
+  Move-Item -Force $dragoSourceTmp $dragoSourceArchive
+  $dragoSourceExtract = Join-Path $dragoWork "source"
+  Ensure-Dir $dragoSourceExtract
+  Extract-Archive -ArchivePath $dragoSourceArchive -DestDir $dragoSourceExtract
+
+  $mainFile = Get-ChildItem -Path $dragoSourceExtract -Recurse -File -Filter "main.tg" |
+    Where-Object { $_.FullName -like "*\src\main.tg" } |
+    Select-Object -First 1
+  if ($null -eq $mainFile) {
+    Fail "unable to locate drago src/main.tg from source archive"
+  }
+
+  $dragoBuildOut = Join-Path $dragoWork "drago-build.exe"
+  & $ThagcBinPath build $mainFile.FullName -o $dragoBuildOut
+  if ($LASTEXITCODE -ne 0) {
+    Fail "failed to build drago from source archive"
+  }
+
+  Copy-Item -Path $dragoBuildOut -Destination $dragoTargetPath -Force
+  Copy-Item -Path $dragoTargetPath -Destination $dragoLinkPath -Force
+  Log "installed drago from source archive"
 }
 
 $ResolvedArch = Resolve-Arch -ExplicitArch $Arch
@@ -178,17 +323,15 @@ if (Test-Path $channelDir) {
 }
 
 Ensure-Dir $channelDir
-if ($DryRun) {
-  Log "[dry-run] tar -xzf $archivePath -C $channelDir"
-} else {
-  tar -xzf $archivePath -C $channelDir
-}
+Extract-Archive -ArchivePath $archivePath -DestDir $channelDir
 Ensure-Dir $linkDir
 if ($DryRun) {
   Log "[dry-run] copy $targetBinPath -> $linkPath"
 } else {
   Copy-Item -Path $targetBinPath -Destination $linkPath -Force
 }
+
+Install-Drago -ThagcBinPath $targetBinPath -ChannelDir $channelDir -LinkDir $linkDir -ResolvedArch $ResolvedArch -WorkDir $workDir
 Ensure-UserPath $linkDir
 
 if ($DryRun) {
@@ -198,6 +341,9 @@ if ($DryRun) {
 }
 
 Log "install completed"
-Log "binary: $targetBinPath"
-Log "launcher: $linkPath"
-Log "open a new PowerShell window to use thagc from PATH"
+Log "thagc binary: $targetBinPath"
+Log "thagc launcher: $linkPath"
+if (-not $WithoutDrago) {
+  Log "drago launcher: $(Join-Path $linkDir 'drago.exe')"
+}
+Log "open a new PowerShell window to use thagc and drago from PATH"
