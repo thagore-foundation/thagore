@@ -48,12 +48,12 @@ Execution order (re-anchored to dependency reality):
 - [x] Error messages rõ ràng, có line/column number, không cryptic
 
 ### Stdlib
-- [ ] `std/core.tg` — `print_int`, `print_float`, `print_bool` thật sự hoạt động
-- [ ] `std/string.tg` — `len()`, `concat()`, `trim()` basic
+- [x] `std/core.tg` — `print_int`, `print_float`, `print_bool` thật sự hoạt động
+- [x] `std/string.tg` — `len()`, `concat()`, `trim()` basic
 
 ### CI
-- [ ] Windows build job trong `ci.yml`
-- [ ] 3-OS matrix đầy đủ cho build jobs
+- [x] Windows build job trong `ci.yml`
+- [x] 3-OS matrix đầy đủ cho build jobs
 
 ### Gate
 - [x] Chương trình có nhiều functions, float, bool compile và chạy đúng trên Linux (macOS/Windows gate moved to v1.4)
@@ -96,12 +96,12 @@ Execution order (re-anchored to dependency reality):
 - [x] Multi-file compilation — locate + compile + link `.tg` modules
 - [x] `thagore.toml` manifest — khai báo dependencies, version pinning
 - [x] Module resolver — phân biệt package vs file path qua manifest
-- [ ] Incremental compilation — chỉ recompile file thay đổi
+- [x] Incremental compilation — chỉ recompile file thay đổi
 
 ### Drago Package Registry (MVP)
 - [x] `thagc install <package>` hoạt động
 - [x] Local cache tại `~/.thagore/packages/`
-- [ ] Registry endpoint cơ bản
+- [x] Registry endpoint cơ bản
 - [x] `thagore.toml` lock file
 
 ### Gate
@@ -342,7 +342,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Runtime & Stdlib
 - [x] HTTP/WebSocket/DB production-ready với retry/backoff
-- [ ] Multi-OS IO parity — Linux/macOS/Windows
+- [x] Multi-OS IO parity — Linux/macOS/Windows
 - [x] IO failure handling runbook
 
 ### Stdlib Expansion
@@ -352,7 +352,7 @@ Execution order (re-anchored to dependency reality):
 - [x] `lib/crypto.tg` — hash, HMAC cơ bản (FFI vào libcrypto)
 
 ### Gate
-- [ ] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI
+- [x] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI
 
 ---
 

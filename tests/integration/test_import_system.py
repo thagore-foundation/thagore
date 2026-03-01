@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import os
+import shlex
 
 from tests._support import resolve_thagc_bin
 
@@ -185,6 +186,87 @@ class ImportSystemIntegrationTests(unittest.TestCase):
             build = self._build(root, entry)
             self.assertNotEqual(build.returncode, 0)
             self.assertIn("package `ghostpkg` not found in dependencies", build.stderr)
+
+    def test_registry_endpoint_from_manifest_is_used_in_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "drago.toml").write_text(
+                "[package]\n"
+                "name = \"demo\"\n"
+                "version = \"0.1.0\"\n"
+                "\n"
+                "[dependencies]\n"
+                "\n"
+                "[registry]\n"
+                "endpoint = \"https://registry.example.test\"\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "import ghostpkg\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            build = self._build(root, entry)
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("registry endpoint: https://registry.example.test", build.stderr)
+
+    def test_incremental_module_cache_updates_only_changed_module_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "lib").mkdir(parents=True)
+            (root / "lib" / "math.tg").write_text(
+                "pub func inc(v):\n"
+                "  return v + 1\n"
+            )
+            (root / "lib" / "util.tg").write_text(
+                "pub func base():\n"
+                "  return 10\n"
+            )
+            entry = root / "main.tg"
+            entry.write_text(
+                "import lib.math\n"
+                "import lib.util\n"
+                "\n"
+                "func main():\n"
+                "  return math.inc(3) + util.base()\n"
+            )
+
+            build1 = self._build(root, entry)
+            self.assertEqual(build1.returncode, 0, msg=build1.stderr)
+            run1 = subprocess.run([str(root / "main.bin")], capture_output=True, text=True, check=False)
+            self.assertEqual(run1.returncode, 14, msg=run1.stderr)
+
+            cache_file = root / ".thagore" / "incremental" / "modules.cache"
+            self.assertTrue(cache_file.exists(), msg="incremental cache file was not created")
+
+            def parse_module_hashes(path: Path) -> dict[str, int]:
+                hashes: dict[str, int] = {}
+                for line in path.read_text().splitlines():
+                    if not line.startswith("MODULE "):
+                        continue
+                    parts = shlex.split(line)
+                    self.assertGreaterEqual(len(parts), 4)
+                    hashes[parts[1]] = int(parts[2])
+                return hashes
+
+            before = parse_module_hashes(cache_file)
+            self.assertGreaterEqual(len(before), 3)
+
+            (root / "lib" / "math.tg").write_text(
+                "pub func inc(v):\n"
+                "  return v + 2\n"
+            )
+            build2 = self._build(root, entry)
+            self.assertEqual(build2.returncode, 0, msg=build2.stderr)
+            run2 = subprocess.run([str(root / "main.bin")], capture_output=True, text=True, check=False)
+            self.assertEqual(run2.returncode, 15, msg=run2.stderr)
+
+            after = parse_module_hashes(cache_file)
+            self.assertEqual(set(before.keys()), set(after.keys()))
+            changed = [path for path in before.keys() if before[path] != after[path]]
+            self.assertEqual(len(changed), 1, msg=f"expected one changed module hash, got {changed}")
+            self.assertTrue(changed[0].endswith("lib/math.tg"), msg=f"unexpected changed module: {changed[0]}")
 
     def test_private_symbol_requires_pub(self) -> None:
         with tempfile.TemporaryDirectory() as td:

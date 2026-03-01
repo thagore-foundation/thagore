@@ -17,6 +17,7 @@ struct ProjectManifest {
   std::string lock_name;
   std::string package_name;
   std::string package_version;
+  std::string registry_endpoint;
   std::unordered_map<std::string, std::string> dependencies;
 };
 

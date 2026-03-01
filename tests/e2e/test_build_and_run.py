@@ -186,6 +186,37 @@ class BuildAndRunE2ETests(unittest.TestCase):
             run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
             self.assertEqual(run.returncode, 1, msg=run.stderr)
 
+    def test_std_core_print_helpers_work(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "core_print.tg"
+            out = root / "core_print.bin"
+            src.write_text(
+                "from std.core import print_int, print_float, print_bool\n"
+                "\n"
+                "func main():\n"
+                "  print_int(7)\n"
+                "  print_float(2.5)\n"
+                "  print_bool(true)\n"
+                "  print_bool(false)\n"
+                "  return 0\n"
+            )
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            run = subprocess.run([str(out)], capture_output=True, text=True, check=False)
+            self.assertEqual(run.returncode, 0, msg=run.stderr)
+            lines = [line.strip() for line in run.stdout.splitlines() if line.strip()]
+            self.assertGreaterEqual(len(lines), 4)
+            self.assertIn("7", lines)
+            self.assertIn("2.500000", lines)
+            self.assertIn("1", lines)
+            self.assertIn("0", lines)
+
     def test_build_and_run_ffi_with_explicit_c_library_link(self) -> None:
         if shutil.which("clang") is None:
             self.skipTest("clang not found")

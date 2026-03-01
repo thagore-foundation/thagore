@@ -17,6 +17,8 @@ namespace thagc::driver {
 namespace {
 
 static constexpr const char* kPrimaryManifestName = "drago.toml";
+static constexpr const char* kDefaultRegistryEndpoint =
+    "https://raw.githubusercontent.com/thagore-foundation/registry/main";
 
 static std::string trim_copy(const std::string& text) {
   std::size_t left = 0;
@@ -36,6 +38,18 @@ static bool starts_with(const std::string& text, const std::string& prefix) {
 
 static std::vector<std::string> manifest_candidates() {
   return {kPrimaryManifestName};
+}
+
+static bool is_valid_registry_endpoint(const std::string& endpoint) {
+  return starts_with(endpoint, "https://") || starts_with(endpoint, "http://");
+}
+
+static std::string registry_endpoint_from_env() {
+  const char* value = std::getenv("THAG_REGISTRY_ENDPOINT");
+  if (value == nullptr || *value == '\0') {
+    return "";
+  }
+  return trim_copy(value);
 }
 
 static std::string strip_inline_comment(const std::string& line) {
@@ -120,7 +134,7 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, cons
     return false;
   }
 
-  enum class Section { None, Package, Dependencies };
+  enum class Section { None, Package, Dependencies, Registry };
   Section section = Section::None;
   std::size_t line_no = 0;
   std::size_t offset = 0;
@@ -145,6 +159,8 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, cons
         section = Section::Package;
       } else if (header == "dependencies") {
         section = Section::Dependencies;
+      } else if (header == "registry") {
+        section = Section::Registry;
       } else {
         section = Section::None;
       }
@@ -168,6 +184,10 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, cons
       }
     } else if (section == Section::Dependencies) {
       out.dependencies[key] = value;
+    } else if (section == Section::Registry) {
+      if (key == "endpoint") {
+        out.registry_endpoint = value;
+      }
     }
     if (nl >= data.size()) {
       break;
@@ -405,13 +425,36 @@ bool ModuleResolver::load_project_manifest(const std::string& start_path, Projec
     out.found = false;
     out.manifest_name = kPrimaryManifestName;
     out.lock_name = "drago.lock";
+    out.registry_endpoint = registry_endpoint_from_env();
+    if (out.registry_endpoint.empty()) {
+      out.registry_endpoint = kDefaultRegistryEndpoint;
+    }
+    if (!is_valid_registry_endpoint(out.registry_endpoint)) {
+      diag.error("E_MOD_109",
+                 "invalid registry endpoint `" + out.registry_endpoint + "` (expected http:// or https://)");
+      return false;
+    }
     return true;
   }
 
   out.found = true;
   out.manifest_path = selected_manifest.string();
   out.lock_name = "drago.lock";
-  return parse_manifest_file(selected_manifest, out.manifest_name, out, diag);
+  if (!parse_manifest_file(selected_manifest, out.manifest_name, out, diag)) {
+    return false;
+  }
+  if (out.registry_endpoint.empty()) {
+    out.registry_endpoint = registry_endpoint_from_env();
+  }
+  if (out.registry_endpoint.empty()) {
+    out.registry_endpoint = kDefaultRegistryEndpoint;
+  }
+  if (!is_valid_registry_endpoint(out.registry_endpoint)) {
+    diag.error("E_MOD_109",
+               "invalid registry endpoint `" + out.registry_endpoint + "` (expected http:// or https://)");
+    return false;
+  }
+  return true;
 }
 
 bool ModuleResolver::write_lock_file(const ProjectManifest& manifest, support::DiagnosticSink& diag) const {
@@ -437,6 +480,10 @@ bool ModuleResolver::write_lock_file(const ProjectManifest& manifest, support::D
       continue;
     }
     content += name + " = \"" + it->second + "\"\n";
+  }
+  if (!manifest.registry_endpoint.empty()) {
+    content += "\n[registry]\n";
+    content += "endpoint = \"" + manifest.registry_endpoint + "\"\n";
   }
   try {
     const std::string lock_name = manifest.lock_name.empty() ? "drago.lock" : manifest.lock_name;
@@ -482,7 +529,8 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
     if (dep != manifest.dependencies.end()) {
       const std::filesystem::path package_root = resolve_dependency_source(dep->second, manifest.root_path);
       if (package_root.empty()) {
-        diag.error("E_MOD_105", "package `" + first + "` is declared but not resolved by drago");
+        diag.error("E_MOD_105", "package `" + first + "` is declared but not resolved by drago (registry endpoint: " +
+                                   manifest.registry_endpoint + ")");
         return false;
       }
       const std::filesystem::path entry = locate_package_entry(package_root, first);
@@ -530,7 +578,8 @@ bool ModuleResolver::resolve_import(const syntax::AstImport& import_decl, const 
 
   if (single_segment) {
     diag.error("E_MOD_107",
-               "package `" + first + "` not found in dependencies, use drago add " + first + " or drago install");
+               "package `" + first + "` not found in dependencies, use drago add " + first + " or drago install"
+               " (registry endpoint: " + manifest.registry_endpoint + ")");
     return false;
   }
   diag.error("E_MOD_108", "module `" + rel + "` not found");

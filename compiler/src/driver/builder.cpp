@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -31,10 +34,241 @@ struct ModuleNode {
   std::string key;
   std::string path;
   std::string source;
-  syntax::AstProgram ast;
   std::vector<ModuleImportBinding> imports;
+  std::unordered_set<std::string> all_symbols;
   std::unordered_set<std::string> exports;
+  bool has_top_level_executable = false;
   bool is_entry = false;
+};
+
+struct ModuleCacheRecord {
+  std::uint64_t source_hash = 0;
+  bool has_top_level_executable = false;
+  std::vector<syntax::AstImport> imports;
+  std::unordered_set<std::string> all_symbols;
+  std::unordered_set<std::string> exports;
+};
+
+class ModuleIncrementalCache {
+ public:
+  explicit ModuleIncrementalCache(std::filesystem::path project_root) : cache_file_(std::move(project_root)) {
+    cache_file_ /= ".thagore";
+    cache_file_ /= "incremental";
+    cache_file_ /= "modules.cache";
+    load();
+  }
+
+  const ModuleCacheRecord* lookup(const std::string& module_path, std::uint64_t source_hash) const {
+    auto it = previous_.find(module_path);
+    if (it == previous_.end()) {
+      return nullptr;
+    }
+    if (it->second.source_hash != source_hash) {
+      return nullptr;
+    }
+    return &it->second;
+  }
+
+  void stage(const std::string& module_path, ModuleCacheRecord record) {
+    next_[module_path] = std::move(record);
+  }
+
+  bool persist() const {
+    std::error_code ec;
+    const std::filesystem::path dir = cache_file_.parent_path();
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+      return false;
+    }
+    const std::filesystem::path temp = cache_file_.string() + ".tmp";
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+      return false;
+    }
+    out << "VERSION 1\n";
+    std::vector<std::string> paths;
+    paths.reserve(next_.size());
+    for (const auto& [path, _] : next_) {
+      paths.push_back(path);
+    }
+    std::sort(paths.begin(), paths.end());
+    for (const auto& path : paths) {
+      auto it = next_.find(path);
+      if (it == next_.end()) {
+        continue;
+      }
+      const ModuleCacheRecord& record = it->second;
+      out << "MODULE " << std::quoted(path) << ' ' << record.source_hash << ' '
+          << (record.has_top_level_executable ? 1 : 0) << '\n';
+      write_symbol_line(out, "EXPORTS", path, record.exports);
+      write_symbol_line(out, "ALL", path, record.all_symbols);
+      for (const auto& import_decl : record.imports) {
+        out << "IMPORT " << std::quoted(path) << ' ' << (import_decl.is_from_import ? 1 : 0) << ' '
+            << import_decl.line << ' ' << import_decl.column << ' ' << std::quoted(import_decl.alias) << ' '
+            << import_decl.module_path.size();
+        for (const auto& seg : import_decl.module_path) {
+          out << ' ' << std::quoted(seg);
+        }
+        out << ' ' << import_decl.symbols.size();
+        for (const auto& sym : import_decl.symbols) {
+          out << ' ' << std::quoted(sym);
+        }
+        out << '\n';
+      }
+      out << "END " << std::quoted(path) << '\n';
+    }
+    out.close();
+    if (!out.good()) {
+      return false;
+    }
+    std::filesystem::rename(temp, cache_file_, ec);
+    if (ec) {
+      std::filesystem::remove(cache_file_, ec);
+      ec.clear();
+      std::filesystem::rename(temp, cache_file_, ec);
+      if (ec) {
+        std::filesystem::remove(temp, ec);
+        return false;
+      }
+    }
+    return true;
+  }
+
+ private:
+  static void write_symbol_line(std::ostream& out, const char* tag, const std::string& path,
+                                const std::unordered_set<std::string>& symbols) {
+    std::vector<std::string> sorted(symbols.begin(), symbols.end());
+    std::sort(sorted.begin(), sorted.end());
+    out << tag << ' ' << std::quoted(path) << ' ' << sorted.size();
+    for (const auto& sym : sorted) {
+      out << ' ' << std::quoted(sym);
+    }
+    out << '\n';
+  }
+
+  static bool parse_symbol_line(const std::string& line, const std::string& expected_tag, std::string& path_out,
+                                std::unordered_set<std::string>& symbols_out) {
+    std::istringstream in(line);
+    std::string tag;
+    if (!(in >> tag) || tag != expected_tag) {
+      return false;
+    }
+    std::string path;
+    std::size_t count = 0;
+    if (!(in >> std::quoted(path) >> count)) {
+      return false;
+    }
+    std::unordered_set<std::string> symbols;
+    for (std::size_t i = 0; i < count; ++i) {
+      std::string symbol;
+      if (!(in >> std::quoted(symbol))) {
+        return false;
+      }
+      symbols.insert(symbol);
+    }
+    path_out = std::move(path);
+    symbols_out = std::move(symbols);
+    return true;
+  }
+
+  void load() {
+    previous_.clear();
+    std::ifstream in(cache_file_, std::ios::binary);
+    if (!in.is_open()) {
+      return;
+    }
+    std::string line;
+    while (std::getline(in, line)) {
+      if (line.empty()) {
+        continue;
+      }
+      std::istringstream parser(line);
+      std::string tag;
+      if (!(parser >> tag)) {
+        continue;
+      }
+      if (tag == "VERSION") {
+        continue;
+      }
+      if (tag == "MODULE") {
+        std::string path;
+        ModuleCacheRecord record;
+        int has_top_level = 0;
+        if (!(parser >> std::quoted(path) >> record.source_hash >> has_top_level)) {
+          continue;
+        }
+        record.has_top_level_executable = has_top_level != 0;
+        previous_[path] = std::move(record);
+        continue;
+      }
+      if (tag == "EXPORTS" || tag == "ALL") {
+        std::string path;
+        std::unordered_set<std::string> symbols;
+        if (!parse_symbol_line(line, tag, path, symbols)) {
+          continue;
+        }
+        auto it = previous_.find(path);
+        if (it == previous_.end()) {
+          continue;
+        }
+        if (tag == "EXPORTS") {
+          it->second.exports = std::move(symbols);
+        } else {
+          it->second.all_symbols = std::move(symbols);
+        }
+        continue;
+      }
+      if (tag == "IMPORT") {
+        std::string path;
+        int is_from = 0;
+        int line_no = 0;
+        int col = 1;
+        std::string alias;
+        std::size_t module_count = 0;
+        if (!(parser >> std::quoted(path) >> is_from >> line_no >> col >> std::quoted(alias) >> module_count)) {
+          continue;
+        }
+        syntax::AstImport import_decl;
+        import_decl.is_from_import = is_from != 0;
+        import_decl.line = line_no;
+        import_decl.column = col;
+        import_decl.alias = std::move(alias);
+        for (std::size_t i = 0; i < module_count; ++i) {
+          std::string seg;
+          if (!(parser >> std::quoted(seg))) {
+            import_decl.module_path.clear();
+            break;
+          }
+          import_decl.module_path.push_back(std::move(seg));
+        }
+        if (import_decl.module_path.empty()) {
+          continue;
+        }
+        std::size_t symbols_count = 0;
+        if (!(parser >> symbols_count)) {
+          continue;
+        }
+        for (std::size_t i = 0; i < symbols_count; ++i) {
+          std::string sym;
+          if (!(parser >> std::quoted(sym))) {
+            import_decl.symbols.clear();
+            break;
+          }
+          import_decl.symbols.push_back(std::move(sym));
+        }
+        auto it = previous_.find(path);
+        if (it == previous_.end()) {
+          continue;
+        }
+        it->second.imports.push_back(std::move(import_decl));
+        continue;
+      }
+    }
+  }
+
+  std::filesystem::path cache_file_;
+  std::unordered_map<std::string, ModuleCacheRecord> previous_;
+  std::unordered_map<std::string, ModuleCacheRecord> next_;
 };
 
 static std::string trim_copy(const std::string& text) {
@@ -225,6 +459,15 @@ static std::string replace_prefixed_symbol(const std::string& line, const std::s
   return out;
 }
 
+static std::uint64_t hash_source_text(const std::string& source) {
+  std::uint64_t hash = 1469598103934665603ULL;
+  for (unsigned char ch : source) {
+    hash ^= static_cast<std::uint64_t>(ch);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
 static bool parse_module_source(const std::string& path, const std::string& source, syntax::AstProgram& ast,
                                 support::DiagnosticSink& diag) {
   syntax::Lexer lexer;
@@ -246,7 +489,7 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
                                   std::unordered_map<std::string, ModuleNode>& modules,
                                   std::unordered_set<std::string>& visiting, std::unordered_set<std::string>& loaded,
                                   std::vector<std::string>& stack, std::vector<std::string>& postorder,
-                                  support::DiagnosticSink& diag) {
+                                  ModuleIncrementalCache& incremental_cache, support::DiagnosticSink& diag) {
   const std::string key = std::filesystem::weakly_canonical(path).string();
   if (loaded.find(key) != loaded.end()) {
     return true;
@@ -268,28 +511,56 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
     return false;
   }
 
-  syntax::AstProgram ast;
-  if (!parse_module_source(key, source, ast, diag)) {
-    stack.pop_back();
-    visiting.erase(key);
-    return false;
+  const std::uint64_t source_hash = hash_source_text(source);
+  std::vector<syntax::AstImport> parsed_imports;
+  ModuleNode node;
+  node.key = key;
+  node.path = key;
+  node.source = source;
+  const ModuleCacheRecord* cached = incremental_cache.lookup(key, source_hash);
+  if (cached != nullptr) {
+    parsed_imports = cached->imports;
+    node.all_symbols = cached->all_symbols;
+    node.exports = cached->exports;
+    node.has_top_level_executable = cached->has_top_level_executable;
+  } else {
+    syntax::AstProgram ast;
+    if (!parse_module_source(key, source, ast, diag)) {
+      stack.pop_back();
+      visiting.erase(key);
+      return false;
+    }
+    parsed_imports = ast.imports;
+    node.all_symbols = collect_all_symbols(ast);
+    node.exports = collect_exports(ast);
+    node.has_top_level_executable = !ast.top_level_statements.empty();
+
+    ModuleCacheRecord record;
+    record.source_hash = source_hash;
+    record.has_top_level_executable = node.has_top_level_executable;
+    record.imports = parsed_imports;
+    record.all_symbols = node.all_symbols;
+    record.exports = node.exports;
+    incremental_cache.stage(key, std::move(record));
   }
-  if (!is_entry && !ast.top_level_statements.empty()) {
+  if (!is_entry && node.has_top_level_executable) {
     diag.error("E_MOD_203", "imported module cannot contain top-level executable statements", key, 1, 1);
     stack.pop_back();
     visiting.erase(key);
     return false;
   }
-
-  ModuleNode node;
-  node.key = key;
-  node.path = key;
-  node.source = source;
-  node.ast = std::move(ast);
-  node.exports = collect_exports(node.ast);
+  if (cached != nullptr) {
+    ModuleCacheRecord record;
+    record.source_hash = source_hash;
+    record.has_top_level_executable = node.has_top_level_executable;
+    record.imports = parsed_imports;
+    record.all_symbols = node.all_symbols;
+    record.exports = node.exports;
+    incremental_cache.stage(key, std::move(record));
+  }
   node.is_entry = is_entry;
 
-  for (const auto& import_decl : node.ast.imports) {
+  for (const auto& import_decl : parsed_imports) {
     ResolvedImport resolved;
     if (!resolver.resolve_import(import_decl, key, manifest, include_paths, resolved, diag)) {
       stack.pop_back();
@@ -302,7 +573,7 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
   modules[key] = node;
   for (const auto& binding : modules[key].imports) {
     if (!load_module_recursive(binding.resolved.absolute_path, false, resolver, manifest, include_paths, modules,
-                               visiting, loaded, stack, postorder, diag)) {
+                               visiting, loaded, stack, postorder, incremental_cache, diag)) {
       stack.pop_back();
       visiting.erase(key);
       return false;
@@ -328,7 +599,7 @@ static bool validate_import_bindings(const std::unordered_map<std::string, Modul
         return false;
       }
       if (binding.import_decl.is_from_import) {
-        const std::unordered_set<std::string> all_symbols = collect_all_symbols(target_it->second.ast);
+        const std::unordered_set<std::string>& all_symbols = target_it->second.all_symbols;
         for (const std::string& symbol : binding.import_decl.symbols) {
           if (target_it->second.exports.find(symbol) == target_it->second.exports.end()) {
             if (all_symbols.find(symbol) != all_symbols.end()) {
@@ -353,7 +624,7 @@ static bool validate_import_bindings(const std::unordered_map<std::string, Modul
       }
       prefix_owner[prefix] = binding.resolved.module_key;
 
-      const std::unordered_set<std::string> all_symbols = collect_all_symbols(target_it->second.ast);
+      const std::unordered_set<std::string>& all_symbols = target_it->second.all_symbols;
       const std::unordered_set<std::string> refs = collect_prefixed_symbol_refs(module.source, prefix);
       for (const std::string& symbol : refs) {
         if (all_symbols.find(symbol) == all_symbols.end()) {
@@ -425,13 +696,16 @@ static bool build_merged_source(const std::string& entry_path, ModuleResolver& r
     return false;
   }
 
+  const std::filesystem::path cache_root =
+      manifest.root_path.empty() ? std::filesystem::current_path() : std::filesystem::path(manifest.root_path);
+  ModuleIncrementalCache incremental_cache(cache_root);
   std::unordered_map<std::string, ModuleNode> modules;
   std::unordered_set<std::string> visiting;
   std::unordered_set<std::string> loaded;
   std::vector<std::string> stack;
   std::vector<std::string> postorder;
   if (!load_module_recursive(entry_path, true, resolver, manifest, include_paths, modules, visiting, loaded, stack,
-                             postorder, diag)) {
+                             postorder, incremental_cache, diag)) {
     return false;
   }
   if (!validate_import_bindings(modules, diag)) {
@@ -447,6 +721,7 @@ static bool build_merged_source(const std::string& entry_path, ModuleResolver& r
     out_source += rewrite_module_source(it->second, modules);
     out_source.push_back('\n');
   }
+  incremental_cache.persist();
   return true;
 }
 
