@@ -4,7 +4,7 @@
 
 namespace thagc::support {
 
-inline constexpr std::string_view kCompilerVersion = "0.8.3";
-inline constexpr std::string_view kCompilerVersionTag = "v0.8.3";
+inline constexpr std::string_view kCompilerVersion = "1.0.0";
+inline constexpr std::string_view kCompilerVersionTag = "v1.0.0";
 
 }  // namespace thagc::support

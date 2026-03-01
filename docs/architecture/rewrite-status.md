@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v1.5`: `docs/architecture/v1.5-roadmap.md`.
-Current release cut: `v0.6.0` (Concurrency Primitives Alpha).
+Current release cut: `v1.0.0` (Deploy Baseline).
 
 ## Frontend
 
