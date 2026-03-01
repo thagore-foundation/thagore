@@ -53,6 +53,60 @@ class CliTargetUpdateFlowTests(unittest.TestCase):
             self.assertEqual(recover.returncode, 0, msg=recover.stderr)
             self.assertIn('"status": "ok"', recover.stdout)
 
+    def test_flow_mvp_build_accepts_retry_timeout_undo_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "flow_ok.tg"
+            out = root / "flow_ok.bin"
+            src.write_text(
+                "flow deploy_release(input):\n"
+                "  step vm = cloud.create_vm(input)\n"
+                "    undo cloud.delete_vm(vm)\n"
+                "    retry 2\n"
+                "    timeout 2s\n"
+                "    idempotent\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            build = self._run(root, "build", str(src), "-o", str(out))
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            self.assertTrue(out.exists())
+
+    def test_flow_retry_requires_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "flow_retry_invalid.tg"
+            out = root / "flow_retry_invalid.bin"
+            src.write_text(
+                "flow deploy_release(input):\n"
+                "  step vm = cloud.create_vm(input)\n"
+                "    undo cloud.delete_vm(vm)\n"
+                "    retry 1\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            build = self._run(root, "build", str(src), "-o", str(out))
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("E_FLOW_303", build.stderr)
+
+    def test_flow_side_effect_step_requires_undo_or_irreversible(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "flow_missing_undo.tg"
+            out = root / "flow_missing_undo.bin"
+            src.write_text(
+                "flow deploy_release(input):\n"
+                "  step vm = cloud.create_vm(input)\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            build = self._run(root, "build", str(src), "-o", str(out))
+            self.assertNotEqual(build.returncode, 0)
+            self.assertIn("E_FLOW_305", build.stderr)
+
     def test_update_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

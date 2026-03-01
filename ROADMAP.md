@@ -315,8 +315,8 @@ Execution order (re-anchored to dependency reality):
 - [x] Deadlock detection với helpful error message
 
 ### Language
-- [ ] `flow` construct MVP — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords
-- [ ] Flow compile-time validation — undo/retry semantics enforced
+- [x] `flow` construct MVP — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords
+- [x] Flow compile-time validation — undo/retry semantics enforced
 
 ### Gate
 - [ ] No open P0/P1 concurrency bugs, soak tests stable

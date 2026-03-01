@@ -82,6 +82,27 @@ struct AstImport {
   std::string raw;
 };
 
+struct AstFlowStep {
+  std::string name;
+  std::string action;
+  std::string undo_action;
+  int line = 0;
+  int retry_count = 0;
+  bool has_retry = false;
+  int timeout_ms = 0;
+  bool has_timeout = false;
+  bool idempotent = false;
+  bool irreversible = false;
+};
+
+struct AstFlow {
+  std::string header;
+  std::string name;
+  int line = 0;
+  int indent = 0;
+  std::vector<AstFlowStep> steps;
+};
+
 struct AstProgram {
   std::string source_path;
   std::vector<std::string> top_level_lines;
@@ -98,6 +119,7 @@ struct AstProgram {
   std::vector<std::string> enums;
   std::unordered_map<std::string, std::vector<std::string>> enum_variants;
   std::vector<std::string> flows;
+  std::vector<AstFlow> flow_defs;
   std::vector<std::string> intents;
   std::vector<std::string> type_aliases;
   std::vector<std::string> traits;

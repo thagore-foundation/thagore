@@ -1576,6 +1576,51 @@ static bool validate_extern_declarations(const syntax::AstProgram& program, supp
   return true;
 }
 
+static bool flow_action_looks_side_effectful(const std::string& action) {
+  const std::string clean = trim_copy(action);
+  if (clean.empty()) {
+    return false;
+  }
+  return clean.find('(') != std::string::npos || clean.find('.') != std::string::npos;
+}
+
+static bool validate_flow_constructs(const syntax::AstProgram& program, support::DiagnosticSink& diag) {
+  for (const auto& flow : program.flow_defs) {
+    if (flow.steps.empty()) {
+      diag.error("E_FLOW_300", "flow '" + flow.name + "' must declare at least one step", program.source_path, flow.line, 1);
+      return false;
+    }
+
+    std::unordered_set<std::string> step_names;
+    for (const auto& step : flow.steps) {
+      if (!step.name.empty()) {
+        auto inserted = step_names.insert(step.name);
+        if (!inserted.second) {
+          diag.error("E_FLOW_301", "duplicate flow step name '" + step.name + "'", program.source_path, step.line, 1);
+          return false;
+        }
+      }
+      if (step.has_timeout && step.timeout_ms <= 0) {
+        diag.error("E_FLOW_302", "flow step timeout must be greater than 0ms", program.source_path, step.line, 1);
+        return false;
+      }
+      if (step.has_retry && step.retry_count > 0 && !step.idempotent) {
+        diag.error("E_FLOW_303", "flow step with retry requires idempotent contract", program.source_path, step.line, 1);
+        return false;
+      }
+      if (step.irreversible && !step.undo_action.empty()) {
+        diag.error("E_FLOW_304", "flow step cannot declare both undo and irreversible", program.source_path, step.line, 1);
+        return false;
+      }
+      if (flow_action_looks_side_effectful(step.action) && step.undo_action.empty() && !step.irreversible) {
+        diag.error("E_FLOW_305", "side-effect flow step requires undo or irreversible", program.source_path, step.line, 1);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 static bool split_owner_and_method(const std::string& name, std::string& owner, std::string& method) {
   const std::size_t dot = name.find('.');
   if (dot == std::string::npos || dot == 0 || dot + 1 >= name.size()) {
@@ -1929,6 +1974,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     return false;
   }
   if (!validate_extern_declarations(program, diag)) {
+    return false;
+  }
+  if (!validate_flow_constructs(program, diag)) {
     return false;
   }
   const auto aliases = collect_type_aliases(program);

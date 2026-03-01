@@ -80,6 +80,24 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "flow") {
     return TokenKind::KeywordFlow;
   }
+  if (text == "step") {
+    return TokenKind::KeywordStep;
+  }
+  if (text == "undo") {
+    return TokenKind::KeywordUndo;
+  }
+  if (text == "retry") {
+    return TokenKind::KeywordRetry;
+  }
+  if (text == "timeout") {
+    return TokenKind::KeywordTimeout;
+  }
+  if (text == "idempotent") {
+    return TokenKind::KeywordIdempotent;
+  }
+  if (text == "irreversible") {
+    return TokenKind::KeywordIrreversible;
+  }
   if (text == "intent") {
     return TokenKind::KeywordIntent;
   }
