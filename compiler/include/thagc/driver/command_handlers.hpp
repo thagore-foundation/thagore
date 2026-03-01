@@ -13,6 +13,9 @@ int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
 int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
 int handle_check(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
 int handle_fmt(const ParsedCommand& cmd);
+int handle_fix(const ParsedCommand& cmd);
+int handle_repl(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
+int handle_lsp(const ParsedCommand& cmd);
 int handle_migrate(const ParsedCommand& cmd);
 int handle_unknown();
 

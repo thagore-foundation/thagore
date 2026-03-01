@@ -25,12 +25,18 @@ static std::string default_output(const std::string& input) {
 
 static void print_diagnostics(const support::DiagnosticSink& diag) {
   for (const auto& d : diag.diagnostics()) {
+    const char* level = d.level == support::DiagnosticLevel::Warning ? "warning" : "error";
     if (!d.file.empty()) {
       const int line = d.line > 0 ? d.line : 1;
       const int col = d.column > 0 ? d.column : 1;
-      std::cerr << d.file << ":" << line << ":" << col << ": " << d.code << ": " << d.message << "\n";
+      std::cerr << d.file << ":" << line << ":" << col << ": " << level << " " << d.code << ": " << d.message
+                << "\n";
     } else {
-      std::cerr << d.code << ": " << d.message << "\n";
+      std::cerr << level << " " << d.code << ": " << d.message << "\n";
+    }
+    const std::string hint = support::diagnostic_fix_suggestion(d);
+    if (!hint.empty()) {
+      std::cerr << "  help: " << hint << "\n";
     }
   }
 }
@@ -80,4 +86,3 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
 }
 
 }  // namespace thagc::driver
-

@@ -12,6 +12,9 @@ enum class CommandKind {
   Run,
   Check,
   Fmt,
+  Fix,
+  Repl,
+  Lsp,
   Migrate,
   Unknown,
 };

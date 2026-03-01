@@ -36,8 +36,13 @@ static void print_diagnostics(const ParsedCommand& cmd, const support::Diagnosti
     const std::string file = d.file.empty() ? (cmd.input_path.empty() ? "<unknown>" : cmd.input_path) : d.file;
     const int line = d.line > 0 ? d.line : extract_line_from_message(d.message);
     const int column = d.column > 0 ? d.column : 1;
-    std::cerr << file << ":" << std::max(1, line) << ":" << std::max(1, column) << ": " << d.code << ": " << d.message
-              << "\n";
+    const char* level = d.level == support::DiagnosticLevel::Warning ? "warning" : "error";
+    std::cerr << file << ":" << std::max(1, line) << ":" << std::max(1, column) << ": " << level << " " << d.code
+              << ": " << d.message << "\n";
+    const std::string hint = support::diagnostic_fix_suggestion(d);
+    if (!hint.empty()) {
+      std::cerr << "  help: " << hint << "\n";
+    }
   }
 }
 

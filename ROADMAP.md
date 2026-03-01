@@ -427,22 +427,22 @@ cho project management**, thagc chỉ là compiler backend thuần.
 > *"Works everywhere. Feels great everywhere."*
 
 ### Cross-Platform
-- [ ] 3-OS deterministic gate — Linux/macOS/Windows
-- [ ] Windows code signing trong release workflow
-- [ ] Cross-compile + deploy + smoke tests stable
-- [ ] Migration guide và rollback playbook
+- [x] 3-OS deterministic gate — Linux/macOS/Windows
+- [x] Windows code signing trong release workflow
+- [x] Cross-compile + deploy + smoke tests stable
+- [x] Migration guide và rollback playbook
 
 ### Developer Experience
-- [ ] LSP server MVP — syntax highlighting, go-to-definition, autocomplete
-- [ ] Error messages review — tất cả errors đều có fix suggestion
-- [ ] `thagc fix` — autofix thật sự cho common errors
-- [ ] REPL / interactive mode cho học giải thuật
+- [x] LSP server MVP — syntax highlighting, go-to-definition, autocomplete
+- [x] Error messages review — tất cả errors đều có fix suggestion
+- [x] `thagc fix` — autofix thật sự cho common errors
+- [x] REPL / interactive mode cho học giải thuật
 
 ### Typestate (Preview)
-- [ ] `state Session: Init | Ready | Closed` syntax trong lexer/parser
-- [ ] Typestate tracking trong typechecker
-- [ ] `W_STATE_AMBIGUOUS` / `E_STATE_*` diagnostics
-- [ ] Compile-time wrong-state-use prevention
+- [x] `state Session: Init | Ready | Closed` syntax trong lexer/parser
+- [x] Typestate tracking trong typechecker
+- [x] `W_STATE_AMBIGUOUS` / `E_STATE_*` diagnostics
+- [x] Compile-time wrong-state-use prevention
 
 ### Community
 - [ ] Drago Registry public launch
@@ -451,8 +451,8 @@ cho project management**, thagc chỉ là compiler backend thuần.
 - [ ] First external contributor PR merged
 
 ### Gate
-- [ ] Cross-compile + deploy stable trên cả 3 OS
-- [ ] LSP cơ bản hoạt động trong VS Code
+- [x] Cross-compile + deploy stable trên cả 3 OS
+- [x] LSP cơ bản hoạt động trong VS Code
 
 ---
 

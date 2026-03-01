@@ -297,6 +297,68 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         )
         self.assertEqual(run.returncode, 0, msg=run.stderr)
 
+    def test_typestate_state_set_rejects_wrong_argument_state(self) -> None:
+        build, _ = self._build(
+            "state Session: Init | Ready | Closed\n"
+            "type Session = i32\n"
+            "\n"
+            "func boot() -> Session[Init]:\n"
+            "  let s: Session[Init] = 1\n"
+            "  return s\n"
+            "\n"
+            "func use_ready(s: Session[Ready]) -> i32:\n"
+            "  return 0\n"
+            "\n"
+            "func main():\n"
+            "  let s = boot()\n"
+            "  return use_ready(s)\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("E_STATE_MISMATCH_ARG", build.stderr)
+
+    def test_typestate_state_set_accepts_valid_transition(self) -> None:
+        _, run = self._build_and_run(
+            "state Session: Init | Ready | Closed\n"
+            "type Session = i32\n"
+            "\n"
+            "func use_ready(s: Session[Ready]) -> i32:\n"
+            "  return s\n"
+            "\n"
+            "func consume_ready(s: Session[Ready]) -> i32:\n"
+            "  return use_ready(s)\n"
+            "\n"
+            "func main():\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_typestate_reports_unknown_state_set(self) -> None:
+        build, _ = self._build(
+            "func use_unknown(s: UnknownSession[Init]) -> i32:\n"
+            "  return 0\n"
+            "\n"
+            "func main():\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("E_STATE_UNKNOWN_SET", build.stderr)
+
+    def test_typestate_reports_ambiguous_when_state_missing(self) -> None:
+        build, _ = self._build(
+            "state Session: Init | Ready | Closed\n"
+            "type Session = i32\n"
+            "\n"
+            "func use_ready(s: Session[Ready]) -> i32:\n"
+            "  return 0\n"
+            "\n"
+            "func main():\n"
+            "  let s: Session = 1\n"
+            "  return use_ready(s)\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("W_STATE_AMBIGUOUS", build.stderr)
+        self.assertIn("E_STATE_AMBIGUOUS", build.stderr)
+
     def test_typestate_ignores_qualified_runtime_calls(self) -> None:
         build, _ = self._build(
             "extern func thag_fs_write(path: ptr, content: ptr) -> i32\n"

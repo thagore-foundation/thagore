@@ -53,6 +53,27 @@ static bool parse_generic_parts(const std::string& type_name, std::string& base,
   return !base.empty() && !args.empty();
 }
 
+static bool split_state_annotation(const std::string& type_name, std::string& set_name, std::string& variant_name) {
+  const std::string clean = trim_copy(type_name);
+  const std::size_t lbr = clean.find('[');
+  const std::size_t rbr = clean.rfind(']');
+  if (lbr == std::string::npos || rbr == std::string::npos || rbr <= lbr + 1 || rbr + 1 != clean.size()) {
+    return false;
+  }
+  set_name = trim_copy(clean.substr(0, lbr));
+  variant_name = trim_copy(clean.substr(lbr + 1, rbr - lbr - 1));
+  return !set_name.empty() && !variant_name.empty();
+}
+
+static std::string strip_state_annotation(const std::string& type_name) {
+  std::string set_name;
+  std::string variant_name;
+  if (split_state_annotation(type_name, set_name, variant_name)) {
+    return set_name;
+  }
+  return trim_copy(type_name);
+}
+
 static bool is_tuple_type_syntax(const std::string& type_name) {
   const std::string clean = trim_copy(type_name);
   return clean.size() >= 5 && clean.front() == '(' && clean.back() == ')' && clean.find(',') != std::string::npos;
@@ -64,18 +85,18 @@ static bool is_array_type_syntax(const std::string& type_name) {
 }
 
 static bool is_supported_type(const std::string& type_name) {
-  if (type_name == "i32" || type_name == "i64" || type_name == "f32" || type_name == "f64" || type_name == "bool" ||
-      type_name == "string" || type_name == "String" || type_name == "ptr" || type_name == "void" ||
-      type_name == "Option" || type_name == "Result" || type_name == "List" || type_name == "Rc" ||
-      type_name == "Arc" || type_name == "Fn") {
+  const std::string clean = strip_state_annotation(type_name);
+  if (clean == "i32" || clean == "i64" || clean == "f32" || clean == "f64" || clean == "bool" || clean == "string" ||
+      clean == "String" || clean == "ptr" || clean == "void" || clean == "Option" || clean == "Result" ||
+      clean == "List" || clean == "Rc" || clean == "Arc" || clean == "Fn") {
     return true;
   }
-  if (is_tuple_type_syntax(type_name) || is_array_type_syntax(type_name)) {
+  if (is_tuple_type_syntax(clean) || is_array_type_syntax(clean)) {
     return true;
   }
   std::string base;
   std::vector<std::string> args;
-  if (!parse_generic_parts(type_name, base, args)) {
+  if (!parse_generic_parts(clean, base, args)) {
     return false;
   }
   return base == "Option" || base == "Result" || base == "List" || base == "Rc" || base == "Arc";
@@ -104,7 +125,7 @@ static std::string type_name(TypeKind kind) {
 }
 
 static TypeKind parse_type_name(const std::string& type_name) {
-  const std::string clean = trim_copy(type_name);
+  const std::string clean = strip_state_annotation(type_name);
   if (clean == "i32") return TypeKind::I32;
   if (clean == "i64") return TypeKind::I64;
   if (clean == "f32") return TypeKind::F32;
@@ -162,11 +183,12 @@ static std::unordered_map<std::string, TypeKind> collect_type_aliases(const synt
 
 static TypeKind resolve_declared_type(const std::string& type_name,
                                       const std::unordered_map<std::string, TypeKind>& aliases) {
-  const TypeKind direct = parse_type_name(type_name);
+  const std::string clean = strip_state_annotation(type_name);
+  const TypeKind direct = parse_type_name(clean);
   if (direct != TypeKind::Unknown) {
     return direct;
   }
-  auto it = aliases.find(type_name);
+  auto it = aliases.find(clean);
   if (it != aliases.end()) {
     return it->second;
   }
@@ -223,28 +245,30 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
       out[fn.name] = fn.name == "main" ? TypeKind::I32 : TypeKind::I32;
       continue;
     }
-    const TypeKind direct = resolve_declared_type(fn.return_type, aliases);
+    const std::string clean_return = strip_state_annotation(fn.return_type);
+    const TypeKind direct = resolve_declared_type(clean_return, aliases);
     if (direct != TypeKind::Unknown) {
       out[fn.name] = direct;
       continue;
     }
-    if (struct_names.find(fn.return_type) != struct_names.end()) {
+    if (struct_names.find(clean_return) != struct_names.end()) {
       out[fn.name] = TypeKind::StructType;
       continue;
     }
-    if (enum_names.find(fn.return_type) != enum_names.end()) {
+    if (enum_names.find(clean_return) != enum_names.end()) {
       out[fn.name] = TypeKind::EnumType;
       continue;
     }
     out[fn.name] = TypeKind::Unknown;
   }
   for (const auto& ext : program.extern_functions) {
-    const TypeKind direct = resolve_declared_type(ext.return_type, aliases);
+    const std::string clean_return = strip_state_annotation(ext.return_type);
+    const TypeKind direct = resolve_declared_type(clean_return, aliases);
     if (direct != TypeKind::Unknown) {
       out[ext.name] = direct;
-    } else if (struct_names.find(ext.return_type) != struct_names.end()) {
+    } else if (struct_names.find(clean_return) != struct_names.end()) {
       out[ext.name] = TypeKind::StructType;
-    } else if (enum_names.find(ext.return_type) != enum_names.end()) {
+    } else if (enum_names.find(clean_return) != enum_names.end()) {
       out[ext.name] = TypeKind::EnumType;
     } else {
       out[ext.name] = TypeKind::Unknown;
@@ -1145,6 +1169,181 @@ static std::string parse_constructor_name(const std::string& expr) {
   return name;
 }
 
+struct StateRef {
+  bool tagged = false;
+  std::string set;
+  std::string variant;
+};
+
+struct FunctionStateContract {
+  std::vector<StateRef> param_states;
+  StateRef return_state;
+};
+
+struct CallExprInfo {
+  bool is_call = false;
+  std::string callee;
+  std::vector<std::string> args;
+};
+
+static bool state_variant_exists(const syntax::AstProgram& program, const std::string& set_name,
+                                 const std::string& variant_name) {
+  auto it = program.state_sets.find(set_name);
+  if (it == program.state_sets.end()) {
+    return false;
+  }
+  return std::find(it->second.begin(), it->second.end(), variant_name) != it->second.end();
+}
+
+static bool parse_state_ref(const std::string& annotation, const syntax::AstProgram& program, StateRef& out,
+                            std::string& error_code, std::string& error_message) {
+  out = StateRef{};
+  error_code.clear();
+  error_message.clear();
+  std::string set_name;
+  std::string variant_name;
+  if (!split_state_annotation(annotation, set_name, variant_name)) {
+    return true;
+  }
+  if (program.state_sets.find(set_name) == program.state_sets.end()) {
+    error_code = "E_STATE_UNKNOWN_SET";
+    error_message = "unknown state set '" + set_name + "'";
+    return false;
+  }
+  if (!state_variant_exists(program, set_name, variant_name)) {
+    error_code = "E_STATE_UNKNOWN_VARIANT";
+    error_message = "unknown state variant '" + variant_name + "' in set '" + set_name + "'";
+    return false;
+  }
+  out.tagged = true;
+  out.set = set_name;
+  out.variant = variant_name;
+  return true;
+}
+
+static bool is_same_state_ref(const StateRef& lhs, const StateRef& rhs) {
+  if (!lhs.tagged || !rhs.tagged) {
+    return false;
+  }
+  return lhs.set == rhs.set && lhs.variant == rhs.variant;
+}
+
+static std::string state_ref_display(const StateRef& ref) {
+  if (!ref.tagged) {
+    return "<unknown>";
+  }
+  return ref.set + "[" + ref.variant + "]";
+}
+
+static bool parse_call_expr_info(const std::string& expr, CallExprInfo& out) {
+  out = CallExprInfo{};
+  std::string clean = trim_copy(expr);
+  if (starts_with(clean, "await ")) {
+    clean = trim_copy(clean.substr(6));
+  }
+  const std::size_t lparen = clean.find('(');
+  const std::size_t rparen = clean.rfind(')');
+  if (lparen == std::string::npos || rparen == std::string::npos || rparen <= lparen || rparen + 1 != clean.size()) {
+    return false;
+  }
+  const std::string callee = trim_copy(clean.substr(0, lparen));
+  if (callee.empty() || !is_ident_start(callee[0])) {
+    return false;
+  }
+  for (std::size_t i = 1; i < callee.size(); ++i) {
+    if (!is_ident_body(callee[i])) {
+      return false;
+    }
+  }
+  const std::string inner = clean.substr(lparen + 1, rparen - lparen - 1);
+  std::vector<std::string> args;
+  std::size_t start = 0;
+  int depth = 0;
+  bool in_string = false;
+  bool escape = false;
+  for (std::size_t i = 0; i <= inner.size(); ++i) {
+    const char ch = i < inner.size() ? inner[i] : ',';
+    if (in_string) {
+      if (escape) {
+        escape = false;
+      } else if (ch == '\\') {
+        escape = true;
+      } else if (ch == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      continue;
+    }
+    if (ch == '(' || ch == '[' || ch == '{') {
+      ++depth;
+      continue;
+    }
+    if (ch == ')' || ch == ']' || ch == '}') {
+      if (depth > 0) {
+        --depth;
+      }
+      continue;
+    }
+    if (ch == ',' && depth == 0) {
+      const std::string arg = trim_copy(inner.substr(start, i - start));
+      if (!arg.empty()) {
+        args.push_back(arg);
+      }
+      start = i + 1;
+    }
+  }
+  out.is_call = true;
+  out.callee = callee;
+  out.args = std::move(args);
+  return true;
+}
+
+static std::unordered_map<std::string, FunctionStateContract> collect_function_state_contracts(
+    const syntax::AstProgram& program, support::DiagnosticSink& diag) {
+  std::unordered_map<std::string, FunctionStateContract> contracts;
+  for (const auto& fn : program.functions) {
+    FunctionStateContract contract;
+    contract.param_states.resize(fn.params.size());
+    for (std::size_t i = 0; i < fn.param_types.size() && i < contract.param_states.size(); ++i) {
+      std::string error_code;
+      std::string error_message;
+      if (!parse_state_ref(fn.param_types[i], program, contract.param_states[i], error_code, error_message)) {
+        diag.error(error_code, "line " + std::to_string(fn.header_line) + ": " + error_message);
+      }
+    }
+    if (!fn.return_type.empty()) {
+      std::string error_code;
+      std::string error_message;
+      if (!parse_state_ref(fn.return_type, program, contract.return_state, error_code, error_message)) {
+        diag.error(error_code, "line " + std::to_string(fn.header_line) + ": " + error_message);
+      }
+    }
+    contracts[fn.name] = contract;
+  }
+  for (const auto& ext : program.extern_functions) {
+    FunctionStateContract contract;
+    contract.param_states.resize(ext.param_types.size());
+    for (std::size_t i = 0; i < ext.param_types.size(); ++i) {
+      std::string error_code;
+      std::string error_message;
+      if (!parse_state_ref(ext.param_types[i], program, contract.param_states[i], error_code, error_message)) {
+        diag.error(error_code, "line " + std::to_string(ext.line) + ": " + error_message);
+      }
+    }
+    std::string error_code;
+    std::string error_message;
+    if (!ext.return_type.empty() &&
+        !parse_state_ref(ext.return_type, program, contract.return_state, error_code, error_message)) {
+      diag.error(error_code, "line " + std::to_string(ext.line) + ": " + error_message);
+    }
+    contracts[ext.name] = contract;
+  }
+  return contracts;
+}
+
 struct MemoryModelState {
   std::unordered_map<std::string, std::string> value_types;
   std::unordered_map<std::string, std::vector<std::string>> closure_captures;
@@ -1443,6 +1642,115 @@ static bool validate_memory_model_statement(
   return true;
 }
 
+static bool validate_stateful_call_usage(const syntax::AstStatement& st,
+                                         const std::unordered_map<std::string, FunctionStateContract>& contracts,
+                                         const std::unordered_map<std::string, StateRef>& value_states,
+                                         const std::unordered_set<std::string>& ambiguous_values,
+                                         support::DiagnosticSink& diag) {
+  if (!st.has_expression || !st.expression_valid) {
+    return true;
+  }
+  CallExprInfo call;
+  if (!parse_call_expr_info(st.expression_normalized, call)) {
+    return true;
+  }
+  auto contract_it = contracts.find(call.callee);
+  if (contract_it == contracts.end()) {
+    return true;
+  }
+  const FunctionStateContract& contract = contract_it->second;
+  const std::size_t limit = std::min(call.args.size(), contract.param_states.size());
+  for (std::size_t i = 0; i < limit; ++i) {
+    if (!contract.param_states[i].tagged) {
+      continue;
+    }
+    const std::string arg_ident = parse_simple_identifier_expr(trim_copy(call.args[i]));
+    if (arg_ident.empty()) {
+      diag.error("E_STATE_MISMATCH_ARG",
+                 "line " + std::to_string(st.line) + ": argument " + std::to_string(i + 1) + " to '" + call.callee +
+                     "' must be in state " + state_ref_display(contract.param_states[i]));
+      return false;
+    }
+    if (ambiguous_values.find(arg_ident) != ambiguous_values.end()) {
+      diag.error("E_STATE_AMBIGUOUS",
+                 "line " + std::to_string(st.line) + ": state of '" + arg_ident +
+                     "' is ambiguous at call to '" + call.callee + "'");
+      return false;
+    }
+    auto state_it = value_states.find(arg_ident);
+    if (state_it == value_states.end() || !state_it->second.tagged) {
+      diag.warn("W_STATE_AMBIGUOUS",
+                "line " + std::to_string(st.line) + ": cannot determine current state of '" + arg_ident + "'");
+      diag.error("E_STATE_AMBIGUOUS",
+                 "line " + std::to_string(st.line) + ": state of '" + arg_ident +
+                     "' is unknown for call to '" + call.callee + "'");
+      return false;
+    }
+    if (!is_same_state_ref(state_it->second, contract.param_states[i])) {
+      diag.error("E_STATE_MISMATCH_ARG",
+                 "line " + std::to_string(st.line) + ": call '" + call.callee + "' expects argument '" + arg_ident +
+                     "' in state " + state_ref_display(contract.param_states[i]) + ", got " +
+                     state_ref_display(state_it->second));
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool infer_statement_assigned_state(const syntax::AstStatement& st,
+                                           const std::unordered_map<std::string, FunctionStateContract>& contracts,
+                                           const std::unordered_map<std::string, StateRef>& value_states,
+                                           std::string& target_name, StateRef& out_state) {
+  target_name.clear();
+  out_state = StateRef{};
+
+  if (st.kind == syntax::StatementKind::Let) {
+    target_name = parse_let_name(st.text);
+    const std::string annotation = parse_let_annotation(st.text);
+    if (!annotation.empty()) {
+      std::string set_name;
+      std::string variant_name;
+      if (split_state_annotation(annotation, set_name, variant_name)) {
+        out_state.tagged = true;
+        out_state.set = set_name;
+        out_state.variant = variant_name;
+        return !target_name.empty();
+      }
+    }
+  } else if (st.kind == syntax::StatementKind::Assign) {
+    target_name = parse_assignment_target(st.text);
+    if (target_name.find('.') != std::string::npos) {
+      target_name.clear();
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  if (target_name.empty() || !st.has_expression || !st.expression_valid) {
+    return false;
+  }
+
+  const std::string rhs_ident = parse_simple_identifier_expr(trim_copy(st.expression_normalized));
+  if (!rhs_ident.empty()) {
+    auto it = value_states.find(rhs_ident);
+    if (it != value_states.end() && it->second.tagged) {
+      out_state = it->second;
+      return true;
+    }
+  }
+
+  CallExprInfo call;
+  if (parse_call_expr_info(st.expression_normalized, call)) {
+    auto contract_it = contracts.find(call.callee);
+    if (contract_it != contracts.end() && contract_it->second.return_state.tagged) {
+      out_state = contract_it->second.return_state;
+      return true;
+    }
+  }
+  return false;
+}
+
 static std::string classify_parse_error(const std::string& message) {
   if (message.find("for header") != std::string::npos) {
     return "E_TYPE_RANGE_HEADER";
@@ -1621,6 +1929,26 @@ static bool validate_flow_constructs(const syntax::AstProgram& program, support:
   return true;
 }
 
+static bool validate_state_sets(const syntax::AstProgram& program, support::DiagnosticSink& diag) {
+  for (const auto& entry : program.state_sets) {
+    const std::string& set_name = entry.first;
+    const std::vector<std::string>& variants = entry.second;
+    if (variants.size() < 2) {
+      diag.error("E_STATE_UNKNOWN_VARIANT", "state set '" + set_name + "' must contain at least two variants");
+      return false;
+    }
+    std::unordered_set<std::string> seen;
+    for (const std::string& variant : variants) {
+      if (!seen.insert(variant).second) {
+        diag.error("E_STATE_UNKNOWN_VARIANT",
+                   "state set '" + set_name + "' contains duplicate variant '" + variant + "'");
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 static bool split_owner_and_method(const std::string& name, std::string& owner, std::string& method) {
   const std::size_t dot = name.find('.');
   if (dot == std::string::npos || dot == 0 || dot + 1 >= name.size()) {
@@ -1635,14 +1963,15 @@ static TypeKind resolve_declared_user_type(const std::string& type_name,
                                            const std::unordered_map<std::string, TypeKind>& aliases,
                                            const std::unordered_set<std::string>& struct_names,
                                            const std::unordered_set<std::string>& enum_names) {
-  const TypeKind direct = resolve_declared_type(type_name, aliases);
+  const std::string clean = strip_state_annotation(type_name);
+  const TypeKind direct = resolve_declared_type(clean, aliases);
   if (direct != TypeKind::Unknown) {
     return direct;
   }
-  if (struct_names.find(type_name) != struct_names.end()) {
+  if (struct_names.find(clean) != struct_names.end()) {
     return TypeKind::StructType;
   }
-  if (enum_names.find(type_name) != enum_names.end()) {
+  if (enum_names.find(clean) != enum_names.end()) {
     return TypeKind::EnumType;
   }
   return TypeKind::Unknown;
@@ -1979,11 +2308,18 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   if (!validate_flow_constructs(program, diag)) {
     return false;
   }
+  if (!validate_state_sets(program, diag)) {
+    return false;
+  }
   const auto aliases = collect_type_aliases(program);
   const auto struct_names = collect_struct_names(program);
   const auto enum_names = collect_enum_names(program);
   const auto function_returns = collect_function_return_types(program, aliases, struct_names, enum_names);
   const auto function_arity = collect_function_arity(program);
+  const auto function_state_contracts = collect_function_state_contracts(program, diag);
+  if (diag.has_errors()) {
+    return false;
+  }
 
   for (const auto& [field_key, field_type] : program.struct_field_types) {
     if (resolve_declared_user_type(field_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
@@ -2045,6 +2381,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     std::unordered_map<std::string, TypeKind> scope;
     MemoryModelState memory_state;
     std::unordered_map<std::string, bool> opened_resources;
+    std::unordered_map<std::string, StateRef> value_states;
+    std::unordered_set<std::string> ambiguous_state_values;
     std::unordered_map<std::string, std::string> struct_bindings;
     std::string method_owner;
     std::string method_name;
@@ -2088,6 +2426,18 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
       }
     }
+    auto fn_state_it = function_state_contracts.find(fn.name);
+    const FunctionStateContract* fn_state_contract =
+        fn_state_it == function_state_contracts.end() ? nullptr : &fn_state_it->second;
+    if (fn_state_contract != nullptr) {
+      const std::size_t param_limit = std::min(fn.params.size(), fn_state_contract->param_states.size());
+      for (std::size_t i = 0; i < param_limit; ++i) {
+        if (!fn_state_contract->param_states[i].tagged) {
+          continue;
+        }
+        value_states[fn.params[i]] = fn_state_contract->param_states[i];
+      }
+    }
     std::optional<TypeKind> inferred_return;
     bool has_return = false;
     std::vector<int> active_match_indents;
@@ -2101,6 +2451,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         return false;
       }
       if (!validate_typestate_statement(st, opened_resources, diag)) {
+        return false;
+      }
+      if (!validate_stateful_call_usage(st, function_state_contracts, value_states, ambiguous_state_values, diag)) {
         return false;
       }
       TypeKind expr_type = TypeKind::Void;
@@ -2156,6 +2509,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
         const std::string annotation = parse_let_annotation(st.text);
         if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+          StateRef declared_state_ref;
+          std::string state_error_code;
+          std::string state_error_message;
+          if (!parse_state_ref(annotation, program, declared_state_ref, state_error_code, state_error_message)) {
+            diag.error(state_error_code, "line " + std::to_string(st.line) + ": " + state_error_message);
+            return false;
+          }
           const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
           if (declared == TypeKind::Unknown) {
             diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
@@ -2167,6 +2527,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             return false;
           }
           scope[name] = declared;
+          if (declared_state_ref.tagged) {
+            value_states[name] = declared_state_ref;
+          }
         } else {
           scope[name] = expr_type;
         }
@@ -2241,6 +2604,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
       }
 
+      std::string state_target;
+      StateRef assigned_state;
+      if (infer_statement_assigned_state(st, function_state_contracts, value_states, state_target, assigned_state) &&
+          !state_target.empty() && assigned_state.tagged) {
+        value_states[state_target] = assigned_state;
+      }
+
       if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
         if (expr_type != TypeKind::Bool) {
           diag.error("E0014",
@@ -2272,6 +2642,42 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
 
       if (st.kind == syntax::StatementKind::Return) {
+        if (fn_state_contract != nullptr && fn_state_contract->return_state.tagged) {
+          StateRef actual_state;
+          bool resolved = false;
+          if (st.has_expression && st.expression_valid) {
+            const std::string ret_ident = parse_simple_identifier_expr(trim_copy(st.expression_normalized));
+            if (!ret_ident.empty()) {
+              auto state_it = value_states.find(ret_ident);
+              if (state_it != value_states.end() && state_it->second.tagged) {
+                actual_state = state_it->second;
+                resolved = true;
+              }
+              if (ambiguous_state_values.find(ret_ident) != ambiguous_state_values.end()) {
+                diag.error("E_STATE_AMBIGUOUS",
+                           "line " + std::to_string(st.line) + ": return state of '" + ret_ident + "' is ambiguous");
+                return false;
+              }
+            }
+            if (!resolved) {
+              CallExprInfo ret_call;
+              if (parse_call_expr_info(st.expression_normalized, ret_call)) {
+                auto ret_contract_it = function_state_contracts.find(ret_call.callee);
+                if (ret_contract_it != function_state_contracts.end() && ret_contract_it->second.return_state.tagged) {
+                  actual_state = ret_contract_it->second.return_state;
+                  resolved = true;
+                }
+              }
+            }
+          }
+          if (!resolved || !is_same_state_ref(actual_state, fn_state_contract->return_state)) {
+            diag.error("E_STATE_MISMATCH_RETURN",
+                       "line " + std::to_string(st.line) + ": function '" + fn.name + "' must return " +
+                           state_ref_display(fn_state_contract->return_state) +
+                           (resolved ? ", got " + state_ref_display(actual_state) : ", got unknown state"));
+            return false;
+          }
+        }
         has_return = true;
         const TypeKind ret_type = st.has_expression ? expr_type : TypeKind::Void;
         if (!inferred_return.has_value()) {
@@ -2308,6 +2714,8 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   std::unordered_map<std::string, TypeKind> top_scope;
   MemoryModelState top_memory_state;
   std::unordered_map<std::string, bool> top_opened_resources;
+  std::unordered_map<std::string, StateRef> top_value_states;
+  std::unordered_set<std::string> top_ambiguous_state_values;
   std::unordered_map<std::string, std::string> top_struct_bindings;
   std::vector<int> top_match_indents;
   for (const auto& st : program.top_level_statements) {
@@ -2322,6 +2730,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       return false;
     }
     if (!validate_typestate_statement(st, top_opened_resources, diag)) {
+      return false;
+    }
+    if (!validate_stateful_call_usage(st, function_state_contracts, top_value_states, top_ambiguous_state_values, diag)) {
       return false;
     }
     TypeKind expr_type = TypeKind::Void;
@@ -2376,6 +2787,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       }
       const std::string annotation = parse_let_annotation(st.text);
       if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
+        StateRef declared_state_ref;
+        std::string state_error_code;
+        std::string state_error_message;
+        if (!parse_state_ref(annotation, program, declared_state_ref, state_error_code, state_error_message)) {
+          diag.error(state_error_code, "line " + std::to_string(st.line) + ": " + state_error_message);
+          return false;
+        }
         const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
         if (declared == TypeKind::Unknown) {
           diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
@@ -2387,6 +2805,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           return false;
         }
         top_scope[name] = declared;
+        if (declared_state_ref.tagged) {
+          top_value_states[name] = declared_state_ref;
+        }
       } else {
         top_scope[name] = expr_type;
       }
@@ -2457,6 +2878,12 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           return false;
         }
       }
+    }
+    std::string top_state_target;
+    StateRef top_assigned_state;
+    if (infer_statement_assigned_state(st, function_state_contracts, top_value_states, top_state_target, top_assigned_state) &&
+        !top_state_target.empty() && top_assigned_state.tagged) {
+      top_value_states[top_state_target] = top_assigned_state;
     }
     if (st.kind == syntax::StatementKind::If || st.kind == syntax::StatementKind::While) {
       if (expr_type != TypeKind::Bool) {

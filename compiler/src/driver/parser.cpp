@@ -25,6 +25,9 @@ static CommandKind parse_kind(const std::string& cmd) {
   if (cmd == "run") return CommandKind::Run;
   if (cmd == "check") return CommandKind::Check;
   if (cmd == "fmt") return CommandKind::Fmt;
+  if (cmd == "fix") return CommandKind::Fix;
+  if (cmd == "repl") return CommandKind::Repl;
+  if (cmd == "lsp") return CommandKind::Lsp;
   if (cmd == "migrate") return CommandKind::Migrate;
   return CommandKind::Unknown;
 }
@@ -143,6 +146,12 @@ ParsedCommand parse_command(int argc, char** argv) {
   }
 
   if (out.kind == CommandKind::Fmt) {
+    if (argc > 2 && !starts_with(argv[2], "-")) {
+      out.input_path = argv[2];
+    }
+    return out;
+  }
+  if (out.kind == CommandKind::Fix) {
     if (argc > 2 && !starts_with(argv[2], "-")) {
       out.input_path = argv[2];
     }

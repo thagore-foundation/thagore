@@ -171,6 +171,24 @@ jobs:
           cmake @cmakeArgs
           cmake --build build -j 4
 
+      - name: Code sign thagc (Windows)
+        if: runner.os == 'Windows' && secrets.WINDOWS_CODESIGN_CERT_BASE64 != '' && secrets.WINDOWS_CODESIGN_CERT_PASSWORD != ''
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_CERT_BASE64: ${{ secrets.WINDOWS_CODESIGN_CERT_BASE64 }}
+          WINDOWS_CODESIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "thagore-codesign.pfx"
+          [System.IO.File]::WriteAllBytes($pfxPath, [System.Convert]::FromBase64String($env:WINDOWS_CODESIGN_CERT_BASE64))
+          signtool sign `
+            /f $pfxPath `
+            /p $env:WINDOWS_CODESIGN_CERT_PASSWORD `
+            /fd SHA256 `
+            /tr http://timestamp.digicert.com `
+            /td SHA256 `
+            "build/compiler/thagc.exe"
+          Remove-Item -Force $pfxPath
+
       - name: Package core archive
         shell: bash
         run: |

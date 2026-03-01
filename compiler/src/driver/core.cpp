@@ -25,6 +25,12 @@ int CommandRouter::run(int argc, char** argv) const {
       return driver::handle_check(cmd, pipeline, diag);
     case driver::CommandKind::Fmt:
       return driver::handle_fmt(cmd);
+    case driver::CommandKind::Fix:
+      return driver::handle_fix(cmd);
+    case driver::CommandKind::Repl:
+      return driver::handle_repl(cmd, pipeline, diag);
+    case driver::CommandKind::Lsp:
+      return driver::handle_lsp(cmd);
     case driver::CommandKind::Migrate:
       return driver::handle_migrate(cmd);
     case driver::CommandKind::Unknown:

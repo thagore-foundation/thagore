@@ -123,6 +123,7 @@ struct AstProgram {
   std::vector<std::string> intents;
   std::vector<std::string> type_aliases;
   std::vector<std::string> traits;
+  std::unordered_map<std::string, std::vector<std::string>> state_sets;
   std::vector<std::string> impl_for_headers;
   std::vector<std::string> public_decls;
   std::unordered_map<std::string, bool> function_visibility;

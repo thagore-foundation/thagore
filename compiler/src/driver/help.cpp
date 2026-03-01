@@ -57,6 +57,9 @@ int handle_help() {
                "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>] [--include-path=<dir>]\n";
   std::cout << "  thagc check <input.tg> [--target=<triple>] [--include-path=<dir>]\n";
   std::cout << "  thagc fmt <input.tg>\n";
+  std::cout << "  thagc fix <input.tg>  # apply safe autofixes for common syntax issues\n";
+  std::cout << "  thagc repl            # interactive Thagore shell\n";
+  std::cout << "  thagc lsp [--stdio]   # start language server (LSP)\n";
   std::cout << "  thagc migrate [--force]  # convert legacy manifest to drago.toml\n";
   std::cout << "  Use drago for package/update flows: drago add/install/update/build/run/test\n";
   return 0;

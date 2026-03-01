@@ -328,6 +328,76 @@ static std::string struct_field_type_from_line(const std::string& line) {
   return ty.empty() ? "i32" : ty;
 }
 
+static bool parse_state_header(const std::string& line, std::string& state_name, std::vector<std::string>& variants,
+                               std::string& error) {
+  auto is_identifier_start_local = [](char ch) {
+    return std::isalpha(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  auto is_identifier_body_local = [](char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+  };
+  state_name.clear();
+  variants.clear();
+  error.clear();
+  if (!starts_with(line, "state ")) {
+    return false;
+  }
+  const std::size_t colon = line.find(':');
+  if (colon == std::string::npos || colon <= 6 || colon + 1 >= line.size()) {
+    error = "state declaration must follow `state Name: Variant | Variant`";
+    return true;
+  }
+  state_name = trim(line.substr(6, colon - 6));
+  if (state_name.empty()) {
+    error = "state declaration requires a state set name";
+    return true;
+  }
+  if (!is_identifier_start_local(state_name[0])) {
+    error = "state set name must be an identifier";
+    return true;
+  }
+  for (std::size_t i = 1; i < state_name.size(); ++i) {
+    if (!is_identifier_body_local(state_name[i])) {
+      error = "state set name must be an identifier";
+      return true;
+    }
+  }
+  const std::string right = trim(line.substr(colon + 1));
+  if (right.empty()) {
+    error = "state declaration requires at least one variant";
+    return true;
+  }
+  std::size_t i = 0;
+  while (i < right.size()) {
+    std::size_t bar = right.find('|', i);
+    if (bar == std::string::npos) {
+      bar = right.size();
+    }
+    const std::string variant = trim(right.substr(i, bar - i));
+    if (variant.empty()) {
+      error = "state declaration contains empty variant";
+      return true;
+    }
+    if (!is_identifier_start_local(variant[0])) {
+      error = "state variant '" + variant + "' is not an identifier";
+      return true;
+    }
+    for (std::size_t k = 1; k < variant.size(); ++k) {
+      if (!is_identifier_body_local(variant[k])) {
+        error = "state variant '" + variant + "' is not an identifier";
+        return true;
+      }
+    }
+    variants.push_back(variant);
+    i = bar + 1;
+  }
+  if (variants.size() < 2) {
+    error = "state declaration requires at least two variants";
+    return true;
+  }
+  return true;
+}
+
 static void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
 }
@@ -1894,6 +1964,21 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
     }
     if (starts_with(effective_line, "type ")) {
       program.type_aliases.push_back(effective_line);
+      ++i;
+      continue;
+    }
+    if (starts_with(effective_line, "state ")) {
+      std::string state_name;
+      std::vector<std::string> variants;
+      std::string state_error;
+      const bool parsed = parse_state_header(effective_line, state_name, variants, state_error);
+      if (!parsed) {
+        add_parse_error(program, line.number, "invalid state declaration");
+      } else if (!state_error.empty()) {
+        add_parse_error(program, line.number, state_error);
+      } else {
+        program.state_sets[state_name] = variants;
+      }
       ++i;
       continue;
     }

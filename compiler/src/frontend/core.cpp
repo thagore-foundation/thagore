@@ -101,6 +101,9 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "intent") {
     return TokenKind::KeywordIntent;
   }
+  if (text == "state") {
+    return TokenKind::KeywordState;
+  }
   return TokenKind::Identifier;
 }
 

@@ -40,6 +40,7 @@ enum class TokenKind {
   KeywordIdempotent,
   KeywordIrreversible,
   KeywordIntent,
+  KeywordState,
   Colon,
   LParen,
   RParen,
