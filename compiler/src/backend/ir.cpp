@@ -149,6 +149,41 @@ static std::string trim(const std::string& text) {
   return text.substr(left, right - left);
 }
 
+static std::string unescape_string_body(const std::string& body) {
+  std::string out;
+  out.reserve(body.size());
+  for (std::size_t i = 0; i < body.size(); ++i) {
+    const char ch = body[i];
+    if (ch != '\\' || i + 1 >= body.size()) {
+      out.push_back(ch);
+      continue;
+    }
+    const char esc = body[++i];
+    if (esc == 'n') {
+      out.push_back('\n');
+      continue;
+    }
+    if (esc == 'r') {
+      out.push_back('\r');
+      continue;
+    }
+    if (esc == 't') {
+      out.push_back('\t');
+      continue;
+    }
+    if (esc == '\\') {
+      out.push_back('\\');
+      continue;
+    }
+    if (esc == '"') {
+      out.push_back('"');
+      continue;
+    }
+    out.push_back(esc);
+  }
+  return out;
+}
+
 static bool starts_with(const std::string& text, std::string_view prefix) {
   return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
 }
@@ -1338,7 +1373,7 @@ static ExprValue parse_primary(ExprCursor& cursor) {
       return ExprValue{llvm::ConstantFP::get(cursor.builder->getDoubleTy(), std::stod(tok.text)), ValueType::F64};
     }
     if (is_string_atom(tok.text)) {
-      const std::string text = tok.text.substr(1, tok.text.size() - 2);
+      const std::string text = unescape_string_body(tok.text.substr(1, tok.text.size() - 2));
       return ExprValue{create_global_cstr_ptr(*cursor.builder, text, "strlit"), ValueType::I8Ptr};
     }
     if (is_interpolated_literal(tok.text)) {
@@ -1348,6 +1383,7 @@ static ExprValue parse_primary(ExprCursor& cursor) {
       } else if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
         text = text.substr(1, text.size() - 2);
       }
+      text = unescape_string_body(text);
       return ExprValue{create_global_cstr_ptr(*cursor.builder, text, "istrlit"), ValueType::I8Ptr};
     }
     std::vector<std::string> closure_params;
@@ -1925,7 +1961,7 @@ static bool parse_interpolated_chunks(const std::string& literal, std::vector<In
   for (std::size_t i = 0; i < body.size();) {
     if (body[i] == '{') {
       if (!segment.empty()) {
-        out_chunks.push_back(InterpChunk{false, segment});
+        out_chunks.push_back(InterpChunk{false, unescape_string_body(segment)});
         segment.clear();
       }
       const std::size_t close = body.find('}', i + 1);
@@ -1946,7 +1982,7 @@ static bool parse_interpolated_chunks(const std::string& literal, std::vector<In
     ++i;
   }
   if (!segment.empty()) {
-    out_chunks.push_back(InterpChunk{false, segment});
+    out_chunks.push_back(InterpChunk{false, unescape_string_body(segment)});
   }
   return true;
 }
