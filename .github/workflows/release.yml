@@ -172,7 +172,7 @@ jobs:
           cmake --build build -j 4
 
       - name: Code sign thagc (Windows)
-        if: runner.os == 'Windows' && secrets.WINDOWS_CODESIGN_CERT_BASE64 != '' && secrets.WINDOWS_CODESIGN_CERT_PASSWORD != ''
+        if: runner.os == 'Windows' && env.WINDOWS_CODESIGN_CERT_BASE64 != '' && env.WINDOWS_CODESIGN_CERT_PASSWORD != ''
         shell: pwsh
         env:
           WINDOWS_CODESIGN_CERT_BASE64: ${{ secrets.WINDOWS_CODESIGN_CERT_BASE64 }}
