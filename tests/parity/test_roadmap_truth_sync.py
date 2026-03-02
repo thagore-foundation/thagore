@@ -32,6 +32,13 @@ class RoadmapTruthSyncTests(unittest.TestCase):
             roadmap,
         )
 
+    def test_interpolated_string_claim_matches_v_prefix_syntax(self) -> None:
+        roadmap = Path("ROADMAP.md").read_text()
+        self.assertIn(
+            "- [x] Interpolated strings — `v\"Hello {name}!\"` compile thành string concat (`\"...\"` thuần không interpolate)",
+            roadmap,
+        )
+
     def test_selfhost_workflow_no_fake_hash_smoke(self) -> None:
         workflow = Path(".github/workflows/selfhost-readiness.yml").read_text()
         self.assertNotIn("echo thagc > /tmp/a.bin", workflow)

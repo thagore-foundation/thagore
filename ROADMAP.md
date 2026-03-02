@@ -115,7 +115,7 @@ Execution order (re-anchored to dependency reality):
 ### Compiler — Language Features
 - [x] Closures — capture, function-value type, emit đúng trong LLVM
 - [x] `defer` stack — defer-stack mechanism trong backend, đúng execution order
-- [x] Interpolated strings — `"Hello {name}!"` compile thành string concat
+- [x] Interpolated strings — `v"Hello {name}!"` compile thành string concat (`"..."` thuần không interpolate)
 - [x] `Result<T, E>` / `Option<T>` — built-in sum types, không cần generic đầy đủ
 - [x] `?` operator — early return cho Result/Option
 - [x] Tuple type — `(i32, string)`, tuple destructuring
