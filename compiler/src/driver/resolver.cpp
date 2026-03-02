@@ -60,6 +60,21 @@ static std::string strip_inline_comment(const std::string& line) {
   return line.substr(0, pos);
 }
 
+static bool is_valid_package_name(const std::string& name) {
+  if (name.empty() || name.size() > 64) {
+    return false;
+  }
+  if (!std::isalpha(static_cast<unsigned char>(name[0])) && name[0] != '_') {
+    return false;
+  }
+  for (char ch : name) {
+    if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_' && ch != '-') {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool parse_key_value(const std::string& line, std::string& key, std::string& value) {
   const std::size_t eq = line.find('=');
   if (eq == std::string::npos) {
@@ -178,11 +193,26 @@ static bool parse_manifest_file(const std::filesystem::path& manifest_path, cons
     }
     if (section == Section::Package) {
       if (key == "name") {
+        if (!is_valid_package_name(value)) {
+          diag.error("E_MOD_110",
+                     manifest_name + " line " + std::to_string(line_no) +
+                         ": invalid package name `" + value +
+                         "` — use only [a-z A-Z 0-9 _ -], must start with a letter or `_`, max 64 chars"
+                         " (hint: `" + value + ".tg` → rename to `" + value + "`)");
+          return false;
+        }
         out.package_name = value;
       } else if (key == "version") {
         out.package_version = value;
       }
     } else if (section == Section::Dependencies) {
+      if (!is_valid_package_name(key)) {
+        diag.error("E_MOD_111",
+                   manifest_name + " line " + std::to_string(line_no) +
+                       ": invalid dependency name `" + key +
+                       "` — package names must use only [a-z A-Z 0-9 _ -] (no dots)");
+        return false;
+      }
       out.dependencies[key] = value;
     } else if (section == Section::Registry) {
       if (key == "endpoint") {

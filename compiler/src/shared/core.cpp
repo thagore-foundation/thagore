@@ -47,6 +47,8 @@ std::string diagnostic_fix_suggestion(const Diagnostic& diagnostic) {
   if (code == "E_STATE_INVALID_TRANSITION") return "Update transition order so state flows through allowed variants only.";
   if (code == "E_STATE_AMBIGUOUS" || code == "W_STATE_AMBIGUOUS")
     return "Normalize control-flow so the variable has one deterministic state before use.";
+  if (code == "E_MOD_110" || code == "E_MOD_111")
+    return "Rename the package using only letters, digits, `_`, or `-` (e.g. `zalo-tg` or `zalo`). Dots are reserved as module path separators.";
   if (code.rfind("E_MOD_", 0) == 0) return "Verify import paths/aliases and exported symbols in dependent modules.";
   return "Check the reported line/column, then rerun `thagc check <file.tg>` for a focused diagnostic pass.";
 }
