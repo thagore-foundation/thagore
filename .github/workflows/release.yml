@@ -1,12 +1,18 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
         description: "Release tag, e.g. v0.8.2"
         required: true
         type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
 jobs:
   build-core:
@@ -257,14 +263,14 @@ jobs:
         run: |
           shopt -s nullglob
           ASSETS=(dist/thagup-init.sh dist/thagup.sh dist/thagup.ps1 dist/SHA256SUMS-thagc.txt dist/thagc-core-*.tar.gz)
-          gh release create "${{ inputs.tag }}" \
-            --title "Thagore ${{ inputs.tag }}" \
+          gh release create "${RELEASE_TAG}" \
+            --title "Thagore ${RELEASE_TAG}" \
             --notes "Multi-platform core release with Linux/macOS/Windows artifacts for x86_64 + aarch64." \
             --latest \
             "${ASSETS[@]}" \
             || {
-              gh release upload "${{ inputs.tag }}" "${ASSETS[@]}" --clobber
-              gh release edit "${{ inputs.tag }}" --title "Thagore ${{ inputs.tag }}" --latest
+              gh release upload "${RELEASE_TAG}" "${ASSETS[@]}" --clobber
+              gh release edit "${RELEASE_TAG}" --title "Thagore ${RELEASE_TAG}" --latest
             }
 
   sync-landing:
@@ -275,7 +281,7 @@ jobs:
       contents: read
     env:
       LANDING_SYNC_TOKEN: ${{ secrets.LANDING_SYNC_TOKEN }}
-      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
     steps:
       - name: Ensure sync token is configured
