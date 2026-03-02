@@ -147,7 +147,7 @@ python3 -m unittest discover -s tests -p "test_*.py"
 
 - `CI`: lint + tests + Linux build.
 - `Policy`: baseline contract and architecture boundary checks.
-- `Selfhost Readiness`: deterministic gate entry.
+- `Selfhost Readiness`: compiler build + soak readiness lane (selfhost compile milestone tracked separately).
 - `Release`: packaging, GitHub release publish, and installer sync.
 - `Cross Platform Smoke`: deploy smoke lane on Linux/macOS/Windows.
 - `Community Ops`: release announcement flow for Discord/GitHub Discussions.

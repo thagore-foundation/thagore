@@ -40,7 +40,7 @@ Execution order (re-anchored to dependency reality):
 
 ### Compiler
 - [x] `func main` + print + arithmetic MVP chạy được
-- [x] Float types (`f32`, `f64`) có trong backend `ValueType::F32/F64`
+- [x] Float types (`f32`, `f64`) có trong backend `ValueType::F32/F64` (decimal float atom hiện được recognize ở expression lowering path)
 - [x] Multi-function codegen — user-defined functions được emit và gọi được
 - [x] `bool` literal `true`/`false` là first-class value end-to-end
 - [x] Binary arithmetic cho float — `+`, `-`, `*`, `/` với `f32`/`f64`
@@ -124,7 +124,7 @@ Execution order (re-anchored to dependency reality):
 - [x] `pub` visibility enforcement — cross-module access control
 
 ### Type System
-- [x] Generic types cơ bản — `List<T>`, `Option<T>`, `Result<T, E>`
+- [x] Generic-like builtins cơ bản — `Option<T>`, `Result<T, E>` là builtins; `List<T>` currently name-level/sugar (chưa có full generic instantiation)
 - [x] Function types — `fn(i32) -> string`
 - [x] User-defined type validation — struct field types, trait method signatures
 
@@ -329,8 +329,9 @@ Execution order (re-anchored to dependency reality):
 - [x] Deadlock detection với helpful error message
 
 ### Language
-- [x] `flow` construct MVP — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords
+- [x] `flow` construct MVP (syntax layer) — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords
 - [x] Flow compile-time validation — undo/retry semantics enforced
+- [ ] Flow runtime/codegen execution path (flow block emits executable runtime behavior)
 
 ### Gate
 - [x] No open P0/P1 concurrency bugs, soak tests stable
@@ -433,9 +434,9 @@ cho project management**, thagc chỉ là compiler backend thuần.
 - [x] Migration guide và rollback playbook
 
 ### Developer Experience
-- [x] LSP server MVP — syntax highlighting, go-to-definition, autocomplete
+- [x] LSP server MVP — protocol wiring (`--stdio`), basic completion keywords, text-search definition lookup
 - [x] Error messages review — tất cả errors đều có fix suggestion
-- [x] `thagc fix` — autofix thật sự cho common errors
+- [x] `thagc fix` — safe syntax autofix lane (normalize indent + append missing block `:`)
 - [x] REPL / interactive mode cho học giải thuật
 
 ### Typestate (Preview)
@@ -475,8 +476,10 @@ cho project management**, thagc chỉ là compiler backend thuần.
 
 ### Ecosystem
 - [x] 20+ packages trên Drago Registry
-- [x] Selfhost milestone — compiler tự compile một phần code của mình
+- [ ] Selfhost milestone — compiler tự compile một phần code của mình
 - [x] Example projects: CLI tool, REST API, bot, algorithm visualizer
+
+Selfhost note: workflow `selfhost-readiness.yml` currently validates deterministic/soak readiness only; it is not yet a full selfhost compilation proof.
 
 ### Gate
 - [x] Một người không biết lập trình có thể follow tutorial và build bot trong 2 giờ

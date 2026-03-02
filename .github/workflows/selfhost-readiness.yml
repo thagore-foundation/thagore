@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deterministic-gate:
+  readiness-gate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,11 +15,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Hash gate smoke
+      - name: Scope notice
         run: |
-          echo thagc > /tmp/a.bin
-          echo thagc > /tmp/b.bin
-          python3 tooling/compare/compare_binary_hash.py --left /tmp/a.bin --right /tmp/b.bin
+          echo "Selfhost milestone is tracked in ROADMAP and not proven by this workflow yet."
+          echo "This lane validates compiler build and soak readiness."
 
       - name: Install LLVM 21 + build deps
         run: |
