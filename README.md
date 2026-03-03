@@ -109,6 +109,7 @@ cmake -S . -B build -G Ninja -DTHAGC_STATIC_LLVM=OFF
 ```bash
 ./build/compiler/thagc --help
 ./build/compiler/thagc build /tmp/hello.tg -o /tmp/hello_bin --emit-llvm
+./build/compiler/thagc run /tmp/hello.tg --watch --watch-interval-ms=250
 ```
 
 ### One-command cross-compile
@@ -183,3 +184,4 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.5 examples: `examples/`
 - v1.6 joy runbook: `docs/runbooks/v1-6-joy-release.md`
 - v1.6 typestate GA reference: `docs/reference/typestate-ga-v1.6.md`
+- v1.7 AI & scale runbook: `docs/runbooks/v1-7-ai-scale.md`

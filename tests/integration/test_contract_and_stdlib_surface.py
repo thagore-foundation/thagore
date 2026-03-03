@@ -16,8 +16,11 @@ class ContractAndStdlibSurfaceTests(unittest.TestCase):
     def test_stdlib_modules_exist(self) -> None:
         required = [
             "stdlib/lib/http.tg",
+            "stdlib/lib/grpc.tg",
             "stdlib/lib/ws.tg",
             "stdlib/lib/db.tg",
+            "stdlib/lib/sql.tg",
+            "stdlib/lib/trace.tg",
             "stdlib/lib/time.tg",
             "stdlib/lib/map.tg",
             "stdlib/lib/tensor.tg",

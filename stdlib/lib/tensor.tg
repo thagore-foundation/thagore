@@ -9,7 +9,14 @@ extern func thag_tensor_set_i64(handle: ptr, index: i64, value: i64) -> i32
 extern func thag_tensor_get_i64(handle: ptr, index: i64) -> i64
 extern func thag_tensor_sum_i64(handle: ptr) -> i64
 extern func thag_tensor_axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32
+extern func thag_tensor_cuda_axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32
 extern func thag_pytorch_axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32
+extern func thag_tensor_add_i64(out_handle: ptr, a_handle: ptr, b_handle: ptr) -> i32
+extern func thag_tensor_mul_i64(out_handle: ptr, a_handle: ptr, b_handle: ptr) -> i32
+extern func thag_tensor_dot_i64(a_handle: ptr, b_handle: ptr) -> i64
+extern func thag_tensor_scale_i64(handle: ptr, alpha: i64) -> i32
+extern func thag_tensor_relu_i64(handle: ptr) -> i32
+extern func thag_tensor_argmax_i64(handle: ptr) -> i64
 extern func thag_tensor_free(handle: ptr) -> void
 
 pub func cuda_available() -> i32:
@@ -39,8 +46,29 @@ pub func sum_i64(handle: ptr) -> i64:
 pub func axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32:
   return thag_tensor_axpy_i64(out_handle, x_handle, y_handle, alpha)
 
+pub func cuda_axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32:
+  return thag_tensor_cuda_axpy_i64(out_handle, x_handle, y_handle, alpha)
+
 pub func pytorch_axpy_i64(out_handle: ptr, x_handle: ptr, y_handle: ptr, alpha: i64) -> i32:
   return thag_pytorch_axpy_i64(out_handle, x_handle, y_handle, alpha)
+
+pub func add_i64(out_handle: ptr, a_handle: ptr, b_handle: ptr) -> i32:
+  return thag_tensor_add_i64(out_handle, a_handle, b_handle)
+
+pub func mul_i64(out_handle: ptr, a_handle: ptr, b_handle: ptr) -> i32:
+  return thag_tensor_mul_i64(out_handle, a_handle, b_handle)
+
+pub func dot_i64(a_handle: ptr, b_handle: ptr) -> i64:
+  return thag_tensor_dot_i64(a_handle, b_handle)
+
+pub func scale_i64(handle: ptr, alpha: i64) -> i32:
+  return thag_tensor_scale_i64(handle, alpha)
+
+pub func relu_i64(handle: ptr) -> i32:
+  return thag_tensor_relu_i64(handle)
+
+pub func argmax_i64(handle: ptr) -> i64:
+  return thag_tensor_argmax_i64(handle)
 
 pub func free(handle: ptr) -> void:
   thag_tensor_free(handle)

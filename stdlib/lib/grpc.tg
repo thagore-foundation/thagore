@@ -1,0 +1,13 @@
+# Minimal gRPC-style client lane backed by runtime transport hooks.
+
+extern func thag_grpc_call(endpoint: ptr, method: ptr, payload: ptr, timeout_ms: i32) -> i32
+extern func thag_grpc_health(endpoint: ptr, timeout_ms: i32) -> i32
+
+pub func grpc_ready() -> i32:
+  return 1
+
+pub func unary(endpoint: ptr, method: ptr, payload: ptr, timeout_ms: i32) -> i32:
+  return thag_grpc_call(endpoint, method, payload, timeout_ms)
+
+pub func health(endpoint: ptr, timeout_ms: i32) -> i32:
+  return thag_grpc_health(endpoint, timeout_ms)

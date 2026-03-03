@@ -322,6 +322,11 @@ static std::unordered_map<std::string, TypeKind> collect_function_return_types(
       out[ext.name] = TypeKind::Unknown;
     }
   }
+  for (const auto& flow : program.flow_defs) {
+    if (!flow.name.empty()) {
+      out[flow.name] = TypeKind::I32;
+    }
+  }
   return out;
 }
 
@@ -332,6 +337,11 @@ static std::unordered_map<std::string, std::size_t> collect_function_arity(const
   }
   for (const auto& ext : program.extern_functions) {
     out[ext.name] = ext.param_types.size();
+  }
+  for (const auto& flow : program.flow_defs) {
+    if (!flow.name.empty()) {
+      out[flow.name] = 0;
+    }
   }
   return out;
 }
@@ -1389,6 +1399,11 @@ static std::unordered_map<std::string, FunctionStateContract> collect_function_s
     }
     contracts[ext.name] = contract;
   }
+  for (const auto& flow : program.flow_defs) {
+    if (!flow.name.empty()) {
+      contracts[flow.name] = FunctionStateContract{};
+    }
+  }
   return contracts;
 }
 
@@ -1953,7 +1968,27 @@ static bool flow_action_looks_side_effectful(const std::string& action) {
 }
 
 static bool validate_flow_constructs(const syntax::AstProgram& program, support::DiagnosticSink& diag) {
+  std::unordered_set<std::string> flow_names;
+  std::unordered_set<std::string> function_names;
+  for (const auto& fn : program.functions) {
+    if (!fn.name.empty()) {
+      function_names.insert(fn.name);
+    }
+  }
   for (const auto& flow : program.flow_defs) {
+    if (flow.name.empty()) {
+      diag.error("E_FLOW_306", "flow declaration requires a valid identifier name", program.source_path, flow.line, 1);
+      return false;
+    }
+    if (!flow_names.insert(flow.name).second) {
+      diag.error("E_FLOW_307", "duplicate flow declaration '" + flow.name + "'", program.source_path, flow.line, 1);
+      return false;
+    }
+    if (function_names.find(flow.name) != function_names.end()) {
+      diag.error("E_FLOW_308", "flow name '" + flow.name + "' conflicts with existing function name",
+                 program.source_path, flow.line, 1);
+      return false;
+    }
     if (flow.steps.empty()) {
       diag.error("E_FLOW_300", "flow '" + flow.name + "' must declare at least one step", program.source_path, flow.line, 1);
       return false;

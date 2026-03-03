@@ -13,8 +13,10 @@ add_library(thag_runtime STATIC
   src/toml.cpp
   src/io_stack.cpp
   src/http.cpp
+  src/grpc.cpp
   src/ws.cpp
   src/db.cpp
+  src/sql.cpp
   src/event_loop.cpp
   src/concurrency.cpp
   src/platform_posix.cpp

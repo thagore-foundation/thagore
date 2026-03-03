@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -209,6 +210,137 @@ static void append_core_statement(std::vector<CoreStmt>& out_statements, const s
   out_statements.push_back(std::move(out));
 }
 
+static CoreStmt make_expr_stmt(int indent, const std::string& text, bool has_await = false) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::Expr;
+  out.indent = indent;
+  out.text = text;
+  out.has_await = has_await;
+  out.has_expression = true;
+  out.expression = text;
+  return out;
+}
+
+static CoreStmt make_let_stmt(int indent, const std::string& name, const std::string& expression) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::Let;
+  out.indent = indent;
+  out.text = "let " + name + " = " + expression;
+  out.has_expression = true;
+  out.expression = expression;
+  return out;
+}
+
+static CoreStmt make_assign_stmt(int indent, const std::string& target, const std::string& expression) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::Assign;
+  out.indent = indent;
+  out.text = target + " = " + expression;
+  out.target = target;
+  out.has_expression = true;
+  out.expression = expression;
+  return out;
+}
+
+static CoreStmt make_if_stmt(int indent, const std::string& condition) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::If;
+  out.indent = indent;
+  out.text = "if (" + condition + "):";
+  out.has_expression = true;
+  out.expression = condition;
+  return out;
+}
+
+static CoreStmt make_while_stmt(int indent, const std::string& condition) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::While;
+  out.indent = indent;
+  out.text = "while (" + condition + "):";
+  out.has_expression = true;
+  out.expression = condition;
+  return out;
+}
+
+static CoreStmt make_break_stmt(int indent) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::Break;
+  out.indent = indent;
+  out.text = "break";
+  return out;
+}
+
+static CoreStmt make_return_stmt(int indent, const std::string& expression) {
+  CoreStmt out;
+  out.kind = CoreStmtKind::Return;
+  out.indent = indent;
+  out.text = "return " + expression;
+  out.has_expression = true;
+  out.expression = expression;
+  return out;
+}
+
+static bool has_core_extern(const std::vector<CoreExternFunction>& externs, const std::string& name) {
+  for (const auto& ext : externs) {
+    if (ext.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static CoreFunction lower_flow_to_function(const syntax::AstFlow& flow) {
+  CoreFunction out;
+  out.name = flow.name;
+  out.return_type = "i32";
+  out.return_literal = 1;
+  out.return_expression = "1";
+
+  std::vector<std::string> rollback_actions;
+  const int base_indent = 2;
+  for (std::size_t i = 0; i < flow.steps.size(); ++i) {
+    const auto& step = flow.steps[i];
+    const std::string idx = std::to_string(i);
+    const std::string ok_name = "__flow_step_" + idx + "_ok";
+    const std::string attempt_name = "__flow_step_" + idx + "_attempt";
+    const std::string deadline_name = "__flow_step_" + idx + "_deadline";
+
+    out.statements.push_back(make_let_stmt(base_indent, ok_name, "0"));
+    out.statements.push_back(make_let_stmt(base_indent, attempt_name, "0"));
+    if (step.has_timeout) {
+      out.statements.push_back(
+          make_let_stmt(base_indent, deadline_name, "thag_now_ms() + " + std::to_string(step.timeout_ms)));
+    }
+
+    const int retries = step.has_retry ? step.retry_count : 0;
+    out.statements.push_back(make_while_stmt(base_indent, attempt_name + " <= " + std::to_string(retries)));
+    if (step.has_timeout) {
+      out.statements.push_back(make_if_stmt(base_indent + 2, "thag_now_ms() > " + deadline_name));
+      out.statements.push_back(make_break_stmt(base_indent + 4));
+    }
+    out.statements.push_back(make_assign_stmt(base_indent + 2, ok_name, step.action));
+    out.statements.push_back(make_if_stmt(base_indent + 2, ok_name + " != 0"));
+    out.statements.push_back(make_break_stmt(base_indent + 4));
+    out.statements.push_back(make_assign_stmt(base_indent + 2, attempt_name, attempt_name + " + 1"));
+
+    out.statements.push_back(make_if_stmt(base_indent, ok_name + " == 0"));
+    if (!step.undo_action.empty() && !step.irreversible) {
+      out.statements.push_back(make_expr_stmt(base_indent + 2, step.undo_action));
+    }
+    for (auto it = rollback_actions.rbegin(); it != rollback_actions.rend(); ++it) {
+      out.statements.push_back(make_expr_stmt(base_indent + 2, *it));
+    }
+    out.statements.push_back(make_return_stmt(base_indent + 2, "0"));
+
+    if (!step.undo_action.empty() && !step.irreversible) {
+      rollback_actions.push_back(step.undo_action);
+    }
+  }
+
+  out.statements.push_back(make_return_stmt(base_indent, "1"));
+  return out;
+}
+
 CoreProgram lower_to_core(const syntax::AstProgram& program) {
   CoreProgram core;
   core.normalized_source = program.source;
@@ -273,6 +405,25 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     out.param_types = ext.param_types;
     out.return_type = ext.return_type;
     core.extern_functions.push_back(std::move(out));
+  }
+
+  bool flow_uses_timeout = false;
+  for (const auto& flow : program.flow_defs) {
+    if (flow.name.empty()) {
+      continue;
+    }
+    core.functions.push_back(lower_flow_to_function(flow));
+    for (const auto& step : flow.steps) {
+      if (step.has_timeout) {
+        flow_uses_timeout = true;
+      }
+    }
+  }
+  if (flow_uses_timeout && !has_core_extern(core.extern_functions, "thag_now_ms")) {
+    CoreExternFunction ext;
+    ext.name = "thag_now_ms";
+    ext.return_type = "i64";
+    core.extern_functions.push_back(std::move(ext));
   }
   core.has_main = program.has_main || !program.top_level_statements.empty();
   core.main_return_literal = program.main_return_literal;

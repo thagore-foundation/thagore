@@ -98,6 +98,7 @@ struct SchedulerState {
 std::once_flag g_scheduler_once;
 SchedulerState* g_scheduler = nullptr;
 std::atomic<uint64_t> g_scope_sequence{1};
+std::atomic<int64_t> g_trace_span_sequence{1};
 std::atomic<bool> g_trace_enabled{false};
 std::mutex g_trace_hook_mutex;
 thag_task_trace_hook_t g_trace_hook = nullptr;
@@ -810,6 +811,24 @@ void thag_task_scope_dump_tree(const thag_task_scope_t* scope) {
   }
   const std::string tree = build_scope_tree_dump(scope);
   std::fprintf(stderr, "task tree:\n%s", tree.c_str());
+}
+
+int64_t thag_trace_span_begin(const char* name) {
+  const int64_t span_id = g_trace_span_sequence.fetch_add(1, std::memory_order_relaxed);
+  std::ostringstream oss;
+  oss << "span.begin id=" << span_id << " name=" << (name == nullptr ? "<unnamed>" : name);
+  emit_trace_message(oss.str());
+  return span_id;
+}
+
+void thag_trace_span_end(int64_t span_id) {
+  std::ostringstream oss;
+  oss << "span.end id=" << span_id;
+  emit_trace_message(oss.str());
+}
+
+void thag_trace_event(const char* message) {
+  emit_trace_message(std::string("event: ") + (message == nullptr ? "" : message));
 }
 
 thag_async_runtime_t* thag_async_runtime_create(void) {

@@ -71,9 +71,12 @@ set(THAG_STDLIB_MODULES
   lib/toml.tg
   lib/gui.tg
   lib/http.tg
+  lib/grpc.tg
   lib/ws.tg
   lib/db.tg
+  lib/sql.tg
   lib/time.tg
+  lib/trace.tg
   lib/map.tg
   lib/json.tg
   lib/env.tg

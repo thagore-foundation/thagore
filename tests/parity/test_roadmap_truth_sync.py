@@ -3,10 +3,10 @@ from pathlib import Path
 
 
 class RoadmapTruthSyncTests(unittest.TestCase):
-    def test_flow_runtime_execution_is_not_marked_done(self) -> None:
+    def test_flow_runtime_execution_is_marked_done_with_v17_lowering(self) -> None:
         roadmap = Path("ROADMAP.md").read_text()
         self.assertIn(
-            "- [ ] Flow runtime/codegen execution path (flow block emits executable runtime behavior)",
+            "- [x] Flow runtime/codegen execution path (flow block emits executable runtime behavior via middleend lowering)",
             roadmap,
         )
 

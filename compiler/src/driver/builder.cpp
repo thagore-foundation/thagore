@@ -339,6 +339,11 @@ static std::unordered_set<std::string> collect_all_symbols(const syntax::AstProg
       out.insert(name);
     }
   }
+  for (const auto& flow : ast.flow_defs) {
+    if (!flow.name.empty()) {
+      out.insert(flow.name);
+    }
+  }
   return out;
 }
 
@@ -407,6 +412,11 @@ static std::unordered_set<std::string> collect_exports(const syntax::AstProgram&
     auto vis = ast.enum_visibility.find(name);
     if (!name.empty() && vis != ast.enum_visibility.end() && vis->second) {
       out.insert(name);
+    }
+  }
+  for (const auto& flow : ast.flow_defs) {
+    if (!flow.name.empty()) {
+      out.insert(flow.name);
     }
   }
   return out;

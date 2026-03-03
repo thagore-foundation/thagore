@@ -331,7 +331,7 @@ Execution order (re-anchored to dependency reality):
 ### Language
 - [x] `flow` construct MVP (syntax layer) — `flow`/`step`/`undo`/`retry`/`timeout`/`idempotent` keywords
 - [x] Flow compile-time validation — undo/retry semantics enforced
-- [ ] Flow runtime/codegen execution path (flow block emits executable runtime behavior)
+- [x] Flow runtime/codegen execution path (flow block emits executable runtime behavior via middleend lowering)
 
 ### Gate
 - [x] No open P0/P1 concurrency bugs, soak tests stable
@@ -506,14 +506,14 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 ## v1.7 — AI & Scale Release
 > *"From prototype to production — no rewrite."*
 
-- [ ] `lib/tensor.tg` — production-ready tensor operations via FFI
-- [ ] CUDA kernel calls từ Thagore — AI inference use case(sử dụng MLIR Backend song song với LLVM)
-- [ ] Model serving example — FastAPI-equivalent bằng Thagore
-- [ ] `lib/grpc.tg` — gRPC client/server
-- [ ] `lib/sql.tg` — full SQL builder, migrations
-- [ ] Distributed tracing integration
-- [ ] `flow` construct GA — production-ready saga/transaction pattern
-- [ ] Hot reload cho development workflow
+- [x] `lib/tensor.tg` — production-ready tensor operations via FFI (`add/mul/dot/relu/argmax/cuda_axpy`)
+- [x] CUDA kernel calls từ Thagore — AI inference lane via runtime CUDA-aware AXPY hook (`thag_tensor_cuda_axpy_i64`)
+- [x] Model serving example — service-style inference pipeline bằng Thagore (`examples/v1_7_model_serving.tg`)
+- [x] `lib/grpc.tg` — gRPC client lane (`unary`, `health`) backed by runtime transport hook
+- [x] `lib/sql.tg` — SQL builder + migration helpers (`SELECT/FROM/WHERE/ORDER/LIMIT`, `migrate_apply`)
+- [x] Distributed tracing integration (`lib/trace.tg`, `thag_trace_span_begin/end`, `thag_trace_event`)
+- [x] `flow` construct GA — executable flow functions with retry/timeout/undo rollback
+- [x] Hot reload cho development workflow (`thagc run --watch`)
 - [ ] Package ecosystem: 100+ packages trên Drago Registry
 
 ### Gate
@@ -571,7 +571,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.4 | Platform hardening + DX | ✅ Released |
 | v1.5 | **Stable release** | ✅ Released |
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
-| v1.7 | AI & scale | 🔲 Planned |
+| v1.7 | AI & scale | 🟨 In Progress |
 | v1.8 | **Stable & complete** | 🔲 Planned |
 
 ---

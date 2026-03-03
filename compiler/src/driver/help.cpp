@@ -22,7 +22,8 @@ int handle_help() {
   std::cout << "  thagc build <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm] "
                "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>] [--include-path=<dir>]\n";
   std::cout << "  thagc run <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm] "
-               "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>] [--include-path=<dir>]\n";
+               "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>] [--include-path=<dir>] "
+               "[--watch] [--watch-interval-ms=<n>] [--watch-iterations=<n>]\n";
   std::cout << "  thagc check <input.tg> [--target=<triple>] [--include-path=<dir>]\n";
   std::cout << "  thagc fmt <input.tg>\n";
   std::cout << "  thagc fix <input.tg>  # apply safe autofixes for common syntax issues\n";

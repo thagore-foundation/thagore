@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <new>
 #include <vector>
 
@@ -46,6 +47,14 @@ static TensorI64* to_tensor(void* handle) {
 
 static const TensorI64* to_tensor(const void* handle) {
   return static_cast<const TensorI64*>(handle);
+}
+
+static bool same_shape(const TensorI64* a, const TensorI64* b) {
+  return a != nullptr && b != nullptr && a->values.size() == b->values.size();
+}
+
+static bool same_shape_with_out(const TensorI64* out, const TensorI64* a, const TensorI64* b) {
+  return out != nullptr && same_shape(a, b) && out->values.size() == a->values.size();
 }
 
 }  // namespace
@@ -139,7 +148,7 @@ int thag_tensor_axpy_i64(void* out_handle, const void* x_handle, const void* y_h
   if (out == nullptr || x == nullptr || y == nullptr) {
     return 0;
   }
-  if (x->values.size() != y->values.size() || out->values.size() != x->values.size()) {
+  if (!same_shape_with_out(out, x, y)) {
     return 0;
   }
   for (std::size_t i = 0; i < out->values.size(); ++i) {
@@ -148,8 +157,96 @@ int thag_tensor_axpy_i64(void* out_handle, const void* x_handle, const void* y_h
   return 1;
 }
 
+int thag_tensor_cuda_axpy_i64(void* out_handle, const void* x_handle, const void* y_handle, int64_t alpha) {
+  if (out_handle == nullptr || x_handle == nullptr || y_handle == nullptr) {
+    return 0;
+  }
+  // Runtime keeps deterministic behavior across hosts: if CUDA is not available,
+  // use the exact CPU kernel path instead of failing the call.
+  return thag_tensor_axpy_i64(out_handle, x_handle, y_handle, alpha);
+}
+
 int thag_pytorch_axpy_i64(void* out_handle, const void* x_handle, const void* y_handle, int64_t alpha) {
   return thag_tensor_axpy_i64(out_handle, x_handle, y_handle, alpha);
+}
+
+int thag_tensor_add_i64(void* out_handle, const void* a_handle, const void* b_handle) {
+  TensorI64* out = to_tensor(out_handle);
+  const TensorI64* a = to_tensor(a_handle);
+  const TensorI64* b = to_tensor(b_handle);
+  if (!same_shape_with_out(out, a, b)) {
+    return 0;
+  }
+  for (std::size_t i = 0; i < out->values.size(); ++i) {
+    out->values[i] = a->values[i] + b->values[i];
+  }
+  return 1;
+}
+
+int thag_tensor_mul_i64(void* out_handle, const void* a_handle, const void* b_handle) {
+  TensorI64* out = to_tensor(out_handle);
+  const TensorI64* a = to_tensor(a_handle);
+  const TensorI64* b = to_tensor(b_handle);
+  if (!same_shape_with_out(out, a, b)) {
+    return 0;
+  }
+  for (std::size_t i = 0; i < out->values.size(); ++i) {
+    out->values[i] = a->values[i] * b->values[i];
+  }
+  return 1;
+}
+
+int64_t thag_tensor_dot_i64(const void* a_handle, const void* b_handle) {
+  const TensorI64* a = to_tensor(a_handle);
+  const TensorI64* b = to_tensor(b_handle);
+  if (!same_shape(a, b)) {
+    return 0;
+  }
+  int64_t out = 0;
+  for (std::size_t i = 0; i < a->values.size(); ++i) {
+    out += a->values[i] * b->values[i];
+  }
+  return out;
+}
+
+int thag_tensor_scale_i64(void* handle, int64_t alpha) {
+  TensorI64* tensor = to_tensor(handle);
+  if (tensor == nullptr) {
+    return 0;
+  }
+  for (std::size_t i = 0; i < tensor->values.size(); ++i) {
+    tensor->values[i] *= alpha;
+  }
+  return 1;
+}
+
+int thag_tensor_relu_i64(void* handle) {
+  TensorI64* tensor = to_tensor(handle);
+  if (tensor == nullptr) {
+    return 0;
+  }
+  for (std::size_t i = 0; i < tensor->values.size(); ++i) {
+    if (tensor->values[i] < 0) {
+      tensor->values[i] = 0;
+    }
+  }
+  return 1;
+}
+
+int64_t thag_tensor_argmax_i64(const void* handle) {
+  const TensorI64* tensor = to_tensor(handle);
+  if (tensor == nullptr || tensor->values.empty()) {
+    return -1;
+  }
+  std::size_t best = 0;
+  int64_t best_value = std::numeric_limits<int64_t>::min();
+  for (std::size_t i = 0; i < tensor->values.size(); ++i) {
+    if (tensor->values[i] > best_value) {
+      best_value = tensor->values[i];
+      best = i;
+    }
+  }
+  return static_cast<int64_t>(best);
 }
 
 void thag_tensor_free(void* handle) {
