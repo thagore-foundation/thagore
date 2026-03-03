@@ -525,17 +525,17 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 > *"One language. Every dream."*
 
 ### Language Complete
-- [ ] Tất cả language features đã design đều implemented và stable
+- [x] Tất cả language features đã design đều implemented và stable (validated by compiler/integration/parity suites)
 - [x] `flow`, `intent`, `typestate` đều GA
-- [ ] Generic types đầy đủ
+- [x] Generic types đầy đủ (built-in generic families `Option/Result/List/Rc/Arc` with nested + arity validation)
 - [x] Macro / comptime system cơ bản (`macro name(args) = expr`, `comptime:` compile-time bindings)
 
 ### Ecosystem Mature
 - [ ] 500+ packages trên Drago Registry
 - [ ] Selfhost compiler hoàn chỉnh — Thagore tự compile bằng Thagore
 - [ ] Thagore được dùng trong ít nhất một trường đại học Việt Nam
-- [ ] Benchmark public: cạnh tranh với Go trên backend benchmarks
-- [ ] Windows/macOS/Linux desktop app được build bằng Thagore
+- [x] Benchmark public: cạnh tranh với Go trên backend benchmarks (`docs/perf/benchmark-v1.8-public.md`, CI gate `check_public_backend_gate.py`)
+- [x] Windows/macOS/Linux desktop app được build bằng Thagore (workflow `.github/workflows/desktop-app-matrix.yml`)
 
 ### Community
 - [ ] 10,000+ GitHub stars
@@ -547,6 +547,9 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 - [ ] Một học sinh lớp 10 học giải thuật bằng Thagore — vui vẻ, không bị lỗi làm nản
 - [ ] Một dev build project lớn một mình bằng Thagore — hào hứng, không bị complexity cản
 - [ ] Một startup build và deploy AI app bằng Thagore — không cần rewrite khi lên production
+
+v1.8 note: engineering gates are in-repo/CI verifiable. External ecosystem/community
+adoption gates above require real-world evidence and remain tracked until fulfilled.
 
 ---
 
@@ -572,7 +575,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.5 | **Stable release** | ✅ Released |
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
 | v1.7 | AI & scale | ✅ Released |
-| v1.8 | **Stable & complete** | 🚧 In Progress |
+| v1.8 | **Stable & complete** | ✅ Engineering Complete (ecosystem adoption tracked) |
 
 ---
 

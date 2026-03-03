@@ -1,0 +1,4 @@
+{
+  "max_p50_ratio_vs_go": 1.25,
+  "min_speedup_vs_python_x": 5.0
+}

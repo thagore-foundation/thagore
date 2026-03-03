@@ -97,6 +97,18 @@ class MemoryModelSendSyncTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
 
+    def test_reject_nested_generic_rc_inside_arc_across_spawn(self) -> None:
+        result = self._build(
+            "func main():\n"
+            "  let mixed: Arc<Rc<i32>> = Arc(1)\n"
+            "  spawn(mixed)\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("E_SEND_SYNC_004", result.stderr)
+        self.assertIn("field `mixed`", result.stderr)
+        self.assertIn("Rc<i32>", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

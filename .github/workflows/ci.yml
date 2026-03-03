@@ -85,6 +85,9 @@ jobs:
             --build-iterations 8 \
             --run-iterations 12 \
             --require-runtimes go,rust,python
+          python tooling/policy/check_public_backend_gate.py \
+            --metrics dist/perf-metrics.json \
+            --contract contracts/perf/backend_compete_v1_8.json
           python tooling/policy/check_latency_budget.py \
             --metrics dist/perf-metrics.json \
             --budgets contracts/perf/latency_budget.json \

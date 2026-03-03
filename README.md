@@ -187,3 +187,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.7 AI & scale runbook: `docs/runbooks/v1-7-ai-scale.md`
 - v1.7 model-serving benchmark report: `docs/perf/benchmark-v1.7-model-serving.md`
 - v1.7 registry catalog (100+ packages): `docs/community/registry-package-catalog-v1.7.md`
+- v1.8 stable-complete runbook: `docs/runbooks/v1-8-stable-complete.md`
+- v1.8 public benchmark report: `docs/perf/benchmark-v1.8-public.md`

@@ -80,25 +80,135 @@ static bool parse_generic_parts(const std::string& type_name, std::string& base,
   args.clear();
   const std::string clean = trim_copy(type_name);
   const std::size_t lt = clean.find('<');
-  const std::size_t gt = clean.rfind('>');
-  if (lt == std::string::npos || gt == std::string::npos || gt <= lt + 1) {
+  if (lt == std::string::npos || lt == 0 || lt + 2 >= clean.size()) {
     return false;
   }
   base = trim_copy(clean.substr(0, lt));
+  if (base.empty()) {
+    return false;
+  }
+  std::size_t gt = std::string::npos;
+  int depth = 0;
+  for (std::size_t i = lt; i < clean.size(); ++i) {
+    if (clean[i] == '<') {
+      ++depth;
+      continue;
+    }
+    if (clean[i] == '>') {
+      --depth;
+      if (depth == 0) {
+        gt = i;
+        break;
+      }
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  if (gt == std::string::npos || depth != 0) {
+    return false;
+  }
+  if (trim_copy(clean.substr(gt + 1)).size() != 0) {
+    return false;
+  }
+  if (gt <= lt + 1) {
+    return false;
+  }
   const std::string inner = clean.substr(lt + 1, gt - lt - 1);
   std::size_t i = 0;
+  depth = 0;
+  std::size_t start = 0;
+  auto push_arg = [&](std::size_t end) {
+    const std::string arg = trim_copy(inner.substr(start, end - start));
+    if (arg.empty()) {
+      return false;
+    }
+    args.push_back(arg);
+    return true;
+  };
   while (i < inner.size()) {
-    std::size_t comma = inner.find(',', i);
-    if (comma == std::string::npos) {
-      comma = inner.size();
+    const char ch = inner[i];
+    if (ch == '<') {
+      ++depth;
+      ++i;
+      continue;
     }
-    const std::string arg = trim_copy(inner.substr(i, comma - i));
-    if (!arg.empty()) {
-      args.push_back(arg);
+    if (ch == '>') {
+      if (depth == 0) {
+        return false;
+      }
+      --depth;
+      ++i;
+      continue;
     }
-    i = comma + 1;
+    if (ch == ',' && depth == 0) {
+      if (!push_arg(i)) {
+        return false;
+      }
+      start = i + 1;
+    }
+    ++i;
   }
-  return !base.empty() && !args.empty();
+  if (depth != 0) {
+    return false;
+  }
+  if (!push_arg(inner.size())) {
+    return false;
+  }
+  return !args.empty();
+}
+
+static bool is_builtin_generic_base(const std::string& base) {
+  return base == "Option" || base == "Result" || base == "List" || base == "Rc" || base == "Arc";
+}
+
+static std::size_t builtin_generic_arity(const std::string& base) {
+  if (base == "Result") {
+    return 2;
+  }
+  if (base == "Option" || base == "List" || base == "Rc" || base == "Arc") {
+    return 1;
+  }
+  return 0;
+}
+
+static std::string strip_state_annotation(const std::string& type_name);
+static bool is_tuple_type_syntax(const std::string& type_name);
+static bool is_array_type_syntax(const std::string& type_name);
+
+static bool is_supported_type_internal(const std::string& type_name, int depth_limit) {
+  if (depth_limit <= 0) {
+    return false;
+  }
+  const std::string clean = strip_state_annotation(type_name);
+  if (clean == "i32" || clean == "i64" || clean == "f32" || clean == "f64" || clean == "bool" || clean == "string" ||
+      clean == "String" || clean == "ptr" || clean == "void" || clean == "Fn") {
+    return true;
+  }
+  if (clean == "Option" || clean == "Result" || clean == "List" || clean == "Rc" || clean == "Arc") {
+    return true;
+  }
+  if (is_tuple_type_syntax(clean) || is_array_type_syntax(clean)) {
+    return true;
+  }
+  std::string base;
+  std::vector<std::string> args;
+  if (!parse_generic_parts(clean, base, args)) {
+    return false;
+  }
+  if (!is_builtin_generic_base(base)) {
+    return false;
+  }
+  const std::size_t expected = builtin_generic_arity(base);
+  if (expected == 0 || args.size() != expected) {
+    return false;
+  }
+  for (const std::string& arg : args) {
+    if (!is_supported_type_internal(arg, depth_limit - 1)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 static bool split_state_annotation(const std::string& type_name, std::string& set_name, std::string& variant_name) {
@@ -133,21 +243,7 @@ static bool is_array_type_syntax(const std::string& type_name) {
 }
 
 static bool is_supported_type(const std::string& type_name) {
-  const std::string clean = strip_state_annotation(type_name);
-  if (clean == "i32" || clean == "i64" || clean == "f32" || clean == "f64" || clean == "bool" || clean == "string" ||
-      clean == "String" || clean == "ptr" || clean == "void" || clean == "Option" || clean == "Result" ||
-      clean == "List" || clean == "Rc" || clean == "Arc" || clean == "Fn") {
-    return true;
-  }
-  if (is_tuple_type_syntax(clean) || is_array_type_syntax(clean)) {
-    return true;
-  }
-  std::string base;
-  std::vector<std::string> args;
-  if (!parse_generic_parts(clean, base, args)) {
-    return false;
-  }
-  return base == "Option" || base == "Result" || base == "List" || base == "Rc" || base == "Arc";
+  return is_supported_type_internal(type_name, 32);
 }
 
 static std::string type_name(TypeKind kind) {
@@ -193,6 +289,10 @@ static TypeKind parse_type_name(const std::string& type_name) {
   std::string base;
   std::vector<std::string> args;
   if (parse_generic_parts(clean, base, args)) {
+    const std::size_t expected = builtin_generic_arity(base);
+    if (expected == 0 || args.size() != expected) {
+      return TypeKind::Unknown;
+    }
     if (base == "Option") return TypeKind::Option;
     if (base == "Result") return TypeKind::Result;
     if (base == "List") return TypeKind::List;
@@ -1929,8 +2029,15 @@ static bool validate_feature_edges(const syntax::AstProgram& program, support::D
   return true;
 }
 
+static TypeKind resolve_declared_user_type(const std::string& type_name,
+                                           const std::unordered_map<std::string, TypeKind>& aliases,
+                                           const std::unordered_set<std::string>& struct_names,
+                                           const std::unordered_set<std::string>& enum_names);
+
 static bool validate_extern_declarations(const syntax::AstProgram& program, support::DiagnosticSink& diag) {
   const auto aliases = collect_type_aliases(program);
+  const auto struct_names = collect_struct_names(program);
+  const auto enum_names = collect_enum_names(program);
   for (const std::string& decl : program.extern_decls) {
     if (!starts_with(decl, "extern func ")) {
       diag.error("E0007", "unsupported extern declaration: '" + decl + "'");
@@ -1951,7 +2058,7 @@ static bool validate_extern_declarations(const syntax::AstProgram& program, supp
     ret.erase(ret.begin(), std::find_if(ret.begin(), ret.end(), [](unsigned char ch) { return !std::isspace(ch); }));
     ret.erase(std::find_if(ret.rbegin(), ret.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
               ret.end());
-    if (resolve_declared_type(ret, aliases) == TypeKind::Unknown) {
+    if (resolve_declared_user_type(ret, aliases, struct_names, enum_names) == TypeKind::Unknown) {
       diag.error("E0006", "unsupported extern return type '" + ret + "'");
       return false;
     }
@@ -2054,11 +2161,35 @@ static bool split_owner_and_method(const std::string& name, std::string& owner, 
   return true;
 }
 
+static bool has_any_angle_bracket(const std::string& type_name) {
+  return type_name.find('<') != std::string::npos || type_name.find('>') != std::string::npos;
+}
+
 static TypeKind resolve_declared_user_type(const std::string& type_name,
                                            const std::unordered_map<std::string, TypeKind>& aliases,
                                            const std::unordered_set<std::string>& struct_names,
                                            const std::unordered_set<std::string>& enum_names) {
   const std::string clean = strip_state_annotation(type_name);
+  std::string generic_base;
+  std::vector<std::string> generic_args;
+  if (parse_generic_parts(clean, generic_base, generic_args)) {
+    if (!is_builtin_generic_base(generic_base)) {
+      return TypeKind::Unknown;
+    }
+    const std::size_t expected = builtin_generic_arity(generic_base);
+    if (expected == 0 || generic_args.size() != expected) {
+      return TypeKind::Unknown;
+    }
+    for (const std::string& arg : generic_args) {
+      if (resolve_declared_user_type(arg, aliases, struct_names, enum_names) == TypeKind::Unknown) {
+        return TypeKind::Unknown;
+      }
+    }
+    return parse_type_name(generic_base);
+  }
+  if (has_any_angle_bracket(clean)) {
+    return TypeKind::Unknown;
+  }
   const TypeKind direct = resolve_declared_type(clean, aliases);
   if (direct != TypeKind::Unknown) {
     return direct;
@@ -2070,6 +2201,51 @@ static TypeKind resolve_declared_user_type(const std::string& type_name,
     return TypeKind::EnumType;
   }
   return TypeKind::Unknown;
+}
+
+static bool validate_declared_type_expr(const std::string& type_name,
+                                        const std::unordered_map<std::string, TypeKind>& aliases,
+                                        const std::unordered_set<std::string>& struct_names,
+                                        const std::unordered_set<std::string>& enum_names,
+                                        std::string& error,
+                                        int depth_limit = 32) {
+  error.clear();
+  if (depth_limit <= 0) {
+    error = "generic type nesting is too deep";
+    return false;
+  }
+  const std::string clean = strip_state_annotation(type_name);
+  std::string generic_base;
+  std::vector<std::string> generic_args;
+  if (parse_generic_parts(clean, generic_base, generic_args)) {
+    if (!is_builtin_generic_base(generic_base)) {
+      error = "unsupported generic base type '" + generic_base + "'";
+      return false;
+    }
+    const std::size_t expected = builtin_generic_arity(generic_base);
+    if (expected == 0 || generic_args.size() != expected) {
+      error = "generic type '" + generic_base + "' expects " + std::to_string(expected) + " argument(s) but got " +
+              std::to_string(generic_args.size());
+      return false;
+    }
+    for (const std::string& arg : generic_args) {
+      std::string nested_error;
+      if (!validate_declared_type_expr(arg, aliases, struct_names, enum_names, nested_error, depth_limit - 1)) {
+        error = nested_error;
+        return false;
+      }
+    }
+    return true;
+  }
+  if (has_any_angle_bracket(clean)) {
+    error = "malformed generic type syntax '" + clean + "'";
+    return false;
+  }
+  if (resolve_declared_user_type(clean, aliases, struct_names, enum_names) != TypeKind::Unknown) {
+    return true;
+  }
+  error = "unsupported type '" + clean + "'";
+  return false;
 }
 
 struct MatchArmInfo {
@@ -2494,14 +2670,18 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
 
   for (const auto& [field_key, field_type] : program.struct_field_types) {
-    if (resolve_declared_user_type(field_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
-      diag.error("E0030", "unsupported field type '" + field_type + "' for '" + field_key + "'");
+    std::string type_error;
+    if (!validate_declared_type_expr(field_type, aliases, struct_names, enum_names, type_error)) {
+      diag.error("E0030",
+                 "unsupported field type '" + field_type + "' for '" + field_key + "': " + type_error);
       return false;
     }
   }
   for (const auto& [variant, payload_type] : program.enum_variant_payload_types) {
-    if (resolve_declared_user_type(payload_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
-      diag.error("E0031", "unsupported enum payload type '" + payload_type + "' for variant '" + variant + "'");
+    std::string type_error;
+    if (!validate_declared_type_expr(payload_type, aliases, struct_names, enum_names, type_error)) {
+      diag.error("E0031",
+                 "unsupported enum payload type '" + payload_type + "' for variant '" + variant + "': " + type_error);
       return false;
     }
   }
@@ -2542,10 +2722,24 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0003", "invalid function header at line " + std::to_string(fn.header_line));
       return false;
     }
-    if (!fn.return_type.empty() &&
-        resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names) == TypeKind::Unknown) {
-      diag.error("E0006", "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "'");
-      return false;
+    if (!fn.return_type.empty()) {
+      std::string return_error;
+      if (!validate_declared_type_expr(fn.return_type, aliases, struct_names, enum_names, return_error)) {
+        diag.error("E0006",
+                   "unsupported return type '" + fn.return_type + "' in function '" + fn.name + "': " + return_error);
+        return false;
+      }
+    }
+    for (const std::string& param_type : fn.param_types) {
+      if (param_type.empty()) {
+        continue;
+      }
+      std::string param_error;
+      if (!validate_declared_type_expr(param_type, aliases, struct_names, enum_names, param_error)) {
+        diag.error("E0006",
+                   "unsupported parameter type '" + param_type + "' in function '" + fn.name + "': " + param_error);
+        return false;
+      }
     }
   }
 
@@ -2686,6 +2880,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           std::string state_error_message;
           if (!parse_state_ref(annotation, program, declared_state_ref, state_error_code, state_error_message)) {
             diag.error(state_error_code, "line " + std::to_string(st.line) + ": " + state_error_message);
+            return false;
+          }
+          std::string annotation_error;
+          if (!validate_declared_type_expr(annotation, aliases, struct_names, enum_names, annotation_error)) {
+            diag.error("E0006",
+                       "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "': " +
+                           annotation_error);
             return false;
           }
           const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
@@ -2964,6 +3165,13 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         std::string state_error_message;
         if (!parse_state_ref(annotation, program, declared_state_ref, state_error_code, state_error_message)) {
           diag.error(state_error_code, "line " + std::to_string(st.line) + ": " + state_error_message);
+          return false;
+        }
+        std::string annotation_error;
+        if (!validate_declared_type_expr(annotation, aliases, struct_names, enum_names, annotation_error)) {
+          diag.error("E0006",
+                     "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "': " +
+                         annotation_error);
           return false;
         }
         const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);

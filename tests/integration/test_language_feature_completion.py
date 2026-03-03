@@ -237,6 +237,24 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         self.assertNotEqual(build.returncode, 0)
         self.assertIn("expects 2 arguments but got 1", build.stderr)
 
+    def test_nested_generic_annotations_compile(self) -> None:
+        _, run = self._build_and_run(
+            "func main():\n"
+            "  let nested: Arc<Rc<i32>> = Arc(1)\n"
+            "  print(1)\n"
+            "  return 0\n"
+        )
+        self.assertEqual(run.returncode, 0, msg=run.stderr)
+
+    def test_generic_arity_validation_rejects_invalid_result(self) -> None:
+        build, _ = self._build(
+            "func main():\n"
+            "  let x: Result<i32> = Ok(1)\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("expects 2 argument(s) but got 1", build.stderr)
+
     def test_option_result_builtins(self) -> None:
         _, run = self._build_and_run(
             "func main():\n"
