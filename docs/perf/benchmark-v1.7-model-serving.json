@@ -1,0 +1,18 @@
+{
+  "timestamp_utc": "2026-03-03T16:23:11.196862+00:00",
+  "iterations": 12,
+  "workload_loops": 4000,
+  "thagore_native": {
+    "min_ms": 3.884669,
+    "p50_ms": 5.344119,
+    "p95_ms": 7.230338,
+    "max_ms": 7.230338
+  },
+  "python_flask": {
+    "min_ms": 222.245307,
+    "p50_ms": 260.8066605,
+    "p95_ms": 312.741274,
+    "max_ms": 312.741274
+  },
+  "speedup_vs_flask_x": 48.80255482709124
+}

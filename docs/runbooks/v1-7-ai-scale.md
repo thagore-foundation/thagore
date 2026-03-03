@@ -76,3 +76,26 @@ Reference example:
 - `examples/v1_7_model_serving.tg`
 
 It demonstrates flow orchestration + tensor scoring + trace spans + SQL query builder in one serving-style pipeline.
+
+## 8) Gate Benchmark (Flask 10x)
+
+- Metrics JSON: `docs/perf/benchmark-v1.7-model-serving.json`
+- Report: `docs/perf/benchmark-v1.7-model-serving.md`
+- Contract: `contracts/perf/model_serving_gate_v1_7.json`
+- Policy checker: `tooling/policy/check_model_serving_gate.py`
+
+Run locally:
+
+```bash
+python3 tooling/bench/run_model_serving_benchmark.py \
+  --thagc build-llvm21/compiler/thagc \
+  --out-json docs/perf/benchmark-v1.7-model-serving.json \
+  --out-markdown docs/perf/benchmark-v1.7-model-serving.md
+python3 tooling/policy/check_model_serving_gate.py \
+  --metrics docs/perf/benchmark-v1.7-model-serving.json \
+  --contract contracts/perf/model_serving_gate_v1_7.json
+```
+
+## 9) Registry Ecosystem Snapshot
+
+- Catalog: `docs/community/registry-package-catalog-v1.7.md` (100+ packages)

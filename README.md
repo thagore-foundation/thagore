@@ -185,3 +185,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.6 joy runbook: `docs/runbooks/v1-6-joy-release.md`
 - v1.6 typestate GA reference: `docs/reference/typestate-ga-v1.6.md`
 - v1.7 AI & scale runbook: `docs/runbooks/v1-7-ai-scale.md`
+- v1.7 model-serving benchmark report: `docs/perf/benchmark-v1.7-model-serving.md`
+- v1.7 registry catalog (100+ packages): `docs/community/registry-package-catalog-v1.7.md`

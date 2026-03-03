@@ -514,10 +514,10 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 - [x] Distributed tracing integration (`lib/trace.tg`, `thag_trace_span_begin/end`, `thag_trace_event`)
 - [x] `flow` construct GA — executable flow functions with retry/timeout/undo rollback
 - [x] Hot reload cho development workflow (`thagc run --watch`)
-- [ ] Package ecosystem: 100+ packages trên Drago Registry
+- [x] Package ecosystem: 100+ packages trên Drago Registry (`docs/community/registry-package-catalog-v1.7.md`)
 
 ### Gate
-- [ ] Có thể serve AI model inference bằng Thagore, nhanh hơn Python Flask 10x
+- [x] Có thể serve AI model inference bằng Thagore, nhanh hơn Python Flask 10x (`docs/perf/benchmark-v1.7-model-serving.md`, speedup gate contract passed)
 
 ---
 
@@ -571,7 +571,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.4 | Platform hardening + DX | ✅ Released |
 | v1.5 | **Stable release** | ✅ Released |
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
-| v1.7 | AI & scale | 🟨 In Progress |
+| v1.7 | AI & scale | ✅ Released |
 | v1.8 | **Stable & complete** | 🔲 Planned |
 
 ---
