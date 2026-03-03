@@ -19,8 +19,15 @@ static std::string default_base_name(const std::string& input) {
   return input;
 }
 
-static std::string default_output(const std::string& input) {
+static std::string default_output(const std::string& input, const std::string& target_triple) {
+  if (is_wasm_target(target_triple)) {
+    return default_base_name(input) + ".wasm";
+  }
+#if defined(_WIN32)
+  return default_base_name(input) + ".exe";
+#else
   return default_base_name(input) + ".bin";
+#endif
 }
 
 static void print_diagnostics(const support::DiagnosticSink& diag) {
@@ -51,7 +58,7 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
 
   BuildOptions options;
   options.input_path = cmd.input_path;
-  options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
+  options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path, cmd.target_triple) : cmd.output_path;
   options.target_triple = cmd.target_triple;
   options.include_paths = cmd.include_paths;
   options.extra_link_args = compose_link_extra_args(cmd);
@@ -69,14 +76,23 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
     print_diagnostics(diag);
     return 1;
   }
+  if (is_wasm_target(options.target_triple)) {
+    std::cout << "run: wasm target built at " << options.output_path << " (execution skipped)\n";
+    return 0;
+  }
   if (cmd.emit_llvm) {
     std::cout << "run: emitted LLVM IR only, skip execution\n";
     return 0;
   }
 
+#if defined(_WIN32)
+  // On Windows, cmd.exe resolves current-directory executables without ./ prefix.
+  const std::string exe = options.output_path;
+#else
   const std::string exe = (std::filesystem::path(options.output_path).is_relative())
                               ? ("./" + options.output_path)
                               : options.output_path;
+#endif
   const int rc = support::run_process({exe});
   if (rc != 0) {
     std::cerr << "ERROR: run failed with exit code " << rc << "\n";

@@ -115,7 +115,11 @@ static bool run_state_analysis(const std::string& input_path, const CompilerPipe
 
   BuildOptions options;
   options.input_path = input_path;
+#if defined(_WIN32)
+  options.output_path = (temp_root / "state-analysis.exe").string();
+#else
   options.output_path = (temp_root / "state-analysis.bin").string();
+#endif
   options.emit_llvm = true;
   options.llvm_ir_path = (temp_root / "state-analysis.ll").string();
   if (!apply_target_config(options, "", diag)) {
@@ -240,6 +244,13 @@ int handle_state(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
     std::cout << "state doctor summary:\n";
     for (const auto& item : counts) {
       std::cout << "- " << item.first << ": " << item.second << "\n";
+    }
+    std::cout << "state doctor findings:\n";
+    for (const auto& f : findings) {
+      const auto& d = f.diagnostic;
+      const int line = d.line > 0 ? d.line : 1;
+      const int col = d.column > 0 ? d.column : 1;
+      std::cout << "- " << d.file << ":" << line << ":" << col << ": " << d.code << ": " << d.message << "\n";
     }
     std::cout << "state doctor recommendations:\n";
     for (const auto& f : findings) {

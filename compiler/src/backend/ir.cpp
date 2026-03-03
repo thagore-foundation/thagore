@@ -4170,6 +4170,12 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   LLVMInitializeARMAsmParser();
   LLVMInitializeARMAsmPrinter();
 
+  LLVMInitializeWebAssemblyTargetInfo();
+  LLVMInitializeWebAssemblyTarget();
+  LLVMInitializeWebAssemblyTargetMC();
+  LLVMInitializeWebAssemblyAsmParser();
+  LLVMInitializeWebAssemblyAsmPrinter();
+
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetMC();

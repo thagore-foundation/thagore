@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thagore Playground</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --ink: #e5e7eb;
+        --muted: #94a3b8;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+        --err: #ef4444;
+      }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        background: radial-gradient(circle at top, #1e293b, var(--bg));
+        color: var(--ink);
+      }
+      main {
+        max-width: 960px;
+        margin: 24px auto;
+        padding: 0 16px 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+      .panel {
+        background: color-mix(in srgb, var(--panel) 92%, black);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 320px;
+        resize: vertical;
+        box-sizing: border-box;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        background: #0b1220;
+        color: var(--ink);
+        padding: 12px;
+        font: inherit;
+        line-height: 1.5;
+      }
+      .bar {
+        display: flex;
+        gap: 8px;
+        margin: 10px 0 0;
+        align-items: center;
+      }
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: white;
+        font: inherit;
+        font-weight: 600;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button[disabled] {
+        cursor: wait;
+        opacity: 0.75;
+      }
+      #status {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      #status.ok {
+        color: var(--ok);
+      }
+      #status.err {
+        color: var(--err);
+      }
+      pre {
+        margin: 12px 0 0;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #020617;
+        color: var(--ink);
+        padding: 12px;
+        min-height: 140px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Thagore Playground</h1>
+      <p>Write, run, and inspect Thagore snippets in the browser without local installation.</p>
+      <section class="panel">
+        <textarea id="source">func add(a, b):
+  return a + b
+
+func main():
+  print(add(20, 22))
+  return 0
+</textarea>
+        <div class="bar">
+          <button id="runBtn" type="button">Run</button>
+          <span id="status">Idle</span>
+        </div>
+        <pre id="output"></pre>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

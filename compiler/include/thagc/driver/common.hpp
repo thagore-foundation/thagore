@@ -27,5 +27,7 @@ std::string resolve_update_state_home(bool* has_installed = nullptr);
 std::vector<std::string> compose_link_extra_args(const ParsedCommand& cmd);
 bool apply_target_config(BuildOptions& options, const std::string& triple, support::DiagnosticSink& diag);
 bool load_target_config(const std::string& triple, TargetConfig& out);
+std::string canonicalize_target_triple(const std::string& triple);
+bool is_wasm_target(const std::string& triple);
 
 }  // namespace thagc::driver

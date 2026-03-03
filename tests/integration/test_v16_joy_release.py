@@ -1,3 +1,5 @@
+import importlib.util
+import json
 import subprocess
 import tempfile
 import unittest
@@ -73,6 +75,75 @@ class V16JoyReleaseIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(build.returncode, 0, msg=build.stderr)
         self.assertEqual(run.returncode, 4, msg=run.stderr)
+
+    def test_wasm_target_builds_webassembly_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "wasm_demo.tg"
+            out = root / "wasm_demo.wasm"
+            src.write_text("func main():\n  return 0\n")
+            build = subprocess.run(
+                [str(self.bin), "build", str(src), "-o", str(out), "--target=wasm32-unknown-unknown"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, msg=build.stderr)
+            self.assertTrue(out.exists(), msg="expected wasm output file")
+            magic = out.read_bytes()[:4]
+            self.assertEqual(magic, b"\x00asm")
+
+    def test_intent_doctor_and_explain_json(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "intent_demo.tg"
+            src.write_text(
+                "intent func sum_all(xs):\n"
+                "  goal: reduce_sum\n"
+                "  strategy: math.sum.formula.v1\n"
+                "\n"
+                "func sum_all(xs):\n"
+                "  return 0\n"
+                "\n"
+                "func main():\n"
+                "  return 0\n"
+            )
+            doctor = subprocess.run(
+                [str(self.bin), "intent", "doctor", str(src)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(doctor.returncode, 0, msg=doctor.stderr)
+            self.assertIn("intent doctor: OK", doctor.stdout)
+
+            explain = subprocess.run(
+                [str(self.bin), "intent", "explain", str(src), "--json"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(explain.returncode, 0, msg=explain.stderr)
+            payload = json.loads(explain.stdout)
+            self.assertEqual(payload["file"], str(src))
+            self.assertGreaterEqual(len(payload["entries"]), 1)
+            self.assertEqual(payload["entries"][0]["goal"], "reduce_sum")
+
+    def test_playground_compile_and_run_helper(self) -> None:
+        module_path = Path("tooling/playground/server.py")
+        self.assertTrue(module_path.exists(), msg="missing playground server module")
+        spec = importlib.util.spec_from_file_location("thag_playground_server", module_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+        result = module.compile_and_run(  # type: ignore[attr-defined]
+            "func main():\n  print(42)\n  return 0\n",
+            str(self.bin),
+        )
+        self.assertTrue(result["ok"], msg=result.get("stderr", ""))
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("42", result["stdout"])
 
 
 if __name__ == "__main__":

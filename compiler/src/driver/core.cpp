@@ -33,6 +33,8 @@ int CommandRouter::run(int argc, char** argv) const {
       return driver::handle_lsp(cmd);
     case driver::CommandKind::Target:
       return driver::handle_target(cmd, diag);
+    case driver::CommandKind::Intent:
+      return driver::handle_intent(cmd);
     case driver::CommandKind::State:
       return driver::handle_state(cmd, pipeline, diag);
     case driver::CommandKind::Migrate:

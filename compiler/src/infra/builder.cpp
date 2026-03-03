@@ -154,27 +154,56 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
                                                        support::DiagnosticSink& diag) {
   domain::LinkResult out;
   const std::string linker = plan.linker_path.empty() ? "clang" : plan.linker_path;
-  std::optional<TempRuntimeArchive> runtime_archive = extract_runtime_archive(diag);
-  if (!runtime_archive.has_value()) {
-    out.exit_code = 1;
-    out.success = false;
-    out.error = "embedded runtime extraction failed";
-    out.command = linker + " " + plan.object_path + " -o " + plan.output_path;
-    return out;
+  const bool target_is_wasm = !plan.target_triple.empty() &&
+                              (plan.target_triple.find("wasm32") != std::string::npos ||
+                               plan.target_triple.find("wasm64") != std::string::npos);
+
+  std::optional<TempRuntimeArchive> runtime_archive;
+  std::vector<std::string> clang_link = {linker, plan.object_path, "-o", plan.output_path};
+  if (!target_is_wasm) {
+    runtime_archive = extract_runtime_archive(diag);
+    if (!runtime_archive.has_value()) {
+      out.exit_code = 1;
+      out.success = false;
+      out.error = "embedded runtime extraction failed";
+      out.command = linker + " " + plan.object_path + " -o " + plan.output_path;
+      return out;
+    }
+    clang_link.push_back(runtime_archive->path_string());
   }
 
-  std::vector<std::string> clang_link = {linker, plan.object_path, "-o", plan.output_path};
-  clang_link.push_back(runtime_archive->path_string());
+  // Determine target platform from triple (if set), otherwise use host platform.
+  const bool target_is_windows =
+      !plan.target_triple.empty() && plan.target_triple.find("windows") != std::string::npos;
+  const bool target_is_linux =
+      plan.target_triple.empty()
 #if defined(__linux__)
-  clang_link.push_back("-lstdc++");
-  clang_link.push_back("-lpthread");
+          ? true
+#else
+          ? false
 #endif
-#if defined(THAG_RUNTIME_HAS_OPENSSL) && !defined(_WIN32)
-  clang_link.push_back("-lssl");
-  clang_link.push_back("-lcrypto");
-#endif
-#if defined(__linux__)
-  clang_link.push_back("-no-pie");
+          : (plan.target_triple.find("linux") != std::string::npos);
+
+  if (target_is_linux) {
+    clang_link.push_back("-lstdc++");
+    clang_link.push_back("-lpthread");
+    clang_link.push_back("-no-pie");
+  } else if (target_is_wasm) {
+    clang_link.push_back("-nostdlib");
+    clang_link.push_back("-Wl,--no-entry");
+    clang_link.push_back("-Wl,--export=main");
+    clang_link.push_back("-Wl,--allow-undefined");
+  } else if (target_is_windows) {
+    // Windows targets link against MSVC runtime or MinGW; no -lstdc++/-no-pie.
+  } else {
+    // macOS / other Unix: link stdc++ but no -no-pie.
+    clang_link.push_back("-lstdc++");
+  }
+#if defined(THAG_RUNTIME_HAS_OPENSSL)
+  if (!target_is_windows && !target_is_wasm) {
+    clang_link.push_back("-lssl");
+    clang_link.push_back("-lcrypto");
+  }
 #endif
   if (!plan.target_triple.empty()) {
     clang_link.push_back("--target=" + plan.target_triple);

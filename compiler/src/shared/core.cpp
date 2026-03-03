@@ -47,6 +47,13 @@ std::string diagnostic_fix_suggestion(const Diagnostic& diagnostic) {
   if (code == "E_STATE_INVALID_TRANSITION") return "Update transition order so state flows through allowed variants only.";
   if (code == "E_STATE_AMBIGUOUS" || code == "W_STATE_AMBIGUOUS")
     return "Normalize control-flow so the variable has one deterministic state before use.";
+  if (code == "E_TYPE_INTENT_GOAL")
+    return "Use a supported `goal:` value (for example `reduce_sum`, `auto_plan`, or `off`).";
+  if (code == "E_TYPE_INTENT_STRATEGY")
+    return "Use dotted strategy ids like `family.plan.v1`, or remove strategy when `goal: off`.";
+  if (code == "E_INTENT_001" || code == "E_INTENT_002" || code == "E_INTENT_003" || code == "E_INTENT_004" ||
+      code == "E_INTENT_005")
+    return "Run `thagc intent explain <file.tg>` to inspect parsed intent blocks, then fix goal/strategy syntax.";
   if (code == "E_MOD_110" || code == "E_MOD_111")
     return "Rename the package using only letters, digits, `_`, or `-` (e.g. `zalo-tg` or `zalo`). Dots are reserved as module path separators.";
   if (code.rfind("E_MOD_", 0) == 0) return "Verify import paths/aliases and exported symbols in dependent modules.";

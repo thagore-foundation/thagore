@@ -35,6 +35,7 @@ static int print_help() {
   std::cout << "  thagc target list\n";
   std::cout << "  thagc target show <triple>\n";
   std::cout << "  thagc target init <triple>\n";
+  std::cout << "  aliases: wasm, wasm32 -> wasm32-unknown-unknown\n";
   return 0;
 }
 
@@ -71,9 +72,11 @@ static int handle_show(const std::string& triple) {
     std::cerr << "ERROR: missing target triple for show\n";
     return 1;
   }
+  const std::string normalized = canonicalize_target_triple(triple);
   TargetConfig cfg;
-  if (!load_target_config(triple, cfg)) {
-    std::cerr << "ERROR: target '" << triple << "' is not initialized; run: thagc target init " << triple << "\n";
+  if (!load_target_config(normalized, cfg)) {
+    std::cerr << "ERROR: target '" << normalized << "' is not initialized; run: thagc target init " << normalized
+              << "\n";
     return 1;
   }
   std::cout << "target: " << cfg.triple << "\n";
@@ -89,17 +92,18 @@ static int handle_init(const std::string& triple, support::DiagnosticSink& diag)
     std::cerr << "ERROR: missing target triple for init\n";
     return 1;
   }
+  const std::string normalized = canonicalize_target_triple(triple);
   BuildOptions opts;
-  if (!apply_target_config(opts, triple, diag)) {
+  if (!apply_target_config(opts, normalized, diag)) {
     print_diag(diag);
     return 1;
   }
   TargetConfig cfg;
-  if (!load_target_config(triple, cfg)) {
-    std::cerr << "ERROR: failed to load target '" << triple << "' after init\n";
+  if (!load_target_config(normalized, cfg)) {
+    std::cerr << "ERROR: failed to load target '" << normalized << "' after init\n";
     return 1;
   }
-  std::cout << "target: initialized " << triple << "\n";
+  std::cout << "target: initialized " << normalized << "\n";
   return 0;
 }
 

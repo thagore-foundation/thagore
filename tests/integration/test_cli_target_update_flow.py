@@ -128,6 +128,23 @@ class CliSurfaceV12bTests(unittest.TestCase):
             self.assertIn("\"findings\":", explain.stdout)
             self.assertIn("E_STATE_", explain.stdout)
 
+    def test_intent_explain_reports_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "intent_ok.tg"
+            src.write_text(
+                "intent func sum_all(xs):\n"
+                "  goal: reduce_sum\n"
+                "  strategy: math.sum.formula.v1\n"
+                "\n"
+                "func sum_all(xs):\n"
+                "  return 0\n"
+            )
+            explain = self._run(root, "intent", "explain", str(src), "--json")
+            self.assertEqual(explain.returncode, 0, msg=explain.stderr)
+            self.assertIn("\"entries\":", explain.stdout)
+            self.assertIn("\"goal\": \"reduce_sum\"", explain.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

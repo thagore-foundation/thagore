@@ -16,6 +16,7 @@ enum class CommandKind {
   Repl,
   Lsp,
   Target,
+  Intent,
   State,
   Migrate,
   Unknown,

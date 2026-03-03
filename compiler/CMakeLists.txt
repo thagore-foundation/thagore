@@ -26,6 +26,7 @@ add_executable(thagc
   src/driver/repl.cpp
   src/driver/lsp.cpp
   src/driver/target.cpp
+  src/driver/intent.cpp
   src/driver/state.cpp
   src/driver/migrate.cpp
   src/driver/common.cpp
@@ -121,6 +122,7 @@ if (THAGC_STATIC_LLVM)
     nativecodegen
     AArch64
     ARM
+    WebAssembly
     X86
   )
   if (NOT LLVM_LIBS)
@@ -150,6 +152,7 @@ else()
     nativecodegen
     AArch64
     ARM
+    WebAssembly
     X86
   )
   target_link_libraries(thagc PRIVATE ${LLVM_LIBS})

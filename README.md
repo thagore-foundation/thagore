@@ -116,6 +116,9 @@ cmake -S . -B build -G Ninja -DTHAGC_STATIC_LLVM=OFF
 ```bash
 # build for target in one command (toolchain config auto-initializes)
 thagc build app.tg -o app-aarch64 --target=aarch64-unknown-linux-gnu
+
+# build WebAssembly module
+thagc build app.tg -o app.wasm --target=wasm32-unknown-unknown
 ```
 
 ### FFI and C library linking
@@ -178,3 +181,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.5 Vietnamese guide: `docs/vi/huong-dan-v1.5.md`
 - v1.5 release checklist: `docs/release/v1.5-stable-checklist.md`
 - v1.5 examples: `examples/`
+- v1.6 joy runbook: `docs/runbooks/v1-6-joy-release.md`
+- v1.6 typestate GA reference: `docs/reference/typestate-ga-v1.6.md`

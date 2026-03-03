@@ -10,6 +10,24 @@
 
 namespace thagc::driver {
 
+std::string canonicalize_target_triple(const std::string& triple) {
+  if (triple.empty()) {
+    return "";
+  }
+  if (triple == "wasm" || triple == "wasm32") {
+    return "wasm32-unknown-unknown";
+  }
+  if (triple == "wasm64") {
+    return "wasm64-unknown-unknown";
+  }
+  return triple;
+}
+
+bool is_wasm_target(const std::string& triple) {
+  const std::string normalized = canonicalize_target_triple(triple);
+  return normalized.find("wasm32") != std::string::npos || normalized.find("wasm64") != std::string::npos;
+}
+
 std::string arg_or_empty(const ParsedCommand& cmd, std::size_t index) {
   if (index >= cmd.args.size()) {
     return "";
@@ -120,7 +138,8 @@ static std::string extract_json_string(const std::string& json, const std::strin
 }
 
 bool load_target_config(const std::string& triple, TargetConfig& out) {
-  const std::string manifest = compiler_home_dir() + "/targets/" + triple + "/manifest.json";
+  const std::string normalized = canonicalize_target_triple(triple);
+  const std::string manifest = compiler_home_dir() + "/targets/" + normalized + "/manifest.json";
   if (!support::file_exists(manifest)) {
     return false;
   }
@@ -139,10 +158,20 @@ static bool file_executable(const std::string& path) {
   if (ec || !std::filesystem::exists(st)) {
     return false;
   }
+#if defined(_WIN32)
+  // On Windows, POSIX exec bits are not meaningful.
+  // Check that it is a regular file with a known executable extension.
+  if (!std::filesystem::is_regular_file(st)) {
+    return false;
+  }
+  const std::string ext = std::filesystem::path(path).extension().string();
+  return ext == ".exe" || ext == ".cmd" || ext == ".bat" || ext == ".com" || ext.empty();
+#else
   auto perm = st.permissions();
   return (perm & std::filesystem::perms::owner_exec) != std::filesystem::perms::none ||
          (perm & std::filesystem::perms::group_exec) != std::filesystem::perms::none ||
          (perm & std::filesystem::perms::others_exec) != std::filesystem::perms::none;
+#endif
 }
 
 static std::string resolve_from_path(const std::string& tool) {
@@ -157,13 +186,27 @@ static std::string resolve_from_path(const std::string& tool) {
   if (path_env == nullptr) {
     return "";
   }
+#if defined(_WIN32)
+  constexpr char path_separator = ';';
+#else
+  constexpr char path_separator = ':';
+#endif
   std::stringstream ss(path_env);
   std::string segment;
-  while (std::getline(ss, segment, ':')) {
+  while (std::getline(ss, segment, path_separator)) {
     std::filesystem::path candidate = std::filesystem::path(segment) / tool;
     if (file_executable(candidate.string())) {
       return candidate.string();
     }
+#if defined(_WIN32)
+    // On Windows, also try with .exe extension appended.
+    if (std::filesystem::path(tool).extension().empty()) {
+      std::filesystem::path exe_candidate = std::filesystem::path(segment) / (tool + ".exe");
+      if (file_executable(exe_candidate.string())) {
+        return exe_candidate.string();
+      }
+    }
+#endif
   }
   return "";
 }
@@ -185,7 +228,8 @@ static std::string target_manifest_json(const std::string& triple, const std::st
 }
 
 static bool ensure_target_config(const std::string& triple) {
-  const std::string dir = compiler_home_dir() + "/targets/" + triple;
+  const std::string normalized = canonicalize_target_triple(triple);
+  const std::string dir = compiler_home_dir() + "/targets/" + normalized;
   std::filesystem::create_directories(dir);
   const std::string manifest = dir + "/manifest.json";
   if (support::file_exists(manifest)) {
@@ -203,7 +247,7 @@ static bool ensure_target_config(const std::string& triple) {
   if (linker.empty()) {
     linker = resolve_from_path("gcc");
   }
-  support::write_text_file(manifest, target_manifest_json(triple, cc, cxx, linker, ""));
+  support::write_text_file(manifest, target_manifest_json(normalized, cc, cxx, linker, ""));
   return true;
 }
 
@@ -211,13 +255,14 @@ bool apply_target_config(BuildOptions& options, const std::string& triple, suppo
   if (triple.empty()) {
     return true;
   }
+  const std::string normalized = canonicalize_target_triple(triple);
   TargetConfig cfg;
-  if (!load_target_config(triple, cfg) && !ensure_target_config(triple)) {
-    diag.error("E_TARGET_001", "target '" + triple + "' cannot be auto-initialized");
+  if (!load_target_config(normalized, cfg) && !ensure_target_config(normalized)) {
+    diag.error("E_TARGET_001", "target '" + normalized + "' cannot be auto-initialized");
     return false;
   }
-  if (!load_target_config(triple, cfg)) {
-    diag.error("E_TARGET_001", "target '" + triple + "' is not installed and auto-init failed");
+  if (!load_target_config(normalized, cfg)) {
+    diag.error("E_TARGET_001", "target '" + normalized + "' is not installed and auto-init failed");
     return false;
   }
   options.target_triple = cfg.triple;

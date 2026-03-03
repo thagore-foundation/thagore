@@ -28,6 +28,54 @@ static std::string trim_copy(const std::string& text) {
   return text.substr(left, right - left);
 }
 
+static const std::unordered_set<std::string>& supported_intent_goals() {
+  static const std::unordered_set<std::string> kGoals = {
+      "off",          "auto_plan",             "reduce_sum",                "map_filter_reduce",
+      "deduplicate_sorted",                    "binary_search",             "binary_search_sorted",
+      "lower_bound_sorted",                    "upper_bound_sorted",        "count_less_sorted",
+      "count_less_equal_sorted",               "count_greater_sorted",      "count_greater_equal_sorted",
+      "count_equal_sorted",                    "count_not_equal_sorted",    "count_range_sorted",
+      "count_outside_range_sorted",            "two_sum_sorted_exists",     "string_contains",
+      "dot_product",                           "polynomial_eval",           "fibonacci_dp",
+      "tribonacci_dp",                         "factorial_iterative",       "power_fast",
+      "gcd_euclid",                            "is_prime_fast",             "count_divisors_sqrt",
+      "interval_cover_greedy",                 "bit_peel_iterative",        "sum_squares_formula",
+      "sum_cubes_formula",                     "sum_even_squares_formula",  "sum_odd_squares_formula",
+      "sum_even_cubes_formula",                "sum_odd_cubes_formula",     "sum_even_formula",
+      "sum_odd_formula",                       "sort_ascending",            "search_element",
+      "sqrt_bounded_loop",
+  };
+  return kGoals;
+}
+
+static bool valid_intent_strategy(const std::string& strategy) {
+  if (strategy.empty()) {
+    return true;
+  }
+  bool saw_dot = false;
+  bool has_segment_char = false;
+  bool prev_dot = false;
+  for (char ch : strategy) {
+    const bool ident = std::isalnum(static_cast<unsigned char>(ch)) || ch == '_';
+    if (ident) {
+      has_segment_char = true;
+      prev_dot = false;
+      continue;
+    }
+    if (ch == '.') {
+      if (prev_dot || !has_segment_char) {
+        return false;
+      }
+      saw_dot = true;
+      has_segment_char = false;
+      prev_dot = true;
+      continue;
+    }
+    return false;
+  }
+  return saw_dot && has_segment_char && !prev_dot;
+}
+
 static bool parse_generic_parts(const std::string& type_name, std::string& base, std::vector<std::string>& args) {
   args.clear();
   const std::string clean = trim_copy(type_name);
@@ -1833,22 +1881,34 @@ static bool validate_feature_edges(const syntax::AstProgram& program, support::D
     }
   }
 
+  std::string current_intent_goal;
   for (const std::string& line : program.top_level_lines) {
-    const std::string key = "goal:";
-    const std::size_t pos = line.find(key);
-    if (pos == std::string::npos) {
+    const std::string clean = trim_copy(line);
+    if (starts_with(clean, "intent ")) {
+      current_intent_goal.clear();
       continue;
     }
-    std::string goal = line.substr(pos + key.size());
-    goal.erase(goal.begin(),
-               std::find_if(goal.begin(), goal.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-    goal.erase(std::find_if(goal.rbegin(), goal.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
-               goal.end());
-    if (goal == "auto_plan" || goal == "reduce_sum" || goal == "off") {
+    if (starts_with(clean, "goal:")) {
+      const std::string goal = trim_copy(clean.substr(5));
+      if (supported_intent_goals().find(goal) == supported_intent_goals().end()) {
+        diag.error("E_TYPE_INTENT_GOAL", "unsupported intent goal: '" + goal + "'");
+        return false;
+      }
+      current_intent_goal = goal;
       continue;
     }
-    diag.error("E_TYPE_INTENT_GOAL", "unsupported intent goal: '" + goal + "'");
-    return false;
+    if (starts_with(clean, "strategy:")) {
+      const std::string strategy = trim_copy(clean.substr(9));
+      if (!valid_intent_strategy(strategy)) {
+        diag.error("E_TYPE_INTENT_STRATEGY", "invalid intent strategy: '" + strategy + "'");
+        return false;
+      }
+      if (current_intent_goal == "off") {
+        diag.error("E_TYPE_INTENT_STRATEGY", "strategy cannot be set when goal is 'off'");
+        return false;
+      }
+      continue;
+    }
   }
 
   return true;

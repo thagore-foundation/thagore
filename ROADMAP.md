@@ -489,14 +489,14 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 ## v1.6 — Joy Release
 > *"The language that makes you smile."*
 
-- [ ] GUI framework binding — cross-platform UI (SDL2 hoặc native via FFI)
+- [x] GUI framework binding — cross-platform native canvas via runtime FFI (`runtime/src/gui.cpp`, `lib/gui.tg`)
 - [x] `lib/gui.tg` — window, canvas, event loop (runtime canvas backend + frame present)
 - [x] Drawing app demo bằng Thagore — proof of concept cho creative use case (`examples/v1_6_drawing_app.tg`)
 - [x] Game loop support — fixed timestep, input handling (`run_fixed_timestep`)
-- [ ] WASM compilation target — chạy Thagore trên browser
-- [ ] Playground online — viết Thagore trên web không cần install
-- [ ] `intent` construct MVP — compiler-driven optimization annotation
-- [ ] Typestate GA — production-ready, full diagnostics
+- [x] WASM compilation target — `thagc build --target=wasm32-unknown-unknown` emits runnable wasm module
+- [x] Playground online — browser editor + `/api/run` compile/execute server (`playground/`, `tooling/playground/server.py`)
+- [x] `intent` construct MVP — `thagc intent explain|doctor` + compile-time goal/strategy validation
+- [x] Typestate GA — production-ready diagnostics + `thagc state doctor` full finding output
 
 ### Gate
 - [x] Có thể build một drawing/painting app đơn giản bằng Thagore (canvas frame output path verified by integration test)
@@ -570,7 +570,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.3 | Performance lockdown | ✅ Released |
 | v1.4 | Platform hardening + DX | ✅ Released |
 | v1.5 | **Stable release** | ✅ Released |
-| v1.6 | Joy release (GUI, WASM) | 🟡 In Progress |
+| v1.6 | Joy release (GUI, WASM) | ✅ Released |
 | v1.7 | AI & scale | 🔲 Planned |
 | v1.8 | **Stable & complete** | 🔲 Planned |
 
