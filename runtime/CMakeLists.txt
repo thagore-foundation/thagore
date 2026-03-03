@@ -9,6 +9,7 @@ add_library(thag_runtime STATIC
   src/crypto.cpp
   src/fs.cpp
   src/process.cpp
+  src/gui.cpp
   src/toml.cpp
   src/io_stack.cpp
   src/http.cpp

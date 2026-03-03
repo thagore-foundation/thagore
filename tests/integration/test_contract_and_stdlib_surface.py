@@ -21,6 +21,7 @@ class ContractAndStdlibSurfaceTests(unittest.TestCase):
             "stdlib/lib/time.tg",
             "stdlib/lib/map.tg",
             "stdlib/lib/tensor.tg",
+            "stdlib/lib/gui.tg",
             "stdlib/lib/fs.tg",
             "stdlib/lib/process.tg",
             "stdlib/lib/toml.tg",

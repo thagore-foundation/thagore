@@ -8,6 +8,7 @@ This directory contains the standard library surface shipped with the rewrite la
 - `lib/ws.tg`: WebSocket API (`ws_connect`, `ws_send`, `ws_close`, retry connect).
 - `lib/db.tg`: database API (`db_connect`, `db_query`, `db_close`, retry helpers).
 - `lib/time.tg`: timing helpers (`now_ms`, `sleep_ms`).
+- `lib/gui.tg`: canvas/window helpers (draw point/line, present frame, fixed timestep).
 - `lib/json.tg`: JSON parse/serialize helpers.
 - `lib/env.tg`: environment and argv helpers.
 - `lib/crypto.tg`: SHA-256 and HMAC-SHA256 helpers.

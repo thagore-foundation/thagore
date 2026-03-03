@@ -60,6 +60,19 @@ int thag_process_argc(void);
 const char* thag_process_env(const char* name);
 void thag_process_exit(int code);
 
+void* thag_gui_create_canvas(int width, int height, const char* title);
+int thag_gui_destroy_canvas(void* canvas);
+int thag_gui_clear(void* canvas, int rgba);
+int thag_gui_draw_point(void* canvas, int x, int y, int rgba);
+int thag_gui_draw_line(void* canvas, int x0, int y0, int x1, int y1, int rgba);
+int thag_gui_present(void* canvas);
+const char* thag_gui_last_frame_path(void* canvas);
+int thag_gui_poll_event(void* canvas);
+int thag_gui_should_close(void* canvas);
+int thag_gui_request_close(void* canvas);
+int thag_gui_set_target_fps(void* canvas, int fps);
+int thag_gui_tick(void* canvas);
+
 void* thag_toml_parse(const char* content);
 const char* thag_toml_get_str(const void* handle, const char* key);
 int64_t thag_toml_get_int(const void* handle, const char* key);

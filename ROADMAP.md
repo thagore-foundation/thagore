@@ -490,16 +490,16 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 > *"The language that makes you smile."*
 
 - [ ] GUI framework binding — cross-platform UI (SDL2 hoặc native via FFI)
-- [ ] `lib/gui.tg` — window, canvas, event loop
-- [ ] Drawing app demo bằng Thagore — proof of concept cho creative use case
-- [ ] Game loop support — fixed timestep, input handling
+- [x] `lib/gui.tg` — window, canvas, event loop (runtime canvas backend + frame present)
+- [x] Drawing app demo bằng Thagore — proof of concept cho creative use case (`examples/v1_6_drawing_app.tg`)
+- [x] Game loop support — fixed timestep, input handling (`run_fixed_timestep`)
 - [ ] WASM compilation target — chạy Thagore trên browser
 - [ ] Playground online — viết Thagore trên web không cần install
 - [ ] `intent` construct MVP — compiler-driven optimization annotation
 - [ ] Typestate GA — production-ready, full diagnostics
 
 ### Gate
-- [ ] Có thể build một drawing/painting app đơn giản bằng Thagore
+- [x] Có thể build một drawing/painting app đơn giản bằng Thagore (canvas frame output path verified by integration test)
 
 ---
 
@@ -507,7 +507,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 > *"From prototype to production — no rewrite."*
 
 - [ ] `lib/tensor.tg` — production-ready tensor operations via FFI
-- [ ] CUDA kernel calls từ Thagore — AI inference use case
+- [ ] CUDA kernel calls từ Thagore — AI inference use case(sử dụng MLIR Backend song song với LLVM)
 - [ ] Model serving example — FastAPI-equivalent bằng Thagore
 - [ ] `lib/grpc.tg` — gRPC client/server
 - [ ] `lib/sql.tg` — full SQL builder, migrations
@@ -570,7 +570,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.3 | Performance lockdown | ✅ Released |
 | v1.4 | Platform hardening + DX | ✅ Released |
 | v1.5 | **Stable release** | ✅ Released |
-| v1.6 | Joy release (GUI, WASM) | 🔲 Planned |
+| v1.6 | Joy release (GUI, WASM) | 🟡 In Progress |
 | v1.7 | AI & scale | 🔲 Planned |
 | v1.8 | **Stable & complete** | 🔲 Planned |
 

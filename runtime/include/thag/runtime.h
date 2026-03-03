@@ -7,6 +7,7 @@
 #include "thag/crypto.h"
 #include "thag/event_loop.h"
 #include "thag/fs.h"
+#include "thag/gui.h"
 #include "thag/http.h"
 #include "thag/json.h"
 #include "thag/tensor.h"

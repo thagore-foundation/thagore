@@ -68,6 +68,7 @@ set(THAG_STDLIB_MODULES
   lib/fs.tg
   lib/process.tg
   lib/toml.tg
+  lib/gui.tg
   lib/http.tg
   lib/ws.tg
   lib/db.tg
