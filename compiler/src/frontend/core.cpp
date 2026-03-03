@@ -53,6 +53,9 @@ static TokenKind keyword_kind(const std::string& text) {
   if (text == "comptime") {
     return TokenKind::KeywordComptime;
   }
+  if (text == "macro") {
+    return TokenKind::KeywordMacro;
+  }
   if (text == "struct") {
     return TokenKind::KeywordStruct;
   }
@@ -163,6 +166,15 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
       while (i < source.size() && std::isdigit(static_cast<unsigned char>(source[i]))) {
         ++i;
         ++column;
+      }
+      if (i < source.size() && source[i] == '.' && i + 1 < source.size() &&
+          std::isdigit(static_cast<unsigned char>(source[i + 1]))) {
+        ++i;
+        ++column;
+        while (i < source.size() && std::isdigit(static_cast<unsigned char>(source[i]))) {
+          ++i;
+          ++column;
+        }
       }
       tokens.push_back(Token{TokenKind::Number, source.substr(start, i - start), line, start_col});
       continue;

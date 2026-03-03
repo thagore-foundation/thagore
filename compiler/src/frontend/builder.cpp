@@ -2383,6 +2383,79 @@ static bool validate_for_range_expression(const syntax::AstStatement& st,
   return true;
 }
 
+static bool comptime_expression_contains_call(const std::string& expr) {
+  for (std::size_t i = 0; i < expr.size();) {
+    const char ch = expr[i];
+    if (!is_ident_start(ch)) {
+      ++i;
+      continue;
+    }
+    ++i;
+    while (i < expr.size() && is_ident_body(expr[i])) {
+      ++i;
+    }
+    std::size_t j = i;
+    while (j < expr.size() && std::isspace(static_cast<unsigned char>(expr[j]))) {
+      ++j;
+    }
+    if (j < expr.size() && expr[j] == '(') {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool build_comptime_scope(const syntax::AstProgram& program,
+                                 const std::unordered_map<std::string, TypeKind>& function_returns,
+                                 const std::unordered_map<std::string, std::size_t>& function_arity,
+                                 const std::unordered_set<std::string>& struct_names,
+                                 std::unordered_map<std::string, TypeKind>& out_scope,
+                                 support::DiagnosticSink& diag) {
+  out_scope.clear();
+  std::unordered_map<std::string, std::string> struct_bindings;
+  for (const auto& binding : program.comptime_bindings) {
+    if (binding.name.empty() || !is_ident_start(binding.name[0])) {
+      diag.error("E_COMPTIME_400",
+                 "line " + std::to_string(binding.line) + ": invalid comptime binding name '" + binding.name + "'");
+      return false;
+    }
+    for (std::size_t i = 1; i < binding.name.size(); ++i) {
+      if (!is_ident_body(binding.name[i])) {
+        diag.error("E_COMPTIME_400",
+                   "line " + std::to_string(binding.line) + ": invalid comptime binding name '" + binding.name + "'");
+        return false;
+      }
+    }
+    if (comptime_expression_contains_call(binding.expression)) {
+      diag.error("E_COMPTIME_401",
+                 "line " + std::to_string(binding.line) +
+                     ": comptime binding cannot call runtime functions in v1.8 basic mode");
+      return false;
+    }
+    syntax::AstStatement st;
+    st.kind = syntax::StatementKind::Expr;
+    st.line = binding.line;
+    st.has_expression = true;
+    st.expression_valid = true;
+    st.expression_normalized = binding.expression;
+    TypeKind expr_type = TypeKind::Unknown;
+    std::string expr_error;
+    if (!typecheck_statement_expression(st, binding.line, out_scope, program.enum_variant_tags, struct_bindings,
+                                        program.struct_fields, program.struct_field_types, program.struct_methods,
+                                        function_returns, function_arity, struct_names, expr_type, expr_error)) {
+      diag.error("E_COMPTIME_402", "line " + std::to_string(binding.line) + ": " + expr_error);
+      return false;
+    }
+    if (expr_type == TypeKind::Void || expr_type == TypeKind::Unknown) {
+      diag.error("E_COMPTIME_403",
+                 "line " + std::to_string(binding.line) + ": comptime binding requires concrete value type");
+      return false;
+    }
+    out_scope[binding.name] = expr_type;
+  }
+  return true;
+}
+
 bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSink& diag) const {
   if (program.source.empty()) {
     diag.error("E0001", "source is empty");
@@ -2413,6 +2486,10 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   const auto function_arity = collect_function_arity(program);
   const auto function_state_contracts = collect_function_state_contracts(program, diag);
   if (diag.has_errors()) {
+    return false;
+  }
+  std::unordered_map<std::string, TypeKind> comptime_scope;
+  if (!build_comptime_scope(program, function_returns, function_arity, struct_names, comptime_scope, diag)) {
     return false;
   }
 
@@ -2473,7 +2550,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
 
   for (const auto& fn : program.functions) {
-    std::unordered_map<std::string, TypeKind> scope;
+    std::unordered_map<std::string, TypeKind> scope = comptime_scope;
     MemoryModelState memory_state;
     std::unordered_map<std::string, bool> opened_resources;
     std::unordered_map<std::string, StateRef> value_states;
@@ -2806,7 +2883,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
   }
 
-  std::unordered_map<std::string, TypeKind> top_scope;
+  std::unordered_map<std::string, TypeKind> top_scope = comptime_scope;
   MemoryModelState top_memory_state;
   std::unordered_map<std::string, bool> top_opened_resources;
   std::unordered_map<std::string, StateRef> top_value_states;

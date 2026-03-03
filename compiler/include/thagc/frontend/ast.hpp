@@ -53,6 +53,19 @@ struct AstInterpolatedString {
   int line = 0;
 };
 
+struct AstMacro {
+  std::string name;
+  std::vector<std::string> params;
+  std::string body;
+  int line = 0;
+};
+
+struct AstComptimeBinding {
+  std::string name;
+  std::string expression;
+  int line = 0;
+};
+
 struct AstFunction {
   std::string name;
   std::vector<std::string> params;
@@ -110,6 +123,8 @@ struct AstProgram {
   std::vector<AstFunction> functions;
   std::vector<AstExternFunction> extern_functions;
   std::vector<AstImport> imports;
+  std::vector<AstMacro> macros;
+  std::vector<AstComptimeBinding> comptime_bindings;
   std::vector<std::string> extern_decls;
   std::vector<std::string> structs;
   std::unordered_map<std::string, std::vector<std::string>> struct_fields;

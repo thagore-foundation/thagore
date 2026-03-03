@@ -526,9 +526,9 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 
 ### Language Complete
 - [ ] Tất cả language features đã design đều implemented và stable
-- [ ] `flow`, `intent`, `typestate` đều GA
+- [x] `flow`, `intent`, `typestate` đều GA
 - [ ] Generic types đầy đủ
-- [ ] Macro / comptime system cơ bản
+- [x] Macro / comptime system cơ bản (`macro name(args) = expr`, `comptime:` compile-time bindings)
 
 ### Ecosystem Mature
 - [ ] 500+ packages trên Drago Registry
@@ -572,7 +572,7 @@ Selfhost note: workflow `selfhost-readiness.yml` currently validates determinist
 | v1.5 | **Stable release** | ✅ Released |
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
 | v1.7 | AI & scale | ✅ Released |
-| v1.8 | **Stable & complete** | 🔲 Planned |
+| v1.8 | **Stable & complete** | 🚧 In Progress |
 
 ---
 

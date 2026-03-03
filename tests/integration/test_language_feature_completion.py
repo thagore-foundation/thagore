@@ -206,6 +206,37 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         self.assertEqual(run.returncode, 5, msg=run.stderr)
         self.assertIn("value=5", run.stdout)
 
+    def test_comptime_bindings_resolve_before_codegen(self) -> None:
+        _, run = self._build_and_run(
+            "comptime:\n"
+            "  let base = 40\n"
+            "  let answer = base + 2\n"
+            "\n"
+            "func main():\n"
+            "  return answer\n"
+        )
+        self.assertEqual(run.returncode, 42, msg=run.stderr)
+
+    def test_macro_expansion_in_expression(self) -> None:
+        _, run = self._build_and_run(
+            "macro addmul(a, b, c) = (a + b) * c\n"
+            "\n"
+            "func main():\n"
+            "  let v = addmul!(2, 3, 4)\n"
+            "  return v\n"
+        )
+        self.assertEqual(run.returncode, 20, msg=run.stderr)
+
+    def test_macro_argument_count_mismatch_is_rejected(self) -> None:
+        build, _ = self._build(
+            "macro add2(a, b) = a + b\n"
+            "\n"
+            "func main():\n"
+            "  return add2!(1)\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("expects 2 arguments but got 1", build.stderr)
+
     def test_option_result_builtins(self) -> None:
         _, run = self._build_and_run(
             "func main():\n"

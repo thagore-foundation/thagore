@@ -122,8 +122,28 @@ static std::string parse_let_name(const std::string& line) {
 static std::string substitute_identifiers(
     const std::string& expr, const std::unordered_map<std::string, std::string>& known_values) {
   std::string out;
+  bool in_string = false;
+  bool escape = false;
   for (std::size_t i = 0; i < expr.size();) {
     const char ch = expr[i];
+    if (in_string) {
+      out.push_back(ch);
+      if (escape) {
+        escape = false;
+      } else if (ch == '\\') {
+        escape = true;
+      } else if (ch == '"') {
+        in_string = false;
+      }
+      ++i;
+      continue;
+    }
+    if (ch == '"') {
+      in_string = true;
+      out.push_back(ch);
+      ++i;
+      continue;
+    }
     if (!is_ident_start(ch)) {
       out.push_back(ch);
       ++i;
@@ -133,9 +153,10 @@ static std::string substitute_identifiers(
     while (i < expr.size() && is_ident_body(expr[i])) {
       ++i;
     }
+    const bool prev_is_dot = start > 0 && expr[start - 1] == '.';
     const std::string ident = expr.substr(start, i - start);
     const auto it = known_values.find(ident);
-    if (it != known_values.end()) {
+    if (!prev_is_dot && it != known_values.end()) {
       out += "(" + it->second + ")";
     } else {
       out += ident;
@@ -204,8 +225,7 @@ static void append_core_statement(std::vector<CoreStmt>& out_statements, const s
   out.has_await = st.has_await;
   out.has_expression = st.has_expression && st.expression_valid;
   if (out.has_expression) {
-    (void)known_values;
-    out.expression = st.expression_normalized;
+    out.expression = substitute_identifiers(st.expression_normalized, known_values);
   }
   out_statements.push_back(std::move(out));
 }
@@ -407,6 +427,14 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     core.extern_functions.push_back(std::move(out));
   }
 
+  std::unordered_map<std::string, std::string> comptime_known_values;
+  for (const auto& binding : program.comptime_bindings) {
+    if (binding.name.empty()) {
+      continue;
+    }
+    comptime_known_values[binding.name] = substitute_identifiers(binding.expression, comptime_known_values);
+  }
+
   bool flow_uses_timeout = false;
   for (const auto& flow : program.flow_defs) {
     if (flow.name.empty()) {
@@ -449,20 +477,12 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
         }
       }
     }
-    std::unordered_map<std::string, std::string> known_values;
     for (const auto& st : fn.body) {
-      append_core_statement(out.statements, st, known_values);
-      if ((st.kind == syntax::StatementKind::Let || st.kind == syntax::StatementKind::Assign) && st.has_expression &&
-          st.expression_valid) {
-        const std::string name = st.kind == syntax::StatementKind::Let ? parse_let_name(st.text) : st.target;
-        if (!name.empty() && name.find('.') == std::string::npos && should_track_known_value(st.expression_normalized)) {
-          known_values[name] = st.expression_normalized;
-        }
-      }
+      append_core_statement(out.statements, st, comptime_known_values);
       if (st.kind == syntax::StatementKind::Return && st.has_expression && st.expression_valid) {
-        out.return_expression = st.expression_normalized;
+        out.return_expression = substitute_identifiers(st.expression_normalized, comptime_known_values);
         int parsed = 0;
-        if (parse_i32_literal(st.expression_normalized, parsed)) {
+        if (parse_i32_literal(out.return_expression, parsed)) {
           out.return_literal = parsed;
         }
       }
@@ -494,18 +514,20 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     script_main.name = "main";
     script_main.return_type = "i32";
     for (const auto& st : program.top_level_statements) {
-      append_core_statement(script_main.statements, st, known_values);
+      append_core_statement(script_main.statements, st, comptime_known_values);
       if ((st.kind == syntax::StatementKind::Let || st.kind == syntax::StatementKind::Assign) && st.has_expression &&
           st.expression_valid) {
         const std::string name = st.kind == syntax::StatementKind::Let ? parse_let_name(st.text) : st.target;
-        if (!name.empty() && name.find('.') == std::string::npos && should_track_known_value(st.expression_normalized)) {
-          known_values[name] = st.expression_normalized;
+        const std::string expression = substitute_identifiers(st.expression_normalized, known_values);
+        if (!name.empty() && name.find('.') == std::string::npos && should_track_known_value(expression)) {
+          known_values[name] = expression;
         }
       }
     }
     int top_ret = 0;
     if (last.kind == syntax::StatementKind::Expr && last.has_expression && last.expression_valid) {
-      const std::string& expr = last.expression_normalized;
+      const std::string comptime_expr = substitute_identifiers(last.expression_normalized, comptime_known_values);
+      const std::string expr = substitute_identifiers(comptime_expr, known_values);
       if (is_print_like_expression(last.text)) {
         script_main.return_literal = 0;
         script_main.return_expression = "0";

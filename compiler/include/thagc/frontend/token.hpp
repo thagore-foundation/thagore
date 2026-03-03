@@ -24,6 +24,7 @@ enum class TokenKind {
   KeywordUnsafe,
   KeywordDefer,
   KeywordComptime,
+  KeywordMacro,
   KeywordStruct,
   KeywordImpl,
   KeywordImport,
