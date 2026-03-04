@@ -25,6 +25,8 @@
 #if defined(THAG_RUNTIME_HAS_OPENSSL)
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #endif
 
 namespace {
@@ -49,6 +51,11 @@ struct HttpResponseParts {
   int status = 0;
   std::unordered_map<std::string, std::string> headers;
   std::string body;
+};
+
+struct HttpResult {
+  thag_http_buffer_t body{};
+  int status = 0;
 };
 
 static std::string lower_copy(std::string text) {
@@ -322,6 +329,34 @@ static bool recv_all_plain(SocketHandle socket_handle, std::string& out) {
 }
 
 #if defined(THAG_RUNTIME_HAS_OPENSSL)
+static SSL_CTX* make_tls_ctx() {
+  SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+  if (ctx == nullptr) {
+    return nullptr;
+  }
+  SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
+  // Use system default CA locations; callers can extend via OpenSSL env (SSL_CERT_DIR/SSL_CERT_FILE).
+  SSL_CTX_set_default_verify_paths(ctx);
+  return ctx;
+}
+
+static bool verify_peer_certificate(SSL* ssl, const std::string& host) {
+  if (ssl == nullptr) {
+    return false;
+  }
+  const long verify_rc = SSL_get_verify_result(ssl);
+  if (verify_rc != X509_V_OK) {
+    return false;
+  }
+  X509* cert = SSL_get_peer_certificate(ssl);
+  if (cert == nullptr) {
+    return false;
+  }
+  const int host_ok = X509_check_host(cert, host.c_str(), host.size(), 0, nullptr);
+  X509_free(cert);
+  return host_ok == 1;
+}
+
 static bool send_all_tls(SSL* ssl, const char* data, std::size_t len) {
   std::size_t sent = 0;
   while (sent < len) {
@@ -376,7 +411,7 @@ static bool request_once(const std::string& method, const ParsedUrl& url, const 
   SSL_CTX* ctx = nullptr;
   SSL* ssl = nullptr;
   if (url.tls) {
-    ctx = SSL_CTX_new(TLS_client_method());
+    ctx = make_tls_ctx();
     if (ctx == nullptr) {
       close_socket(socket_handle);
       return false;
@@ -394,6 +429,13 @@ static bool request_once(const std::string& method, const ParsedUrl& url, const 
     SSL_set_fd(ssl, socket_handle);
 #endif
     if (SSL_connect(ssl) != 1) {
+      SSL_free(ssl);
+      SSL_CTX_free(ctx);
+      close_socket(socket_handle);
+      return false;
+    }
+    if (!verify_peer_certificate(ssl, url.host)) {
+      SSL_shutdown(ssl);
       SSL_free(ssl);
       SSL_CTX_free(ctx);
       close_socket(socket_handle);
@@ -496,6 +538,34 @@ static int request_with_redirects(const std::string& method, const char* url_cst
   return 0;
 }
 
+static HttpResult* make_http_result(const std::string& method, const char* url_cstr, const void* body, std::size_t body_len,
+                                    int timeout_ms) {
+  if (io_cancelled()) {
+    return nullptr;
+  }
+  const int effective_timeout_ms = normalize_timeout_ms(timeout_ms);
+  if (url_cstr == nullptr || std::strlen(url_cstr) == 0 || effective_timeout_ms < 0 || !looks_http_url(url_cstr)) {
+    return nullptr;
+  }
+
+  auto* result = new HttpResult();
+  const int ok = request_with_redirects(method, url_cstr, body, body_len, effective_timeout_ms, &result->body, &result->status);
+
+  if (io_cancelled()) {
+    thag_http_buffer_free(&result->body);
+    delete result;
+    return nullptr;
+  }
+
+  if (!ok) {
+    thag_http_buffer_free(&result->body);
+    result->status = 599;  // synthetic transport/protocol failure
+    result->body.data = nullptr;
+    result->body.len = 0;
+  }
+  return result;
+}
+
 }  // namespace
 
 extern "C" {
@@ -518,6 +588,41 @@ int thag_http_client_get(const char* url, int timeout_ms, thag_http_buffer_t* ou
 int thag_http_client_post(const char* url, const void* body, size_t body_len, int timeout_ms, thag_http_buffer_t* out_body,
                           int* out_status) {
   return request_with_redirects("POST", url, body, body_len, timeout_ms, out_body, out_status);
+}
+
+thag_http_result_t* thag_http_get_result(const char* url, int timeout_ms) {
+  return make_http_result("GET", url, nullptr, 0, timeout_ms);
+}
+
+thag_http_result_t* thag_http_post_result(const char* url, const void* body, size_t body_len, int timeout_ms) {
+  return make_http_result("POST", url, body, body_len, timeout_ms);
+}
+
+int thag_http_result_status(const thag_http_result_t* result) {
+  return result == nullptr ? 0 : result->status;
+}
+
+const char* thag_http_result_body(const thag_http_result_t* result) {
+  if (result == nullptr) {
+    return nullptr;
+  }
+  return result->body.data;
+}
+
+size_t thag_http_result_body_len(const thag_http_result_t* result) {
+  return result == nullptr ? 0 : result->body.len;
+}
+
+int thag_http_result_is_null(const thag_http_result_t* result) {
+  return result == nullptr ? 1 : 0;
+}
+
+void thag_http_result_free(thag_http_result_t* result) {
+  if (result == nullptr) {
+    return;
+  }
+  thag_http_buffer_free(&result->body);
+  delete result;
 }
 
 }  // extern "C"

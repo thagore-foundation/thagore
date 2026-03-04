@@ -11,6 +11,8 @@ Runtime APIs:
 - `thag_ws_connect_retry(endpoint, timeout_ms, retries, backoff_ms)`
 - `thag_db_connect_retry(dsn, retries, backoff_ms)`
 - `thag_db_query_retry(handle, query, retries, backoff_ms)`
+- `thag_http_get_result(url, timeout_ms)` / `thag_http_post_result(url, payload, timeout_ms)` return status + body handle
+- `thag_http_result_status(result)` / `thag_http_result_body(result)` / `thag_http_result_body_len(result)` / `thag_http_result_is_null(result)` / `thag_http_result_free(result)`
 
 Behavior:
 
@@ -23,6 +25,8 @@ Behavior:
 - Transport/protocol failure maps to synthetic status `599`.
 - Retry wrapper retries retryable statuses (`0`, `408`, `425`, `429`, and `>=500`).
 - Caller should treat persistent `599` as upstream/network outage.
+- HTTPS now enforces certificate + hostname verification (OpenSSL). Use system trust store by default; extend via `SSL_CERT_FILE` / `SSL_CERT_DIR` if calling private endpoints.
+- Body capture path: use `thag_http_get_result` / `thag_http_post_result`; guard with `thag_http_result_is_null`; always free with `thag_http_result_free`. String data is null-terminated; length available via `thag_http_result_body_len`.
 
 ## 3. WebSocket Failure Model
 
