@@ -323,6 +323,7 @@ if (Test-Path $channelDir) {
 }
 
 Ensure-Dir $channelDir
+Ensure-Dir (Join-Path $channelDir "bin")
 Extract-Archive -ArchivePath $archivePath -DestDir $channelDir
 Ensure-Dir $linkDir
 if ($DryRun) {

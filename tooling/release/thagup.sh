@@ -512,6 +512,9 @@ main() {
   fi
 
   run_cmd mkdir -p "${channel_dir}"
+  run_cmd mkdir -p "${channel_dir}/bin"
+  run_cmd mkdir -p "${link_dir}"
+  # Thư mục bin sẵn sàng cho DLL/shim của thư viện bên thứ ba (sẽ được cargo/drago copy về sau).
   run_cmd tar -xzf "${archive_path}" -C "${channel_dir}"
   run_cmd chmod +x "${target_bin_path}"
   install_link "${target_bin_path}" "${link_dir}" "${THAGC_LINK_NAME}"
