@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace thagc::driver {
@@ -14,6 +15,15 @@ namespace {
 struct LspMessage {
   std::string json;
   bool ok = false;
+};
+
+struct LspDiagnosticItem {
+  int line = 0;
+  int start_character = 0;
+  int end_character = 1;
+  int severity = 1;
+  std::string code;
+  std::string message;
 };
 
 static bool starts_with(const std::string& text, const std::string& prefix) {
@@ -288,6 +298,127 @@ static bool find_definition_line(const std::vector<std::string>& lines, const st
   return false;
 }
 
+static std::string infer_symbol_type(const std::vector<std::string>& lines, const std::string& symbol) {
+  if (symbol.empty()) {
+    return "unknown";
+  }
+  for (const std::string& line : lines) {
+    const std::string fn_pat = "func " + symbol + "(";
+    const std::size_t fn_pos = line.find(fn_pat);
+    if (fn_pos != std::string::npos) {
+      const std::size_t arrow = line.find("->", fn_pos + fn_pat.size());
+      if (arrow != std::string::npos) {
+        std::string ret = trim_copy(line.substr(arrow + 2));
+        const std::size_t colon = ret.find(':');
+        if (colon != std::string::npos) {
+          ret = trim_copy(ret.substr(0, colon));
+        }
+        if (!ret.empty()) {
+          return "fn(...) -> " + ret;
+        }
+      }
+      return "fn(...) -> unknown";
+    }
+  }
+  for (const std::string& line : lines) {
+    const std::string let_pat = "let " + symbol;
+    const std::size_t let_pos = line.find(let_pat);
+    if (let_pos == std::string::npos) {
+      continue;
+    }
+    const std::size_t eq = line.find('=', let_pos + let_pat.size());
+    if (eq == std::string::npos) {
+      return "unknown";
+    }
+    const std::string rhs = trim_copy(line.substr(eq + 1));
+    if (rhs.empty()) {
+      return "unknown";
+    }
+    if (rhs == "true" || rhs == "false") {
+      return "bool";
+    }
+    if (rhs.front() == '"' || rhs.front() == '\'') {
+      return "ptr";
+    }
+    bool saw_digit = false;
+    bool saw_dot = false;
+    std::size_t i = rhs.front() == '-' ? 1U : 0U;
+    for (; i < rhs.size(); ++i) {
+      const char ch = rhs[i];
+      if (std::isdigit(static_cast<unsigned char>(ch))) {
+        saw_digit = true;
+        continue;
+      }
+      if (ch == '.') {
+        saw_dot = true;
+        continue;
+      }
+      break;
+    }
+    if (saw_digit) {
+      return saw_dot ? "f64" : "i64";
+    }
+    return "unknown";
+  }
+  return "unknown";
+}
+
+static std::vector<LspDiagnosticItem> collect_document_diagnostics(const std::vector<std::string>& lines) {
+  std::vector<LspDiagnosticItem> out;
+  for (std::size_t i = 0; i < lines.size(); ++i) {
+    const std::string& line = lines[i];
+    const std::size_t tab = line.find('\t');
+    if (tab != std::string::npos) {
+      LspDiagnosticItem item;
+      item.line = static_cast<int>(i);
+      item.start_character = static_cast<int>(tab);
+      item.end_character = static_cast<int>(tab + 1);
+      item.severity = 2;
+      item.code = "W_STYLE_TAB";
+      item.message = "tab indentation detected; use spaces for stable formatting";
+      out.push_back(std::move(item));
+    }
+
+    const std::string trimmed = trim_copy(line);
+    if (starts_with(trimmed, "func ") && trimmed.find(':') == std::string::npos) {
+      LspDiagnosticItem item;
+      item.line = static_cast<int>(i);
+      item.start_character = static_cast<int>(line.size() > 0 ? line.size() - 1 : 0);
+      item.end_character = static_cast<int>(line.size() > 0 ? line.size() : 1);
+      item.severity = 1;
+      item.code = "E_PARSE_001";
+      item.message = "missing ':' after function declaration";
+      out.push_back(std::move(item));
+    }
+  }
+  return out;
+}
+
+static std::string build_diagnostic_items_json(const std::vector<LspDiagnosticItem>& diagnostics) {
+  std::string items = "[";
+  for (std::size_t i = 0; i < diagnostics.size(); ++i) {
+    if (i > 0) {
+      items += ",";
+    }
+    const LspDiagnosticItem& d = diagnostics[i];
+    items += "{\"range\":{\"start\":{\"line\":" + std::to_string(d.line) +
+             ",\"character\":" + std::to_string(d.start_character) + "},\"end\":{\"line\":" +
+             std::to_string(d.line) + ",\"character\":" + std::to_string(d.end_character) + "}},\"severity\":" +
+             std::to_string(d.severity) + ",\"code\":\"" + json_escape(d.code) + "\",\"source\":\"thagc\",\"message\":\"" +
+             json_escape(d.message) + "\"}";
+  }
+  items += "]";
+  return items;
+}
+
+static void publish_document_diagnostics(const std::string& uri, const std::string& source) {
+  const std::vector<std::string> lines = split_lines(source);
+  const std::vector<LspDiagnosticItem> diagnostics = collect_document_diagnostics(lines);
+  const std::string payload = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" +
+                              json_escape(uri) + "\",\"diagnostics\":" + build_diagnostic_items_json(diagnostics) + "}}";
+  write_lsp_payload(payload);
+}
+
 }  // namespace
 
 int handle_lsp(const ParsedCommand& cmd) {
@@ -321,6 +452,8 @@ int handle_lsp(const ParsedCommand& cmd) {
                             ",\"result\":{\"capabilities\":{"
                             "\"textDocumentSync\":1,"
                             "\"definitionProvider\":true,"
+                            "\"hoverProvider\":true,"
+                            "\"diagnosticProvider\":{\"interFileDependencies\":false,\"workspaceDiagnostics\":false},"
                             "\"completionProvider\":{\"triggerCharacters\":[\".\"]}"
                             "}}}";
       write_lsp_payload(payload);
@@ -343,6 +476,7 @@ int handle_lsp(const ParsedCommand& cmd) {
       const std::string text = extract_json_string(msg.json, "text");
       if (!uri.empty()) {
         documents[uri] = text;
+        publish_document_diagnostics(uri, text);
       }
       continue;
     }
@@ -351,7 +485,54 @@ int handle_lsp(const ParsedCommand& cmd) {
       const std::string text = extract_json_string(msg.json, "text");
       if (!uri.empty() && !text.empty()) {
         documents[uri] = text;
+        publish_document_diagnostics(uri, text);
       }
+      continue;
+    }
+    if (method == "textDocument/hover") {
+      const std::string uri = extract_json_string(msg.json, "uri");
+      const int line = extract_json_int(msg.json, "line");
+      const int character = extract_json_int(msg.json, "character");
+      auto it = documents.find(uri);
+      if (it == documents.end()) {
+        const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw + ",\"result\":null}";
+        write_lsp_payload(payload);
+        continue;
+      }
+      const std::vector<std::string> lines = split_lines(it->second);
+      if (line < 0 || line >= static_cast<int>(lines.size())) {
+        const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw + ",\"result\":null}";
+        write_lsp_payload(payload);
+        continue;
+      }
+      const std::string symbol = word_at(lines[static_cast<std::size_t>(line)], character);
+      if (symbol.empty()) {
+        const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw + ",\"result\":null}";
+        write_lsp_payload(payload);
+        continue;
+      }
+      const std::string inferred = infer_symbol_type(lines, symbol);
+      const std::string contents = symbol + ": " + inferred;
+      const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw +
+                                  ",\"result\":{\"contents\":{\"kind\":\"plaintext\",\"value\":\"" +
+                                  json_escape(contents) + "\"}}}";
+      write_lsp_payload(payload);
+      continue;
+    }
+    if (method == "textDocument/diagnostic") {
+      const std::string uri = extract_json_string(msg.json, "uri");
+      auto it = documents.find(uri);
+      if (it == documents.end()) {
+        const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw + ",\"result\":{\"kind\":\"full\",\"items\":[]}}";
+        write_lsp_payload(payload);
+        continue;
+      }
+      const std::vector<std::string> lines = split_lines(it->second);
+      const std::vector<LspDiagnosticItem> diagnostics = collect_document_diagnostics(lines);
+      const std::string payload = "{\"jsonrpc\":\"2.0\",\"id\":" + id_raw +
+                                  ",\"result\":{\"kind\":\"full\",\"items\":" +
+                                  build_diagnostic_items_json(diagnostics) + "}}";
+      write_lsp_payload(payload);
       continue;
     }
     if (method == "textDocument/completion") {

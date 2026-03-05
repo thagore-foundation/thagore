@@ -21,6 +21,7 @@ static bool looks_like_source_path(const std::string& value) {
 static CommandKind parse_kind(const std::string& cmd) {
   if (cmd == "--help" || cmd == "help") return CommandKind::Help;
   if (cmd == "--version" || cmd == "version") return CommandKind::Version;
+  if (cmd == "--explain" || cmd == "explain") return CommandKind::Explain;
   if (cmd == "build") return CommandKind::Build;
   if (cmd == "run") return CommandKind::Run;
   if (cmd == "check") return CommandKind::Check;

@@ -9,6 +9,7 @@ class CompilerPipeline;
 
 int handle_help();
 int handle_version();
+int handle_explain(const ParsedCommand& cmd);
 int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
 int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);
 int handle_check(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag);

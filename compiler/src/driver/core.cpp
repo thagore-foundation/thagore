@@ -17,6 +17,8 @@ int CommandRouter::run(int argc, char** argv) const {
       return driver::handle_help();
     case driver::CommandKind::Version:
       return driver::handle_version();
+    case driver::CommandKind::Explain:
+      return driver::handle_explain(cmd);
     case driver::CommandKind::Build:
       return driver::handle_build(cmd, pipeline, diag);
     case driver::CommandKind::Run:

@@ -65,6 +65,7 @@ add_executable(thagc
   src/driver/core.cpp
   src/driver/parser.cpp
   src/driver/help.cpp
+  src/driver/explain.cpp
   src/driver/build.cpp
   src/driver/run.cpp
   src/driver/check.cpp

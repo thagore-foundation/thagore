@@ -8,6 +8,7 @@ namespace thagc::driver {
 enum class CommandKind {
   Help,
   Version,
+  Explain,
   Build,
   Run,
   Check,

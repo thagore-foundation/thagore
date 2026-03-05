@@ -18,6 +18,7 @@ int handle_help() {
   std::cout << "Usage:\n";
   std::cout << "  thagc --help\n";
   std::cout << "  thagc --version\n";
+  std::cout << "  thagc --explain <ERROR_CODE>\n";
   std::cout << "  thagc <input.tg> [options]\n";
   std::cout << "  thagc build <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm] "
                "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>] [--include-path=<dir>]\n";
