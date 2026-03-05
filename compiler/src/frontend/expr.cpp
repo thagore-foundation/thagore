@@ -697,6 +697,18 @@ static bool should_accept_raw_expression(const std::string& expr) {
 // Statement-level expression parsing
 // ---------------------------------------------------------------------------
 
+static AstExprPtr make_raw_expression_ast(const AstStatement& st, const std::string& text) {
+  const std::string clean = trim(text);
+  if (clean.empty()) {
+    return nullptr;
+  }
+  auto expr = std::make_shared<AstExpr>();
+  expr->kind = AstExprKind::Raw;
+  expr->text = clean;
+  expr->span = st.span;
+  return expr;
+}
+
 static void parse_statement_expression(AstProgram& program, AstStatement& st,
                                        const std::unordered_map<std::string, AstMacro>& macros) {
   std::string expr_text;
@@ -766,6 +778,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     st.has_expression = true;
     st.expression_valid = expr_text.find("..") != std::string::npos;
     st.expression_normalized = expr_text;
+    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
     if (!st.expression_valid) {
       st.expression_error = "for statement must use '..' range syntax";
       add_parse_error(program, st.line, st.expression_error);
@@ -802,6 +815,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     st.has_expression = true;
     st.expression_valid = false;
     st.expression_error = "macro expansion failed: " + expansion_error;
+    st.expression_ast = make_raw_expression_ast(st, expr_text);
     add_parse_error(program, st.line, st.expression_error);
     return;
   }
@@ -812,6 +826,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
   if (parse_closure_literal(expr_text, closure_params, closure_body, closure_block)) {
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
+    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
     st.expression_error.clear();
     AstClosure closure;
     closure.params = closure_params;
@@ -828,18 +843,24 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     program.interpolated_strings.push_back(std::move(interpolated));
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
+    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
     st.expression_error.clear();
     return;
   }
   if (should_accept_raw_expression(expr_text)) {
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
+    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
     st.expression_error.clear();
     return;
   }
   const ParsedExpression parsed = parse_expression_text(expr_text);
   st.expression_valid = parsed.ok;
   st.expression_normalized = parsed.normalized;
+  if (st.expression_normalized.empty()) {
+    st.expression_normalized = trim(expr_text);
+  }
+  st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
   st.expression_error = parsed.error;
   if (!parsed.ok) {
     add_parse_error(program, st.line, "invalid expression: " + parsed.error);

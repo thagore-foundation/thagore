@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,29 @@ enum class StatementKind {
   Expr,
 };
 
+enum class AstExprKind {
+  Raw,
+  Atom,
+  Unary,
+  Binary,
+  Call,
+  Field,
+  Index,
+  Tuple,
+  Array,
+};
+
+struct AstExpr;
+using AstExprPtr = std::shared_ptr<AstExpr>;
+
+struct AstExpr {
+  AstExprKind kind = AstExprKind::Raw;
+  std::string text;
+  std::string op;
+  std::optional<Span> span;
+  std::vector<AstExprPtr> children;
+};
+
 struct AstStatement {
   StatementKind kind = StatementKind::Expr;
   std::string text;
@@ -34,6 +58,7 @@ struct AstStatement {
   bool has_expression = false;
   bool expression_valid = true;
   std::string expression_normalized;
+  AstExprPtr expression_ast;
   std::string expression_error;
   std::optional<Span> span;
 };
