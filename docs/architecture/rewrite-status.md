@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v2.5`: `ROADMAP.md`.
-Current release cut: `v2.3.0` (HM inference + generics baseline).
+Current release cut: `v2.4.0` (MIR + ownership checker baseline).
 
 ## Frontend
 
@@ -18,7 +18,7 @@ Current release cut: `v2.3.0` (HM inference + generics baseline).
 - HIR/type layer: implemented (`compiler/include/thagc/hir`, `compiler/include/thagc/ty`)
 - HM inference/unifier: implemented baseline (`Unifier`, ty-level infer/check in HIR)
 - Generic type validation: implemented for `Option<T>` / `Result<T,E>` inference/check paths
-- MIR ownership layer: in progress (`compiler/include/thagc/mir/mir.hpp`, `compiler/src/middleend/ownership.cpp`)
+- MIR ownership layer: implemented baseline (`compiler/include/thagc/mir/mir.hpp`, `compiler/src/middleend/ownership.cpp`)
 
 ## Backend
 
@@ -45,7 +45,7 @@ Current release cut: `v2.3.0` (HM inference + generics baseline).
 - Integration tests: implemented
 - E2E parity: implemented
 - Inference + generics suites: implemented (`tests/inference`, `tests/generics`)
-- Ownership suites: implemented baseline (`tests/ownership`)
+- Ownership suites: implemented (`tests/ownership`)
 - Deterministic gate: implemented
 - Soak gate: implemented
 - 3-OS matrix release gate: implemented

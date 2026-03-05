@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.4.0 - 2026-03-06
+
+- added MIR ownership baseline data structures and lowering entrypoints (`compiler/include/thagc/mir/mir.hpp`, `compiler/src/middleend/mir_lowering.cpp`).
+- integrated ownership/borrow conflict checks into compiler typecheck pipeline (`compiler/src/middleend/ownership.cpp` + frontend wiring).
+- added ownership annotations baseline support (`own`, `ref`, `mut`) across frontend validation and backend annotation normalization.
+- added `tests/ownership/` and v2.4 parity gate (`tests/parity/test_v24_mir_ownership_pipeline.py`) covering use-after-move, move-while-borrowed, and borrow conflicts.
+
 ## v2.3.0 - 2026-03-06
 
 - added HM unifier (`fresh`, `unify`, `apply`) and type-level HIR inference/check APIs (`infer_expression_ty`, `check_expression_ty`).

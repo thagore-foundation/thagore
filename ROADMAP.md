@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 6, 2026): `v2.3` (HM inference + generics baseline, released).
-Status note: v2.3 inference/generics gates pass on the active release lane with parity + integration + e2e suites green.
+Current effective milestone by code audit (March 6, 2026): `v2.4` (MIR + ownership checker baseline, released).
+Status note: v2.4 ownership gates pass on the active release lane with parity + inference/generics + integration + e2e suites green.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -581,7 +581,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v2.1 | Symbol table & name resolution | 🔲 Planned |
 | v2.2 | HIR & bidirectional type checking | ✅ Released |
 | v2.3 | Full type inference & generics | ✅ Released |
-| v2.4 | MIR & borrow checker | 🔲 Planned |
+| v2.4 | MIR & borrow checker | ✅ Released |
 | v2.5 | **Production complete** | 🔲 Planned |
 
 ---
@@ -886,7 +886,7 @@ monomorphized generics."
 
 ---
 
-## v2.4 — MIR & Borrow Checker
+## v2.4 — MIR & Borrow Checker ✅ Released
 
 **Theme:** Introduce a Mid-level IR. Implement ownership tracking, move semantics,
 and borrow checking. This is the deepest and most complex version.

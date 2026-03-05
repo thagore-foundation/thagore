@@ -203,3 +203,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v2.2 release notes: `docs/release/v2.2.0-release-notes.md`
 - v2.3 release checklist: `docs/release/v2.3.0-checklist.md`
 - v2.3 release notes: `docs/release/v2.3.0-release-notes.md`
+- v2.4 release checklist: `docs/release/v2.4.0-checklist.md`
+- v2.4 release notes: `docs/release/v2.4.0-release-notes.md`
