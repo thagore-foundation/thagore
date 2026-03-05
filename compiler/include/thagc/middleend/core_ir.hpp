@@ -32,6 +32,7 @@ struct CoreStmt {
   bool has_await = false;
   bool has_expression = false;
   std::string expression;
+  syntax::AstExprPtr expression_ast;
   std::optional<syntax::Span> span;
 };
 
