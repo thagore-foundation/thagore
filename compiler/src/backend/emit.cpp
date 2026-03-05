@@ -16,7 +16,11 @@ llvm::Value* emit_ref_new_call(VariableSlot::Ownership ownership, llvm::Value* v
       module->getOrInsertFunction(symbol, llvm::FunctionType::get(pointer_type(builder), {builder.getInt64Ty(), pointer_type(builder)}, false));
   llvm::AllocaInst* tmp = create_entry_alloca(fn, builder.getInt64Ty(), std::string(symbol) + ".tmp");
   builder.CreateStore(value_i64, tmp);
-  return builder.CreateCall(callee, {builder.getInt64(8), tmp});
+  llvm::Value* payload_ptr = tmp;
+  if (payload_ptr->getType() != pointer_type(builder)) {
+    payload_ptr = builder.CreateBitCast(payload_ptr, pointer_type(builder));
+  }
+  return builder.CreateCall(callee, {builder.getInt64(8), payload_ptr});
 }
 
 llvm::Value* emit_ref_clone_call(VariableSlot::Ownership ownership, llvm::Value* handle, llvm::Function* fn,
@@ -768,8 +772,13 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
             diag.error("E2023", "field assignment target is not addressable: '" + target + "'");
             return false;
           }
+          llvm::Value* struct_ptr = inst_it->second.ptr;
+          llvm::Type* expected_ptr_ty = inst_it->second.llvm_type->getPointerTo();
+          if (struct_ptr->getType() != expected_ptr_ty) {
+            struct_ptr = builder.CreateBitCast(struct_ptr, expected_ptr_ty, base_name + ".typed.ptr");
+          }
           llvm::Value* field_ptr =
-              builder.CreateStructGEP(inst_it->second.llvm_type, inst_it->second.ptr, static_cast<unsigned>(field_index),
+              builder.CreateStructGEP(inst_it->second.llvm_type, struct_ptr, static_cast<unsigned>(field_index),
                                       target + ".ptr");
           builder.CreateStore(casted, field_ptr);
           ++index;

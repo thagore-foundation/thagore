@@ -231,7 +231,7 @@ llvm::Type* llvm_type_from_value_type(ValueType type, llvm::IRBuilder<>& builder
     return builder.getVoidTy();
   }
   if (type == ValueType::I8Ptr) {
-    return llvm::PointerType::get(builder.getContext(), 0);
+    return pointer_type(builder);
   }
   return builder.getInt32Ty();
 }
@@ -267,7 +267,13 @@ llvm::Value* cast_value_to_type(ExprValue value, ValueType target, llvm::IRBuild
   }
   if (target == ValueType::I8Ptr) {
     if (value.type == ValueType::I8Ptr) {
-      return value.value;
+      llvm::Type* ptr_ty = pointer_type(builder);
+      if (value.value->getType() == ptr_ty) {
+        return value.value;
+      }
+      if (value.value->getType()->isPointerTy()) {
+        return builder.CreateBitCast(value.value, ptr_ty);
+      }
     }
     return nullptr;
   }

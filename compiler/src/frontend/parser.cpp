@@ -163,7 +163,7 @@ static bool is_continuation_tail(const Token& tok) {
       tok.kind == TokenKind::Arrow) {
     return true;
   }
-  return tok.lexeme == "." || tok.lexeme == "&&" || tok.lexeme == "||" || tok.lexeme == "?";
+  return tok.lexeme == "." || tok.lexeme == "&&" || tok.lexeme == "||";
 }
 
 static bool should_continue_statement_line(const SourceLine& line, std::span<const Token> tokens) {

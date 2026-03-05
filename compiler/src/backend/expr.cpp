@@ -754,6 +754,10 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             cursor.error = "method receiver '" + call_base + "' is not addressable";
             return {};
           }
+          llvm::Type* self_target_ty = callee->getFunctionType()->getParamType(0);
+          if (self_target_ty->isPointerTy() && self_ptr->getType() != self_target_ty) {
+            self_ptr = cursor.builder->CreateBitCast(self_ptr, self_target_ty, call_base + ".self.cast");
+          }
           call_args.push_back(self_ptr);
           std::size_t arg_index = 0;
           std::size_t callee_index = 0;
@@ -816,6 +820,9 @@ static ExprValue parse_primary(ExprCursor& cursor) {
             } else if (target_ty->isPointerTy()) {
               if (value.type == ValueType::I8Ptr) {
                 coerced = value.value;
+                if (coerced != nullptr && coerced->getType() != target_ty) {
+                  coerced = cursor.builder->CreateBitCast(coerced, target_ty);
+                }
               }
             }
             if (coerced == nullptr) {
@@ -915,6 +922,9 @@ static ExprValue parse_primary(ExprCursor& cursor) {
         } else if (target_ty->isPointerTy()) {
           if (value.type == ValueType::I8Ptr) {
             coerced = value.value;
+            if (coerced != nullptr && coerced->getType() != target_ty) {
+              coerced = cursor.builder->CreateBitCast(coerced, target_ty);
+            }
           }
         }
         if (coerced == nullptr) {
@@ -1010,6 +1020,10 @@ static ExprValue parse_primary(ExprCursor& cursor) {
         if (inst_it->second.llvm_type == nullptr) {
           cursor.error = "missing LLVM struct layout for '" + inst_it->second.struct_name + "'";
           return {};
+        }
+        llvm::Type* expected_ptr_ty = inst_it->second.llvm_type->getPointerTo();
+        if (ptr->getType() != expected_ptr_ty) {
+          ptr = cursor.builder->CreateBitCast(ptr, expected_ptr_ty, field_base + ".typed.ptr");
         }
         llvm::Value* field_ptr = cursor.builder->CreateStructGEP(inst_it->second.llvm_type, ptr,
                                                                  static_cast<unsigned>(field_index),
@@ -1539,9 +1553,14 @@ static ExprValue evaluate_atom_direct(const std::string& atom_text, llvm::IRBuil
   if (split_dotted_name(tok, field_base, field_name)) {
     auto inst_it = struct_instances.find(field_base);
     if (inst_it != struct_instances.end() && inst_it->second.ptr != nullptr && inst_it->second.llvm_type != nullptr) {
+      llvm::Value* base_ptr = inst_it->second.ptr;
+      llvm::Type* expected_ptr_ty = inst_it->second.llvm_type->getPointerTo();
+      if (base_ptr->getType() != expected_ptr_ty) {
+        base_ptr = builder.CreateBitCast(base_ptr, expected_ptr_ty, field_base + ".typed.ptr");
+      }
       const std::size_t field_index = field_index_for_struct(inst_it->second.struct_name, field_name, struct_fields);
       if (field_index != static_cast<std::size_t>(-1)) {
-        llvm::Value* field_ptr = builder.CreateStructGEP(inst_it->second.llvm_type, inst_it->second.ptr,
+        llvm::Value* field_ptr = builder.CreateStructGEP(inst_it->second.llvm_type, base_ptr,
                                                          static_cast<unsigned>(field_index),
                                                          field_base + "." + field_name + ".ptr");
         const ValueType field_ty = field_value_type_for_struct(inst_it->second.struct_name, field_name, struct_field_types);
@@ -1609,7 +1628,8 @@ ExprValue evaluate_expression(const syntax::AstExprPtr& expr_ast, const std::str
       if (direct.value != nullptr && direct.type != ValueType::Invalid) {
         return direct;
       }
-      return evaluate_expression(expr_ast->text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+      const std::string fallback = !trim(fallback_expr).empty() ? fallback_expr : expr_ast->text;
+      return evaluate_expression(fallback, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
                                  struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
                                  current_function, diag);
     }
@@ -1885,7 +1905,7 @@ bool emit_expression_statement(const std::string& line, bool has_expression, con
       return true;
     }
 
-    ExprValue value = evaluate_expression(expression_ast, inner, builder, variables, enum_variant_tags, struct_fields,
+    ExprValue value = evaluate_expression(nullptr, inner, builder, variables, enum_variant_tags, struct_fields,
                                           struct_field_types, struct_instances, tuple_instances, array_instances,
                                           functions, function_returns, &closures, fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
