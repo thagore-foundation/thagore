@@ -12,6 +12,11 @@ struct ParserContext {
   std::size_t pos = 0;
 };
 
+struct LineTokenInfo {
+  TokenKind first = TokenKind::Unknown;
+  TokenKind second = TokenKind::Unknown;
+};
+
 static bool has_valid_span(const Span& span) {
   return span.hi > span.lo;
 }
@@ -39,11 +44,32 @@ static std::unordered_map<int, Span> collect_line_token_spans(std::span<const To
   return line_spans;
 }
 
+static std::unordered_map<int, LineTokenInfo> collect_line_token_info(std::span<const Token> tokens) {
+  std::unordered_map<int, LineTokenInfo> line_info;
+  for (const Token& tok : tokens) {
+    if (tok.kind == TokenKind::EndOfFile || tok.kind == TokenKind::Newline || tok.line <= 0) {
+      continue;
+    }
+    auto it = line_info.find(tok.line);
+    if (it == line_info.end()) {
+      LineTokenInfo info;
+      info.first = tok.kind;
+      line_info[tok.line] = std::move(info);
+      continue;
+    }
+    if (it->second.second == TokenKind::Unknown) {
+      it->second.second = tok.kind;
+    }
+  }
+  return line_info;
+}
+
 }  // namespace
 
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
   ParserContext ctx{std::span<const Token>(tokens.data(), tokens.size()), 0};
   auto token_line_spans = collect_line_token_spans(ctx.tokens);
+  auto token_line_info = collect_line_token_info(ctx.tokens);
   AstProgram program;
   program.source = source;
   program.line_spans = token_line_spans;
@@ -88,27 +114,51 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
   std::size_t i = 0;
   while (i < lines.size()) {
     const SourceLine& line = lines[i];
+    LineTokenInfo line_tok;
+    auto line_tok_it = token_line_info.find(line.number);
+    if (line_tok_it != token_line_info.end()) {
+      line_tok = line_tok_it->second;
+    }
+    const bool line_is_pub = line_tok.first == TokenKind::KeywordPub;
+    const bool line_is_intent = line_tok.first == TokenKind::KeywordIntent;
+    const bool line_is_flow = line_tok.first == TokenKind::KeywordFlow;
+    const bool line_is_macro = line_tok.first == TokenKind::KeywordMacro;
+    const bool line_is_comptime = line_tok.first == TokenKind::KeywordComptime;
+    const bool line_is_func = line_tok.first == TokenKind::KeywordFunc;
+    const bool line_is_async_func = line_tok.first == TokenKind::KeywordAsync && line_tok.second == TokenKind::KeywordFunc;
+    const bool line_is_intent_func =
+        line_tok.first == TokenKind::KeywordIntent && line_tok.second == TokenKind::KeywordFunc;
+    const bool line_is_flow_func = line_tok.first == TokenKind::KeywordFlow && line_tok.second == TokenKind::KeywordFunc;
+    const bool line_is_import = line_tok.first == TokenKind::KeywordImport || line_tok.first == TokenKind::KeywordFrom;
+    const bool line_is_extern = line_tok.first == TokenKind::KeywordExtern;
+    const bool line_is_struct = line_tok.first == TokenKind::KeywordStruct;
+    const bool line_is_enum = line_tok.first == TokenKind::KeywordEnum;
+    const bool line_is_type = line_tok.first == TokenKind::KeywordType;
+    const bool line_is_state = line_tok.first == TokenKind::KeywordState;
+    const bool line_is_trait = line_tok.first == TokenKind::KeywordTrait;
+    const bool line_is_impl = line_tok.first == TokenKind::KeywordImpl;
+
     collect_feature_counters(line.clean, program);
     std::string effective_line = line.clean;
     bool is_pub_decl = false;
-    if (starts_with(effective_line, "pub ")) {
+    if (line_is_pub && starts_with(effective_line, "pub ")) {
       is_pub_decl = true;
       program.public_decls.push_back(line.clean);
       effective_line = trim(effective_line.substr(4));
     }
-    if (starts_with(effective_line, "intent ")) {
+    if (line_is_intent || starts_with(effective_line, "intent ")) {
       program.intents.push_back(effective_line);
     }
-    if (starts_with(effective_line, "flow ")) {
+    if (line_is_flow || starts_with(effective_line, "flow ")) {
       program.flows.push_back(effective_line);
     }
-    if (starts_with(effective_line, "intent func ")) {
+    if (line_is_intent_func || starts_with(effective_line, "intent func ")) {
       effective_line = trim(effective_line.substr(7));
-    } else if (starts_with(effective_line, "flow func ")) {
+    } else if (line_is_flow_func || starts_with(effective_line, "flow func ")) {
       effective_line = trim(effective_line.substr(5));
     }
 
-    if (starts_with(effective_line, "macro ")) {
+    if (line_is_macro || starts_with(effective_line, "macro ")) {
       AstMacro macro;
       std::string macro_error;
       if (!parse_macro_declaration(effective_line, macro, macro_error)) {
@@ -126,7 +176,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(effective_line, "comptime:")) {
+    if ((line_is_comptime && ends_with(effective_line, ":")) || starts_with(effective_line, "comptime:")) {
       ++i;
       if (i >= lines.size() || lines[i].indent <= line.indent) {
         add_parse_error(program, line.number, "comptime block must be indentation-scoped");
@@ -172,8 +222,8 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(effective_line, "func ") || starts_with(effective_line, "async func ")) {
-      const bool is_async_func = starts_with(effective_line, "async func ");
+    if (line_is_func || line_is_async_func || starts_with(effective_line, "func ") || starts_with(effective_line, "async func ")) {
+      const bool is_async_func = line_is_async_func || starts_with(effective_line, "async func ");
       const std::string function_header = is_async_func ? trim(effective_line.substr(6)) : effective_line;
       AstFunction fn;
       fn.name = function_name_from_header(function_header);
@@ -228,7 +278,8 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(effective_line, "flow ") && !starts_with(effective_line, "flow func ")) {
+    if ((line_is_flow || starts_with(effective_line, "flow ")) &&
+        !(line_is_flow_func || starts_with(effective_line, "flow func "))) {
       AstFlow flow;
       flow.header = effective_line;
       flow.name = flow_name_from_header(effective_line);
@@ -245,7 +296,10 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       while (i < lines.size() && lines[i].indent > line.indent) {
         collect_feature_counters(lines[i].clean, program);
         const SourceLine& step_line = lines[i];
-        if (!starts_with(step_line.clean, "step ")) {
+        auto step_tok_it = token_line_info.find(step_line.number);
+        const bool is_step = step_tok_it != token_line_info.end() &&
+                             step_tok_it->second.first == TokenKind::KeywordStep;
+        if (!is_step && !starts_with(step_line.clean, "step ")) {
           add_parse_error(program, step_line.number, "flow block only accepts 'step' entries");
           ++i;
           continue;
@@ -277,7 +331,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    if (starts_with(effective_line, "import ") || starts_with(effective_line, "from ")) {
+    if (line_is_import || starts_with(effective_line, "import ") || starts_with(effective_line, "from ")) {
       AstImport import_decl;
       std::string import_error;
       if (!parse_import_decl(effective_line, import_decl, import_error)) {
@@ -291,7 +345,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       ++i;
       continue;
     }
-    if (starts_with(effective_line, "extern ")) {
+    if (line_is_extern || starts_with(effective_line, "extern ")) {
       program.extern_decls.push_back(effective_line);
       AstExternFunction ext;
       if (!parse_extern_function_declaration(effective_line, ext)) {
@@ -303,7 +357,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       ++i;
       continue;
     }
-    if (starts_with(effective_line, "struct ")) {
+    if (line_is_struct || starts_with(effective_line, "struct ")) {
       if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "struct header must be colon-terminated");
       }
@@ -332,7 +386,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       continue;
     }
-    if (starts_with(effective_line, "enum ")) {
+    if (line_is_enum || starts_with(effective_line, "enum ")) {
       if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "enum header must be colon-terminated");
       }
@@ -362,12 +416,12 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       continue;
     }
-    if (starts_with(effective_line, "type ")) {
+    if (line_is_type || starts_with(effective_line, "type ")) {
       program.type_aliases.push_back(effective_line);
       ++i;
       continue;
     }
-    if (starts_with(effective_line, "state ")) {
+    if (line_is_state || starts_with(effective_line, "state ")) {
       std::string state_name;
       std::vector<std::string> variants;
       std::string state_error;
@@ -382,7 +436,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       ++i;
       continue;
     }
-    if (starts_with(effective_line, "trait ")) {
+    if (line_is_trait || starts_with(effective_line, "trait ")) {
       if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "trait header must be colon-terminated");
       }
@@ -399,7 +453,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       continue;
     }
-    if (starts_with(effective_line, "impl ")) {
+    if (line_is_impl || starts_with(effective_line, "impl ")) {
       if (!ends_with(effective_line, ":")) {
         add_parse_error(program, line.number, "impl header must be colon-terminated");
       }
