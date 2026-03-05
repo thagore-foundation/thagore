@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from typing import Iterable
 
 
 def resolve_ref(branch: str) -> str:
@@ -24,6 +25,17 @@ def git_show(branch: str, path: str) -> str:
     return subprocess.check_output(["git", "show", f"{branch}:{path}"], text=True)
 
 
+def git_file_exists(branch: str, path: str) -> bool:
+    return subprocess.run(["git", "cat-file", "-e", f"{branch}:{path}"], check=False).returncode == 0
+
+
+def first_existing_path(branch: str, candidates: Iterable[str]) -> str:
+    for path in candidates:
+        if git_file_exists(branch, path):
+            return path
+    raise RuntimeError("unable to resolve baseline semantic source path")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--branch", required=True)
@@ -31,11 +43,25 @@ def main() -> None:
     args = parser.parse_args()
 
     source_ref = resolve_ref(args.branch)
-    typecheck_src = git_show(source_ref, "src/semantics/typecheck/program.tg")
-    lowering_src = git_show(source_ref, "src/lowering/transform/program.tg")
+    typecheck_path = first_existing_path(
+        source_ref,
+        (
+            "src/semantics/typecheck/program.tg",
+            "compiler/src/middleend/hir_typecheck.cpp",
+        ),
+    )
+    lowering_path = first_existing_path(
+        source_ref,
+        (
+            "src/lowering/transform/program.tg",
+            "compiler/src/middleend/mir_lowering.cpp",
+        ),
+    )
+    typecheck_src = git_show(source_ref, typecheck_path)
+    lowering_src = git_show(source_ref, lowering_path)
 
-    typecheck_hooks = sorted(set(re.findall(r"func\s+([a-zA-Z0-9_]+)\(", typecheck_src)))
-    lowering_hooks = sorted(set(re.findall(r"func\s+([a-zA-Z0-9_]+)\(", lowering_src)))
+    typecheck_hooks = sorted(set(re.findall(r"\b(?:func|bool|void|int|TypeResult)\s+([a-zA-Z0-9_]+)\(", typecheck_src)))
+    lowering_hooks = sorted(set(re.findall(r"\b(?:func|bool|void|int)\s+([a-zA-Z0-9_]+)\(", lowering_src)))
     errors = sorted(set(re.findall(r'print\("ERROR: ([^"]+)"\)', typecheck_src)))
 
     out_dir = Path(args.out_dir)

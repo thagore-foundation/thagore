@@ -32,13 +32,13 @@ jobs:
           sudo apt-get install -y \
             clang-21 lld-21 llvm-21-dev \
             cmake ninja-build \
-            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev libsqlite3-dev
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install llvm@21 ninja cmake libffi libxml2 zlib curl
+          brew install llvm@21 ninja cmake libffi libxml2 zlib curl sqlite
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
@@ -49,7 +49,23 @@ jobs:
             choco install -y llvm
           }
           choco install -y ninja
-          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $roots = @(
+            "C:\Program Files\LLVM",
+            "C:\ProgramData\chocolatey\lib\llvm\tools\llvm"
+          )
+          $llvmRoot = $null
+          foreach ($candidate in $roots) {
+            if (Test-Path "$candidate\include\llvm\IR\BasicBlock.h") {
+              $llvmRoot = $candidate
+              break
+            }
+          }
+          if (-not $llvmRoot) {
+            throw "LLVM headers not found after installation"
+          }
+          "$llvmRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_DIR=$($llvmRoot -replace '\\','/')/lib/cmake/llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Configure + build (Linux)
         if: runner.os == 'Linux'
@@ -65,8 +81,6 @@ jobs:
         run: |
           LLVM_PREFIX="$(brew --prefix llvm@21)"
           cmake -S . -B build -G Ninja \
-            -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
-            -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
             -DLLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm"
           cmake --build build -j
 
@@ -74,7 +88,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          cmake -S . -B build -G Ninja -DLLVM_DIR="C:/Program Files/LLVM/lib/cmake/llvm"
+          cmake -S . -B build -G Ninja `
+            -DLLVM_DIR="$env:LLVM_DIR" `
+            -DLLVM_INCLUDE_DIRS="$env:LLVM_ROOT/include" `
+            -DLLVM_LIBRARY_DIRS="$env:LLVM_ROOT/lib"
           cmake --build build --config Release -j
 
       - name: IO GA tests (Linux/macOS)

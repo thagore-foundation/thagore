@@ -291,6 +291,11 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
     clang_link.push_back("-lcrypto");
   }
 #endif
+#if defined(THAG_RUNTIME_HAS_SQLITE3)
+  if (!target_is_windows && !target_is_wasm) {
+    clang_link.push_back("-lsqlite3");
+  }
+#endif
   if (!target_triple.empty()) {
     clang_link.push_back("--target=" + target_triple);
   }

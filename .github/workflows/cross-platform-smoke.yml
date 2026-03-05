@@ -37,7 +37,7 @@ jobs:
           sudo /tmp/llvm.sh 21
           sudo apt-get install -y \
             clang-21 lld-21 llvm-21-dev cmake ninja-build \
-            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev
+            libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev libsqlite3-dev
           echo "CC=clang-21" >> "$GITHUB_ENV"
           echo "CXX=clang++-21" >> "$GITHUB_ENV"
           echo "LLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm" >> "$GITHUB_ENV"
@@ -48,8 +48,6 @@ jobs:
           brew update
           brew install llvm@21 ninja cmake
           LLVM_PREFIX="$(brew --prefix llvm@21)"
-          echo "CC=${LLVM_PREFIX}/bin/clang" >> "$GITHUB_ENV"
-          echo "CXX=${LLVM_PREFIX}/bin/clang++" >> "$GITHUB_ENV"
           echo "LLVM_DIR=${LLVM_PREFIX}/lib/cmake/llvm" >> "$GITHUB_ENV"
 
       - name: Install dependencies (Windows)
@@ -61,23 +59,45 @@ jobs:
             choco install -y llvm
           }
           choco install -y ninja
-          "PATH=C:\Program Files\LLVM\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LLVM_DIR=C:/Program Files/LLVM/lib/cmake/llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $roots = @(
+            "C:\Program Files\LLVM",
+            "C:\ProgramData\chocolatey\lib\llvm\tools\llvm"
+          )
+          $llvmRoot = $null
+          foreach ($candidate in $roots) {
+            if (Test-Path "$candidate\include\llvm\IR\BasicBlock.h") {
+              $llvmRoot = $candidate
+              break
+            }
+          }
+          if (-not $llvmRoot) {
+            throw "LLVM headers not found after installation"
+          }
+          "PATH=$llvmRoot\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_DIR=$($llvmRoot -replace '\\','/')/lib/cmake/llvm" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Configure + build (non-Windows)
         if: runner.os != 'Windows'
         run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_C_COMPILER="${CC}" \
-            -DCMAKE_CXX_COMPILER="${CXX}" \
-            -DLLVM_DIR="${LLVM_DIR}"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cmake -S . -B build -G Ninja \
+              -DCMAKE_C_COMPILER="${CC}" \
+              -DCMAKE_CXX_COMPILER="${CXX}" \
+              -DLLVM_DIR="${LLVM_DIR}"
+          else
+            cmake -S . -B build -G Ninja -DLLVM_DIR="${LLVM_DIR}"
+          fi
           cmake --build build -j
 
       - name: Configure + build (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake -S . -B build -G Ninja -DLLVM_DIR="$env:LLVM_DIR"
+          cmake -S . -B build -G Ninja `
+            -DLLVM_DIR="$env:LLVM_DIR" `
+            -DLLVM_INCLUDE_DIRS="$env:LLVM_ROOT/include" `
+            -DLLVM_LIBRARY_DIRS="$env:LLVM_ROOT/lib"
           cmake --build build -j 4
 
       - name: Package core archive
