@@ -81,6 +81,7 @@ add_executable(thagc
   src/driver/unknown.cpp
   src/infra/builder.cpp
   src/frontend/core.cpp
+  src/frontend/source_map.cpp
   src/frontend/syntax.cpp
   src/frontend/macro.cpp
   src/frontend/expr.cpp

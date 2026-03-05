@@ -852,6 +852,7 @@ AstStatement build_statement_from_line(AstProgram& program, const SourceLine& bo
   st.text = body.clean;
   st.line = body.number;
   st.indent = body.indent;
+  st.span = body.span;
   std::string loop_head;
   const bool labeled_loop = is_labeled_loop_header(body.clean, loop_head);
   if (starts_with(body.clean, "import ") || starts_with(body.clean, "from ")) {

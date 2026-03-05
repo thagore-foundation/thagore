@@ -1,8 +1,11 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "thagc/frontend/span.hpp"
 
 namespace thagc::syntax {
 
@@ -32,6 +35,7 @@ struct AstStatement {
   bool expression_valid = true;
   std::string expression_normalized;
   std::string expression_error;
+  std::optional<Span> span;
 };
 
 struct AstClosure {
@@ -75,6 +79,7 @@ struct AstFunction {
   int header_indent = 0;
   bool is_pub = false;
   bool is_async = false;
+  std::optional<Span> span;
   std::vector<AstStatement> body;
 };
 
@@ -93,6 +98,7 @@ struct AstImport {
   int line = 0;
   int column = 1;
   std::string raw;
+  std::optional<Span> span;
 };
 
 struct AstFlowStep {
@@ -106,6 +112,13 @@ struct AstFlowStep {
   bool has_timeout = false;
   bool idempotent = false;
   bool irreversible = false;
+  std::optional<Span> span;
+};
+
+struct AstParseError {
+  int line = 0;
+  std::string message;
+  std::optional<Span> span;
 };
 
 struct AstFlow {
@@ -151,6 +164,8 @@ struct AstProgram {
   std::unordered_map<std::string, std::vector<std::string>> trait_required_methods;
   std::unordered_map<std::string, std::vector<std::string>> impl_for_methods;
   std::vector<std::string> parse_errors;
+  std::vector<AstParseError> parse_error_details;
+  std::unordered_map<int, Span> line_spans;
   int match_count = 0;
   int range_loop_count = 0;
   int if_expr_count = 0;

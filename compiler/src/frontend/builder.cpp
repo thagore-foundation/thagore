@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "thagc/frontend/types.hpp"
+#include "thagc/frontend/source_map.hpp"
 
 namespace thagc::semantics {
 
@@ -2638,8 +2639,37 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     return false;
   }
   if (!program.parse_errors.empty()) {
-    for (const std::string& message : program.parse_errors) {
-      diag.error(classify_parse_error(message), "syntax error: " + message);
+    syntax::SourceMap source_map;
+    const std::uint32_t file_id = source_map.add_file(program.source_path, program.source);
+    if (!program.parse_error_details.empty()) {
+      for (const auto& detail : program.parse_error_details) {
+        int line = detail.line > 0 ? detail.line : 1;
+        int column = 1;
+        int end_column = 1;
+        if (detail.span.has_value()) {
+          syntax::Span span = *detail.span;
+          span.file_id = file_id;
+          const auto begin = source_map.lookup_line_col(span);
+          line = static_cast<int>(begin.first);
+          column = static_cast<int>(begin.second);
+          syntax::Span end = span;
+          if (end.hi > end.lo) {
+            end.lo = end.hi - 1;
+            end.hi = end.lo + 1;
+          }
+          const auto end_pos = source_map.lookup_line_col(end);
+          end_column = static_cast<int>(end_pos.second + (span.hi > span.lo ? 1 : 0));
+          if (end_column < column) {
+            end_column = column;
+          }
+        }
+        diag.error(classify_parse_error(detail.message), "syntax error: line " + std::to_string(line) + ": " + detail.message,
+                   program.source_path, line, column, line, end_column);
+      }
+    } else {
+      for (const std::string& message : program.parse_errors) {
+        diag.error(classify_parse_error(message), "syntax error: " + message, program.source_path);
+      }
     }
     return false;
   }

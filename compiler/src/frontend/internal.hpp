@@ -20,6 +20,7 @@ struct SourceLine {
   int number = 0;
   int indent = 0;
   std::string clean;
+  Span span;
 };
 
 enum class ExprTokenKind {
@@ -107,6 +108,14 @@ inline bool is_identifier(const std::string& text) {
 
 inline void add_parse_error(AstProgram& program, int line, const std::string& message) {
   program.parse_errors.push_back("line " + std::to_string(line) + ": " + message);
+  AstParseError detail;
+  detail.line = line;
+  detail.message = message;
+  auto span_it = program.line_spans.find(line);
+  if (span_it != program.line_spans.end()) {
+    detail.span = span_it->second;
+  }
+  program.parse_error_details.push_back(detail);
 }
 
 // ---------------------------------------------------------------------------

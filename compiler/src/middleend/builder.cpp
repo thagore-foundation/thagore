@@ -224,6 +224,7 @@ static void append_core_statement(std::vector<CoreStmt>& out_statements, const s
   out.target = st.target;
   out.has_await = st.has_await;
   out.has_expression = st.has_expression && st.expression_valid;
+  out.span = st.span;
   if (out.has_expression) {
     out.expression = substitute_identifiers(st.expression_normalized, known_values);
   }

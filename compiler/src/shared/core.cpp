@@ -2,14 +2,18 @@
 
 namespace thagc::support {
 
-void DiagnosticSink::error(std::string code, std::string message, std::string file, int line, int column) {
+void DiagnosticSink::error(std::string code, std::string message, std::string file, int line, int column, int end_line,
+                           int end_column) {
   diagnostics_.push_back(
-      Diagnostic{DiagnosticLevel::Error, std::move(code), std::move(message), std::move(file), line, column});
+      Diagnostic{DiagnosticLevel::Error, std::move(code), std::move(message), std::move(file), line, column, end_line,
+                 end_column});
 }
 
-void DiagnosticSink::warn(std::string code, std::string message, std::string file, int line, int column) {
+void DiagnosticSink::warn(std::string code, std::string message, std::string file, int line, int column, int end_line,
+                          int end_column) {
   diagnostics_.push_back(
-      Diagnostic{DiagnosticLevel::Warning, std::move(code), std::move(message), std::move(file), line, column});
+      Diagnostic{DiagnosticLevel::Warning, std::move(code), std::move(message), std::move(file), line, column, end_line,
+                 end_column});
 }
 
 bool DiagnosticSink::has_errors() const {

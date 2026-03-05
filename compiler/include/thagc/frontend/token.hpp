@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "thagc/frontend/span.hpp"
+
 namespace thagc::syntax {
 
 enum class TokenKind {
@@ -68,6 +70,7 @@ struct Token {
   std::string lexeme;
   int line = 1;
   int column = 1;
+  Span span;
 };
 
 }  // namespace thagc::syntax

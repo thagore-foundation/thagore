@@ -1,25 +1,86 @@
 #include "internal.hpp"
 
+#include <span>
+#include <unordered_map>
+
 namespace thagc::syntax {
 
+namespace {
+
+struct ParserContext {
+  std::span<const Token> tokens;
+  std::size_t pos = 0;
+};
+
+static bool has_valid_span(const Span& span) {
+  return span.hi > span.lo;
+}
+
+static std::unordered_map<int, Span> collect_line_token_spans(std::span<const Token> tokens) {
+  std::unordered_map<int, Span> line_spans;
+  for (const Token& tok : tokens) {
+    if (tok.kind == TokenKind::EndOfFile || tok.line <= 0 || !has_valid_span(tok.span)) {
+      continue;
+    }
+    auto it = line_spans.find(tok.line);
+    if (it == line_spans.end()) {
+      line_spans[tok.line] = tok.span;
+      continue;
+    }
+    Span merged = it->second;
+    if (tok.span.lo < merged.lo) {
+      merged.lo = tok.span.lo;
+    }
+    if (tok.span.hi > merged.hi) {
+      merged.hi = tok.span.hi;
+    }
+    it->second = merged;
+  }
+  return line_spans;
+}
+
+}  // namespace
+
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
-  (void)tokens;
+  ParserContext ctx{std::span<const Token>(tokens.data(), tokens.size()), 0};
+  auto token_line_spans = collect_line_token_spans(ctx.tokens);
   AstProgram program;
   program.source = source;
+  program.line_spans = token_line_spans;
 
   std::vector<SourceLine> lines;
   std::istringstream in(source);
   std::string raw_line;
   int line_no = 0;
+  std::size_t line_start_offset = 0;
   while (std::getline(in, raw_line)) {
     ++line_no;
+    const std::size_t line_end_offset = line_start_offset + raw_line.size();
     const std::string stripped = strip_comments(raw_line);
     const std::string clean = trim(stripped);
+    Span line_span{
+        static_cast<std::uint32_t>(line_start_offset),
+        static_cast<std::uint32_t>(line_end_offset),
+        0,
+    };
+    auto span_it = token_line_spans.find(line_no);
+    if (span_it != token_line_spans.end()) {
+      line_span = span_it->second;
+    }
+    program.line_spans[line_no] = line_span;
     if (clean.empty()) {
+      line_start_offset = line_end_offset;
+      if (line_start_offset < source.size() && source[line_start_offset] == '\n') {
+        ++line_start_offset;
+      }
       continue;
     }
     program.top_level_lines.push_back(clean);
-    lines.push_back(SourceLine{line_no, leading_indent(raw_line), clean});
+    lines.push_back(SourceLine{line_no, leading_indent(raw_line), clean, line_span});
+    line_start_offset = line_end_offset;
+    if (line_start_offset < source.size() && source[line_start_offset] == '\n') {
+      ++line_start_offset;
+    }
   }
 
   std::unordered_map<std::string, AstMacro> macros;
@@ -122,6 +183,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       fn.header_indent = line.indent;
       fn.is_pub = is_pub_decl;
       fn.is_async = is_async_func;
+      fn.span = line.span;
 
       if (!ends_with(function_header, ":")) {
         add_parse_error(program, line.number, "function header must be colon-terminated");
@@ -154,6 +216,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       while (i < lines.size() && lines[i].indent > fn.header_indent) {
         const SourceLine& body = lines[i];
         AstStatement st = build_statement_from_line(program, body, macros);
+        st.span = body.span;
         if (st.kind == StatementKind::Return && fn.name == "main") {
           program.main_return_literal = parse_return_literal(body.clean);
         }
@@ -189,6 +252,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
         }
         AstFlowStep step;
         step.line = step_line.number;
+        step.span = step_line.span;
         std::string step_error;
         if (!parse_flow_step_header(step_line.clean, step, step_error)) {
           add_parse_error(program, step_line.number, step_error);
@@ -221,6 +285,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       } else {
         import_decl.line = line.number;
         import_decl.column = 1;
+        import_decl.span = line.span;
         program.imports.push_back(std::move(import_decl));
       }
       ++i;
@@ -405,6 +470,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
           }
           while (i < lines.size() && lines[i].indent > fn.header_indent) {
             AstStatement st = build_statement_from_line(program, lines[i], macros);
+            st.span = lines[i].span;
             fn.body.push_back(std::move(st));
             ++i;
           }
@@ -423,6 +489,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
     }
 
     AstStatement top = build_statement_from_line(program, line, macros);
+    top.span = line.span;
     if (top.kind == StatementKind::Return) {
       add_parse_error(program, line.number, "top-level return is not allowed");
     }

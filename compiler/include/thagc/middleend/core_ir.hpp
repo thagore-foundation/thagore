@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -31,6 +32,7 @@ struct CoreStmt {
   bool has_await = false;
   bool has_expression = false;
   std::string expression;
+  std::optional<syntax::Span> span;
 };
 
 struct CoreFunction {

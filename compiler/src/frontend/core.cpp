@@ -4,6 +4,10 @@
 
 namespace thagc::syntax {
 
+static Span make_span(std::size_t lo, std::size_t hi) {
+  return Span{static_cast<std::uint32_t>(lo), static_cast<std::uint32_t>(hi), 0};
+}
+
 static TokenKind keyword_kind(const std::string& text) {
   if (text == "func") {
     return TokenKind::KeywordFunc;
@@ -121,7 +125,7 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
       continue;
     }
     if (ch == '\n') {
-      tokens.push_back(Token{TokenKind::Newline, "\n", line, column});
+      tokens.push_back(Token{TokenKind::Newline, "\n", line, column, make_span(i, i + 1)});
       ++line;
       column = 1;
       ++i;
@@ -157,7 +161,7 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
         ++column;
       }
       std::string word = source.substr(start, i - start);
-      tokens.push_back(Token{keyword_kind(word), std::move(word), line, start_col});
+      tokens.push_back(Token{keyword_kind(word), std::move(word), line, start_col, make_span(start, i)});
       continue;
     }
     if (std::isdigit(static_cast<unsigned char>(ch))) {
@@ -176,7 +180,7 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
           ++column;
         }
       }
-      tokens.push_back(Token{TokenKind::Number, source.substr(start, i - start), line, start_col});
+      tokens.push_back(Token{TokenKind::Number, source.substr(start, i - start), line, start_col, make_span(start, i)});
       continue;
     }
     if (ch == '"') {
@@ -196,36 +200,36 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
         ++i;
         ++column;
       }
-      tokens.push_back(Token{TokenKind::String, source.substr(start, i - start), line, start_col});
+      tokens.push_back(Token{TokenKind::String, source.substr(start, i - start), line, start_col, make_span(start, i)});
       continue;
     }
 
     if (ch == '-' && i + 1 < source.size() && source[i + 1] == '>') {
-      tokens.push_back(Token{TokenKind::Arrow, "->", line, column});
+      tokens.push_back(Token{TokenKind::Arrow, "->", line, column, make_span(i, i + 2)});
       i += 2;
       column += 2;
       continue;
     }
     if (ch == '<' && i + 1 < source.size() && source[i + 1] == '=') {
-      tokens.push_back(Token{TokenKind::LessEqual, "<=", line, column});
+      tokens.push_back(Token{TokenKind::LessEqual, "<=", line, column, make_span(i, i + 2)});
       i += 2;
       column += 2;
       continue;
     }
     if (ch == '>' && i + 1 < source.size() && source[i + 1] == '=') {
-      tokens.push_back(Token{TokenKind::GreaterEqual, ">=", line, column});
+      tokens.push_back(Token{TokenKind::GreaterEqual, ">=", line, column, make_span(i, i + 2)});
       i += 2;
       column += 2;
       continue;
     }
     if (ch == '=' && i + 1 < source.size() && source[i + 1] == '=') {
-      tokens.push_back(Token{TokenKind::EqualEqual, "==", line, column});
+      tokens.push_back(Token{TokenKind::EqualEqual, "==", line, column, make_span(i, i + 2)});
       i += 2;
       column += 2;
       continue;
     }
     if (ch == '!' && i + 1 < source.size() && source[i + 1] == '=') {
-      tokens.push_back(Token{TokenKind::BangEqual, "!=", line, column});
+      tokens.push_back(Token{TokenKind::BangEqual, "!=", line, column, make_span(i, i + 2)});
       i += 2;
       column += 2;
       continue;
@@ -243,11 +247,11 @@ std::vector<Token> Lexer::tokenize(const std::string& source) const {
     if (ch == '*') kind = TokenKind::Star;
     if (ch == '/') kind = TokenKind::Slash;
     if (ch == '-') kind = TokenKind::Minus;
-    tokens.push_back(Token{kind, std::string(1, ch), line, column});
+    tokens.push_back(Token{kind, std::string(1, ch), line, column, make_span(i, i + 1)});
     ++i;
     ++column;
   }
-  tokens.push_back(Token{TokenKind::EndOfFile, "", line, column});
+  tokens.push_back(Token{TokenKind::EndOfFile, "", line, column, make_span(source.size(), source.size())});
   return tokens;
 }
 

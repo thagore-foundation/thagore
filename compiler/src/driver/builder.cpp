@@ -18,6 +18,7 @@
 #include "thagc/driver/resolver.hpp"
 #include "thagc/frontend/lexer.hpp"
 #include "thagc/frontend/parser.hpp"
+#include "thagc/frontend/source_map.hpp"
 #include "thagc/infra/adapters.hpp"
 #include "thagc/shared/filesystem.hpp"
 
@@ -486,8 +487,42 @@ static bool parse_module_source(const std::string& path, const std::string& sour
   ast = parser.parse(tokens, source);
   ast.source_path = path;
   if (!ast.parse_errors.empty()) {
-    for (const std::string& message : ast.parse_errors) {
-      diag.error("E_MOD_200", message, path);
+    if (!ast.parse_error_details.empty()) {
+      syntax::SourceMap source_map;
+      const std::uint32_t file_id = source_map.add_file(path, source);
+      for (const auto& detail : ast.parse_error_details) {
+        int line = detail.line > 0 ? detail.line : 1;
+        int column = 1;
+        int end_line = line;
+        int end_column = 1;
+        if (detail.span.has_value()) {
+          syntax::Span span = *detail.span;
+          span.file_id = file_id;
+          const auto begin = source_map.lookup_line_col(span);
+          line = static_cast<int>(begin.first);
+          column = static_cast<int>(begin.second);
+          end_line = line;
+
+          syntax::Span end_span = span;
+          if (end_span.hi > end_span.lo) {
+            end_span.lo = end_span.hi - 1;
+            end_span.hi = end_span.lo + 1;
+          }
+          const auto end = source_map.lookup_line_col(end_span);
+          end_line = static_cast<int>(end.first);
+          end_column = static_cast<int>(end.second + (span.hi > span.lo ? 1 : 0));
+          if (end_column < column) {
+            end_column = column;
+          }
+        } else {
+          end_column = column + 1;
+        }
+        diag.error("E_MOD_200", detail.message, path, line, column, end_line, end_column);
+      }
+    } else {
+      for (const std::string& message : ast.parse_errors) {
+        diag.error("E_MOD_200", message, path);
+      }
     }
     return false;
   }
