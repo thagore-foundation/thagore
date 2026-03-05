@@ -15,8 +15,15 @@
 #include <unordered_set>
 #include <vector>
 
-#include <llvm/Config/llvm-config.h>
-#if LLVM_VERSION_MAJOR < 21
+#ifndef THAGC_LLVM_VERSION_MAJOR
+#if defined(LLVM_VERSION_MAJOR)
+#define THAGC_LLVM_VERSION_MAJOR LLVM_VERSION_MAJOR
+#else
+#define THAGC_LLVM_VERSION_MAJOR 0
+#endif
+#endif
+
+#if THAGC_LLVM_VERSION_MAJOR > 0 && THAGC_LLVM_VERSION_MAJOR < 21
 #include <llvm/ADT/Optional.h>
 #endif
 #include <llvm/IR/BasicBlock.h>
@@ -33,7 +40,9 @@
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/Support/FileSystem.h>
+#if __has_include(<llvm/Support/Host.h>)
 #include <llvm/Support/Host.h>
+#endif
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
@@ -135,7 +144,7 @@ inline constexpr int kEnumPayloadShift = 20;
 inline constexpr int kEnumPayloadMask = (1 << kEnumPayloadShift) - 1;
 
 inline llvm::Type* pointer_type(llvm::IRBuilder<>& builder) {
-#if LLVM_VERSION_MAJOR >= 15
+#if THAGC_LLVM_VERSION_MAJOR >= 15
   return builder.getPtrTy();
 #else
   return builder.getInt8PtrTy();

@@ -3,7 +3,7 @@
 namespace thagc::codegen {
 
 static void run_coroutine_passes(llvm::Module& module) {
-#if LLVM_VERSION_MAJOR >= 21
+#if THAGC_LLVM_VERSION_MAJOR >= 21
   // LLVM 21 no longer exposes legacy addCoroutinePassesToExtensionPoints; run
   // the coroutine lowering pipeline explicitly with the new PM.
   llvm::LoopAnalysisManager lam;
@@ -71,7 +71,7 @@ static void run_performance_passes(llvm::Module& module, llvm::TargetMachine* ta
 }
 
 static void set_module_target_triple(llvm::Module& module, const llvm::Triple& triple) {
-#if LLVM_VERSION_MAJOR >= 21
+#if THAGC_LLVM_VERSION_MAJOR >= 21
   module.setTargetTriple(triple);
 #else
   module.setTargetTriple(triple.getTriple());
@@ -81,7 +81,7 @@ static void set_module_target_triple(llvm::Module& module, const llvm::Triple& t
 static std::unique_ptr<llvm::TargetMachine> create_target_machine_compat(const llvm::Target* target,
                                                                           const llvm::Triple& triple,
                                                                           const llvm::TargetOptions& options) {
-#if LLVM_VERSION_MAJOR >= 21
+#if THAGC_LLVM_VERSION_MAJOR >= 21
   return std::unique_ptr<llvm::TargetMachine>(
       target->createTargetMachine(triple, "generic", "", options, std::nullopt, std::nullopt,
                                   llvm::CodeGenOptLevel::Aggressive));
@@ -190,7 +190,7 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
 
   llvm::legacy::PassManager pass;
-#if LLVM_VERSION_MAJOR >= 21
+#if THAGC_LLVM_VERSION_MAJOR >= 21
   auto file_type = llvm::CodeGenFileType::ObjectFile;
 #else
   auto file_type = llvm::CGFT_ObjectFile;
