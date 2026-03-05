@@ -12,6 +12,7 @@
 #include "thagc/hir/typecheck.hpp"
 #include "thagc/frontend/types.hpp"
 #include "thagc/frontend/source_map.hpp"
+#include "thagc/middleend/ownership.hpp"
 
 namespace thagc::semantics {
 
@@ -175,6 +176,7 @@ static std::size_t builtin_generic_arity(const std::string& base) {
   return 0;
 }
 
+static std::string strip_ownership_qualifier(const std::string& type_name);
 static std::string strip_state_annotation(const std::string& type_name);
 static bool is_tuple_type_syntax(const std::string& type_name);
 static bool is_array_type_syntax(const std::string& type_name);
@@ -183,7 +185,7 @@ static bool is_supported_type_internal(const std::string& type_name, int depth_l
   if (depth_limit <= 0) {
     return false;
   }
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   if (clean == "i32" || clean == "i64" || clean == "f32" || clean == "f64" || clean == "bool" || clean == "string" ||
       clean == "String" || clean == "ptr" || clean == "void" || clean == "Fn") {
     return true;
@@ -212,6 +214,20 @@ static bool is_supported_type_internal(const std::string& type_name, int depth_l
     }
   }
   return true;
+}
+
+static std::string strip_ownership_qualifier(const std::string& type_name) {
+  const std::string clean = trim_copy(type_name);
+  if (clean.size() > 4 && starts_with(clean, "own ")) {
+    return trim_copy(clean.substr(4));
+  }
+  if (clean.size() > 4 && starts_with(clean, "ref ")) {
+    return trim_copy(clean.substr(4));
+  }
+  if (clean.size() > 4 && starts_with(clean, "mut ")) {
+    return trim_copy(clean.substr(4));
+  }
+  return clean;
 }
 
 static bool split_state_annotation(const std::string& type_name, std::string& set_name, std::string& variant_name) {
@@ -272,7 +288,7 @@ static std::string type_name(TypeKind kind) {
 }
 
 static TypeKind parse_type_name(const std::string& type_name) {
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   if (clean == "i32") return TypeKind::I32;
   if (clean == "i64") return TypeKind::I64;
   if (clean == "f32") return TypeKind::F32;
@@ -2172,7 +2188,7 @@ static TypeKind resolve_declared_user_type(const std::string& type_name,
                                            const std::unordered_map<std::string, TypeKind>& aliases,
                                            const std::unordered_set<std::string>& struct_names,
                                            const std::unordered_set<std::string>& enum_names) {
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   std::string generic_base;
   std::vector<std::string> generic_args;
   if (parse_generic_parts(clean, generic_base, generic_args)) {
@@ -2222,7 +2238,7 @@ static bool resolve_declared_user_type_tree(const std::string& type_name,
     error = "generic type nesting is too deep";
     return false;
   }
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   std::string generic_base;
   std::vector<std::string> generic_args;
   if (parse_generic_parts(clean, generic_base, generic_args)) {
@@ -2284,7 +2300,7 @@ static bool validate_declared_type_expr(const std::string& type_name,
     error = "generic type nesting is too deep";
     return false;
   }
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   std::string generic_base;
   std::vector<std::string> generic_args;
   if (parse_generic_parts(clean, generic_base, generic_args)) {
@@ -2322,7 +2338,7 @@ static bool requires_tree_generic_check(const std::string& type_name, int depth_
   if (depth_limit <= 0) {
     return false;
   }
-  const std::string clean = strip_state_annotation(type_name);
+  const std::string clean = strip_state_annotation(strip_ownership_qualifier(type_name));
   std::string base;
   std::vector<std::string> args;
   if (!parse_generic_parts(clean, base, args)) {
@@ -3683,6 +3699,10 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       diag.error("E0018", "line " + std::to_string(st.line) + ": top-level return is not allowed");
       return false;
     }
+  }
+
+  if (!middleend::check_program_ownership(program, diag)) {
+    return false;
   }
 
   return true;

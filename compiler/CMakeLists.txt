@@ -91,6 +91,8 @@ add_executable(thagc
   src/frontend/builder.cpp
   src/middleend/builder.cpp
   src/middleend/hir_typecheck.cpp
+  src/middleend/mir_lowering.cpp
+  src/middleend/ownership.cpp
   src/backend/tokens.cpp
   src/backend/types.cpp
   src/backend/expr.cpp

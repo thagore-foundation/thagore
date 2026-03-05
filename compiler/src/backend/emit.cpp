@@ -2,6 +2,20 @@
 
 namespace thagc::codegen {
 
+static std::string strip_ownership_qualifier(const std::string& type_name) {
+  const std::string clean = trim(type_name);
+  if (starts_with(clean, "own ")) {
+    return trim(clean.substr(4));
+  }
+  if (starts_with(clean, "ref ")) {
+    return trim(clean.substr(4));
+  }
+  if (starts_with(clean, "mut ")) {
+    return trim(clean.substr(4));
+  }
+  return clean;
+}
+
 llvm::Value* emit_ref_new_call(VariableSlot::Ownership ownership, llvm::Value* value_i64,
                                       llvm::Function* fn, llvm::IRBuilder<>& builder) {
   if (value_i64 == nullptr || fn == nullptr) {
@@ -654,7 +668,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       if (!eval_with_try(st.expression, st.expression_ast, st.has_await, value)) {
         return false;
       }
-      const std::string annotation = parse_let_annotation(st.text);
+      const std::string annotation = strip_ownership_qualifier(parse_let_annotation(st.text));
       VariableSlot::Ownership ownership = VariableSlot::Ownership::None;
       if (!annotation.empty() && annotation != "Send" && annotation != "Sync") {
         ValueType declared_type = ValueType::Invalid;

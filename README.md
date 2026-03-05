@@ -63,6 +63,7 @@ Package and toolchain update flows are managed through `drago`.
 compiler/
   frontend/      # lexer/parser/type rules
   middleend/     # typed/core IR + lowering
+  mir/           # mid-level IR + ownership/borrow analysis models
   hir/           # typed high-level IR nodes + HIR typing helpers
   ty/            # shared compiler type representations
   backend/       # LLVM emission + object generation
@@ -74,6 +75,7 @@ runtime/
 contracts/
 tooling/
 tests/
+  ownership/     # v2.4 ownership + borrow checker validation lanes
   inference/     # v2.3 HM inference validation lanes
   generics/      # v2.3 generic type-checking validation lanes
 docs/

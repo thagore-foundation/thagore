@@ -18,6 +18,11 @@ Quick map for contributors:
 
 - `compiler/include/thagc/middleend/core_ir.hpp`
 - `compiler/src/middleend/builder.cpp`
+- `compiler/include/thagc/mir/mir.hpp`
+- `compiler/include/thagc/middleend/mir_lowering.hpp`
+- `compiler/src/middleend/mir_lowering.cpp`
+- `compiler/include/thagc/middleend/ownership.hpp`
+- `compiler/src/middleend/ownership.cpp`
 - `compiler/include/thagc/hir/expr.hpp`
 - `compiler/include/thagc/hir/typecheck.hpp`
 - `compiler/src/middleend/hir_typecheck.cpp`
@@ -62,6 +67,13 @@ Quick map for contributors:
 - `tests/generics/*`
 - `compiler/src/middleend/hir_typecheck.cpp`
 - `compiler/src/frontend/builder.cpp`
+
+## I need to update ownership / borrow gates (v2.4)
+
+- `tests/ownership/*`
+- `tests/parity/test_v24_mir_ownership_pipeline.py`
+- `compiler/include/thagc/mir/mir.hpp`
+- `compiler/src/middleend/ownership.cpp`
 
 ## I need to change runtime concurrency / cancel / timeout
 

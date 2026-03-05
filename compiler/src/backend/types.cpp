@@ -2,6 +2,20 @@
 
 namespace thagc::codegen {
 
+static std::string strip_ownership_qualifier(const std::string& type_name) {
+  const std::string clean = trim(type_name);
+  if (starts_with(clean, "own ")) {
+    return trim(clean.substr(4));
+  }
+  if (starts_with(clean, "ref ")) {
+    return trim(clean.substr(4));
+  }
+  if (starts_with(clean, "mut ")) {
+    return trim(clean.substr(4));
+  }
+  return clean;
+}
+
 bool is_numeric_type(ValueType type) {
   return type == ValueType::I32 || type == ValueType::I64 || type == ValueType::F32 || type == ValueType::F64;
 }
@@ -180,32 +194,33 @@ llvm::Value* to_i1(ExprValue value, llvm::IRBuilder<>& builder) {
 
 
 ValueType value_type_from_return_type(const std::string& type_name) {
-  if (type_name == "i32" || type_name.empty()) {
+  const std::string normalized = strip_ownership_qualifier(type_name);
+  if (normalized == "i32" || normalized.empty()) {
     return ValueType::I32;
   }
-  if (type_name == "i64") {
+  if (normalized == "i64") {
     return ValueType::I64;
   }
-  if (type_name == "f32") {
+  if (normalized == "f32") {
     return ValueType::F32;
   }
-  if (type_name == "f64") {
+  if (normalized == "f64") {
     return ValueType::F64;
   }
-  if (type_name == "bool") {
+  if (normalized == "bool") {
     return ValueType::I1;
   }
-  if (type_name == "Rc" || type_name == "Arc" || starts_with(type_name, "Rc<") || starts_with(type_name, "Arc<")) {
+  if (normalized == "Rc" || normalized == "Arc" || starts_with(normalized, "Rc<") || starts_with(normalized, "Arc<")) {
     return ValueType::I8Ptr;
   }
-  if (type_name == "ptr" || type_name == "string" || type_name == "String") {
+  if (normalized == "ptr" || normalized == "string" || normalized == "String") {
     return ValueType::I8Ptr;
   }
-  if (type_name == "Option" || type_name == "Result" || starts_with(type_name, "Option<") ||
-      starts_with(type_name, "Result<")) {
+  if (normalized == "Option" || normalized == "Result" || starts_with(normalized, "Option<") ||
+      starts_with(normalized, "Result<")) {
     return ValueType::I32;
   }
-  if (type_name == "void") {
+  if (normalized == "void") {
     return ValueType::Void;
   }
   return ValueType::I32;
@@ -303,26 +318,27 @@ llvm::Value* default_value_for_type(ValueType type, llvm::IRBuilder<>& builder) 
 }
 
 ValueType value_type_from_field_annotation(const std::string& type_name) {
-  if (type_name == "i32" || type_name.empty()) {
+  const std::string normalized = strip_ownership_qualifier(type_name);
+  if (normalized == "i32" || normalized.empty()) {
     return ValueType::I32;
   }
-  if (type_name == "i64") {
+  if (normalized == "i64") {
     return ValueType::I64;
   }
-  if (type_name == "f32") {
+  if (normalized == "f32") {
     return ValueType::F32;
   }
-  if (type_name == "f64") {
+  if (normalized == "f64") {
     return ValueType::F64;
   }
-  if (type_name == "bool") {
+  if (normalized == "bool") {
     return ValueType::I1;
   }
-  if (type_name == "Option" || type_name == "Result" || starts_with(type_name, "Option<") ||
-      starts_with(type_name, "Result<")) {
+  if (normalized == "Option" || normalized == "Result" || starts_with(normalized, "Option<") ||
+      starts_with(normalized, "Result<")) {
     return ValueType::I32;
   }
-  if (type_name == "Rc" || type_name == "Arc" || starts_with(type_name, "Rc<") || starts_with(type_name, "Arc<")) {
+  if (normalized == "Rc" || normalized == "Arc" || starts_with(normalized, "Rc<") || starts_with(normalized, "Arc<")) {
     return ValueType::I8Ptr;
   }
   return ValueType::I32;

@@ -17,6 +17,7 @@ This document maps responsibilities to folders so contributors can navigate quic
 
 - `compiler/frontend`: source analysis (lexer/parser/typing).
 - `compiler/middleend`: IR transformation and lowering.
+- `compiler/mir`: mid-level IR model and ownership/borrow analyses.
 - `compiler/hir`: typed high-level expression IR and inference/check helpers.
 - `compiler/ty`: shared type model used by HIR/typechecking layers.
 - `compiler/backend`: LLVM/object generation.
