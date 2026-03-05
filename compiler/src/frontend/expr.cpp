@@ -1021,6 +1021,20 @@ static std::size_t find_first_colon(std::span<const Token> tokens, std::size_t s
   return static_cast<std::size_t>(-1);
 }
 
+static std::size_t leading_keyword_index(std::span<const Token> tokens, TokenKind keyword) {
+  if (tokens.empty()) {
+    return static_cast<std::size_t>(-1);
+  }
+  if (tokens[0].kind == keyword) {
+    return 0;
+  }
+  if (tokens.size() >= 3 && tokens[0].kind == TokenKind::Identifier && tokens[1].kind == TokenKind::Colon &&
+      tokens[2].kind == keyword) {
+    return 2;
+  }
+  return static_cast<std::size_t>(-1);
+}
+
 static std::span<const Token> expression_tokens_for_statement(StatementKind kind, std::span<const Token> line_tokens) {
   if (line_tokens.empty()) {
     return std::span<const Token>{};
@@ -1295,46 +1309,61 @@ AstStatement build_statement_from_line(AstProgram& program, const SourceLine& bo
   st.span = body.span;
   std::string loop_head;
   const bool labeled_loop = is_labeled_loop_header(body.clean, loop_head);
-  if (starts_with(body.clean, "import ") || starts_with(body.clean, "from ")) {
+  const bool token_import =
+      !line_tokens.empty() && (line_tokens[0].kind == TokenKind::KeywordImport || line_tokens[0].kind == TokenKind::KeywordFrom);
+  const bool token_if = leading_keyword_index(line_tokens, TokenKind::KeywordIf) != static_cast<std::size_t>(-1);
+  const bool token_else = leading_keyword_index(line_tokens, TokenKind::KeywordElse) != static_cast<std::size_t>(-1);
+  const bool token_while = leading_keyword_index(line_tokens, TokenKind::KeywordWhile) != static_cast<std::size_t>(-1);
+  const bool token_for = leading_keyword_index(line_tokens, TokenKind::KeywordFor) != static_cast<std::size_t>(-1);
+  const bool token_match = leading_keyword_index(line_tokens, TokenKind::KeywordMatch) != static_cast<std::size_t>(-1);
+  const bool token_defer = leading_keyword_index(line_tokens, TokenKind::KeywordDefer) != static_cast<std::size_t>(-1);
+  const bool token_break =
+      !line_tokens.empty() && line_tokens[0].kind == TokenKind::Identifier && line_tokens[0].lexeme == "break";
+  const bool token_continue =
+      !line_tokens.empty() && line_tokens[0].kind == TokenKind::Identifier && line_tokens[0].lexeme == "continue";
+  const bool token_return = leading_keyword_index(line_tokens, TokenKind::KeywordReturn) != static_cast<std::size_t>(-1);
+  const bool token_let = leading_keyword_index(line_tokens, TokenKind::KeywordLet) != static_cast<std::size_t>(-1);
+
+  if (token_import || starts_with(body.clean, "import ") || starts_with(body.clean, "from ")) {
     st.kind = StatementKind::Expr;
     add_parse_error(program, body.number, "import statements are only allowed at top-level scope");
     parse_statement_expression(program, st, macros, line_tokens);
     return st;
   }
-  if (starts_with(body.clean, "if ")) {
+  if (token_if || starts_with(body.clean, "if ")) {
     st.kind = StatementKind::If;
     if (!valid_control_header("if", body.clean)) {
       add_parse_error(program, body.number, "if requires parentheses and trailing ':'");
     }
-  } else if (starts_with(body.clean, "else")) {
+  } else if (token_else || starts_with(body.clean, "else")) {
     st.kind = StatementKind::Else;
     if (trim(body.clean) != "else:") {
       add_parse_error(program, body.number, "else must be written as 'else:'");
     }
-  } else if (starts_with(body.clean, "while ") || (labeled_loop && starts_with(loop_head, "while "))) {
+  } else if (token_while || starts_with(body.clean, "while ") || (labeled_loop && starts_with(loop_head, "while "))) {
     st.kind = StatementKind::While;
     if (!valid_control_header("while", body.clean)) {
       add_parse_error(program, body.number, "while requires parentheses and trailing ':'");
     }
-  } else if (starts_with(body.clean, "for ") || (labeled_loop && starts_with(loop_head, "for "))) {
+  } else if (token_for || starts_with(body.clean, "for ") || (labeled_loop && starts_with(loop_head, "for "))) {
     st.kind = StatementKind::For;
     if (!valid_for_header(body.clean)) {
       add_parse_error(program, body.number, "for header must follow 'for <name> in <expr>:'");
     }
-  } else if (starts_with(body.clean, "match ")) {
+  } else if (token_match || starts_with(body.clean, "match ")) {
     st.kind = StatementKind::Match;
     if (!ends_with(body.clean, ":")) {
       add_parse_error(program, body.number, "match header must be colon-terminated");
     }
-  } else if (starts_with(body.clean, "defer ")) {
+  } else if (token_defer || starts_with(body.clean, "defer ")) {
     st.kind = StatementKind::Defer;
-  } else if (starts_with(body.clean, "break")) {
+  } else if (token_break || starts_with(body.clean, "break")) {
     st.kind = StatementKind::Break;
-  } else if (starts_with(body.clean, "continue")) {
+  } else if (token_continue || starts_with(body.clean, "continue")) {
     st.kind = StatementKind::Continue;
-  } else if (starts_with(body.clean, "return ") || trim(body.clean) == "return") {
+  } else if (token_return || starts_with(body.clean, "return ") || trim(body.clean) == "return") {
     st.kind = StatementKind::Return;
-  } else if (starts_with(body.clean, "let ")) {
+  } else if (token_let || starts_with(body.clean, "let ")) {
     st.kind = StatementKind::Let;
   } else if (is_assignment_line(body.clean)) {
     st.kind = StatementKind::Assign;
