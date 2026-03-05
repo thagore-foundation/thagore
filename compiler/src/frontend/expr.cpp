@@ -697,7 +697,7 @@ static bool should_accept_raw_expression(const std::string& expr) {
 // Statement-level expression parsing
 // ---------------------------------------------------------------------------
 
-static AstExprPtr make_raw_expression_ast(const AstStatement& st, const std::string& text) {
+static AstExprPtr make_raw_expression_ast_from_text(const std::string& text, std::optional<Span> span) {
   const std::string clean = trim(text);
   if (clean.empty()) {
     return nullptr;
@@ -705,12 +705,430 @@ static AstExprPtr make_raw_expression_ast(const AstStatement& st, const std::str
   auto expr = std::make_shared<AstExpr>();
   expr->kind = AstExprKind::Raw;
   expr->text = clean;
-  expr->span = st.span;
+  expr->span = span;
   return expr;
 }
 
+static AstExprPtr make_raw_expression_ast(const AstStatement& st, const std::string& text) {
+  return make_raw_expression_ast_from_text(text, st.span);
+}
+
+struct ExprTokenCursor {
+  std::span<const Token> tokens;
+  std::size_t pos = 0;
+
+  const Token* peek(int offset = 0) const {
+    if (offset < 0) {
+      return nullptr;
+    }
+    const std::size_t idx = pos + static_cast<std::size_t>(offset);
+    if (idx >= tokens.size()) {
+      return nullptr;
+    }
+    return &tokens[idx];
+  }
+
+  bool at_end() const {
+    return pos >= tokens.size();
+  }
+
+  Token advance() {
+    const Token* tok = peek();
+    if (tok == nullptr) {
+      return Token{};
+    }
+    ++pos;
+    return *tok;
+  }
+};
+
+static bool token_has_lexeme(const Token& tok, const char* lexeme) {
+  return tok.lexeme == lexeme;
+}
+
+static std::optional<Span> merge_expr_spans(const AstExprPtr& lhs, const AstExprPtr& rhs) {
+  if (!lhs || !rhs || !lhs->span.has_value() || !rhs->span.has_value()) {
+    if (lhs && lhs->span.has_value()) {
+      return lhs->span;
+    }
+    if (rhs && rhs->span.has_value()) {
+      return rhs->span;
+    }
+    return std::nullopt;
+  }
+  Span merged = *lhs->span;
+  const Span right = *rhs->span;
+  if (right.lo < merged.lo) {
+    merged.lo = right.lo;
+  }
+  if (right.hi > merged.hi) {
+    merged.hi = right.hi;
+  }
+  if (merged.file_id == 0) {
+    merged.file_id = right.file_id;
+  }
+  return merged;
+}
+
+static int binary_precedence(const Token& tok) {
+  if (tok.kind == TokenKind::Star || tok.kind == TokenKind::Slash || token_has_lexeme(tok, "%")) {
+    return 70;
+  }
+  if (tok.kind == TokenKind::Plus || tok.kind == TokenKind::Minus) {
+    return 60;
+  }
+  if (token_has_lexeme(tok, "..")) {
+    return 55;
+  }
+  if (tok.kind == TokenKind::Less || tok.kind == TokenKind::LessEqual || tok.kind == TokenKind::Greater ||
+      tok.kind == TokenKind::GreaterEqual) {
+    return 50;
+  }
+  if (tok.kind == TokenKind::EqualEqual || tok.kind == TokenKind::BangEqual) {
+    return 45;
+  }
+  if (token_has_lexeme(tok, "&&")) {
+    return 40;
+  }
+  if (token_has_lexeme(tok, "||")) {
+    return 35;
+  }
+  return -1;
+}
+
+static AstExprPtr parse_expression_ast_impl(ExprTokenCursor& cursor, int min_prec);
+
+static AstExprPtr parse_primary_ast(ExprTokenCursor& cursor) {
+  const Token* next = cursor.peek();
+  if (next == nullptr) {
+    return nullptr;
+  }
+
+  if (next->kind == TokenKind::Minus || token_has_lexeme(*next, "!") || next->kind == TokenKind::KeywordAwait) {
+    const Token op_tok = cursor.advance();
+    AstExprPtr operand = parse_primary_ast(cursor);
+    if (!operand) {
+      return nullptr;
+    }
+    auto unary = std::make_shared<AstExpr>();
+    unary->kind = AstExprKind::Unary;
+    unary->op = op_tok.lexeme;
+    unary->children.push_back(operand);
+    unary->span = merge_expr_spans(make_raw_expression_ast_from_text(op_tok.lexeme, op_tok.span), operand);
+    unary->text = op_tok.lexeme + operand->text;
+    return unary;
+  }
+
+  AstExprPtr node;
+  if (next->kind == TokenKind::Number || next->kind == TokenKind::String || next->kind == TokenKind::Identifier) {
+    const Token atom_tok = cursor.advance();
+    node = std::make_shared<AstExpr>();
+    node->kind = AstExprKind::Atom;
+    node->text = atom_tok.lexeme;
+    node->span = atom_tok.span;
+  } else if (next->kind == TokenKind::LParen) {
+    cursor.advance();
+    if (cursor.peek() && cursor.peek()->kind == TokenKind::RParen) {
+      const Token close = cursor.advance();
+      node = std::make_shared<AstExpr>();
+      node->kind = AstExprKind::Tuple;
+      node->text = "()";
+      node->span = close.span;
+    } else {
+      AstExprPtr first = parse_expression_ast_impl(cursor, 0);
+      if (!first) {
+        return nullptr;
+      }
+      if (cursor.peek() && cursor.peek()->kind == TokenKind::Comma) {
+        auto tuple = std::make_shared<AstExpr>();
+        tuple->kind = AstExprKind::Tuple;
+        tuple->children.push_back(first);
+        while (cursor.peek() && cursor.peek()->kind == TokenKind::Comma) {
+          cursor.advance();
+          AstExprPtr item = parse_expression_ast_impl(cursor, 0);
+          if (!item) {
+            break;
+          }
+          tuple->children.push_back(item);
+        }
+        if (cursor.peek() && cursor.peek()->kind == TokenKind::RParen) {
+          const Token close = cursor.advance();
+          tuple->span = merge_expr_spans(first, make_raw_expression_ast_from_text(close.lexeme, close.span));
+        }
+        tuple->text = "(...)";
+        node = tuple;
+      } else {
+        if (!cursor.peek() || cursor.peek()->kind != TokenKind::RParen) {
+          return nullptr;
+        }
+        cursor.advance();
+        node = first;
+      }
+    }
+  } else if (token_has_lexeme(*next, "[")) {
+    cursor.advance();
+    auto array = std::make_shared<AstExpr>();
+    array->kind = AstExprKind::Array;
+    while (cursor.peek() && !token_has_lexeme(*cursor.peek(), "]")) {
+      AstExprPtr item = parse_expression_ast_impl(cursor, 0);
+      if (!item) {
+        break;
+      }
+      array->children.push_back(item);
+      if (cursor.peek() && cursor.peek()->kind == TokenKind::Comma) {
+        cursor.advance();
+      } else {
+        break;
+      }
+    }
+    if (cursor.peek() && token_has_lexeme(*cursor.peek(), "]")) {
+      cursor.advance();
+    }
+    array->text = "[...]";
+    node = array;
+  } else {
+    const Token atom_tok = cursor.advance();
+    node = std::make_shared<AstExpr>();
+    node->kind = AstExprKind::Atom;
+    node->text = atom_tok.lexeme;
+    node->span = atom_tok.span;
+  }
+
+  while (true) {
+    const Token* look = cursor.peek();
+    if (look == nullptr) {
+      break;
+    }
+    if (look->kind == TokenKind::LParen) {
+      cursor.advance();
+      auto call = std::make_shared<AstExpr>();
+      call->kind = AstExprKind::Call;
+      call->children.push_back(node);
+      while (cursor.peek() && cursor.peek()->kind != TokenKind::RParen) {
+        AstExprPtr arg = parse_expression_ast_impl(cursor, 0);
+        if (!arg) {
+          break;
+        }
+        call->children.push_back(arg);
+        if (cursor.peek() && cursor.peek()->kind == TokenKind::Comma) {
+          cursor.advance();
+        } else {
+          break;
+        }
+      }
+      if (cursor.peek() && cursor.peek()->kind == TokenKind::RParen) {
+        const Token close = cursor.advance();
+        call->span = merge_expr_spans(node, make_raw_expression_ast_from_text(close.lexeme, close.span));
+      } else {
+        call->span = node->span;
+      }
+      call->text = node->text + "()";
+      node = call;
+      continue;
+    }
+    if (token_has_lexeme(*look, ".")) {
+      cursor.advance();
+      const Token* field_tok = cursor.peek();
+      if (!field_tok) {
+        break;
+      }
+      Token field = cursor.advance();
+      auto field_expr = std::make_shared<AstExpr>();
+      field_expr->kind = AstExprKind::Field;
+      field_expr->op = field.lexeme;
+      field_expr->children.push_back(node);
+      field_expr->span = merge_expr_spans(node, make_raw_expression_ast_from_text(field.lexeme, field.span));
+      field_expr->text = node->text + "." + field.lexeme;
+      node = field_expr;
+      continue;
+    }
+    if (token_has_lexeme(*look, "[")) {
+      cursor.advance();
+      AstExprPtr index = parse_expression_ast_impl(cursor, 0);
+      if (!index) {
+        break;
+      }
+      if (cursor.peek() && token_has_lexeme(*cursor.peek(), "]")) {
+        cursor.advance();
+      }
+      auto index_expr = std::make_shared<AstExpr>();
+      index_expr->kind = AstExprKind::Index;
+      index_expr->children.push_back(node);
+      index_expr->children.push_back(index);
+      index_expr->span = merge_expr_spans(node, index);
+      index_expr->text = node->text + "[...]";
+      node = index_expr;
+      continue;
+    }
+    break;
+  }
+  return node;
+}
+
+static AstExprPtr parse_expression_ast_impl(ExprTokenCursor& cursor, int min_prec) {
+  AstExprPtr lhs = parse_primary_ast(cursor);
+  if (!lhs) {
+    return nullptr;
+  }
+  while (true) {
+    const Token* op_tok = cursor.peek();
+    if (op_tok == nullptr) {
+      break;
+    }
+    const int prec = binary_precedence(*op_tok);
+    if (prec < min_prec) {
+      break;
+    }
+    const Token op = cursor.advance();
+    AstExprPtr rhs = parse_expression_ast_impl(cursor, prec + 1);
+    if (!rhs) {
+      break;
+    }
+    auto bin = std::make_shared<AstExpr>();
+    bin->kind = AstExprKind::Binary;
+    bin->op = op.lexeme;
+    bin->children.push_back(lhs);
+    bin->children.push_back(rhs);
+    bin->span = merge_expr_spans(lhs, rhs);
+    bin->text = lhs->text + " " + op.lexeme + " " + rhs->text;
+    lhs = bin;
+  }
+  return lhs;
+}
+
+static std::span<const Token> token_subspan(std::span<const Token> tokens, std::size_t begin, std::size_t end) {
+  if (end <= begin || begin >= tokens.size() || end > tokens.size()) {
+    return std::span<const Token>{};
+  }
+  return tokens.subspan(begin, end - begin);
+}
+
+static std::size_t find_first_kind(std::span<const Token> tokens, TokenKind kind, std::size_t start = 0) {
+  for (std::size_t i = start; i < tokens.size(); ++i) {
+    if (tokens[i].kind == kind) {
+      return i;
+    }
+  }
+  return static_cast<std::size_t>(-1);
+}
+
+static std::size_t find_first_colon(std::span<const Token> tokens, std::size_t start = 0) {
+  for (std::size_t i = start; i < tokens.size(); ++i) {
+    if (tokens[i].kind == TokenKind::Colon) {
+      return i;
+    }
+  }
+  return static_cast<std::size_t>(-1);
+}
+
+static std::span<const Token> expression_tokens_for_statement(StatementKind kind, std::span<const Token> line_tokens) {
+  if (line_tokens.empty()) {
+    return std::span<const Token>{};
+  }
+
+  if (kind == StatementKind::Let || kind == StatementKind::Assign) {
+    const std::size_t eq = find_first_kind(line_tokens, TokenKind::Equal);
+    if (eq == static_cast<std::size_t>(-1) || eq + 1 >= line_tokens.size()) {
+      return std::span<const Token>{};
+    }
+    return token_subspan(line_tokens, eq + 1, line_tokens.size());
+  }
+  if (kind == StatementKind::Return) {
+    const std::size_t idx = find_first_kind(line_tokens, TokenKind::KeywordReturn);
+    if (idx == static_cast<std::size_t>(-1) || idx + 1 >= line_tokens.size()) {
+      return std::span<const Token>{};
+    }
+    return token_subspan(line_tokens, idx + 1, line_tokens.size());
+  }
+  if (kind == StatementKind::Defer) {
+    const std::size_t idx = find_first_kind(line_tokens, TokenKind::KeywordDefer);
+    if (idx == static_cast<std::size_t>(-1) || idx + 1 >= line_tokens.size()) {
+      return std::span<const Token>{};
+    }
+    return token_subspan(line_tokens, idx + 1, line_tokens.size());
+  }
+  if (kind == StatementKind::If || kind == StatementKind::While) {
+    const TokenKind keyword = kind == StatementKind::If ? TokenKind::KeywordIf : TokenKind::KeywordWhile;
+    const std::size_t kw = find_first_kind(line_tokens, keyword);
+    if (kw == static_cast<std::size_t>(-1)) {
+      return std::span<const Token>{};
+    }
+    const std::size_t lparen = find_first_kind(line_tokens, TokenKind::LParen, kw + 1);
+    if (lparen == static_cast<std::size_t>(-1)) {
+      return std::span<const Token>{};
+    }
+    int depth = 0;
+    for (std::size_t i = lparen; i < line_tokens.size(); ++i) {
+      if (line_tokens[i].kind == TokenKind::LParen) {
+        ++depth;
+      } else if (line_tokens[i].kind == TokenKind::RParen) {
+        --depth;
+        if (depth == 0) {
+          return token_subspan(line_tokens, lparen + 1, i);
+        }
+      }
+    }
+    return std::span<const Token>{};
+  }
+  if (kind == StatementKind::For) {
+    const std::size_t kw = find_first_kind(line_tokens, TokenKind::KeywordFor);
+    if (kw == static_cast<std::size_t>(-1)) {
+      return std::span<const Token>{};
+    }
+    const std::size_t in_kw = find_first_kind(line_tokens, TokenKind::KeywordIn, kw + 1);
+    if (in_kw == static_cast<std::size_t>(-1) || in_kw + 1 >= line_tokens.size()) {
+      return std::span<const Token>{};
+    }
+    std::size_t end = find_first_colon(line_tokens, in_kw + 1);
+    if (end == static_cast<std::size_t>(-1)) {
+      end = line_tokens.size();
+    }
+    return token_subspan(line_tokens, in_kw + 1, end);
+  }
+  if (kind == StatementKind::Match) {
+    const std::size_t kw = find_first_kind(line_tokens, TokenKind::KeywordMatch);
+    if (kw == static_cast<std::size_t>(-1) || kw + 1 >= line_tokens.size()) {
+      return std::span<const Token>{};
+    }
+    std::size_t end = find_first_colon(line_tokens, kw + 1);
+    if (end == static_cast<std::size_t>(-1)) {
+      end = line_tokens.size();
+    }
+    return token_subspan(line_tokens, kw + 1, end);
+  }
+  if (kind == StatementKind::Expr) {
+    if (line_tokens.size() >= 3 && line_tokens[0].kind == TokenKind::Identifier && line_tokens[0].lexeme == "print" &&
+        line_tokens[1].kind == TokenKind::LParen && line_tokens.back().kind == TokenKind::RParen) {
+      return token_subspan(line_tokens, 2, line_tokens.size() - 1);
+    }
+    return line_tokens;
+  }
+  return std::span<const Token>{};
+}
+
+static AstExprPtr parse_expression_ast_from_tokens(std::span<const Token> tokens, const std::string& fallback_text,
+                                                   std::optional<Span> fallback_span) {
+  if (tokens.empty()) {
+    return make_raw_expression_ast_from_text(fallback_text, fallback_span);
+  }
+  ExprTokenCursor cursor{tokens, 0};
+  AstExprPtr parsed = parse_expression_ast_impl(cursor, 0);
+  if (!parsed || !cursor.at_end()) {
+    return make_raw_expression_ast_from_text(fallback_text, fallback_span);
+  }
+  if (parsed->text.empty()) {
+    parsed->text = trim(fallback_text);
+  }
+  if (!parsed->span.has_value()) {
+    parsed->span = fallback_span;
+  }
+  return parsed;
+}
+
 static void parse_statement_expression(AstProgram& program, AstStatement& st,
-                                       const std::unordered_map<std::string, AstMacro>& macros) {
+                                       const std::unordered_map<std::string, AstMacro>& macros,
+                                       std::span<const Token> line_tokens) {
+  const std::span<const Token> expr_tokens = expression_tokens_for_statement(st.kind, line_tokens);
   std::string expr_text;
   std::vector<std::string> closure_params;
   std::string closure_body;
@@ -778,7 +1196,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     st.has_expression = true;
     st.expression_valid = expr_text.find("..") != std::string::npos;
     st.expression_normalized = expr_text;
-    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
+    st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, st.expression_normalized, st.span);
     if (!st.expression_valid) {
       st.expression_error = "for statement must use '..' range syntax";
       add_parse_error(program, st.line, st.expression_error);
@@ -815,7 +1233,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     st.has_expression = true;
     st.expression_valid = false;
     st.expression_error = "macro expansion failed: " + expansion_error;
-    st.expression_ast = make_raw_expression_ast(st, expr_text);
+    st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, expr_text, st.span);
     add_parse_error(program, st.line, st.expression_error);
     return;
   }
@@ -826,7 +1244,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
   if (parse_closure_literal(expr_text, closure_params, closure_body, closure_block)) {
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
-    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
+    st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, st.expression_normalized, st.span);
     st.expression_error.clear();
     AstClosure closure;
     closure.params = closure_params;
@@ -843,14 +1261,14 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
     program.interpolated_strings.push_back(std::move(interpolated));
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
-    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
+    st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, st.expression_normalized, st.span);
     st.expression_error.clear();
     return;
   }
   if (should_accept_raw_expression(expr_text)) {
     st.expression_valid = true;
     st.expression_normalized = trim(expr_text);
-    st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
+    st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, st.expression_normalized, st.span);
     st.expression_error.clear();
     return;
   }
@@ -860,7 +1278,7 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
   if (st.expression_normalized.empty()) {
     st.expression_normalized = trim(expr_text);
   }
-  st.expression_ast = make_raw_expression_ast(st, st.expression_normalized);
+  st.expression_ast = parse_expression_ast_from_tokens(expr_tokens, st.expression_normalized, st.span);
   st.expression_error = parsed.error;
   if (!parsed.ok) {
     add_parse_error(program, st.line, "invalid expression: " + parsed.error);
@@ -868,7 +1286,8 @@ static void parse_statement_expression(AstProgram& program, AstStatement& st,
 }
 
 AstStatement build_statement_from_line(AstProgram& program, const SourceLine& body,
-                                       const std::unordered_map<std::string, AstMacro>& macros) {
+                                       const std::unordered_map<std::string, AstMacro>& macros,
+                                       std::span<const Token> line_tokens) {
   AstStatement st;
   st.text = body.clean;
   st.line = body.number;
@@ -879,7 +1298,7 @@ AstStatement build_statement_from_line(AstProgram& program, const SourceLine& bo
   if (starts_with(body.clean, "import ") || starts_with(body.clean, "from ")) {
     st.kind = StatementKind::Expr;
     add_parse_error(program, body.number, "import statements are only allowed at top-level scope");
-    parse_statement_expression(program, st, macros);
+    parse_statement_expression(program, st, macros, line_tokens);
     return st;
   }
   if (starts_with(body.clean, "if ")) {
@@ -922,7 +1341,7 @@ AstStatement build_statement_from_line(AstProgram& program, const SourceLine& bo
   } else {
     st.kind = StatementKind::Expr;
   }
-  parse_statement_expression(program, st, macros);
+  parse_statement_expression(program, st, macros, line_tokens);
   return st;
 }
 

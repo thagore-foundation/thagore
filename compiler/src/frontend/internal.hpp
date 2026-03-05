@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
+#include <span>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -21,6 +23,8 @@ struct SourceLine {
   int indent = 0;
   std::string clean;
   Span span;
+  std::size_t token_begin = 0;
+  std::size_t token_end = 0;
 };
 
 enum class ExprTokenKind {
@@ -166,7 +170,8 @@ bool valid_control_header(const std::string& keyword, const std::string& line);
 bool valid_for_header(const std::string& line);
 void collect_feature_counters(const std::string& line, AstProgram& program);
 AstStatement build_statement_from_line(AstProgram& program, const SourceLine& body,
-                                       const std::unordered_map<std::string, AstMacro>& macros);
+                                       const std::unordered_map<std::string, AstMacro>& macros,
+                                       std::span<const Token> line_tokens);
 int parse_return_literal(const std::string& line);
 
 // ---------------------------------------------------------------------------

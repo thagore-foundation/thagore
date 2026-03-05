@@ -56,6 +56,12 @@ struct LineTokenInfo {
   TokenKind second = TokenKind::Unknown;
 };
 
+struct LineTokenBounds {
+  std::size_t begin = 0;
+  std::size_t end = 0;
+  bool has_tokens = false;
+};
+
 static bool has_valid_span(const Span& span) {
   return span.hi > span.lo;
 }
@@ -107,12 +113,41 @@ static std::unordered_map<int, LineTokenInfo> collect_line_token_info(ParserCont
   return line_info;
 }
 
+static std::unordered_map<int, LineTokenBounds> collect_line_token_bounds(std::span<const Token> tokens) {
+  std::unordered_map<int, LineTokenBounds> bounds;
+  for (std::size_t i = 0; i < tokens.size(); ++i) {
+    const Token& tok = tokens[i];
+    if (tok.line <= 0 || tok.kind == TokenKind::EndOfFile || tok.kind == TokenKind::Newline) {
+      continue;
+    }
+    auto it = bounds.find(tok.line);
+    if (it == bounds.end()) {
+      LineTokenBounds line_bounds;
+      line_bounds.begin = i;
+      line_bounds.end = i + 1;
+      line_bounds.has_tokens = true;
+      bounds[tok.line] = line_bounds;
+      continue;
+    }
+    it->second.end = i + 1;
+  }
+  return bounds;
+}
+
+static std::span<const Token> line_tokens_for(std::span<const Token> tokens, const SourceLine& line) {
+  if (line.token_end <= line.token_begin || line.token_end > tokens.size()) {
+    return std::span<const Token>{};
+  }
+  return tokens.subspan(line.token_begin, line.token_end - line.token_begin);
+}
+
 }  // namespace
 
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
   ParserContext ctx{std::span<const Token>(tokens.data(), tokens.size()), 0};
   auto token_line_spans = collect_line_token_spans(ctx.tokens);
   auto token_line_info = collect_line_token_info(ctx);
+  auto token_line_bounds = collect_line_token_bounds(ctx.tokens);
   ctx.pos = 0;
   AstProgram program;
   program.source = source;
@@ -146,7 +181,17 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
     program.top_level_lines.push_back(clean);
-    lines.push_back(SourceLine{line_no, leading_indent(raw_line), clean, line_span});
+    SourceLine source_line;
+    source_line.number = line_no;
+    source_line.indent = leading_indent(raw_line);
+    source_line.clean = clean;
+    source_line.span = line_span;
+    auto bounds_it = token_line_bounds.find(line_no);
+    if (bounds_it != token_line_bounds.end() && bounds_it->second.has_tokens) {
+      source_line.token_begin = bounds_it->second.begin;
+      source_line.token_end = bounds_it->second.end;
+    }
+    lines.push_back(std::move(source_line));
     line_start_offset = line_end_offset;
     if (line_start_offset < source.size() && source[line_start_offset] == '\n') {
       ++line_start_offset;
@@ -227,7 +272,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
       while (i < lines.size() && lines[i].indent > line.indent) {
         collect_feature_counters(lines[i].clean, program);
-        AstStatement st = build_statement_from_line(program, lines[i], macros);
+        AstStatement st = build_statement_from_line(program, lines[i], macros, line_tokens_for(ctx.tokens, lines[i]));
         if ((st.kind != StatementKind::Let && st.kind != StatementKind::Assign) || !st.has_expression ||
             !st.expression_valid) {
           add_parse_error(program, lines[i].number,
@@ -309,7 +354,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
 
       while (i < lines.size() && lines[i].indent > fn.header_indent) {
         const SourceLine& body = lines[i];
-        AstStatement st = build_statement_from_line(program, body, macros);
+        AstStatement st = build_statement_from_line(program, body, macros, line_tokens_for(ctx.tokens, body));
         st.span = body.span;
         if (st.kind == StatementKind::Return && fn.name == "main") {
           program.main_return_literal = parse_return_literal(body.clean);
@@ -567,7 +612,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
             add_parse_error(program, member_line.number, "impl method body must be indentation-scoped");
           }
           while (i < lines.size() && lines[i].indent > fn.header_indent) {
-            AstStatement st = build_statement_from_line(program, lines[i], macros);
+            AstStatement st = build_statement_from_line(program, lines[i], macros, line_tokens_for(ctx.tokens, lines[i]));
             st.span = lines[i].span;
             fn.body.push_back(std::move(st));
             ++i;
@@ -586,7 +631,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    AstStatement top = build_statement_from_line(program, line, macros);
+    AstStatement top = build_statement_from_line(program, line, macros, line_tokens_for(ctx.tokens, line));
     top.span = line.span;
     if (top.kind == StatementKind::Return) {
       add_parse_error(program, line.number, "top-level return is not allowed");
