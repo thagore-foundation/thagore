@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -9,11 +10,13 @@
 #include "thagc/frontend/ast.hpp"
 #include "thagc/frontend/types.hpp"
 #include "thagc/hir/expr.hpp"
+#include "thagc/ty/ty.hpp"
 
 namespace thagc::hir {
 
 struct TypeEnv {
   const std::unordered_map<std::string, semantics::TypeKind>* scope = nullptr;
+  const std::unordered_map<std::string, ty::Ty>* scope_tys = nullptr;
   const std::unordered_map<std::string, int>* enum_variants = nullptr;
   const std::unordered_map<std::string, std::string>* struct_bindings = nullptr;
   const std::unordered_map<std::string, std::vector<std::string>>* struct_fields = nullptr;
@@ -24,7 +27,23 @@ struct TypeEnv {
   const std::unordered_set<std::string>* struct_names = nullptr;
 };
 
+class Unifier {
+ public:
+  Unifier();
+
+  ty::TyVar fresh();
+  bool unify(const ty::Ty& a, const ty::Ty& b, std::string& error);
+  ty::Ty apply(const ty::Ty& value) const;
+
+ private:
+  std::vector<std::optional<ty::Ty>> table_;
+};
+
 HirExprPtr lower_ast_expr(const syntax::AstExprPtr& expr);
+
+bool infer_expression_ty(const HirExprPtr& expr, const TypeEnv& env, ty::Ty& out, std::string& error);
+
+bool check_expression_ty(const HirExprPtr& expr, const ty::Ty& expected, const TypeEnv& env, std::string& error);
 
 semantics::TypeKind infer_expression(const HirExprPtr& expr, const TypeEnv& env, std::string& error);
 

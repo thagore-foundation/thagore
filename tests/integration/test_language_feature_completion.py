@@ -269,6 +269,26 @@ class LanguageFeatureCompletionTests(unittest.TestCase):
         self.assertEqual(run.returncode, 4, msg=run.stderr)
         self.assertIn("9", run.stdout)
 
+    def test_typechecker_rejects_option_payload_mismatch(self) -> None:
+        build, _ = self._build(
+            "func main():\n"
+            "  let bad: Option<i32> = Some(\"x\")\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("annotation 'Option<i32>' is not assignable", build.stderr)
+
+    def test_typechecker_rejects_return_generic_payload_mismatch(self) -> None:
+        build, _ = self._build(
+            "func wrong() -> Option<i32>:\n"
+            "  return Some(\"x\")\n"
+            "\n"
+            "func main():\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(build.returncode, 0)
+        self.assertIn("return type mismatch", build.stderr)
+
     def test_try_operator_early_return_on_err(self) -> None:
         _, run = self._build_and_run(
             "func may_fail(v) -> Result<i32, i32>:\n"

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -2205,6 +2206,73 @@ static TypeKind resolve_declared_user_type(const std::string& type_name,
   return TypeKind::Unknown;
 }
 
+static ty::Ty ty_from_type_kind(TypeKind kind) {
+  return ty::from_type_kind(kind);
+}
+
+static bool resolve_declared_user_type_tree(const std::string& type_name,
+                                            const std::unordered_map<std::string, TypeKind>& aliases,
+                                            const std::unordered_set<std::string>& struct_names,
+                                            const std::unordered_set<std::string>& enum_names,
+                                            ty::Ty& out,
+                                            std::string& error,
+                                            int depth_limit = 32) {
+  error.clear();
+  if (depth_limit <= 0) {
+    error = "generic type nesting is too deep";
+    return false;
+  }
+  const std::string clean = strip_state_annotation(type_name);
+  std::string generic_base;
+  std::vector<std::string> generic_args;
+  if (parse_generic_parts(clean, generic_base, generic_args)) {
+    if (!is_builtin_generic_base(generic_base)) {
+      error = "unsupported generic base type '" + generic_base + "'";
+      return false;
+    }
+    const std::size_t expected = builtin_generic_arity(generic_base);
+    if (expected == 0 || generic_args.size() != expected) {
+      error = "generic type '" + generic_base + "' expects " + std::to_string(expected) + " argument(s) but got " +
+              std::to_string(generic_args.size());
+      return false;
+    }
+    ty::TyNamed named;
+    named.name = generic_base;
+    named.args.reserve(generic_args.size());
+    for (const std::string& arg : generic_args) {
+      ty::Ty arg_ty;
+      std::string nested_error;
+      if (!resolve_declared_user_type_tree(arg, aliases, struct_names, enum_names, arg_ty, nested_error,
+                                           depth_limit - 1)) {
+        error = nested_error;
+        return false;
+      }
+      named.args.push_back(std::make_shared<ty::Ty>(std::move(arg_ty)));
+    }
+    out = ty::Ty{std::move(named)};
+    return true;
+  }
+  if (has_any_angle_bracket(clean)) {
+    error = "malformed generic type syntax '" + clean + "'";
+    return false;
+  }
+  const TypeKind resolved = resolve_declared_user_type(clean, aliases, struct_names, enum_names);
+  if (resolved == TypeKind::Unknown) {
+    error = "unsupported type '" + clean + "'";
+    return false;
+  }
+  if (resolved == TypeKind::StructType) {
+    out = ty::Ty{ty::TyNamed{"struct", {}}};
+    return true;
+  }
+  if (resolved == TypeKind::EnumType) {
+    out = ty::Ty{ty::TyNamed{"enum", {}}};
+    return true;
+  }
+  out = ty_from_type_kind(resolved);
+  return true;
+}
+
 static bool validate_declared_type_expr(const std::string& type_name,
                                         const std::unordered_map<std::string, TypeKind>& aliases,
                                         const std::unordered_set<std::string>& struct_names,
@@ -2247,6 +2315,27 @@ static bool validate_declared_type_expr(const std::string& type_name,
     return true;
   }
   error = "unsupported type '" + clean + "'";
+  return false;
+}
+
+static bool requires_tree_generic_check(const std::string& type_name, int depth_limit = 32) {
+  if (depth_limit <= 0) {
+    return false;
+  }
+  const std::string clean = strip_state_annotation(type_name);
+  std::string base;
+  std::vector<std::string> args;
+  if (!parse_generic_parts(clean, base, args)) {
+    return false;
+  }
+  if (base == "Option" || base == "Result") {
+    return true;
+  }
+  for (const std::string& arg : args) {
+    if (requires_tree_generic_check(arg, depth_limit - 1)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -2519,6 +2608,7 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
 
 static bool try_check_statement_expression_against_type_hir(
     const syntax::AstStatement& st, TypeKind expected, const std::unordered_map<std::string, TypeKind>& scope,
+    const std::unordered_map<std::string, ty::Ty>& scope_tys,
     const std::unordered_map<std::string, int>& enum_variants,
     const std::unordered_map<std::string, std::string>& struct_bindings,
     const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
@@ -2532,6 +2622,7 @@ static bool try_check_statement_expression_against_type_hir(
   }
   hir::TypeEnv hir_env;
   hir_env.scope = &scope;
+  hir_env.scope_tys = &scope_tys;
   hir_env.enum_variants = &enum_variants;
   hir_env.struct_bindings = &struct_bindings;
   hir_env.struct_fields = &struct_fields;
@@ -2553,6 +2644,78 @@ static bool try_check_statement_expression_against_type_hir(
   }
 
   return hir::check_expression(hir_expr, expected, hir_env, error);
+}
+
+static bool try_check_statement_expression_against_tree_type_hir(
+    const syntax::AstStatement& st, const ty::Ty& expected, const std::unordered_map<std::string, TypeKind>& scope,
+    const std::unordered_map<std::string, ty::Ty>& scope_tys,
+    const std::unordered_map<std::string, int>& enum_variants,
+    const std::unordered_map<std::string, std::string>& struct_bindings,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+    const std::unordered_map<std::string, std::string>& struct_field_types,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_methods,
+    const std::unordered_map<std::string, TypeKind>& function_returns,
+    const std::unordered_map<std::string, std::size_t>& function_arity,
+    const std::unordered_set<std::string>& struct_names, std::string& error) {
+  if (!st.has_expression || !st.expression_ast) {
+    return true;
+  }
+  hir::TypeEnv hir_env;
+  hir_env.scope = &scope;
+  hir_env.scope_tys = &scope_tys;
+  hir_env.enum_variants = &enum_variants;
+  hir_env.struct_bindings = &struct_bindings;
+  hir_env.struct_fields = &struct_fields;
+  hir_env.struct_field_types = &struct_field_types;
+  hir_env.struct_methods = &struct_methods;
+  hir_env.function_returns = &function_returns;
+  hir_env.function_arity = &function_arity;
+  hir_env.struct_names = &struct_names;
+
+  const hir::HirExprPtr hir_expr = hir::lower_ast_expr(st.expression_ast);
+  if (!hir_expr) {
+    return true;
+  }
+
+  ty::Ty inferred;
+  std::string infer_error;
+  if (!hir::infer_expression_ty(hir_expr, hir_env, inferred, infer_error)) {
+    return true;
+  }
+  return hir::check_expression_ty(hir_expr, expected, hir_env, error);
+}
+
+static bool try_infer_statement_expression_tree_type_hir(
+    const syntax::AstStatement& st, const std::unordered_map<std::string, TypeKind>& scope,
+    const std::unordered_map<std::string, ty::Ty>& scope_tys,
+    const std::unordered_map<std::string, int>& enum_variants,
+    const std::unordered_map<std::string, std::string>& struct_bindings,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+    const std::unordered_map<std::string, std::string>& struct_field_types,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_methods,
+    const std::unordered_map<std::string, TypeKind>& function_returns,
+    const std::unordered_map<std::string, std::size_t>& function_arity,
+    const std::unordered_set<std::string>& struct_names, ty::Ty& out) {
+  if (!st.has_expression || !st.expression_ast) {
+    return false;
+  }
+  hir::TypeEnv hir_env;
+  hir_env.scope = &scope;
+  hir_env.scope_tys = &scope_tys;
+  hir_env.enum_variants = &enum_variants;
+  hir_env.struct_bindings = &struct_bindings;
+  hir_env.struct_fields = &struct_fields;
+  hir_env.struct_field_types = &struct_field_types;
+  hir_env.struct_methods = &struct_methods;
+  hir_env.function_returns = &function_returns;
+  hir_env.function_arity = &function_arity;
+  hir_env.struct_names = &struct_names;
+  const hir::HirExprPtr hir_expr = hir::lower_ast_expr(st.expression_ast);
+  if (!hir_expr) {
+    return false;
+  }
+  std::string infer_error;
+  return hir::infer_expression_ty(hir_expr, hir_env, out, infer_error);
 }
 
 static int previous_statement_same_indent(const std::vector<syntax::AstStatement>& statements, std::size_t from_index,
@@ -2833,6 +2996,10 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
 
   for (const auto& fn : program.functions) {
     std::unordered_map<std::string, TypeKind> scope = comptime_scope;
+    std::unordered_map<std::string, ty::Ty> scope_tys;
+    for (const auto& [name, kind] : scope) {
+      scope_tys[name] = ty_from_type_kind(kind);
+    }
     MemoryModelState memory_state;
     std::unordered_map<std::string, bool> opened_resources;
     std::unordered_map<std::string, StateRef> value_states;
@@ -2847,19 +3014,27 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
       if (!param.empty()) {
         if (is_method && param == "self") {
           scope[param] = TypeKind::StructType;
+          scope_tys[param] = ty::Ty{ty::TyNamed{"struct", {}}};
           struct_bindings[param] = method_owner;
         } else {
           TypeKind param_type = TypeKind::I32;
+          ty::Ty param_tree_type = ty_from_type_kind(param_type);
           if (param_index < fn.param_types.size()) {
             const std::string& declared_param = fn.param_types[param_index];
             if (!declared_param.empty()) {
               const TypeKind resolved = resolve_declared_user_type(declared_param, aliases, struct_names, enum_names);
               if (resolved != TypeKind::Unknown) {
                 param_type = resolved;
+                std::string tree_error;
+                if (!resolve_declared_user_type_tree(declared_param, aliases, struct_names, enum_names, param_tree_type,
+                                                     tree_error)) {
+                  param_tree_type = ty_from_type_kind(param_type);
+                }
               }
             }
           }
           scope[param] = param_type;
+          scope_tys[param] = param_tree_type;
         }
       }
     }
@@ -2877,6 +3052,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             }
           }
           scope["self." + field] = field_type;
+          scope_tys["self." + field] = ty_from_type_kind(field_type);
         }
       }
     }
@@ -2886,6 +3062,17 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     const TypeKind declared_fn_return =
         fn.return_type.empty() ? TypeKind::Unknown
                                : resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names);
+    std::optional<ty::Ty> declared_fn_return_tree;
+    if (!fn.return_type.empty()) {
+      ty::Ty declared_tree;
+      std::string declared_tree_error;
+      if (resolve_declared_user_type_tree(fn.return_type, aliases, struct_names, enum_names, declared_tree,
+                                          declared_tree_error)) {
+        declared_fn_return_tree = std::move(declared_tree);
+      } else if (declared_fn_return != TypeKind::Unknown) {
+        declared_fn_return_tree = ty_from_type_kind(declared_fn_return);
+      }
+    }
     if (fn_state_contract != nullptr) {
       const std::size_t param_limit = std::min(fn.params.size(), fn_state_contract->param_states.size());
       for (std::size_t i = 0; i < param_limit; ++i) {
@@ -2938,6 +3125,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           }
           if (!arm.payload_binding.empty()) {
             scope[arm.payload_binding] = TypeKind::I32;
+            scope_tys[arm.payload_binding] = ty_from_type_kind(TypeKind::I32);
           }
           continue;
         }
@@ -2952,6 +3140,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           }
           for (const std::string& tuple_name : tuple_bindings) {
             scope[tuple_name] = TypeKind::I32;
+            scope_tys[tuple_name] = ty_from_type_kind(TypeKind::I32);
           }
           continue;
         }
@@ -2985,14 +3174,31 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
             return false;
           }
+          ty::Ty declared_tree = ty_from_type_kind(declared);
+          std::string declared_tree_error;
+          if (!resolve_declared_user_type_tree(annotation, aliases, struct_names, enum_names, declared_tree,
+                                               declared_tree_error)) {
+            declared_tree = ty_from_type_kind(declared);
+          }
           std::string hir_check_error;
           if (!try_check_statement_expression_against_type_hir(
-                  st, declared, scope, program.enum_variant_tags, struct_bindings, program.struct_fields,
+                  st, declared, scope, scope_tys, program.enum_variant_tags, struct_bindings, program.struct_fields,
                   program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
                   hir_check_error)) {
             diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
                                    "' is not assignable: " + hir_check_error);
             return false;
+          }
+          if (requires_tree_generic_check(annotation)) {
+            std::string hir_tree_error;
+            if (!try_check_statement_expression_against_tree_type_hir(
+                    st, declared_tree, scope, scope_tys, program.enum_variant_tags, struct_bindings,
+                    program.struct_fields, program.struct_field_types, program.struct_methods, function_returns,
+                    function_arity, struct_names, hir_tree_error)) {
+              diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                     "' is not assignable: " + hir_tree_error);
+              return false;
+            }
           }
           if (!is_assignable_type(declared, expr_type)) {
             diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
@@ -3000,11 +3206,21 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
             return false;
           }
           scope[name] = declared;
+          scope_tys[name] = declared_tree;
           if (declared_state_ref.tagged) {
             value_states[name] = declared_state_ref;
           }
         } else {
           scope[name] = expr_type;
+          ty::Ty inferred_tree;
+          if (try_infer_statement_expression_tree_type_hir(
+                  st, scope, scope_tys, program.enum_variant_tags, struct_bindings, program.struct_fields,
+                  program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
+                  inferred_tree)) {
+            scope_tys[name] = std::move(inferred_tree);
+          } else {
+            scope_tys[name] = ty_from_type_kind(expr_type);
+          }
         }
         if (scope[name] == TypeKind::StructType) {
           const std::string ctor = parse_constructor_name(st.expression_normalized);
@@ -3022,14 +3238,15 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
               auto type_it = program.struct_field_types.find(key);
               if (type_it != program.struct_field_types.end()) {
                 const TypeKind resolved = resolve_declared_user_type(type_it->second, aliases, struct_names, enum_names);
-                if (resolved != TypeKind::Unknown) {
-                  field_type = resolved;
-                }
+              if (resolved != TypeKind::Unknown) {
+                field_type = resolved;
               }
-              scope[name + "." + field] = field_type;
             }
+            scope[name + "." + field] = field_type;
+            scope_tys[name + "." + field] = ty_from_type_kind(field_type);
           }
         }
+      }
       }
 
       if (st.kind == syntax::StatementKind::Assign) {
@@ -3162,11 +3379,22 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           if (st.has_expression) {
             std::string return_hir_error;
             if (!try_check_statement_expression_against_type_hir(
-                    st, declared_fn_return, scope, program.enum_variant_tags, struct_bindings, program.struct_fields,
+                    st, declared_fn_return, scope, scope_tys, program.enum_variant_tags, struct_bindings,
+                    program.struct_fields,
                     program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
                     return_hir_error)) {
               diag.error("E0015", "line " + std::to_string(st.line) + ": return type mismatch: " + return_hir_error);
               return false;
+            }
+            if (declared_fn_return_tree.has_value() && requires_tree_generic_check(fn.return_type)) {
+              std::string return_tree_error;
+              if (!try_check_statement_expression_against_tree_type_hir(
+                      st, *declared_fn_return_tree, scope, scope_tys, program.enum_variant_tags, struct_bindings,
+                      program.struct_fields, program.struct_field_types, program.struct_methods, function_returns,
+                      function_arity, struct_names, return_tree_error)) {
+                diag.error("E0015", "line " + std::to_string(st.line) + ": return type mismatch: " + return_tree_error);
+                return false;
+              }
             }
           }
           if (!is_assignable_type(declared_fn_return, ret_type)) {
@@ -3205,6 +3433,10 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
   }
 
   std::unordered_map<std::string, TypeKind> top_scope = comptime_scope;
+  std::unordered_map<std::string, ty::Ty> top_scope_tys;
+  for (const auto& [name, kind] : top_scope) {
+    top_scope_tys[name] = ty_from_type_kind(kind);
+  }
   MemoryModelState top_memory_state;
   std::unordered_map<std::string, bool> top_opened_resources;
   std::unordered_map<std::string, StateRef> top_value_states;
@@ -3253,6 +3485,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
         if (!arm.payload_binding.empty()) {
           top_scope[arm.payload_binding] = TypeKind::I32;
+          top_scope_tys[arm.payload_binding] = ty_from_type_kind(TypeKind::I32);
         }
         continue;
       }
@@ -3266,6 +3499,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
         for (const std::string& tuple_name : tuple_bindings) {
           top_scope[tuple_name] = TypeKind::I32;
+          top_scope_tys[tuple_name] = ty_from_type_kind(TypeKind::I32);
         }
         continue;
       }
@@ -3299,14 +3533,32 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
           return false;
         }
+        ty::Ty declared_tree = ty_from_type_kind(declared);
+        std::string declared_tree_error;
+        if (!resolve_declared_user_type_tree(annotation, aliases, struct_names, enum_names, declared_tree,
+                                             declared_tree_error)) {
+          declared_tree = ty_from_type_kind(declared);
+        }
         std::string hir_check_error;
         if (!try_check_statement_expression_against_type_hir(
-                st, declared, top_scope, program.enum_variant_tags, top_struct_bindings, program.struct_fields,
+                st, declared, top_scope, top_scope_tys, program.enum_variant_tags, top_struct_bindings,
+                program.struct_fields,
                 program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
                 hir_check_error)) {
           diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
                                  "' is not assignable: " + hir_check_error);
           return false;
+        }
+        if (requires_tree_generic_check(annotation)) {
+          std::string hir_tree_error;
+          if (!try_check_statement_expression_against_tree_type_hir(
+                  st, declared_tree, top_scope, top_scope_tys, program.enum_variant_tags, top_struct_bindings,
+                  program.struct_fields, program.struct_field_types, program.struct_methods, function_returns,
+                  function_arity, struct_names, hir_tree_error)) {
+            diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                   "' is not assignable: " + hir_tree_error);
+            return false;
+          }
         }
         if (!is_assignable_type(declared, expr_type)) {
           diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
@@ -3314,11 +3566,21 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           return false;
         }
         top_scope[name] = declared;
+        top_scope_tys[name] = declared_tree;
         if (declared_state_ref.tagged) {
           top_value_states[name] = declared_state_ref;
         }
       } else {
         top_scope[name] = expr_type;
+        ty::Ty inferred_tree;
+        if (try_infer_statement_expression_tree_type_hir(
+                st, top_scope, top_scope_tys, program.enum_variant_tags, top_struct_bindings, program.struct_fields,
+                program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
+                inferred_tree)) {
+          top_scope_tys[name] = std::move(inferred_tree);
+        } else {
+          top_scope_tys[name] = ty_from_type_kind(expr_type);
+        }
       }
       if (top_scope[name] == TypeKind::StructType) {
         const std::string ctor = parse_constructor_name(st.expression_normalized);
@@ -3341,6 +3603,7 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
               }
             }
             top_scope[name + "." + field] = field_type;
+            top_scope_tys[name + "." + field] = ty_from_type_kind(field_type);
           }
         }
       }
