@@ -3,6 +3,12 @@ from pathlib import Path
 
 
 class SyntaxContractAlignmentTests(unittest.TestCase):
+    @staticmethod
+    def _frontend_parser_sources() -> str:
+        parser_cpp = Path("compiler/src/frontend/parser.cpp").read_text()
+        expr_cpp = Path("compiler/src/frontend/expr.cpp").read_text()
+        return parser_cpp + "\n" + expr_cpp
+
     def test_token_enum_covers_required_contract_keywords(self) -> None:
         token_hpp = Path("compiler/include/thagc/frontend/token.hpp").read_text()
         for enum_name in (
@@ -29,13 +35,13 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
             self.assertIn(op, lexer_cpp)
 
     def test_parser_enforces_indentation_and_if_while_parentheses(self) -> None:
-        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        parser_cpp = self._frontend_parser_sources()
         self.assertIn("function body must be indentation-scoped", parser_cpp)
         self.assertIn("if requires parentheses and trailing ':'", parser_cpp)
         self.assertIn("while requires parentheses and trailing ':'", parser_cpp)
 
     def test_parser_has_expression_precedence_pipeline(self) -> None:
-        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        parser_cpp = self._frontend_parser_sources()
         for fn in (
             "parse_multiplicative",
             "parse_additive",
@@ -52,7 +58,7 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
         self.assertIn("top_level_statements", ast_hpp)
 
     def test_parser_expression_supports_string_and_unary_minus(self) -> None:
-        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        parser_cpp = self._frontend_parser_sources()
         self.assertIn("unterminated string literal in expression", parser_cpp)
         self.assertIn("tok.kind == ExprTokenKind::Operator && tok.text == \"-\"", parser_cpp)
 
@@ -68,11 +74,11 @@ class SyntaxContractAlignmentTests(unittest.TestCase):
             self.assertIn(marker, checker_cpp)
 
     def test_function_return_annotation_is_forbidden(self) -> None:
-        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        parser_cpp = self._frontend_parser_sources()
         self.assertIn("function return annotation '-> type' is not supported", parser_cpp)
 
     def test_parser_collects_top_level_executable_statements(self) -> None:
-        parser_cpp = Path("compiler/src/frontend/ir.cpp").read_text()
+        parser_cpp = self._frontend_parser_sources()
         self.assertIn("top-level executable statements must not be indented", parser_cpp)
         self.assertIn("program.top_level_statements.push_back(top)", parser_cpp)
 

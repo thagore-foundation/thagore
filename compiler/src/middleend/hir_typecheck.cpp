@@ -120,6 +120,50 @@ static bool is_assignable(TypeKind expected, TypeKind actual) {
   return false;
 }
 
+static std::string type_kind_name(TypeKind kind) {
+  switch (kind) {
+    case TypeKind::I32:
+      return "i32";
+    case TypeKind::I64:
+      return "i64";
+    case TypeKind::F32:
+      return "f32";
+    case TypeKind::F64:
+      return "f64";
+    case TypeKind::Bool:
+      return "bool";
+    case TypeKind::String:
+      return "string";
+    case TypeKind::Option:
+      return "Option";
+    case TypeKind::Result:
+      return "Result";
+    case TypeKind::List:
+      return "List";
+    case TypeKind::Rc:
+      return "Rc";
+    case TypeKind::Arc:
+      return "Arc";
+    case TypeKind::FunctionType:
+      return "fn";
+    case TypeKind::Ptr:
+      return "ptr";
+    case TypeKind::StructType:
+      return "struct";
+    case TypeKind::EnumType:
+      return "enum";
+    case TypeKind::TupleType:
+      return "tuple";
+    case TypeKind::ArrayType:
+      return "array";
+    case TypeKind::Void:
+      return "void";
+    case TypeKind::Unknown:
+    default:
+      return "unknown";
+  }
+}
+
 static TypeKind parse_declared_type_expr(const std::string& type_name, const TypeEnv& env) {
   if (type_name == "i32") {
     return TypeKind::I32;
@@ -631,8 +675,7 @@ bool check_expression(const HirExprPtr& expr, TypeKind expected, const TypeEnv& 
     return false;
   }
   if (!is_assignable(expected, inferred)) {
-    error = "expected " + std::to_string(static_cast<int>(expected)) + " but inferred " +
-            std::to_string(static_cast<int>(inferred));
+    error = "expected " + type_kind_name(expected) + " but inferred " + type_kind_name(inferred);
     return false;
   }
   return true;

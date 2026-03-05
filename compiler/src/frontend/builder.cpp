@@ -2517,6 +2517,44 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
   return true;
 }
 
+static bool try_check_statement_expression_against_type_hir(
+    const syntax::AstStatement& st, TypeKind expected, const std::unordered_map<std::string, TypeKind>& scope,
+    const std::unordered_map<std::string, int>& enum_variants,
+    const std::unordered_map<std::string, std::string>& struct_bindings,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+    const std::unordered_map<std::string, std::string>& struct_field_types,
+    const std::unordered_map<std::string, std::vector<std::string>>& struct_methods,
+    const std::unordered_map<std::string, TypeKind>& function_returns,
+    const std::unordered_map<std::string, std::size_t>& function_arity,
+    const std::unordered_set<std::string>& struct_names, std::string& error) {
+  if (!st.has_expression || !st.expression_ast) {
+    return true;
+  }
+  hir::TypeEnv hir_env;
+  hir_env.scope = &scope;
+  hir_env.enum_variants = &enum_variants;
+  hir_env.struct_bindings = &struct_bindings;
+  hir_env.struct_fields = &struct_fields;
+  hir_env.struct_field_types = &struct_field_types;
+  hir_env.struct_methods = &struct_methods;
+  hir_env.function_returns = &function_returns;
+  hir_env.function_arity = &function_arity;
+  hir_env.struct_names = &struct_names;
+
+  const hir::HirExprPtr hir_expr = hir::lower_ast_expr(st.expression_ast);
+  if (!hir_expr) {
+    return true;
+  }
+
+  std::string infer_error;
+  const TypeKind inferred = hir::infer_expression(hir_expr, hir_env, infer_error);
+  if (inferred == TypeKind::Unknown) {
+    return true;
+  }
+
+  return hir::check_expression(hir_expr, expected, hir_env, error);
+}
+
 static int previous_statement_same_indent(const std::vector<syntax::AstStatement>& statements, std::size_t from_index,
                                           int indent) {
   if (from_index == 0) {
@@ -2845,6 +2883,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     auto fn_state_it = function_state_contracts.find(fn.name);
     const FunctionStateContract* fn_state_contract =
         fn_state_it == function_state_contracts.end() ? nullptr : &fn_state_it->second;
+    const TypeKind declared_fn_return =
+        fn.return_type.empty() ? TypeKind::Unknown
+                               : resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names);
     if (fn_state_contract != nullptr) {
       const std::size_t param_limit = std::min(fn.params.size(), fn_state_contract->param_states.size());
       for (std::size_t i = 0; i < param_limit; ++i) {
@@ -2942,6 +2983,15 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
           const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
           if (declared == TypeKind::Unknown) {
             diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
+            return false;
+          }
+          std::string hir_check_error;
+          if (!try_check_statement_expression_against_type_hir(
+                  st, declared, scope, program.enum_variant_tags, struct_bindings, program.struct_fields,
+                  program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
+                  hir_check_error)) {
+            diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                   "' is not assignable: " + hir_check_error);
             return false;
           }
           if (!is_assignable_type(declared, expr_type)) {
@@ -3103,6 +3153,29 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         }
         has_return = true;
         const TypeKind ret_type = st.has_expression ? expr_type : TypeKind::Void;
+        if (declared_fn_return != TypeKind::Unknown) {
+          if (!st.has_expression && declared_fn_return != TypeKind::Void) {
+            diag.error("E0015", "line " + std::to_string(st.line) + ": function '" + fn.name +
+                                   "' declared return " + type_name(declared_fn_return) + " but got void");
+            return false;
+          }
+          if (st.has_expression) {
+            std::string return_hir_error;
+            if (!try_check_statement_expression_against_type_hir(
+                    st, declared_fn_return, scope, program.enum_variant_tags, struct_bindings, program.struct_fields,
+                    program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
+                    return_hir_error)) {
+              diag.error("E0015", "line " + std::to_string(st.line) + ": return type mismatch: " + return_hir_error);
+              return false;
+            }
+          }
+          if (!is_assignable_type(declared_fn_return, ret_type)) {
+            diag.error("E0015", "line " + std::to_string(st.line) + ": function '" + fn.name +
+                                   "' declared return " + type_name(declared_fn_return) + " but inferred " +
+                                   type_name(ret_type));
+            return false;
+          }
+        }
         if (!inferred_return.has_value()) {
           inferred_return = ret_type;
         } else if (*inferred_return != ret_type) {
@@ -3115,12 +3188,9 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
     }
 
     const TypeKind effective_return = inferred_return.value_or(TypeKind::Void);
-    TypeKind declared_return =
-        fn.return_type.empty() ? TypeKind::Unknown
-                               : resolve_declared_user_type(fn.return_type, aliases, struct_names, enum_names);
-    if (declared_return != TypeKind::Unknown && declared_return != effective_return) {
+    if (declared_fn_return != TypeKind::Unknown && !is_assignable_type(declared_fn_return, effective_return)) {
       diag.error("E0015",
-                 "function '" + fn.name + "' declared return " + type_name(declared_return) +
+                 "function '" + fn.name + "' declared return " + type_name(declared_fn_return) +
                      " but inferred " + type_name(effective_return));
       return false;
     }
@@ -3227,6 +3297,15 @@ bool TypeChecker::check(const syntax::AstProgram& program, support::DiagnosticSi
         const TypeKind declared = resolve_declared_user_type(annotation, aliases, struct_names, enum_names);
         if (declared == TypeKind::Unknown) {
           diag.error("E0006", "line " + std::to_string(st.line) + ": unsupported let annotation '" + annotation + "'");
+          return false;
+        }
+        std::string hir_check_error;
+        if (!try_check_statement_expression_against_type_hir(
+                st, declared, top_scope, program.enum_variant_tags, top_struct_bindings, program.struct_fields,
+                program.struct_field_types, program.struct_methods, function_returns, function_arity, struct_names,
+                hir_check_error)) {
+          diag.error("E0027", "line " + std::to_string(st.line) + ": annotation '" + annotation +
+                                 "' is not assignable: " + hir_check_error);
           return false;
         }
         if (!is_assignable_type(declared, expr_type)) {
