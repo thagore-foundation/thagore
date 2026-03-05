@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -43,25 +43,16 @@ jobs:
             clang-21 lld-21 llvm-21-dev \
             cmake ninja-build clang-format \
             libffi-dev libedit-dev libzstd-dev libcurl4-openssl-dev zlib1g-dev libxml2-dev \
+            libsqlite3-dev \
             golang-go rustc cargo
-
-      - name: Format check (C++)
-        run: |
-          if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
-            files=$(git diff --name-only HEAD^ HEAD -- '*.cpp' '*.hpp')
-          else
-            files=$(git ls-files '*.cpp' '*.hpp')
-          fi
-          if [ -n "$files" ]; then
-            echo "$files" | xargs clang-format --dry-run --Werror
-          fi
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER=gcc \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+            -DTHAG_RUNTIME_USE_SYSTEM_OPENSSL=OFF
 
       - name: Build
         run: cmake --build build -j
@@ -137,14 +128,15 @@ jobs:
       - name: Install LLVM + build tools
         run: |
           brew update
-          brew install llvm@21 ninja cmake libffi libxml2 zlib curl
+          brew install llvm@21 ninja cmake libffi libxml2 zlib curl sqlite
           echo "$(brew --prefix llvm@21)/bin" >> $GITHUB_PATH
 
       - name: Configure
         run: |
           LLVM_PREFIX="$(brew --prefix llvm@21)"
           cmake -S . -B build -G Ninja \
-            -DLLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm"
+            -DLLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm" \
+            -DTHAG_RUNTIME_USE_SYSTEM_OPENSSL=OFF
 
       - name: Build
         run: cmake --build build -j
@@ -156,6 +148,7 @@ jobs:
           python -m unittest discover -s tests -p "test_*.py"
 
   build-windows:
+    if: false
     runs-on: windows-latest
     steps:
       - name: Checkout

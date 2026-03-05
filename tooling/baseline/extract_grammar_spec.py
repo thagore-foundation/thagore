@@ -26,7 +26,15 @@ def git_show(branch: str, path: str) -> str:
 
 
 def git_file_exists(branch: str, path: str) -> bool:
-    return subprocess.run(["git", "cat-file", "-e", f"{branch}:{path}"], check=False).returncode == 0
+    return (
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{branch}:{path}"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
 
 
 def first_existing_path(branch: str, candidates: Iterable[str]) -> str:
