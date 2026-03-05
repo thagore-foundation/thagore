@@ -28,6 +28,7 @@ Current release cut: `v2.4.0` (MIR + ownership checker baseline).
 
 ## Driver / CLI groups
 
+- Query incremental parse cache: implemented baseline (`compiler/include/thagc/query/query.hpp` + `parse_file` wiring in `compiler/src/driver/builder.cpp`)
 - build: implemented (milestone quality)
 - run: implemented (milestone quality)
 - check: implemented (parse/type/lowering/codegen validation without final link)

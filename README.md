@@ -66,6 +66,7 @@ compiler/
   mir/           # mid-level IR + ownership/borrow analysis models
   hir/           # typed high-level IR nodes + HIR typing helpers
   ty/            # shared compiler type representations
+  include/thagc/query/ # query cache contracts for incremental compilation
   backend/       # LLVM emission + object generation
   driver/        # CLI and pipeline orchestration
   shared/        # diagnostics, fs/process abstractions

@@ -38,6 +38,13 @@ Quick map for contributors:
 - `compiler/src/backend/types.cpp`
 - `compiler/src/backend/llvm_emitter.cpp`
 
+## I need to change query-based incremental compilation behavior
+
+- `compiler/include/thagc/query/query.hpp`
+- `compiler/src/driver/builder.cpp`
+- `tests/parity/test_v25_query_incremental_pipeline.py`
+- `tests/integration/test_import_system.py`
+
 ## I need to change CLI commands
 
 - `compiler/include/thagc/driver/command_router.hpp`

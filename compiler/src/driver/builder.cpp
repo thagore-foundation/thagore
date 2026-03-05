@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,7 @@
 #include "thagc/frontend/parser.hpp"
 #include "thagc/frontend/source_map.hpp"
 #include "thagc/infra/adapters.hpp"
+#include "thagc/query/query.hpp"
 #include "thagc/shared/filesystem.hpp"
 
 namespace thagc::driver {
@@ -49,6 +51,32 @@ struct ModuleCacheRecord {
   std::unordered_set<std::string> all_symbols;
   std::unordered_set<std::string> exports;
 };
+
+struct NamedQueryKey {
+  std::string query_name;
+  std::string input_key;
+
+  bool operator==(const NamedQueryKey& other) const {
+    return query_name == other.query_name && input_key == other.input_key;
+  }
+};
+
+struct NamedQueryKeyHasher {
+  std::size_t operator()(const NamedQueryKey& key) const noexcept {
+    std::size_t seed = std::hash<std::string>{}(key.query_name);
+    seed ^= std::hash<std::string>{}(key.input_key) + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+    return seed;
+  }
+};
+
+struct ParseFileQueryResult {
+  bool has_top_level_executable = false;
+  std::vector<syntax::AstImport> imports;
+  std::unordered_set<std::string> all_symbols;
+  std::unordered_set<std::string> exports;
+};
+
+using ParseFileQueryCache = query::QueryCache<NamedQueryKey, ParseFileQueryResult, NamedQueryKeyHasher>;
 
 class ModuleIncrementalCache {
  public:
@@ -529,12 +557,59 @@ static bool parse_module_source(const std::string& path, const std::string& sour
   return true;
 }
 
+static void stage_module_cache_record(ModuleIncrementalCache& incremental_cache, const std::string& path,
+                                      std::uint64_t source_hash, const ParseFileQueryResult& result) {
+  ModuleCacheRecord record;
+  record.source_hash = source_hash;
+  record.has_top_level_executable = result.has_top_level_executable;
+  record.imports = result.imports;
+  record.all_symbols = result.all_symbols;
+  record.exports = result.exports;
+  incremental_cache.stage(path, std::move(record));
+}
+
+static bool run_parse_file_query(const std::string& path, const std::string& source, std::uint64_t source_hash,
+                                 const NamedQueryKey& key, ParseFileQueryCache& parse_file_query,
+                                 ModuleIncrementalCache& incremental_cache, ParseFileQueryResult& out,
+                                 support::DiagnosticSink& diag) {
+  const std::optional<ParseFileQueryResult> query_cached = parse_file_query.get(key, source_hash);
+  if (query_cached.has_value()) {
+    out = *query_cached;
+    stage_module_cache_record(incremental_cache, path, source_hash, out);
+    return true;
+  }
+
+  const ModuleCacheRecord* module_cached = incremental_cache.lookup(path, source_hash);
+  if (module_cached != nullptr) {
+    out.has_top_level_executable = module_cached->has_top_level_executable;
+    out.imports = module_cached->imports;
+    out.all_symbols = module_cached->all_symbols;
+    out.exports = module_cached->exports;
+    parse_file_query.put(key, out, source_hash);
+    stage_module_cache_record(incremental_cache, path, source_hash, out);
+    return true;
+  }
+
+  syntax::AstProgram ast;
+  if (!parse_module_source(path, source, ast, diag)) {
+    return false;
+  }
+  out.imports = ast.imports;
+  out.all_symbols = collect_all_symbols(ast);
+  out.exports = collect_exports(ast);
+  out.has_top_level_executable = !ast.top_level_statements.empty();
+  parse_file_query.put(key, out, source_hash);
+  stage_module_cache_record(incremental_cache, path, source_hash, out);
+  return true;
+}
+
 static bool load_module_recursive(const std::string& path, bool is_entry, ModuleResolver& resolver,
                                   const ProjectManifest& manifest, const std::vector<std::string>& include_paths,
                                   std::unordered_map<std::string, ModuleNode>& modules,
                                   std::unordered_set<std::string>& visiting, std::unordered_set<std::string>& loaded,
                                   std::vector<std::string>& stack, std::vector<std::string>& postorder,
-                                  ModuleIncrementalCache& incremental_cache, support::DiagnosticSink& diag) {
+                                  ModuleIncrementalCache& incremental_cache, ParseFileQueryCache& parse_file_query,
+                                  support::DiagnosticSink& diag) {
   const std::string key = std::filesystem::weakly_canonical(path).string();
   if (loaded.find(key) != loaded.end()) {
     return true;
@@ -557,51 +632,28 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
   }
 
   const std::uint64_t source_hash = hash_source_text(source);
-  std::vector<syntax::AstImport> parsed_imports;
   ModuleNode node;
   node.key = key;
   node.path = key;
   node.source = source;
-  const ModuleCacheRecord* cached = incremental_cache.lookup(key, source_hash);
-  if (cached != nullptr) {
-    parsed_imports = cached->imports;
-    node.all_symbols = cached->all_symbols;
-    node.exports = cached->exports;
-    node.has_top_level_executable = cached->has_top_level_executable;
-  } else {
-    syntax::AstProgram ast;
-    if (!parse_module_source(key, source, ast, diag)) {
-      stack.pop_back();
-      visiting.erase(key);
-      return false;
-    }
-    parsed_imports = ast.imports;
-    node.all_symbols = collect_all_symbols(ast);
-    node.exports = collect_exports(ast);
-    node.has_top_level_executable = !ast.top_level_statements.empty();
-
-    ModuleCacheRecord record;
-    record.source_hash = source_hash;
-    record.has_top_level_executable = node.has_top_level_executable;
-    record.imports = parsed_imports;
-    record.all_symbols = node.all_symbols;
-    record.exports = node.exports;
-    incremental_cache.stage(key, std::move(record));
+  ParseFileQueryResult parse_result;
+  const NamedQueryKey parse_query_key{std::string(query::kParseFileQueryName), key};
+  if (!run_parse_file_query(key, source, source_hash, parse_query_key, parse_file_query, incremental_cache, parse_result,
+                            diag)) {
+    stack.pop_back();
+    visiting.erase(key);
+    return false;
   }
+  std::vector<syntax::AstImport> parsed_imports = parse_result.imports;
+  node.all_symbols = parse_result.all_symbols;
+  node.exports = parse_result.exports;
+  node.has_top_level_executable = parse_result.has_top_level_executable;
+
   if (!is_entry && node.has_top_level_executable) {
     diag.error("E_MOD_203", "imported module cannot contain top-level executable statements", key, 1, 1);
     stack.pop_back();
     visiting.erase(key);
     return false;
-  }
-  if (cached != nullptr) {
-    ModuleCacheRecord record;
-    record.source_hash = source_hash;
-    record.has_top_level_executable = node.has_top_level_executable;
-    record.imports = parsed_imports;
-    record.all_symbols = node.all_symbols;
-    record.exports = node.exports;
-    incremental_cache.stage(key, std::move(record));
   }
   node.is_entry = is_entry;
 
@@ -618,7 +670,7 @@ static bool load_module_recursive(const std::string& path, bool is_entry, Module
   modules[key] = node;
   for (const auto& binding : modules[key].imports) {
     if (!load_module_recursive(binding.resolved.absolute_path, false, resolver, manifest, include_paths, modules,
-                               visiting, loaded, stack, postorder, incremental_cache, diag)) {
+                               visiting, loaded, stack, postorder, incremental_cache, parse_file_query, diag)) {
       stack.pop_back();
       visiting.erase(key);
       return false;
@@ -744,13 +796,14 @@ static bool build_merged_source(const std::string& entry_path, ModuleResolver& r
   const std::filesystem::path cache_root =
       manifest.root_path.empty() ? std::filesystem::current_path() : std::filesystem::path(manifest.root_path);
   ModuleIncrementalCache incremental_cache(cache_root);
+  ParseFileQueryCache parse_file_query;
   std::unordered_map<std::string, ModuleNode> modules;
   std::unordered_set<std::string> visiting;
   std::unordered_set<std::string> loaded;
   std::vector<std::string> stack;
   std::vector<std::string> postorder;
   if (!load_module_recursive(entry_path, true, resolver, manifest, include_paths, modules, visiting, loaded, stack,
-                             postorder, incremental_cache, diag)) {
+                             postorder, incremental_cache, parse_file_query, diag)) {
     return false;
   }
   if (!validate_import_bindings(modules, diag)) {

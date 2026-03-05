@@ -20,6 +20,7 @@ This document maps responsibilities to folders so contributors can navigate quic
 - `compiler/mir`: mid-level IR model and ownership/borrow analyses.
 - `compiler/hir`: typed high-level expression IR and inference/check helpers.
 - `compiler/ty`: shared type model used by HIR/typechecking layers.
+- `compiler/include/thagc/query`: query-cache contracts used by incremental compilation lanes.
 - `compiler/backend`: LLVM/object generation.
 - `compiler/driver`: CLI and pipeline orchestration.
 - `compiler/shared`: cross-cutting utilities.
