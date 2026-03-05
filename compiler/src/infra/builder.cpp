@@ -107,6 +107,10 @@ static std::vector<std::string> windows_sdk_libpaths() {
   }
   return out;
 }
+#else
+static std::vector<std::string> windows_sdk_libpaths() {
+  return {};
+}
 #endif
 class TempRuntimeArchive {
  public:

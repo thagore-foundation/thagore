@@ -51,6 +51,14 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 option(THAGC_STATIC_LLVM "Link LLVM component libraries statically into thagc" ON)
 option(THAGC_STATIC_CXX_RUNTIME "Link libstdc++/libgcc statically when supported" ON)
 
+# Some LLVM distributions (e.g. LLVM 14 on Ubuntu) do not ship a separate
+# LLVMTargetParser archive; detect it and only request that component when present.
+find_library(THAG_LLVM_TARGET_PARSER_LIB NAMES LLVMTargetParser HINTS ${LLVM_LIBRARY_DIRS})
+set(THAG_LLVM_TARGET_PARSER_COMPONENT)
+if(THAG_LLVM_TARGET_PARSER_LIB)
+  set(THAG_LLVM_TARGET_PARSER_COMPONENT TargetParser)
+endif()
+
 add_executable(thagc
   src/main.cpp
   src/application/builder.cpp
@@ -162,7 +170,7 @@ if (THAGC_STATIC_LLVM)
     Core
     Support
     Target
-    TargetParser
+    ${THAG_LLVM_TARGET_PARSER_COMPONENT}
     MC
     MCParser
     Object
@@ -190,7 +198,7 @@ else()
       Core
       Support
       Target
-      TargetParser
+      ${THAG_LLVM_TARGET_PARSER_COMPONENT}
       MC
       MCParser
       Object
