@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v2.5`: `ROADMAP.md`.
-Current release cut: `v2.2.0` (HIR + bidirectional type-checking baseline).
+Current release cut: `v2.3.0` (HM inference + generics baseline).
 
 ## Frontend
 
@@ -16,6 +16,8 @@ Current release cut: `v2.2.0` (HIR + bidirectional type-checking baseline).
 - Core IR model: implemented
 - Lowering parity: implemented
 - HIR/type layer: implemented (`compiler/include/thagc/hir`, `compiler/include/thagc/ty`)
+- HM inference/unifier: implemented baseline (`Unifier`, ty-level infer/check in HIR)
+- Generic type validation: implemented for `Option<T>` / `Result<T,E>` inference/check paths
 
 ## Backend
 
@@ -41,6 +43,7 @@ Current release cut: `v2.2.0` (HIR + bidirectional type-checking baseline).
 - Unit tests: implemented
 - Integration tests: implemented
 - E2E parity: implemented
+- Inference + generics suites: implemented (`tests/inference`, `tests/generics`)
 - Deterministic gate: implemented
 - Soak gate: implemented
 - 3-OS matrix release gate: implemented

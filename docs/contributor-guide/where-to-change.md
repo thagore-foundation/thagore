@@ -56,6 +56,13 @@ Quick map for contributors:
 - `contracts/*`
 - `tests/parity/*`
 
+## I need to update HM inference / generics gates (v2.3)
+
+- `tests/inference/*`
+- `tests/generics/*`
+- `compiler/src/middleend/hir_typecheck.cpp`
+- `compiler/src/frontend/builder.cpp`
+
 ## I need to change runtime concurrency / cancel / timeout
 
 - `runtime/include/thag_runtime.h`

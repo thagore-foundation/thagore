@@ -74,6 +74,8 @@ runtime/
 contracts/
 tooling/
 tests/
+  inference/     # v2.3 HM inference validation lanes
+  generics/      # v2.3 generic type-checking validation lanes
 docs/
 examples/
 .github/workflows/
@@ -197,3 +199,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v2.0 release notes: `docs/release/v2.0.0-release-notes.md`
 - v2.2 release checklist: `docs/release/v2.2.0-checklist.md`
 - v2.2 release notes: `docs/release/v2.2.0-release-notes.md`
+- v2.3 release checklist: `docs/release/v2.3.0-checklist.md`
+- v2.3 release notes: `docs/release/v2.3.0-release-notes.md`

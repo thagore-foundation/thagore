@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.3.0 - 2026-03-06
+
+- added HM unifier (`fresh`, `unify`, `apply`) and type-level HIR inference/check APIs (`infer_expression_ty`, `check_expression_ty`).
+- integrated tree-type checking for generic `Option<T>`/`Result<T,E>` annotations in `let` and `return` validation paths.
+- added dedicated v2.3 release gates under `tests/inference/` and `tests/generics/`.
+- tightened generic mismatch diagnostics for payload/return typing with source spans preserved through the existing diagnostics pipeline.
+
 ## v2.2.0 - 2026-03-06
 
 - typed HIR, bidirectional type checker, type-mismatch errors with source underlines.

@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 6, 2026): `v2.2` (HIR + Bidirectional Type Checking, released).
-Status note: v2.2 HIR/type-check integration gates pass on the active release lane with integration + e2e suites green.
+Current effective milestone by code audit (March 6, 2026): `v2.3` (HM inference + generics baseline, released).
+Status note: v2.3 inference/generics gates pass on the active release lane with parity + integration + e2e suites green.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -580,7 +580,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v2.0 | Real recursive-descent parser | ✅ Released |
 | v2.1 | Symbol table & name resolution | 🔲 Planned |
 | v2.2 | HIR & bidirectional type checking | ✅ Released |
-| v2.3 | Full type inference & generics | 🔲 Planned |
+| v2.3 | Full type inference & generics | ✅ Released |
 | v2.4 | MIR & borrow checker | 🔲 Planned |
 | v2.5 | **Production complete** | 🔲 Planned |
 
@@ -832,7 +832,7 @@ type-mismatch errors with source underlines."
 
 ---
 
-## v2.3 — Full Hindley-Milner Type Inference & Generics
+## v2.3 — Full Hindley-Milner Type Inference & Generics ✅ Released
 
 **Theme:** Infer types everywhere annotations are omitted. Make generics real:
 monomorphize them, emit correct LLVM IR per instantiation.

@@ -9,7 +9,7 @@ This document maps responsibilities to folders so contributors can navigate quic
 - `stdlib/`: standard library sources.
 - `contracts/`: behavior parity contracts.
 - `tooling/`: extraction, comparison, packaging, and policy scripts.
-- `tests/`: unit/integration/e2e/parity/soak lanes.
+- `tests/`: unit/integration/e2e/parity/soak lanes plus milestone-specific suites (`tests/inference`, `tests/generics`).
 - `docs/`: architecture, contributor guides, ADRs, and runbooks.
 - `examples/`: reference app templates (CLI, REST API, bot, algorithm visualizer).
 
