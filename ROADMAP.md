@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 6, 2026): `v2.4` (MIR + ownership checker baseline, released).
-Status note: v2.4 ownership gates pass on the active release lane with parity + inference/generics + integration + e2e suites green.
+Current effective milestone by code audit (March 6, 2026): `v2.5` (production-complete baseline, released).
+Status note: v2.5 release lane ships query-cache baseline, `--explain` diagnostics, and LSP hover/diagnostics with v2.4 regressions still green.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -582,7 +582,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v2.2 | HIR & bidirectional type checking | ✅ Released |
 | v2.3 | Full type inference & generics | ✅ Released |
 | v2.4 | MIR & borrow checker | ✅ Released |
-| v2.5 | **Production complete** | 🔲 Planned |
+| v2.5 | **Production complete** | ✅ Released |
 
 ---
 
@@ -948,7 +948,7 @@ ownership enforced at compile time — no GC, no undefined behavior."
 
 ---
 
-## v2.5 — Production Complete
+## v2.5 — Production Complete ✅ Released
 
 **Theme:** Query-based incremental compilation. Rich diagnostics. Self-hosting.
 This version reaches rustc-level production completeness.

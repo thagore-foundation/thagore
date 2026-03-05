@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.5.0 - 2026-03-06
+
+- added v2.5 query-engine baseline contracts (`compiler/include/thagc/query/query.hpp`) and integrated `parse_file` query caching in module build pipeline (`compiler/src/driver/builder.cpp`).
+- added `thagc --explain <ERROR_CODE>` with built-in diagnostic explanation/hint rendering (`compiler/src/driver/explain.cpp`).
+- extended LSP server capabilities with `hoverProvider`, pull diagnostics (`textDocument/diagnostic`), and publish diagnostics on open/change in `--stdio` mode.
+- added v2.5 test gates:
+  - `tests/parity/test_v25_query_incremental_pipeline.py`
+  - `tests/integration/test_v25_production_complete.py`
+
 ## v2.4.0 - 2026-03-06
 
 - added MIR ownership baseline data structures and lowering entrypoints (`compiler/include/thagc/mir/mir.hpp`, `compiler/src/middleend/mir_lowering.cpp`).

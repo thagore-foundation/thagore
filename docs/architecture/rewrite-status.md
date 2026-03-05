@@ -3,7 +3,7 @@
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
 Roadmap to product milestone `v2.5`: `ROADMAP.md`.
-Current release cut: `v2.4.0` (MIR + ownership checker baseline).
+Current release cut: `v2.5.0` (production-complete baseline: query cache + explain + LSP hover/diagnostics).
 
 ## Frontend
 
@@ -35,7 +35,7 @@ Current release cut: `v2.4.0` (MIR + ownership checker baseline).
 - fmt: implemented (source normalization lane)
 - fix: implemented (safe autofix lane for syntax normalization and missing block colon)
 - repl: implemented (interactive execution lane)
-- lsp: implemented (`--stdio` MVP with keyword completion + text-search definition lookup)
+- lsp: implemented (`--stdio` with completion + definition + hover + diagnostics)
 - target: implemented (target init/list/show)
 - state: implemented (typestate explain/doctor)
 - migrate: implemented (legacy manifest/lock to drago format)
