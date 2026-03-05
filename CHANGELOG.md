@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.0 - 2026-03-06
+
+- replaced line-by-line parser with recursive-descent token-stream parser; 3-pass re-parse eliminated.
+- parser statement coalescing now preserves `?` try-operator statements as standalone lines.
+- backend AST-first expression lowering now falls back correctly for comptime-substituted atoms and print/defer expression paths.
+- backend typed-pointer compatibility fixes for extern/runtime calls and struct method/field lowering across LLVM variants.
+
 ## v1.9.0 - 2026-03-05
 
 - span-aware diagnostics: parser/module parse errors now carry span ranges and render caret underlines in `thagc check`.

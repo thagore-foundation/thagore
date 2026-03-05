@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 5, 2026): `v1.9` (Span System + Token Pipeline, released).
-Status note: v1.9 span/token pipeline gates pass on the active release lane with caret diagnostics wired through `thagc check`.
+Current effective milestone by code audit (March 6, 2026): `v2.0` (Real Recursive-Descent Parser, released).
+Status note: v2.0 parser/codegen compatibility gates pass on the active release lane with full regression suites green.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -577,7 +577,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v1.7 | AI & scale | ✅ Released |
 | v1.8 | **Stable & complete** | ✅ Engineering Complete (ecosystem adoption tracked) |
 | v1.9 | Span system + token pipeline | ✅ Released |
-| v2.0 | Real recursive-descent parser | 🔲 Planned |
+| v2.0 | Real recursive-descent parser | ✅ Released |
 | v2.1 | Symbol table & name resolution | 🔲 Planned |
 | v2.2 | HIR & bidirectional type checking | 🔲 Planned |
 | v2.3 | Full type inference & generics | 🔲 Planned |
@@ -644,7 +644,7 @@ Changelog entry must include "span-aware diagnostics".
 
 ---
 
-## v2.0 — Real Recursive-Descent Parser
+## v2.0 — Real Recursive-Descent Parser ✅ Released
 
 **Theme:** Replace the line-by-line text-processing parser with a real token-stream
 recursive-descent parser. This is the single largest structural change in the compiler.

@@ -191,3 +191,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.8 public benchmark report: `docs/perf/benchmark-v1.8-public.md`
 - v1.9 release checklist: `docs/release/v1.9.0-checklist.md`
 - v1.9 release notes: `docs/release/v1.9.0-release-notes.md`
+- v2.0 release checklist: `docs/release/v2.0.0-checklist.md`
+- v2.0 release notes: `docs/release/v2.0.0-release-notes.md`
