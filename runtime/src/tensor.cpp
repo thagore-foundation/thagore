@@ -8,6 +8,12 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 #else
 #include <dlfcn.h>
 #endif

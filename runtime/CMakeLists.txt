@@ -21,6 +21,7 @@ add_library(thag_runtime STATIC
   src/concurrency.cpp
   src/platform_posix.cpp
   src/platform_windows.cpp
+  src/ffi.cpp
 )
 
 target_include_directories(thag_runtime PUBLIC include)
@@ -63,5 +64,5 @@ else()
 endif()
 
 if(WIN32)
-  target_link_libraries(thag_runtime PUBLIC ws2_32)
+  target_link_libraries(thag_runtime PUBLIC ws2_32 user32 gdi32)
 endif()

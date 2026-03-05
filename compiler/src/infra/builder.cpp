@@ -275,6 +275,8 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
     clang_link.push_back("-luserenv");
     clang_link.push_back("-lbcrypt");
     clang_link.push_back("-lshell32");
+    clang_link.push_back("-luser32");
+    clang_link.push_back("-lgdi32");
   } else {
     // macOS / other Unix: link stdc++ but no -no-pie.
     clang_link.push_back("-lstdc++");

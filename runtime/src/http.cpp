@@ -29,6 +29,10 @@
 #include <openssl/x509v3.h>
 #endif
 
+extern "C" {
+int thag_task_is_cancelled(void);
+}
+
 namespace {
 
 struct ParsedUrl {
@@ -57,6 +61,25 @@ struct HttpResult {
   thag_http_buffer_t body{};
   int status = 0;
 };
+
+static bool io_cancelled_local() {
+  return thag_task_is_cancelled() != 0;
+}
+
+static int normalize_timeout_ms_local(int timeout_ms) {
+  if (timeout_ms < 0) {
+    return -1;
+  }
+  return timeout_ms == 0 ? 1 : timeout_ms;
+}
+
+static bool looks_http_url_local(const char* url) {
+  if (url == nullptr) {
+    return false;
+  }
+  const std::string u(url);
+  return u.rfind("http://", 0) == 0 || u.rfind("https://", 0) == 0;
+}
 
 static std::string lower_copy(std::string text) {
   std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
@@ -540,18 +563,18 @@ static int request_with_redirects(const std::string& method, const char* url_cst
 
 static HttpResult* make_http_result(const std::string& method, const char* url_cstr, const void* body, std::size_t body_len,
                                     int timeout_ms) {
-  if (io_cancelled()) {
+  if (io_cancelled_local()) {
     return nullptr;
   }
-  const int effective_timeout_ms = normalize_timeout_ms(timeout_ms);
-  if (url_cstr == nullptr || std::strlen(url_cstr) == 0 || effective_timeout_ms < 0 || !looks_http_url(url_cstr)) {
+  const int effective_timeout_ms = normalize_timeout_ms_local(timeout_ms);
+  if (url_cstr == nullptr || std::strlen(url_cstr) == 0 || effective_timeout_ms < 0 || !looks_http_url_local(url_cstr)) {
     return nullptr;
   }
 
   auto* result = new HttpResult();
   const int ok = request_with_redirects(method, url_cstr, body, body_len, effective_timeout_ms, &result->body, &result->status);
 
-  if (io_cancelled()) {
+  if (io_cancelled_local()) {
     thag_http_buffer_free(&result->body);
     delete result;
     return nullptr;
@@ -591,26 +614,29 @@ int thag_http_client_post(const char* url, const void* body, size_t body_len, in
 }
 
 thag_http_result_t* thag_http_get_result(const char* url, int timeout_ms) {
-  return make_http_result("GET", url, nullptr, 0, timeout_ms);
+  return reinterpret_cast<thag_http_result_t*>(make_http_result("GET", url, nullptr, 0, timeout_ms));
 }
 
 thag_http_result_t* thag_http_post_result(const char* url, const void* body, size_t body_len, int timeout_ms) {
-  return make_http_result("POST", url, body, body_len, timeout_ms);
+  return reinterpret_cast<thag_http_result_t*>(make_http_result("POST", url, body, body_len, timeout_ms));
 }
 
 int thag_http_result_status(const thag_http_result_t* result) {
-  return result == nullptr ? 0 : result->status;
+  const HttpResult* r = reinterpret_cast<const HttpResult*>(result);
+  return r == nullptr ? 0 : r->status;
 }
 
 const char* thag_http_result_body(const thag_http_result_t* result) {
-  if (result == nullptr) {
+  const HttpResult* r = reinterpret_cast<const HttpResult*>(result);
+  if (r == nullptr) {
     return nullptr;
   }
-  return result->body.data;
+  return r->body.data;
 }
 
 size_t thag_http_result_body_len(const thag_http_result_t* result) {
-  return result == nullptr ? 0 : result->body.len;
+  const HttpResult* r = reinterpret_cast<const HttpResult*>(result);
+  return r == nullptr ? 0 : r->body.len;
 }
 
 int thag_http_result_is_null(const thag_http_result_t* result) {
@@ -618,11 +644,12 @@ int thag_http_result_is_null(const thag_http_result_t* result) {
 }
 
 void thag_http_result_free(thag_http_result_t* result) {
-  if (result == nullptr) {
+  HttpResult* r = reinterpret_cast<HttpResult*>(result);
+  if (r == nullptr) {
     return;
   }
-  thag_http_buffer_free(&result->body);
-  delete result;
+  thag_http_buffer_free(&r->body);
+  delete r;
 }
 
 }  // extern "C"

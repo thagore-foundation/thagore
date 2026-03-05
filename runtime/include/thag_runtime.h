@@ -60,6 +60,23 @@ int thag_process_argc(void);
 const char* thag_process_env(const char* name);
 void thag_process_exit(int code);
 
+int64_t thag_ffi_load(const char* path);
+int thag_ffi_unload(int64_t handle);
+int64_t thag_ffi_symbol(int64_t handle, const char* name);
+int64_t thag_ffi_call0(int64_t func_ptr);
+int64_t thag_ffi_call4(int64_t func_ptr, int64_t a1, int64_t a2, int64_t a3, int64_t a4);
+int64_t thag_ffi_call8(int64_t func_ptr,
+                       int64_t a1, int64_t a2, int64_t a3, int64_t a4,
+                       int64_t a5, int64_t a6, int64_t a7, int64_t a8);
+int64_t thag_ptr_to_i64(const void* p);
+
+int thag_win32_message_box(const char* title, const char* text, unsigned int flags);
+int64_t thag_win32_create_window(int width, int height, const char* title);
+int thag_win32_show_window(int64_t hwnd);
+int thag_win32_destroy_window(int64_t hwnd);
+int thag_win32_set_title(int64_t hwnd, const char* title);
+int thag_win32_pump_messages(int64_t hwnd);
+
 void* thag_gui_create_canvas(int width, int height, const char* title);
 int thag_gui_destroy_canvas(void* canvas);
 int thag_gui_clear(void* canvas, int rgba);
@@ -90,13 +107,6 @@ int thag_http_get(const char* url, int timeout_ms);
 int thag_http_post(const char* url, const char* payload, int timeout_ms);
 int thag_http_get_retry(const char* url, int timeout_ms, int retries, int backoff_ms);
 int thag_http_post_retry(const char* url, const char* payload, int timeout_ms, int retries, int backoff_ms);
-void* thag_http_get_result(const char* url, int timeout_ms);
-void* thag_http_post_result(const char* url, const char* payload, int timeout_ms);
-int thag_http_result_status(const void* result);
-const char* thag_http_result_body(const void* result);
-size_t thag_http_result_body_len(const void* result);
-void thag_http_result_free(void* result);
-int thag_http_result_is_null(const void* result);
 int thag_ws_connect(const char* endpoint, int timeout_ms);
 int thag_ws_connect_retry(const char* endpoint, int timeout_ms, int retries, int backoff_ms);
 int thag_ws_send(int handle, const char* message);
