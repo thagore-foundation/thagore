@@ -48,6 +48,7 @@ struct CoreFunction {
   std::string return_type;
   int return_literal = 0;
   std::string return_expression;
+  syntax::AstExprPtr return_expression_ast;
   std::vector<CoreStmt> statements;
 };
 
@@ -83,6 +84,7 @@ struct CoreProgram {
   bool has_main = false;
   int main_return_literal = 0;
   std::string main_return_expression;
+  syntax::AstExprPtr main_return_expression_ast;
   std::vector<CoreStmt> main_statements;
   std::vector<CoreFunction> functions;
   std::vector<CoreClosure> closures;

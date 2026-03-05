@@ -483,6 +483,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
       append_core_statement(out.statements, st, comptime_known_values);
       if (st.kind == syntax::StatementKind::Return && st.has_expression && st.expression_valid) {
         out.return_expression = substitute_identifiers(st.expression_normalized, comptime_known_values);
+        out.return_expression_ast = st.expression_ast;
         int parsed = 0;
         if (parse_i32_literal(out.return_expression, parsed)) {
           out.return_literal = parsed;
@@ -533,6 +534,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
       if (is_print_like_expression(last.text)) {
         script_main.return_literal = 0;
         script_main.return_expression = "0";
+        script_main.return_expression_ast = nullptr;
         CoreStmt ret_zero;
         ret_zero.kind = CoreStmtKind::Return;
         ret_zero.has_expression = true;
@@ -541,6 +543,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
         script_main.statements.push_back(std::move(ret_zero));
       } else {
         script_main.return_expression = substitute_identifiers(expr, known_values);
+        script_main.return_expression_ast = last.expression_ast;
         if (parse_i32_literal(expr, top_ret)) {
           script_main.return_literal = top_ret;
         }
@@ -549,12 +552,14 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
           implicit_ret.kind = CoreStmtKind::Return;
           implicit_ret.has_expression = true;
           implicit_ret.expression = expr;
+          implicit_ret.expression_ast = last.expression_ast;
           implicit_ret.text = "return " + expr;
         }
       }
     } else {
       script_main.return_literal = 0;
       script_main.return_expression = "0";
+      script_main.return_expression_ast = nullptr;
       CoreStmt ret_zero;
       ret_zero.kind = CoreStmtKind::Return;
       ret_zero.has_expression = true;
@@ -564,6 +569,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     }
     core.main_statements = script_main.statements;
     core.main_return_expression = script_main.return_expression;
+    core.main_return_expression_ast = script_main.return_expression_ast;
     core.main_return_literal = script_main.return_literal;
     core.functions.push_back(std::move(script_main));
   }
@@ -572,6 +578,7 @@ CoreProgram lower_to_core(const syntax::AstProgram& program) {
     if (fn.name == "main") {
       core.main_statements = fn.statements;
       core.main_return_expression = fn.return_expression;
+      core.main_return_expression_ast = fn.return_expression_ast;
       core.main_return_literal = fn.return_literal;
       break;
     }

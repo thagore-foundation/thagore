@@ -266,8 +266,22 @@ ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuilder<>& b
                               std::unordered_map<std::string, ClosureDef>* closures,
                               llvm::Function* current_function,
                               support::DiagnosticSink& diag);
+ExprValue evaluate_expression(const syntax::AstExprPtr& expr_ast, const std::string& fallback_expr,
+                              llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
+                              const std::unordered_map<std::string, int>& enum_variant_tags,
+                              const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                              const std::unordered_map<std::string, std::string>& struct_field_types,
+                              const std::unordered_map<std::string, StructInstance>& struct_instances,
+                              std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                              std::unordered_map<std::string, ArrayInstance>& array_instances,
+                              const std::unordered_map<std::string, llvm::Function*>& functions,
+                              const std::unordered_map<std::string, ValueType>& function_returns,
+                              std::unordered_map<std::string, ClosureDef>* closures,
+                              llvm::Function* current_function,
+                              support::DiagnosticSink& diag);
 
 bool emit_expression_statement(const std::string& line, bool has_expression, const std::string& expression,
+                               const syntax::AstExprPtr& expression_ast,
                                llvm::IRBuilder<>& builder, llvm::Function* fn, llvm::FunctionCallee printf_fn,
                                llvm::Value* printf_i32_fmt, llvm::Value* printf_f64_fmt,
                                llvm::Value* printf_i64_fmt, llvm::Value* printf_str_fmt,

@@ -339,7 +339,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
   auto flush_deferred = [&]() {
     for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
       const std::string deferred_line = it->has_expression ? trim(it->expression) : trim(it->text);
-      if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
+      if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, it->expression_ast, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
                                      printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
@@ -366,12 +366,12 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     }
   };
 
-  auto eval_with_try = [&](const std::string& expr_text, bool has_await, ExprValue& out_value) {
+  auto eval_with_try = [&](const std::string& expr_text, const syntax::AstExprPtr& expr_ast, bool has_await, ExprValue& out_value) {
     std::string try_inner;
     if (!parse_try_operator_expr(expr_text, try_inner)) {
-      out_value = evaluate_expression(expr_text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                                      struct_instances, tuple_instances, array_instances, functions, function_returns,
-                                      &closures, fn, diag);
+      out_value = evaluate_expression(expr_ast, expr_text, builder, variables, enum_variant_tags, struct_fields,
+                                      struct_field_types, struct_instances, tuple_instances, array_instances, functions,
+                                      function_returns, &closures, fn, diag);
       if (out_value.value == nullptr || out_value.type == ValueType::Invalid) {
         return false;
       }
@@ -410,7 +410,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     builder.SetInsertPoint(err_bb);
     for (auto it = deferred.rbegin(); it != deferred.rend(); ++it) {
       const std::string deferred_line = it->has_expression ? trim(it->expression) : trim(it->text);
-      if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, builder, fn, printf_fn,
+      if (!emit_expression_statement(deferred_line, it->has_expression, it->expression, it->expression_ast, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
                                      printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
@@ -574,7 +574,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         llvm_types.reserve(tuple_elements.size());
         for (const std::string& element_expr : tuple_elements) {
           ExprValue element_value;
-          if (!eval_with_try(element_expr, false, element_value)) {
+          if (!eval_with_try(element_expr, nullptr, false, element_value)) {
             return false;
           }
           tuple_values.push_back(element_value);
@@ -603,7 +603,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
         ValueType element_type = ValueType::I32;
         for (const std::string& element_expr : array_elements) {
           ExprValue element_value;
-          if (!eval_with_try(element_expr, false, element_value)) {
+          if (!eval_with_try(element_expr, nullptr, false, element_value)) {
             return false;
           }
           if (array_values.empty()) {
@@ -647,7 +647,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
 
       ExprValue value;
-      if (!eval_with_try(st.expression, st.has_await, value)) {
+      if (!eval_with_try(st.expression, st.expression_ast, st.has_await, value)) {
         return false;
       }
       const std::string annotation = parse_let_annotation(st.text);
@@ -754,7 +754,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
           }
           ExprValue value =
               ExprValue{};
-          if (!eval_with_try(st.expression, st.has_await, value)) {
+          if (!eval_with_try(st.expression, st.expression_ast, st.has_await, value)) {
             return false;
           }
           const ValueType field_type =
@@ -783,7 +783,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       }
       ExprValue value =
           ExprValue{};
-      if (!eval_with_try(st.expression, st.has_await, value)) {
+      if (!eval_with_try(st.expression, st.expression_ast, st.has_await, value)) {
         return false;
       }
       llvm::Value* casted = nullptr;
@@ -872,7 +872,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
     }
 
     if (st.kind == lowering::CoreStmtKind::Expr) {
-      if (!emit_expression_statement(trim(st.text), st.has_expression, st.expression, builder, fn, printf_fn,
+      if (!emit_expression_statement(trim(st.text), st.has_expression, st.expression, st.expression_ast, builder, fn, printf_fn,
                                      printf_i32_fmt, printf_f64_fmt, printf_i64_fmt, printf_str_fmt,
                                      printf_i32_raw_fmt, printf_i64_raw_fmt,
                                      printf_f64_raw_fmt, printf_raw_str_fmt, printf_newline_fmt, variables,
@@ -889,7 +889,7 @@ bool emit_block(const std::vector<lowering::CoreStmt>& stmts,
       llvm::Value* ret = nullptr;
       if (st.has_expression) {
         ExprValue value;
-        if (!eval_with_try(st.expression, st.has_await, value)) {
+        if (!eval_with_try(st.expression, st.expression_ast, st.has_await, value)) {
           return false;
         }
         ret = cast_value_to_type(value, expected_return_type, builder);

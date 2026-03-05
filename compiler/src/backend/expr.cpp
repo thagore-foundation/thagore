@@ -1396,6 +1396,366 @@ ExprValue evaluate_expression(const std::string& expr_text, llvm::IRBuilder<>& b
   return value;
 }
 
+static std::string render_expression_ast(const syntax::AstExprPtr& expr) {
+  if (!expr) {
+    return "";
+  }
+  switch (expr->kind) {
+    case syntax::AstExprKind::Raw:
+    case syntax::AstExprKind::Atom:
+      return expr->text;
+    case syntax::AstExprKind::Unary:
+      if (expr->children.empty()) {
+        return expr->op;
+      }
+      return expr->op + render_expression_ast(expr->children[0]);
+    case syntax::AstExprKind::Binary:
+      if (expr->children.size() < 2) {
+        return expr->text;
+      }
+      return render_expression_ast(expr->children[0]) + " " + expr->op + " " + render_expression_ast(expr->children[1]);
+    case syntax::AstExprKind::Call: {
+      if (expr->children.empty()) {
+        return expr->text;
+      }
+      std::string out = render_expression_ast(expr->children[0]) + "(";
+      for (std::size_t i = 1; i < expr->children.size(); ++i) {
+        if (i > 1) {
+          out += ", ";
+        }
+        out += render_expression_ast(expr->children[i]);
+      }
+      out += ")";
+      return out;
+    }
+    case syntax::AstExprKind::Field:
+      if (expr->children.empty()) {
+        return expr->text;
+      }
+      return render_expression_ast(expr->children[0]) + "." + expr->op;
+    case syntax::AstExprKind::Index:
+      if (expr->children.size() < 2) {
+        return expr->text;
+      }
+      return render_expression_ast(expr->children[0]) + "[" + render_expression_ast(expr->children[1]) + "]";
+    case syntax::AstExprKind::Tuple: {
+      std::string out = "(";
+      for (std::size_t i = 0; i < expr->children.size(); ++i) {
+        if (i > 0) {
+          out += ", ";
+        }
+        out += render_expression_ast(expr->children[i]);
+      }
+      if (expr->children.size() == 1) {
+        out += ",";
+      }
+      out += ")";
+      return out;
+    }
+    case syntax::AstExprKind::Array: {
+      std::string out = "[";
+      for (std::size_t i = 0; i < expr->children.size(); ++i) {
+        if (i > 0) {
+          out += ", ";
+        }
+        out += render_expression_ast(expr->children[i]);
+      }
+      out += "]";
+      return out;
+    }
+    default:
+      return expr->text;
+  }
+}
+
+static ExprValue evaluate_atom_direct(const std::string& atom_text, llvm::IRBuilder<>& builder,
+                                      std::unordered_map<std::string, VariableSlot>& variables,
+                                      const std::unordered_map<std::string, int>& enum_variant_tags,
+                                      const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                                      const std::unordered_map<std::string, std::string>& struct_field_types,
+                                      const std::unordered_map<std::string, StructInstance>& struct_instances,
+                                      std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                                      std::unordered_map<std::string, ArrayInstance>& array_instances,
+                                      std::unordered_map<std::string, ClosureDef>* closures) {
+  const std::string tok = trim(atom_text);
+  if (tok.empty()) {
+    return {};
+  }
+  if (tok == "true") {
+    return ExprValue{builder.getInt1(true), ValueType::I1};
+  }
+  if (tok == "false") {
+    return ExprValue{builder.getInt1(false), ValueType::I1};
+  }
+  if (is_integer_atom(tok)) {
+    std::int64_t parsed = 0;
+    try {
+      parsed = std::stoll(tok);
+    } catch (const std::exception&) {
+      return {};
+    }
+    if (parsed >= std::numeric_limits<std::int32_t>::min() &&
+        parsed <= std::numeric_limits<std::int32_t>::max()) {
+      return ExprValue{builder.getInt32(static_cast<int32_t>(parsed)), ValueType::I32};
+    }
+    return ExprValue{builder.getInt64(parsed), ValueType::I64};
+  }
+  if (is_float_atom(tok)) {
+    try {
+      return ExprValue{llvm::ConstantFP::get(builder.getDoubleTy(), std::stod(tok)), ValueType::F64};
+    } catch (const std::exception&) {
+      return {};
+    }
+  }
+  if (is_string_atom(tok)) {
+    const std::string text = unescape_string_body(tok.substr(1, tok.size() - 2));
+    return ExprValue{create_global_cstr_ptr(builder, text, "strlit"), ValueType::I8Ptr};
+  }
+  if (is_interpolated_literal(tok)) {
+    std::string text = tok;
+    if (text.size() >= 3 && text[0] == 'v' && text[1] == '"') {
+      text = text.substr(2, text.size() - 3);
+    } else if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+      text = text.substr(1, text.size() - 2);
+    }
+    text = unescape_string_body(text);
+    return ExprValue{create_global_cstr_ptr(builder, text, "istrlit"), ValueType::I8Ptr};
+  }
+  std::string tuple_base;
+  std::size_t tuple_field_index = 0;
+  if (parse_tuple_field_access(tok, tuple_base, tuple_field_index)) {
+    auto tuple_it = tuple_instances.find(tuple_base);
+    if (tuple_it != tuple_instances.end() && tuple_it->second.alloca != nullptr && tuple_it->second.llvm_type != nullptr &&
+        tuple_field_index < tuple_it->second.element_types.size()) {
+      llvm::Value* field_ptr = builder.CreateStructGEP(tuple_it->second.llvm_type, tuple_it->second.alloca,
+                                                       static_cast<unsigned>(tuple_field_index), tok + ".ptr");
+      const ValueType field_ty = tuple_it->second.element_types[tuple_field_index];
+      llvm::Value* loaded = builder.CreateLoad(llvm_type_from_value_type(field_ty, builder), field_ptr);
+      return ExprValue{loaded, field_ty};
+    }
+  }
+  std::string field_base;
+  std::string field_name;
+  if (split_dotted_name(tok, field_base, field_name)) {
+    auto inst_it = struct_instances.find(field_base);
+    if (inst_it != struct_instances.end() && inst_it->second.ptr != nullptr && inst_it->second.llvm_type != nullptr) {
+      const std::size_t field_index = field_index_for_struct(inst_it->second.struct_name, field_name, struct_fields);
+      if (field_index != static_cast<std::size_t>(-1)) {
+        llvm::Value* field_ptr = builder.CreateStructGEP(inst_it->second.llvm_type, inst_it->second.ptr,
+                                                         static_cast<unsigned>(field_index),
+                                                         field_base + "." + field_name + ".ptr");
+        const ValueType field_ty = field_value_type_for_struct(inst_it->second.struct_name, field_name, struct_field_types);
+        llvm::Value* loaded = builder.CreateLoad(llvm_type_from_value_type(field_ty, builder), field_ptr);
+        return ExprValue{loaded, field_ty};
+      }
+    }
+  }
+  auto var_it = variables.find(tok);
+  if (var_it != variables.end() && var_it->second.alloca != nullptr) {
+    llvm::Value* loaded = builder.CreateLoad(var_it->second.alloca->getAllocatedType(), var_it->second.alloca);
+    return ExprValue{loaded, var_it->second.type};
+  }
+  auto variant_it = enum_variant_tags.find(tok);
+  if (variant_it != enum_variant_tags.end()) {
+    return ExprValue{builder.getInt32(encode_enum_with_payload(variant_it->second, 0)), ValueType::I32};
+  }
+  if (const std::optional<int> builtin = builtin_variant_tag(tok); builtin.has_value()) {
+    return ExprValue{builder.getInt32(encode_enum_with_payload(*builtin, 0)), ValueType::I32};
+  }
+  if (closures != nullptr) {
+    auto closure_it = closures->find(tok);
+    if (closure_it != closures->end()) {
+      return ExprValue{builder.getInt32(0), ValueType::I32};
+    }
+  }
+  return {};
+}
+
+ExprValue evaluate_expression(const syntax::AstExprPtr& expr_ast, const std::string& fallback_expr,
+                              llvm::IRBuilder<>& builder, std::unordered_map<std::string, VariableSlot>& variables,
+                              const std::unordered_map<std::string, int>& enum_variant_tags,
+                              const std::unordered_map<std::string, std::vector<std::string>>& struct_fields,
+                              const std::unordered_map<std::string, std::string>& struct_field_types,
+                              const std::unordered_map<std::string, StructInstance>& struct_instances,
+                              std::unordered_map<std::string, TupleInstance>& tuple_instances,
+                              std::unordered_map<std::string, ArrayInstance>& array_instances,
+                              const std::unordered_map<std::string, llvm::Function*>& functions,
+                              const std::unordered_map<std::string, ValueType>& function_returns,
+                              std::unordered_map<std::string, ClosureDef>* closures,
+                              llvm::Function* current_function,
+                              support::DiagnosticSink& diag) {
+  if (!expr_ast) {
+    return evaluate_expression(fallback_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                               struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
+                               current_function, diag);
+  }
+
+  const auto eval_child = [&](const syntax::AstExprPtr& child) {
+    return evaluate_expression(child, render_expression_ast(child), builder, variables, enum_variant_tags, struct_fields,
+                               struct_field_types, struct_instances, tuple_instances, array_instances, functions,
+                               function_returns, closures, current_function, diag);
+  };
+
+  switch (expr_ast->kind) {
+    case syntax::AstExprKind::Raw: {
+      const std::string text = !trim(expr_ast->text).empty() ? expr_ast->text : fallback_expr;
+      return evaluate_expression(text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                                 struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
+                                 current_function, diag);
+    }
+    case syntax::AstExprKind::Atom: {
+      ExprValue direct = evaluate_atom_direct(expr_ast->text, builder, variables, enum_variant_tags, struct_fields,
+                                              struct_field_types, struct_instances, tuple_instances, array_instances, closures);
+      if (direct.value != nullptr && direct.type != ValueType::Invalid) {
+        return direct;
+      }
+      return evaluate_expression(expr_ast->text, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                                 struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
+                                 current_function, diag);
+    }
+    case syntax::AstExprKind::Unary: {
+      if (expr_ast->children.empty()) {
+        break;
+      }
+      ExprValue rhs = eval_child(expr_ast->children[0]);
+      if (rhs.value == nullptr || rhs.type == ValueType::Invalid) {
+        return {};
+      }
+      const std::string op = expr_ast->op;
+      if (op == "await") {
+        return rhs;
+      }
+      if (op == "!") {
+        llvm::Value* as_i1 = to_i1(rhs, builder);
+        if (as_i1 == nullptr) {
+          return {};
+        }
+        return ExprValue{builder.CreateNot(as_i1), ValueType::I1};
+      }
+      if (op == "-") {
+        if (rhs.type == ValueType::I32) {
+          return ExprValue{builder.CreateNeg(rhs.value), ValueType::I32};
+        }
+        if (rhs.type == ValueType::I64) {
+          return ExprValue{builder.CreateNeg(rhs.value), ValueType::I64};
+        }
+        if (rhs.type == ValueType::F32 || rhs.type == ValueType::F64) {
+          llvm::Value* as_f = to_float_value(rhs, rhs.type, builder);
+          if (as_f == nullptr) {
+            return {};
+          }
+          return ExprValue{builder.CreateFNeg(as_f), rhs.type};
+        }
+      }
+      break;
+    }
+    case syntax::AstExprKind::Binary: {
+      if (expr_ast->children.size() < 2) {
+        break;
+      }
+      ExprValue lhs = eval_child(expr_ast->children[0]);
+      ExprValue rhs = eval_child(expr_ast->children[1]);
+      if (lhs.value == nullptr || rhs.value == nullptr || lhs.type == ValueType::Invalid || rhs.type == ValueType::Invalid) {
+        return {};
+      }
+      const std::string op = expr_ast->op;
+      if (op == "&&" || op == "||") {
+        llvm::Value* l = to_i1(lhs, builder);
+        llvm::Value* r = to_i1(rhs, builder);
+        if (l == nullptr || r == nullptr) {
+          return {};
+        }
+        return ExprValue{op == "&&" ? builder.CreateAnd(l, r) : builder.CreateOr(l, r), ValueType::I1};
+      }
+      if (op == "==" || op == "!=") {
+        if (lhs.type == rhs.type) {
+          llvm::Value* cmp = nullptr;
+          if (is_float_type(lhs.type)) {
+            cmp = op == "==" ? builder.CreateFCmpOEQ(lhs.value, rhs.value) : builder.CreateFCmpONE(lhs.value, rhs.value);
+          } else {
+            cmp = op == "==" ? builder.CreateICmpEQ(lhs.value, rhs.value) : builder.CreateICmpNE(lhs.value, rhs.value);
+          }
+          return ExprValue{cmp, ValueType::I1};
+        }
+      }
+      if (op == "<" || op == "<=" || op == ">" || op == ">=") {
+        if (is_float_type(lhs.type) || is_float_type(rhs.type)) {
+          const ValueType target = promoted_float_type(lhs.type, rhs.type);
+          llvm::Value* l = to_float_value(lhs, target, builder);
+          llvm::Value* r = to_float_value(rhs, target, builder);
+          if (l == nullptr || r == nullptr) {
+            return {};
+          }
+          llvm::Value* cmp = nullptr;
+          if (op == "<") cmp = builder.CreateFCmpOLT(l, r);
+          if (op == "<=") cmp = builder.CreateFCmpOLE(l, r);
+          if (op == ">") cmp = builder.CreateFCmpOGT(l, r);
+          if (op == ">=") cmp = builder.CreateFCmpOGE(l, r);
+          return ExprValue{cmp, ValueType::I1};
+        }
+        if (is_integer_numeric_type(lhs.type) && is_integer_numeric_type(rhs.type)) {
+          const ValueType target = promoted_integer_type(lhs.type, rhs.type);
+          llvm::Value* l = to_integer_numeric_value(lhs, target, builder);
+          llvm::Value* r = to_integer_numeric_value(rhs, target, builder);
+          if (l == nullptr || r == nullptr) {
+            return {};
+          }
+          llvm::Value* cmp = nullptr;
+          if (op == "<") cmp = builder.CreateICmpSLT(l, r);
+          if (op == "<=") cmp = builder.CreateICmpSLE(l, r);
+          if (op == ">") cmp = builder.CreateICmpSGT(l, r);
+          if (op == ">=") cmp = builder.CreateICmpSGE(l, r);
+          return ExprValue{cmp, ValueType::I1};
+        }
+      }
+      if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
+        if (is_float_type(lhs.type) || is_float_type(rhs.type)) {
+          const ValueType target = promoted_float_type(lhs.type, rhs.type);
+          llvm::Value* l = to_float_value(lhs, target, builder);
+          llvm::Value* r = to_float_value(rhs, target, builder);
+          if (l == nullptr || r == nullptr || op == "%") {
+            break;
+          }
+          llvm::Value* out = nullptr;
+          if (op == "+") out = builder.CreateFAdd(l, r);
+          if (op == "-") out = builder.CreateFSub(l, r);
+          if (op == "*") out = builder.CreateFMul(l, r);
+          if (op == "/") out = builder.CreateFDiv(l, r);
+          if (out != nullptr) {
+            return ExprValue{out, target};
+          }
+        }
+        if (is_integer_numeric_type(lhs.type) && is_integer_numeric_type(rhs.type)) {
+          const ValueType target = promoted_integer_type(lhs.type, rhs.type);
+          llvm::Value* l = to_integer_numeric_value(lhs, target, builder);
+          llvm::Value* r = to_integer_numeric_value(rhs, target, builder);
+          if (l == nullptr || r == nullptr) {
+            return {};
+          }
+          llvm::Value* out = nullptr;
+          if (op == "+") out = builder.CreateAdd(l, r);
+          if (op == "-") out = builder.CreateSub(l, r);
+          if (op == "*") out = builder.CreateMul(l, r);
+          if (op == "/") out = builder.CreateSDiv(l, r);
+          if (op == "%") out = builder.CreateSRem(l, r);
+          if (out != nullptr) {
+            return ExprValue{out, target};
+          }
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  const std::string rendered = render_expression_ast(expr_ast);
+  const std::string fallback = rendered.empty() ? fallback_expr : rendered;
+  return evaluate_expression(fallback, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
+                             struct_instances, tuple_instances, array_instances, functions, function_returns, closures,
+                             current_function, diag);
+}
+
 static bool parse_interpolated_chunks(const std::string& literal, std::vector<InterpChunk>& out_chunks,
                                       std::string& error) {
   out_chunks.clear();
@@ -1443,6 +1803,7 @@ static bool parse_interpolated_chunks(const std::string& literal, std::vector<In
 }
 
 bool emit_expression_statement(const std::string& line, bool has_expression, const std::string& expression,
+                                      const syntax::AstExprPtr& expression_ast,
                                       llvm::IRBuilder<>& builder, llvm::Function* fn, llvm::FunctionCallee printf_fn,
                                       llvm::Value* printf_i32_fmt, llvm::Value* printf_f64_fmt,
                                       llvm::Value* printf_i64_fmt, llvm::Value* printf_str_fmt,
@@ -1524,7 +1885,7 @@ bool emit_expression_statement(const std::string& line, bool has_expression, con
       return true;
     }
 
-    ExprValue value = evaluate_expression(inner, builder, variables, enum_variant_tags, struct_fields,
+    ExprValue value = evaluate_expression(expression_ast, inner, builder, variables, enum_variant_tags, struct_fields,
                                           struct_field_types, struct_instances, tuple_instances, array_instances,
                                           functions, function_returns, &closures, fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
@@ -1561,11 +1922,11 @@ bool emit_expression_statement(const std::string& line, bool has_expression, con
     return true;
   }
 
-  if (has_expression) {
-    ExprValue value =
-        evaluate_expression(effective_expr, builder, variables, enum_variant_tags, struct_fields, struct_field_types,
-                            struct_instances, tuple_instances, array_instances, functions, function_returns, &closures,
-                            fn, diag);
+    if (has_expression) {
+      ExprValue value =
+        evaluate_expression(expression_ast, effective_expr, builder, variables, enum_variant_tags, struct_fields,
+                            struct_field_types, struct_instances, tuple_instances, array_instances, functions,
+                            function_returns, &closures, fn, diag);
     if (value.value == nullptr || value.type == ValueType::Invalid) {
       return false;
     }

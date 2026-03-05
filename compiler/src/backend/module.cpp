@@ -41,6 +41,7 @@ std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, const std
     legacy_main.return_type = "i32";
     legacy_main.return_literal = core.main_return_literal;
     legacy_main.return_expression = core.main_return_expression;
+    legacy_main.return_expression_ast = core.main_return_expression_ast;
     legacy_main.statements = core.main_statements;
     functions.push_back(std::move(legacy_main));
   }
@@ -244,10 +245,10 @@ std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, const std
         if (expected != ValueType::Void && async_ctx.return_slot != nullptr) {
           llvm::Value* fallback = nullptr;
           if (!trim(fn_def.return_expression).empty()) {
-            ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
-                                                  core.struct_fields, core.struct_field_types, struct_instances,
-                                                  tuple_instances, array_instances, llvm_functions, function_returns,
-                                                  &closures, fn, diag);
+            ExprValue value = evaluate_expression(fn_def.return_expression_ast, fn_def.return_expression, builder, variables,
+                                                  core.enum_variant_tags, core.struct_fields, core.struct_field_types,
+                                                  struct_instances, tuple_instances, array_instances, llvm_functions,
+                                                  function_returns, &closures, fn, diag);
             fallback = cast_value_to_type(value, expected, builder);
           }
           if (fallback == nullptr) {
@@ -319,10 +320,10 @@ std::unique_ptr<llvm::Module> build_module(llvm::LLVMContext& context, const std
       } else {
         llvm::Value* fallback = nullptr;
         if (!trim(fn_def.return_expression).empty()) {
-          ExprValue value = evaluate_expression(fn_def.return_expression, builder, variables, core.enum_variant_tags,
-                                                core.struct_fields, core.struct_field_types, struct_instances,
-                                                tuple_instances, array_instances, llvm_functions, function_returns,
-                                                &closures, fn, diag);
+          ExprValue value = evaluate_expression(fn_def.return_expression_ast, fn_def.return_expression, builder, variables,
+                                                core.enum_variant_tags, core.struct_fields, core.struct_field_types,
+                                                struct_instances, tuple_instances, array_instances, llvm_functions,
+                                                function_returns, &closures, fn, diag);
           fallback = cast_value_to_type(value, expected, builder);
         }
         if (fallback == nullptr) {
