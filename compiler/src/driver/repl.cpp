@@ -90,7 +90,11 @@ int handle_repl(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
         return 1;
       }
       const std::filesystem::path src = temp_root / "main.tg";
+#if defined(_WIN32)
+      const std::filesystem::path bin = temp_root / "main.exe";
+#else
       const std::filesystem::path bin = temp_root / "main.bin";
+#endif
       support::write_text_file(src.string(), join_lines(lines));
 
       BuildOptions options;

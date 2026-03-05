@@ -37,3 +37,7 @@ This document defines the production launch posture for the public Drago registr
 - Registry client integration in `drago`: active.
 - Public release communication workflow: active via `.github/workflows/community-ops.yml`.
 - Documentation for users and contributors: active in repository docs.
+
+## Operator reference
+
+- Publish/install runbook: `docs/runbooks/drago-package-publish.md`

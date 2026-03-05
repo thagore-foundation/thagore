@@ -8,6 +8,12 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <shellapi.h>
+#endif
+
 namespace {
 
 static char* dup_cstr(const std::string& text) {
@@ -29,7 +35,21 @@ static std::vector<std::string>& argv_cache() {
     return cache;
   }
   loaded = true;
-#if defined(__linux__)
+#if defined(_WIN32)
+  int argc = 0;
+  LPWSTR* argv_w = ::CommandLineToArgvW(::GetCommandLineW(), &argc);
+  if (argv_w != nullptr) {
+    for (int i = 0; i < argc; ++i) {
+      int len = ::WideCharToMultiByte(CP_UTF8, 0, argv_w[i], -1, nullptr, 0, nullptr, nullptr);
+      if (len > 0) {
+        std::string arg(static_cast<std::size_t>(len - 1), '\0');
+        ::WideCharToMultiByte(CP_UTF8, 0, argv_w[i], -1, arg.data(), len, nullptr, nullptr);
+        cache.push_back(std::move(arg));
+      }
+    }
+    ::LocalFree(argv_w);
+  }
+#elif defined(__linux__)
   std::ifstream in("/proc/self/cmdline", std::ios::binary);
   if (in) {
     std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -45,6 +65,15 @@ static std::vector<std::string>& argv_cache() {
     if (!cur.empty()) {
       cache.push_back(cur);
     }
+  }
+#elif defined(__APPLE__)
+  // macOS: use _NSGetArgc/_NSGetArgv from crt_externs.h
+  extern int* _NSGetArgc(void);
+  extern char*** _NSGetArgv(void);
+  int ac = *_NSGetArgc();
+  char** av = *_NSGetArgv();
+  for (int i = 0; i < ac; ++i) {
+    cache.push_back(av[i]);
   }
 #endif
   return cache;

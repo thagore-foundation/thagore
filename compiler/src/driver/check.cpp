@@ -45,7 +45,11 @@ int handle_check(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
 
   BuildOptions options;
   options.input_path = cmd.input_path;
+#if defined(_WIN32)
+  options.output_path = cmd.output_path.empty() ? (default_base_name(cmd.input_path) + ".check.exe") : cmd.output_path;
+#else
   options.output_path = cmd.output_path.empty() ? (default_base_name(cmd.input_path) + ".check.bin") : cmd.output_path;
+#endif
   options.target_triple = cmd.target_triple;
   options.include_paths = cmd.include_paths;
   options.emit_llvm = true;
