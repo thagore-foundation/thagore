@@ -2,25 +2,26 @@
 
 This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
 
-Roadmap to product milestone `v1.5`: `docs/architecture/v1.5-roadmap.md`.
-Current release cut: `v1.5.0` (Stable Release).
+Roadmap to product milestone `v2.5`: `ROADMAP.md`.
+Current release cut: `v2.2.0` (HIR + bidirectional type-checking baseline).
 
 ## Frontend
 
-- Lexer: in progress
-- Parser: in progress
-- Typechecker parity: in progress
+- Lexer: implemented
+- Parser: implemented
+- Typechecker parity: implemented (HIR-assisted bidirectional checks)
 
 ## Middleend
 
-- Core IR model: in progress
-- Lowering parity: in progress
+- Core IR model: implemented
+- Lowering parity: implemented
+- HIR/type layer: implemented (`compiler/include/thagc/hir`, `compiler/include/thagc/ty`)
 
 ## Backend
 
-- LLVM IR emission: in progress
-- Object emission: in progress
-- Link planner (no legacy runtime binding): in progress
+- LLVM IR emission: implemented
+- Object emission: implemented
+- Link planner (no legacy runtime binding): implemented
 
 ## Driver / CLI groups
 

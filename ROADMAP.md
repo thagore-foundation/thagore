@@ -1,7 +1,7 @@
 # Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 6, 2026): `v2.0` (Real Recursive-Descent Parser, released).
-Status note: v2.0 parser/codegen compatibility gates pass on the active release lane with full regression suites green.
+Current effective milestone by code audit (March 6, 2026): `v2.2` (HIR + Bidirectional Type Checking, released).
+Status note: v2.2 HIR/type-check integration gates pass on the active release lane with integration + e2e suites green.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -579,7 +579,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v1.9 | Span system + token pipeline | ✅ Released |
 | v2.0 | Real recursive-descent parser | ✅ Released |
 | v2.1 | Symbol table & name resolution | 🔲 Planned |
-| v2.2 | HIR & bidirectional type checking | 🔲 Planned |
+| v2.2 | HIR & bidirectional type checking | ✅ Released |
 | v2.3 | Full type inference & generics | 🔲 Planned |
 | v2.4 | MIR & borrow checker | 🔲 Planned |
 | v2.5 | **Production complete** | 🔲 Planned |
@@ -757,7 +757,7 @@ scope resolution, undefined-name errors with source spans."
 
 ---
 
-## v2.2 — HIR & Bidirectional Type Checking
+## v2.2 — HIR & Bidirectional Type Checking ✅ Released
 
 **Theme:** Introduce a typed High-level IR. Replace `std::string expression` in
 `CoreStmt` with a proper expression tree. Add bidirectional type checking for the

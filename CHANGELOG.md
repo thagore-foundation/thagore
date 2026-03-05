@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.0 - 2026-03-06
+
+- typed HIR, bidirectional type checker, type-mismatch errors with source underlines.
+- added `compiler/include/thagc/hir/expr.hpp` + `compiler/include/thagc/hir/typecheck.hpp` and `compiler/include/thagc/ty/ty.hpp`.
+- integrated HIR inference/check path in `TypeChecker` for `let` annotations and function returns with compatibility fallback to existing expression typing rules.
+- updated parity syntax-alignment tests for split frontend parser files (`parser.cpp` + `expr.cpp`).
+
 ## v2.0.0 - 2026-03-06
 
 - replaced line-by-line parser with recursive-descent token-stream parser; 3-pass re-parse eliminated.

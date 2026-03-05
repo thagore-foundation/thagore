@@ -5,7 +5,9 @@ Quick map for contributors:
 ## I need to change parser behavior
 
 - `compiler/include/thagc/frontend/parser.hpp`
-- `compiler/src/frontend/ir.cpp`
+- `compiler/src/frontend/parser.cpp`
+- `compiler/src/frontend/expr.cpp`
+- `compiler/src/frontend/syntax.cpp`
 
 ## I need to change type checks
 
@@ -16,11 +18,20 @@ Quick map for contributors:
 
 - `compiler/include/thagc/middleend/core_ir.hpp`
 - `compiler/src/middleend/builder.cpp`
+- `compiler/include/thagc/hir/expr.hpp`
+- `compiler/include/thagc/hir/typecheck.hpp`
+- `compiler/src/middleend/hir_typecheck.cpp`
+- `compiler/include/thagc/ty/ty.hpp`
 
 ## I need to change LLVM output
 
 - `compiler/include/thagc/backend/llvm_emitter.hpp`
-- `compiler/src/backend/ir.cpp`
+- `compiler/src/backend/expr.cpp`
+- `compiler/src/backend/emit.cpp`
+- `compiler/src/backend/module.cpp`
+- `compiler/src/backend/tokens.cpp`
+- `compiler/src/backend/types.cpp`
+- `compiler/src/backend/llvm_emitter.cpp`
 
 ## I need to change CLI commands
 

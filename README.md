@@ -63,6 +63,8 @@ Package and toolchain update flows are managed through `drago`.
 compiler/
   frontend/      # lexer/parser/type rules
   middleend/     # typed/core IR + lowering
+  hir/           # typed high-level IR nodes + HIR typing helpers
+  ty/            # shared compiler type representations
   backend/       # LLVM emission + object generation
   driver/        # CLI and pipeline orchestration
   shared/        # diagnostics, fs/process abstractions
@@ -193,3 +195,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
 - v1.9 release notes: `docs/release/v1.9.0-release-notes.md`
 - v2.0 release checklist: `docs/release/v2.0.0-checklist.md`
 - v2.0 release notes: `docs/release/v2.0.0-release-notes.md`
+- v2.2 release checklist: `docs/release/v2.2.0-checklist.md`
+- v2.2 release notes: `docs/release/v2.2.0-release-notes.md`
