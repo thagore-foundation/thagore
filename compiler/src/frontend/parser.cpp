@@ -1,15 +1,54 @@
 #include "internal.hpp"
 
 #include <span>
+#include <string_view>
 #include <unordered_map>
 
 namespace thagc::syntax {
 
 namespace {
 
+static const Token& eof_token() {
+  static const Token kEof{
+      TokenKind::EndOfFile,
+      "",
+      0,
+      0,
+      Span{},
+  };
+  return kEof;
+}
+
 struct ParserContext {
   std::span<const Token> tokens;
   std::size_t pos = 0;
+
+  const Token& peek(int offset = 0) const {
+    if (offset < 0) {
+      return eof_token();
+    }
+    const std::size_t idx = pos + static_cast<std::size_t>(offset);
+    if (idx >= tokens.size()) {
+      return eof_token();
+    }
+    return tokens[idx];
+  }
+
+  Token advance() {
+    const Token tok = peek();
+    if (pos < tokens.size()) {
+      ++pos;
+    }
+    return tok;
+  }
+
+  bool eat(TokenKind kind) {
+    if (peek().kind != kind) {
+      return false;
+    }
+    advance();
+    return true;
+  }
 };
 
 struct LineTokenInfo {
@@ -44,9 +83,13 @@ static std::unordered_map<int, Span> collect_line_token_spans(std::span<const To
   return line_spans;
 }
 
-static std::unordered_map<int, LineTokenInfo> collect_line_token_info(std::span<const Token> tokens) {
+static std::unordered_map<int, LineTokenInfo> collect_line_token_info(ParserContext& ctx) {
   std::unordered_map<int, LineTokenInfo> line_info;
-  for (const Token& tok : tokens) {
+  while (true) {
+    const Token tok = ctx.advance();
+    if (tok.kind == TokenKind::EndOfFile) {
+      break;
+    }
     if (tok.kind == TokenKind::EndOfFile || tok.kind == TokenKind::Newline || tok.line <= 0) {
       continue;
     }
@@ -69,7 +112,8 @@ static std::unordered_map<int, LineTokenInfo> collect_line_token_info(std::span<
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
   ParserContext ctx{std::span<const Token>(tokens.data(), tokens.size()), 0};
   auto token_line_spans = collect_line_token_spans(ctx.tokens);
-  auto token_line_info = collect_line_token_info(ctx.tokens);
+  auto token_line_info = collect_line_token_info(ctx);
+  ctx.pos = 0;
   AstProgram program;
   program.source = source;
   program.line_spans = token_line_spans;
