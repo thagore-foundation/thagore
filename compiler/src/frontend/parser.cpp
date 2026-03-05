@@ -1,0 +1,437 @@
+#include "internal.hpp"
+
+namespace thagc::syntax {
+
+AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
+  (void)tokens;
+  AstProgram program;
+  program.source = source;
+
+  std::vector<SourceLine> lines;
+  std::istringstream in(source);
+  std::string raw_line;
+  int line_no = 0;
+  while (std::getline(in, raw_line)) {
+    ++line_no;
+    const std::string stripped = strip_comments(raw_line);
+    const std::string clean = trim(stripped);
+    if (clean.empty()) {
+      continue;
+    }
+    program.top_level_lines.push_back(clean);
+    lines.push_back(SourceLine{line_no, leading_indent(raw_line), clean});
+  }
+
+  std::unordered_map<std::string, AstMacro> macros;
+  std::unordered_map<std::string, std::string> comptime_known_values;
+  std::size_t i = 0;
+  while (i < lines.size()) {
+    const SourceLine& line = lines[i];
+    collect_feature_counters(line.clean, program);
+    std::string effective_line = line.clean;
+    bool is_pub_decl = false;
+    if (starts_with(effective_line, "pub ")) {
+      is_pub_decl = true;
+      program.public_decls.push_back(line.clean);
+      effective_line = trim(effective_line.substr(4));
+    }
+    if (starts_with(effective_line, "intent ")) {
+      program.intents.push_back(effective_line);
+    }
+    if (starts_with(effective_line, "flow ")) {
+      program.flows.push_back(effective_line);
+    }
+    if (starts_with(effective_line, "intent func ")) {
+      effective_line = trim(effective_line.substr(7));
+    } else if (starts_with(effective_line, "flow func ")) {
+      effective_line = trim(effective_line.substr(5));
+    }
+
+    if (starts_with(effective_line, "macro ")) {
+      AstMacro macro;
+      std::string macro_error;
+      if (!parse_macro_declaration(effective_line, macro, macro_error)) {
+        add_parse_error(program, line.number, macro_error);
+      } else {
+        macro.line = line.number;
+        if (macros.find(macro.name) != macros.end()) {
+          add_parse_error(program, line.number, "duplicate macro declaration '" + macro.name + "'");
+        } else {
+          macros[macro.name] = macro;
+          program.macros.push_back(std::move(macro));
+        }
+      }
+      ++i;
+      continue;
+    }
+
+    if (starts_with(effective_line, "comptime:")) {
+      ++i;
+      if (i >= lines.size() || lines[i].indent <= line.indent) {
+        add_parse_error(program, line.number, "comptime block must be indentation-scoped");
+      }
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        AstStatement st = build_statement_from_line(program, lines[i], macros);
+        if ((st.kind != StatementKind::Let && st.kind != StatementKind::Assign) || !st.has_expression ||
+            !st.expression_valid) {
+          add_parse_error(program, lines[i].number,
+                          "comptime block supports only valid let/assign expressions");
+          ++i;
+          continue;
+        }
+        if (st.kind == StatementKind::Let) {
+          if (st.target.empty() || !is_identifier(st.target)) {
+            add_parse_error(program, lines[i].number, "comptime let binding must use identifier name");
+            ++i;
+            continue;
+          }
+          const std::string expression = substitute_known_identifiers(st.expression_normalized, comptime_known_values);
+          comptime_known_values[st.target] = expression;
+          program.comptime_bindings.push_back(AstComptimeBinding{st.target, expression, lines[i].number});
+        } else {
+          if (st.target.empty() || !is_identifier(st.target)) {
+            add_parse_error(program, lines[i].number, "comptime assignment target must be identifier");
+            ++i;
+            continue;
+          }
+          auto known = comptime_known_values.find(st.target);
+          if (known == comptime_known_values.end()) {
+            add_parse_error(program, lines[i].number,
+                            "comptime assignment target '" + st.target + "' is not defined");
+            ++i;
+            continue;
+          }
+          const std::string expression = substitute_known_identifiers(st.expression_normalized, comptime_known_values);
+          comptime_known_values[st.target] = expression;
+          program.comptime_bindings.push_back(AstComptimeBinding{st.target, expression, lines[i].number});
+        }
+        ++i;
+      }
+      continue;
+    }
+
+    if (starts_with(effective_line, "func ") || starts_with(effective_line, "async func ")) {
+      const bool is_async_func = starts_with(effective_line, "async func ");
+      const std::string function_header = is_async_func ? trim(effective_line.substr(6)) : effective_line;
+      AstFunction fn;
+      fn.name = function_name_from_header(function_header);
+      fn.params = function_params_from_header(function_header);
+      fn.param_types = function_param_types_from_header(function_header);
+      fn.header_line = line.number;
+      fn.header_indent = line.indent;
+      fn.is_pub = is_pub_decl;
+      fn.is_async = is_async_func;
+
+      if (!ends_with(function_header, ":")) {
+        add_parse_error(program, line.number, "function header must be colon-terminated");
+      }
+      if (fn.name.empty()) {
+        add_parse_error(program, line.number, "invalid function header");
+      }
+      for (const std::string& param : fn.params) {
+        if (param.empty() || !is_simple_assignable_target(param) || param.find('.') != std::string::npos) {
+          add_parse_error(program, line.number, "invalid function parameter '" + param + "'");
+        }
+      }
+      fn.return_type = function_return_type_from_header(function_header);
+      if (function_header.find("->") != std::string::npos && fn.return_type.empty()) {
+        add_parse_error(program, line.number, "function return annotation '-> type' is not supported");
+      }
+
+      if (fn.name == "main") {
+        program.has_main = true;
+      }
+      if (!fn.name.empty() && fn.name.find('.') == std::string::npos) {
+        program.function_visibility[fn.name] = fn.is_pub;
+      }
+
+      ++i;
+      if (i >= lines.size() || lines[i].indent <= fn.header_indent) {
+        add_parse_error(program, line.number, "function body must be indentation-scoped");
+      }
+
+      while (i < lines.size() && lines[i].indent > fn.header_indent) {
+        const SourceLine& body = lines[i];
+        AstStatement st = build_statement_from_line(program, body, macros);
+        if (st.kind == StatementKind::Return && fn.name == "main") {
+          program.main_return_literal = parse_return_literal(body.clean);
+        }
+        fn.body.push_back(st);
+        ++i;
+      }
+
+      program.functions.push_back(std::move(fn));
+      continue;
+    }
+
+    if (starts_with(effective_line, "flow ") && !starts_with(effective_line, "flow func ")) {
+      AstFlow flow;
+      flow.header = effective_line;
+      flow.name = flow_name_from_header(effective_line);
+      flow.line = line.number;
+      flow.indent = line.indent;
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "flow header must be colon-terminated");
+      }
+      if (flow.name.empty()) {
+        add_parse_error(program, line.number, "invalid flow header");
+      }
+
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        const SourceLine& step_line = lines[i];
+        if (!starts_with(step_line.clean, "step ")) {
+          add_parse_error(program, step_line.number, "flow block only accepts 'step' entries");
+          ++i;
+          continue;
+        }
+        AstFlowStep step;
+        step.line = step_line.number;
+        std::string step_error;
+        if (!parse_flow_step_header(step_line.clean, step, step_error)) {
+          add_parse_error(program, step_line.number, step_error);
+          ++i;
+          while (i < lines.size() && lines[i].indent > step_line.indent) {
+            ++i;
+          }
+          continue;
+        }
+        ++i;
+        while (i < lines.size() && lines[i].indent > step_line.indent) {
+          collect_feature_counters(lines[i].clean, program);
+          parse_flow_step_directive(program, step, lines[i]);
+          ++i;
+        }
+        flow.steps.push_back(std::move(step));
+      }
+      if (flow.steps.empty()) {
+        add_parse_error(program, line.number, "flow block must contain at least one step");
+      }
+      program.flow_defs.push_back(std::move(flow));
+      continue;
+    }
+
+    if (starts_with(effective_line, "import ") || starts_with(effective_line, "from ")) {
+      AstImport import_decl;
+      std::string import_error;
+      if (!parse_import_decl(effective_line, import_decl, import_error)) {
+        add_parse_error(program, line.number, import_error);
+      } else {
+        import_decl.line = line.number;
+        import_decl.column = 1;
+        program.imports.push_back(std::move(import_decl));
+      }
+      ++i;
+      continue;
+    }
+    if (starts_with(effective_line, "extern ")) {
+      program.extern_decls.push_back(effective_line);
+      AstExternFunction ext;
+      if (!parse_extern_function_declaration(effective_line, ext)) {
+        add_parse_error(program, line.number, "malformed extern declaration");
+      } else {
+        ext.line = line.number;
+        program.extern_functions.push_back(std::move(ext));
+      }
+      ++i;
+      continue;
+    }
+    if (starts_with(effective_line, "struct ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "struct header must be colon-terminated");
+      }
+      program.structs.push_back(effective_line);
+      const std::string struct_name = struct_name_from_header(effective_line);
+      if (struct_name.empty()) {
+        add_parse_error(program, line.number, "invalid struct header");
+      } else {
+        program.struct_visibility[struct_name] = is_pub_decl;
+      }
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        if (!struct_name.empty()) {
+          const std::string field_name = struct_field_name_from_line(lines[i].clean);
+          if (field_name.empty()) {
+            add_parse_error(program, lines[i].number,
+                            "invalid struct field declaration: '" + lines[i].clean + "'");
+          } else {
+            program.struct_fields[struct_name].push_back(field_name);
+            program.struct_field_types[struct_name + "." + field_name] =
+                struct_field_type_from_line(lines[i].clean);
+          }
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "enum ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "enum header must be colon-terminated");
+      }
+      program.enums.push_back(effective_line);
+      const std::string enum_name = enum_name_from_header(effective_line);
+      if (enum_name.empty()) {
+        add_parse_error(program, line.number, "invalid enum header");
+      } else {
+        program.enum_visibility[enum_name] = is_pub_decl;
+      }
+      int variant_index = 0;
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        const std::string variant = enum_variant_name_from_line(lines[i].clean);
+        if (!variant.empty() && program.enum_variant_tags.find(variant) == program.enum_variant_tags.end()) {
+          program.enum_variant_tags[variant] = variant_index++;
+          const std::string payload_type = enum_variant_payload_type_from_line(lines[i].clean);
+          if (!payload_type.empty()) {
+            program.enum_variant_payload_types[variant] = payload_type;
+          }
+        }
+        if (!enum_name.empty() && !variant.empty()) {
+          program.enum_variants[enum_name].push_back(variant);
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "type ")) {
+      program.type_aliases.push_back(effective_line);
+      ++i;
+      continue;
+    }
+    if (starts_with(effective_line, "state ")) {
+      std::string state_name;
+      std::vector<std::string> variants;
+      std::string state_error;
+      const bool parsed = parse_state_header(effective_line, state_name, variants, state_error);
+      if (!parsed) {
+        add_parse_error(program, line.number, "invalid state declaration");
+      } else if (!state_error.empty()) {
+        add_parse_error(program, line.number, state_error);
+      } else {
+        program.state_sets[state_name] = variants;
+      }
+      ++i;
+      continue;
+    }
+    if (starts_with(effective_line, "trait ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "trait header must be colon-terminated");
+      }
+      program.traits.push_back(effective_line);
+      const std::string trait_name = trim(effective_line.substr(6, effective_line.size() - 7));
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        collect_feature_counters(lines[i].clean, program);
+        const std::string method = method_name_from_line(lines[i].clean);
+        if (!method.empty()) {
+          program.trait_required_methods[trait_name].push_back(method);
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (starts_with(effective_line, "impl ")) {
+      if (!ends_with(effective_line, ":")) {
+        add_parse_error(program, line.number, "impl header must be colon-terminated");
+      }
+      program.impls.push_back(effective_line);
+      std::string trait_name;
+      std::string type_name;
+      const bool is_impl_for = parse_impl_for_header(effective_line, trait_name, type_name);
+      std::string impl_type_name;
+      const bool is_type_impl = parse_impl_type_header(effective_line, impl_type_name);
+      const std::string impl_key = trait_name + "|" + type_name;
+      if (is_impl_for) {
+        program.impl_for_headers.push_back(effective_line);
+      }
+      ++i;
+      while (i < lines.size() && lines[i].indent > line.indent) {
+        const SourceLine& member_line = lines[i];
+        collect_feature_counters(member_line.clean, program);
+        std::string effective_member = member_line.clean;
+        if (starts_with(effective_member, "pub ")) {
+          effective_member = trim(effective_member.substr(4));
+        }
+        if (is_impl_for) {
+          const std::string method = method_name_from_line(member_line.clean);
+          if (!method.empty()) {
+            program.impl_for_methods[impl_key].push_back(method);
+          }
+        }
+        if (is_type_impl && (starts_with(effective_member, "func ") || starts_with(effective_member, "async func "))) {
+          const bool async_method = starts_with(effective_member, "async func ");
+          const std::string method_header = async_method ? trim(effective_member.substr(6)) : effective_member;
+          AstFunction fn;
+          const std::string method_name = function_name_from_header(method_header);
+          if (method_name.empty()) {
+            add_parse_error(program, member_line.number, "invalid impl method header");
+            ++i;
+            while (i < lines.size() && lines[i].indent > member_line.indent) {
+              ++i;
+            }
+            continue;
+          }
+          fn.name = impl_type_name + "." + method_name;
+          fn.params = function_params_from_header(method_header);
+          fn.param_types = function_param_types_from_header(method_header);
+          if (fn.params.empty() || fn.params.front() != "self") {
+            fn.params.insert(fn.params.begin(), "self");
+            fn.param_types.insert(fn.param_types.begin(), "");
+          }
+          fn.header_line = member_line.number;
+          fn.header_indent = member_line.indent;
+          fn.return_type = function_return_type_from_header(method_header);
+          fn.is_async = async_method;
+          if (!ends_with(method_header, ":")) {
+            add_parse_error(program, member_line.number, "impl method header must be colon-terminated");
+          }
+          if (method_header.find("->") != std::string::npos && fn.return_type.empty()) {
+            add_parse_error(program, member_line.number, "impl method return annotation '-> type' is not supported");
+          }
+          if (!method_name.empty()) {
+            auto& methods = program.struct_methods[impl_type_name];
+            if (std::find(methods.begin(), methods.end(), method_name) == methods.end()) {
+              methods.push_back(method_name);
+            }
+          }
+
+          ++i;
+          if (i >= lines.size() || lines[i].indent <= fn.header_indent) {
+            add_parse_error(program, member_line.number, "impl method body must be indentation-scoped");
+          }
+          while (i < lines.size() && lines[i].indent > fn.header_indent) {
+            AstStatement st = build_statement_from_line(program, lines[i], macros);
+            fn.body.push_back(std::move(st));
+            ++i;
+          }
+          program.functions.push_back(std::move(fn));
+          continue;
+        }
+        ++i;
+      }
+      continue;
+    }
+
+    if (line.indent != 0) {
+      add_parse_error(program, line.number, "top-level executable statements must not be indented");
+      ++i;
+      continue;
+    }
+
+    AstStatement top = build_statement_from_line(program, line, macros);
+    if (top.kind == StatementKind::Return) {
+      add_parse_error(program, line.number, "top-level return is not allowed");
+    }
+    program.top_level_statements.push_back(top);
+
+    ++i;
+  }
+
+  return program;
+}
+
+}  // namespace thagc::syntax

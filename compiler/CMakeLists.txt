@@ -73,10 +73,20 @@ add_executable(thagc
   src/driver/unknown.cpp
   src/infra/builder.cpp
   src/frontend/core.cpp
-  src/frontend/ir.cpp
+  src/frontend/syntax.cpp
+  src/frontend/macro.cpp
+  src/frontend/expr.cpp
+  src/frontend/import.cpp
+  src/frontend/flow.cpp
+  src/frontend/parser.cpp
   src/frontend/builder.cpp
   src/middleend/builder.cpp
-  src/backend/ir.cpp
+  src/backend/tokens.cpp
+  src/backend/types.cpp
+  src/backend/expr.cpp
+  src/backend/emit.cpp
+  src/backend/module.cpp
+  src/backend/llvm_emitter.cpp
   src/backend/builder.cpp
   src/driver/builder.cpp
   src/shared/core.cpp
