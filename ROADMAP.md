@@ -576,6 +576,470 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
 | v1.7 | AI & scale | ✅ Released |
 | v1.8 | **Stable & complete** | ✅ Engineering Complete (ecosystem adoption tracked) |
+| v1.9 | Span system + token pipeline | 🔲 Planned |
+| v2.0 | Real recursive-descent parser | 🔲 Planned |
+| v2.1 | Symbol table & name resolution | 🔲 Planned |
+| v2.2 | HIR & bidirectional type checking | 🔲 Planned |
+| v2.3 | Full type inference & generics | 🔲 Planned |
+| v2.4 | MIR & borrow checker | 🔲 Planned |
+| v2.5 | **Production complete** | 🔲 Planned |
+
+---
+
+## v1.9 — Span System + Token Pipeline
+
+**Theme:** Stop ignoring the lexer. Wire the real token stream into the parser so every
+subsequent pass has byte-level location data to work with.
+
+**Why this version exists (code audit findings):**
+- `compiler/src/frontend/parser.cpp` line 6: `(void)tokens;` — the entire token stream
+  produced by the lexer is discarded; the parser re-reads raw source text instead.
+- `compiler/include/thagc/frontend/token.hpp`: `Token` carries only `line`/`column`,
+  no byte-offset `Span`. Diagnostics can only print line numbers, not underline ranges.
+- Without spans, every later pass (name resolution, type errors, borrow errors) can only
+  produce weak messages like `error on line 42` instead of `^^^ here`.
+
+**Deliverables:**
+
+### 1. Span type
+```
+compiler/include/thagc/frontend/span.hpp
+  struct Span { uint32_t lo; uint32_t hi; uint32_t file_id; };
+```
+Add `Span span` field to `Token`. Update `Lexer::tokenize()` to fill it from byte offsets.
+
+### 2. Source map
+```
+compiler/include/thagc/frontend/source_map.hpp
+  class SourceMap {
+    uint32_t add_file(std::string path, std::string src);
+    std::pair<uint32_t,uint32_t> lookup_line_col(Span) const;
+    std::string_view snippet(Span) const;
+  };
+```
+
+### 3. Wire tokens into Parser
+Remove `(void)tokens;`. Store the token list as `std::span<const Token>` on the Parser
+context. The existing line-by-line logic continues to work (no breakage), but the token
+list is now available for future passes.
+
+### 4. Span propagation into AST nodes
+Add optional `Span span` to `AstFunctionDecl`, `AstStructDecl`, `AstImport`,
+`AstFlowStep`, `CoreStmt`. Fill from the first/last token that produced each node.
+
+### 5. Diagnostic helper
+```
+compiler/include/thagc/diag/diag.hpp
+  enum DiagLevel { Note, Warning, Error };
+  struct Diag { DiagLevel level; Span span; std::string message; };
+  void emit_diag(const SourceMap&, const Diag&);   // prints ^^^-style caret
+```
+Replace all bare `std::cerr` / `add_parse_error` string pushes with `Diag` emission.
+
+**Build gate:** `cmake --build build` succeeds, existing `hello.tg` compile still works,
+new `thagc --check` on a file with a known parse error prints a caret underline.
+
+**Release gate:** tag `v1.9.0`, publish Linux + macOS binaries via `core-release.yml`.
+Changelog entry must include "span-aware diagnostics".
+
+---
+
+## v2.0 — Real Recursive-Descent Parser
+
+**Theme:** Replace the line-by-line text-processing parser with a real token-stream
+recursive-descent parser. This is the single largest structural change in the compiler.
+
+**Why this version exists:**
+- Current `Parser::parse()` in `parser.cpp` re-reads `source` as raw text, splitting on
+  newlines, using `starts_with("func ")`, `starts_with("struct ")`, etc. It cannot handle
+  multi-line expressions, complex generics, nested closures, or operator precedence
+  without special-casing every pattern.
+- `backend/expr.cpp` `parse_primary` (624 lines) re-parses string expressions a **third**
+  time. Three parsing passes on the same source is unsustainable.
+- Rustc's parser is a single recursive-descent pass over a real token stream, producing a
+  well-typed AST. Thagc needs the same.
+
+**Deliverables:**
+
+### 1. Parser context
+```cpp
+struct ParserCtx {
+  std::span<const Token> tokens;
+  std::size_t pos = 0;
+  SourceMap& smap;
+  std::vector<Diag> diags;
+  Token peek(int offset = 0) const;
+  Token advance();
+  bool eat(TokenKind);
+  Token expect(TokenKind, std::string_view msg);
+};
+```
+
+### 2. Expression parser (Pratt / precedence-climbing)
+Single `parse_expr(ParserCtx&, int min_bp)` replacing both the existing
+`tokenize_expression` + ad-hoc string passes in `frontend/expr.cpp` and the
+`parse_primary` in `backend/expr.cpp`.
+
+Precedence table covers: literals, identifiers, unary, `*/%`, `+-`, `<><=>=`,
+`==!=`, `&&`, `||`, `?:`, assignments, `|>`, `..`, `as`, `await`.
+
+### 3. Statement parser
+`parse_stmt(ParserCtx&)` handles: `let`, `var`, assignment, `return`, `if`/`elif`/`else`,
+`for`, `while`, `match`, `break`/`continue`, expression-statements.
+
+### 4. Top-level parser
+`parse_item(ParserCtx&)` handles: `func`, `struct`, `enum`, `impl`, `state`,
+`flow`, `import`/`from`, `macro`, `extern`.
+
+### 5. Remove the old line-by-line path
+Delete the `src/frontend/syntax.cpp` text-scanner helpers that are now superseded.
+Keep `internal.hpp` shared utilities (`trim`, `is_identifier`) used elsewhere.
+
+### 6. Remove third-pass re-parsing in backend
+`backend/expr.cpp` must consume `AstExpr` nodes (from step 2) instead of
+re-tokenizing string expressions. `CoreStmt::expression` becomes `AstExprPtr`
+(a `std::unique_ptr<AstExpr>`).
+
+**Build gate:** `cmake --build build` clean succeeds. Full test suite (`thagc --check`
+on all files in `tests/`) passes. No regressions on `hello.tg`, structs, enums, imports.
+
+**Release gate:** tag `v2.0.0`. Binaries ship. Changelog: "replaced line-by-line parser
+with recursive-descent token-stream parser; 3-pass re-parse eliminated."
+
+---
+
+## v2.1 — Symbol Table & Name Resolution
+
+**Theme:** Every identifier gets a `DefId`. Scopes are tracked. Unresolved names are
+errors at compile time, not silent runtime failures.
+
+**Why this version exists:**
+- There is no symbol table in the current compiler. `CoreStmt::expression` is a raw
+  string; identifiers are never looked up against a scope.
+- Rustc's name resolution assigns every binding a `DefId` and resolves every use-site
+  back to its definition before any type-checking begins.
+
+**Deliverables:**
+
+### 1. DefId and the crate map
+```cpp
+struct DefId { uint32_t krate; uint32_t index; };
+struct DefInfo { DefKind kind; Span span; std::string name; };
+class DefMap { DefId intern(DefInfo); const DefInfo& get(DefId) const; };
+```
+`DefKind`: `Function`, `Struct`, `Enum`, `EnumVariant`, `Field`, `Local`,
+`Param`, `TypeParam`, `Trait`, `ImplMethod`, `ExternFn`, `Module`.
+
+### 2. Scope resolver pass
+Walk the AST produced by v2.0 parser. Build a scope stack. For each binding
+(`let x`, `func f`, `struct S`, `param p`) call `DefMap::intern` and attach
+`DefId` to the AST node. For each use-site (`x`, `f(...)`, `S { }`) look up
+the scope chain and store `DefId` on the use node.
+
+Emit `Diag::Error` with caret underline for:
+- undefined name
+- use before declaration
+- duplicate binding in same scope
+- import of non-existent symbol
+
+### 3. Module system wiring
+`import std.core` → resolve to embedded stdlib source, run resolver on it,
+expose its exported `DefId`s into the importing scope.
+
+### 4. `thagc --check` reports name errors
+No codegen for files with name errors. Exit code non-zero.
+
+**Build gate:** `cmake --build build` clean. `tests/name_resolution/` suite all pass.
+Previous test suites still pass.
+
+**Release gate:** tag `v2.1.0`. Binaries ship. Changelog: "symbol table, DefId,
+scope resolution, undefined-name errors with source spans."
+
+---
+
+## v2.2 — HIR & Bidirectional Type Checking
+
+**Theme:** Introduce a typed High-level IR. Replace `std::string expression` in
+`CoreStmt` with a proper expression tree. Add bidirectional type checking for the
+simple cases (literals, calls with known signatures, let-with-annotation).
+
+**Why this version exists:**
+- `compiler/include/thagc/middleend/core_ir.hpp`: `CoreStmt` stores a raw `std::string
+  expression`. No type is ever computed or verified. Passing a string to an integer
+  parameter is undetected.
+- `compiler/include/thagc/frontend/typechecker.hpp`: stub — `bool check(...)` declared,
+  nothing implemented.
+- Rustc's HIR is a desugared, fully-resolved, partially-typed tree that feeds into the
+  type checker (rustc_hir_typeck). We need the equivalent.
+
+**Deliverables:**
+
+### 1. HIR expression nodes
+```cpp
+// compiler/include/thagc/hir/expr.hpp
+struct HirLit   { LitKind kind; std::string value; Span span; };
+struct HirIdent { DefId def; Span span; };
+struct HirCall  { HirExprPtr callee; std::vector<HirExprPtr> args; Span span; };
+struct HirBin   { BinOp op; HirExprPtr lhs, rhs; Span span; };
+struct HirUnary { UnaryOp op; HirExprPtr operand; Span span; };
+struct HirField { HirExprPtr base; std::string field; Span span; };
+struct HirIndex { HirExprPtr base; HirExprPtr index; Span span; };
+struct HirIf    { HirExprPtr cond; HirBlock then_b; std::optional<HirBlock> else_b; };
+// ... match, closure, await, pipe, range, cast, struct-literal, tuple
+using HirExpr = std::variant<HirLit,HirIdent,HirCall,HirBin,HirUnary,
+                             HirField,HirIndex,HirIf,...>;
+using HirExprPtr = std::unique_ptr<HirExpr>;
+```
+
+### 2. HIR lowering pass
+`AstExpr → HirExpr`. Resolves `DefId` (using v2.1 symbol table), desugars
+`for x in y` → iterator loop, desugars `match` into decision tree, desugars
+`|>` pipe into nested calls.
+
+### 3. Type representation
+```cpp
+// compiler/include/thagc/ty/ty.hpp
+struct TyInt { int bits; bool is_signed; };
+struct TyFloat { int bits; };
+struct TyBool {}; struct TyUnit {}; struct TyStr {};
+struct TyNamed { DefId def; std::vector<Ty> args; };   // structs, enums
+struct TyFn    { std::vector<Ty> params; Ty ret; };
+struct TyVar   { uint32_t id; };  // unification variable for HM
+using Ty = std::variant<TyInt,TyFloat,TyBool,TyUnit,TyStr,TyNamed,TyFn,TyVar,...>;
+```
+
+### 4. Bidirectional type checker
+`TypeChecker::infer(HirExpr&) -> Ty` and `TypeChecker::check(HirExpr&, Ty expected)`.
+Handles: integer/float/bool/string literals, identifiers (look up `DefId` → type),
+function calls (check arity + argument types), `let x: T = e` (check `e` against `T`),
+`return e` (check against enclosing function return type).
+
+Emits typed `Diag::Error` with caret for:
+- type mismatch
+- wrong arity
+- unknown field
+- non-callable expression
+
+### 5. Replace `CoreStmt::expression: std::string` with `HirExprPtr`
+All backend codegen that previously re-parsed the string now walks the HIR tree.
+`backend/expr.cpp` `evaluate_expression` becomes `lower_hir_expr_to_llvm`.
+
+**Build gate:** `cmake --build build` clean. `tests/typeck/` suite passes.
+No regressions. `thagc --check bad_type.tg` exits non-zero with underlined error.
+
+**Release gate:** tag `v2.2.0`. Changelog: "typed HIR, bidirectional type checker,
+type-mismatch errors with source underlines."
+
+---
+
+## v2.3 — Full Hindley-Milner Type Inference & Generics
+
+**Theme:** Infer types everywhere annotations are omitted. Make generics real:
+monomorphize them, emit correct LLVM IR per instantiation.
+
+**Why this version exists:**
+- Currently no type inference exists. Every inferred-type `let x = expr` has unknown type.
+- Generic functions/structs (`func map<T, U>(...)`) are parsed but never monomorphized;
+  the backend emits one LLVM function regardless of type arguments.
+- Rustc uses Hindley-Milner + subtyping + trait bounds. Thagc needs HM + trait dispatch.
+
+**Deliverables:**
+
+### 1. Unification engine
+```cpp
+class Unifier {
+  std::vector<std::optional<Ty>> table;   // TyVar id → solution
+  TyVar fresh();
+  void unify(Ty a, Ty b, Span);           // Robinson unification; emits Diag on fail
+  Ty apply(Ty) const;                     // substitute solved vars
+};
+```
+
+### 2. Constraint generation
+Walk HIR. For each `let x = e` without annotation: create `TyVar v`, infer type of `e`,
+unify `v = inferred`. For generic calls: instantiate type params as fresh `TyVar`s,
+unify each argument type with the instantiated parameter type.
+
+### 3. Trait system
+```cpp
+struct TraitDef { DefId id; std::vector<TraitMethod> methods; };
+struct ImplBlock { DefId trait_id; Ty self_ty; std::vector<ImplMethod> methods; };
+class TraitSolver { ImplBlock* find_impl(DefId trait, Ty for_ty); };
+```
+Builtin traits: `Display`, `Debug`, `Add`, `Sub`, `Mul`, `Div`, `Eq`, `Ord`,
+`Clone`, `Iterator`, `Into`, `From`.
+
+### 4. Monomorphization
+After inference: collect all generic instantiations (e.g. `map<i32, str>`).
+For each unique set of type args, clone the HIR subtree with TyVars substituted,
+assign a mangled name (`map__i32__str`), lower to LLVM IR separately.
+
+### 5. Standard-library generics
+`std/list.tg`: `List<T>` backed by LLVM array allocation, monomorphized per `T`.
+`lib/map.tg`: `Map<K,V>` using hash map, monomorphized.
+
+**Build gate:** `cmake --build build` clean. `tests/inference/` and `tests/generics/`
+suites pass. Generic stdlib types usable from user code.
+
+**Release gate:** tag `v2.3.0`. Changelog: "Hindley-Milner type inference, trait system,
+monomorphized generics."
+
+---
+
+## v2.4 — MIR & Borrow Checker
+
+**Theme:** Introduce a Mid-level IR. Implement ownership tracking, move semantics,
+and borrow checking. This is the deepest and most complex version.
+
+**Why this version exists:**
+- No ownership model exists. Variables are never moved, values are freely aliased.
+  Thagore's language spec promises memory safety without GC — this version delivers it.
+- Rustc's MIR is a CFG of basic blocks with explicit `Move`/`Copy`/`Ref` operations.
+  The borrow checker (NLL — Non-Lexical Lifetimes) runs on MIR.
+
+**Deliverables:**
+
+### 1. MIR definition
+```cpp
+// compiler/include/thagc/mir/mir.hpp
+struct MirLocal  { uint32_t id; Ty ty; bool is_mut; };
+struct MirPlace  { MirLocal base; std::vector<PlaceElem> projection; };
+enum class MirRvalueKind { Use, Ref, MutRef, BinaryOp, UnaryOp, Aggregate, Discriminant };
+struct MirStatement { MirPlace lhs; MirRvalue rhs; Span span; };
+struct MirTerminator { /* Goto, Return, Call, SwitchInt, Drop */ };
+struct MirBasicBlock { std::vector<MirStatement> stmts; MirTerminator term; };
+struct MirBody { std::vector<MirLocal> locals; std::vector<MirBasicBlock> blocks; };
+```
+
+### 2. HIR → MIR lowering
+- All expressions flatten into temporaries.
+- `if`/`match` → `SwitchInt` terminator.
+- `for`/`while` → back-edge CFG.
+- `func` calls → `Call` terminator with return destination.
+- Explicit `Drop` terminators inserted at end-of-scope for owned values.
+
+### 3. Move analysis
+Track `MoveData`: for each `MirPlace`, record where it is initialized, moved, or dropped.
+Detect use-after-move: walk CFG, if a place is read after a `Move` on any path → error.
+Detect double-move: if `Drop` is reached after `Move` → error.
+
+### 4. Borrow checker (NLL)
+Compute live ranges for borrows. A borrow `&x` is live from its creation until its last
+use. Check that the borrowed place is not mutated or moved while the borrow is live.
+Emit `Diag::Error` with dual-span annotations (where borrow begins, where conflict is).
+
+### 5. Ownership annotations in language
+`own T` — owned, moved on assignment.
+`ref T` — immutable borrow (like `&T`).
+`mut T` — mutable borrow (like `&mut T`).
+These are already partially in the parser; this version makes them semantically enforced.
+
+### 6. LLVM backend consumes MIR
+Replace HIR-to-LLVM with MIR-to-LLVM. Each `MirBasicBlock` → LLVM `BasicBlock`.
+`MirStatement` → `alloca`/`store`/`load`. `Call` terminator → `llvm::CallInst`.
+`Drop` terminator → call to type's destructor (if any).
+
+**Build gate:** `cmake --build build` clean. `tests/ownership/` suite passes.
+Programs with use-after-move and double-borrow are rejected with clear errors.
+Valid programs compile and run correctly.
+
+**Release gate:** tag `v2.4.0`. Changelog: "MIR, NLL borrow checker, move semantics,
+ownership enforced at compile time — no GC, no undefined behavior."
+
+---
+
+## v2.5 — Production Complete
+
+**Theme:** Query-based incremental compilation. Rich diagnostics. Self-hosting.
+This version reaches rustc-level production completeness.
+
+**Milestone definition:** Thagore v2.5 is production-complete when:
+1. `thagc` can compile itself (self-hosting bootstrap replaces the seed binary)
+2. Incremental compilation: unchanged files are not re-compiled across builds
+3. Diagnostics are rich (multi-span, suggestions, error codes, `--explain`)
+4. LSP server (`thagc lsp`) provides hover types, go-to-definition, inline errors
+5. All stdlib modules pass the borrow checker and compile without warnings
+6. `thagc --check` on a 50 kloc project completes in < 2 seconds (query caching)
+
+**Deliverables:**
+
+### 1. Query engine
+```cpp
+// compiler/include/thagc/query/query.hpp
+template<typename K, typename V>
+class QueryCache {
+  std::unordered_map<K, V> results;
+  std::unordered_map<K, uint64_t> dep_hash;
+public:
+  std::optional<V> get(const K& key, uint64_t input_hash) const;
+  void put(const K& key, V value, uint64_t input_hash);
+};
+```
+Named queries: `parse_file`, `name_resolve`, `type_check_fn`, `borrow_check_fn`,
+`monomorphize`, `codegen_fn`, `link`. Each query stores its result keyed by
+(file_id, content_hash). On re-build, only queries with changed inputs re-run.
+
+### 2. Parallel compilation
+Use a thread pool (std::jthread, C++20). Independent functions are type-checked and
+code-generated in parallel. Dependency graph prevents data races.
+
+### 3. Rich diagnostics
+Each `Diag` supports:
+- Multiple labeled spans (`label: "expected i32 here"`, `label: "found str here"`)
+- A `help:` suggestion string (optionally machine-applicable)
+- An error code (`E0001`–`E9999`) with `thagc --explain E0042` printing the full doc
+- Rendered with color (ANSI) and `~~~` underlines like rustc
+
+### 4. LSP server
+`thagc lsp` speaks Language Server Protocol over stdin/stdout.
+Implements: `textDocument/hover` (show inferred type), `textDocument/definition`
+(jump to `DefId` span), `textDocument/diagnostics` (live errors), `textDocument/completion`
+(method/field suggestions from type).
+
+### 5. Self-hosting
+`src/thagc.tg` (or a new `src/compiler/` directory) contains the compiler written in
+Thagore itself. The C++ `thagc` compiles it. The resulting binary is used as the new
+`thagc` in CI. The bootstrap chain becomes:
+```
+stage1_helper (C++ binary, seed) → thagc.tg → thagc_tg_binary → thagc.tg (verify)
+```
+Self-hosting gate: the Thagore-compiled `thagc` must produce identical output to the
+C++-compiled `thagc` on all test inputs.
+
+### 6. Stabilize stdlib
+All modules in `stdlib/` pass borrow checker. Public APIs frozen. Semver guarantees apply.
+`std/core.tg`, `std/string.tg`, `std/list.tg` are `#[stable]`.
+
+### 7. Toolchain packaging
+`thagup` installs a self-contained toolchain: `thagc`, `thag` (runner), stdlib, LSP.
+`thagore.toml` project manifest: dependencies, edition, target triple.
+`thagc build` resolves dependencies, caches compiled artifacts in `~/.thagore/cache/`.
+
+**Build gate:** `cmake --build build` clean from scratch in < 5 minutes on modern hardware.
+Self-hosting test passes. LSP server starts and responds to hover requests.
+Incremental build of unchanged project: 0 files recompiled.
+
+**Release gate:** tag `v2.5.0` as `stable`. Binaries for Linux x86_64, Linux aarch64,
+macOS x86_64, macOS arm64, Windows x64. Changelog: "production-complete — self-hosting,
+incremental compilation, borrow checker, LSP, rich diagnostics."
+
+---
+
+## Summary: v1.8 → v2.5 Upgrade Path
+
+| Version | Theme | Build Gate | Release Gate |
+|---------|-------|------------|--------------|
+| v1.9 | Span system + token pipeline | ✅ hello.tg compiles, caret diagnostics | tag + binaries |
+| v2.0 | Real recursive-descent parser | ✅ full test suite, no regressions | tag + binaries |
+| v2.1 | Symbol table & name resolution | ✅ name_resolution/ tests pass | tag + binaries |
+| v2.2 | HIR & bidirectional type checking | ✅ typeck/ tests, typed HIR in backend | tag + binaries |
+| v2.3 | HM inference & generics | ✅ inference/ + generics/ tests | tag + binaries |
+| v2.4 | MIR & borrow checker | ✅ ownership/ tests, borrow errors | tag + binaries |
+| v2.5 | **Production complete** | ✅ self-hosting, LSP, incremental | stable release |
+
+Each version is independently buildable (`cmake --build` → 0 errors) and independently
+releasable (GitHub release with Linux + macOS binaries, changelog, passing CI).
+No version may break any capability shipped in a prior version.
 
 ---
 
