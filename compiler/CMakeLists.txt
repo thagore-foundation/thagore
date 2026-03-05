@@ -90,6 +90,7 @@ add_executable(thagc
   src/frontend/parser.cpp
   src/frontend/builder.cpp
   src/middleend/builder.cpp
+  src/middleend/hir_typecheck.cpp
   src/backend/tokens.cpp
   src/backend/types.cpp
   src/backend/expr.cpp

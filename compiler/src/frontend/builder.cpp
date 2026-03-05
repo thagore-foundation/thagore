@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "thagc/hir/typecheck.hpp"
 #include "thagc/frontend/types.hpp"
 #include "thagc/frontend/source_map.hpp"
 
@@ -2465,6 +2466,25 @@ static bool typecheck_statement_expression(const syntax::AstStatement& st, int l
     }
     out = TypeKind::I32;
     return true;
+  }
+
+  if (st.expression_ast) {
+    hir::TypeEnv hir_env;
+    hir_env.scope = &scope;
+    hir_env.enum_variants = &enum_variants;
+    hir_env.struct_bindings = &struct_bindings;
+    hir_env.struct_fields = &struct_fields;
+    hir_env.struct_field_types = &struct_field_types;
+    hir_env.struct_methods = &struct_methods;
+    hir_env.function_returns = &function_returns;
+    hir_env.function_arity = &function_arity;
+    hir_env.struct_names = &struct_names;
+    std::string hir_error;
+    const TypeKind hir_type = hir::infer_expression(hir::lower_ast_expr(st.expression_ast), hir_env, hir_error);
+    if (hir_type != TypeKind::Unknown) {
+      out = hir_type;
+      return true;
+    }
   }
 
   std::string tokenize_error;
