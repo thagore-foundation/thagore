@@ -1,7 +1,7 @@
-# Thagore Roadmap — v0.1 → v1.8 Stable
+# Thagore Roadmap — v0.1 → v2.5 Production Complete
 
-Current effective milestone by code audit (March 1, 2026): `v1.0` (Deploy Baseline, released).
-Status note: `v0.6` → `v1.0` gates pass on the active release lane; `v1.0.0` release train ships multi-platform Thagore core archives + multi-platform Drago bundles with installer/updater integration.
+Current effective milestone by code audit (March 5, 2026): `v1.9` (Span System + Token Pipeline, released).
+Status note: v1.9 span/token pipeline gates pass on the active release lane with caret diagnostics wired through `thagc check`.
 Active implementation policy: finish one milestone completely before starting the next.
 
 > **Mission:** Thagore trao quyền sáng tạo cho tất cả mọi người — từ học sinh lớp 10 đến AI engineer —
@@ -576,7 +576,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 | v1.6 | Joy release (GUI, WASM) | ✅ Released |
 | v1.7 | AI & scale | ✅ Released |
 | v1.8 | **Stable & complete** | ✅ Engineering Complete (ecosystem adoption tracked) |
-| v1.9 | Span system + token pipeline | 🔲 Planned |
+| v1.9 | Span system + token pipeline | ✅ Released |
 | v2.0 | Real recursive-descent parser | 🔲 Planned |
 | v2.1 | Symbol table & name resolution | 🔲 Planned |
 | v2.2 | HIR & bidirectional type checking | 🔲 Planned |
@@ -586,7 +586,7 @@ adoption gates above require real-world evidence and remain tracked until fulfil
 
 ---
 
-## v1.9 — Span System + Token Pipeline
+## v1.9 — Span System + Token Pipeline ✅ Released
 
 **Theme:** Stop ignoring the lexer. Wire the real token stream into the parser so every
 subsequent pass has byte-level location data to work with.
@@ -639,7 +639,7 @@ Replace all bare `std::cerr` / `add_parse_error` string pushes with `Diag` emiss
 **Build gate:** `cmake --build build` succeeds, existing `hello.tg` compile still works,
 new `thagc --check` on a file with a known parse error prints a caret underline.
 
-**Release gate:** tag `v1.9.0`, publish Linux + macOS binaries via `core-release.yml`.
+**Release gate:** tag `v1.9.0`, publish Linux + macOS binaries via `.github/workflows/release.yml`.
 Changelog entry must include "span-aware diagnostics".
 
 ---
