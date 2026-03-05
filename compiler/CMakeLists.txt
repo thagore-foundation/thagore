@@ -5,9 +5,48 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(LLVM REQUIRED CONFIG)
+# LLVM discovery: prefer CMake package, but fall back to manual include/lib detection
+set(THAG_LLVM_ROOT_DEFAULT "C:/Program Files/LLVM")
+if(NOT DEFINED LLVM_DIR)
+  if(EXISTS "${THAG_LLVM_ROOT_DEFAULT}/lib/cmake/llvm/LLVMConfig.cmake")
+    set(LLVM_DIR "${THAG_LLVM_ROOT_DEFAULT}/lib/cmake/llvm")
+  endif()
+endif()
+
+find_package(LLVM QUIET CONFIG)
+
+set(THAG_HAVE_LLVM_CMAKE OFF)
+if(LLVM_FOUND AND EXISTS "${LLVM_DIR}/AddLLVM.cmake")
+  include("${LLVM_DIR}/AddLLVM.cmake")
+  set(THAG_HAVE_LLVM_CMAKE ON)
+  message(STATUS "Using LLVM CMake package at ${LLVM_DIR} (LLVM ${LLVM_PACKAGE_VERSION})")
+else()
+  message(WARNING "LLVM CMake modules not found; using fallback detection.")
+  # Manual include/lib dirs
+  if(NOT DEFINED LLVM_INCLUDE_DIRS)
+    set(LLVM_INCLUDE_DIRS "${THAG_LLVM_ROOT_DEFAULT}/include")
+  endif()
+  if(NOT DEFINED LLVM_LIBRARY_DIRS)
+    set(LLVM_LIBRARY_DIRS "${THAG_LLVM_ROOT_DEFAULT}/lib")
+  endif()
+  if(NOT EXISTS "${LLVM_INCLUDE_DIRS}")
+    message(FATAL_ERROR "LLVM include dir not found: ${LLVM_INCLUDE_DIRS}")
+  endif()
+  if(NOT EXISTS "${LLVM_LIBRARY_DIRS}")
+    message(FATAL_ERROR "LLVM lib dir not found: ${LLVM_LIBRARY_DIRS}")
+  endif()
+  # Glob all LLVM*.lib as a coarse fallback
+  file(GLOB THAG_LLVM_LIBS "${LLVM_LIBRARY_DIRS}/LLVM*.lib")
+  if(THAG_LLVM_LIBS STREQUAL "")
+    message(FATAL_ERROR "No LLVM*.lib found in ${LLVM_LIBRARY_DIRS}")
+  endif()
+  # Provide dummy map function expected later
+  function(llvm_map_components_to_libnames out_var)
+    set(${out_var} ${THAG_LLVM_LIBS} PARENT_SCOPE)
+  endfunction()
+endif()
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-message(STATUS "Using LLVM ${LLVM_PACKAGE_VERSION}")
 
 option(THAGC_STATIC_LLVM "Link LLVM component libraries statically into thagc" ON)
 option(THAGC_STATIC_CXX_RUNTIME "Link libstdc++/libgcc statically when supported" ON)
@@ -103,7 +142,9 @@ target_sources(thagc PRIVATE "${THAG_EMBEDDED_STDLIB_CPP}")
 
 target_include_directories(thagc PRIVATE include)
 target_include_directories(thagc PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(thagc PRIVATE ${LLVM_DEFINITIONS})
+if(LLVM_DEFINITIONS)
+  target_compile_definitions(thagc PRIVATE ${LLVM_DEFINITIONS})
+endif()
 
 if (THAGC_STATIC_LLVM)
   message(STATUS "thagc LLVM linkage mode: static components")
@@ -123,9 +164,6 @@ if (THAGC_STATIC_LLVM)
     CodeGen
     native
     nativecodegen
-    AArch64
-    ARM
-    WebAssembly
     X86
   )
   if (NOT LLVM_LIBS)
@@ -137,27 +175,28 @@ elseif (TARGET LLVM)
   target_link_libraries(thagc PRIVATE LLVM)
 else()
   message(STATUS "thagc LLVM linkage mode: fallback component map")
-  llvm_map_components_to_libnames(LLVM_LIBS
-    Core
-    Support
-    Target
-    TargetParser
-    MC
-    MCParser
-    Object
-    BitWriter
-    AsmPrinter
-    ScalarOpts
-    Passes
-    coroutines
-    CodeGen
-    native
-    nativecodegen
-    AArch64
-    ARM
-    WebAssembly
-    X86
-  )
+  if(THAG_HAVE_LLVM_CMAKE)
+    set(THAG_LLVM_COMPONENTS
+      Core
+      Support
+      Target
+      TargetParser
+      MC
+      MCParser
+      Object
+      BitWriter
+      AsmPrinter
+      ScalarOpts
+      Passes
+      coroutines
+      CodeGen
+      native
+      nativecodegen
+      X86)
+    llvm_map_components_to_libnames(LLVM_LIBS ${THAG_LLVM_COMPONENTS})
+  else()
+    set(LLVM_LIBS ${THAG_LLVM_LIBS})
+  endif()
   target_link_libraries(thagc PRIVATE ${LLVM_LIBS})
 endif()
 

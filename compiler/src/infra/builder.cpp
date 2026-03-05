@@ -8,6 +8,7 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+#include <cstdlib>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -52,6 +53,61 @@ static unsigned long runtime_process_id() {
 #endif
 }
 
+#if defined(_WIN32)
+static std::vector<std::string> windows_sdk_libpaths() {
+  std::vector<std::string> out;
+  const char* pf86 = std::getenv("ProgramFiles(x86)");
+  if (pf86 == nullptr) {
+    return out;
+  }
+  std::filesystem::path base = std::filesystem::path(pf86) / "Windows Kits" / "10" / "Lib";
+  if (!std::filesystem::exists(base)) {
+    return out;
+  }
+  std::string best;
+  for (const auto& entry : std::filesystem::directory_iterator(base)) {
+    if (!entry.is_directory()) {
+      continue;
+    }
+    const std::string name = entry.path().filename().string();
+    if (name > best) {
+      best = name;
+    }
+  }
+  if (best.empty()) {
+    return out;
+  }
+  const std::filesystem::path ucrt = base / best / "ucrt" / "x64";
+  const std::filesystem::path um = base / best / "um" / "x64";
+  if (std::filesystem::exists(ucrt)) {
+    out.push_back("-L\"" + ucrt.string() + "\"");
+  }
+  if (std::filesystem::exists(um)) {
+    out.push_back("-L\"" + um.string() + "\"");
+  }
+  // Prefer the MSVC toolset libs if available (CMake builds on this host were using D:/Program Files/vs/...).
+  std::filesystem::path msvc_base = std::filesystem::path("D:/Program Files/vs/VC/Tools/MSVC");
+  if (std::filesystem::exists(msvc_base)) {
+    std::string best_msvc;
+    for (const auto& entry : std::filesystem::directory_iterator(msvc_base)) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+      const std::string name = entry.path().filename().string();
+      if (name > best_msvc) {
+        best_msvc = name;
+      }
+    }
+    if (!best_msvc.empty()) {
+      const std::filesystem::path msvc_lib = msvc_base / best_msvc / "lib" / "x64";
+      if (std::filesystem::exists(msvc_lib)) {
+        out.push_back("-L\"" + msvc_lib.string() + "\"");
+      }
+    }
+  }
+  return out;
+}
+#endif
 class TempRuntimeArchive {
  public:
   explicit TempRuntimeArchive(std::filesystem::path path) : path_(std::move(path)) {}
@@ -154,9 +210,15 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
                                                        support::DiagnosticSink& diag) {
   domain::LinkResult out;
   const std::string linker = plan.linker_path.empty() ? "clang" : plan.linker_path;
-  const bool target_is_wasm = !plan.target_triple.empty() &&
-                              (plan.target_triple.find("wasm32") != std::string::npos ||
-                               plan.target_triple.find("wasm64") != std::string::npos);
+  std::string target_triple = plan.target_triple;
+#if defined(_WIN32)
+  if (target_triple.empty()) {
+    target_triple = "x86_64-pc-windows-msvc";
+  }
+#endif
+  const bool target_is_wasm = !target_triple.empty() &&
+                              (target_triple.find("wasm32") != std::string::npos ||
+                               target_triple.find("wasm64") != std::string::npos);
 
   std::optional<TempRuntimeArchive> runtime_archive;
   std::vector<std::string> clang_link = {linker, plan.object_path, "-o", plan.output_path};
@@ -174,15 +236,21 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
 
   // Determine target platform from triple (if set), otherwise use host platform.
   const bool target_is_windows =
-      !plan.target_triple.empty() && plan.target_triple.find("windows") != std::string::npos;
+      target_triple.empty()
+#if defined(_WIN32)
+          ? true
+#else
+          ? false
+#endif
+          : (target_triple.find("windows") != std::string::npos);
   const bool target_is_linux =
-      plan.target_triple.empty()
+      target_triple.empty()
 #if defined(__linux__)
           ? true
 #else
           ? false
 #endif
-          : (plan.target_triple.find("linux") != std::string::npos);
+          : (target_triple.find("linux") != std::string::npos);
 
   if (target_is_linux) {
     clang_link.push_back("-lstdc++");
@@ -194,7 +262,19 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
     clang_link.push_back("-Wl,--export=main");
     clang_link.push_back("-Wl,--allow-undefined");
   } else if (target_is_windows) {
-    // Windows targets link against MSVC runtime or MinGW; no -lstdc++/-no-pie.
+    // Windows: explicitly pull in system libs that the embedded runtime depends on.
+    for (const std::string& libpath : windows_sdk_libpaths()) {
+      clang_link.push_back(libpath);
+    }
+    clang_link.push_back("-lmsvcrt");
+    clang_link.push_back("-lvcruntime");
+    clang_link.push_back("-llegacy_stdio_definitions");
+    clang_link.push_back("-lws2_32");
+    clang_link.push_back("-lmswsock");
+    clang_link.push_back("-ladvapi32");
+    clang_link.push_back("-luserenv");
+    clang_link.push_back("-lbcrypt");
+    clang_link.push_back("-lshell32");
   } else {
     // macOS / other Unix: link stdc++ but no -no-pie.
     clang_link.push_back("-lstdc++");
@@ -205,8 +285,8 @@ domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& p
     clang_link.push_back("-lcrypto");
   }
 #endif
-  if (!plan.target_triple.empty()) {
-    clang_link.push_back("--target=" + plan.target_triple);
+  if (!target_triple.empty()) {
+    clang_link.push_back("--target=" + target_triple);
   }
   if (!plan.sysroot.empty()) {
     clang_link.push_back("--sysroot=" + plan.sysroot);

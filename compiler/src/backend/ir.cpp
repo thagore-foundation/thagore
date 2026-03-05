@@ -4106,7 +4106,7 @@ static std::unique_ptr<llvm::TargetMachine> create_target_machine_compat(const l
 #else
   return std::unique_ptr<llvm::TargetMachine>(
       target->createTargetMachine(triple.getTriple(), "generic", "", options, std::nullopt, std::nullopt,
-                                  llvm::CodeGenOptLevel::Aggressive));
+                                  llvm::CodeGenOpt::Aggressive));
 #endif
 }
 
@@ -4157,25 +4157,6 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
     return false;
   }
 
-  // Keep one-command cross-compile available for primary Linux targets.
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmParser();
-  LLVMInitializeAArch64AsmPrinter();
-
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetMC();
-  LLVMInitializeARMAsmParser();
-  LLVMInitializeARMAsmPrinter();
-
-  LLVMInitializeWebAssemblyTargetInfo();
-  LLVMInitializeWebAssemblyTarget();
-  LLVMInitializeWebAssemblyTargetMC();
-  LLVMInitializeWebAssemblyAsmParser();
-  LLVMInitializeWebAssemblyAsmPrinter();
-
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetMC();
@@ -4225,7 +4206,12 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
 
   llvm::legacy::PassManager pass;
-  if (target_machine->addPassesToEmitFile(pass, obj_file, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+#if LLVM_VERSION_MAJOR >= 21
+  auto file_type = llvm::CodeGenFileType::ObjectFile;
+#else
+  auto file_type = llvm::CGFT_ObjectFile;
+#endif
+  if (target_machine->addPassesToEmitFile(pass, obj_file, nullptr, file_type)) {
     diag.error("E2006", "target does not support object emission");
     return false;
   }
