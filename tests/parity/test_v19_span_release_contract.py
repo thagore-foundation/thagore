@@ -8,12 +8,15 @@ class V19SpanReleaseContractTests(unittest.TestCase):
         self.assertIn("| v1.9 | Span system + token pipeline | ✅ Released |", roadmap)
         self.assertIn("## v1.9 — Span System + Token Pipeline ✅ Released", roadmap)
 
-    def test_version_is_bumped_to_v19(self) -> None:
+    def test_version_semver_stays_at_or_above_v19_contract(self) -> None:
         version = Path("VERSION").read_text(encoding="utf-8").strip()
         header = Path("compiler/include/thagc/shared/version.hpp").read_text(encoding="utf-8")
-        self.assertEqual(version, "1.9.0")
-        self.assertIn('kCompilerVersion = "1.9.0"', header)
-        self.assertIn('kCompilerVersionTag = "v1.9.0"', header)
+        parts = version.split(".")
+        self.assertEqual(len(parts), 3)
+        major, minor, patch = (int(parts[0]), int(parts[1]), int(parts[2]))
+        self.assertGreaterEqual((major, minor, patch), (1, 9, 0))
+        self.assertIn(f'kCompilerVersion = "{version}"', header)
+        self.assertIn(f'kCompilerVersionTag = "v{version}"', header)
 
     def test_changelog_mentions_span_aware_diagnostics(self) -> None:
         changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")

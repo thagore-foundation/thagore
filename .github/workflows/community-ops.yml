@@ -16,6 +16,9 @@ jobs:
     permissions:
       contents: read
       discussions: write
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      GH_DISCUSSION_CATEGORY_ID: ${{ secrets.GH_DISCUSSION_CATEGORY_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +41,8 @@ jobs:
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
 
       - name: Announce to Discord
-        if: secrets.DISCORD_WEBHOOK_URL != ''
+        if: env.DISCORD_WEBHOOK_URL != ''
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           RELEASE_URL: ${{ steps.meta.outputs.url }}
         shell: bash
@@ -57,10 +59,9 @@ jobs:
             "${DISCORD_WEBHOOK_URL}"
 
       - name: Open GitHub Discussion Announcement
-        if: secrets.GH_DISCUSSION_CATEGORY_ID != ''
+        if: env.GH_DISCUSSION_CATEGORY_ID != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_DISCUSSION_CATEGORY_ID: ${{ secrets.GH_DISCUSSION_CATEGORY_ID }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
           RELEASE_URL: ${{ steps.meta.outputs.url }}
           REPO: ${{ github.repository }}

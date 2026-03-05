@@ -16,7 +16,9 @@
 #include <vector>
 
 #include <llvm/Config/llvm-config.h>
+#if LLVM_VERSION_MAJOR < 21
 #include <llvm/ADT/Optional.h>
+#endif
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/IRBuilder.h>

@@ -6,6 +6,20 @@ import subprocess
 from pathlib import Path
 
 
+def resolve_ref(branch: str) -> str:
+    candidates = [
+        branch,
+        f"origin/{branch}",
+        f"refs/remotes/origin/{branch}",
+        f"refs/heads/{branch}",
+        "HEAD",
+    ]
+    for ref in candidates:
+        if subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref], check=False).returncode == 0:
+            return ref
+    return "HEAD"
+
+
 def git_show(branch: str, path: str) -> str:
     return subprocess.check_output(["git", "show", f"{branch}:{path}"], text=True)
 
@@ -34,10 +48,12 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    source = git_show(args.branch, "src/driver/cli/main.tg")
+    source_ref = resolve_ref(args.branch)
+    source = git_show(source_ref, "src/driver/cli/main.tg")
     help_lines = parse_help_lines(source)
     spec = {
         "source_branch": args.branch,
+        "source_ref": source_ref,
         "entry": "src/driver/cli/main.tg",
         "help_lines": help_lines,
         "commands_expected": [
