@@ -141,6 +141,62 @@ static std::span<const Token> line_tokens_for(std::span<const Token> tokens, con
   return tokens.subspan(line.token_begin, line.token_end - line.token_begin);
 }
 
+static int nesting_delta(std::span<const Token> tokens) {
+  int depth = 0;
+  for (const Token& tok : tokens) {
+    if (tok.kind == TokenKind::LParen || tok.lexeme == "[" || tok.lexeme == "{") {
+      ++depth;
+      continue;
+    }
+    if (tok.kind == TokenKind::RParen || tok.lexeme == "]" || tok.lexeme == "}") {
+      --depth;
+    }
+  }
+  return depth;
+}
+
+static bool is_continuation_tail(const Token& tok) {
+  if (tok.kind == TokenKind::Plus || tok.kind == TokenKind::Minus || tok.kind == TokenKind::Star ||
+      tok.kind == TokenKind::Slash || tok.kind == TokenKind::Equal || tok.kind == TokenKind::EqualEqual ||
+      tok.kind == TokenKind::BangEqual || tok.kind == TokenKind::Less || tok.kind == TokenKind::LessEqual ||
+      tok.kind == TokenKind::Greater || tok.kind == TokenKind::GreaterEqual || tok.kind == TokenKind::Comma ||
+      tok.kind == TokenKind::Arrow) {
+    return true;
+  }
+  return tok.lexeme == "." || tok.lexeme == "&&" || tok.lexeme == "||" || tok.lexeme == "?";
+}
+
+static bool should_continue_statement_line(const SourceLine& line, std::span<const Token> tokens) {
+  if (line.clean.empty() || ends_with(line.clean, ":") || tokens.empty()) {
+    return false;
+  }
+  if (nesting_delta(tokens) > 0) {
+    return true;
+  }
+  return is_continuation_tail(tokens.back());
+}
+
+static SourceLine coalesce_statement_line(const std::vector<SourceLine>& lines, std::size_t& i, int block_indent,
+                                          std::span<const Token> tokens) {
+  SourceLine merged = lines[i];
+  while (i + 1 < lines.size() && lines[i + 1].indent > block_indent && lines[i + 1].indent >= merged.indent &&
+         should_continue_statement_line(merged, line_tokens_for(tokens, merged))) {
+    const SourceLine& next = lines[i + 1];
+    merged.clean += " " + next.clean;
+    if (next.span.hi > merged.span.hi) {
+      merged.span.hi = next.span.hi;
+    }
+    if (merged.token_begin == 0 && merged.token_end == 0) {
+      merged.token_begin = next.token_begin;
+      merged.token_end = next.token_end;
+    } else if (next.token_end > merged.token_end) {
+      merged.token_end = next.token_end;
+    }
+    ++i;
+  }
+  return merged;
+}
+
 }  // namespace
 
 AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& source) const {
@@ -353,7 +409,7 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       }
 
       while (i < lines.size() && lines[i].indent > fn.header_indent) {
-        const SourceLine& body = lines[i];
+        SourceLine body = coalesce_statement_line(lines, i, fn.header_indent, ctx.tokens);
         AstStatement st = build_statement_from_line(program, body, macros, line_tokens_for(ctx.tokens, body));
         st.span = body.span;
         if (st.kind == StatementKind::Return && fn.name == "main") {
@@ -612,8 +668,9 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
             add_parse_error(program, member_line.number, "impl method body must be indentation-scoped");
           }
           while (i < lines.size() && lines[i].indent > fn.header_indent) {
-            AstStatement st = build_statement_from_line(program, lines[i], macros, line_tokens_for(ctx.tokens, lines[i]));
-            st.span = lines[i].span;
+            SourceLine body = coalesce_statement_line(lines, i, fn.header_indent, ctx.tokens);
+            AstStatement st = build_statement_from_line(program, body, macros, line_tokens_for(ctx.tokens, body));
+            st.span = body.span;
             fn.body.push_back(std::move(st));
             ++i;
           }
@@ -631,10 +688,11 @@ AstProgram Parser::parse(const std::vector<Token>& tokens, const std::string& so
       continue;
     }
 
-    AstStatement top = build_statement_from_line(program, line, macros, line_tokens_for(ctx.tokens, line));
-    top.span = line.span;
+    SourceLine top_line = coalesce_statement_line(lines, i, 0, ctx.tokens);
+    AstStatement top = build_statement_from_line(program, top_line, macros, line_tokens_for(ctx.tokens, top_line));
+    top.span = top_line.span;
     if (top.kind == StatementKind::Return) {
-      add_parse_error(program, line.number, "top-level return is not allowed");
+      add_parse_error(program, top_line.number, "top-level return is not allowed");
     }
     program.top_level_statements.push_back(top);
 
