@@ -65,6 +65,17 @@ class MoveBorrowCheckerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("E_BORROW_MUTATE_CONFLICT", result.stderr)
 
+    def test_reject_move_while_borrowed(self) -> None:
+        result = self._build(
+            "func main():\n"
+            "  let x: own i32 = 1\n"
+            "  let r: ref i32 = x\n"
+            "  let y = x\n"
+            "  return 0\n"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("E_BORROW_MOVE_CONFLICT", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

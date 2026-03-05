@@ -15,6 +15,11 @@ class V24MirOwnershipPipelineParityTests(unittest.TestCase):
         self.assertIn('#include "thagc/middleend/ownership.hpp"', builder)
         self.assertIn("middleend::check_program_ownership(program, diag)", builder)
 
+    def test_cmake_wires_v24_middleend_sources(self) -> None:
+        cmake = Path("compiler/CMakeLists.txt").read_text(encoding="utf-8")
+        self.assertIn("src/middleend/mir_lowering.cpp", cmake)
+        self.assertIn("src/middleend/ownership.cpp", cmake)
+
 
 if __name__ == "__main__":
     unittest.main()
