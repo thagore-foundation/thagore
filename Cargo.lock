@@ -94,6 +94,9 @@ dependencies = [
 [[package]]
 name = "thagore-ast"
 version = "0.1.0"
+dependencies = [
+ "bumpalo",
+]
 
 [[package]]
 name = "thagore-cli"
