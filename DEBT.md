@@ -47,3 +47,7 @@
 - [ ] [bench] Measure peak child-process RSS via a native rusage path instead of the current `/usr/bin/time` wrapper
       Introduced: 5c6b58a7
       Fix: Add a safe process measurement layer or a narrowly scoped platform abstraction that can capture child peak RSS directly while preserving benchmark isolation.
+
+- [ ] [stdlib] Replace the compatibility-only stdlib modules with full Tier 1-3 implementations once the language/runtime can allocate owned strings and heap-backed containers
+      Introduced: 54a1ce69
+      Fix: Add real runtime primitives for owned strings, heap allocation, and generic/container operations, then implement `math/io/string/vec/sort/collections/iter/fmt/convert` against that runtime instead of shipping stub compatibility modules.
