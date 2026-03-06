@@ -7,6 +7,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use thagore_ast::{ConstraintKind, InternedStr, Span};
 
+use crate::table::TypeTable;
 use crate::types::{TypeArena, TypeId, TypeKind};
 
 /// A requested concrete instantiation of a generic declaration.
@@ -27,6 +28,19 @@ pub struct MonomorphResult {
     pub mangled_name: InternedStr,
     /// Concrete function or type identifier associated with the instance.
     pub type_id: TypeId,
+}
+
+/// Concrete typing information for one instantiated generic body.
+#[derive(Debug, Clone)]
+pub struct MonomorphInstance {
+    /// The generic declaration that was instantiated.
+    pub generic_name: InternedStr,
+    /// Concrete type arguments used for this instance.
+    pub type_args: Vec<TypeId>,
+    /// Concrete lowering result information.
+    pub result: MonomorphResult,
+    /// Per-instance type table for the original generic AST nodes.
+    pub table: TypeTable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

@@ -569,7 +569,7 @@ fn build_and_run_std_math_module() {
     let binary = dir.path().join("math_stdlib");
     fs::write(
         &source,
-        "import std.math as math\n\nfunc main() -> i32:\n  if (math.sqrt(16.0) == 4.0 and math.gcd(12, 18) == 6 and math.is_even(8)):\n    return 0\n  return 1\n",
+        "import std.math as math\n\nfunc main() -> i32:\n  if (math.sqrt(16.0) == 4.0 and math.gcd(12, 18) == 6 and math.is_even(8) and math.abs(-5) == 5 and math.abs(-3.5) == 3.5 and math.min(3, 7) == 3 and math.max(3, 7) == 7 and math.clamp(9, 0, 5) == 5 and math.PI > 3.14 and math.E > 2.71 and math.MAX_I32 == 2147483647):\n    return 0\n  return 1\n",
     )
     .expect("write source");
 
@@ -588,6 +588,44 @@ fn build_and_run_std_math_module() {
         String::from_utf8_lossy(&build.stdout),
         String::from_utf8_lossy(&build.stderr)
     );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn build_monomorphizes_generic_functions_once_per_concrete_type() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("generic_math");
+    let llvm_ir = dir.path().join("generic_math.ll");
+    fs::write(
+        &source,
+        "func abs<T: Numeric>(value: T) -> T:\n  if (value < 0):\n    return -value\n  return value\n\nfunc main() -> i32:\n  let left: i32 = abs(-1)\n  let right: i32 = abs(-2)\n  let third: i32 = abs(-3)\n  let decimal: f64 = abs(-3.5)\n  if (left == 1 and right == 2 and third == 3 and decimal == 3.5):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+            "--emit",
+            "ll,bin",
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let ir = fs::read_to_string(&llvm_ir).expect("read llvm ir");
+    assert_eq!(ir.matches("define i32 @__thagore_abs_i32").count(), 1);
+    assert_eq!(ir.matches("define double @__thagore_abs_f64").count(), 1);
 
     let status = Command::new(&binary).status().expect("run built binary");
     assert_eq!(status.code(), Some(0));

@@ -451,7 +451,7 @@ fn lowers_function_instructions_and_structs() {
     }
     table.insert(ret_expr.id(), types.i32());
 
-    let mut lowerer = IrLowerer::new(syms.module, &types, &table);
+    let mut lowerer = IrLowerer::new(syms.module, &types, &table, &[]);
     let module = lowerer
         .lower_module(&[struct_decl, func_decl])
         .expect("lowering should succeed");
@@ -602,7 +602,7 @@ fn lowers_if_while_and_for_control_flow() {
         }
     }
 
-    let mut lowerer = IrLowerer::new(syms.module, &types, &table);
+    let mut lowerer = IrLowerer::new(syms.module, &types, &table, &[]);
     let module = lowerer
         .lower_module(&[func_decl])
         .expect("lowering should succeed");
@@ -693,7 +693,7 @@ fn lowers_intent_and_flow_blocks() {
         }
     }
 
-    let mut lowerer = IrLowerer::new(syms.module, &types, &table);
+    let mut lowerer = IrLowerer::new(syms.module, &types, &table, &[]);
     let module = lowerer
         .lower_module(&[intent, flow])
         .expect("lowering should succeed");

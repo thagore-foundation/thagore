@@ -8,10 +8,12 @@ use alloc::vec::Vec;
 use core::mem;
 
 use thagore_ast::{
-    BinOp as AstBinOp, BlockRef, Decl, Expr, ExprRef, FlowDecl, FuncDecl, InternedStr, LetDecl,
-    Literal, NodeId, Span, Stmt, StructDecl, UnaryOp as AstUnaryOp,
+    BinOp as AstBinOp, BlockRef, Decl, Expr, ExprRef, FlowDecl, FuncDecl, GenericFuncDecl,
+    InternedStr, LetDecl, Literal, NodeId, Span, Stmt, StructDecl, UnaryOp as AstUnaryOp,
 };
-use thagore_typeck::{FunctionType, StructField, TypeArena, TypeId, TypeKind, TypeTable};
+use thagore_typeck::{
+    FunctionType, MonomorphInstance, StructField, TypeArena, TypeId, TypeKind, TypeTable,
+};
 
 use crate::block::{BasicBlock, BlockId, Terminator};
 use crate::error::LoweringError;
@@ -77,17 +79,26 @@ pub struct IrLowerer<'a> {
     module_name: InternedStr,
     types: &'a TypeArena,
     table: &'a TypeTable,
+    monomorphs: &'a [MonomorphInstance],
+    module_consts: BTreeMap<InternedStr, Const>,
     errors: Vec<LoweringError>,
 }
 
 impl<'a> IrLowerer<'a> {
     /// Creates a new IR lowerer for a module.
     #[must_use]
-    pub fn new(module_name: InternedStr, types: &'a TypeArena, table: &'a TypeTable) -> Self {
+    pub fn new(
+        module_name: InternedStr,
+        types: &'a TypeArena,
+        table: &'a TypeTable,
+        monomorphs: &'a [MonomorphInstance],
+    ) -> Self {
         Self {
             module_name,
             types,
             table,
+            monomorphs,
+            module_consts: BTreeMap::new(),
             errors: Vec::new(),
         }
     }
@@ -98,6 +109,14 @@ impl<'a> IrLowerer<'a> {
         decls: &'ast [Decl<'ast>],
     ) -> Result<IrModule, Vec<LoweringError>> {
         self.errors.clear();
+        self.module_consts.clear();
+        let mut monomorph_lookup = BTreeMap::new();
+        for instance in self.monomorphs {
+            monomorph_lookup.insert(
+                (instance.generic_name, instance.result.type_id),
+                instance.result.mangled_name,
+            );
+        }
 
         let mut module = IrModule::new(self.module_name);
         for decl in decls {
@@ -107,20 +126,40 @@ impl<'a> IrLowerer<'a> {
         }
 
         for decl in decls {
-            match decl {
-                Decl::Struct(_) | Decl::Import(_) => {}
-                Decl::Func(func_decl) => module.functions.push(self.lower_func_decl(func_decl)),
-                Decl::GenericFunc(func_decl) => {
+            if let Decl::Const(const_decl) = decl {
+                if let Some(value) = self.evaluate_const_expr(const_decl.value) {
+                    let ty = self.node_type(const_decl.id, const_decl.span);
+                    self.module_consts
+                        .insert(const_decl.name, canonicalize_const(value, ty, self.types));
+                } else {
                     self.errors.push(LoweringError::InvalidLoweringState {
-                        message: "generic functions are not representable in IR yet",
-                        span: func_decl.span,
-                    });
-                }
-                Decl::Const(const_decl) => {
-                    self.errors.push(LoweringError::InvalidLoweringState {
-                        message: "top-level const declarations are not representable in IR yet",
+                        message: "top-level const initializers must be compile-time constants",
                         span: const_decl.span,
                     });
+                }
+            }
+        }
+
+        for decl in decls {
+            match decl {
+                Decl::Struct(_) | Decl::Import(_) | Decl::Const(_) => {}
+                Decl::Func(func_decl) => {
+                    module
+                        .functions
+                        .push(self.lower_func_decl(func_decl, &monomorph_lookup))
+                }
+                Decl::GenericFunc(func_decl) => {
+                    for instance in self
+                        .monomorphs
+                        .iter()
+                        .filter(|instance| instance.generic_name == func_decl.name)
+                    {
+                        module.functions.push(self.lower_generic_func_decl(
+                            func_decl,
+                            instance,
+                            &monomorph_lookup,
+                        ));
+                    }
                 }
                 Decl::GenericStruct(struct_decl) => {
                     self.errors.push(LoweringError::InvalidLoweringState {
@@ -147,6 +186,8 @@ impl<'a> IrLowerer<'a> {
                         self.types.unit(),
                         self.types,
                         self.table,
+                        &monomorph_lookup,
+                        &self.module_consts,
                         &mut self.errors,
                     );
                     for constraint in intent_decl.constraints {
@@ -155,10 +196,16 @@ impl<'a> IrLowerer<'a> {
                     builder.lower_block(intent_decl.body);
                     module.functions.push(builder.finish());
                 }
-                Decl::Flow(flow_decl) => module.functions.extend(self.lower_flow_decl(flow_decl)),
+                Decl::Flow(flow_decl) => {
+                    module
+                        .functions
+                        .extend(self.lower_flow_decl(flow_decl, &monomorph_lookup))
+                }
                 Decl::Impl(impl_block) => {
                     for method in impl_block.methods {
-                        module.functions.push(self.lower_func_decl(method));
+                        module
+                            .functions
+                            .push(self.lower_func_decl(method, &monomorph_lookup));
                     }
                 }
                 Decl::GenericImpl(impl_block) => {
@@ -196,7 +243,11 @@ impl<'a> IrLowerer<'a> {
         }
     }
 
-    fn lower_func_decl<'ast>(&mut self, decl: &'ast FuncDecl<'ast>) -> IrFunction {
+    fn lower_func_decl<'ast>(
+        &mut self,
+        decl: &'ast FuncDecl<'ast>,
+        monomorph_lookup: &BTreeMap<(InternedStr, TypeId), InternedStr>,
+    ) -> IrFunction {
         let return_type = decl
             .return_type
             .map(|ty| self.node_type(ty.id(), ty.span()))
@@ -211,6 +262,8 @@ impl<'a> IrLowerer<'a> {
             return_type,
             self.types,
             self.table,
+            monomorph_lookup,
+            &self.module_consts,
             &mut self.errors,
         );
         for (name, ty) in param_types {
@@ -220,12 +273,57 @@ impl<'a> IrLowerer<'a> {
         builder.finish()
     }
 
-    fn lower_flow_decl<'ast>(&mut self, decl: &'ast FlowDecl<'ast>) -> Vec<IrFunction> {
+    fn lower_generic_func_decl<'ast>(
+        &mut self,
+        decl: &'ast GenericFuncDecl<'ast>,
+        instance: &MonomorphInstance,
+        monomorph_lookup: &BTreeMap<(InternedStr, TypeId), InternedStr>,
+    ) -> IrFunction {
+        let return_type = match self.types.kind(instance.result.type_id).clone() {
+            TypeKind::Function(signature) => signature.return_type,
+            _ => self.types.unit(),
+        };
+        let param_types: Vec<(InternedStr, TypeId)> = decl
+            .params
+            .iter()
+            .map(|param| {
+                (
+                    param.name,
+                    instance
+                        .table
+                        .get(param.id)
+                        .unwrap_or_else(|| self.types.unknown()),
+                )
+            })
+            .collect();
+        let mut builder = FunctionLowerer::new(
+            instance.result.mangled_name,
+            return_type,
+            self.types,
+            &instance.table,
+            monomorph_lookup,
+            &self.module_consts,
+            &mut self.errors,
+        );
+        for (name, ty) in param_types {
+            builder.add_param(name, ty);
+        }
+        builder.lower_block(decl.body);
+        builder.finish()
+    }
+
+    fn lower_flow_decl<'ast>(
+        &mut self,
+        decl: &'ast FlowDecl<'ast>,
+        monomorph_lookup: &BTreeMap<(InternedStr, TypeId), InternedStr>,
+    ) -> Vec<IrFunction> {
         let mut builder = FunctionLowerer::new(
             decl.name,
             self.types.unit(),
             self.types,
             self.table,
+            monomorph_lookup,
+            &self.module_consts,
             &mut self.errors,
         );
 
@@ -258,6 +356,8 @@ impl<'a> IrLowerer<'a> {
                 self.types.unit(),
                 self.types,
                 self.table,
+                monomorph_lookup,
+                &self.module_consts,
                 &mut self.errors,
             );
             compensation_builder.lower_block(compensation);
@@ -272,6 +372,101 @@ impl<'a> IrLowerer<'a> {
             self.types.unknown()
         })
     }
+
+    fn evaluate_const_expr<'ast>(&mut self, expr: ExprRef<'ast>) -> Option<Const> {
+        match expr {
+            Expr::Literal(literal) => Some(match literal.literal {
+                Literal::Int(value) => Const::Int(value),
+                Literal::Float(value) => Const::Float(value),
+                Literal::Bool(value) => Const::Bool(value),
+                Literal::Str(value) => Const::Str(value),
+            }),
+            Expr::Ident(ident) => self.module_consts.get(&ident.name).cloned(),
+            Expr::Unary(unary) => {
+                let operand = self.evaluate_const_expr(unary.operand)?;
+                match (unary.op, operand) {
+                    (AstUnaryOp::Neg, Const::Int(value)) => Some(Const::Int(-value)),
+                    (AstUnaryOp::Neg, Const::Float(value)) => Some(Const::Float(-value)),
+                    (AstUnaryOp::Not, Const::Bool(value)) => Some(Const::Bool(!value)),
+                    _ => None,
+                }
+            }
+            Expr::Binary(binary) => self.evaluate_const_binary(binary),
+            _ => None,
+        }
+    }
+
+    fn evaluate_const_binary<'ast>(&mut self, expr: &'ast thagore_ast::BinaryExpr<'ast>) -> Option<Const> {
+        let left = self.evaluate_const_expr(expr.left)?;
+        let right = self.evaluate_const_expr(expr.right)?;
+        match (expr.op, left, right) {
+            (AstBinOp::Add, Const::Int(left), Const::Int(right)) => Some(Const::Int(left + right)),
+            (AstBinOp::Sub, Const::Int(left), Const::Int(right)) => Some(Const::Int(left - right)),
+            (AstBinOp::Mul, Const::Int(left), Const::Int(right)) => Some(Const::Int(left * right)),
+            (AstBinOp::Div, Const::Int(left), Const::Int(right)) if right != 0 => {
+                Some(Const::Int(left / right))
+            }
+            (AstBinOp::Rem, Const::Int(left), Const::Int(right)) if right != 0 => {
+                Some(Const::Int(left % right))
+            }
+            (AstBinOp::Add, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Float(left + right))
+            }
+            (AstBinOp::Sub, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Float(left - right))
+            }
+            (AstBinOp::Mul, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Float(left * right))
+            }
+            (AstBinOp::Div, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Float(left / right))
+            }
+            (AstBinOp::Rem, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Float(left % right))
+            }
+            (AstBinOp::Eq, Const::Int(left), Const::Int(right)) => Some(Const::Bool(left == right)),
+            (AstBinOp::NotEq, Const::Int(left), Const::Int(right)) => {
+                Some(Const::Bool(left != right))
+            }
+            (AstBinOp::Lt, Const::Int(left), Const::Int(right)) => Some(Const::Bool(left < right)),
+            (AstBinOp::LtEq, Const::Int(left), Const::Int(right)) => {
+                Some(Const::Bool(left <= right))
+            }
+            (AstBinOp::Gt, Const::Int(left), Const::Int(right)) => Some(Const::Bool(left > right)),
+            (AstBinOp::GtEq, Const::Int(left), Const::Int(right)) => {
+                Some(Const::Bool(left >= right))
+            }
+            (AstBinOp::Eq, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left == right))
+            }
+            (AstBinOp::NotEq, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left != right))
+            }
+            (AstBinOp::Lt, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left < right))
+            }
+            (AstBinOp::LtEq, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left <= right))
+            }
+            (AstBinOp::Gt, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left > right))
+            }
+            (AstBinOp::GtEq, Const::Float(left), Const::Float(right)) => {
+                Some(Const::Bool(left >= right))
+            }
+            (AstBinOp::Eq, Const::Bool(left), Const::Bool(right)) => Some(Const::Bool(left == right)),
+            (AstBinOp::NotEq, Const::Bool(left), Const::Bool(right)) => {
+                Some(Const::Bool(left != right))
+            }
+            (AstBinOp::And, Const::Bool(left), Const::Bool(right)) => {
+                Some(Const::Bool(left && right))
+            }
+            (AstBinOp::Or, Const::Bool(left), Const::Bool(right)) => {
+                Some(Const::Bool(left || right))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -279,6 +474,8 @@ struct FunctionLowerer<'a, 'b> {
     function: IrFunction,
     types: &'a TypeArena,
     table: &'a TypeTable,
+    monomorph_lookup: &'a BTreeMap<(InternedStr, TypeId), InternedStr>,
+    module_consts: &'a BTreeMap<InternedStr, Const>,
     errors: &'b mut Vec<LoweringError>,
     env: LoweringEnv,
     loop_targets: Vec<LoopTargets>,
@@ -298,6 +495,8 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
         return_type: TypeId,
         types: &'a TypeArena,
         table: &'a TypeTable,
+        monomorph_lookup: &'a BTreeMap<(InternedStr, TypeId), InternedStr>,
+        module_consts: &'a BTreeMap<InternedStr, Const>,
         errors: &'b mut Vec<LoweringError>,
     ) -> Self {
         let entry = BlockId::new(0);
@@ -308,6 +507,8 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
             function,
             types,
             table,
+            monomorph_lookup,
+            module_consts,
             errors,
             env: LoweringEnv::new(),
             loop_targets: Vec::new(),
@@ -543,10 +744,13 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
                     Literal::Bool(value) => Const::Bool(value),
                     Literal::Str(value) => Const::Str(value),
                 };
-                self.emit_const(constant, ty)
+                self.emit_const(canonicalize_const(constant, ty, self.types), ty)
             }
             Expr::Ident(ident) => {
                 let ty = self.node_type(ident.id, ident.span);
+                if let Some(constant) = self.module_consts.get(&ident.name).cloned() {
+                    return self.emit_const(canonicalize_const(constant, ty, self.types), ty);
+                }
                 let Some(slot) = self.env.get(&ident.name) else {
                     self.errors.push(LoweringError::UnknownIdentifier {
                         name: ident.name,
@@ -614,7 +818,11 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
         let result_ty = self.node_type(call.id, call.span);
         let mut args = Vec::new();
         let callee_name = match call.callee {
-            Expr::Ident(ident) => ident.name,
+            Expr::Ident(ident) => self
+                .monomorph_lookup
+                .get(&(ident.name, self.node_type(ident.id, ident.span)))
+                .copied()
+                .unwrap_or(ident.name),
             Expr::FieldAccess(field) => {
                 let object = self.lower_expr(field.object);
                 args.push(object);
@@ -868,6 +1076,14 @@ fn lower_un_op(op: AstUnaryOp) -> UnOp {
         AstUnaryOp::Plus => UnOp::Plus,
         AstUnaryOp::Neg => UnOp::Neg,
         AstUnaryOp::Not => UnOp::Not,
+    }
+}
+
+fn canonicalize_const(constant: Const, ty: TypeId, types: &TypeArena) -> Const {
+    match (constant, types.kind(ty)) {
+        (Const::Int(value), TypeKind::F64) => Const::Float(value as f64),
+        (Const::Int(value), TypeKind::Bool) => Const::Bool(value != 0),
+        (other, _) => other,
     }
 }
 

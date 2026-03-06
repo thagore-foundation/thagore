@@ -14,6 +14,47 @@ extern func thag_rt_lcm(left: i32, right: i32) -> i32
 extern func thag_rt_is_even(value: i32) -> bool
 extern func thag_rt_is_odd(value: i32) -> bool
 
+# PI: Archimedes' constant.
+const PI: f64 = 3.141592653589793
+
+# E: Euler's number.
+const E: f64 = 2.718281828459045
+
+# INF: Positive infinity.
+const INF: f64 = 1.0 / 0.0
+
+# MAX_I32: Maximum signed 32-bit integer.
+const MAX_I32: i32 = 2147483647
+
+# MIN_I32: Minimum signed 32-bit integer.
+const MIN_I32: i32 = -2147483648
+
+# abs: Returns the magnitude of a numeric value.
+func abs<T: Numeric>(value: T) -> T:
+  if (value < 0):
+    return -value
+  return value
+
+# min: Returns the smaller of two ordered values.
+func min<T: Ordered>(left: T, right: T) -> T:
+  if (left < right):
+    return left
+  return right
+
+# max: Returns the larger of two ordered values.
+func max<T: Ordered>(left: T, right: T) -> T:
+  if (left > right):
+    return left
+  return right
+
+# clamp: Restricts a value to the inclusive [lo, hi] range.
+func clamp<T: Ordered>(value: T, lo: T, hi: T) -> T:
+  if (value < lo):
+    return lo
+  if (value > hi):
+    return hi
+  return value
+
 # pow: Raises `base` to `exp`.
 func pow(base: f64, exp: f64) -> f64:
   return thag_rt_pow(base, exp)

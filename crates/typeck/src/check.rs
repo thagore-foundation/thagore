@@ -17,7 +17,7 @@ use thagore_ast::{
 use crate::error::TypeError;
 use crate::generics::{
     check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
-    MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
+    MonomorphInstance, MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
 };
 use crate::infer::InferenceSolver;
 use crate::scope::{FnvBuildHasher, ScopeMap, ScopeStack};
@@ -47,6 +47,7 @@ pub struct TypeChecker {
     method_types: MethodTypes,
     generic_functions: ScopeMap<thagore_ast::InternedStr, GenericFunctionTemplate>,
     monomorphs: MonomorphWorkList,
+    monomorph_instances: Vec<MonomorphInstance>,
     current_return_types: Vec<TypeId>,
     current_impl_targets: Vec<TypeId>,
     synthetic_symbol_cursor: u32,
@@ -73,6 +74,7 @@ impl TypeChecker {
             method_types: ScopeMap::with_hasher(FnvBuildHasher::default()),
             generic_functions: ScopeMap::with_hasher(FnvBuildHasher::default()),
             monomorphs: MonomorphWorkList::new(),
+            monomorph_instances: Vec::new(),
             current_return_types: Vec::new(),
             current_impl_targets: Vec::new(),
             synthetic_symbol_cursor: 1_000_000,
@@ -96,6 +98,18 @@ impl TypeChecker {
         &self.monomorphs
     }
 
+    /// Returns the fully type-checked generic function instantiations.
+    #[must_use]
+    pub fn monomorph_instances(&self) -> &[MonomorphInstance] {
+        &self.monomorph_instances
+    }
+
+    /// Returns the printable name registered for `symbol`, if any.
+    #[must_use]
+    pub fn resolve_symbol_name(&self, symbol: thagore_ast::InternedStr) -> Option<&str> {
+        self.symbol_name(symbol)
+    }
+
     /// Type-checks a program and returns the resulting side table on success.
     pub fn check<'ast>(&mut self, decls: &'ast [Decl<'ast>]) -> Result<TypeTable, Vec<TypeError>> {
         self.reset_state();
@@ -104,6 +118,8 @@ impl TypeChecker {
         for decl in decls {
             self.visit_decl(decl);
         }
+
+        self.check_pending_monomorphs(decls);
 
         if self.errors.is_empty() {
             self.finalize_table_inferences();
@@ -123,6 +139,7 @@ impl TypeChecker {
         self.method_types.clear();
         self.generic_functions.clear();
         self.monomorphs.clear();
+        self.monomorph_instances.clear();
         self.current_return_types.clear();
         self.current_impl_targets.clear();
         self.synthetic_symbol_cursor = 1_000_000;
@@ -440,12 +457,10 @@ impl TypeChecker {
             bindings.push((type_param.name, infer));
         }
 
-        let mut signature_params = Vec::new();
         for (expected_template, arg) in template.params.iter().zip(args.iter()) {
             let expected = self.instantiate_template_type(expected_template, &bindings);
             let found = self.check_expr(*arg);
             self.unify(expected, found, arg.span());
-            signature_params.push(self.resolved_type(expected));
         }
 
         let mut concrete_args = Vec::new();
@@ -472,7 +487,23 @@ impl TypeChecker {
             concrete_args.push(concrete);
         }
 
-        let return_type = self.instantiate_template_type(&template.return_type, &bindings);
+        let concrete_bindings = template
+            .type_params
+            .iter()
+            .zip(concrete_args.iter())
+            .map(|(param, ty)| (param.name, *ty))
+            .collect::<Vec<_>>();
+        let signature_params = template
+            .params
+            .iter()
+            .map(|param| {
+                let instantiated = self.instantiate_template_type(param, &concrete_bindings);
+                self.default_inferred_type(instantiated)
+            })
+            .collect();
+        let instantiated_return =
+            self.instantiate_template_type(&template.return_type, &concrete_bindings);
+        let return_type = self.default_inferred_type(instantiated_return);
         let signature = self.types.intern_function(signature_params, return_type);
         let mangled_suffix = mangle_type_args(
             &self.types,
@@ -499,6 +530,107 @@ impl TypeChecker {
             },
         );
         Some((signature, return_type))
+    }
+
+    fn check_pending_monomorphs<'ast>(&mut self, decls: &'ast [Decl<'ast>]) {
+        let generic_decls: Vec<_> = decls
+            .iter()
+            .filter_map(|decl| match decl {
+                Decl::GenericFunc(func_decl) => Some(func_decl),
+                _ => None,
+            })
+            .collect();
+
+        let mut cursor = 0;
+        while cursor < self.monomorphs.pending().len() {
+            let request = self.monomorphs.pending()[cursor].clone();
+            cursor += 1;
+
+            if self
+                .monomorph_instances
+                .iter()
+                .any(|instance| {
+                    instance.generic_name == request.generic_name
+                        && instance.type_args == request.type_args
+                })
+            {
+                continue;
+            }
+
+            let Some(result) = self
+                .monomorphs
+                .get(request.generic_name, &request.type_args)
+                .cloned()
+            else {
+                continue;
+            };
+            let Some(decl) = generic_decls
+                .iter()
+                .copied()
+                .find(|decl| decl.name == request.generic_name)
+            else {
+                continue;
+            };
+            self.check_generic_instantiation(decl, &request.type_args, result);
+        }
+    }
+
+    fn check_generic_instantiation<'ast>(
+        &mut self,
+        decl: &'ast GenericFuncDecl<'ast>,
+        type_args: &[TypeId],
+        result: MonomorphResult,
+    ) {
+        let signature = match self.types.kind(result.type_id).clone() {
+            TypeKind::Function(signature) => signature,
+            _ => return,
+        };
+
+        let saved_table = mem::take(&mut self.table);
+        let saved_scopes = self.scopes.clone();
+        let saved_infer = self.infer.clone();
+        let saved_return_types = self.current_return_types.clone();
+        let saved_impl_targets = self.current_impl_targets.clone();
+        let baseline_errors = self.errors.len();
+
+        self.table = TypeTable::new();
+        self.scopes = saved_scopes.clone();
+        self.infer.clear();
+        self.current_return_types.clear();
+        self.current_impl_targets.clear();
+
+        self.table.insert(decl.id, result.type_id);
+        if let Some(return_type) = decl.return_type {
+            self.table.insert(return_type.id(), signature.return_type);
+        }
+
+        self.scopes.push_scope();
+        for (param, ty) in decl.params.iter().zip(signature.params.iter()) {
+            self.scopes.insert(param.name, *ty);
+            self.table.insert(param.id, *ty);
+            self.table.insert(param.ty.id(), *ty);
+        }
+        self.current_return_types.push(signature.return_type);
+        self.visit_block(decl.body);
+        self.current_return_types.pop();
+        self.scopes.pop_scope();
+        self.finalize_table_inferences();
+
+        let instance_table = self.table.clone();
+        self.table = saved_table;
+        self.scopes = saved_scopes;
+        self.infer = saved_infer;
+        self.current_return_types = saved_return_types;
+        self.current_impl_targets = saved_impl_targets;
+
+        if self.errors.len() == baseline_errors {
+            self.monomorph_instances.push(MonomorphInstance {
+                generic_name: decl.name,
+                type_args: type_args.to_vec(),
+                result,
+                table: instance_table,
+            });
+        }
     }
 
     fn current_return_type(&self) -> TypeId {

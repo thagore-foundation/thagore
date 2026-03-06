@@ -15,7 +15,7 @@ pub use crate::check::TypeChecker;
 pub use crate::error::TypeError;
 pub use crate::generics::{
     check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
-    MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
+    MonomorphInstance, MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
 };
 pub use crate::infer::{InferenceSolver, TypeConstraint};
 pub use crate::scope::{FnvBuildHasher, FnvHasher, ScopeMap, ScopeStack};

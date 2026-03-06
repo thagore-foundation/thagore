@@ -132,11 +132,11 @@ impl InferenceSolver {
                 self.union(right_root, left_root);
                 left_root
             }
-            (TypeKind::IntInfer(_), TypeKind::I32 | TypeKind::I64) => {
+            (TypeKind::IntInfer(_), TypeKind::I32 | TypeKind::I64 | TypeKind::F64) => {
                 self.union(left_root, right_root);
                 right_root
             }
-            (TypeKind::I32 | TypeKind::I64, TypeKind::IntInfer(_)) => {
+            (TypeKind::I32 | TypeKind::I64 | TypeKind::F64, TypeKind::IntInfer(_)) => {
                 self.union(right_root, left_root);
                 left_root
             }

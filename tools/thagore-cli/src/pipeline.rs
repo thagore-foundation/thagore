@@ -188,8 +188,13 @@ pub(crate) fn build_file(
     };
 
     let types = checker.types().clone();
+    for instance in checker.monomorph_instances() {
+        if let Some(name) = checker.resolve_symbol_name(instance.result.mangled_name) {
+            codegen.register_symbol_name(instance.result.mangled_name, name);
+        }
+    }
     let stage = Instant::now();
-    let mut lowerer = IrLowerer::new(MODULE_SYMBOL, &types, &table);
+    let mut lowerer = IrLowerer::new(MODULE_SYMBOL, &types, &table, checker.monomorph_instances());
     let ir_module = lowerer.lower_module(&decls);
     timings.record("ir lower", stage.elapsed());
     let ir_module = match ir_module {
