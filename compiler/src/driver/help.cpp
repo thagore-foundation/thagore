@@ -51,9 +51,9 @@ int handle_help() {
   std::cout << "  thagore --help\n";
   std::cout << "  thagore --version\n";
   std::cout << "  thagore <input.tg> [options]\n";
-  std::cout << "  thagore build <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm] "
+  std::cout << "  thagore build <input.tg> [-o <output>] [--target=<triple>] [--opt-level=0..3|-O0..-O3] [--emit-llvm] "
                "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>]\n";
-  std::cout << "  thagore run <input.tg> [-o <output>] [--target=<triple>] [--emit-llvm] "
+  std::cout << "  thagore run <input.tg> [-o <output>] [--target=<triple>] [--opt-level=0..3|-O0..-O3] [--emit-llvm] "
                "[--link-lib=<name>] [--link-dir=<dir>] [--link-arg=<arg>]\n";
   std::cout << "  thagore test [filter] [--workspace] [--list] [--json] [--no-run] [--fail-fast]\n";
   std::cout << "  thagore fix apply <entry.tg>|--workspace [--level=safe] [--json]\n";

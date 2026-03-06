@@ -1,0 +1,17 @@
+{
+  "linux-x86_64": {
+    "iterations": 10,
+    "max_p95_ms": 1500.0,
+    "opt_level": 3
+  },
+  "macos-x86_64": {
+    "iterations": 10,
+    "max_p95_ms": 2200.0,
+    "opt_level": 3
+  },
+  "windows-x86_64": {
+    "iterations": 10,
+    "max_p95_ms": 2600.0,
+    "opt_level": 3
+  }
+}

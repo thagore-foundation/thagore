@@ -1,0 +1,9 @@
+func main():
+  let n: i64 = 200000
+  let i: i64 = 0
+  let acc: i64 = 0
+  while (i < n):
+    acc = acc + (i * i)
+    i = i + 1
+  print(acc)
+  return 0

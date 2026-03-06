@@ -4,6 +4,7 @@ This dashboard tracks full compiler rewrite progress against `contracts/manifest
 
 Roadmap to product milestone `v1.5`: `docs/architecture/v1.5-roadmap.md`.
 Current release cut: `v1.1.0` (Structured Concurrency GA).
+Active implementation milestone: `v1.3` (Performance Lockdown, in progress).
 
 ## Frontend
 
@@ -43,3 +44,12 @@ Current release cut: `v1.1.0` (Structured Concurrency GA).
 - Deterministic gate: implemented
 - Soak gate: implemented
 - 3-OS matrix release gate: in progress
+
+## Performance lockdown status (`v1.3`)
+
+- LLVM optimization level plumbing (`--opt-level=0..3`, `-O0..-O3`): implemented.
+- Backend optimization pipeline + inline hints for small functions: implemented.
+- Startup/binary/compile-latency budgets in CI (Linux/macOS/Windows lanes): implemented.
+- Per-commit perf metric artifacts (startup + compile latency): implemented.
+- Cross-language benchmark automation (Thagore/Go/Rust/Python): implemented.
+- AI/ML preview surfaces (`cuda.tg`, `opencl.tg`, `tensor.tg`, `pytorch.tg` + PoC runbook): implemented.

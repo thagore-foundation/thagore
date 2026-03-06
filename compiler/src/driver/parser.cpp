@@ -30,6 +30,13 @@ static int parse_positive_int(const std::string& value) {
   return std::stoi(value);
 }
 
+static int parse_opt_level(const std::string& value) {
+  if (value.size() != 1 || value[0] < '0' || value[0] > '3') {
+    return -1;
+  }
+  return static_cast<int>(value[0] - '0');
+}
+
 static CommandKind parse_kind(const std::string& cmd) {
   if (cmd == "--help" || cmd == "help") return CommandKind::Help;
   if (cmd == "--version" || cmd == "version") return CommandKind::Version;
@@ -59,6 +66,22 @@ static void parse_build_like_options(ParsedCommand& out, int argc, char** argv, 
     }
     if (starts_with(arg, "--target=")) {
       out.target_triple = arg.substr(std::string("--target=").size());
+      continue;
+    }
+    if (arg == "--opt-level" && i + 1 < argc) {
+      out.opt_level = parse_opt_level(argv[++i]);
+      continue;
+    }
+    if (starts_with(arg, "--opt-level=")) {
+      out.opt_level = parse_opt_level(arg.substr(std::string("--opt-level=").size()));
+      continue;
+    }
+    if (arg == "-O" && i + 1 < argc) {
+      out.opt_level = parse_opt_level(argv[++i]);
+      continue;
+    }
+    if (arg.size() == 3 && starts_with(arg, "-O")) {
+      out.opt_level = parse_opt_level(arg.substr(2));
       continue;
     }
     if (arg == "--link-lib" && i + 1 < argc) {

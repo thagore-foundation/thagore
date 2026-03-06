@@ -62,8 +62,11 @@ compiler/
   include/thagc/ # public/internal module headers
   src/           # module implementations
 runtime/
+stdlib/
 contracts/
 tooling/
+  bench/         # benchmark fixtures + automation for v1.3 perf gates
+  policy/        # CI policy checks (startup/size/latency budgets, architecture)
 tests/
 docs/
 .github/workflows/
@@ -101,6 +104,7 @@ cmake -S . -B build -G Ninja -DTHAGC_STATIC_LLVM=OFF
 ```bash
 ./build/compiler/thagc --help
 ./build/compiler/thagc build /tmp/hello.tg -o /tmp/hello_bin --emit-llvm
+./build/compiler/thagc build /tmp/hello.tg -o /tmp/hello_opt --opt-level=3
 ```
 
 ### One-command cross-compile

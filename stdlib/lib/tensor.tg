@@ -1,0 +1,22 @@
+# Tensor preview surface for AI workloads.
+
+extern func thag_tensor_from_f32(data: ptr, len: i64, rows: i64, cols: i64) -> ptr
+extern func thag_tensor_shape_dim(tensor: ptr, dim: i32) -> i64
+extern func thag_tensor_add(a: ptr, b: ptr) -> ptr
+extern func thag_tensor_mul(a: ptr, b: ptr) -> ptr
+extern func thag_tensor_free(tensor: ptr) -> void
+
+pub func from_f32(data: ptr, len: i64, rows: i64, cols: i64) -> ptr:
+  return thag_tensor_from_f32(data, len, rows, cols)
+
+pub func shape_dim(tensor: ptr, dim: i32) -> i64:
+  return thag_tensor_shape_dim(tensor, dim)
+
+pub func add(a: ptr, b: ptr) -> ptr:
+  return thag_tensor_add(a, b)
+
+pub func mul(a: ptr, b: ptr) -> ptr:
+  return thag_tensor_mul(a, b)
+
+pub func free(tensor: ptr) -> void:
+  thag_tensor_free(tensor)

@@ -17,7 +17,8 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
   }
   const auto core = lowerer_.lower(ast);
   if (request.emit_llvm) {
-    if (!codegen_.emit_llvm_ir(core, "thagc_module", request.llvm_ir_path, request.target_triple, diag)) {
+    if (!codegen_.emit_llvm_ir(core, "thagc_module", request.llvm_ir_path, request.target_triple, request.opt_level,
+                               diag)) {
       return result;
     }
     result.artifacts.push_back(request.llvm_ir_path);
@@ -25,7 +26,7 @@ domain::BuildResult BuildUseCase::execute(const domain::BuildRequest& request, s
     return result;
   }
   const std::string object_path = request.output_path + ".o";
-  if (!codegen_.emit_object(core, "thagc_module", object_path, request.target_triple, diag)) {
+  if (!codegen_.emit_object(core, "thagc_module", object_path, request.target_triple, request.opt_level, diag)) {
     return result;
   }
   domain::LinkPlan link_plan;

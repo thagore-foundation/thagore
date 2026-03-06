@@ -22,6 +22,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Config/llvm-config.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
@@ -4060,6 +4061,72 @@ static void run_coroutine_passes(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
+static int normalize_opt_level(int opt_level) {
+  if (opt_level < 0 || opt_level > 3) {
+    return 2;
+  }
+  return opt_level;
+}
+
+static llvm::OptimizationLevel to_optimization_level(int opt_level) {
+  switch (normalize_opt_level(opt_level)) {
+    case 0:
+      return llvm::OptimizationLevel::O0;
+    case 1:
+      return llvm::OptimizationLevel::O1;
+    case 2:
+      return llvm::OptimizationLevel::O2;
+    case 3:
+      return llvm::OptimizationLevel::O3;
+    default:
+      return llvm::OptimizationLevel::O2;
+  }
+}
+
+static void apply_inline_hints(llvm::Module& module, int opt_level) {
+  const int normalized = normalize_opt_level(opt_level);
+  if (normalized < 2) {
+    return;
+  }
+  for (llvm::Function& fn : module) {
+    if (fn.isDeclaration() || fn.getName() == "main" || fn.hasFnAttribute(llvm::Attribute::NoInline) ||
+        fn.hasFnAttribute("presplitcoroutine")) {
+      continue;
+    }
+    std::size_t instruction_count = 0;
+    for (const llvm::BasicBlock& bb : fn) {
+      instruction_count += bb.size();
+      if (instruction_count > 24u) {
+        break;
+      }
+    }
+    if (instruction_count <= 24u && fn.arg_size() <= 4u) {
+      fn.addFnAttr(llvm::Attribute::InlineHint);
+    }
+  }
+}
+
+static void run_optimization_passes(llvm::Module& module, int opt_level, llvm::TargetMachine* target_machine) {
+  const int normalized = normalize_opt_level(opt_level);
+  if (normalized <= 0) {
+    return;
+  }
+
+  llvm::LoopAnalysisManager lam;
+  llvm::FunctionAnalysisManager fam;
+  llvm::CGSCCAnalysisManager cgam;
+  llvm::ModuleAnalysisManager mam;
+  llvm::PassBuilder pb(target_machine);
+  pb.registerModuleAnalyses(mam);
+  pb.registerCGSCCAnalyses(cgam);
+  pb.registerFunctionAnalyses(fam);
+  pb.registerLoopAnalyses(lam);
+  pb.crossRegisterProxies(lam, fam, cgam, mam);
+
+  llvm::ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(to_optimization_level(normalized));
+  mpm.run(module, mam);
+}
+
 static void set_module_target_triple(llvm::Module& module, const llvm::Triple& triple) {
 #if LLVM_VERSION_MAJOR >= 21
   module.setTargetTriple(triple);
@@ -4081,7 +4148,7 @@ static std::unique_ptr<llvm::TargetMachine> create_target_machine_compat(const l
 }
 
 bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
-                               const std::string& llvm_ir_path, const std::string& target_triple,
+                               const std::string& llvm_ir_path, const std::string& target_triple, int opt_level,
                                support::DiagnosticSink& diag) const {
   llvm::LLVMContext context;
   auto module = build_module(context, module_name, core, diag);
@@ -4092,6 +4159,8 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
     set_module_target_triple(*module, llvm::Triple(target_triple));
   }
   run_coroutine_passes(*module);
+  apply_inline_hints(*module, opt_level);
+  run_optimization_passes(*module, opt_level, nullptr);
   std::string verify_error;
   llvm::raw_string_ostream verify_stream(verify_error);
   if (llvm::verifyModule(*module, &verify_stream)) {
@@ -4111,7 +4180,7 @@ bool LlvmEmitter::emit_llvm_ir(const lowering::CoreProgram& core, const std::str
 }
 
 bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::string& module_name,
-                              const std::string& object_path, const std::string& target_triple,
+                              const std::string& object_path, const std::string& target_triple, int opt_level,
                               support::DiagnosticSink& diag) const {
   if (llvm::InitializeNativeTarget()) {
     diag.error("E2003", "cannot initialize native LLVM target");
@@ -4170,6 +4239,8 @@ bool LlvmEmitter::emit_object(const lowering::CoreProgram& core, const std::stri
   }
   module->setDataLayout(target_machine->createDataLayout());
   run_coroutine_passes(*module);
+  apply_inline_hints(*module, opt_level);
+  run_optimization_passes(*module, opt_level, target_machine.get());
 
   std::string verify_error;
   llvm::raw_string_ostream verify_stream(verify_error);

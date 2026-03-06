@@ -1,0 +1,12 @@
+func inc(v):
+  return v + 1
+
+func main():
+  let i = 0
+  let sum = 0
+  while (i < 50000):
+    sum = sum + inc(i)
+    i = i + 1
+  if (sum > 0):
+    return 0
+  return 1

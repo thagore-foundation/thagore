@@ -1,5 +1,11 @@
 {
   "linux-x86_64": {
     "max_bytes": 94371840
+  },
+  "macos-x86_64": {
+    "max_bytes": 115343360
+  },
+  "windows-x86_64": {
+    "max_bytes": 125829120
   }
 }

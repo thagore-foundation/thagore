@@ -71,6 +71,27 @@ jobs:
             --bin build/compiler/thagc \
             --budgets contracts/perf/binary_size_budget.json \
             --key linux-x86_64
+          python tooling/policy/check_compile_latency_budget.py \
+            --bin build/compiler/thagc \
+            --source tooling/bench/fixtures/tight_loop.tg \
+            --budgets contracts/perf/compile_latency_budget.json \
+            --key linux-x86_64
+
+      - name: Collect perf metrics artifact
+        run: |
+          python tooling/bench/collect_metrics.py \
+            --bin build/compiler/thagc \
+            --source tooling/bench/fixtures/tight_loop.tg \
+            --platform-key linux-x86_64 \
+            --commit-sha ${{ github.sha }} \
+            --json-out perf-metrics-linux-x86_64.json
+
+      - name: Upload perf metrics artifact (linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-metrics-linux-x86_64
+          path: perf-metrics-linux-x86_64.json
+          if-no-files-found: error
 
       - name: Run full Python suites with built compiler
         env:
@@ -106,6 +127,38 @@ jobs:
       - name: Build
         run: cmake --build build -j
 
+      - name: Enforce startup/binary/compile latency budgets
+        run: |
+          python tooling/policy/check_startup_budget.py \
+            --bin build/compiler/thagc \
+            --budgets contracts/perf/startup_budget.json \
+            --key macos-x86_64
+          python tooling/policy/check_binary_size_budget.py \
+            --bin build/compiler/thagc \
+            --budgets contracts/perf/binary_size_budget.json \
+            --key macos-x86_64
+          python tooling/policy/check_compile_latency_budget.py \
+            --bin build/compiler/thagc \
+            --source tooling/bench/fixtures/tight_loop.tg \
+            --budgets contracts/perf/compile_latency_budget.json \
+            --key macos-x86_64
+
+      - name: Collect perf metrics artifact
+        run: |
+          python tooling/bench/collect_metrics.py \
+            --bin build/compiler/thagc \
+            --source tooling/bench/fixtures/tight_loop.tg \
+            --platform-key macos-x86_64 \
+            --commit-sha ${{ github.sha }} \
+            --json-out perf-metrics-macos-x86_64.json
+
+      - name: Upload perf metrics artifact (macos)
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-metrics-macos-x86_64
+          path: perf-metrics-macos-x86_64.json
+          if-no-files-found: error
+
       - name: Run full Python suites with built compiler
         env:
           THAGC_BIN: build/compiler/thagc
@@ -138,6 +191,40 @@ jobs:
       - name: Build
         shell: powershell
         run: cmake --build build --config Release -j
+
+      - name: Enforce startup/binary/compile latency budgets
+        shell: powershell
+        run: |
+          python tooling/policy/check_startup_budget.py `
+            --bin build/compiler/thagc.exe `
+            --budgets contracts/perf/startup_budget.json `
+            --key windows-x86_64
+          python tooling/policy/check_binary_size_budget.py `
+            --bin build/compiler/thagc.exe `
+            --budgets contracts/perf/binary_size_budget.json `
+            --key windows-x86_64
+          python tooling/policy/check_compile_latency_budget.py `
+            --bin build/compiler/thagc.exe `
+            --source tooling/bench/fixtures/tight_loop.tg `
+            --budgets contracts/perf/compile_latency_budget.json `
+            --key windows-x86_64
+
+      - name: Collect perf metrics artifact
+        shell: powershell
+        run: |
+          python tooling/bench/collect_metrics.py `
+            --bin build/compiler/thagc.exe `
+            --source tooling/bench/fixtures/tight_loop.tg `
+            --platform-key windows-x86_64 `
+            --commit-sha ${{ github.sha }} `
+            --json-out perf-metrics-windows-x86_64.json
+
+      - name: Upload perf metrics artifact (windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-metrics-windows-x86_64
+          path: perf-metrics-windows-x86_64.json
+          if-no-files-found: error
 
       - name: Run full Python suites with built compiler
         shell: powershell

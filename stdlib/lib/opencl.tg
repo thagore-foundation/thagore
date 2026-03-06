@@ -1,0 +1,26 @@
+# OpenCL preview surface mapped to runtime/FFI hooks.
+
+extern func thag_opencl_init() -> i32
+extern func thag_opencl_buffer_new(bytes: i64) -> ptr
+extern func thag_opencl_write_buffer(buf: ptr, host_src: ptr, bytes: i64) -> i32
+extern func thag_opencl_read_buffer(buf: ptr, host_dst: ptr, bytes: i64) -> i32
+extern func thag_opencl_release(buf: ptr) -> i32
+extern func thag_opencl_launch_vec_add(a: ptr, b: ptr, out: ptr, len: i32) -> i32
+
+pub func init() -> i32:
+  return thag_opencl_init()
+
+pub func buffer_new(bytes: i64) -> ptr:
+  return thag_opencl_buffer_new(bytes)
+
+pub func write_buffer(buf: ptr, host_src: ptr, bytes: i64) -> i32:
+  return thag_opencl_write_buffer(buf, host_src, bytes)
+
+pub func read_buffer(buf: ptr, host_dst: ptr, bytes: i64) -> i32:
+  return thag_opencl_read_buffer(buf, host_dst, bytes)
+
+pub func release(buf: ptr) -> i32:
+  return thag_opencl_release(buf)
+
+pub func launch_vec_add(a: ptr, b: ptr, out: ptr, len: i32) -> i32:
+  return thag_opencl_launch_vec_add(a, b, out, len)

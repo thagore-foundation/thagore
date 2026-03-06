@@ -139,15 +139,15 @@ lowering::CoreProgram LoweringAdapter::lower(const syntax::AstProgram& program) 
 }
 
 bool LlvmCodegenAdapter::emit_object(const lowering::CoreProgram& core, const std::string& module_name,
-                                     const std::string& object_path, const std::string& target_triple,
+                                     const std::string& object_path, const std::string& target_triple, int opt_level,
                                      support::DiagnosticSink& diag) {
-  return codegen::LlvmEmitter().emit_object(core, module_name, object_path, target_triple, diag);
+  return codegen::LlvmEmitter().emit_object(core, module_name, object_path, target_triple, opt_level, diag);
 }
 
 bool LlvmCodegenAdapter::emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name,
-                                      const std::string& llvm_ir_path, const std::string& target_triple,
+                                      const std::string& llvm_ir_path, const std::string& target_triple, int opt_level,
                                       support::DiagnosticSink& diag) {
-  return codegen::LlvmEmitter().emit_llvm_ir(core, module_name, llvm_ir_path, target_triple, diag);
+  return codegen::LlvmEmitter().emit_llvm_ir(core, module_name, llvm_ir_path, target_triple, opt_level, diag);
 }
 
 domain::LinkResult ClangLinkerAdapter::link_executable(const domain::LinkPlan& plan,

@@ -24,6 +24,10 @@ static std::string default_output(const std::string& input) {
   return default_base_name(input) + ".bin";
 }
 
+static bool valid_opt_level(int opt_level) {
+  return opt_level >= 0 && opt_level <= 3;
+}
+
 static bool contains_ci(std::string haystack, std::string needle) {
   std::transform(haystack.begin(), haystack.end(), haystack.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
@@ -117,12 +121,17 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
     std::cerr << "ERROR: missing input path for run\n";
     return 1;
   }
+  if (!valid_opt_level(cmd.opt_level)) {
+    std::cerr << "ERROR: invalid --opt-level value (expected 0..3)\n";
+    return 1;
+  }
 
   BuildOptions options;
   options.input_path = cmd.input_path;
   options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
   options.target_triple = cmd.target_triple;
   options.extra_link_args = compose_link_extra_args(cmd);
+  options.opt_level = cmd.opt_level;
   options.emit_llvm = cmd.emit_llvm;
   if (!apply_target_config(options, cmd.target_triple, diag)) {
     for (const auto& d : diag.diagnostics()) {
@@ -158,6 +167,10 @@ int handle_run(const ParsedCommand& cmd, const CompilerPipeline& pipeline, suppo
 }
 
 int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag) {
+  if (!valid_opt_level(cmd.opt_level)) {
+    std::cerr << "ERROR: invalid --opt-level value (expected 0..3)\n";
+    return 1;
+  }
   std::vector<std::string> test_paths;
   std::string filter;
   if (!cmd.input_path.empty()) {
@@ -200,6 +213,7 @@ int handle_test(const ParsedCommand& cmd, const CompilerPipeline& pipeline, supp
     }
     options.target_triple = cmd.target_triple;
     options.extra_link_args = compose_link_extra_args(cmd);
+    options.opt_level = cmd.opt_level;
     options.emit_llvm = cmd.emit_llvm;
     support::DiagnosticSink test_diag;
     if (!apply_target_config(options, cmd.target_triple, test_diag)) {

@@ -8,7 +8,7 @@ This document maps responsibilities to folders so contributors can navigate quic
 - `runtime/`: runtime ABI library.
 - `stdlib/`: standard library sources.
 - `contracts/`: behavior parity contracts.
-- `tooling/`: extraction, comparison, packaging, and policy scripts.
+- `tooling/`: extraction, comparison, benchmark, packaging, and policy scripts.
 - `tests/`: unit/integration/e2e/parity/soak lanes.
 - `docs/`: architecture, contributor guides, ADRs, and runbooks.
 
@@ -19,6 +19,12 @@ This document maps responsibilities to folders so contributors can navigate quic
 - `compiler/backend`: LLVM/object generation.
 - `compiler/driver`: CLI and pipeline orchestration.
 - `compiler/shared`: cross-cutting utilities.
+
+## Performance map (`v1.3`)
+
+- `contracts/perf`: startup/binary-size/compile-latency budget contracts.
+- `tooling/bench`: benchmark fixtures, per-commit metric collectors, cross-language comparisons.
+- `tooling/policy/check_*_budget.py`: CI gate scripts for startup/binary-size/compile latency.
 
 ## Dependency direction
 

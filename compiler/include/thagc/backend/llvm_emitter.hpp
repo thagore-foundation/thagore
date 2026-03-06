@@ -10,9 +10,9 @@ namespace thagc::codegen {
 class LlvmEmitter {
  public:
   bool emit_llvm_ir(const lowering::CoreProgram& core, const std::string& module_name, const std::string& llvm_ir_path,
-                    const std::string& target_triple, support::DiagnosticSink& diag) const;
+                    const std::string& target_triple, int opt_level, support::DiagnosticSink& diag) const;
   bool emit_object(const lowering::CoreProgram& core, const std::string& module_name, const std::string& object_path,
-                   const std::string& target_triple, support::DiagnosticSink& diag) const;
+                   const std::string& target_triple, int opt_level, support::DiagnosticSink& diag) const;
 };
 
 }  // namespace thagc::codegen

@@ -1,0 +1,9 @@
+extern func thag_pytorch_bridge_init() -> i32
+extern func thag_pytorch_demo_add_scalar(value: f32, scalar: f32) -> f32
+
+func main():
+  if (thag_pytorch_bridge_init() == 0):
+    return 1
+  let out: f32 = thag_pytorch_demo_add_scalar(2.0, 5.0)
+  print(out)
+  return 0

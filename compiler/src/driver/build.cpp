@@ -39,9 +39,17 @@ static void print_diagnostics(const ParsedCommand& cmd, const support::Diagnosti
   }
 }
 
+static bool valid_opt_level(int opt_level) {
+  return opt_level >= 0 && opt_level <= 3;
+}
+
 int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, support::DiagnosticSink& diag) {
   if (cmd.input_path.empty()) {
     std::cerr << "ERROR: missing input path for build\n";
+    return 1;
+  }
+  if (!valid_opt_level(cmd.opt_level)) {
+    std::cerr << "ERROR: invalid --opt-level value (expected 0..3)\n";
     return 1;
   }
 
@@ -50,6 +58,7 @@ int handle_build(const ParsedCommand& cmd, const CompilerPipeline& pipeline, sup
   options.output_path = cmd.output_path.empty() ? default_output(cmd.input_path) : cmd.output_path;
   options.target_triple = cmd.target_triple;
   options.extra_link_args = compose_link_extra_args(cmd);
+  options.opt_level = cmd.opt_level;
   options.emit_llvm = cmd.emit_llvm;
   if (!apply_target_config(options, cmd.target_triple, diag)) {
     print_diagnostics(cmd, diag);

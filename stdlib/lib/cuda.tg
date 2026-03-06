@@ -1,0 +1,26 @@
+# CUDA preview surface mapped to runtime/FFI hooks.
+
+extern func thag_cuda_init() -> i32
+extern func thag_cuda_malloc(bytes: i64) -> ptr
+extern func thag_cuda_memcpy_h2d(dst: ptr, src: ptr, bytes: i64) -> i32
+extern func thag_cuda_memcpy_d2h(dst: ptr, src: ptr, bytes: i64) -> i32
+extern func thag_cuda_free(device_ptr: ptr) -> i32
+extern func thag_cuda_launch_vec_add(a: ptr, b: ptr, out: ptr, len: i32) -> i32
+
+pub func init() -> i32:
+  return thag_cuda_init()
+
+pub func malloc(bytes: i64) -> ptr:
+  return thag_cuda_malloc(bytes)
+
+pub func memcpy_h2d(dst: ptr, src: ptr, bytes: i64) -> i32:
+  return thag_cuda_memcpy_h2d(dst, src, bytes)
+
+pub func memcpy_d2h(dst: ptr, src: ptr, bytes: i64) -> i32:
+  return thag_cuda_memcpy_d2h(dst, src, bytes)
+
+pub func free(device_ptr: ptr) -> i32:
+  return thag_cuda_free(device_ptr)
+
+pub func launch_vec_add(a: ptr, b: ptr, out: ptr, len: i32) -> i32:
+  return thag_cuda_launch_vec_add(a, b, out, len)

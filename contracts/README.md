@@ -10,3 +10,4 @@ This directory stores frozen parity contracts used to validate behavior against 
 - `memory/`: `Rc`/`Arc` and `Send`/`Sync` contracts.
 - `io/`: HTTP/WebSocket/DB client surface contracts.
 - `deploy/`: artifact/startup/footprint/cross-compile contracts.
+- `perf/`: startup/binary-size/compile-latency performance budgets.

@@ -56,6 +56,24 @@ Quick map for contributors:
 - `stdlib/std/*`
 - `contracts/io/*`
 
+## I need to change performance budgets or benchmark automation
+
+- `contracts/perf/*`
+- `tooling/bench/*`
+- `tooling/policy/check_startup_budget.py`
+- `tooling/policy/check_binary_size_budget.py`
+- `tooling/policy/check_compile_latency_budget.py`
+- `.github/workflows/ci.yml`
+
+## I need to change AI/ML preview surfaces (CUDA/OpenCL/Tensor/PyTorch interop)
+
+- `stdlib/lib/cuda.tg`
+- `stdlib/lib/opencl.tg`
+- `stdlib/lib/tensor.tg`
+- `stdlib/lib/pytorch.tg`
+- `tooling/bench/pytorch/*`
+- `docs/runbooks/pytorch-interop-poc.md`
+
 ## I need to update release/policy automation
 
 - `.github/workflows/*`

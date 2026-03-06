@@ -1,0 +1,22 @@
+# PyTorch interop preview surface mapped to C++ bridge hooks.
+
+extern func thag_pytorch_bridge_init() -> i32
+extern func thag_pytorch_demo_add_scalar(value: f32, scalar: f32) -> f32
+extern func thag_pytorch_tensor_from_f32(data: ptr, len: i64) -> ptr
+extern func thag_pytorch_add_scalar(tensor: ptr, scalar: f32) -> ptr
+extern func thag_pytorch_tensor_free(tensor: ptr) -> void
+
+pub func init() -> i32:
+  return thag_pytorch_bridge_init()
+
+pub func tensor_from_f32(data: ptr, len: i64) -> ptr:
+  return thag_pytorch_tensor_from_f32(data, len)
+
+pub func demo_add_scalar(value: f32, scalar: f32) -> f32:
+  return thag_pytorch_demo_add_scalar(value, scalar)
+
+pub func add_scalar(tensor: ptr, scalar: f32) -> ptr:
+  return thag_pytorch_add_scalar(tensor, scalar)
+
+pub func tensor_free(tensor: ptr) -> void:
+  thag_pytorch_tensor_free(tensor)

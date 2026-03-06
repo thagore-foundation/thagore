@@ -30,6 +30,7 @@ struct ParsedCommand {
   std::vector<std::string> link_libs;
   std::vector<std::string> link_dirs;
   std::vector<std::string> link_args;
+  int opt_level = 2;
   bool emit_llvm = false;
   std::string autofix_mode;
   std::string autofix_lock_path;

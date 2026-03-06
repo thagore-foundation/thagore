@@ -335,34 +335,42 @@ Execution order (re-anchored to dependency reality):
 - [ ] `lib/json.tg` — parse/serialize JSON
 - [ ] `lib/env.tg` — environment variables, process args
 - [ ] `lib/fs.tg` — file read/write/stat
-- [ ] `lib/crypto.tg` — hash, HMAC cơ bản (FFI vào libcrypto)
+- [ ] `lib/crypto.tg` — hash, HMAC cơ bản
 
 ### Gate
 - [ ] HTTP/WebSocket/DB lanes pass trên Linux/macOS/Windows trong CI
 
 ---
 
-## v1.3 — Performance Lockdown
+## v1.3 — Performance Lockdown (In Progress)
 > *"Fast enough to replace Go. Simple enough to teach beginners."*
 
+### Status Snapshot (audit ngày March 2, 2026)
+- [x] Startup p95 budget gate (Linux) trong CI (`tooling/policy/check_startup_budget.py` + `contracts/perf/startup_budget.json`)
+- [x] Binary size budget gate (Linux) trong CI (`tooling/policy/check_binary_size_budget.py` + `contracts/perf/binary_size_budget.json`)
+- [ ] Latency benchmark lane cho workload chuẩn chưa có automation per-commit
+- [ ] `tooling/bench/` chưa tồn tại
+
 ### Compiler
-- [ ] LLVM optimization passes được enable đúng cách
-- [ ] Codegen cho tight loops không có overhead
-- [ ] Inlining hints cho small functions
+- [ ] Expose optimization levels (`-O0/-O1/-O2/-O3`) từ CLI build pipeline
+- [ ] Chạy LLVM optimization pipeline trước object emission (không chỉ coroutine lowering)
+- [ ] Codegen cho tight loops (`for`/`while`) không có overhead + có regression tests
+- [ ] Inlining hints/heuristics cho small functions + validation benchmarks
 
 ### Tooling
 - [ ] Benchmark automation — `tooling/bench/`
-- [ ] Performance threshold alerts trong CI
-- [ ] p95 latency và startup metrics tracked per commit
+- [x] Performance threshold alerts trong CI cho startup + binary size (Linux lane)
+- [ ] p95 latency và startup metrics tracked per commit (artifact JSON + trend diff)
+- [ ] Perf budgets mở rộng cho macOS/Windows
 
 ### AI/ML Foundation (Preview)
 - [ ] FFI bindings cho CUDA/OpenCL basic
-- [ ] `lib/tensor.tg` stub — groundwork cho AI use case
+- [ ] `stdlib/lib/tensor.tg` stub — groundwork cho AI use case
 - [ ] PyTorch interop proof of concept (call C++ kernel từ Thagore)
 
 ### Gate
-- [ ] p95 latency và startup metrics đạt release budgets
-- [ ] Benchmark so sánh với Go, Rust, Python được publish
+- [ ] Startup + binary size + p95 latency metrics đạt release budgets trên Linux/macOS/Windows
+- [ ] Benchmark automation publish report so sánh với Go, Rust, Python
 
 ---
 
@@ -506,7 +514,7 @@ Execution order (re-anchored to dependency reality):
 | v1.0 | Deploy baseline | ✅ Released |
 | v1.1 | Concurrency GA | ✅ Released |
 | v1.2 | IO stack GA | 🔲 Planned |
-| v1.3 | Performance lockdown | 🔲 Planned |
+| v1.3 | Performance lockdown | 🟨 In progress |
 | v1.4 | Platform hardening + DX | 🔲 Planned |
 | v1.5 | **Stable release** | 🔲 Planned |
 | v1.6 | Joy release (GUI, WASM) | 🔲 Planned |
