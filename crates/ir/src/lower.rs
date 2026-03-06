@@ -110,6 +110,24 @@ impl<'a> IrLowerer<'a> {
             match decl {
                 Decl::Struct(_) | Decl::Import(_) => {}
                 Decl::Func(func_decl) => module.functions.push(self.lower_func_decl(func_decl)),
+                Decl::GenericFunc(func_decl) => {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "generic functions are not representable in IR yet",
+                        span: func_decl.span,
+                    });
+                }
+                Decl::Const(const_decl) => {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "top-level const declarations are not representable in IR yet",
+                        span: const_decl.span,
+                    });
+                }
+                Decl::GenericStruct(struct_decl) => {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "generic structs are not representable in IR yet",
+                        span: struct_decl.span,
+                    });
+                }
                 Decl::Extern(extern_decl) => {
                     let return_type =
                         self.node_type(extern_decl.return_type.id(), extern_decl.span);
@@ -142,6 +160,12 @@ impl<'a> IrLowerer<'a> {
                     for method in impl_block.methods {
                         module.functions.push(self.lower_func_decl(method));
                     }
+                }
+                Decl::GenericImpl(impl_block) => {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "generic impl blocks are not representable in IR yet",
+                        span: impl_block.span,
+                    });
                 }
                 Decl::Let(let_decl) => {
                     self.errors.push(LoweringError::InvalidLoweringState {

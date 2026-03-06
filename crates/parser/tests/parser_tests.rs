@@ -121,6 +121,25 @@ impl Vec<T>:
 }
 
 #[test]
+fn parses_legacy_bracket_generic_types() {
+    let source = "\
+func sum_items(items: Array[i32]) -> i32:
+  return 0
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        let Decl::Func(func) = &decls[0] else {
+            panic!("expected function")
+        };
+        let TypeExpr::Generic(ty) = func.params[0].ty else {
+            panic!("expected generic type")
+        };
+        assert_eq!(ty.args.len(), 1);
+    });
+}
+
+#[test]
 fn parses_relative_import_forms() {
     let source = "\
 from . import utils

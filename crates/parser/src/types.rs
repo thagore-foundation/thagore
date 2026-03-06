@@ -39,26 +39,30 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             }
         };
 
-        if self.match_kind(TokenKind::Lt).is_none() {
+        let closing_delimiter = if self.match_kind(TokenKind::Lt).is_some() {
+            TokenKind::Gt
+        } else if self.match_kind(TokenKind::LBracket).is_some() {
+            TokenKind::RBracket
+        } else {
             let span = self.span_of(token);
             let id = self.new_node_id();
             return self.alloc_type(TypeExpr::Named(NamedTypeExpr { id, span, name }));
-        }
+        };
 
         let mut args = self.bump_vec();
-        while !self.at(TokenKind::Gt) && !is_expr_terminator(self.peek().kind) {
+        while !self.at(closing_delimiter) && !is_expr_terminator(self.peek().kind) {
             args.push(self.parse_type_expr());
             if self.match_kind(TokenKind::Comma).is_none() {
                 break;
             }
         }
 
-        let end = if let Some(gt) = self.match_kind(TokenKind::Gt) {
-            self.span_of(gt)
+        let end = if let Some(delimiter) = self.match_kind(closing_delimiter) {
+            self.span_of(delimiter)
         } else {
             self.emit_statement_error(ParseError::missing_token(
                 self.current_span(),
-                TokenKind::Gt,
+                closing_delimiter,
             ));
             self.current_span()
         };

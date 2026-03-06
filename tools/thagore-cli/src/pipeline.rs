@@ -10,11 +10,11 @@ use bumpalo::Bump;
 use tempfile::NamedTempFile;
 use thagore_ast::visitor::{walk_decl, Visitor};
 use thagore_ast::{
-    AssignExpr, BinaryExpr, Block, BreakStmt, CallExpr, ContinueStmt, Decl, Expr, ExprStmt,
-    ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericTypeExpr,
-    IdentExpr, IfStmt, ImplBlock, IntentDecl, InternedStr, LetDecl, LitExpr, Literal,
-    NamedTypeExpr, NodeId, Param, ReturnStmt, Stmt, StructDecl, TypeExpr, UnaryExpr, WhileStmt,
-    Span,
+    AssignExpr, BinaryExpr, Block, BreakStmt, CallExpr, ConstDecl, Constraint, ContinueStmt, Decl,
+    Expr, ExprStmt, ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl,
+    GenericFuncDecl, GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr, IfStmt,
+    ImplBlock, IntentDecl, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
+    ReturnStmt, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, WhileStmt, Span,
 };
 use thagore_codegen::{
     link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
@@ -1149,9 +1149,17 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         match decl {
             Decl::Import(_) => None,
             Decl::Func(node) => Some(Decl::Func(self.rewrite_func_decl(node))),
+            Decl::GenericFunc(node) => Some(Decl::GenericFunc(self.rewrite_generic_func_decl(node))),
             Decl::Let(node) => Some(Decl::Let(self.rewrite_let_decl(node, true))),
+            Decl::Const(node) => Some(Decl::Const(self.rewrite_const_decl(node, true))),
             Decl::Struct(node) => Some(Decl::Struct(self.rewrite_struct_decl(node))),
+            Decl::GenericStruct(node) => {
+                Some(Decl::GenericStruct(self.rewrite_generic_struct_decl(node)))
+            }
             Decl::Impl(node) => Some(Decl::Impl(self.rewrite_impl_block(node))),
+            Decl::GenericImpl(node) => {
+                Some(Decl::GenericImpl(self.rewrite_generic_impl_block(node)))
+            }
             Decl::Extern(node) => Some(Decl::Extern(self.rewrite_extern_decl(node))),
             Decl::Intent(node) => Some(Decl::Intent(self.rewrite_intent_decl(node))),
             Decl::Flow(node) => Some(Decl::Flow(self.rewrite_flow_decl(node))),
@@ -1201,6 +1209,52 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
+    fn rewrite_const_decl(&mut self, decl: &ConstDecl<'ast>, is_top_level: bool) -> ConstDecl<'ast> {
+        let value = self.rewrite_expr(decl.value);
+        let type_ann = self.rewrite_type_expr(decl.type_ann);
+        let name = if is_top_level {
+            self.rename_top_level_symbol(decl.name)
+        } else {
+            self.canonical_symbol(decl.name)
+        };
+        ConstDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name,
+            type_ann,
+            value,
+        }
+    }
+
+    fn rewrite_generic_func_decl(&mut self, decl: &GenericFuncDecl<'ast>) -> GenericFuncDecl<'ast> {
+        self.push_scope();
+        let type_params = decl
+            .type_params
+            .iter()
+            .map(|param| self.rewrite_type_param(param))
+            .collect::<Vec<_>>();
+        let params = decl
+            .params
+            .iter()
+            .map(|param| {
+                self.define_local(param.name);
+                self.rewrite_param(param)
+            })
+            .collect::<Vec<_>>();
+        let return_type = decl.return_type.map(|ty| self.rewrite_type_expr(ty));
+        let body = self.rewrite_block(decl.body);
+        self.pop_scope();
+        GenericFuncDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            type_params: self.arena.alloc_slice_fill_iter(type_params),
+            params: self.arena.alloc_slice_fill_iter(params),
+            return_type,
+            body,
+        }
+    }
+
     fn rewrite_struct_decl(&mut self, decl: &StructDecl<'ast>) -> StructDecl<'ast> {
         let fields = decl
             .fields
@@ -1215,6 +1269,29 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
+    fn rewrite_generic_struct_decl(
+        &mut self,
+        decl: &GenericStructDecl<'ast>,
+    ) -> GenericStructDecl<'ast> {
+        let type_params = decl
+            .type_params
+            .iter()
+            .map(|param| self.rewrite_type_param(param))
+            .collect::<Vec<_>>();
+        let fields = decl
+            .fields
+            .iter()
+            .map(|field| self.rewrite_field_def(field))
+            .collect::<Vec<_>>();
+        GenericStructDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            type_params: self.arena.alloc_slice_fill_iter(type_params),
+            fields: self.arena.alloc_slice_fill_iter(fields),
+        }
+    }
+
     fn rewrite_impl_block(&mut self, decl: &ImplBlock<'ast>) -> ImplBlock<'ast> {
         let methods = decl
             .methods
@@ -1225,6 +1302,29 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             id: self.new_node_id(),
             span: decl.span,
             target: self.rename_top_level_symbol(decl.target),
+            methods: self.arena.alloc_slice_fill_iter(methods),
+        }
+    }
+
+    fn rewrite_generic_impl_block(
+        &mut self,
+        decl: &GenericImplBlock<'ast>,
+    ) -> GenericImplBlock<'ast> {
+        let type_params = decl
+            .type_params
+            .iter()
+            .map(|param| self.rewrite_type_param(param))
+            .collect::<Vec<_>>();
+        let methods = decl
+            .methods
+            .iter()
+            .map(|method| self.rewrite_func_decl(method))
+            .collect::<Vec<_>>();
+        GenericImplBlock {
+            id: self.new_node_id(),
+            span: decl.span,
+            target: self.rename_top_level_symbol(decl.target),
+            type_params: self.arena.alloc_slice_fill_iter(type_params),
             methods: self.arena.alloc_slice_fill_iter(methods),
         }
     }
@@ -1295,6 +1395,24 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             span: param.span,
             name: self.canonical_symbol(param.name),
             ty: self.rewrite_type_expr(param.ty),
+        }
+    }
+
+    fn rewrite_type_param(&mut self, param: &TypeParam<'ast>) -> TypeParam<'ast> {
+        let constraints = param
+            .constraints
+            .iter()
+            .map(|constraint| Constraint {
+                id: self.new_node_id(),
+                span: constraint.span,
+                kind: constraint.kind,
+            })
+            .collect::<Vec<_>>();
+        TypeParam {
+            id: self.new_node_id(),
+            span: param.span,
+            name: self.canonical_symbol(param.name),
+            constraints: self.arena.alloc_slice_fill_iter(constraints),
         }
     }
 
@@ -2211,10 +2329,19 @@ fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
             Decl::Func(node) => {
                 symbols.insert(node.name);
             }
+            Decl::GenericFunc(node) => {
+                symbols.insert(node.name);
+            }
             Decl::Let(node) => {
                 symbols.insert(node.name);
             }
+            Decl::Const(node) => {
+                symbols.insert(node.name);
+            }
             Decl::Struct(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::GenericStruct(node) => {
                 symbols.insert(node.name);
             }
             Decl::Intent(node) => {
@@ -2223,7 +2350,7 @@ fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
             Decl::Flow(node) => {
                 symbols.insert(node.name);
             }
-            Decl::Impl(_) | Decl::Import(_) | Decl::Extern(_) => {}
+            Decl::Impl(_) | Decl::GenericImpl(_) | Decl::Import(_) | Decl::Extern(_) => {}
         }
     }
     symbols
@@ -2267,11 +2394,23 @@ impl<'ast> Visitor<'ast> for SymbolCollector {
         self.record(decl.name);
     }
 
+    fn visit_generic_func_decl(&mut self, decl: &'ast thagore_ast::GenericFuncDecl<'ast>) {
+        self.record(decl.name);
+    }
+
     fn visit_let_decl(&mut self, decl: &'ast thagore_ast::LetDecl<'ast>) {
         self.record(decl.name);
     }
 
+    fn visit_const_decl(&mut self, decl: &'ast thagore_ast::ConstDecl<'ast>) {
+        self.record(decl.name);
+    }
+
     fn visit_struct_decl(&mut self, decl: &'ast thagore_ast::StructDecl<'ast>) {
+        self.record(decl.name);
+    }
+
+    fn visit_generic_struct_decl(&mut self, decl: &'ast thagore_ast::GenericStructDecl<'ast>) {
         self.record(decl.name);
     }
 
