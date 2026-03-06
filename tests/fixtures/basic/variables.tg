@@ -1,0 +1,12 @@
+# fixture: basic/variables
+# expect: ok
+# description: exercises typed lets, inferred lets, and reassignment
+func main() -> i32:
+  let count: i32 = 4
+  let total = count + 6
+  let current: i32 = total
+  current = current + 5
+  if (current == 15):
+    return 0
+  else:
+    return 1

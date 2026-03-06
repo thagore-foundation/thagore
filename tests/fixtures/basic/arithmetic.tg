@@ -1,0 +1,24 @@
+# fixture: basic/arithmetic
+# expect: ok
+# description: covers integer and floating-point arithmetic operators
+func calc_i32() -> i32:
+  let value: i32 = 20 + 6
+  let next: i32 = value - 3
+  let scaled: i32 = next * 4
+  let divided: i32 = scaled / 2
+  return divided % 9
+
+func calc_f64() -> f64:
+  let value: f64 = 8.0 + 4.0
+  let next: f64 = value - 3.0
+  let scaled: f64 = next * 2.0
+  let divided: f64 = scaled / 3.0
+  return divided % 2.0
+
+func main() -> i32:
+  let int_result: i32 = calc_i32()
+  let float_result: f64 = calc_f64()
+  if ((int_result == 1) and (float_result == 0.0)):
+    return 0
+  else:
+    return 1

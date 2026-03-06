@@ -1,0 +1,17 @@
+# fixture: basic/booleans
+# expect: ok
+# description: covers boolean logic and comparison operators
+func main() -> i32:
+  let left: i32 = 10
+  let right: i32 = 4
+  let greater: bool = left > right
+  let greater_equal: bool = left >= right
+  let less: bool = right < left
+  let less_equal: bool = right <= left
+  let equal: bool = left == 10
+  let not_equal: bool = right != 10
+  let combined: bool = greater and greater_equal and less and less_equal and equal and not_equal
+  if (combined and not false or false):
+    return 0
+  else:
+    return 1

@@ -1,0 +1,19 @@
+# fixture: basic/strings
+# expect: ok
+# description: passes string literals through user functions and extern printf
+extern func printf(message: str) -> i32
+
+func emit(message: str):
+  printf(message)
+
+func choose(flag: bool) -> str:
+  if (flag):
+    return "strings: ok\n"
+  else:
+    return "strings: fail\n"
+
+func main() -> i32:
+  let greeting: str = "basic strings\n"
+  emit(greeting)
+  emit(choose(true))
+  return 0

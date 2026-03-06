@@ -1,0 +1,8 @@
+# fixture: basic/hello
+# expect: ok
+# description: prints a greeting through libc printf and exits 0
+extern func printf(message: str) -> i32
+
+func main() -> i32:
+  printf("Hello, Thagore!\n")
+  return 0
