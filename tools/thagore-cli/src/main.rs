@@ -1,5 +1,178 @@
-//! CLI entrypoint for Thagore developer tooling.
+//! Entrypoint for the Thagore compiler CLI.
+
+mod cli;
+mod error;
+mod ice;
+mod pipeline;
+mod run;
+mod timer;
+
+use std::io::{self, Write};
+use std::path::Path;
+use std::process::{self, Command as ProcessCommand};
+
+use clap::error::ErrorKind as ClapErrorKind;
+use clap::{CommandFactory, Parser as ClapParser};
+use termcolor::{ColorChoice, StandardStream};
+
+use crate::cli::{Cli, Command};
+use crate::error::ErrorReporter;
+use crate::ice::with_ice_handler;
+use crate::pipeline::{build_file, build_options_for_run, check_file};
+use crate::run::{execute_binary, RunWorkspace};
+
+const SUCCESS_EXIT_CODE: i32 = 0;
+const COMPILE_ERROR_EXIT_CODE: i32 = 1;
+const USAGE_EXIT_CODE: i32 = 101;
 
 fn main() {
-    println!("thagore-cli");
+    process::exit(with_ice_handler(real_main));
+}
+
+fn real_main() -> i32 {
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => return handle_clap_error(error),
+    };
+
+    match cli.command {
+        Command::Build(args) => handle_build(&args.file, &args.options),
+        Command::Check(args) => handle_check(&args.file, args.json),
+        Command::Run(args) => handle_run(&args),
+        Command::Version => handle_version(),
+    }
+}
+
+fn handle_build(path: &Path, options: &cli::BuildOptions) -> i32 {
+    match build_file(path, options) {
+        Ok(result) => {
+            if options.time {
+                let _ = result.timings.write(io::stderr());
+            }
+            SUCCESS_EXIT_CODE
+        }
+        Err(failure) => {
+            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+            let _ = ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+            if options.time {
+                let _ = failure.timings.write(io::stderr());
+            }
+            COMPILE_ERROR_EXIT_CODE
+        }
+    }
+}
+
+fn handle_check(path: &Path, json: bool) -> i32 {
+    match check_file(path) {
+        Ok(_) => {
+            if json {
+                let _ = writeln!(io::stdout(), "[]");
+            }
+            SUCCESS_EXIT_CODE
+        }
+        Err(failure) => {
+            if json {
+                let _ = ErrorReporter::emit_json(io::stdout(), path, &failure.source, &failure.diagnostics);
+            } else {
+                let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+                let _ = ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+            }
+            COMPILE_ERROR_EXIT_CODE
+        }
+    }
+}
+
+fn handle_run(args: &cli::RunArgs) -> i32 {
+    let workspace = match RunWorkspace::new() {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            eprintln!("failed to create temporary run directory: {error}");
+            return COMPILE_ERROR_EXIT_CODE;
+        }
+    };
+
+    let mut build_options = build_options_for_run(&args.options);
+    build_options.output = Some(workspace.binary_path(&args.file));
+
+    match build_file(&args.file, &build_options) {
+        Ok(result) => {
+            if args.options.time {
+                let _ = result.timings.write(io::stderr());
+            }
+            let Some(binary) = result.artifacts.binary else {
+                eprintln!("internal compiler error: run build completed without a binary");
+                return ice::ICE_EXIT_CODE;
+            };
+            match execute_binary(&binary, &args.args) {
+                Ok(code) => code,
+                Err(error) => {
+                    eprintln!("failed to execute {}: {error}", binary.display());
+                    COMPILE_ERROR_EXIT_CODE
+                }
+            }
+        }
+        Err(failure) => {
+            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+            let _ = ErrorReporter::emit_text(&mut stderr, &args.file, &failure.source, &failure.diagnostics);
+            if args.options.time {
+                let _ = failure.timings.write(io::stderr());
+            }
+            COMPILE_ERROR_EXIT_CODE
+        }
+    }
+}
+
+fn handle_version() -> i32 {
+    println!("thagore 0.1.0");
+    println!("llvm:   {}", detect_llvm_version().unwrap_or_else(|| "unknown".to_string()));
+    println!("host:   {}", detect_host_triple().unwrap_or_else(|| "unknown".to_string()));
+    println!("commit: {}", detect_commit().unwrap_or_else(|| "unknown".to_string()));
+    SUCCESS_EXIT_CODE
+}
+
+fn handle_clap_error(error: clap::Error) -> i32 {
+    let mut command = Cli::command();
+    match error.kind() {
+        ClapErrorKind::DisplayHelp | ClapErrorKind::DisplayVersion => {
+            let _ = error.print();
+            SUCCESS_EXIT_CODE
+        }
+        _ => {
+            let _ = error.format(&mut command).print();
+            USAGE_EXIT_CODE
+        }
+    }
+}
+
+fn detect_llvm_version() -> Option<String> {
+    let output = ProcessCommand::new("llvm-config")
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8(output.stdout).ok()?;
+    Some(version.trim().to_string())
+}
+
+fn detect_host_triple() -> Option<String> {
+    let output = ProcessCommand::new("cc").arg("-dumpmachine").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let host = String::from_utf8(output.stdout).ok()?;
+    Some(host.trim().to_string())
+}
+
+fn detect_commit() -> Option<String> {
+    let output = ProcessCommand::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let commit = String::from_utf8(output.stdout).ok()?;
+    Some(commit.trim().to_string())
 }

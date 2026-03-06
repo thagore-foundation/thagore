@@ -95,7 +95,6 @@ pub struct RunArgs {
     #[command(flatten)]
     pub options: RunOptions,
     /// Arguments forwarded to the compiled program after `--`.
-    #[arg(last = true)]
     pub args: Vec<OsString>,
 }
 
