@@ -1,5 +1,6 @@
 //! Function declaration and body emission for Thagore IR.
 
+use inkwell::attributes::{Attribute, AttributeLoc};
 use thagore_ir::{IrFunction, IrModule};
 use thagore_typeck::TypeId;
 
@@ -27,6 +28,7 @@ pub fn declare_functions<'ctx>(
             Ok(function_type) => {
                 let name = context.symbol_name(function.name);
                 let llvm_function = context.module.add_function(&name, function_type, None);
+                apply_function_attributes(context, llvm_function, function);
                 context.functions.insert(function.name, llvm_function);
             }
             Err(error) => errors.push(error),
@@ -114,7 +116,114 @@ pub fn emit_function<'ctx>(
                 function: ir_function.name,
             })?;
         emit_terminator(context, &mut function, terminator)?;
+        if block
+            .successors
+            .iter()
+            .any(|successor| successor.as_u32() <= block.id.as_u32())
+        {
+            if let Some(instruction) = llvm_block.get_last_instruction() {
+                context.annotate_loop_branch(instruction)?;
+            }
+        }
     }
 
     Ok(())
+}
+
+fn apply_function_attributes<'ctx>(
+    context: &CodegenContext<'ctx>,
+    llvm_function: inkwell::values::FunctionValue<'ctx>,
+    ir_function: &IrFunction,
+) {
+    add_enum_attribute(context, llvm_function, "nounwind", 0);
+    add_enum_attribute(context, llvm_function, "willreturn", 0);
+    add_enum_attribute(context, llvm_function, "mustprogress", 0);
+
+    if context.target.fast_math {
+        llvm_function.add_attribute(
+            AttributeLoc::Function,
+            context.llvm.create_string_attribute("unsafe-fp-math", "true"),
+        );
+        llvm_function.add_attribute(
+            AttributeLoc::Function,
+            context.llvm.create_string_attribute("no-infs-fp-math", "true"),
+        );
+        llvm_function.add_attribute(
+            AttributeLoc::Function,
+            context.llvm.create_string_attribute("no-nans-fp-math", "true"),
+        );
+    }
+
+    llvm_function.add_attribute(
+        AttributeLoc::Function,
+        context
+            .llvm
+            .create_string_attribute("target-cpu", &context.target.cpu),
+    );
+    if !context.target.features.is_empty() {
+        llvm_function.add_attribute(
+            AttributeLoc::Function,
+            context
+                .llvm
+                .create_string_attribute("target-features", &context.target.features),
+        );
+    }
+
+    match purity(ir_function) {
+        Purity::ReadNone => add_enum_attribute(context, llvm_function, "readnone", 0),
+        Purity::ReadOnly => add_enum_attribute(context, llvm_function, "readonly", 0),
+        Purity::Impure => {}
+    }
+}
+
+fn add_enum_attribute<'ctx>(
+    context: &CodegenContext<'ctx>,
+    llvm_function: inkwell::values::FunctionValue<'ctx>,
+    name: &str,
+    value: u64,
+) {
+    let kind = Attribute::get_named_enum_kind_id(name);
+    if kind != 0 {
+        llvm_function.add_attribute(
+            AttributeLoc::Function,
+            context.llvm.create_enum_attribute(kind, value),
+        );
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Purity {
+    ReadNone,
+    ReadOnly,
+    Impure,
+}
+
+fn purity(function: &IrFunction) -> Purity {
+    let mut saw_memory_read = false;
+
+    for block in &function.blocks {
+        for instr in &block.instructions {
+            match instr {
+                thagore_ir::Instr::Const(..)
+                | thagore_ir::Instr::BinOp(..)
+                | thagore_ir::Instr::UnOp(..)
+                | thagore_ir::Instr::Phi(..) => {}
+                thagore_ir::Instr::Load(..)
+                | thagore_ir::Instr::GetField(..)
+                | thagore_ir::Instr::Index(..) => {
+                    saw_memory_read = true;
+                }
+                thagore_ir::Instr::Call(..)
+                | thagore_ir::Instr::SetField(..)
+                | thagore_ir::Instr::Alloc(..)
+                | thagore_ir::Instr::Store(..) => return Purity::Impure,
+            }
+        }
+    }
+
+    if saw_memory_read {
+        Purity::ReadOnly
+    } else {
+        Purity::ReadNone
+    }
 }

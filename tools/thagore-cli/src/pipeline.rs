@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use bumpalo::Bump;
@@ -12,7 +11,7 @@ use thagore_ast::visitor::{walk_decl, Visitor};
 use thagore_ast::{Decl, GenericTypeExpr, IdentExpr, InternedStr, LitExpr, Literal, NamedTypeExpr};
 use thagore_codegen::{
     link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
-    OutputConfig,
+    OutputConfig, TargetMachineConfig,
 };
 use thagore_ir::{IrLowerer, LoweringError};
 use thagore_lexer::Lexer;
@@ -99,7 +98,6 @@ pub(crate) fn build_file(
 ) -> Result<BuildResult, PipelineFailure> {
     let mut timings = TimingReport::new();
     let source = read_source(path, &timings)?;
-    validate_target(options.target.as_deref(), &source, &mut timings)?;
     let arena = Bump::new();
 
     let mut lexer = Lexer::new(&source);
@@ -201,6 +199,10 @@ pub(crate) fn build_file(
     let stage = Instant::now();
     let mut codegen_options = CodegenOptions::default();
     codegen_options.optimization = map_opt_level(options.opt);
+    codegen_options.target = TargetMachineConfig {
+        triple: options.target.clone(),
+        ..TargetMachineConfig::default()
+    };
     codegen_options.debug = DebugOptions {
         enabled: options.debug,
         source_name: path.display().to_string(),
@@ -283,53 +285,6 @@ fn read_source(path: &Path, timings: &TimingReport) -> Result<String, PipelineFa
         source: String::new(),
         timings: timings.clone(),
     })
-}
-
-fn validate_target(
-    requested: Option<&str>,
-    source: &str,
-    timings: &mut TimingReport,
-) -> Result<(), PipelineFailure> {
-    let Some(requested) = requested else {
-        return Ok(());
-    };
-    let host = host_triple();
-    if host.as_deref() == Some(requested) {
-        return Ok(());
-    }
-
-    Err(PipelineFailure {
-        diagnostics: vec![CompilerDiagnostic::new(
-            "CLI003",
-            "unsupported target triple",
-            match host {
-                Some(host) => format!(
-                    "target `{requested}` is not supported by the current backend; host triple is `{host}`"
-                ),
-                None => format!(
-                    "target `{requested}` is not supported by the current backend and the host triple could not be detected"
-                ),
-            },
-            None,
-        )
-        .with_hint("omit --target or pass the detected host triple")],
-        source: source.to_string(),
-        timings: timings.clone(),
-    })
-}
-
-fn host_triple() -> Option<String> {
-    let output = Command::new("cc").arg("-dumpmachine").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let triple = String::from_utf8(output.stdout).ok()?;
-    let triple = triple.trim();
-    if triple.is_empty() {
-        None
-    } else {
-        Some(triple.to_string())
-    }
 }
 
 fn module_name_from_path(path: &Path) -> String {

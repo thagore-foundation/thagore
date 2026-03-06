@@ -96,10 +96,16 @@ fn emit_bin_op<'ctx>(
             let lhs = left_value.into_int_value();
             let rhs = right_value.into_int_value();
             match op {
-                BinOp::Add => context.builder.build_int_add(lhs, rhs, "add"),
-                BinOp::Sub => context.builder.build_int_sub(lhs, rhs, "sub"),
-                BinOp::Mul => context.builder.build_int_mul(lhs, rhs, "mul"),
-                BinOp::Div => context.builder.build_int_signed_div(lhs, rhs, "div"),
+                BinOp::Add => context.builder.build_int_nsw_add(lhs, rhs, "add"),
+                BinOp::Sub => context.builder.build_int_nsw_sub(lhs, rhs, "sub"),
+                BinOp::Mul => context.builder.build_int_nsw_mul(lhs, rhs, "mul"),
+                BinOp::Div => {
+                    if can_use_exact_signed_div(lhs, rhs) {
+                        context.builder.build_int_exact_signed_div(lhs, rhs, "div")
+                    } else {
+                        context.builder.build_int_signed_div(lhs, rhs, "div")
+                    }
+                }
                 BinOp::Rem => context.builder.build_int_signed_rem(lhs, rhs, "rem"),
                 BinOp::Eq => context
                     .builder
@@ -326,28 +332,11 @@ fn emit_get_field<'ctx>(
 ) -> Result<(), CodegenError> {
     let object_value = lookup_value(context, function, object)?;
     let object_ty = type_of(function, object)?;
-    let (struct_name, field_index) = struct_field_index(context, object_ty, field)?;
-    let llvm_struct =
-        context
-            .type_map
-            .struct_type(struct_name)
-            .ok_or(CodegenError::UnknownStruct {
-                name: struct_name,
-                span: None,
-            })?;
-    let slot = context
+    let (_, field_index) = struct_field_index(context, object_ty, field)?;
+    let loaded = context
         .builder
-        .build_alloca(llvm_struct, "field.tmp")
+        .build_extract_value(object_value.into_struct_value(), field_index as u32, "field.load")
         .map_err(builder_error)?;
-    context
-        .builder
-        .build_store(slot, object_value)
-        .map_err(builder_error)?;
-    let gep = context
-        .builder
-        .build_struct_gep(slot, field_index as u32, "field.gep")
-        .map_err(builder_error)?;
-    let loaded = build_load(context, gep, "field.load")?;
     function.values.insert(value, loaded);
     Ok(())
 }
@@ -397,20 +386,11 @@ fn emit_index<'ctx>(
         }
     }
 
-    let llvm_array_ty = context.basic_type(array_ty)?.into_struct_type();
-    let temp = context
+    let data_ptr = context
         .builder
-        .build_alloca(llvm_array_ty, "array.tmp")
-        .map_err(builder_error)?;
-    context
-        .builder
-        .build_store(temp, array_value)
-        .map_err(builder_error)?;
-    let data_gep = context
-        .builder
-        .build_struct_gep(temp, 1, "array.data.gep")
-        .map_err(builder_error)?;
-    let data_ptr = build_load(context, data_gep, "array.data")?.into_pointer_value();
+        .build_extract_value(array_value, 1, "array.data")
+        .map_err(builder_error)?
+        .into_pointer_value();
     let element_ptr = unsafe {
         // SAFETY: `data_ptr` points to the base address of the array element
         // buffer and `idx` is the integer index emitted by validated IR.
@@ -582,4 +562,21 @@ fn builder_error(error: inkwell::builder::BuilderError) -> CodegenError {
         artifact: "llvm-builder".into(),
         message: error.to_string(),
     }
+}
+
+fn can_use_exact_signed_div<'ctx>(
+    lhs: inkwell::values::IntValue<'ctx>,
+    rhs: inkwell::values::IntValue<'ctx>,
+) -> bool {
+    let Some(divisor) = rhs.get_sign_extended_constant() else {
+        return false;
+    };
+    if divisor == 1 || divisor == -1 {
+        return true;
+    }
+
+    let Some(dividend) = lhs.get_sign_extended_constant() else {
+        return false;
+    };
+    divisor != 0 && dividend % divisor == 0
 }

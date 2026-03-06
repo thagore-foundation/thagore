@@ -1,13 +1,13 @@
 //! Output artifact emission for the Thagore LLVM backend.
 
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use inkwell::module::Module;
-use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
-};
+use inkwell::targets::{FileType, TargetMachine};
 
+use crate::context::{create_target_machine, TargetMachineConfig};
 use crate::error::CodegenError;
 use crate::optimize::OptimizationLevel;
 
@@ -42,6 +42,7 @@ pub fn emit_outputs(
     module: &Module<'_>,
     output: &OutputConfig,
     opt_level: OptimizationLevel,
+    target: &TargetMachineConfig,
 ) -> Result<OutputArtifacts, Vec<CodegenError>> {
     let mut artifacts = OutputArtifacts::default();
     let mut errors = Vec::new();
@@ -63,7 +64,7 @@ pub fn emit_outputs(
     }
 
     let target_machine = if output.object.is_some() || output.binary.is_some() {
-        match create_target_machine(opt_level) {
+        match create_target_machine(target, opt_level) {
             Ok(machine) => Some(machine),
             Err(error) => {
                 errors.push(error);
@@ -150,43 +151,85 @@ pub fn emit_object(
 
 /// Links an object file into a native executable via `cc`.
 pub fn link_binary(object: &Path, binary: &Path) -> Result<(), CodegenError> {
-    let output = Command::new("cc")
-        .arg(object)
-        .arg("-o")
-        .arg(binary)
-        .output()
-        .map_err(|error| CodegenError::LinkFailed {
-            linker: "cc".into(),
-            message: error.to_string(),
-        })?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(CodegenError::LinkFailed {
-            linker: "cc".into(),
-            message: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })
+    let mut attempts = linker_candidates();
+    attempts.push(Linker::SystemCc);
+
+    let mut last_error = None;
+    for linker in attempts {
+        match try_link(linker, object, binary) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
     }
+
+    Err(last_error.unwrap_or(CodegenError::LinkFailed {
+        linker: "cc".into(),
+        message: "no usable linker found".into(),
+    }))
 }
 
-fn create_target_machine(opt_level: OptimizationLevel) -> Result<TargetMachine, CodegenError> {
-    Target::initialize_all(&InitializationConfig::default());
-    let triple = TargetMachine::get_default_triple();
-    let target = Target::from_triple(&triple).map_err(|error| CodegenError::OutputFailed {
-        artifact: "target".into(),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Linker {
+    Mold,
+    Lld,
+    SystemCc,
+}
+
+fn linker_candidates() -> Vec<Linker> {
+    let mut linkers = Vec::new();
+    if which("mold") {
+        linkers.push(Linker::Mold);
+    }
+    if which("ld.lld") || which("lld") {
+        linkers.push(Linker::Lld);
+    }
+    linkers
+}
+
+fn try_link(linker: Linker, object: &Path, binary: &Path) -> Result<(), CodegenError> {
+    let mut command = Command::new("cc");
+    command.arg(object).arg("-o").arg(binary);
+    let linker_name = match linker {
+        Linker::Mold => {
+            command.arg("-fuse-ld=mold");
+            "mold"
+        }
+        Linker::Lld => {
+            command.arg("-fuse-ld=lld");
+            "lld"
+        }
+        Linker::SystemCc => "cc",
+    };
+
+    let output = command.output().map_err(|error| CodegenError::LinkFailed {
+        linker: linker_name.into(),
         message: error.to_string(),
     })?;
-    target
-        .create_target_machine(
-            &triple,
-            "generic",
-            "",
-            opt_level.to_llvm(),
-            RelocMode::Default,
-            CodeModel::Default,
-        )
-        .ok_or(CodegenError::OutputFailed {
-            artifact: "target-machine".into(),
-            message: "failed to create target machine".into(),
-        })
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(CodegenError::LinkFailed {
+        linker: linker_name.into(),
+        message: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn which(program: &str) -> bool {
+    let Some(paths) = env::var_os("PATH") else {
+        return false;
+    };
+
+    env::split_paths(&paths).any(|path| {
+        let candidate = path.join(program);
+        candidate.is_file() || has_windows_exe_suffix(&candidate)
+    })
+}
+
+fn has_windows_exe_suffix(path: &Path) -> bool {
+    if cfg!(windows) {
+        return path.with_extension("exe").is_file();
+    }
+    let _ = path;
+    false
 }

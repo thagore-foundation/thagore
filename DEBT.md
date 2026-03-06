@@ -39,7 +39,3 @@
 - [ ] [codegen] Preserve `intent` metadata through IR and emit it as LLVM metadata nodes
       Introduced: ed722f90
       Fix: Extend IR to carry intent annotations, then lower them into named LLVM metadata such as `!thagore.intent` instead of dropping them before backend emission.
-
-- [ ] [codegen] Thread the CLI `--target` triple into LLVM target-machine creation so cross-target builds work
-      Introduced: e3f468e7
-      Fix: Extend `thagore-codegen` output configuration with an explicit target triple and use it when creating the LLVM target machine instead of hard-wiring the host target.

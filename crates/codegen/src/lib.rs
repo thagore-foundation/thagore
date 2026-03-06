@@ -18,7 +18,10 @@ pub mod structs;
 pub mod term;
 pub mod types;
 
-pub use crate::context::{BlockMap, CodegenContext, FunctionContext, ValueMap};
+pub use crate::context::{
+    create_target_machine, BlockMap, CodegenContext, FunctionContext, TargetMachineConfig,
+    ValueMap,
+};
 pub use crate::debug::{DebugOptions, DebugState};
 pub use crate::error::CodegenError;
 pub use crate::optimize::OptimizationLevel;
@@ -33,6 +36,8 @@ pub use crate::types::TypeMap;
 pub struct CodegenOptions {
     /// Optimization level for the emitted LLVM module.
     pub optimization: OptimizationLevel,
+    /// Target machine configuration for code emission.
+    pub target: TargetMachineConfig,
     /// Debug emission configuration.
     pub debug: DebugOptions,
     /// Optional output artifact destinations.
@@ -87,6 +92,8 @@ impl Codegen {
                 .cloned()
                 .unwrap_or_else(|| format!("module_{}", ir_module.name.as_u32())),
             types,
+            self.options.optimization,
+            self.options.target.clone(),
             self.symbol_names.clone(),
         )?;
 
@@ -113,6 +120,7 @@ impl Codegen {
             &context.module,
             &self.options.output,
             self.options.optimization,
+            &self.options.target,
         ) {
             Ok(artifacts) => artifacts,
             Err(mut output_errors) => {
