@@ -125,8 +125,12 @@ pub enum TokenKind {
     For,
     /// `return`
     Return,
+    /// `from`
+    From,
     /// `import`
     Import,
+    /// `include`
+    Include,
     /// `extern`
     Extern,
     /// `struct`
@@ -213,7 +217,9 @@ impl TokenKind {
                 | Self::While
                 | Self::For
                 | Self::Return
+                | Self::From
                 | Self::Import
+                | Self::Include
                 | Self::Extern
                 | Self::Struct
                 | Self::Impl
@@ -268,7 +274,9 @@ impl fmt::Display for TokenKind {
             Self::While => "while",
             Self::For => "for",
             Self::Return => "return",
+            Self::From => "from",
             Self::Import => "import",
+            Self::Include => "include",
             Self::Extern => "extern",
             Self::Struct => "struct",
             Self::Impl => "impl",

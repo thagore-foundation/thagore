@@ -34,7 +34,7 @@ fn slice_text<'a>(source: &'a str, slice: SliceRef) -> &'a str {
 #[test]
 fn lexes_all_keywords() {
     let source =
-        "let func if else while for return import extern struct impl intent flow i32 f32 bool str";
+        "let func if else while for return from import include extern struct impl intent flow i32 f32 bool str";
     let expected = vec![
         TokenKind::Let,
         TokenKind::Func,
@@ -43,7 +43,9 @@ fn lexes_all_keywords() {
         TokenKind::While,
         TokenKind::For,
         TokenKind::Return,
+        TokenKind::From,
         TokenKind::Import,
+        TokenKind::Include,
         TokenKind::Extern,
         TokenKind::Struct,
         TokenKind::Impl,
@@ -53,6 +55,26 @@ fn lexes_all_keywords() {
         TokenKind::F32,
         TokenKind::Bool,
         TokenKind::Str,
+        TokenKind::Eof,
+    ];
+
+    assert_eq!(kinds(source), expected);
+}
+
+#[test]
+fn promotes_from_and_include_to_keywords() {
+    let source = "from math import sqrt\nimport math include all\n";
+    let expected = vec![
+        TokenKind::From,
+        TokenKind::Identifier,
+        TokenKind::Import,
+        TokenKind::Identifier,
+        TokenKind::Newline,
+        TokenKind::Import,
+        TokenKind::Identifier,
+        TokenKind::Include,
+        TokenKind::Identifier,
+        TokenKind::Newline,
         TokenKind::Eof,
     ];
 
