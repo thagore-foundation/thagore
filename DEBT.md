@@ -21,9 +21,9 @@
       Fix: Extend the AST and parser with a dedicated struct literal expression node and then add the missing type rule in `typeck`.
 
 - [ ] [ir] Replace synthetic derived symbols for flow compensation and method lowering with interner-backed names
-      Introduced: uncommitted
+      Introduced: 58e54dab
       Fix: Thread a canonical interner through IR lowering so synthesized helper functions and lowered method calls can preserve stable, collision-free symbolic names.
 
 - [ ] [ir] Lower top-level `let` declarations into a module initializer instead of rejecting them
-      Introduced: uncommitted
+      Introduced: 58e54dab
       Fix: Add a synthetic module initialization function or global data lowering path so top-level bindings become executable IR instead of an `InvalidLoweringState` error.
