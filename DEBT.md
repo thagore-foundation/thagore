@@ -39,3 +39,11 @@
 - [ ] [codegen] Preserve `intent` metadata through IR and emit it as LLVM metadata nodes
       Introduced: ed722f90
       Fix: Extend IR to carry intent annotations, then lower them into named LLVM metadata such as `!thagore.intent` instead of dropping them before backend emission.
+
+- [ ] [bench] Replace approximated benchmark workloads with real hash map, string, struct-allocation, and pointer-heavy programs once the language gains arrays, heap allocation, and indexed strings
+      Introduced: 5c6b58a7
+      Fix: Extend the language/runtime with arrays, heap-backed aggregates, and string indexing so `thagore-bench` can benchmark the requested workloads without algorithmic approximations.
+
+- [ ] [bench] Measure peak child-process RSS via a native rusage path instead of the current `/usr/bin/time` wrapper
+      Introduced: 5c6b58a7
+      Fix: Add a safe process measurement layer or a narrowly scoped platform abstraction that can capture child peak RSS directly while preserving benchmark isolation.
