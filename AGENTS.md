@@ -1,123 +1,67 @@
 # AGENTS.md
 
-This file defines mandatory engineering rules for all contributors and coding agents in this repository.
+This file is law. AI coding agents must follow it before creating, moving, renaming, or editing files in this repository.
 
-## 1. Architecture & Design (Mandatory)
+## 1. Project Structure Law
 
-- Follow OOSAD and iterative RUP.
-- Apply DDD:
-  - define domain boundaries explicitly,
-  - maintain a shared ubiquitous language in code/docs/PRs.
-- Use Clean Architecture with ports/adapters.
-- Keep domain pure:
-  - no LLVM/process/filesystem/network/platform concerns in domain layer.
-- Keep infrastructure swappable through interfaces.
-- Apply SOLID and GRASP.
-- Avoid circular dependencies.
-- Keep modules cohesive and responsibilities focused.
+- All compiler passes live in `crates/` as independent workspace members.
+- All developer tooling lives in `tools/`.
+- Standard library source lives in `stdlib/`.
+- Integration and end-to-end tests live in `tests/fixtures/` as `.tg` files.
+- No file may be created outside these designated locations without explicit approval.
 
-## 2. Quality & Testing (Mandatory)
+## 2. File Naming Law
 
-- Use TDD where feasible.
-- Follow test pyramid:
-  - unit tests for domain/application rules,
-  - integration tests for adapters/pipeline,
-  - e2e/parity tests for compiler behavior.
-- Add CI-ready tests for all meaningful changes.
-- Enforce formatting and linting in CI and local workflow.
-- Do not merge changes without passing relevant tests/checks.
+- All Rust source files must use `snake_case.rs`.
+- All Thagore source files must use `snake_case.tg`.
+- No abbreviations are allowed unless they appear in this approved list:
+  - `lexer`
+  - `typeck`
+  - `codegen`
+  - `ir`
+  - `lsp`
+  - `cli`
+- Test files must be named `{module}_tests.rs`.
+- Test files must live in `tests/` next to the corresponding `src/` directory.
 
-### 2.1 No Placeholder Markers (Mandatory)
+## 3. Crate Dependency Law
 
-- Do not leave placeholder implementation markers in tracked files (`TODO:`, `FIXME:`, `TBD:`, `XXX:` and tagged variants such as `TODO(v1.0):`).
-- Every placeholder must be either implemented immediately or converted into a tracked issue outside source/docs.
-- Before creating a commit, run:
-  - `rg -n --hidden --glob '!.git' -g '!AGENTS.md' -P '\b(TODO|FIXME|TBD|XXX)(\([^)]+\))?:' .`
-- Commit is invalid unless the command returns no matches.
+- `lexer` must not depend on any other Thagore crate.
+- `parser` may depend only on `lexer` and `ast`.
+- `ast` must not depend on any other Thagore crate.
+- `typeck` may depend only on `ast` and `lexer`.
+- `ir` may depend only on `ast` and `typeck`.
+- `codegen` may depend only on `ir`.
+- `tools/*` may depend on any crate, but no crate may depend on `tools/*`.
+- Circular dependencies are a hard error. Never introduce them.
 
-## 3. Versioning & Change Discipline
+## 4. New File Checklist
 
-- Use SemVer for releases.
-- Use Conventional Commits for all commits.
-- Record major architectural/design decisions as ADRs under `docs/adr/`.
-- Keep one logical change per commit.
+Before creating any new file, the agent must confirm:
 
-## 4. OSS Hygiene (Mandatory)
+- [ ] The file belongs in the correct designated directory.
+- [ ] The file follows the naming convention.
+- [ ] If this is a new crate, `Cargo.toml` is created and added to the workspace members list in the root `Cargo.toml`.
+- [ ] If this is a new crate, a stub `lib.rs` with a doc comment is created.
+- [ ] No existing file is silently overwritten.
 
-Keep these files present and updated:
+## 5. Forbidden Actions
 
-- `README.md`
-- `.github/CONTRIBUTING.md`
-- `.github/CODEOWNERS`
-- `.github/SECURITY.md`
-- issue templates under `.github/ISSUE_TEMPLATE/`
-- `.github/PULL_REQUEST_TEMPLATE.md`
+- Never create files in the project root except `Cargo.toml`, `Cargo.lock`, `AGENTS.md`, and `README.md`.
+- Never use `mod.rs`. Use `module_name.rs` at the same level instead.
+- Never place test code inside `src/` files. Tests belong in `tests/`.
+- Never commit `target/` or any build artifact.
+- Never add a dependency to any crate without updating the corresponding `Cargo.toml`.
 
-Documentation must support fast onboarding for new contributors.
+## 6. Scaffold Law
 
-## 5. Build & Reproducibility
+When scaffolding a new crate that is not yet implemented:
 
-- Ensure fast local setup with clear commands.
-- Keep builds reproducible and deterministic where applicable.
-- Keep CI workflow definitions aligned with repository architecture and quality gates.
+- Create `Cargo.toml` with the correct crate name and version.
+- Create `src/lib.rs` containing exactly:
 
-## 6. Delivery Expectations
+```rust
+//! Scaffold — not yet implemented.
+```
 
-- Clear folder structure.
-- Minimal coupling between modules.
-- Strong docs for contributors.
-- No hidden architectural shortcuts that break layering or contracts.
-
-## 7. Enforcement Priority
-
-When instructions conflict, follow this order:
-
-1. Explicit user request in current conversation.
-2. This `AGENTS.md`.
-3. Other repository defaults/policies.
-
-## 8. Mandatory Repository Structure (Compiler Rewrite)
-
-All AI agents must follow this folder architecture and must not introduce ad-hoc layouts:
-
-- `compiler/frontend/` + `compiler/include/thagc/frontend/` + `compiler/src/frontend/`
-  - lexer/parser/AST/type-rule concerns only.
-- `compiler/middleend/` + `compiler/include/thagc/middleend/` + `compiler/src/middleend/`
-  - typed/core IR and lowering only.
-- `compiler/backend/` + `compiler/include/thagc/backend/` + `compiler/src/backend/`
-  - LLVM/object/codegen concerns only.
-- `compiler/driver/` + `compiler/include/thagc/driver/` + `compiler/src/driver/`
-  - CLI command parsing/dispatch and command handlers.
-- `compiler/shared/` + `compiler/include/thagc/shared/` + `compiler/src/shared/`
-  - diagnostics and reusable utilities only.
-- `contracts/`
-  - parity and behavior contracts (CLI/grammar/semantics).
-- `tooling/`
-  - baseline extraction, comparison, packaging, policy, release operations.
-- `docs/architecture/`, `docs/contributor-guide/`, `docs/adr/`
-  - architecture map, contributor map, and decisions.
-
-### 8.1 File Naming Rules (Strict)
-
-- Do not create monolithic files that mix unrelated responsibilities.
-- Use role-based filenames for implementation units:
-  - examples: `core.cpp`, `ir.cpp`, `builder.cpp`, `parser.cpp`, `help.cpp`, `run.cpp`.
-- For driver command logic, one command group per file:
-  - `build.cpp`, `run.cpp`, `test.cpp`, `fix.cpp`, `intent.cpp`, `state.cpp`, `install.cpp`, `target.cpp`, `update.cpp`, `flow.cpp`.
-- Avoid vague aggregator files (`misc.cpp`, `all.cpp`, `temp.cpp`, `wrapper.cpp`).
-
-### 8.2 Dependency Boundaries (Strict)
-
-- `frontend` must not depend on `backend`.
-- `middleend` must not depend on LLVM headers directly.
-- `driver` can orchestrate through application ports/interfaces, not by bypassing module boundaries.
-- `shared` must not contain compiler business logic.
-
-### 8.3 Required Docs Sync
-
-Any folder/file architecture change must update all:
-
-- `README.md` project layout section.
-- `docs/architecture/repo-structure.md`.
-- `docs/contributor-guide/where-to-change.md`.
-- `docs/architecture/rewrite-status.md` if progress status is impacted.
+- Do not generate placeholder logic, dummy structs, or TODO functions.
