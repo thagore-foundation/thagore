@@ -34,7 +34,7 @@ fn slice_text<'a>(source: &'a str, slice: SliceRef) -> &'a str {
 #[test]
 fn lexes_all_keywords() {
     let source =
-        "let func if else while for return from import include extern struct impl intent flow i32 f32 bool str";
+        "let func if else while for return const from import include extern struct impl intent flow i32 f32 bool str";
     let expected = vec![
         TokenKind::Let,
         TokenKind::Func,
@@ -43,6 +43,7 @@ fn lexes_all_keywords() {
         TokenKind::While,
         TokenKind::For,
         TokenKind::Return,
+        TokenKind::Const,
         TokenKind::From,
         TokenKind::Import,
         TokenKind::Include,
@@ -55,6 +56,23 @@ fn lexes_all_keywords() {
         TokenKind::F32,
         TokenKind::Bool,
         TokenKind::Str,
+        TokenKind::Eof,
+    ];
+
+    assert_eq!(kinds(source), expected);
+}
+
+#[test]
+fn promotes_const_to_keyword() {
+    let source = "const PI: f64 = 3.14\n";
+    let expected = vec![
+        TokenKind::Const,
+        TokenKind::Identifier,
+        TokenKind::Colon,
+        TokenKind::Identifier,
+        TokenKind::Assign,
+        TokenKind::Float,
+        TokenKind::Newline,
         TokenKind::Eof,
     ];
 
@@ -75,6 +93,39 @@ fn promotes_from_and_include_to_keywords() {
         TokenKind::Include,
         TokenKind::Identifier,
         TokenKind::Newline,
+        TokenKind::Eof,
+    ];
+
+    assert_eq!(kinds(source), expected);
+}
+
+#[test]
+fn preserves_generic_and_constraint_delimiters_as_symbolic_tokens() {
+    let source = "func abs<T: Numeric>(x: T) -> T:\n  return x < 0\n";
+    let expected = vec![
+        TokenKind::Func,
+        TokenKind::Identifier,
+        TokenKind::Lt,
+        TokenKind::Identifier,
+        TokenKind::Colon,
+        TokenKind::Identifier,
+        TokenKind::Gt,
+        TokenKind::LParen,
+        TokenKind::Identifier,
+        TokenKind::Colon,
+        TokenKind::Identifier,
+        TokenKind::RParen,
+        TokenKind::Arrow,
+        TokenKind::Identifier,
+        TokenKind::Colon,
+        TokenKind::Newline,
+        TokenKind::Indent,
+        TokenKind::Return,
+        TokenKind::Identifier,
+        TokenKind::Lt,
+        TokenKind::Integer,
+        TokenKind::Newline,
+        TokenKind::Dedent,
         TokenKind::Eof,
     ];
 

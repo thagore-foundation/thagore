@@ -125,6 +125,8 @@ pub enum TokenKind {
     For,
     /// `return`
     Return,
+    /// `const`
+    Const,
     /// `from`
     From,
     /// `import`
@@ -217,6 +219,7 @@ impl TokenKind {
                 | Self::While
                 | Self::For
                 | Self::Return
+                | Self::Const
                 | Self::From
                 | Self::Import
                 | Self::Include
@@ -274,6 +277,7 @@ impl fmt::Display for TokenKind {
             Self::While => "while",
             Self::For => "for",
             Self::Return => "return",
+            Self::Const => "const",
             Self::From => "from",
             Self::Import => "import",
             Self::Include => "include",
