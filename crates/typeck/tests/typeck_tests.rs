@@ -1,8 +1,9 @@
 use thagore_ast::{
-    BinOp, BinaryExpr, Block, CallExpr, Decl, Expr, ExprStmt, FieldAccessExpr, FieldDef, FlowDecl,
-    FlowStage, ForStmt, FuncDecl, GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr,
-    InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
-    ReturnStmt, Span, Stmt, StructDecl, TypeExpr, UnaryExpr, UnaryOp, WhileStmt,
+    BinOp, BinaryExpr, Block, CallExpr, ConstDecl, Constraint, ConstraintKind, Decl, Expr,
+    ExprStmt, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericFuncDecl,
+    GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr, InferTypeExpr, InternedStr, LetDecl,
+    LitExpr, Literal, NamedTypeExpr, NodeId, Param, ReturnStmt, Span, Stmt, StructDecl, TypeExpr,
+    TypeParam, UnaryExpr, UnaryOp, WhileStmt,
 };
 use thagore_typeck::{
     InferenceSolver, ScopeStack, TypeArena, TypeChecker, TypeConstraint, TypeError, TypeId,
@@ -100,6 +101,15 @@ impl AstFactory {
             id,
             span: span(),
             literal: Literal::Bool(value),
+        }))
+    }
+
+    fn float(&mut self, value: f64) -> &'static Expr<'static> {
+        let id = self.id();
+        self.alloc_expr(Expr::Literal(LitExpr {
+            id,
+            span: span(),
+            literal: Literal::Float(value),
         }))
     }
 
@@ -880,4 +890,109 @@ fn checks_unary_bool_and_numeric_rules() {
     assert!(errors
         .iter()
         .any(|error| matches!(error, TypeError::TypeMismatch { .. })));
+}
+
+#[test]
+fn instantiates_generic_function_calls() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let generic_param = TypeParam {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        constraints: leak_slice(vec![Constraint {
+            id: ast.id(),
+            span: span(),
+            kind: ConstraintKind::Numeric,
+        }]),
+    };
+    let generic_ty = ast.named_type(syms.value);
+    let generic_body = {
+        let value = ast.ident(syms.value);
+        let stmt = return_stmt(&mut ast, Some(value));
+        ast.block(vec![stmt])
+    };
+    let generic_abs = Decl::GenericFunc(GenericFuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        type_params: leak_slice(vec![generic_param]),
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.value,
+            ty: generic_ty,
+        }]),
+        return_type: Some(generic_ty),
+        body: generic_body,
+    });
+
+    let call = {
+        let callee = ast.ident(syms.foo);
+        let arg = ast.int(42);
+        ast.call(callee, vec![arg])
+    };
+    let caller_return = return_stmt(&mut ast, Some(call));
+    let caller_body = ast.block(vec![caller_return]);
+    let caller = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.add,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: caller_body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let table = checker
+        .check(&[generic_abs, caller.clone()])
+        .expect("generic call should type check");
+    let Decl::Func(caller_decl) = caller else {
+        panic!("expected caller function")
+    };
+    let Stmt::Return(ret) = &caller_decl.body.statements[0] else {
+        panic!("expected return")
+    };
+    let call_expr = ret.value.expect("call value");
+    assert_eq!(table.get(call_expr.id()), Some(checker.types().i32()));
+    assert_eq!(checker.monomorphs().pending().len(), 1);
+}
+
+#[test]
+fn binds_top_level_consts_into_scope() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let const_decl = Decl::Const(ConstDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        type_ann: ast.named_type(syms.f64_),
+        value: ast.float(3.14),
+    });
+    let ident = ast.ident(syms.value);
+    let func_return = return_stmt(&mut ast, Some(ident));
+    let func_body = ast.block(vec![func_return]);
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.take,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.f64_)),
+        body: func_body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let table = checker
+        .check(&[const_decl, func.clone()])
+        .expect("const should type check");
+    let Decl::Func(func_decl) = func else {
+        panic!("expected function")
+    };
+    let Stmt::Return(ret) = &func_decl.body.statements[0] else {
+        panic!("expected return")
+    };
+    let value = ret.value.expect("const value");
+    assert_eq!(table.get(value.id()), Some(checker.types().f64()));
 }

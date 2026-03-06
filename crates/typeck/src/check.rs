@@ -7,14 +7,18 @@ use alloc::vec::Vec;
 use core::mem;
 use thagore_ast::visitor::Visitor;
 use thagore_ast::{
-    AssignExpr, BinOp, BinaryExpr, BlockRef, CallExpr, Decl, DeclRef, Expr, ExprRef, ExprStmt,
-    ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericTypeExpr,
-    IdentExpr, IfStmt, ImportDecl, IndexExpr, InferTypeExpr, IntentDecl, LetDecl, LitExpr, Literal,
-    NamedTypeExpr, Param, ReturnStmt, Stmt, StmtRef, StructDecl, TypeExpr, TypeExprRef, UnaryExpr,
-    UnaryOp, WhileStmt,
+    AssignExpr, BinOp, BinaryExpr, BlockRef, CallExpr, ConstDecl, Decl, DeclRef, Expr, ExprRef,
+    ExprStmt, ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl,
+    GenericFuncDecl, GenericTypeExpr, IdentExpr, IfStmt, ImportDecl, IndexExpr, InferTypeExpr,
+    IntentDecl, LetDecl, LitExpr, Literal, NamedTypeExpr, Param, ReturnStmt, Stmt, StmtRef,
+    StructDecl, TypeExpr, TypeExprRef, UnaryExpr, UnaryOp, WhileStmt,
 };
 
 use crate::error::TypeError;
+use crate::generics::{
+    check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
+    MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
+};
 use crate::infer::InferenceSolver;
 use crate::scope::{FnvBuildHasher, ScopeMap, ScopeStack};
 use crate::table::TypeTable;
@@ -41,8 +45,11 @@ pub struct TypeChecker {
     symbol_names: SymbolNames,
     struct_types: StructTypes,
     method_types: MethodTypes,
+    generic_functions: ScopeMap<thagore_ast::InternedStr, GenericFunctionTemplate>,
+    monomorphs: MonomorphWorkList,
     current_return_types: Vec<TypeId>,
     current_impl_targets: Vec<TypeId>,
+    synthetic_symbol_cursor: u32,
 }
 
 impl Default for TypeChecker {
@@ -64,8 +71,11 @@ impl TypeChecker {
             symbol_names: ScopeMap::with_hasher(FnvBuildHasher::default()),
             struct_types: ScopeMap::with_hasher(FnvBuildHasher::default()),
             method_types: ScopeMap::with_hasher(FnvBuildHasher::default()),
+            generic_functions: ScopeMap::with_hasher(FnvBuildHasher::default()),
+            monomorphs: MonomorphWorkList::new(),
             current_return_types: Vec::new(),
             current_impl_targets: Vec::new(),
+            synthetic_symbol_cursor: 1_000_000,
         }
     }
 
@@ -78,6 +88,12 @@ impl TypeChecker {
     #[must_use]
     pub fn types(&self) -> &TypeArena {
         &self.types
+    }
+
+    /// Returns the deduplicated generic instantiations discovered so far.
+    #[must_use]
+    pub fn monomorphs(&self) -> &MonomorphWorkList {
+        &self.monomorphs
     }
 
     /// Type-checks a program and returns the resulting side table on success.
@@ -105,8 +121,11 @@ impl TypeChecker {
         self.errors.clear();
         self.struct_types.clear();
         self.method_types.clear();
+        self.generic_functions.clear();
+        self.monomorphs.clear();
         self.current_return_types.clear();
         self.current_impl_targets.clear();
+        self.synthetic_symbol_cursor = 1_000_000;
     }
 
     fn collect_top_level<'ast>(&mut self, decls: &'ast [Decl<'ast>]) {
@@ -126,12 +145,27 @@ impl TypeChecker {
                     self.scopes.insert(func_decl.name, signature);
                     self.table.insert(func_decl.id, signature);
                 }
+                Decl::GenericFunc(func_decl) => {
+                    let template = self.extract_generic_function_template(func_decl);
+                    self.generic_functions.insert(func_decl.name, template);
+                    self.table.insert(func_decl.id, self.types.unit());
+                }
+                Decl::Const(const_decl) => {
+                    let ty = self.resolve_type_expr(const_decl.type_ann);
+                    self.table.insert(const_decl.id, ty);
+                }
                 Decl::Extern(extern_decl) => {
                     let signature = self.collect_extern_signature(extern_decl);
                     self.scopes.insert(extern_decl.name, signature);
                     self.table.insert(extern_decl.id, signature);
                 }
                 Decl::Impl(impl_block) => self.collect_impl_signatures(impl_block),
+                Decl::GenericStruct(struct_decl) => {
+                    self.table.insert(struct_decl.id, self.types.unit());
+                }
+                Decl::GenericImpl(impl_block) => {
+                    self.table.insert(impl_block.id, self.types.unit());
+                }
                 Decl::Import(import_decl) => {
                     self.table.insert(import_decl.id, self.types.unit());
                 }
@@ -143,6 +177,62 @@ impl TypeChecker {
                 }
                 Decl::Let(_) => {}
             }
+        }
+    }
+
+    fn extract_generic_function_template<'ast>(
+        &self,
+        decl: &'ast GenericFuncDecl<'ast>,
+    ) -> GenericFunctionTemplate {
+        let type_param_names: Vec<_> = decl.type_params.iter().map(|param| param.name).collect();
+        let type_params = decl
+            .type_params
+            .iter()
+            .map(|param| GenericParamSpec {
+                name: param.name,
+                constraints: param.constraints.iter().map(|constraint| constraint.kind).collect(),
+            })
+            .collect();
+        let params = decl
+            .params
+            .iter()
+            .map(|param| self.template_type_from_expr(param.ty, &type_param_names))
+            .collect();
+        let return_type = decl
+            .return_type
+            .map(|ty| self.template_type_from_expr(ty, &type_param_names))
+            .unwrap_or(TemplateType::Unit);
+
+        GenericFunctionTemplate {
+            name: decl.name,
+            type_params,
+            params,
+            return_type,
+        }
+    }
+
+    fn template_type_from_expr<'ast>(
+        &self,
+        ty: TypeExprRef<'ast>,
+        type_params: &[thagore_ast::InternedStr],
+    ) -> TemplateType {
+        match ty {
+            TypeExpr::Named(node) => {
+                if type_params.contains(&node.name) {
+                    TemplateType::TypeParam(node.name)
+                } else {
+                    TemplateType::Named(node.name)
+                }
+            }
+            TypeExpr::Generic(node) => TemplateType::Generic {
+                name: node.name,
+                args: node
+                    .args
+                    .iter()
+                    .map(|arg| self.template_type_from_expr(*arg, type_params))
+                    .collect(),
+            },
+            TypeExpr::Infer(_) => TemplateType::Infer,
         }
     }
 
@@ -233,20 +323,28 @@ impl TypeChecker {
     }
 
     fn resolve_named_type(&mut self, ty: &NamedTypeExpr) -> TypeId {
-        let resolved = match self.symbol_name(ty.name) {
+        let resolved = self.resolve_named_type_symbol(ty.name, ty.span);
+        self.table.insert(ty.id, resolved);
+        resolved
+    }
+
+    fn resolve_named_type_symbol(
+        &mut self,
+        name: thagore_ast::InternedStr,
+        span: thagore_ast::Span,
+    ) -> TypeId {
+        match self.symbol_name(name) {
             Some("i32") => self.types.i32(),
             Some("i64") => self.types.i64(),
             Some("f64") => self.types.f64(),
             Some("bool") => self.types.bool(),
             Some("str") | Some("ptr") => self.types.str(),
             Some("()") | Some("void") => self.types.unit(),
-            _ => self.struct_types.get(&ty.name).copied().unwrap_or_else(|| {
-                self.errors.push(TypeError::unknown(ty.span));
+            _ => self.struct_types.get(&name).copied().unwrap_or_else(|| {
+                self.errors.push(TypeError::unknown(span));
                 self.types.unknown()
             }),
-        };
-        self.table.insert(ty.id, resolved);
-        resolved
+        }
     }
 
     fn resolve_generic_type<'ast>(&mut self, ty: &'ast GenericTypeExpr<'ast>) -> TypeId {
@@ -270,6 +368,137 @@ impl TypeChecker {
 
     fn symbol_name(&self, symbol: thagore_ast::InternedStr) -> Option<&str> {
         self.symbol_names.get(&symbol).map(String::as_str)
+    }
+
+    fn intern_synthetic_name(&mut self, name: String) -> thagore_ast::InternedStr {
+        if let Some((symbol, _)) = self
+            .symbol_names
+            .iter()
+            .find(|(_, existing)| existing.as_str() == name.as_str())
+        {
+            return *symbol;
+        }
+
+        let symbol = thagore_ast::InternedStr::new(self.synthetic_symbol_cursor);
+        self.synthetic_symbol_cursor = self.synthetic_symbol_cursor.saturating_add(1);
+        self.symbol_names.insert(symbol, name);
+        symbol
+    }
+
+    fn instantiate_template_type(
+        &mut self,
+        template: &TemplateType,
+        bindings: &[(thagore_ast::InternedStr, TypeId)],
+    ) -> TypeId {
+        match template {
+            TemplateType::Unit => self.types.unit(),
+            TemplateType::Named(name) => {
+                self.resolve_named_type_symbol(*name, thagore_ast::Span::empty())
+            }
+            TemplateType::TypeParam(name) => bindings
+                .iter()
+                .find_map(|(binding_name, ty)| (*binding_name == *name).then_some(*ty))
+                .unwrap_or_else(|| self.types.unknown()),
+            TemplateType::Generic { name, args } => {
+                let instantiated_args: Vec<_> = args
+                    .iter()
+                    .map(|arg| self.instantiate_template_type(arg, bindings))
+                    .collect();
+                match (self.symbol_name(*name), instantiated_args.as_slice()) {
+                    (Some("Array"), [element]) | (Some("array"), [element]) => {
+                        self.types.intern_array(*element)
+                    }
+                    _ => self.types.unknown(),
+                }
+            }
+            TemplateType::Infer => {
+                let infer = self.types.fresh_infer();
+                self.infer.sync_with_arena(&self.types);
+                infer
+            }
+        }
+    }
+
+    fn instantiate_generic_function<'ast>(
+        &mut self,
+        template: &GenericFunctionTemplate,
+        args: &'ast [ExprRef<'ast>],
+        span: thagore_ast::Span,
+    ) -> Option<(TypeId, TypeId)> {
+        if template.params.len() != args.len() {
+            self.errors.push(TypeError::ArgumentCountMismatch {
+                expected: template.params.len(),
+                found: args.len(),
+                span,
+            });
+        }
+
+        let mut bindings = Vec::new();
+        for type_param in &template.type_params {
+            let infer = self.types.fresh_infer();
+            self.infer.sync_with_arena(&self.types);
+            bindings.push((type_param.name, infer));
+        }
+
+        let mut signature_params = Vec::new();
+        for (expected_template, arg) in template.params.iter().zip(args.iter()) {
+            let expected = self.instantiate_template_type(expected_template, &bindings);
+            let found = self.check_expr(*arg);
+            self.unify(expected, found, arg.span());
+            signature_params.push(self.resolved_type(expected));
+        }
+
+        let mut concrete_args = Vec::new();
+        for type_param in &template.type_params {
+            let concrete = bindings
+                .iter()
+                .find_map(|(name, ty)| (*name == type_param.name).then_some(*ty))
+                .map(|ty| self.default_inferred_type(ty))
+                .unwrap_or_else(|| self.types.unknown());
+            if self.types.is_unknown(concrete) || self.types.is_infer(concrete) {
+                self.errors.push(TypeError::InferenceFailure { span });
+                return None;
+            }
+            for constraint in &type_param.constraints {
+                if !check_constraint(&self.types, concrete, *constraint) {
+                    self.errors.push(TypeError::TypeMismatch {
+                        expected: self.types.i32(),
+                        found: concrete,
+                        span,
+                    });
+                    return None;
+                }
+            }
+            concrete_args.push(concrete);
+        }
+
+        let return_type = self.instantiate_template_type(&template.return_type, &bindings);
+        let signature = self.types.intern_function(signature_params, return_type);
+        let mangled_suffix = mangle_type_args(
+            &self.types,
+            &|symbol| self.symbol_name(symbol).map(ToString::to_string),
+            &concrete_args,
+        );
+        let mut mangled_name = String::from("__thagore_");
+        mangled_name.push_str(self.symbol_name(template.name).unwrap_or("generic"));
+        if !mangled_suffix.is_empty() {
+            mangled_name.push('_');
+            mangled_name.push_str(&mangled_suffix);
+        }
+        let mangled_symbol = self.intern_synthetic_name(mangled_name);
+        let request = MonomorphRequest {
+            generic_name: template.name,
+            type_args: concrete_args,
+            call_span: span,
+        };
+        self.monomorphs.record(
+            request,
+            MonomorphResult {
+                mangled_name: mangled_symbol,
+                type_id: signature,
+            },
+        );
+        Some((signature, return_type))
     }
 
     fn current_return_type(&self) -> TypeId {
@@ -425,9 +654,17 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     fn visit_decl(&mut self, decl: DeclRef<'ast>) {
         match decl {
             Decl::Func(node) => self.visit_func_decl(node),
+            Decl::GenericFunc(node) => self.visit_generic_func_decl(node),
             Decl::Let(node) => self.visit_let_decl(node),
+            Decl::Const(node) => self.visit_const_decl(node),
             Decl::Struct(node) => self.visit_struct_decl(node),
+            Decl::GenericStruct(node) => {
+                self.table.insert(node.id, self.types.unit());
+            }
             Decl::Impl(node) => self.visit_impl_block(node),
+            Decl::GenericImpl(node) => {
+                self.table.insert(node.id, self.types.unit());
+            }
             Decl::Import(node) => self.visit_import_decl(node),
             Decl::Extern(node) => self.visit_extern_decl(node),
             Decl::Intent(node) => self.visit_intent_decl(node),
@@ -461,6 +698,21 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         let declared = decl.ty.map(|ty| self.resolve_type_expr(ty));
         let inferred = self.check_expr(decl.initializer);
         self.bind_let_result(decl.name, decl.id, decl.span, declared, inferred);
+    }
+
+    fn visit_generic_func_decl(&mut self, decl: &'ast GenericFuncDecl<'ast>) {
+        let template = self.extract_generic_function_template(decl);
+        self.generic_functions.insert(decl.name, template);
+        self.table.insert(decl.id, self.types.unit());
+    }
+
+    fn visit_const_decl(&mut self, decl: &'ast ConstDecl<'ast>) {
+        let declared = self.resolve_type_expr(decl.type_ann);
+        let inferred = self.check_expr(decl.value);
+        let result = self.unify(declared, inferred, decl.span);
+        let resolved = self.resolved_type(result);
+        self.table.insert(decl.id, resolved);
+        self.scopes.insert(decl.name, resolved);
     }
 
     fn visit_struct_decl(&mut self, decl: &'ast StructDecl<'ast>) {
@@ -692,6 +944,20 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     }
 
     fn visit_call_expr(&mut self, expr: &'ast CallExpr<'ast>) {
+        if let Expr::Ident(ident) = expr.callee {
+            if let Some(template) = self.generic_functions.get(&ident.name).cloned() {
+                if let Some((function_type, return_type)) =
+                    self.instantiate_generic_function(&template, expr.args, expr.span)
+                {
+                    self.table.insert(ident.id, function_type);
+                    self.table.insert(expr.id, return_type);
+                } else {
+                    self.table.insert(expr.id, self.types.unknown());
+                }
+                return;
+            }
+        }
+
         let callee = self.check_expr(expr.callee);
         let callee_resolved = self.resolved_type(callee);
         let TypeKind::Function(signature) = self.types.kind(callee_resolved).clone() else {
