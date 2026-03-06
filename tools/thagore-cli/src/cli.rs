@@ -7,21 +7,28 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 /// Top-level command-line entrypoint for the Thagore compiler.
 #[derive(Debug, Clone, Parser)]
 #[command(
-    name = "thagore",
+    name = "thagc",
     version = "0.1.0",
     about = "Thagore compiler driver",
     long_about = None,
-    arg_required_else_help = true
+    arg_required_else_help = true,
+    disable_version_flag = true
 )]
 pub struct Cli {
+    /// Print toolchain version metadata as JSON and exit.
+    #[arg(long = "version", action = ArgAction::SetTrue)]
+    pub version_json: bool,
+    /// Print supported target triples as a JSON array and exit.
+    #[arg(long = "print-target-list", action = ArgAction::SetTrue)]
+    pub print_target_list: bool,
     /// Selected compiler subcommand.
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// Supported top-level compiler subcommands.
@@ -40,8 +47,8 @@ pub enum Command {
 /// Command-line arguments for `thagore build`.
 #[derive(Debug, Clone, Args)]
 pub struct BuildArgs {
-    /// Input Thagore source file.
-    pub file: PathBuf,
+    /// Entry Thagore source file.
+    pub entry: PathBuf,
     /// Requested build configuration.
     #[command(flatten)]
     pub options: BuildOptions,
@@ -70,6 +77,18 @@ pub struct BuildOptions {
     /// LLVM target triple. Defaults to the host target when omitted.
     #[arg(long = "target")]
     pub target: Option<String>,
+    /// Import search path appended in resolution order.
+    #[arg(long = "include-dir")]
+    pub include_dirs: Vec<PathBuf>,
+    /// Compile-time constant definitions exposed to the frontend.
+    #[arg(long = "define")]
+    pub defines: Vec<String>,
+    /// Active feature flags exposed as compile-time booleans.
+    #[arg(long = "features", value_delimiter = ',')]
+    pub features: Vec<String>,
+    /// Emit structured compiler diagnostics as JSON to stdout.
+    #[arg(long = "json-errors")]
+    pub json_errors: bool,
     /// Print per-stage timing after the pipeline completes.
     #[arg(long = "time")]
     pub time: bool,
@@ -83,6 +102,15 @@ pub struct CheckArgs {
     /// Emit structured diagnostics as JSON.
     #[arg(long = "json")]
     pub json: bool,
+    /// Import search path appended in resolution order.
+    #[arg(long = "include-dir")]
+    pub include_dirs: Vec<PathBuf>,
+    /// Compile-time constant definitions exposed to the frontend.
+    #[arg(long = "define")]
+    pub defines: Vec<String>,
+    /// Active feature flags exposed as compile-time booleans.
+    #[arg(long = "features", value_delimiter = ',')]
+    pub features: Vec<String>,
 }
 
 /// Command-line arguments for `thagore run`.
@@ -90,7 +118,7 @@ pub struct CheckArgs {
 #[command(trailing_var_arg = true)]
 pub struct RunArgs {
     /// Input Thagore source file.
-    pub file: PathBuf,
+    pub entry: PathBuf,
     /// Requested build configuration.
     #[command(flatten)]
     pub options: RunOptions,
@@ -118,6 +146,18 @@ pub struct RunOptions {
     /// LLVM target triple. Defaults to the host target when omitted.
     #[arg(long = "target")]
     pub target: Option<String>,
+    /// Import search path appended in resolution order.
+    #[arg(long = "include-dir")]
+    pub include_dirs: Vec<PathBuf>,
+    /// Compile-time constant definitions exposed to the frontend.
+    #[arg(long = "define")]
+    pub defines: Vec<String>,
+    /// Active feature flags exposed as compile-time booleans.
+    #[arg(long = "features", value_delimiter = ',')]
+    pub features: Vec<String>,
+    /// Emit structured compiler diagnostics as JSON to stdout.
+    #[arg(long = "json-errors")]
+    pub json_errors: bool,
     /// Print per-stage timing after the pipeline completes.
     #[arg(long = "time")]
     pub time: bool,

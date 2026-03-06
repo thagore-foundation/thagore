@@ -120,7 +120,7 @@ fn repo_path(relative: &str) -> String {
 #[test]
 fn parses_build_arguments() {
     let cli = Cli::try_parse_from([
-        "thagore",
+        "thagc",
         "build",
         "tests/fixtures/hello.tg",
         "-o",
@@ -132,11 +132,18 @@ fn parses_build_arguments() {
         "--debug",
         "--target",
         "x86_64-unknown-linux-gnu",
+        "--include-dir",
+        "vendor",
+        "--define",
+        "MODE=release",
+        "--features",
+        "ffi,std",
+        "--json-errors",
         "--time",
     ])
     .expect("parse cli");
 
-    let CliCommand::Build(build) = cli.command else {
+    let Some(CliCommand::Build(build)) = cli.command else {
         panic!("expected build command");
     };
     assert_eq!(build.options.output.as_deref(), Some(Path::new("out/hello")));
@@ -149,6 +156,10 @@ fn parses_build_arguments() {
         build.options.target.as_deref(),
         Some("x86_64-unknown-linux-gnu")
     );
+    assert_eq!(build.options.include_dirs, vec![Path::new("vendor")]);
+    assert_eq!(build.options.defines, vec!["MODE=release"]);
+    assert_eq!(build.options.features, vec!["ffi", "std"]);
+    assert!(build.options.json_errors);
     assert!(build.options.time);
 }
 
@@ -174,6 +185,34 @@ fn formats_text_diagnostics() {
     assert!(rendered.contains("error[E001]: type mismatch"));
     assert!(rendered.contains("sample.tg:1:14"));
     assert!(rendered.contains("expected i32, found f64"));
+}
+
+#[test]
+fn emits_contract_json_diagnostics() {
+    let diagnostics = vec![CompilerDiagnostic::new(
+        "E001",
+        "type mismatch",
+        "expected i32, found f64",
+        Some(Span::new(13, 17)),
+    )];
+    let mut rendered = Vec::new();
+    ErrorReporter::emit_json(
+        &mut rendered,
+        Path::new("sample.tg"),
+        "let x: i32 = 3.14\n",
+        &diagnostics,
+    )
+    .expect("emit json");
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&rendered).expect("parse diagnostic json");
+    let array = value.as_array().expect("json array");
+    assert_eq!(array.len(), 1);
+    assert_eq!(array[0]["file"], "sample.tg");
+    assert_eq!(array[0]["line"], 1);
+    assert_eq!(array[0]["col"], 14);
+    assert_eq!(array[0]["severity"], "error");
+    assert!(array[0]["message"].as_str().expect("message").contains("type mismatch"));
 }
 
 #[test]
@@ -204,9 +243,9 @@ fn run_workspace_cleans_up_temp_directory() {
 
 #[test]
 fn usage_errors_return_101() {
-    let status = Command::new(env!("CARGO_BIN_EXE_thagore"))
+    let status = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .status()
-        .expect("run thagore");
+        .expect("run thagc");
     assert_eq!(status.code(), Some(101));
 }
 
@@ -216,10 +255,10 @@ fn compile_errors_return_1() {
     let source = dir.path().join("broken.tg");
     fs::write(&source, "func main() -> i32:\n  return\n").expect("write source");
 
-    let status = Command::new(env!("CARGO_BIN_EXE_thagore"))
+    let status = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args(["check", source.to_str().expect("utf8")])
         .status()
-        .expect("run thagore check");
+        .expect("run thagc check");
     assert_eq!(status.code(), Some(1));
 }
 
@@ -230,7 +269,7 @@ fn build_fixture_produces_runnable_binary() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures/hello.tg");
 
-    let status = Command::new(env!("CARGO_BIN_EXE_thagore"))
+    let status = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
             "build",
             fixture.to_str().expect("utf8"),
@@ -238,7 +277,7 @@ fn build_fixture_produces_runnable_binary() {
             binary.to_str().expect("utf8"),
         ])
         .status()
-        .expect("run thagore build");
+        .expect("run thagc build");
     assert!(status.success());
     assert!(binary.exists());
 
@@ -252,10 +291,10 @@ fn run_forwards_program_exit_code() {
     let source = dir.path().join("exit_five.tg");
     fs::write(&source, "func main() -> i32:\n  return 5\n").expect("write source");
 
-    let status = Command::new(env!("CARGO_BIN_EXE_thagore"))
+    let status = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args(["run", source.to_str().expect("utf8")])
         .status()
-        .expect("run thagore run");
+        .expect("run thagc run");
     assert_eq!(status.code(), Some(5));
 }
 
@@ -265,15 +304,42 @@ fn check_json_emits_array_payload() {
     let source = dir.path().join("broken_json.tg");
     fs::write(&source, "let broken =\n").expect("write source");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_thagore"))
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args(["check", source.to_str().expect("utf8"), "--json"])
         .output()
-        .expect("run thagore check --json");
+        .expect("run thagc check --json");
     assert_eq!(output.status.code(), Some(1));
 
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("\"file\""));
-    assert!(stdout.contains("\"code\""));
+    assert!(stdout.contains("\"severity\""));
+}
+
+#[test]
+fn version_flag_returns_json_contract() {
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .arg("--version")
+        .output()
+        .expect("run thagc --version");
+    assert!(output.status.success());
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse version json");
+    assert_eq!(value["thagc"], "0.9.0");
+    assert!(value.get("llvm").is_some());
+    assert!(value.get("host").is_some());
+}
+
+#[test]
+fn print_target_list_returns_json_array() {
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .arg("--print-target-list")
+        .output()
+        .expect("run thagc --print-target-list");
+    assert!(output.status.success());
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("parse target list json");
+    let list = value.as_array().expect("array");
+    assert!(!list.is_empty());
 }
 
 #[test]

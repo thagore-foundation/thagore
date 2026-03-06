@@ -21,6 +21,8 @@ pub(crate) struct CompilerDiagnostic {
     pub span: Option<Span>,
     /// Optional remediation hint.
     pub hint: Option<Cow<'static, str>>,
+    /// Diagnostic severity.
+    pub severity: Severity,
 }
 
 impl CompilerDiagnostic {
@@ -38,6 +40,7 @@ impl CompilerDiagnostic {
             message: message.into(),
             span,
             hint: None,
+            severity: Severity::Error,
         }
     }
 
@@ -49,6 +52,17 @@ impl CompilerDiagnostic {
     }
 }
 
+/// Machine-readable diagnostic severity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
+pub(crate) enum Severity {
+    /// Hard compilation error.
+    Error,
+    /// Non-fatal warning.
+    Warning,
+}
+
 /// JSON-serializable diagnostic payload for editor integration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct JsonDiagnostic {
@@ -58,10 +72,14 @@ pub(crate) struct JsonDiagnostic {
     pub line: usize,
     /// One-based column number.
     pub col: usize,
-    /// Stable machine-readable diagnostic code.
-    pub code: &'static str,
+    /// One-based inclusive end line number.
+    pub end_line: usize,
+    /// One-based inclusive end column number.
+    pub end_col: usize,
     /// Full user-facing diagnostic message.
     pub message: String,
+    /// Diagnostic severity.
+    pub severity: Severity,
     /// Optional remediation hint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
@@ -99,7 +117,7 @@ impl ErrorReporter {
             .iter()
             .map(|diagnostic| json_diagnostic(file, source, diagnostic))
             .collect::<Vec<_>>();
-        serde_json::to_writer_pretty(&mut writer, &json)?;
+        serde_json::to_writer(&mut writer, &json)?;
         writeln!(writer)
     }
 }
@@ -163,12 +181,14 @@ fn json_diagnostic(file: &Path, source: &str, diagnostic: &CompilerDiagnostic) -
         file: file.display().to_string(),
         line: location.line,
         col: location.column,
-        code: diagnostic.code,
+        end_line: location.end_line,
+        end_col: location.end_column,
         message: if diagnostic.message.is_empty() {
             diagnostic.title.to_string()
         } else {
             format!("{}: {}", diagnostic.title, diagnostic.message)
         },
+        severity: diagnostic.severity,
         hint: diagnostic.hint.as_ref().map(ToString::to_string),
     }
 }
@@ -177,6 +197,8 @@ fn json_diagnostic(file: &Path, source: &str, diagnostic: &CompilerDiagnostic) -
 struct SourceLocation {
     line: usize,
     column: usize,
+    end_line: usize,
+    end_column: usize,
     caret_width: usize,
     text: String,
 }
@@ -186,6 +208,8 @@ impl SourceLocation {
         Self {
             line: 1,
             column: 1,
+            end_line: 1,
+            end_column: 1,
             caret_width: 1,
             text: String::new(),
         }
@@ -202,11 +226,15 @@ fn resolve_location(source: &str, span: Span) -> SourceLocation {
         .map_or(source.len(), |idx| end + idx);
     let line = source[..start].bytes().filter(|byte| *byte == b'\n').count() + 1;
     let column = source[line_start..start].chars().count() + 1;
+    let end_line = source[..end].bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let end_column = source[line_start..end].chars().count() + 1;
     let caret_width = usize::max(1, source[start..end].chars().count());
 
     SourceLocation {
         line,
         column,
+        end_line,
+        end_column: usize::max(column, end_column),
         caret_width,
         text: source[line_start..line_end].to_string(),
     }
@@ -263,8 +291,10 @@ mod tests {
         )
         .expect("emit json");
 
-        let rendered = String::from_utf8(buffer).expect("utf8");
-        assert!(rendered.contains("\"file\": \"broken.tg\""));
-        assert!(rendered.contains("\"code\": \"P001\""));
+        let rendered: serde_json::Value = serde_json::from_slice(&buffer).expect("json");
+        let array = rendered.as_array().expect("array");
+        assert_eq!(array[0]["file"], "broken.tg");
+        assert_eq!(array[0]["severity"], "error");
+        assert_eq!(array[0]["end_line"], 1);
     }
 }

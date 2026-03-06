@@ -270,6 +270,10 @@ pub(crate) fn build_options_for_run(options: &RunOptions) -> BuildOptions {
         emit,
         debug: options.debug,
         target: options.target.clone(),
+        include_dirs: options.include_dirs.clone(),
+        defines: options.defines.clone(),
+        features: options.features.clone(),
+        json_errors: options.json_errors,
         time: options.time,
     }
 }

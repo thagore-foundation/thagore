@@ -13,6 +13,7 @@ use std::process::{self, Command as ProcessCommand};
 
 use clap::error::ErrorKind as ClapErrorKind;
 use clap::{CommandFactory, Parser as ClapParser};
+use serde_json::json;
 use termcolor::{ColorChoice, StandardStream};
 
 use crate::cli::{Cli, Command};
@@ -24,6 +25,7 @@ use crate::run::{execute_binary, RunWorkspace};
 const SUCCESS_EXIT_CODE: i32 = 0;
 const COMPILE_ERROR_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 101;
+const THAGC_VERSION: &str = "0.9.0";
 
 fn main() {
     process::exit(with_ice_handler(real_main));
@@ -35,11 +37,19 @@ fn real_main() -> i32 {
         Err(error) => return handle_clap_error(error),
     };
 
+    if cli.version_json {
+        return handle_version_json();
+    }
+    if cli.print_target_list {
+        return handle_print_target_list();
+    }
+
     match cli.command {
-        Command::Build(args) => handle_build(&args.file, &args.options),
-        Command::Check(args) => handle_check(&args.file, args.json),
-        Command::Run(args) => handle_run(&args),
-        Command::Version => handle_version(),
+        Some(Command::Build(args)) => handle_build(&args.entry, &args.options),
+        Some(Command::Check(args)) => handle_check(&args.file, args.json),
+        Some(Command::Run(args)) => handle_run(&args),
+        Some(Command::Version) => handle_version_human(),
+        None => USAGE_EXIT_CODE,
     }
 }
 
@@ -52,8 +62,13 @@ fn handle_build(path: &Path, options: &cli::BuildOptions) -> i32 {
             SUCCESS_EXIT_CODE
         }
         Err(failure) => {
-            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-            let _ = ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+            if options.json_errors {
+                let _ = ErrorReporter::emit_json(io::stdout(), path, &failure.source, &failure.diagnostics);
+            } else {
+                let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+                let _ =
+                    ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+            }
             if options.time {
                 let _ = failure.timings.write(io::stderr());
             }
@@ -92,9 +107,9 @@ fn handle_run(args: &cli::RunArgs) -> i32 {
     };
 
     let mut build_options = build_options_for_run(&args.options);
-    build_options.output = Some(workspace.binary_path(&args.file));
+    build_options.output = Some(workspace.binary_path(&args.entry));
 
-    match build_file(&args.file, &build_options) {
+    match build_file(&args.entry, &build_options) {
         Ok(result) => {
             if args.options.time {
                 let _ = result.timings.write(io::stderr());
@@ -112,8 +127,22 @@ fn handle_run(args: &cli::RunArgs) -> i32 {
             }
         }
         Err(failure) => {
-            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-            let _ = ErrorReporter::emit_text(&mut stderr, &args.file, &failure.source, &failure.diagnostics);
+            if args.options.json_errors {
+                let _ = ErrorReporter::emit_json(
+                    io::stdout(),
+                    &args.entry,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
+            } else {
+                let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+                let _ = ErrorReporter::emit_text(
+                    &mut stderr,
+                    &args.entry,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
+            }
             if args.options.time {
                 let _ = failure.timings.write(io::stderr());
             }
@@ -122,11 +151,27 @@ fn handle_run(args: &cli::RunArgs) -> i32 {
     }
 }
 
-fn handle_version() -> i32 {
-    println!("thagore 0.1.0");
+fn handle_version_human() -> i32 {
+    println!("thagc {THAGC_VERSION}");
     println!("llvm:   {}", detect_llvm_version().unwrap_or_else(|| "unknown".to_string()));
     println!("host:   {}", detect_host_triple().unwrap_or_else(|| "unknown".to_string()));
     println!("commit: {}", detect_commit().unwrap_or_else(|| "unknown".to_string()));
+    SUCCESS_EXIT_CODE
+}
+
+fn handle_version_json() -> i32 {
+    let payload = json!({
+        "thagc": THAGC_VERSION,
+        "llvm": detect_llvm_version().unwrap_or_else(|| "unknown".to_string()),
+        "host": detect_host_triple().unwrap_or_else(|| "unknown".to_string()),
+    });
+    println!("{payload}");
+    SUCCESS_EXIT_CODE
+}
+
+fn handle_print_target_list() -> i32 {
+    let payload = json!([detect_host_triple().unwrap_or_else(|| "unknown".to_string())]);
+    println!("{payload}");
     SUCCESS_EXIT_CODE
 }
 
