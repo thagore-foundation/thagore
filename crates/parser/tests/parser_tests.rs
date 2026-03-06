@@ -1,5 +1,5 @@
 use bumpalo::Bump;
-use thagore_ast::{BinOp, Decl, Expr, Stmt};
+use thagore_ast::{BinOp, ConstraintKind, Decl, Expr, Stmt, TypeExpr};
 use thagore_lexer::Lexer;
 use thagore_parser::Parser;
 
@@ -70,6 +70,53 @@ flow Transaction:
         assert!(matches!(decls[7], Decl::Func(_)));
         assert!(matches!(decls[8], Decl::Intent(_)));
         assert!(matches!(decls[9], Decl::Flow(_)));
+    });
+}
+
+#[test]
+fn parses_generic_and_const_declarations() {
+    let source = "\
+const PI: f64 = 3.14
+func abs<T: Numeric>(x: T) -> T:
+  return x
+struct Vec<T>:
+  data: ptr
+  len: i32
+impl Vec<T>:
+  func len(self) -> i32:
+    return 0
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(decls.len(), 4);
+
+        let Decl::Const(const_decl) = &decls[0] else {
+            panic!("expected const")
+        };
+        assert!(matches!(const_decl.type_ann, TypeExpr::Named(_)));
+
+        let Decl::GenericFunc(func) = &decls[1] else {
+            panic!("expected generic function")
+        };
+        assert_eq!(func.type_params.len(), 1);
+        assert_eq!(func.type_params[0].constraints.len(), 1);
+        assert_eq!(
+            func.type_params[0].constraints[0].kind,
+            ConstraintKind::Numeric
+        );
+
+        let Decl::GenericStruct(struct_decl) = &decls[2] else {
+            panic!("expected generic struct")
+        };
+        assert_eq!(struct_decl.type_params.len(), 1);
+        assert_eq!(struct_decl.fields.len(), 2);
+
+        let Decl::GenericImpl(impl_decl) = &decls[3] else {
+            panic!("expected generic impl")
+        };
+        assert_eq!(impl_decl.type_params.len(), 1);
+        assert_eq!(impl_decl.methods.len(), 1);
     });
 }
 

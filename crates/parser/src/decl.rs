@@ -1,8 +1,9 @@
 //! Declaration parsing.
 
 use thagore_ast::{
-    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
-    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
+    ConstDecl, Constraint, ConstraintKind, Decl, ExternDecl, FieldDef, FlowDecl, FlowStage,
+    FuncDecl, GenericFuncDecl, GenericImplBlock, GenericStructDecl, ImplBlock, ImportDecl,
+    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl, TypeParam,
 };
 use thagore_lexer::TokenKind;
 
@@ -17,10 +18,11 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
 
         let _is_public = self.match_contextual("pub").is_some();
         let decl = match self.peek().kind {
-            TokenKind::Func => Decl::Func(self.parse_func_decl()),
+            TokenKind::Func => self.parse_func_like_decl(),
             TokenKind::Let => Decl::Let(self.parse_let_decl()),
-            TokenKind::Struct => Decl::Struct(self.parse_struct_decl()),
-            TokenKind::Impl => Decl::Impl(self.parse_impl_block()),
+            TokenKind::Const => Decl::Const(self.parse_const_decl()),
+            TokenKind::Struct => self.parse_struct_like_decl(),
+            TokenKind::Impl => self.parse_impl_like_decl(),
             TokenKind::Import | TokenKind::From => Decl::Import(self.parse_import_decl()),
             TokenKind::Extern => Decl::Extern(self.parse_extern_decl()),
             TokenKind::Intent => Decl::Intent(self.parse_intent_decl()),
@@ -59,6 +61,43 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
+    pub(crate) fn parse_func_like_decl(&mut self) -> Decl<'ast> {
+        let func_token = self.advance();
+        let name = self.parse_identifier_symbol(Expectation::Identifier);
+        let type_params = self.parse_type_param_list();
+        let params = self.parse_param_list();
+        let return_type = if self.match_kind(TokenKind::Arrow).is_some() {
+            Some(self.parse_type_expr())
+        } else {
+            None
+        };
+        self.expect_block_colon();
+        let body = self.parse_block();
+        let span = self.span_of(func_token).join(body.span);
+        let id = self.new_node_id();
+
+        if type_params.is_empty() {
+            Decl::Func(FuncDecl {
+                id,
+                span,
+                name,
+                params,
+                return_type,
+                body,
+            })
+        } else {
+            Decl::GenericFunc(GenericFuncDecl {
+                id,
+                span,
+                name,
+                type_params,
+                params,
+                return_type,
+                body,
+            })
+        }
+    }
+
     pub(crate) fn parse_let_decl(&mut self) -> LetDecl<'ast> {
         let let_token = self.advance();
         let name = self.parse_identifier_symbol(Expectation::Identifier);
@@ -85,9 +124,40 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
-    pub(crate) fn parse_struct_decl(&mut self) -> StructDecl<'ast> {
+    pub(crate) fn parse_const_decl(&mut self) -> ConstDecl<'ast> {
+        let const_token = self.advance();
+        let name = self.parse_identifier_symbol(Expectation::Identifier);
+        let type_ann = if self.match_kind(TokenKind::Colon).is_some() {
+            self.parse_type_expr()
+        } else {
+            self.emit_statement_error(ParseError::missing_token(
+                self.current_span(),
+                TokenKind::Colon,
+            ));
+            self.synthetic_infer_type(self.current_span())
+        };
+
+        if self.match_kind(TokenKind::Assign).is_none() {
+            self.emit_statement_error(ParseError::missing_token(
+                self.current_span(),
+                TokenKind::Assign,
+            ));
+        }
+
+        let value = self.parse_expr(0);
+        ConstDecl {
+            id: self.new_node_id(),
+            span: self.span_of(const_token).join(value.span()),
+            name,
+            type_ann,
+            value,
+        }
+    }
+
+    pub(crate) fn parse_struct_like_decl(&mut self) -> Decl<'ast> {
         let struct_token = self.advance();
         let name = self.parse_identifier_symbol(Expectation::Identifier);
+        let type_params = self.parse_type_param_list();
         self.expect_block_colon();
 
         let start = self.span_of(struct_token);
@@ -102,6 +172,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
                 break;
             }
 
+            let field_token = self.peek();
             let field_name = self.parse_identifier_symbol(Expectation::Field);
             if self.match_kind(TokenKind::Colon).is_none() {
                 self.emit_statement_error(ParseError::missing_block_colon(self.current_span()));
@@ -109,7 +180,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             let ty = self.parse_type_expr();
             let field = FieldDef {
                 id: self.new_node_id(),
-                span: ty.span(),
+                span: self.span_of(field_token).join(ty.span()),
                 name: field_name,
                 ty,
             };
@@ -124,17 +195,31 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
         }
 
-        StructDecl {
-            id: self.new_node_id(),
-            span: start.join(end),
-            name,
-            fields: fields.into_bump_slice(),
+        let id = self.new_node_id();
+        let span = start.join(end);
+        let fields = fields.into_bump_slice();
+        if type_params.is_empty() {
+            Decl::Struct(StructDecl {
+                id,
+                span,
+                name,
+                fields,
+            })
+        } else {
+            Decl::GenericStruct(GenericStructDecl {
+                id,
+                span,
+                name,
+                type_params,
+                fields,
+            })
         }
     }
 
-    pub(crate) fn parse_impl_block(&mut self) -> ImplBlock<'ast> {
+    pub(crate) fn parse_impl_like_decl(&mut self) -> Decl<'ast> {
         let impl_token = self.advance();
         let target = self.parse_identifier_symbol(Expectation::Identifier);
+        let type_params = self.parse_type_param_list();
         self.expect_block_colon();
 
         let start = self.span_of(impl_token);
@@ -171,11 +256,24 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
         }
 
-        ImplBlock {
-            id: self.new_node_id(),
-            span: start.join(end),
-            target,
-            methods: methods.into_bump_slice(),
+        let id = self.new_node_id();
+        let span = start.join(end);
+        let methods = methods.into_bump_slice();
+        if type_params.is_empty() {
+            Decl::Impl(ImplBlock {
+                id,
+                span,
+                target,
+                methods,
+            })
+        } else {
+            Decl::GenericImpl(GenericImplBlock {
+                id,
+                span,
+                target,
+                type_params,
+                methods,
+            })
         }
     }
 
@@ -246,7 +344,12 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
-    fn parse_import_path(&mut self) -> (u8, bumpalo::collections::Vec<'ast, thagore_ast::InternedStr>) {
+    fn parse_import_path(
+        &mut self,
+    ) -> (
+        u8,
+        bumpalo::collections::Vec<'ast, thagore_ast::InternedStr>,
+    ) {
         let mut relative_level = 0_u8;
         while self.at(TokenKind::Dot) {
             self.advance();
@@ -490,5 +593,84 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
 
         params.into_bump_slice()
+    }
+
+    pub(crate) fn parse_type_param_list(&mut self) -> &'ast [TypeParam<'ast>] {
+        if self.match_kind(TokenKind::Lt).is_none() {
+            return self.bump_vec::<TypeParam<'ast>>().into_bump_slice();
+        }
+
+        let mut params = self.bump_vec();
+        while !self.at(TokenKind::Gt) && !self.at(TokenKind::Eof) {
+            let start = self.current_span();
+            let name = self.parse_identifier_symbol(Expectation::Identifier);
+            let mut constraints = self.bump_vec();
+            let mut end = self.current_span();
+
+            if self.match_kind(TokenKind::Colon).is_some() {
+                constraints.push(self.parse_constraint());
+                while self.match_kind(TokenKind::Plus).is_some() {
+                    constraints.push(self.parse_constraint());
+                }
+                if let Some(last_constraint) = constraints.last() {
+                    end = last_constraint.span;
+                }
+            }
+
+            params.push(TypeParam {
+                id: self.new_node_id(),
+                span: start.join(end),
+                name,
+                constraints: constraints.into_bump_slice(),
+            });
+
+            if self.match_kind(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+
+        if self.match_kind(TokenKind::Gt).is_none() {
+            self.emit_statement_error(ParseError::missing_token(
+                self.current_span(),
+                TokenKind::Gt,
+            ));
+        }
+
+        params.into_bump_slice()
+    }
+
+    fn parse_constraint(&mut self) -> Constraint {
+        let token = self.peek();
+        let kind = match self.token_text(token) {
+            Some("Ordered") => {
+                self.advance();
+                ConstraintKind::Ordered
+            }
+            Some("Eq") => {
+                self.advance();
+                ConstraintKind::Eq
+            }
+            Some("Numeric") => {
+                self.advance();
+                ConstraintKind::Numeric
+            }
+            _ => {
+                self.emit_statement_error(ParseError::unexpected_token(
+                    token.kind,
+                    self.current_span(),
+                    Expectation::Identifier,
+                ));
+                if !self.at(TokenKind::Eof) {
+                    self.advance();
+                }
+                ConstraintKind::Ordered
+            }
+        };
+
+        Constraint {
+            id: self.new_node_id(),
+            span: self.span_of(token),
+            kind,
+        }
     }
 }

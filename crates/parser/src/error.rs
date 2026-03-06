@@ -301,9 +301,11 @@ pub const fn is_declaration_start(kind: TokenKind) -> bool {
         kind,
         TokenKind::Func
             | TokenKind::Let
+            | TokenKind::Const
             | TokenKind::Struct
             | TokenKind::Impl
             | TokenKind::Import
+            | TokenKind::From
             | TokenKind::Extern
             | TokenKind::Intent
             | TokenKind::Flow
