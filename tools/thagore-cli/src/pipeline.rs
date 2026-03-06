@@ -1,7 +1,7 @@
 //! End-to-end compiler pipeline orchestration for the Thagore CLI.
 
 use std::boxed::Box;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -458,10 +458,11 @@ struct ModuleLoader<'a, 'src, 'tok, 'ast> {
     parser: &'a mut Parser<'src, 'tok, 'ast>,
     arena: &'ast Bump,
     diagnostics: Vec<CompilerDiagnostic>,
-    intern_cache: BTreeMap<String, InternedStr>,
-    module_namespaces: BTreeMap<PathBuf, String>,
-    loaded: BTreeSet<PathBuf>,
-    loading: BTreeSet<PathBuf>,
+    intern_cache: HashMap<String, InternedStr>,
+    module_namespaces: HashMap<PathBuf, String>,
+    loaded: HashSet<PathBuf>,
+    loading: HashSet<PathBuf>,
+    import_resolution_cache: HashMap<String, Option<PathBuf>>,
     next_node_id: u32,
     program: Vec<Decl<'ast>>,
 }
@@ -479,10 +480,11 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
             parser,
             arena,
             diagnostics: Vec::new(),
-            intern_cache: BTreeMap::new(),
-            module_namespaces: BTreeMap::new(),
-            loaded: BTreeSet::new(),
-            loading: BTreeSet::new(),
+            intern_cache: HashMap::new(),
+            module_namespaces: HashMap::new(),
+            loaded: HashSet::new(),
+            loading: HashSet::new(),
+            import_resolution_cache: HashMap::new(),
             next_node_id: 0,
             program: Vec::new(),
         }
@@ -613,7 +615,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                 .collect::<Vec<_>>();
             let module_refs = module_segments.iter().map(String::as_str).collect::<Vec<_>>();
             let Some(resolved_path) =
-                resolve_import_path(current_path, self.include_dirs, &module_refs)
+                self.resolve_import_path_cached(current_path, &module_refs)
             else {
                 if module_segments.first().map(String::as_str) == Some("std") {
                     continue;
@@ -653,6 +655,22 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
         }
         bindings
     }
+
+    fn resolve_import_path_cached(
+        &mut self,
+        current_path: &Path,
+        segments: &[&str],
+    ) -> Option<PathBuf> {
+        let key = format!("{}::{}", current_path.display(), segments.join("."));
+        if let Some(cached) = self.import_resolution_cache.get(&key) {
+            return cached.clone();
+        }
+
+        let resolved = resolve_import_path(current_path, self.include_dirs, segments)
+            .map(|path| normalize_path(&path));
+        self.import_resolution_cache.insert(key, resolved.clone());
+        resolved
+    }
 }
 
 fn resolve_import_path(entry: &Path, include_dirs: &[PathBuf], segments: &[&str]) -> Option<PathBuf> {
@@ -691,11 +709,13 @@ struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
     arena: &'ast Bump,
     parser: &'a mut Parser<'src, 'tok, 'ast>,
     next_node_id: &'a mut u32,
-    intern_cache: &'a mut BTreeMap<String, InternedStr>,
+    intern_cache: &'a mut HashMap<String, InternedStr>,
     source_symbols: &'a BTreeMap<InternedStr, String>,
-    import_namespaces: BTreeMap<InternedStr, String>,
-    top_level_renames: BTreeMap<InternedStr, InternedStr>,
-    scopes: Vec<BTreeSet<InternedStr>>,
+    import_namespaces: HashMap<InternedStr, String>,
+    top_level_renames: HashMap<InternedStr, InternedStr>,
+    canonical_symbols: HashMap<InternedStr, InternedStr>,
+    scope_bindings: Vec<Vec<InternedStr>>,
+    local_bindings: HashMap<InternedStr, usize>,
 }
 
 impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
@@ -703,18 +723,18 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         arena: &'ast Bump,
         parser: &'a mut Parser<'src, 'tok, 'ast>,
         next_node_id: &'a mut u32,
-        intern_cache: &'a mut BTreeMap<String, InternedStr>,
+        intern_cache: &'a mut HashMap<String, InternedStr>,
         source_symbols: &'a BTreeMap<InternedStr, String>,
         decls: &[Decl<'ast>],
         namespace: Option<&str>,
         imports: &[ImportBinding],
     ) -> Self {
-        let mut import_namespaces = BTreeMap::new();
+        let mut import_namespaces = HashMap::new();
         for import in imports {
             import_namespaces.insert(import.alias, import.namespace.clone());
         }
 
-        let mut top_level_renames = BTreeMap::new();
+        let mut top_level_renames = HashMap::new();
         if let Some(namespace) = namespace {
             for symbol in top_level_symbols(decls) {
                 let text = source_symbols
@@ -736,7 +756,9 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             source_symbols,
             import_namespaces,
             top_level_renames,
-            scopes: Vec::new(),
+            canonical_symbols: HashMap::new(),
+            scope_bindings: Vec::new(),
+            local_bindings: HashMap::new(),
         }
     }
 
@@ -1129,8 +1151,14 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
     }
 
     fn canonical_symbol(&mut self, symbol: InternedStr) -> InternedStr {
+        if let Some(canonical) = self.canonical_symbols.get(&symbol).copied() {
+            return canonical;
+        }
+
         let text = self.text_of(symbol).to_string();
-        intern_owned_cached(self.parser, self.intern_cache, &text)
+        let canonical = intern_owned_cached(self.parser, self.intern_cache, &text);
+        self.canonical_symbols.insert(symbol, canonical);
+        canonical
     }
 
     fn text_of(&self, symbol: InternedStr) -> &str {
@@ -1141,21 +1169,31 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
     }
 
     fn push_scope(&mut self) {
-        self.scopes.push(BTreeSet::new());
+        self.scope_bindings.push(Vec::new());
     }
 
     fn pop_scope(&mut self) {
-        self.scopes.pop();
+        if let Some(bindings) = self.scope_bindings.pop() {
+            for symbol in bindings {
+                if let Some(count) = self.local_bindings.get_mut(&symbol) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        self.local_bindings.remove(&symbol);
+                    }
+                }
+            }
+        }
     }
 
     fn define_local(&mut self, symbol: InternedStr) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(symbol);
+        if let Some(scope) = self.scope_bindings.last_mut() {
+            scope.push(symbol);
+            *self.local_bindings.entry(symbol).or_insert(0) += 1;
         }
     }
 
     fn is_local(&self, symbol: InternedStr) -> bool {
-        self.scopes.iter().rev().any(|scope| scope.contains(&symbol))
+        self.local_bindings.contains_key(&symbol)
     }
 
     fn new_node_id(&mut self) -> NodeId {
@@ -1729,7 +1767,7 @@ fn render_symbol(symbol: InternedStr, parser: &Parser<'_, '_, '_>) -> String {
 
 fn intern_owned_cached(
     parser: &mut Parser<'_, '_, '_>,
-    cache: &mut BTreeMap<String, InternedStr>,
+    cache: &mut HashMap<String, InternedStr>,
     text: &str,
 ) -> InternedStr {
     if let Some(symbol) = cache.get(text).copied() {
