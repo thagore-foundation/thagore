@@ -1,0 +1,9 @@
+[package]
+name = "thagore-lsp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "thagore-lsp"
+path = "src/main.rs"

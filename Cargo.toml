@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/lexer",
+    "crates/parser",
+    "crates/ast",
+    "crates/typeck",
+    "crates/ir",
+    "crates/codegen",
+    "tools/thagore-cli",
+    "tools/thagore-lsp",
+]
+resolver = "2"

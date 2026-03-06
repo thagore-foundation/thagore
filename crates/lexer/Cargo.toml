@@ -1,0 +1,10 @@
+[package]
+name = "thagore-lexer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Production-grade lexer for the Thagore programming language"
+
+[dependencies]
+bumpalo = { version = "3.19.0", default-features = false, features = ["collections"] }
+phf = { version = "0.13.1", default-features = false, features = ["macros"] }
