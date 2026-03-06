@@ -3,8 +3,8 @@
 use core::fmt;
 
 use crate::decl::{
-    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl, IntentDecl,
-    LetDecl, Param, StructDecl,
+    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
+    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
 };
 use crate::expr::{
     AssignExpr, BinOp, BinaryExpr, CallExpr, Expr, FieldAccessExpr, IdentExpr, IndexExpr, LitExpr,
@@ -361,14 +361,49 @@ fn fmt_import_decl(
     indent: usize,
 ) -> fmt::Result {
     write_indent(f, indent)?;
-    f.write_str("import ")?;
+    if decl.is_from {
+        f.write_str("from ")?;
+    } else {
+        f.write_str("import ")?;
+    }
+    for _ in 0..decl.relative_level {
+        f.write_str(".")?;
+    }
+    if decl.relative_level > 0 && !decl.path_segments.is_empty() {
+        f.write_str(".")?;
+    }
     for (index, segment) in decl.path_segments.iter().enumerate() {
         if index > 0 {
             f.write_str(".")?;
         }
         write_symbol(f, *segment)?;
     }
-    if let Some(alias) = decl.alias {
+    if decl.is_from {
+        f.write_str(" import ")?;
+        for (index, symbol) in decl.symbols.iter().enumerate() {
+            if index > 0 {
+                f.write_str(", ")?;
+            }
+            fmt_import_symbol(f, symbol)?;
+        }
+    } else {
+        if let Some(alias) = decl.alias {
+            f.write_str(" as ")?;
+            write_symbol(f, alias)?;
+        }
+        if decl.include_all {
+            f.write_str(" include all")?;
+        }
+    }
+    if decl.is_from && decl.include_all {
+        f.write_str(" include all")?;
+    }
+    Ok(())
+}
+
+fn fmt_import_symbol(f: &mut fmt::Formatter<'_>, symbol: &ImportSymbol) -> fmt::Result {
+    write_symbol(f, symbol.name)?;
+    if let Some(alias) = symbol.alias {
         f.write_str(" as ")?;
         write_symbol(f, alias)?;
     }

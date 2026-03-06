@@ -20,6 +20,8 @@ fn with_parsed_source(
 fn parses_all_declaration_forms() {
     let source = "\
 import std.io as io
+from math import sqrt, abs as absolute
+import src.utils include all
 extern func printf(fmt: str) -> i32
 let answer: i32 = 42
 struct Point:
@@ -45,19 +47,70 @@ flow Transaction:
 
     with_parsed_source(source, |decls, errors| {
         assert!(errors.is_empty(), "{errors:?}");
-        assert_eq!(decls.len(), 8);
+        assert_eq!(decls.len(), 10);
         let Decl::Import(import_decl) = &decls[0] else {
             panic!("expected import")
         };
         assert_eq!(import_decl.path_segments.len(), 2);
         assert!(import_decl.alias.is_some());
-        assert!(matches!(decls[1], Decl::Extern(_)));
-        assert!(matches!(decls[2], Decl::Let(_)));
-        assert!(matches!(decls[3], Decl::Struct(_)));
-        assert!(matches!(decls[4], Decl::Impl(_)));
-        assert!(matches!(decls[5], Decl::Func(_)));
-        assert!(matches!(decls[6], Decl::Intent(_)));
-        assert!(matches!(decls[7], Decl::Flow(_)));
+        let Decl::Import(from_import) = &decls[1] else {
+            panic!("expected from import")
+        };
+        assert!(from_import.is_from);
+        assert_eq!(from_import.symbols.len(), 2);
+        assert!(from_import.symbols[1].alias.is_some());
+        let Decl::Import(include_all) = &decls[2] else {
+            panic!("expected include-all import")
+        };
+        assert!(include_all.include_all);
+        assert!(matches!(decls[3], Decl::Extern(_)));
+        assert!(matches!(decls[4], Decl::Let(_)));
+        assert!(matches!(decls[5], Decl::Struct(_)));
+        assert!(matches!(decls[6], Decl::Impl(_)));
+        assert!(matches!(decls[7], Decl::Func(_)));
+        assert!(matches!(decls[8], Decl::Intent(_)));
+        assert!(matches!(decls[9], Decl::Flow(_)));
+    });
+}
+
+#[test]
+fn parses_relative_import_forms() {
+    let source = "\
+from . import utils
+from .. import core
+from .utils import helper as helper_alias
+from . import shared include all
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(decls.len(), 4);
+
+        let Decl::Import(current_dir) = &decls[0] else {
+            panic!("expected import")
+        };
+        assert_eq!(current_dir.relative_level, 1);
+        assert!(current_dir.path_segments.is_empty());
+        assert_eq!(current_dir.symbols.len(), 1);
+
+        let Decl::Import(parent_dir) = &decls[1] else {
+            panic!("expected import")
+        };
+        assert_eq!(parent_dir.relative_level, 2);
+        assert!(parent_dir.path_segments.is_empty());
+
+        let Decl::Import(relative_symbol) = &decls[2] else {
+            panic!("expected import")
+        };
+        assert_eq!(relative_symbol.relative_level, 1);
+        assert_eq!(relative_symbol.path_segments.len(), 1);
+        assert_eq!(relative_symbol.symbols.len(), 1);
+        assert!(relative_symbol.symbols[0].alias.is_some());
+
+        let Decl::Import(include_all) = &decls[3] else {
+            panic!("expected import")
+        };
+        assert!(include_all.include_all);
     });
 }
 

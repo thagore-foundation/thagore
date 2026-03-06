@@ -2,7 +2,7 @@ use bumpalo::{collections::Vec as BumpVec, Bump};
 use thagore_ast::{
     walk_decl, AssignExpr, BinOp, BinaryExpr, Block, CallExpr, Decl, Expr, ExprStmt, ExternDecl,
     FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericTypeExpr, IdentExpr,
-    IfStmt, ImplBlock, ImportDecl, InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal,
+    IfStmt, ImplBlock, ImportDecl, ImportSymbol, InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal,
     NamedTypeExpr, NodeId, Param, ReturnStmt, Span, Stmt, StructDecl, TypeExpr, UnaryExpr, UnaryOp,
     Visitor, WhileStmt,
 };
@@ -337,7 +337,19 @@ fn constructs_every_ast_node_type() {
     let import_decl = Decl::Import(ImportDecl {
         id: NodeId::new(65),
         span: span(561, 575),
+        relative_level: 0,
         path_segments: arena_slice(&arena, [symbol(23), symbol(24)]),
+        symbols: arena_slice(
+            &arena,
+            [ImportSymbol {
+                id: NodeId::new(69),
+                span: span(576, 580),
+                name: symbol(30),
+                alias: Some(symbol(31)),
+            }],
+        ),
+        is_from: true,
+        include_all: false,
         alias: Some(symbol(29)),
     });
     let extern_decl = Decl::Extern(ExternDecl {
@@ -618,7 +630,11 @@ fn display_pretty_prints_non_trivial_program() {
     let import = Decl::Import(ImportDecl {
         id: NodeId::new(2),
         span: span(4, 20),
+        relative_level: 0,
         path_segments: arena_slice(&arena, [symbol(1), symbol(2)]),
+        symbols: arena_slice(&arena, []),
+        is_from: false,
+        include_all: false,
         alias: Some(symbol(9)),
     });
     let structure = Decl::Struct(StructDecl {

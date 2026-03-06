@@ -1,8 +1,8 @@
 //! Declaration parsing.
 
 use thagore_ast::{
-    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl, IntentDecl,
-    LetDecl, Param, StructDecl,
+    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
+    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
 };
 use thagore_lexer::TokenKind;
 
@@ -21,7 +21,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             TokenKind::Let => Decl::Let(self.parse_let_decl()),
             TokenKind::Struct => Decl::Struct(self.parse_struct_decl()),
             TokenKind::Impl => Decl::Impl(self.parse_impl_block()),
-            TokenKind::Import => Decl::Import(self.parse_import_decl()),
+            TokenKind::Import | TokenKind::From => Decl::Import(self.parse_import_decl()),
             TokenKind::Extern => Decl::Extern(self.parse_extern_decl()),
             TokenKind::Intent => Decl::Intent(self.parse_intent_decl()),
             TokenKind::Flow => Decl::Flow(self.parse_flow_decl()),
@@ -181,21 +181,113 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
 
     pub(crate) fn parse_import_decl(&mut self) -> ImportDecl<'ast> {
         let import_token = self.advance();
-        let mut segments = self.bump_vec();
-        segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
-        while self.match_kind(TokenKind::Dot).is_some() {
-            segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
+        let start = self.span_of(import_token);
+        let mut end = start;
+
+        if import_token.kind == TokenKind::From {
+            let (relative_level, path_segments) = self.parse_import_path();
+            if let Some(import_keyword) = self.expect(TokenKind::Import) {
+                end = self.span_of(import_keyword);
+            }
+
+            let mut symbols = self.bump_vec();
+            symbols.push(self.parse_import_symbol_entry());
+            while self.match_kind(TokenKind::Comma).is_some() {
+                symbols.push(self.parse_import_symbol_entry());
+            }
+
+            let include_all = if let Some(include_token) = self.match_kind(TokenKind::Include) {
+                end = self.span_of(include_token);
+                self.expect_import_all_keyword();
+                true
+            } else {
+                false
+            };
+
+            if let Some(last_symbol) = symbols.last() {
+                end = end.join(last_symbol.span);
+            }
+
+            return ImportDecl {
+                id: self.new_node_id(),
+                span: start.join(end),
+                relative_level,
+                path_segments: path_segments.into_bump_slice(),
+                symbols: symbols.into_bump_slice(),
+                is_from: true,
+                include_all,
+                alias: None,
+            };
         }
+
+        let (relative_level, path_segments) = self.parse_import_path();
         let alias = if self.match_contextual("as").is_some() {
             Some(self.parse_name_symbol(Expectation::Identifier))
         } else {
             None
         };
+        let include_all = if let Some(include_token) = self.match_kind(TokenKind::Include) {
+            end = self.span_of(include_token);
+            self.expect_import_all_keyword();
+            true
+        } else {
+            false
+        };
+
         ImportDecl {
             id: self.new_node_id(),
-            span: self.span_of(import_token).join(self.current_span()),
-            path_segments: segments.into_bump_slice(),
+            span: start.join(end.join(self.current_span())),
+            relative_level,
+            path_segments: path_segments.into_bump_slice(),
+            symbols: self.bump_vec().into_bump_slice(),
+            is_from: false,
+            include_all,
             alias,
+        }
+    }
+
+    fn parse_import_path(&mut self) -> (u8, bumpalo::collections::Vec<'ast, thagore_ast::InternedStr>) {
+        let mut relative_level = 0_u8;
+        while self.at(TokenKind::Dot) {
+            self.advance();
+            relative_level = relative_level.saturating_add(1);
+        }
+
+        let mut segments = self.bump_vec();
+        if self.at(TokenKind::Identifier) {
+            segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
+            while self.match_kind(TokenKind::Dot).is_some() {
+                segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
+            }
+        }
+
+        (relative_level, segments)
+    }
+
+    fn parse_import_symbol_entry(&mut self) -> ImportSymbol {
+        let start = self.current_span();
+        let name = self.parse_identifier_symbol(Expectation::Identifier);
+        let alias = if self.match_contextual("as").is_some() {
+            Some(self.parse_identifier_symbol(Expectation::Identifier))
+        } else {
+            None
+        };
+
+        ImportSymbol {
+            id: self.new_node_id(),
+            span: start.join(self.current_span()),
+            name,
+            alias,
+        }
+    }
+
+    fn expect_import_all_keyword(&mut self) {
+        if self.match_contextual("all").is_none() {
+            self.emit_statement_error(ParseError::unexpected_token(
+                self.peek().kind,
+                self.current_span(),
+                Expectation::Identifier,
+            ));
         }
     }
 

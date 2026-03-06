@@ -2,7 +2,7 @@
 
 use crate::decl::{
     Decl, DeclRef, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
-    IntentDecl, LetDecl, Param, StructDecl,
+    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
 };
 use crate::expr::{
     AssignExpr, BinaryExpr, CallExpr, Expr, ExprRef, FieldAccessExpr, IdentExpr, IndexExpr,
@@ -31,6 +31,8 @@ pub trait Visitor<'ast> {
     fn visit_impl_block(&mut self, _decl: &'ast ImplBlock<'ast>) {}
     /// Visits an import declaration.
     fn visit_import_decl(&mut self, _decl: &'ast ImportDecl<'ast>) {}
+    /// Visits an imported symbol entry.
+    fn visit_import_symbol(&mut self, _symbol: &'ast ImportSymbol) {}
     /// Visits an extern declaration.
     fn visit_extern_decl(&mut self, _decl: &'ast ExternDecl<'ast>) {}
     /// Visits an intent declaration.
@@ -103,11 +105,30 @@ where
         Decl::Let(node) => walk_let_decl(visitor, node),
         Decl::Struct(node) => walk_struct_decl(visitor, node),
         Decl::Impl(node) => walk_impl_block(visitor, node),
-        Decl::Import(node) => visitor.visit_import_decl(node),
+        Decl::Import(node) => walk_import_decl(visitor, node),
         Decl::Extern(node) => walk_extern_decl(visitor, node),
         Decl::Intent(node) => walk_intent_decl(visitor, node),
         Decl::Flow(node) => walk_flow_decl(visitor, node),
     }
+}
+
+/// Walks an import declaration and its imported symbol entries.
+pub fn walk_import_decl<'ast, V>(visitor: &mut V, decl: &'ast ImportDecl<'ast>)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_import_decl(decl);
+    for symbol in decl.symbols {
+        walk_import_symbol(visitor, symbol);
+    }
+}
+
+/// Walks an imported symbol entry.
+pub fn walk_import_symbol<'ast, V>(visitor: &mut V, symbol: &'ast ImportSymbol)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_import_symbol(symbol);
 }
 
 /// Walks a function declaration and its children.

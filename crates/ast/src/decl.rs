@@ -152,9 +152,30 @@ pub struct ImportDecl<'ast> {
     pub id: NodeId,
     /// Source span for the full declaration.
     pub span: Span,
+    /// Number of leading relative path levels. `0` means a non-relative import.
+    pub relative_level: u8,
     /// Imported module path.
     pub path_segments: AstSlice<'ast, InternedStr>,
+    /// Imported symbols for `from ... import ...` declarations.
+    pub symbols: AstSlice<'ast, ImportSymbol>,
+    /// `true` when the declaration uses `from ... import ...` syntax.
+    pub is_from: bool,
+    /// `true` when the declaration uses `include all`.
+    pub include_all: bool,
     /// Optional local alias bound for the imported module.
+    pub alias: Option<InternedStr>,
+}
+
+/// A symbol entry imported from a module, optionally under an alias.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportSymbol {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the symbol entry.
+    pub span: Span,
+    /// Imported symbol name.
+    pub name: InternedStr,
+    /// Optional local alias for the symbol.
     pub alias: Option<InternedStr>,
 }
 
