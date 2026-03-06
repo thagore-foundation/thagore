@@ -1,9 +1,0 @@
-version: 1
-artifact:
-  single_binary_default: true
-quality:
-  startup_budget_required: true
-  footprint_budget_required: true
-cross_compile:
-  one_command_required: true
-  target_manifest_required: true

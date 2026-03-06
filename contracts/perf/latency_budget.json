@@ -1,7 +1,0 @@
-{
-  "linux-x86_64": {
-    "max_startup_p95_ms": 15.0,
-    "max_build_p95_ms": 1200.0,
-    "max_runtime_p95_ms": 80.0
-  }
-}

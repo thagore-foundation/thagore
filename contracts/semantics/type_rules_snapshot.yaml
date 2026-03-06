@@ -1,8 +1,0 @@
-source_branch: backup/main-archive-20260226-211152
-type_system:
-  - static_typing
-  - i32_primitive
-  - string_primitive
-  - explicit_return_type_on_func
-  - main_return_code_convention
-

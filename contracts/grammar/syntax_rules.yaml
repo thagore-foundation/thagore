@@ -1,8 +1,0 @@
-source_branch: backup/main-archive-20260226-211152
-rules:
-  - indentation_scoped_blocks
-  - colon_terminated_headers
-  - required_parentheses_in_if_while
-  - top_level_statements_allowed
-  - func_main_entrypoint_i32
-
