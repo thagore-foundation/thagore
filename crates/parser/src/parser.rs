@@ -215,6 +215,8 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
 
         if self.at(TokenKind::Newline) {
             self.skip_newlines();
+        } else if self.at(TokenKind::Dedent) {
+            self.advance();
         }
     }
 

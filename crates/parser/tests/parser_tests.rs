@@ -208,3 +208,19 @@ func sample(flag: bool):
         assert!(errors.iter().all(|error| error.message().contains('(')));
     });
 }
+
+#[test]
+fn lexer_indent_errors_do_not_stall_recovery() {
+    let source = "\
+func main() -> i32:
+   return 0
+func next() -> i32:
+  return 1
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert_eq!(decls.len(), 2);
+        assert!(!errors.is_empty());
+        assert!(matches!(decls[1], Decl::Func(_)));
+    });
+}
