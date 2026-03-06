@@ -1,0 +1,14 @@
+# fixture: generics/generic_functions
+# expect: ok
+# description: exercises generic function monomorphization for i32 and f64
+func abs<T: Numeric>(value: T) -> T:
+  if (value < 0):
+    return -value
+  return value
+
+func main() -> i32:
+  let left: i32 = abs(-5)
+  let right: f64 = abs(-3.5)
+  if (left == 5 and right == 3.5):
+    return 0
+  return 1

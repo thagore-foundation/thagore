@@ -1,0 +1,9 @@
+# fixture: generics/constants
+# expect: ok
+# description: uses std.math constants lowered from top-level const declarations
+import std.math as math
+
+func main() -> i32:
+  if (math.PI > 3.14 and math.PI < 3.15 and math.E > 2.71 and math.MAX_I32 == 2147483647):
+    return 0
+  return 1
