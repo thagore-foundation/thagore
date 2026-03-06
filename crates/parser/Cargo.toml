@@ -6,3 +6,8 @@ license = "MIT"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+bumpalo = { version = "3.19.0", default-features = false, features = ["collections"] }
+thagore-ast = { path = "../ast" }
+thagore-lexer = { path = "../lexer" }

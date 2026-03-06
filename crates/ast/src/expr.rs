@@ -176,6 +176,10 @@ pub enum Literal {
 /// Binary operators supported by expression syntax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOp {
+    /// `or`
+    Or,
+    /// `and`
+    And,
     /// `+`
     Add,
     /// `-`

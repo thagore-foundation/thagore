@@ -760,7 +760,7 @@ struct sym_3:
 
 func sym_8(sym_6: sym_100) -> sym_100:
     let sym_7: sym_100 = sym_6 + 1
-    if sym_6 + 1 > 0:
+    if (sym_6 + 1 > 0):
         return sym_6 + 1
     else:
         return 0";

@@ -334,7 +334,7 @@ pub const fn is_statement_start(kind: TokenKind) -> bool {
 #[must_use]
 pub const fn is_sync_point(kind: TokenKind) -> bool {
     is_statement_boundary(kind)
-        || kind == TokenKind::Else
+        || matches!(kind, TokenKind::Else)
         || is_declaration_start(kind)
         || is_statement_start(kind)
 }
@@ -357,5 +357,5 @@ pub const fn is_expr_terminator(kind: TokenKind) -> bool {
 /// Returns `true` when `token` is a recoverable lexer error token.
 #[must_use]
 pub const fn is_lexer_error_token(token: Token) -> bool {
-    token.kind == TokenKind::Error
+    matches!(token.kind, TokenKind::Error)
 }

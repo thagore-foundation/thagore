@@ -125,6 +125,11 @@ version = "0.1.0"
 [[package]]
 name = "thagore-parser"
 version = "0.1.0"
+dependencies = [
+ "bumpalo",
+ "thagore-ast",
+ "thagore-lexer",
+]
 
 [[package]]
 name = "thagore-typeck"

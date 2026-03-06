@@ -35,13 +35,16 @@ fn expr_precedence(expr: &Expr<'_>) -> u8 {
     match expr {
         Expr::Assign(_) => 1,
         Expr::Binary(node) => match node.op {
-            BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => 2,
-            BinOp::Add | BinOp::Sub => 3,
-            BinOp::Mul | BinOp::Div | BinOp::Rem => 4,
+            BinOp::Or => 2,
+            BinOp::And => 3,
+            BinOp::Eq | BinOp::NotEq => 4,
+            BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => 5,
+            BinOp::Add | BinOp::Sub => 6,
+            BinOp::Mul | BinOp::Div | BinOp::Rem => 7,
         },
-        Expr::Unary(_) => 5,
-        Expr::Call(_) | Expr::FieldAccess(_) | Expr::Index(_) => 6,
-        Expr::Ident(_) | Expr::Literal(_) => 7,
+        Expr::Unary(_) => 8,
+        Expr::Call(_) | Expr::FieldAccess(_) | Expr::Index(_) => 9,
+        Expr::Ident(_) | Expr::Literal(_) => 10,
     }
 }
 
@@ -71,9 +74,12 @@ fn fmt_expr(f: &mut fmt::Formatter<'_>, expr: &Expr<'_>, parent_precedence: u8) 
 
 fn fmt_binary_expr(f: &mut fmt::Formatter<'_>, expr: &BinaryExpr<'_>) -> fmt::Result {
     let precedence = match expr.op {
-        BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => 2,
-        BinOp::Add | BinOp::Sub => 3,
-        BinOp::Mul | BinOp::Div | BinOp::Rem => 4,
+        BinOp::Or => 2,
+        BinOp::And => 3,
+        BinOp::Eq | BinOp::NotEq => 4,
+        BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => 5,
+        BinOp::Add | BinOp::Sub => 6,
+        BinOp::Mul | BinOp::Div | BinOp::Rem => 7,
     };
 
     fmt_expr(f, expr.left, precedence)?;
@@ -213,9 +219,9 @@ fn fmt_return_stmt(
 
 fn fmt_if_stmt(f: &mut fmt::Formatter<'_>, stmt: &IfStmt<'_>, indent: usize) -> fmt::Result {
     write_indent(f, indent)?;
-    f.write_str("if ")?;
+    f.write_str("if (")?;
     fmt_expr(f, stmt.condition, 0)?;
-    f.write_str(":\n")?;
+    f.write_str("):\n")?;
     fmt_block(f, stmt.then_block, indent + 1)?;
     if let Some(else_block) = stmt.else_block {
         f.write_str("\n")?;
@@ -228,9 +234,9 @@ fn fmt_if_stmt(f: &mut fmt::Formatter<'_>, stmt: &IfStmt<'_>, indent: usize) -> 
 
 fn fmt_while_stmt(f: &mut fmt::Formatter<'_>, stmt: &WhileStmt<'_>, indent: usize) -> fmt::Result {
     write_indent(f, indent)?;
-    f.write_str("while ")?;
+    f.write_str("while (")?;
     fmt_expr(f, stmt.condition, 0)?;
-    f.write_str(":\n")?;
+    f.write_str("):\n")?;
     fmt_block(f, stmt.body, indent + 1)
 }
 
@@ -374,18 +380,17 @@ fn fmt_intent_decl(
     write_indent(f, indent)?;
     f.write_str("intent ")?;
     write_symbol(f, decl.name)?;
-    if !decl.constraints.is_empty() {
-        f.write_str("(")?;
-        for (index, constraint) in decl.constraints.iter().enumerate() {
-            if index > 0 {
-                f.write_str(", ")?;
-            }
-            fmt_expr(f, constraint, 0)?;
-        }
-        f.write_str(")")?;
-    }
     f.write_str(":\n")?;
-    fmt_block(f, decl.body, indent + 1)
+
+    for constraint in decl.constraints {
+        write_indent(f, indent + 1)?;
+        fmt_expr(f, constraint, 0)?;
+        f.write_str("\n")?;
+    }
+
+    write_indent(f, indent + 1)?;
+    f.write_str("body:\n")?;
+    fmt_block(f, decl.body, indent + 2)
 }
 
 fn fmt_flow_decl(f: &mut fmt::Formatter<'_>, decl: &FlowDecl<'_>, indent: usize) -> fmt::Result {
@@ -408,7 +413,7 @@ fn fmt_flow_decl(f: &mut fmt::Formatter<'_>, decl: &FlowDecl<'_>, indent: usize)
             f.write_str("\n")?;
         }
         write_indent(f, indent + 1)?;
-        f.write_str("else:\n")?;
+        f.write_str("compensate:\n")?;
         fmt_block(f, compensation, indent + 2)?;
         wrote_body = true;
     }
@@ -611,6 +616,8 @@ impl fmt::Display for Literal {
 impl fmt::Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Or => "or",
+            Self::And => "and",
             Self::Add => "+",
             Self::Sub => "-",
             Self::Mul => "*",
