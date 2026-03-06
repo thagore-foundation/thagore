@@ -322,6 +322,20 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
             }
             Stmt::While(node) => self.lower_while(node.condition, node.body, node.span),
             Stmt::For(node) => self.lower_for(node.binding, node.iterator, node.body, node.span),
+            Stmt::Break(node) => {
+                self.errors.push(LoweringError::InvalidLoweringState {
+                    message: "break lowering requires loop control targets",
+                    span: node.span,
+                });
+                self.emit_unreachable(node.span);
+            }
+            Stmt::Continue(node) => {
+                self.errors.push(LoweringError::InvalidLoweringState {
+                    message: "continue lowering requires loop control targets",
+                    span: node.span,
+                });
+                self.emit_unreachable(node.span);
+            }
         }
     }
 

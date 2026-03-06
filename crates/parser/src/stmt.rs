@@ -1,6 +1,6 @@
 //! Statement and block parsing.
 
-use thagore_ast::{Block, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, WhileStmt};
+use thagore_ast::{Block, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, WhileStmt};
 use thagore_lexer::TokenKind;
 
 use crate::error::{Expectation, ParseError};
@@ -18,6 +18,12 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             TokenKind::While => Some(Stmt::While(self.parse_while_stmt())),
             TokenKind::For => Some(Stmt::For(self.parse_for_stmt())),
             TokenKind::Return => Some(Stmt::Return(self.parse_return_stmt())),
+            TokenKind::Identifier if self.at_contextual("break") => {
+                Some(Stmt::Break(self.parse_break_stmt()))
+            }
+            TokenKind::Identifier if self.at_contextual("continue") => {
+                Some(Stmt::Continue(self.parse_continue_stmt()))
+            }
             _ => {
                 if !self.is_expression_start() {
                     self.emit_statement_error(ParseError::unexpected_token(
@@ -164,6 +170,22 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             id: self.new_node_id(),
             span: expr.span(),
             expr,
+        }
+    }
+
+    pub(crate) fn parse_break_stmt(&mut self) -> BreakStmt {
+        let token = self.advance();
+        BreakStmt {
+            id: self.new_node_id(),
+            span: self.span_of(token),
+        }
+    }
+
+    pub(crate) fn parse_continue_stmt(&mut self) -> ContinueStmt {
+        let token = self.advance();
+        ContinueStmt {
+            id: self.new_node_id(),
+            span: self.span_of(token),
         }
     }
 

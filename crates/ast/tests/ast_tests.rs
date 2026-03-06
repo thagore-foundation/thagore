@@ -338,6 +338,7 @@ fn constructs_every_ast_node_type() {
         id: NodeId::new(65),
         span: span(561, 575),
         path_segments: arena_slice(&arena, [symbol(23), symbol(24)]),
+        alias: Some(symbol(29)),
     });
     let extern_decl = Decl::Extern(ExternDecl {
         id: NodeId::new(66),
@@ -618,6 +619,7 @@ fn display_pretty_prints_non_trivial_program() {
         id: NodeId::new(2),
         span: span(4, 20),
         path_segments: arena_slice(&arena, [symbol(1), symbol(2)]),
+        alias: Some(symbol(9)),
     });
     let structure = Decl::Struct(StructDecl {
         id: NodeId::new(3),
@@ -752,7 +754,7 @@ fn display_pretty_prints_non_trivial_program() {
 
     let rendered = format!("{import}\n\n{structure}\n\n{function}");
     let expected = "\
-import sym_1.sym_2
+import sym_1.sym_2 as sym_9
 
 struct sym_3:
     sym_4: sym_100

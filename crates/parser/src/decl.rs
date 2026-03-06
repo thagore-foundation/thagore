@@ -15,6 +15,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             return None;
         }
 
+        let _is_public = self.match_contextual("pub").is_some();
         let decl = match self.peek().kind {
             TokenKind::Func => Decl::Func(self.parse_func_decl()),
             TokenKind::Let => Decl::Let(self.parse_let_decl()),
@@ -185,10 +186,16 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         while self.match_kind(TokenKind::Dot).is_some() {
             segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
         }
+        let alias = if self.match_contextual("as").is_some() {
+            Some(self.parse_identifier_symbol(Expectation::Identifier))
+        } else {
+            None
+        };
         ImportDecl {
             id: self.new_node_id(),
             span: self.span_of(import_token).join(self.current_span()),
             path_segments: segments.into_bump_slice(),
+            alias,
         }
     }
 

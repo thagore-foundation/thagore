@@ -11,7 +11,9 @@ use crate::expr::{
     Literal, UnaryExpr, UnaryOp,
 };
 use crate::node::InternedStr;
-use crate::stmt::{Block, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, WhileStmt};
+use crate::stmt::{
+    Block, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, WhileStmt,
+};
 use crate::types::{GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr};
 
 const INDENT: &str = "    ";
@@ -180,6 +182,8 @@ fn fmt_stmt(f: &mut fmt::Formatter<'_>, stmt: &Stmt<'_>, indent: usize) -> fmt::
         Stmt::If(node) => fmt_if_stmt(f, node, indent),
         Stmt::While(node) => fmt_while_stmt(f, node, indent),
         Stmt::For(node) => fmt_for_stmt(f, node, indent),
+        Stmt::Break(node) => fmt_break_stmt(f, node, indent),
+        Stmt::Continue(node) => fmt_continue_stmt(f, node, indent),
     }
 }
 
@@ -248,6 +252,20 @@ fn fmt_for_stmt(f: &mut fmt::Formatter<'_>, stmt: &ForStmt<'_>, indent: usize) -
     fmt_expr(f, stmt.iterator, 0)?;
     f.write_str(":\n")?;
     fmt_block(f, stmt.body, indent + 1)
+}
+
+fn fmt_break_stmt(f: &mut fmt::Formatter<'_>, _stmt: &BreakStmt, indent: usize) -> fmt::Result {
+    write_indent(f, indent)?;
+    f.write_str("break")
+}
+
+fn fmt_continue_stmt(
+    f: &mut fmt::Formatter<'_>,
+    _stmt: &ContinueStmt,
+    indent: usize,
+) -> fmt::Result {
+    write_indent(f, indent)?;
+    f.write_str("continue")
 }
 
 fn fmt_decl(f: &mut fmt::Formatter<'_>, decl: &Decl<'_>, indent: usize) -> fmt::Result {
@@ -349,6 +367,10 @@ fn fmt_import_decl(
             f.write_str(".")?;
         }
         write_symbol(f, *segment)?;
+    }
+    if let Some(alias) = decl.alias {
+        f.write_str(" as ")?;
+        write_symbol(f, alias)?;
     }
     Ok(())
 }

@@ -154,6 +154,8 @@ pub struct ImportDecl<'ast> {
     pub span: Span,
     /// Imported module path.
     pub path_segments: AstSlice<'ast, InternedStr>,
+    /// Optional local alias bound for the imported module.
+    pub alias: Option<InternedStr>,
 }
 
 /// An external function declaration for FFI bindings.

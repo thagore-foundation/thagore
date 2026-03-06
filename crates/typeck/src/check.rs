@@ -518,6 +518,8 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             Stmt::If(node) => self.visit_if_stmt(node),
             Stmt::While(node) => self.visit_while_stmt(node),
             Stmt::For(node) => self.visit_for_stmt(node),
+            Stmt::Break(node) => self.visit_break_stmt(node),
+            Stmt::Continue(node) => self.visit_continue_stmt(node),
         }
     }
 
@@ -594,6 +596,14 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         self.scopes.insert(stmt.binding, element_type);
         self.visit_block(stmt.body);
         self.scopes.pop_scope();
+        self.table.insert(stmt.id, self.types.unit());
+    }
+
+    fn visit_break_stmt(&mut self, stmt: &'ast thagore_ast::BreakStmt) {
+        self.table.insert(stmt.id, self.types.unit());
+    }
+
+    fn visit_continue_stmt(&mut self, stmt: &'ast thagore_ast::ContinueStmt) {
         self.table.insert(stmt.id, self.types.unit());
     }
 

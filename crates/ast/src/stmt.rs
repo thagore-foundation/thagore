@@ -25,6 +25,10 @@ pub enum Stmt<'ast> {
     While(WhileStmt<'ast>),
     /// A `for` loop.
     For(ForStmt<'ast>),
+    /// A `break` statement.
+    Break(BreakStmt),
+    /// A `continue` statement.
+    Continue(ContinueStmt),
 }
 
 impl<'ast> Stmt<'ast> {
@@ -38,6 +42,8 @@ impl<'ast> Stmt<'ast> {
             Self::If(node) => node.id,
             Self::While(node) => node.id,
             Self::For(node) => node.id,
+            Self::Break(node) => node.id,
+            Self::Continue(node) => node.id,
         }
     }
 
@@ -51,6 +57,8 @@ impl<'ast> Stmt<'ast> {
             Self::If(node) => node.span,
             Self::While(node) => node.span,
             Self::For(node) => node.span,
+            Self::Break(node) => node.span,
+            Self::Continue(node) => node.span,
         }
     }
 }
@@ -129,4 +137,22 @@ pub struct ForStmt<'ast> {
     pub iterator: ExprRef<'ast>,
     /// Loop body block.
     pub body: BlockRef<'ast>,
+}
+
+/// A `break` statement that exits the innermost loop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BreakStmt {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full statement.
+    pub span: Span,
+}
+
+/// A `continue` statement that jumps to the next loop iteration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinueStmt {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full statement.
+    pub span: Span,
 }

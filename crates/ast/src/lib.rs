@@ -19,7 +19,8 @@ pub use crate::expr::{
 };
 pub use crate::node::{AstSlice, InternedStr, NodeId, Span};
 pub use crate::stmt::{
-    Block, BlockRef, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, StmtRef, WhileStmt,
+    Block, BlockRef, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt,
+    StmtRef, WhileStmt,
 };
 pub use crate::types::{GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr, TypeExprRef};
 pub use crate::visitor::{
@@ -28,5 +29,5 @@ pub use crate::visitor::{
     walk_flow_stage, walk_for_stmt, walk_func_decl, walk_generic_type_expr, walk_if_stmt,
     walk_impl_block, walk_index_expr, walk_intent_decl, walk_let_decl, walk_param,
     walk_return_stmt, walk_stmt, walk_struct_decl, walk_type_expr, walk_unary_expr,
-    walk_while_stmt, Visitor,
+    walk_while_stmt, walk_break_stmt, walk_continue_stmt, Visitor,
 };

@@ -8,7 +8,10 @@ use crate::expr::{
     AssignExpr, BinaryExpr, CallExpr, Expr, ExprRef, FieldAccessExpr, IdentExpr, IndexExpr,
     LitExpr, UnaryExpr,
 };
-use crate::stmt::{BlockRef, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, StmtRef, WhileStmt};
+use crate::stmt::{
+    BlockRef, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, StmtRef,
+    WhileStmt,
+};
 use crate::types::{GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr, TypeExprRef};
 
 /// A visitor over arena-allocated AST nodes.
@@ -55,6 +58,10 @@ pub trait Visitor<'ast> {
     fn visit_while_stmt(&mut self, _stmt: &'ast WhileStmt<'ast>) {}
     /// Visits a for statement.
     fn visit_for_stmt(&mut self, _stmt: &'ast ForStmt<'ast>) {}
+    /// Visits a break statement.
+    fn visit_break_stmt(&mut self, _stmt: &'ast BreakStmt) {}
+    /// Visits a continue statement.
+    fn visit_continue_stmt(&mut self, _stmt: &'ast ContinueStmt) {}
 
     /// Visits an abstract expression node.
     fn visit_expr(&mut self, _expr: ExprRef<'ast>) {}
@@ -230,6 +237,8 @@ where
         Stmt::If(node) => walk_if_stmt(visitor, node),
         Stmt::While(node) => walk_while_stmt(visitor, node),
         Stmt::For(node) => walk_for_stmt(visitor, node),
+        Stmt::Break(node) => walk_break_stmt(visitor, node),
+        Stmt::Continue(node) => walk_continue_stmt(visitor, node),
     }
 }
 
@@ -295,6 +304,22 @@ where
     visitor.visit_for_stmt(stmt);
     walk_expr(visitor, stmt.iterator);
     walk_block(visitor, stmt.body);
+}
+
+/// Walks a break statement.
+pub fn walk_break_stmt<'ast, V>(visitor: &mut V, stmt: &'ast BreakStmt)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_break_stmt(stmt);
+}
+
+/// Walks a continue statement.
+pub fn walk_continue_stmt<'ast, V>(visitor: &mut V, stmt: &'ast ContinueStmt)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_continue_stmt(stmt);
 }
 
 /// Walks an expression and all of its descendants.

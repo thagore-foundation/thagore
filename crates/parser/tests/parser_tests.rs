@@ -19,7 +19,7 @@ fn with_parsed_source(
 #[test]
 fn parses_all_declaration_forms() {
     let source = "\
-import std.io
+import std.io as io
 extern func printf(fmt: str) -> i32
 let answer: i32 = 42
 struct Point:
@@ -46,7 +46,11 @@ flow Transaction:
     with_parsed_source(source, |decls, errors| {
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(decls.len(), 8);
-        assert!(matches!(decls[0], Decl::Import(_)));
+        let Decl::Import(import_decl) = &decls[0] else {
+            panic!("expected import")
+        };
+        assert_eq!(import_decl.path_segments.len(), 2);
+        assert!(import_decl.alias.is_some());
         assert!(matches!(decls[1], Decl::Extern(_)));
         assert!(matches!(decls[2], Decl::Let(_)));
         assert!(matches!(decls[3], Decl::Struct(_)));
@@ -54,6 +58,34 @@ flow Transaction:
         assert!(matches!(decls[5], Decl::Func(_)));
         assert!(matches!(decls[6], Decl::Intent(_)));
         assert!(matches!(decls[7], Decl::Flow(_)));
+    });
+}
+
+#[test]
+fn parses_pub_break_and_continue_surface_syntax() {
+    let source = "\
+pub func walk(flag: bool) -> i32:
+  while (flag):
+    continue
+  for item in items:
+    break
+  return 0
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        let Decl::Func(func) = &decls[0] else {
+            panic!("expected function")
+        };
+        assert!(matches!(func.body.statements[0], Stmt::While(_)));
+        let Stmt::While(while_stmt) = &func.body.statements[0] else {
+            panic!("expected while")
+        };
+        assert!(matches!(while_stmt.body.statements[0], Stmt::Continue(_)));
+        let Stmt::For(for_stmt) = &func.body.statements[1] else {
+            panic!("expected for")
+        };
+        assert!(matches!(for_stmt.body.statements[0], Stmt::Break(_)));
     });
 }
 
