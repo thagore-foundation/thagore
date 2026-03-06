@@ -6,7 +6,7 @@ use thagore_typeck::TypeId;
 
 use crate::context::{CodegenContext, FunctionContext};
 use crate::error::CodegenError;
-use crate::instr::emit_instr;
+use crate::instr::{emit_instr, resolve_pending_phis};
 use crate::term::emit_terminator;
 
 /// Declares every function in the IR module before emitting bodies.
@@ -126,6 +126,8 @@ pub fn emit_function<'ctx>(
             }
         }
     }
+
+    resolve_pending_phis(context, &mut function)?;
 
     Ok(())
 }

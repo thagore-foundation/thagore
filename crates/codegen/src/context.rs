@@ -11,7 +11,7 @@ use inkwell::targets::{
 };
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::InstructionValue;
-use inkwell::values::{BasicValueEnum, FunctionValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, PhiValue};
 use thagore_ast::{InternedStr, Span};
 use thagore_ir::{BlockId, Value};
 use thagore_typeck::{TypeArena, TypeId};
@@ -25,6 +25,9 @@ pub type ValueMap<'ctx> = HashMap<Value, BasicValueEnum<'ctx>>;
 
 /// Mapping from IR blocks to LLVM basic blocks.
 pub type BlockMap<'ctx> = HashMap<BlockId, LlvmBasicBlock<'ctx>>;
+
+/// Deferred PHI incoming edges resolved after all blocks are emitted.
+pub type PendingPhiMap<'ctx> = HashMap<Value, PendingPhi<'ctx>>;
 
 /// Target machine configuration shared by LLVM IR emission and object output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,8 +202,18 @@ pub struct FunctionContext<'ctx> {
     pub value_types: Vec<TypeId>,
     /// Block lookup table.
     pub blocks: BlockMap<'ctx>,
+    /// Deferred PHI incoming edges.
+    pub pending_phis: PendingPhiMap<'ctx>,
     /// Printable function symbol.
     pub name: InternedStr,
+}
+
+/// A PHI node whose incoming edges are resolved after value emission.
+pub struct PendingPhi<'ctx> {
+    /// Lowered LLVM PHI instruction.
+    pub phi: PhiValue<'ctx>,
+    /// IR incoming pairs waiting on later SSA definitions.
+    pub incoming: Vec<(Value, BlockId)>,
 }
 
 impl<'ctx> FunctionContext<'ctx> {
@@ -212,6 +225,7 @@ impl<'ctx> FunctionContext<'ctx> {
             values: HashMap::new(),
             value_types,
             blocks: HashMap::new(),
+            pending_phis: HashMap::new(),
             name,
         }
     }

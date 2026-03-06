@@ -199,6 +199,82 @@ fn emits_control_flow_and_optimization_pipeline() {
 }
 
 #[test]
+fn resolves_phi_inputs_defined_in_later_blocks() {
+    let types = TypeArena::new();
+    let mut function = IrFunction::new(symbol(7), types.i32());
+    function.entry = BlockId::new(0);
+    function.value_types = vec![
+        types.i32(),
+        types.i32(),
+        types.bool(),
+        types.i32(),
+        types.i32(),
+    ];
+    function.blocks = vec![
+        BasicBlock {
+            id: BlockId::new(0),
+            instructions: vec![
+                Instr::Const(Value::new(0), Const::Int(0)),
+                Instr::Const(Value::new(2), Const::Bool(false)),
+            ],
+            terminator: Some(Terminator::Jump(BlockId::new(1))),
+            successors: vec![BlockId::new(1)],
+            predecessors: vec![],
+        },
+        BasicBlock {
+            id: BlockId::new(1),
+            instructions: vec![Instr::Phi(
+                Value::new(1),
+                vec![
+                    (Value::new(0), BlockId::new(0)),
+                    (Value::new(3), BlockId::new(2)),
+                ],
+            )],
+            terminator: Some(Terminator::Branch(
+                Value::new(2),
+                BlockId::new(2),
+                BlockId::new(3),
+            )),
+            successors: vec![BlockId::new(2), BlockId::new(3)],
+            predecessors: vec![BlockId::new(0), BlockId::new(2)],
+        },
+        BasicBlock {
+            id: BlockId::new(2),
+            instructions: vec![
+                Instr::Const(Value::new(4), Const::Int(1)),
+                Instr::BinOp(Value::new(3), BinOp::Add, Value::new(1), Value::new(4)),
+            ],
+            terminator: Some(Terminator::Jump(BlockId::new(1))),
+            successors: vec![BlockId::new(1)],
+            predecessors: vec![BlockId::new(1)],
+        },
+        BasicBlock {
+            id: BlockId::new(3),
+            instructions: vec![],
+            terminator: Some(Terminator::Return(Some(Value::new(1)))),
+            successors: vec![],
+            predecessors: vec![BlockId::new(1)],
+        },
+    ];
+
+    let mut codegen = Codegen::new();
+    codegen.register_symbol_name(symbol(102), "phi_module");
+    codegen.register_symbol_name(symbol(7), "main");
+    let result = codegen
+        .emit(
+            &IrModule {
+                name: symbol(102),
+                functions: vec![function],
+                structs: vec![],
+            },
+            &types,
+        )
+        .expect("codegen should succeed with deferred phi inputs");
+
+    assert!(result.llvm_ir.contains("define i32 @main()"));
+}
+
+#[test]
 fn emits_outputs_and_links_native_binary() {
     let types = TypeArena::new();
     let function = build_i32_function(symbol(6), 0, &types);

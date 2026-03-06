@@ -107,10 +107,16 @@ impl Codegen {
         if let Err(mut body_errors) = func::emit_functions(&mut context, ir_module) {
             errors.append(&mut body_errors);
         }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
         if let Err(message) = context.module.verify() {
             errors.push(CodegenError::ModuleVerificationFailed {
                 message: message.to_string(),
             });
+        }
+        if !errors.is_empty() {
+            return Err(errors);
         }
 
         optimize::optimize_module(&context.module, self.options.optimization);

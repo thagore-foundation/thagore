@@ -297,12 +297,21 @@ fn emit_call<'ctx>(
     args: &[Value],
 ) -> Result<(), CodegenError> {
     if name == ARRAY_LEN_INTRINSIC {
+        let result_ty = type_of(function, value)?;
         let array_value = lookup_value(context, function, args[0])?.into_struct_value();
         let len = context
             .builder
             .build_extract_value(array_value, 0, "array.len")
             .map_err(builder_error)?;
-        function.values.insert(value, len);
+        let lowered = match context.types.kind(result_ty) {
+            TypeKind::I32 => context
+                .builder
+                .build_int_truncate(len.into_int_value(), context.llvm.i32_type(), "array.len.i32")
+                .map_err(builder_error)?
+                .as_basic_value_enum(),
+            _ => len,
+        };
+        function.values.insert(value, lowered);
         return Ok(());
     }
 
@@ -469,28 +478,47 @@ fn emit_phi<'ctx>(
         .builder
         .build_phi(ty, "phi")
         .map_err(builder_error)?;
-    let incoming_pairs = incoming
-        .iter()
-        .map(|(incoming_value, block_id)| {
-            let runtime = lookup_value(context, function, *incoming_value)?;
-            let block =
-                function
-                    .blocks
-                    .get(block_id)
-                    .copied()
-                    .ok_or(CodegenError::UnknownBlock {
-                        block: *block_id,
-                        function: function.name,
-                    })?;
-            Ok((runtime, block))
-        })
-        .collect::<Result<Vec<_>, CodegenError>>()?;
-    let refs = incoming_pairs
-        .iter()
-        .map(|(value, block)| (value as &dyn BasicValue<'ctx>, *block))
-        .collect::<Vec<_>>();
-    phi.add_incoming(&refs);
     function.values.insert(value, phi.as_basic_value());
+    function.pending_phis.insert(
+        value,
+        crate::context::PendingPhi {
+            phi,
+            incoming: incoming.to_vec(),
+        },
+    );
+    Ok(())
+}
+
+/// Resolves deferred PHI incoming edges once every block value has been emitted.
+pub fn resolve_pending_phis<'ctx>(
+    context: &CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+) -> Result<(), CodegenError> {
+    let pending = function.pending_phis.drain().collect::<Vec<_>>();
+    for (_, pending_phi) in pending {
+        let incoming_pairs = pending_phi
+            .incoming
+            .iter()
+            .map(|(incoming_value, block_id)| {
+                let runtime = lookup_value(context, function, *incoming_value)?;
+                let block =
+                    function
+                        .blocks
+                        .get(block_id)
+                        .copied()
+                        .ok_or(CodegenError::UnknownBlock {
+                            block: *block_id,
+                            function: function.name,
+                        })?;
+                Ok((runtime, block))
+            })
+            .collect::<Result<Vec<_>, CodegenError>>()?;
+        let refs = incoming_pairs
+            .iter()
+            .map(|(value, block)| (value as &dyn BasicValue<'ctx>, *block))
+            .collect::<Vec<_>>();
+        pending_phi.phi.add_incoming(&refs);
+    }
     Ok(())
 }
 
