@@ -46,7 +46,9 @@ fn real_main() -> i32 {
 
     match cli.command {
         Some(Command::Build(args)) => handle_build(&args.entry, &args.options),
-        Some(Command::Check(args)) => handle_check(&args.file, args.json),
+        Some(Command::Check(args)) => {
+            handle_check(&args.file, args.json, &args.include_dirs, &args.defines, &args.features)
+        }
         Some(Command::Run(args)) => handle_run(&args),
         Some(Command::Version) => handle_version_human(),
         None => USAGE_EXIT_CODE,
@@ -77,8 +79,14 @@ fn handle_build(path: &Path, options: &cli::BuildOptions) -> i32 {
     }
 }
 
-fn handle_check(path: &Path, json: bool) -> i32 {
-    match check_file(path) {
+fn handle_check(
+    path: &Path,
+    json: bool,
+    include_dirs: &[std::path::PathBuf],
+    defines: &[String],
+    features: &[String],
+) -> i32 {
+    match check_file(path, include_dirs, defines, features) {
         Ok(_) => {
             if json {
                 let _ = writeln!(io::stdout(), "[]");

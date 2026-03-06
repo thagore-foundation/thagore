@@ -265,7 +265,8 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
-    pub(crate) fn intern_text(&mut self, text: &'src str) -> InternedStr {
+    /// Interns arbitrary source text into the parser-local symbol table.
+    pub fn intern_text(&mut self, text: &'src str) -> InternedStr {
         if let Some((index, _)) = self
             .symbols
             .iter()

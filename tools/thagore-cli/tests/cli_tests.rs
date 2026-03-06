@@ -343,6 +343,62 @@ fn print_target_list_returns_json_array() {
 }
 
 #[test]
+fn check_accepts_define_and_feature_bindings() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("feature_gate.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  if (FEATURE_FFI and ENABLE_TRACE):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "check",
+            source.to_str().expect("utf8"),
+            "--define",
+            "ENABLE_TRACE=true",
+            "--features",
+            "ffi",
+        ])
+        .output()
+        .expect("run thagc check");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn check_resolves_imports_through_include_dirs() {
+    let dir = TempDir::new().expect("temp dir");
+    let include_root = dir.path().join("deps");
+    fs::create_dir_all(&include_root).expect("create include dir");
+    fs::write(include_root.join("dep.tg"), "func helper() -> i32:\n  return 0\n")
+        .expect("write dep module");
+    let source = dir.path().join("main.tg");
+    fs::write(&source, "import dep\n\nfunc main() -> i32:\n  return 0\n").expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "check",
+            source.to_str().expect("utf8"),
+            "--include-dir",
+            include_root.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc check");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);

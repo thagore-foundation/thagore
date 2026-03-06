@@ -1,5 +1,6 @@
 //! End-to-end compiler pipeline orchestration for the Thagore CLI.
 
+use std::boxed::Box;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,7 +9,10 @@ use std::time::Instant;
 use bumpalo::Bump;
 use tempfile::NamedTempFile;
 use thagore_ast::visitor::{walk_decl, Visitor};
-use thagore_ast::{Decl, GenericTypeExpr, IdentExpr, InternedStr, LitExpr, Literal, NamedTypeExpr};
+use thagore_ast::{
+    Decl, Expr, GenericTypeExpr, IdentExpr, InternedStr, LetDecl, LitExpr, Literal,
+    NamedTypeExpr, NodeId, Span, TypeExpr,
+};
 use thagore_codegen::{
     link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
     OutputConfig, TargetMachineConfig,
@@ -45,7 +49,12 @@ pub(crate) struct PipelineFailure {
 }
 
 /// Runs lexing, parsing, and type checking without code generation.
-pub(crate) fn check_file(path: &Path) -> Result<(), PipelineFailure> {
+pub(crate) fn check_file(
+    path: &Path,
+    include_dirs: &[PathBuf],
+    defines: &[String],
+    features: &[String],
+) -> Result<(), PipelineFailure> {
     let mut timings = TimingReport::new();
     let source = read_source(path, &timings)?;
     let arena = Bump::new();
@@ -57,7 +66,7 @@ pub(crate) fn check_file(path: &Path) -> Result<(), PipelineFailure> {
 
     let mut parser = Parser::new(tokens.as_slice(), &arena, lexer.interner());
     let stage = Instant::now();
-    let decls = parser.parse_program();
+    let mut decls = parser.parse_program();
     let parse_errors = parser.take_errors();
     timings.record("parser", stage.elapsed());
     if !parse_errors.is_empty() {
@@ -70,6 +79,17 @@ pub(crate) fn check_file(path: &Path) -> Result<(), PipelineFailure> {
             timings,
         });
     }
+
+    inject_compile_time_bindings(
+        &mut decls,
+        &mut parser,
+        &arena,
+        defines,
+        features,
+        &source,
+        &timings,
+    )?;
+    validate_imports(path, include_dirs, &parser, &decls, &source, &timings)?;
 
     let mut checker = TypeChecker::new();
     register_symbols(&decls, &parser, &mut checker, None);
@@ -107,7 +127,7 @@ pub(crate) fn build_file(
 
     let mut parser = Parser::new(tokens.as_slice(), &arena, lexer.interner());
     let stage = Instant::now();
-    let decls = parser.parse_program();
+    let mut decls = parser.parse_program();
     let parse_errors = parser.take_errors();
     timings.record("parser", stage.elapsed());
     if !parse_errors.is_empty() {
@@ -120,6 +140,17 @@ pub(crate) fn build_file(
             timings,
         });
     }
+
+    inject_compile_time_bindings(
+        &mut decls,
+        &mut parser,
+        &arena,
+        &options.defines,
+        &options.features,
+        &source,
+        &timings,
+    )?;
+    validate_imports(path, &options.include_dirs, &parser, &decls, &source, &timings)?;
 
     let mut checker = TypeChecker::new();
     let mut codegen = Codegen::new();
@@ -308,6 +339,352 @@ fn default_binary_output(path: &Path) -> PathBuf {
     path.parent()
         .unwrap_or_else(|| Path::new("."))
         .join(stem)
+}
+
+fn inject_compile_time_bindings<'src, 'tok, 'ast>(
+    decls: &mut Vec<Decl<'ast>>,
+    parser: &mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    defines: &[String],
+    features: &[String],
+    source: &str,
+    timings: &TimingReport,
+) -> Result<(), PipelineFailure> {
+    if defines.is_empty() && features.is_empty() {
+        return Ok(());
+    }
+
+    let mut synthetic = Vec::new();
+    let mut next_id = max_existing_node_id(decls).saturating_add(1);
+
+    for feature in features {
+        if feature.trim().is_empty() {
+            continue;
+        }
+        let binding = format!("FEATURE_{}", sanitize_binding_name(feature));
+        synthetic.push(make_boolean_binding(
+            parser,
+            arena,
+            &binding,
+            true,
+            &mut next_id,
+        ));
+    }
+
+    for define in defines {
+        let Some((name, value)) = define.split_once('=') else {
+            return Err(PipelineFailure {
+                diagnostics: vec![CompilerDiagnostic::new(
+                    "CLI002",
+                    "invalid --define value",
+                    format!("expected KEY=VALUE, found `{define}`"),
+                    None,
+                )],
+                source: source.to_string(),
+                timings: timings.clone(),
+            });
+        };
+        if name.trim().is_empty() {
+            return Err(PipelineFailure {
+                diagnostics: vec![CompilerDiagnostic::new(
+                    "CLI002",
+                    "invalid --define name",
+                    format!("expected KEY=VALUE, found `{define}`"),
+                    None,
+                )],
+                source: source.to_string(),
+                timings: timings.clone(),
+            });
+        }
+        synthetic.push(make_define_binding(
+            parser,
+            arena,
+            name.trim(),
+            value.trim(),
+            &mut next_id,
+        ));
+    }
+
+    if !synthetic.is_empty() {
+        synthetic.append(decls);
+        *decls = synthetic;
+    }
+    Ok(())
+}
+
+fn validate_imports<'src, 'tok, 'ast>(
+    entry: &Path,
+    include_dirs: &[PathBuf],
+    parser: &Parser<'src, 'tok, 'ast>,
+    decls: &[Decl<'ast>],
+    source: &str,
+    timings: &TimingReport,
+) -> Result<(), PipelineFailure> {
+    let mut diagnostics = Vec::new();
+    for decl in decls {
+        let Decl::Import(import_decl) = decl else {
+            continue;
+        };
+
+        let Some(module_path) = import_decl
+            .path_segments
+            .iter()
+            .map(|segment| parser.resolve_symbol(*segment))
+            .collect::<Option<Vec<_>>>()
+        else {
+            continue;
+        };
+
+        if module_path.first().copied() == Some("std") {
+            continue;
+        }
+
+        if resolve_import_path(entry, include_dirs, &module_path).is_none() {
+            diagnostics.push(
+                CompilerDiagnostic::new(
+                    "CLI003",
+                    "unresolved import",
+                    format!("could not resolve import `{}`", module_path.join(".")),
+                    Some(import_decl.span),
+                )
+                .with_hint("pass --include-dir for dependency roots or add the module to stdlib"),
+            );
+        }
+    }
+
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(PipelineFailure {
+            diagnostics,
+            source: source.to_string(),
+            timings: timings.clone(),
+        })
+    }
+}
+
+fn resolve_import_path(entry: &Path, include_dirs: &[PathBuf], segments: &[&str]) -> Option<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(parent) = entry.parent() {
+        roots.push(parent.to_path_buf());
+    }
+    roots.extend(include_dirs.iter().cloned());
+    roots.push(stdlib_root());
+
+    for root in roots {
+        let candidate = segments.iter().fold(root.clone(), |path, segment| path.join(segment));
+        let file = candidate.with_extension("tg");
+        if file.is_file() {
+            return Some(file);
+        }
+    }
+    None
+}
+
+fn stdlib_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../stdlib")
+        .to_path_buf()
+}
+
+fn sanitize_binding_name(name: &str) -> String {
+    let mut sanitized = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_uppercase());
+        } else {
+            sanitized.push('_');
+        }
+    }
+    if sanitized.is_empty() {
+        "_".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn make_boolean_binding<'src, 'tok, 'ast>(
+    parser: &mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    name: &str,
+    value: bool,
+    next_id: &mut u32,
+) -> Decl<'ast> {
+    make_literal_binding(
+        parser,
+        arena,
+        name,
+        Literal::Bool(value),
+        "bool",
+        next_id,
+    )
+}
+
+fn make_define_binding<'src, 'tok, 'ast>(
+    parser: &mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    name: &str,
+    value: &str,
+    next_id: &mut u32,
+) -> Decl<'ast> {
+    if matches!(value, "true" | "false") {
+        return make_boolean_binding(parser, arena, name, value == "true", next_id);
+    }
+    if let Ok(int_value) = value.parse::<i64>() {
+        return make_literal_binding(
+            parser,
+            arena,
+            name,
+            Literal::Int(int_value),
+            "i32",
+            next_id,
+        );
+    }
+    if let Ok(float_value) = value.parse::<f64>() {
+        return make_literal_binding(
+            parser,
+            arena,
+            name,
+            Literal::Float(float_value),
+            "f64",
+            next_id,
+        );
+    }
+
+    let text = value.trim_matches('"');
+    let symbol = parser.intern_text(Box::leak(text.to_string().into_boxed_str()));
+    make_literal_binding(parser, arena, name, Literal::Str(symbol), "str", next_id)
+}
+
+fn make_literal_binding<'src, 'tok, 'ast>(
+    parser: &mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    name: &str,
+    literal: Literal,
+    type_name: &str,
+    next_id: &mut u32,
+) -> Decl<'ast> {
+    let span = Span::empty();
+    let name_symbol = parser.intern_text(Box::leak(name.to_string().into_boxed_str()));
+    let type_symbol = parser.intern_text(Box::leak(type_name.to_string().into_boxed_str()));
+
+    let ty = arena.alloc(TypeExpr::Named(NamedTypeExpr {
+        id: next_synthetic_node(next_id),
+        span,
+        name: type_symbol,
+    }));
+    let initializer = arena.alloc(Expr::Literal(LitExpr {
+        id: next_synthetic_node(next_id),
+        span,
+        literal,
+    }));
+
+    Decl::Let(LetDecl {
+        id: next_synthetic_node(next_id),
+        span,
+        name: name_symbol,
+        ty: Some(ty),
+        initializer,
+    })
+}
+
+fn next_synthetic_node(next_id: &mut u32) -> NodeId {
+    let id = NodeId::new(*next_id);
+    *next_id = next_id.saturating_add(1);
+    id
+}
+
+fn max_existing_node_id<'ast>(decls: &[Decl<'ast>]) -> u32 {
+    let mut collector = MaxNodeIdCollector::default();
+    for decl in decls {
+        walk_decl(&mut collector, decl);
+    }
+    collector.max
+}
+
+#[derive(Debug, Default)]
+struct MaxNodeIdCollector {
+    max: u32,
+}
+
+impl MaxNodeIdCollector {
+    fn record(&mut self, id: NodeId) {
+        self.max = self.max.max(id.as_u32());
+    }
+}
+
+impl<'ast> Visitor<'ast> for MaxNodeIdCollector {
+    fn visit_decl(&mut self, decl: &'ast thagore_ast::Decl<'ast>) {
+        self.record(decl.id());
+    }
+
+    fn visit_param(&mut self, param: &'ast thagore_ast::Param<'ast>) {
+        self.record(param.id);
+    }
+
+    fn visit_field_def(&mut self, field: &'ast thagore_ast::FieldDef<'ast>) {
+        self.record(field.id);
+    }
+
+    fn visit_flow_stage(&mut self, stage: &'ast thagore_ast::FlowStage<'ast>) {
+        self.record(stage.id);
+    }
+
+    fn visit_stmt(&mut self, stmt: &'ast thagore_ast::Stmt<'ast>) {
+        self.record(stmt.id());
+    }
+
+    fn visit_block(&mut self, block: &'ast thagore_ast::Block<'ast>) {
+        self.record(block.id);
+    }
+
+    fn visit_expr_stmt(&mut self, stmt: &'ast thagore_ast::ExprStmt<'ast>) {
+        self.record(stmt.id);
+    }
+
+    fn visit_return_stmt(&mut self, stmt: &'ast thagore_ast::ReturnStmt<'ast>) {
+        self.record(stmt.id);
+    }
+
+    fn visit_if_stmt(&mut self, stmt: &'ast thagore_ast::IfStmt<'ast>) {
+        self.record(stmt.id);
+    }
+
+    fn visit_while_stmt(&mut self, stmt: &'ast thagore_ast::WhileStmt<'ast>) {
+        self.record(stmt.id);
+    }
+
+    fn visit_for_stmt(&mut self, stmt: &'ast thagore_ast::ForStmt<'ast>) {
+        self.record(stmt.id);
+    }
+
+    fn visit_expr(&mut self, expr: &'ast thagore_ast::Expr<'ast>) {
+        self.record(expr.id());
+    }
+
+    fn visit_ident_expr(&mut self, expr: &'ast thagore_ast::IdentExpr) {
+        self.record(expr.id);
+    }
+
+    fn visit_lit_expr(&mut self, expr: &'ast thagore_ast::LitExpr) {
+        self.record(expr.id);
+    }
+
+    fn visit_type_expr(&mut self, ty: &'ast thagore_ast::TypeExpr<'ast>) {
+        self.record(ty.id());
+    }
+
+    fn visit_named_type_expr(&mut self, ty: &'ast thagore_ast::NamedTypeExpr) {
+        self.record(ty.id);
+    }
+
+    fn visit_generic_type_expr(&mut self, ty: &'ast thagore_ast::GenericTypeExpr<'ast>) {
+        self.record(ty.id);
+    }
+
+    fn visit_infer_type_expr(&mut self, ty: &'ast thagore_ast::InferTypeExpr) {
+        self.record(ty.id);
+    }
 }
 
 fn map_opt_level(level: OptLevel) -> OptimizationLevel {
