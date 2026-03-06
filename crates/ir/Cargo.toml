@@ -6,3 +6,7 @@ license = "MIT"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+thagore-ast = { path = "../ast" }
+thagore-typeck = { path = "../typeck" }

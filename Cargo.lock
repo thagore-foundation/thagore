@@ -131,6 +131,10 @@ version = "0.1.0"
 [[package]]
 name = "thagore-ir"
 version = "0.1.0"
+dependencies = [
+ "thagore-ast",
+ "thagore-typeck",
+]
 
 [[package]]
 name = "thagore-lexer"
