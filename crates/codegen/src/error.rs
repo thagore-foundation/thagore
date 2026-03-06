@@ -171,11 +171,9 @@ impl CodegenError {
 impl fmt::Display for CodegenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingType { ty, span } => write_optional_span(
-                f,
-                *span,
-                format_args!("missing LLVM type mapping for {ty}"),
-            ),
+            Self::MissingType { ty, span } => {
+                write_optional_span(f, *span, format_args!("missing LLVM type mapping for {ty}"))
+            }
             Self::UnknownValue { value, function } => {
                 write!(f, "unknown IR value {value} in function {function:?}")
             }
@@ -214,7 +212,9 @@ impl fmt::Display for CodegenError {
             } => write_optional_span(
                 f,
                 *span,
-                format_args!("invalid operand type for {value}: expected {expected}, found {found}"),
+                format_args!(
+                    "invalid operand type for {value}: expected {expected}, found {found}"
+                ),
             ),
             Self::InvalidBranchCondition { value, found, span } => write_optional_span(
                 f,

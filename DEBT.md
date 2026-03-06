@@ -27,3 +27,15 @@
 - [ ] [ir] Lower top-level `let` declarations into a module initializer instead of rejecting them
       Introduced: 58e54dab
       Fix: Add a synthetic module initialization function or global data lowering path so top-level bindings become executable IR instead of an `InvalidLoweringState` error.
+
+- [ ] [codegen] Upgrade the LLVM backend from the local LLVM 14 toolchain to the requested LLVM 17 surface
+      Introduced: uncommitted
+      Fix: Move the build environment and `inkwell` feature gate to `llvm17-0`, then revalidate object emission, optimization passes, and integration tests against LLVM 17.
+
+- [ ] [codegen] Replace the current debug-info façade with real DWARF emission through LLVM DIBuilder
+      Introduced: uncommitted
+      Fix: Thread source files and span-to-line mapping into codegen, create a compile unit plus subprogram metadata, and attach instruction locations when `--debug` is enabled.
+
+- [ ] [codegen] Preserve `intent` metadata through IR and emit it as LLVM metadata nodes
+      Introduced: uncommitted
+      Fix: Extend IR to carry intent annotations, then lower them into named LLVM metadata such as `!thagore.intent` instead of dropping them before backend emission.

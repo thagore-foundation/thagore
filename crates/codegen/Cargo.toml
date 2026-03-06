@@ -6,3 +6,10 @@ license = "MIT"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+thagore-ast = { path = "../ast" }
+thagore-ir = { path = "../ir" }
+thagore-typeck = { path = "../typeck" }
+# inkwell provides the safe LLVM builder surface used by this backend.
+inkwell = { version = "0.4.0", features = ["llvm14-0"] }
