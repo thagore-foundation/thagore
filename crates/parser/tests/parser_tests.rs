@@ -90,6 +90,44 @@ pub func walk(flag: bool) -> i32:
 }
 
 #[test]
+fn parses_builtin_alias_and_builtin_named_field_access() {
+    let source = "\
+import std.string as str
+func main() -> i32:
+  if (str.slen(\"ok\") == 2):
+    return 0
+  return 1
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        let Decl::Import(import_decl) = &decls[0] else {
+            panic!("expected import")
+        };
+        assert!(import_decl.alias.is_some());
+        let Decl::Func(func) = &decls[1] else {
+            panic!("expected function")
+        };
+        let Stmt::If(if_stmt) = &func.body.statements[0] else {
+            panic!("expected if")
+        };
+        let Expr::Binary(binary) = if_stmt.condition else {
+            panic!("expected comparison")
+        };
+        let Expr::Call(call) = binary.left else {
+            panic!("expected call")
+        };
+        let Expr::FieldAccess(field) = call.callee else {
+            panic!("expected namespaced callee")
+        };
+        let Expr::Ident(base) = field.object else {
+            panic!("expected alias identifier")
+        };
+        assert_ne!(field.field, base.name);
+    });
+}
+
+#[test]
 fn parses_expression_precedence_levels() {
     let source = "\
 func logic(a: i32, b: i32, c: i32, d: i32, e: i32, f: i32, g: i32):

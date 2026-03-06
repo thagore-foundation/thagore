@@ -1,7 +1,7 @@
 //! End-to-end compiler pipeline orchestration for the Thagore CLI.
 
 use std::boxed::Box;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -10,8 +10,11 @@ use bumpalo::Bump;
 use tempfile::NamedTempFile;
 use thagore_ast::visitor::{walk_decl, Visitor};
 use thagore_ast::{
-    Decl, Expr, GenericTypeExpr, IdentExpr, InternedStr, LetDecl, LitExpr, Literal,
-    NamedTypeExpr, NodeId, Span, TypeExpr,
+    AssignExpr, BinaryExpr, Block, BreakStmt, CallExpr, ContinueStmt, Decl, Expr, ExprStmt,
+    ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericTypeExpr,
+    IdentExpr, IfStmt, ImplBlock, IntentDecl, InternedStr, LetDecl, LitExpr, Literal,
+    NamedTypeExpr, NodeId, Param, ReturnStmt, Stmt, StructDecl, TypeExpr, UnaryExpr, WhileStmt,
+    Span,
 };
 use thagore_codegen::{
     link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
@@ -66,7 +69,7 @@ pub(crate) fn check_file(
 
     let mut parser = Parser::new(tokens.as_slice(), &arena, lexer.interner());
     let stage = Instant::now();
-    let mut decls = parser.parse_program();
+    let decls = parser.parse_program();
     let parse_errors = parser.take_errors();
     timings.record("parser", stage.elapsed());
     if !parse_errors.is_empty() {
@@ -80,6 +83,7 @@ pub(crate) fn check_file(
         });
     }
 
+    let mut decls = load_program(path, include_dirs, &mut parser, &arena, decls, &source, &timings)?;
     inject_compile_time_bindings(
         &mut decls,
         &mut parser,
@@ -89,7 +93,6 @@ pub(crate) fn check_file(
         &source,
         &timings,
     )?;
-    validate_imports(path, include_dirs, &parser, &decls, &source, &timings)?;
 
     let mut checker = TypeChecker::new();
     register_symbols(&decls, &parser, &mut checker, None);
@@ -127,7 +130,7 @@ pub(crate) fn build_file(
 
     let mut parser = Parser::new(tokens.as_slice(), &arena, lexer.interner());
     let stage = Instant::now();
-    let mut decls = parser.parse_program();
+    let decls = parser.parse_program();
     let parse_errors = parser.take_errors();
     timings.record("parser", stage.elapsed());
     if !parse_errors.is_empty() {
@@ -141,6 +144,15 @@ pub(crate) fn build_file(
         });
     }
 
+    let mut decls = load_program(
+        path,
+        &options.include_dirs,
+        &mut parser,
+        &arena,
+        decls,
+        &source,
+        &timings,
+    )?;
     inject_compile_time_bindings(
         &mut decls,
         &mut parser,
@@ -150,7 +162,6 @@ pub(crate) fn build_file(
         &source,
         &timings,
     )?;
-    validate_imports(path, &options.include_dirs, &parser, &decls, &source, &timings)?;
 
     let mut checker = TypeChecker::new();
     let mut codegen = Codegen::new();
@@ -412,54 +423,235 @@ fn inject_compile_time_bindings<'src, 'tok, 'ast>(
     Ok(())
 }
 
-fn validate_imports<'src, 'tok, 'ast>(
+fn load_program<'src, 'tok, 'ast>(
     entry: &Path,
     include_dirs: &[PathBuf],
-    parser: &Parser<'src, 'tok, 'ast>,
-    decls: &[Decl<'ast>],
+    parser: &mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    decls: Vec<Decl<'ast>>,
     source: &str,
     timings: &TimingReport,
-) -> Result<(), PipelineFailure> {
-    let mut diagnostics = Vec::new();
-    for decl in decls {
-        let Decl::Import(import_decl) = decl else {
-            continue;
-        };
-
-        let Some(module_path) = import_decl
-            .path_segments
-            .iter()
-            .map(|segment| parser.resolve_symbol(*segment))
-            .collect::<Option<Vec<_>>>()
-        else {
-            continue;
-        };
-
-        if module_path.first().copied() == Some("std") {
-            continue;
-        }
-
-        if resolve_import_path(entry, include_dirs, &module_path).is_none() {
-            diagnostics.push(
-                CompilerDiagnostic::new(
-                    "CLI003",
-                    "unresolved import",
-                    format!("could not resolve import `{}`", module_path.join(".")),
-                    Some(import_decl.span),
-                )
-                .with_hint("pass --include-dir for dependency roots or add the module to stdlib"),
-            );
-        }
-    }
-
-    if diagnostics.is_empty() {
-        Ok(())
+) -> Result<Vec<Decl<'ast>>, PipelineFailure> {
+    let mut loader = ModuleLoader::new(entry, include_dirs, parser, arena);
+    loader.load_entry_module(decls);
+    if loader.diagnostics.is_empty() {
+        Ok(loader.program)
     } else {
         Err(PipelineFailure {
-            diagnostics,
+            diagnostics: loader.diagnostics,
             source: source.to_string(),
             timings: timings.clone(),
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ImportBinding {
+    alias: InternedStr,
+    namespace: String,
+    resolved_path: PathBuf,
+}
+
+struct ModuleLoader<'a, 'src, 'tok, 'ast> {
+    entry: &'a Path,
+    include_dirs: &'a [PathBuf],
+    parser: &'a mut Parser<'src, 'tok, 'ast>,
+    arena: &'ast Bump,
+    diagnostics: Vec<CompilerDiagnostic>,
+    intern_cache: BTreeMap<String, InternedStr>,
+    module_namespaces: BTreeMap<PathBuf, String>,
+    loaded: BTreeSet<PathBuf>,
+    loading: BTreeSet<PathBuf>,
+    next_node_id: u32,
+    program: Vec<Decl<'ast>>,
+}
+
+impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
+    fn new(
+        entry: &'a Path,
+        include_dirs: &'a [PathBuf],
+        parser: &'a mut Parser<'src, 'tok, 'ast>,
+        arena: &'ast Bump,
+    ) -> Self {
+        Self {
+            entry,
+            include_dirs,
+            parser,
+            arena,
+            diagnostics: Vec::new(),
+            intern_cache: BTreeMap::new(),
+            module_namespaces: BTreeMap::new(),
+            loaded: BTreeSet::new(),
+            loading: BTreeSet::new(),
+            next_node_id: 0,
+            program: Vec::new(),
+        }
+    }
+
+    fn load_entry_module(&mut self, decls: Vec<Decl<'ast>>) {
+        let entry_path = normalize_path(self.entry);
+        self.module_namespaces
+            .insert(entry_path.clone(), String::new());
+        let symbols = collect_symbol_texts(&decls, &*self.parser);
+        self.load_parsed_module(entry_path, None, decls, symbols);
+    }
+
+    fn load_imported_module(&mut self, module_path: PathBuf, namespace: String) {
+        if self.loaded.contains(&module_path) {
+            return;
+        }
+
+        let source = match fs::read_to_string(&module_path) {
+            Ok(source) => Box::leak(source.into_boxed_str()) as &'static str,
+            Err(error) => {
+                self.diagnostics.push(CompilerDiagnostic::new(
+                    "CLI001",
+                    "failed to read imported module",
+                    error.to_string(),
+                    None,
+                ));
+                self.module_namespaces.insert(module_path, namespace);
+                return;
+            }
+        };
+
+        let lexer = Box::leak(Box::new(Lexer::new(source)));
+        let tokens = lexer.lex_all_in(self.arena);
+        let mut parser = Parser::new(tokens.as_slice(), self.arena, lexer.interner());
+        let decls = parser.parse_program();
+        let parse_errors = parser.take_errors();
+        if !parse_errors.is_empty() {
+            self.diagnostics
+                .extend(parse_errors.iter().map(convert_parse_error));
+            self.module_namespaces.insert(module_path, namespace);
+            return;
+        }
+
+        let symbols = collect_symbol_texts(&decls, &parser);
+        self.load_parsed_module(module_path, Some(namespace), decls, symbols);
+    }
+
+    fn load_parsed_module(
+        &mut self,
+        module_path: PathBuf,
+        namespace: Option<String>,
+        decls: Vec<Decl<'ast>>,
+        source_symbols: BTreeMap<InternedStr, String>,
+    ) {
+        if self.loading.contains(&module_path) {
+            self.diagnostics.push(
+                CompilerDiagnostic::new(
+                    "CLI003",
+                    "cyclic import",
+                    format!("cyclic module load detected for `{}`", module_path.display()),
+                    None,
+                )
+                .with_hint("break the cycle by moving shared definitions into a lower-level module"),
+            );
+            return;
+        }
+
+        self.loading.insert(module_path.clone());
+        if self.loaded.contains(&module_path) {
+            self.loading.remove(&module_path);
+            return;
+        }
+        if let Some(namespace) = namespace.as_ref() {
+            self.module_namespaces
+                .entry(module_path.clone())
+                .or_insert_with(|| namespace.clone());
+        }
+
+        let import_bindings = self.resolve_imports(&module_path, &decls, &source_symbols);
+        for binding in &import_bindings {
+            if !self.loading.contains(&binding.resolved_path)
+                && !self.loaded.contains(&binding.resolved_path)
+            {
+                self.load_imported_module(binding.resolved_path.clone(), binding.namespace.clone());
+            }
+        }
+
+        let mut rewriter = ModuleRewriter::new(
+            self.arena,
+            self.parser,
+            &mut self.next_node_id,
+            &mut self.intern_cache,
+            &source_symbols,
+            &decls,
+            namespace.as_deref(),
+            &import_bindings,
+        );
+        self.program.extend(rewriter.rewrite_program(&decls));
+        self.loading.remove(&module_path);
+        self.loaded.insert(module_path.clone());
+        self.module_namespaces
+            .entry(module_path)
+            .or_insert_with(String::new);
+    }
+
+    fn resolve_imports(
+        &mut self,
+        current_path: &Path,
+        decls: &[Decl<'ast>],
+        source_symbols: &BTreeMap<InternedStr, String>,
+    ) -> Vec<ImportBinding> {
+        let mut bindings = Vec::new();
+        for decl in decls {
+            let Decl::Import(import_decl) = decl else {
+                continue;
+            };
+
+            let module_segments = import_decl
+                .path_segments
+                .iter()
+                .map(|segment| {
+                    source_symbols
+                        .get(segment)
+                        .cloned()
+                        .unwrap_or_else(|| format!("sym_{}", segment.as_u32()))
+                })
+                .collect::<Vec<_>>();
+            let module_refs = module_segments.iter().map(String::as_str).collect::<Vec<_>>();
+            let Some(resolved_path) =
+                resolve_import_path(current_path, self.include_dirs, &module_refs)
+            else {
+                if module_segments.first().map(String::as_str) == Some("std") {
+                    continue;
+                }
+                self.diagnostics.push(
+                    CompilerDiagnostic::new(
+                        "CLI003",
+                        "unresolved import",
+                        format!("could not resolve import `{}`", module_segments.join(".")),
+                        Some(import_decl.span),
+                    )
+                    .with_hint(
+                        "pass --include-dir for dependency roots or add the module to stdlib",
+                    ),
+                );
+                continue;
+            };
+
+            let normalized = normalize_path(&resolved_path);
+            let namespace = self
+                .module_namespaces
+                .get(&normalized)
+                .cloned()
+                .unwrap_or_else(|| module_namespace(&module_segments));
+            self.module_namespaces
+                .entry(normalized.clone())
+                .or_insert_with(|| namespace.clone());
+            let alias = import_decl
+                .alias
+                .or_else(|| import_decl.path_segments.last().copied())
+                .unwrap_or_else(|| InternedStr::new(u32::MAX));
+            bindings.push(ImportBinding {
+                alias,
+                namespace,
+                resolved_path: normalized,
+            });
+        }
+        bindings
     }
 }
 
@@ -485,6 +677,492 @@ fn stdlib_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../stdlib")
         .to_path_buf()
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn module_namespace(segments: &[String]) -> String {
+    segments.join("__")
+}
+
+struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
+    arena: &'ast Bump,
+    parser: &'a mut Parser<'src, 'tok, 'ast>,
+    next_node_id: &'a mut u32,
+    intern_cache: &'a mut BTreeMap<String, InternedStr>,
+    source_symbols: &'a BTreeMap<InternedStr, String>,
+    import_namespaces: BTreeMap<InternedStr, String>,
+    top_level_renames: BTreeMap<InternedStr, InternedStr>,
+    scopes: Vec<BTreeSet<InternedStr>>,
+}
+
+impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
+    fn new(
+        arena: &'ast Bump,
+        parser: &'a mut Parser<'src, 'tok, 'ast>,
+        next_node_id: &'a mut u32,
+        intern_cache: &'a mut BTreeMap<String, InternedStr>,
+        source_symbols: &'a BTreeMap<InternedStr, String>,
+        decls: &[Decl<'ast>],
+        namespace: Option<&str>,
+        imports: &[ImportBinding],
+    ) -> Self {
+        let mut import_namespaces = BTreeMap::new();
+        for import in imports {
+            import_namespaces.insert(import.alias, import.namespace.clone());
+        }
+
+        let mut top_level_renames = BTreeMap::new();
+        if let Some(namespace) = namespace {
+            for symbol in top_level_symbols(decls) {
+                let text = source_symbols
+                    .get(&symbol)
+                    .map(String::as_str)
+                    .unwrap_or("__error__");
+                top_level_renames.insert(
+                    symbol,
+                    intern_owned_cached(parser, intern_cache, &format!("{namespace}__{text}")),
+                );
+            }
+        }
+
+        Self {
+            arena,
+            parser,
+            next_node_id,
+            intern_cache,
+            source_symbols,
+            import_namespaces,
+            top_level_renames,
+            scopes: Vec::new(),
+        }
+    }
+
+    fn rewrite_program(&mut self, decls: &[Decl<'ast>]) -> Vec<Decl<'ast>> {
+        decls
+            .iter()
+            .filter_map(|decl| self.rewrite_decl(decl))
+            .collect()
+    }
+
+    fn rewrite_decl(&mut self, decl: &Decl<'ast>) -> Option<Decl<'ast>> {
+        match decl {
+            Decl::Import(_) => None,
+            Decl::Func(node) => Some(Decl::Func(self.rewrite_func_decl(node))),
+            Decl::Let(node) => Some(Decl::Let(self.rewrite_let_decl(node, true))),
+            Decl::Struct(node) => Some(Decl::Struct(self.rewrite_struct_decl(node))),
+            Decl::Impl(node) => Some(Decl::Impl(self.rewrite_impl_block(node))),
+            Decl::Extern(node) => Some(Decl::Extern(self.rewrite_extern_decl(node))),
+            Decl::Intent(node) => Some(Decl::Intent(self.rewrite_intent_decl(node))),
+            Decl::Flow(node) => Some(Decl::Flow(self.rewrite_flow_decl(node))),
+        }
+    }
+
+    fn rewrite_func_decl(&mut self, decl: &FuncDecl<'ast>) -> FuncDecl<'ast> {
+        self.push_scope();
+        let params = decl
+            .params
+            .iter()
+            .map(|param| {
+                self.define_local(param.name);
+                self.rewrite_param(param)
+            })
+            .collect::<Vec<_>>();
+        let return_type = decl.return_type.map(|ty| self.rewrite_type_expr(ty));
+        let body = self.rewrite_block(decl.body);
+        self.pop_scope();
+        FuncDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            params: self.arena.alloc_slice_fill_iter(params),
+            return_type,
+            body,
+        }
+    }
+
+    fn rewrite_let_decl(&mut self, decl: &LetDecl<'ast>, is_top_level: bool) -> LetDecl<'ast> {
+        let initializer = self.rewrite_expr(decl.initializer);
+        let ty = decl.ty.map(|ty| self.rewrite_type_expr(ty));
+        let name = if is_top_level {
+            self.rename_top_level_symbol(decl.name)
+        } else {
+            self.canonical_symbol(decl.name)
+        };
+        if !is_top_level {
+            self.define_local(decl.name);
+        }
+        LetDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name,
+            ty,
+            initializer,
+        }
+    }
+
+    fn rewrite_struct_decl(&mut self, decl: &StructDecl<'ast>) -> StructDecl<'ast> {
+        let fields = decl
+            .fields
+            .iter()
+            .map(|field| self.rewrite_field_def(field))
+            .collect::<Vec<_>>();
+        StructDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            fields: self.arena.alloc_slice_fill_iter(fields),
+        }
+    }
+
+    fn rewrite_impl_block(&mut self, decl: &ImplBlock<'ast>) -> ImplBlock<'ast> {
+        let methods = decl
+            .methods
+            .iter()
+            .map(|method| self.rewrite_func_decl(method))
+            .collect::<Vec<_>>();
+        ImplBlock {
+            id: self.new_node_id(),
+            span: decl.span,
+            target: self.rename_top_level_symbol(decl.target),
+            methods: self.arena.alloc_slice_fill_iter(methods),
+        }
+    }
+
+    fn rewrite_extern_decl(&mut self, decl: &ExternDecl<'ast>) -> ExternDecl<'ast> {
+        let params = decl
+            .params
+            .iter()
+            .map(|param| self.rewrite_param(param))
+            .collect::<Vec<_>>();
+        ExternDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.canonical_symbol(decl.name),
+            params: self.arena.alloc_slice_fill_iter(params),
+            return_type: self.rewrite_type_expr(decl.return_type),
+        }
+    }
+
+    fn rewrite_intent_decl(&mut self, decl: &IntentDecl<'ast>) -> IntentDecl<'ast> {
+        self.push_scope();
+        let constraints = decl
+            .constraints
+            .iter()
+            .map(|expr| self.rewrite_expr(expr))
+            .collect::<Vec<_>>();
+        let body = self.rewrite_block(decl.body);
+        self.pop_scope();
+        IntentDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            constraints: self.arena.alloc_slice_fill_iter(constraints),
+            body,
+        }
+    }
+
+    fn rewrite_flow_decl(&mut self, decl: &FlowDecl<'ast>) -> FlowDecl<'ast> {
+        self.push_scope();
+        let stages = decl
+            .stages
+            .iter()
+            .map(|stage| self.rewrite_flow_stage(stage))
+            .collect::<Vec<_>>();
+        let compensation = decl.compensation.map(|block| self.rewrite_block(block));
+        self.pop_scope();
+        FlowDecl {
+            id: self.new_node_id(),
+            span: decl.span,
+            name: self.rename_top_level_symbol(decl.name),
+            stages: self.arena.alloc_slice_fill_iter(stages),
+            compensation,
+        }
+    }
+
+    fn rewrite_flow_stage(&mut self, stage: &FlowStage<'ast>) -> FlowStage<'ast> {
+        FlowStage {
+            id: self.new_node_id(),
+            span: stage.span,
+            name: self.canonical_symbol(stage.name),
+            body: self.rewrite_block(stage.body),
+        }
+    }
+
+    fn rewrite_param(&mut self, param: &Param<'ast>) -> Param<'ast> {
+        Param {
+            id: self.new_node_id(),
+            span: param.span,
+            name: self.canonical_symbol(param.name),
+            ty: self.rewrite_type_expr(param.ty),
+        }
+    }
+
+    fn rewrite_field_def(&mut self, field: &FieldDef<'ast>) -> FieldDef<'ast> {
+        FieldDef {
+            id: self.new_node_id(),
+            span: field.span,
+            name: self.canonical_symbol(field.name),
+            ty: self.rewrite_type_expr(field.ty),
+        }
+    }
+
+    fn rewrite_block(&mut self, block: &Block<'ast>) -> &'ast Block<'ast> {
+        self.push_scope();
+        let statements = block
+            .statements
+            .iter()
+            .map(|stmt| self.rewrite_stmt(stmt))
+            .collect::<Vec<_>>();
+        self.pop_scope();
+        self.arena.alloc(Block {
+            id: self.new_node_id(),
+            span: block.span,
+            statements: self.arena.alloc_slice_fill_iter(statements),
+        })
+    }
+
+    fn rewrite_stmt(&mut self, stmt: &Stmt<'ast>) -> Stmt<'ast> {
+        match stmt {
+            Stmt::Let(node) => Stmt::Let(self.rewrite_let_decl(node, false)),
+            Stmt::Expr(node) => Stmt::Expr(ExprStmt {
+                id: self.new_node_id(),
+                span: node.span,
+                expr: self.rewrite_expr(node.expr),
+            }),
+            Stmt::Return(node) => Stmt::Return(ReturnStmt {
+                id: self.new_node_id(),
+                span: node.span,
+                value: node.value.map(|expr| self.rewrite_expr(expr)),
+            }),
+            Stmt::If(node) => Stmt::If(IfStmt {
+                id: self.new_node_id(),
+                span: node.span,
+                condition: self.rewrite_expr(node.condition),
+                then_block: self.rewrite_block(node.then_block),
+                else_block: node.else_block.map(|block| self.rewrite_block(block)),
+            }),
+            Stmt::While(node) => Stmt::While(WhileStmt {
+                id: self.new_node_id(),
+                span: node.span,
+                condition: self.rewrite_expr(node.condition),
+                body: self.rewrite_block(node.body),
+            }),
+            Stmt::For(node) => {
+                let iterator = self.rewrite_expr(node.iterator);
+                self.push_scope();
+                self.define_local(node.binding);
+                let body = self.rewrite_block(node.body);
+                self.pop_scope();
+                Stmt::For(ForStmt {
+                    id: self.new_node_id(),
+                    span: node.span,
+                    binding: self.canonical_symbol(node.binding),
+                    iterator,
+                    body,
+                })
+            }
+            Stmt::Break(node) => Stmt::Break(BreakStmt {
+                id: self.new_node_id(),
+                span: node.span,
+            }),
+            Stmt::Continue(node) => Stmt::Continue(ContinueStmt {
+                id: self.new_node_id(),
+                span: node.span,
+            }),
+        }
+    }
+
+    fn rewrite_expr(&mut self, expr: &Expr<'ast>) -> &'ast Expr<'ast> {
+        let rewritten = match expr {
+            Expr::Binary(node) => Expr::Binary(BinaryExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                left: self.rewrite_expr(node.left),
+                op: node.op,
+                right: self.rewrite_expr(node.right),
+            }),
+            Expr::Unary(node) => Expr::Unary(UnaryExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                op: node.op,
+                operand: self.rewrite_expr(node.operand),
+            }),
+            Expr::Call(node) => {
+                let args = node
+                    .args
+                    .iter()
+                    .map(|arg| self.rewrite_expr(arg))
+                    .collect::<Vec<_>>();
+                Expr::Call(CallExpr {
+                    id: self.new_node_id(),
+                    span: node.span,
+                    callee: self.rewrite_expr(node.callee),
+                    args: self.arena.alloc_slice_fill_iter(args),
+                })
+            }
+            Expr::FieldAccess(node) => {
+                if let Expr::Ident(base) = node.object {
+                    if !self.is_local(base.name) {
+                        if let Some(namespace) = self.import_namespaces.get(&base.name) {
+                            let symbol =
+                                intern_owned_cached(
+                                    self.parser,
+                                    self.intern_cache,
+                                    &format!("{namespace}__{}", self.text_of(node.field)),
+                                );
+                            Expr::Ident(IdentExpr {
+                                id: self.new_node_id(),
+                                span: node.span,
+                                name: symbol,
+                            })
+                        } else {
+                            Expr::FieldAccess(FieldAccessExpr {
+                                id: self.new_node_id(),
+                                span: node.span,
+                                object: self.rewrite_expr(node.object),
+                                field: self.canonical_symbol(node.field),
+                            })
+                        }
+                    } else {
+                        Expr::FieldAccess(FieldAccessExpr {
+                            id: self.new_node_id(),
+                            span: node.span,
+                            object: self.rewrite_expr(node.object),
+                            field: self.canonical_symbol(node.field),
+                        })
+                    }
+                } else {
+                    Expr::FieldAccess(FieldAccessExpr {
+                        id: self.new_node_id(),
+                        span: node.span,
+                        object: self.rewrite_expr(node.object),
+                        field: self.canonical_symbol(node.field),
+                    })
+                }
+            }
+            Expr::Index(node) => Expr::Index(thagore_ast::IndexExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                object: self.rewrite_expr(node.object),
+                index: self.rewrite_expr(node.index),
+            }),
+            Expr::Ident(node) => Expr::Ident(IdentExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                name: self.rewrite_identifier(node.name),
+            }),
+            Expr::Literal(node) => Expr::Literal(LitExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                literal: self.rewrite_literal(node.literal.clone()),
+            }),
+            Expr::Assign(node) => Expr::Assign(AssignExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                target: self.rewrite_expr(node.target),
+                value: self.rewrite_expr(node.value),
+            }),
+        };
+        self.arena.alloc(rewritten)
+    }
+
+    fn rewrite_type_expr(&mut self, ty: &TypeExpr<'ast>) -> &'ast TypeExpr<'ast> {
+        let rewritten = match ty {
+            TypeExpr::Named(node) => TypeExpr::Named(NamedTypeExpr {
+                id: self.new_node_id(),
+                span: node.span,
+                name: self.rewrite_type_name(node.name),
+            }),
+            TypeExpr::Generic(node) => {
+                let args = node
+                    .args
+                    .iter()
+                    .map(|arg| self.rewrite_type_expr(arg))
+                    .collect::<Vec<_>>();
+                TypeExpr::Generic(GenericTypeExpr {
+                    id: self.new_node_id(),
+                    span: node.span,
+                    name: self.rewrite_type_name(node.name),
+                    args: self.arena.alloc_slice_fill_iter(args),
+                })
+            }
+            TypeExpr::Infer(node) => TypeExpr::Infer(thagore_ast::InferTypeExpr {
+                id: self.new_node_id(),
+                span: node.span,
+            }),
+        };
+        self.arena.alloc(rewritten)
+    }
+
+    fn rewrite_literal(&mut self, literal: Literal) -> Literal {
+        match literal {
+            Literal::Str(symbol) => Literal::Str(self.canonical_symbol(symbol)),
+            other => other,
+        }
+    }
+
+    fn rewrite_identifier(&mut self, symbol: InternedStr) -> InternedStr {
+        if self.is_local(symbol) {
+            self.canonical_symbol(symbol)
+        } else if let Some(renamed) = self.top_level_renames.get(&symbol).copied() {
+            renamed
+        } else {
+            self.canonical_symbol(symbol)
+        }
+    }
+
+    fn rewrite_type_name(&mut self, symbol: InternedStr) -> InternedStr {
+        self.top_level_renames
+            .get(&symbol)
+            .copied()
+            .unwrap_or_else(|| self.canonical_symbol(symbol))
+    }
+
+    fn rename_top_level_symbol(&mut self, symbol: InternedStr) -> InternedStr {
+        self.top_level_renames
+            .get(&symbol)
+            .copied()
+            .unwrap_or_else(|| self.canonical_symbol(symbol))
+    }
+
+    fn canonical_symbol(&mut self, symbol: InternedStr) -> InternedStr {
+        let text = self.text_of(symbol).to_string();
+        intern_owned_cached(self.parser, self.intern_cache, &text)
+    }
+
+    fn text_of(&self, symbol: InternedStr) -> &str {
+        self.source_symbols
+            .get(&symbol)
+            .map(String::as_str)
+            .unwrap_or("__error__")
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(BTreeSet::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn define_local(&mut self, symbol: InternedStr) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(symbol);
+        }
+    }
+
+    fn is_local(&self, symbol: InternedStr) -> bool {
+        self.scopes.iter().rev().any(|scope| scope.contains(&symbol))
+    }
+
+    fn new_node_id(&mut self) -> NodeId {
+        let id = NodeId::new(*self.next_node_id);
+        *self.next_node_id = self.next_node_id.saturating_add(1);
+        id
+    }
 }
 
 fn sanitize_binding_name(name: &str) -> String {
@@ -1049,6 +1727,62 @@ fn render_symbol(symbol: InternedStr, parser: &Parser<'_, '_, '_>) -> String {
         .unwrap_or_else(|| format!("sym_{}", symbol.as_u32()))
 }
 
+fn intern_owned_cached(
+    parser: &mut Parser<'_, '_, '_>,
+    cache: &mut BTreeMap<String, InternedStr>,
+    text: &str,
+) -> InternedStr {
+    if let Some(symbol) = cache.get(text).copied() {
+        return symbol;
+    }
+
+    let owned = text.to_string();
+    let symbol = parser.intern_text(Box::leak(owned.clone().into_boxed_str()));
+    cache.insert(owned, symbol);
+    symbol
+}
+
+fn collect_symbol_texts(
+    decls: &[Decl<'_>],
+    parser: &Parser<'_, '_, '_>,
+) -> BTreeMap<InternedStr, String> {
+    let mut collector = SymbolCollector::default();
+    for decl in decls {
+        walk_decl(&mut collector, decl);
+    }
+
+    collector
+        .symbols
+        .into_iter()
+        .filter_map(|symbol| parser.resolve_symbol(symbol).map(|text| (symbol, text.to_string())))
+        .collect()
+}
+
+fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
+    let mut symbols = BTreeSet::new();
+    for decl in decls {
+        match decl {
+            Decl::Func(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::Let(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::Struct(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::Intent(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::Flow(node) => {
+                symbols.insert(node.name);
+            }
+            Decl::Impl(_) | Decl::Import(_) | Decl::Extern(_) => {}
+        }
+    }
+    symbols
+}
+
 fn register_symbols(
     decls: &[Decl<'_>],
     parser: &Parser<'_, '_, '_>,
@@ -1103,6 +1837,9 @@ impl<'ast> Visitor<'ast> for SymbolCollector {
         for segment in decl.path_segments {
             self.record(*segment);
         }
+        if let Some(alias) = decl.alias {
+            self.record(alias);
+        }
     }
 
     fn visit_extern_decl(&mut self, decl: &'ast thagore_ast::ExternDecl<'ast>) {
@@ -1131,6 +1868,10 @@ impl<'ast> Visitor<'ast> for SymbolCollector {
 
     fn visit_ident_expr(&mut self, expr: &'ast IdentExpr) {
         self.record(expr.name);
+    }
+
+    fn visit_field_access_expr(&mut self, expr: &'ast FieldAccessExpr<'ast>) {
+        self.record(expr.field);
     }
 
     fn visit_lit_expr(&mut self, expr: &'ast LitExpr) {

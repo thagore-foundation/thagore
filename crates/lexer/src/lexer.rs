@@ -501,35 +501,41 @@ impl<'src> Lexer<'src> {
         self.offset += 1;
         let content_start = self.offset;
 
-        loop {
-            let classified = self.classify_string_at(self.offset);
-            let next = transition(DfaState::StringBody, classified.class);
-            match next {
-                DfaState::StringBody => {
-                    self.offset += classified.width as usize;
+        while self.offset < self.bytes.len() {
+            match self.bytes[self.offset] {
+                b'\\' => {
+                    let escape_width = self.current_width_at(self.offset).max(1);
+                    self.offset += escape_width;
+                    if self.offset >= self.bytes.len()
+                        || matches!(self.bytes[self.offset], b'\n' | b'\r')
+                    {
+                        break;
+                    }
+                    self.offset += self.current_width_at(self.offset).max(1);
                 }
-                DfaState::StringDone => {
+                b'"' => {
                     let content_end = self.offset;
-                    self.offset += classified.width as usize;
+                    self.offset += 1;
                     self.line_start = false;
                     let span = Span::new(quote_offset as u32, self.offset as u32);
                     let slice =
                         SliceRef::new(content_start as u32, (content_end - content_start) as u32);
                     return Token::with_slice(TokenKind::String, span, slice);
                 }
-                DfaState::StringError | DfaState::Reject => {
-                    self.line_start = false;
-                    return LexError::new(
-                        Span::new(quote_offset as u32, self.offset as u32),
-                        UNTERMINATED_STRING_ERROR,
-                    )
-                    .to_token();
-                }
+                b'\n' | b'\r' => break,
                 _ => {
+                    let classified = self.classify_string_at(self.offset);
                     self.offset += classified.width as usize;
                 }
             }
         }
+
+        self.line_start = false;
+        LexError::new(
+            Span::new(quote_offset as u32, self.offset as u32),
+            UNTERMINATED_STRING_ERROR,
+        )
+        .to_token()
     }
 
     fn skip_comment(&mut self) {

@@ -309,6 +309,24 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.intern_text("__error__")
     }
 
+    pub(crate) fn parse_name_symbol(&mut self, expected: Expectation) -> InternedStr {
+        let token = self.peek();
+        if token.kind == TokenKind::Identifier || token.kind.is_builtin_type() {
+            let token = self.advance();
+            return self.intern_token_symbol(token);
+        }
+
+        self.emit_statement_error(ParseError::unexpected_token(
+            token.kind,
+            self.current_span(),
+            expected,
+        ));
+        if !self.at(TokenKind::Eof) {
+            self.advance();
+        }
+        self.intern_text("__error__")
+    }
+
     pub(crate) fn synthetic_zero_expr(&mut self, span: Span) -> ExprRef<'ast> {
         let id = self.new_node_id();
         self.alloc_expr(Expr::Literal(LitExpr {

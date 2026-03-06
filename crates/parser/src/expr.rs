@@ -125,7 +125,9 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let token = self.peek();
         let span = self.current_span();
         match token.kind {
-            TokenKind::Identifier => self.parse_identifier_like_prefix(),
+            kind if kind == TokenKind::Identifier || kind.is_builtin_type() => {
+                self.parse_identifier_like_prefix()
+            }
             TokenKind::Integer => {
                 let token = self.advance();
                 let value = self
@@ -245,7 +247,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             TokenKind::Dot => {
                 let dot = self.advance();
                 let field_token = self.peek();
-                let field = self.parse_identifier_symbol(Expectation::Identifier);
+                let field = self.parse_name_symbol(Expectation::Identifier);
                 let span = lhs
                     .span()
                     .join(self.span_of(dot))

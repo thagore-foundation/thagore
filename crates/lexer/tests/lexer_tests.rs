@@ -252,3 +252,18 @@ fn keeps_string_payload_without_quotes() {
 
     assert_eq!(slice_text(source, slice), "hello");
 }
+
+#[test]
+fn keeps_escaped_quote_payload_inside_strings() {
+    let source = r#""\"quoted\"""#;
+    let token = collect_tokens(source)
+        .into_iter()
+        .find(|token| token.kind == TokenKind::String)
+        .expect("missing string token");
+
+    let TokenData::Slice(slice) = token.data else {
+        panic!("expected slice payload");
+    };
+
+    assert_eq!(slice_text(source, slice), r#"\"quoted\""#);
+}

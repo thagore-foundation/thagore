@@ -187,7 +187,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             segments.push(self.parse_identifier_symbol(Expectation::ImportPathSegment));
         }
         let alias = if self.match_contextual("as").is_some() {
-            Some(self.parse_identifier_symbol(Expectation::Identifier))
+            Some(self.parse_name_symbol(Expectation::Identifier))
         } else {
             None
         };
