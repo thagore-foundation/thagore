@@ -1,0 +1,2 @@
+# module: stdlib/time
+# description: Standard time compatibility surface for module resolution tests.

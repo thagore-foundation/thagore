@@ -1,0 +1,2 @@
+# module: stdlib/math
+# description: Standard math compatibility surface for module resolution tests.

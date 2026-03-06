@@ -1,0 +1,2 @@
+# module: stdlib/io
+# description: Standard I/O compatibility surface for module resolution tests.

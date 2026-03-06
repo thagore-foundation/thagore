@@ -446,10 +446,41 @@ fn load_program<'src, 'tok, 'ast>(
 }
 
 #[derive(Debug, Clone)]
-struct ImportBinding {
+struct ModuleAliasBinding {
     alias: InternedStr,
     namespace: String,
+}
+
+#[derive(Debug, Clone)]
+struct DirectImportBinding {
+    local_name: InternedStr,
+    qualified_name: InternedStr,
+}
+
+#[derive(Debug, Clone)]
+struct IncludeAllBinding {
+    module_label: String,
+    symbols: Vec<(String, InternedStr)>,
+}
+
+#[derive(Debug, Clone)]
+struct ImportBindings {
+    module_aliases: Vec<ModuleAliasBinding>,
+    direct_symbols: Vec<DirectImportBinding>,
+    include_all: Vec<IncludeAllBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedModuleTarget {
     resolved_path: PathBuf,
+    namespace: String,
+    module_label: String,
+}
+
+#[derive(Debug, Clone)]
+struct ExportedSymbol {
+    local_name: String,
+    qualified_name: String,
 }
 
 struct ModuleLoader<'a, 'src, 'tok, 'ast> {
@@ -460,6 +491,7 @@ struct ModuleLoader<'a, 'src, 'tok, 'ast> {
     diagnostics: Vec<CompilerDiagnostic>,
     intern_cache: HashMap<String, InternedStr>,
     module_namespaces: HashMap<PathBuf, String>,
+    module_exports: HashMap<PathBuf, Vec<ExportedSymbol>>,
     loaded: HashSet<PathBuf>,
     loading: HashSet<PathBuf>,
     import_resolution_cache: HashMap<String, Option<PathBuf>>,
@@ -482,6 +514,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
             diagnostics: Vec::new(),
             intern_cache: HashMap::new(),
             module_namespaces: HashMap::new(),
+            module_exports: HashMap::new(),
             loaded: HashSet::new(),
             loading: HashSet::new(),
             import_resolution_cache: HashMap::new(),
@@ -564,20 +597,25 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                 .or_insert_with(|| namespace.clone());
         }
 
+        let effective_namespace = self
+            .module_namespaces
+            .get(&module_path)
+            .cloned()
+            .or(namespace.clone())
+            .unwrap_or_default();
+        self.module_exports.insert(
+            module_path.clone(),
+            collect_module_exports(&decls, &source_symbols, &effective_namespace),
+        );
+
         let import_bindings = self.resolve_imports(&module_path, &decls, &source_symbols);
-        for binding in &import_bindings {
-            if !self.loading.contains(&binding.resolved_path)
-                && !self.loaded.contains(&binding.resolved_path)
-            {
-                self.load_imported_module(binding.resolved_path.clone(), binding.namespace.clone());
-            }
-        }
 
         let mut rewriter = ModuleRewriter::new(
             self.arena,
             self.parser,
             &mut self.next_node_id,
             &mut self.intern_cache,
+            &mut self.diagnostics,
             &source_symbols,
             &decls,
             namespace.as_deref(),
@@ -596,62 +634,110 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
         current_path: &Path,
         decls: &[Decl<'ast>],
         source_symbols: &BTreeMap<InternedStr, String>,
-    ) -> Vec<ImportBinding> {
-        let mut bindings = Vec::new();
+    ) -> ImportBindings {
+        let mut bindings = ImportBindings {
+            module_aliases: Vec::new(),
+            direct_symbols: Vec::new(),
+            include_all: Vec::new(),
+        };
         for decl in decls {
             let Decl::Import(import_decl) = decl else {
                 continue;
             };
 
-            let module_segments = import_decl
-                .path_segments
-                .iter()
-                .map(|segment| {
-                    source_symbols
-                        .get(segment)
-                        .cloned()
-                        .unwrap_or_else(|| format!("sym_{}", segment.as_u32()))
-                })
-                .collect::<Vec<_>>();
-            let module_refs = module_segments.iter().map(String::as_str).collect::<Vec<_>>();
-            let Some(resolved_path) =
-                self.resolve_import_path_cached(current_path, &module_refs)
-            else {
-                if module_segments.first().map(String::as_str) == Some("std") {
+            let targets = self.resolve_import_targets(current_path, import_decl, source_symbols);
+            for target in targets {
+                if !self.loading.contains(&target.resolved_path)
+                    && !self.loaded.contains(&target.resolved_path)
+                {
+                    self.load_imported_module(target.resolved_path.clone(), target.namespace.clone());
+                }
+
+                let Some(exports) = self.module_exports.get(&target.resolved_path) else {
+                    continue;
+                };
+
+                if import_decl.is_from {
+                    if is_relative_module_import(import_decl) {
+                        let local_alias = import_decl.symbols.first().and_then(|symbol| {
+                            symbol.alias.or(Some(symbol.name))
+                        });
+                        if let Some(alias) = local_alias {
+                            bindings.module_aliases.push(ModuleAliasBinding {
+                                alias,
+                                namespace: target.namespace.clone(),
+                            });
+                        }
+                        if import_decl.include_all {
+                            bindings.include_all.push(include_all_binding(
+                                exports,
+                                target.module_label.clone(),
+                                self.parser,
+                                &mut self.intern_cache,
+                            ));
+                        }
+                        continue;
+                    }
+
+                    for symbol in import_decl.symbols {
+                        let local_name = symbol.alias.unwrap_or(symbol.name);
+                        let symbol_name = source_symbols
+                            .get(&symbol.name)
+                            .cloned()
+                            .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
+                        if let Some(export) = exports.iter().find(|item| item.local_name == symbol_name)
+                        {
+                            bindings.direct_symbols.push(DirectImportBinding {
+                                local_name,
+                                qualified_name: intern_owned_cached(
+                                    self.parser,
+                                    &mut self.intern_cache,
+                                    &export.qualified_name,
+                                ),
+                            });
+                        } else {
+                            self.diagnostics.push(
+                                CompilerDiagnostic::new(
+                                    "CLI003",
+                                    "unresolved imported symbol",
+                                    format!(
+                                        "module `{}` has no symbol `{}`",
+                                        target.module_label, symbol_name
+                                    ),
+                                    Some(import_decl.span),
+                                )
+                                .with_hint("check the exported symbol name or import the module namespace instead"),
+                            );
+                        }
+                    }
+                    if import_decl.include_all {
+                        bindings.include_all.push(include_all_binding(
+                            exports,
+                            target.module_label.clone(),
+                            self.parser,
+                            &mut self.intern_cache,
+                        ));
+                    }
                     continue;
                 }
-                self.diagnostics.push(
-                    CompilerDiagnostic::new(
-                        "CLI003",
-                        "unresolved import",
-                        format!("could not resolve import `{}`", module_segments.join(".")),
-                        Some(import_decl.span),
-                    )
-                    .with_hint(
-                        "pass --include-dir for dependency roots or add the module to stdlib",
-                    ),
-                );
-                continue;
-            };
 
-            let normalized = normalize_path(&resolved_path);
-            let namespace = self
-                .module_namespaces
-                .get(&normalized)
-                .cloned()
-                .unwrap_or_else(|| module_namespace(&module_segments));
-            self.module_namespaces
-                .entry(normalized.clone())
-                .or_insert_with(|| namespace.clone());
-            let alias = import_decl
-                .alias
-                .or_else(|| import_decl.path_segments.last().copied())
-                .unwrap_or_else(|| InternedStr::new(u32::MAX));
-            bindings.push(ImportBinding {
-                alias,
-                namespace,
-                resolved_path: normalized,
-            });
+                let alias = import_decl
+                    .alias
+                    .or_else(|| import_decl.path_segments.last().copied())
+                    .unwrap_or_else(|| InternedStr::new(u32::MAX));
+                bindings.module_aliases.push(ModuleAliasBinding {
+                    alias,
+                    namespace: target.namespace.clone(),
+                });
+                if import_decl.include_all {
+                    bindings.include_all.push(include_all_binding(
+                        exports,
+                        target.module_label.clone(),
+                        self.parser,
+                        &mut self.intern_cache,
+                    ));
+                }
+            }
         }
         bindings
     }
@@ -659,41 +745,237 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
     fn resolve_import_path_cached(
         &mut self,
         current_path: &Path,
-        segments: &[&str],
+        relative_level: u8,
+        segments: &[String],
     ) -> Option<PathBuf> {
-        let key = format!("{}::{}", current_path.display(), segments.join("."));
+        let key = format!(
+            "{}::{}::{}",
+            current_path.display(),
+            relative_level,
+            segments.join(".")
+        );
         if let Some(cached) = self.import_resolution_cache.get(&key) {
             return cached.clone();
         }
 
-        let resolved = resolve_import_path(current_path, self.include_dirs, segments)
+        let resolved = resolve_import_path(
+            self.entry,
+            current_path,
+            self.include_dirs,
+            relative_level,
+            segments,
+        )
             .map(|path| normalize_path(&path));
         self.import_resolution_cache.insert(key, resolved.clone());
         resolved
     }
+
+    fn resolve_import_targets(
+        &mut self,
+        current_path: &Path,
+        import_decl: &thagore_ast::ImportDecl<'ast>,
+        source_symbols: &BTreeMap<InternedStr, String>,
+    ) -> Vec<ResolvedModuleTarget> {
+        let mut targets = Vec::new();
+
+        if is_relative_module_import(import_decl) {
+            for symbol in import_decl.symbols {
+                let segment = source_symbols
+                    .get(&symbol.name)
+                    .cloned()
+                    .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
+                let path_segments = vec![segment.clone()];
+                if let Some(resolved_path) = self.resolve_import_path_cached(
+                    current_path,
+                    import_decl.relative_level,
+                    &path_segments,
+                ) {
+                    let namespace = self
+                        .module_namespaces
+                        .get(&resolved_path)
+                        .cloned()
+                        .unwrap_or_else(|| module_namespace(&path_segments));
+                    self.module_namespaces
+                        .entry(resolved_path.clone())
+                        .or_insert_with(|| namespace.clone());
+                    targets.push(ResolvedModuleTarget {
+                        resolved_path,
+                        namespace,
+                        module_label: segment,
+                    });
+                } else {
+                    self.diagnostics.push(
+                        CompilerDiagnostic::new(
+                            "CLI003",
+                            "unresolved import",
+                            format!("could not resolve relative module `{segment}`"),
+                            Some(import_decl.span),
+                        )
+                        .with_hint("check the relative module path and filename"),
+                    );
+                }
+            }
+            return targets;
+        }
+
+        let module_segments = import_decl
+            .path_segments
+            .iter()
+            .map(|segment| {
+                source_symbols
+                    .get(segment)
+                    .cloned()
+                    .unwrap_or_else(|| format!("sym_{}", segment.as_u32()))
+            })
+            .collect::<Vec<_>>();
+        let Some(resolved_path) = self.resolve_import_path_cached(
+            current_path,
+            import_decl.relative_level,
+            &module_segments,
+        ) else {
+            self.diagnostics.push(
+                CompilerDiagnostic::new(
+                    "CLI003",
+                    "unresolved import",
+                    format!("could not resolve import `{}`", import_path_label(import_decl, &module_segments)),
+                    Some(import_decl.span),
+                )
+                .with_hint("check stdlib, dependency include dirs, and project module paths"),
+            );
+            return targets;
+        };
+
+        let normalized = normalize_path(&resolved_path);
+        let namespace = self
+            .module_namespaces
+            .get(&normalized)
+            .cloned()
+            .unwrap_or_else(|| module_namespace(&module_segments));
+        self.module_namespaces
+            .entry(normalized.clone())
+            .or_insert_with(|| namespace.clone());
+        targets.push(ResolvedModuleTarget {
+            resolved_path: normalized,
+            namespace,
+            module_label: module_label_from_segments(&module_segments),
+        });
+        targets
+    }
 }
 
-fn resolve_import_path(entry: &Path, include_dirs: &[PathBuf], segments: &[&str]) -> Option<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = entry.parent() {
-        roots.push(parent.to_path_buf());
+fn resolve_import_path(
+    entry: &Path,
+    current_path: &Path,
+    include_dirs: &[PathBuf],
+    relative_level: u8,
+    segments: &[String],
+) -> Option<PathBuf> {
+    if relative_level > 0 {
+        return resolve_relative_import(current_path, relative_level, segments);
     }
-    roots.extend(include_dirs.iter().cloned());
-    roots.push(stdlib_root());
 
-    for root in roots {
-        let candidate = segments.iter().fold(root.clone(), |path, segment| path.join(segment));
-        let file = candidate.with_extension("tg");
-        if file.is_file() {
-            return Some(file);
+    let stdlib = stdlib_root();
+    if segments.first().map(String::as_str) == Some("std") && segments.len() > 1 {
+        if let Some(path) = find_module_candidates(&stdlib, &segments[1..]) {
+            return Some(path);
         }
     }
+    if let Some(path) = find_module_candidates(&stdlib, segments) {
+        return Some(path);
+    }
+
+    for root in include_dirs {
+        if let Some(path) = find_module_candidates(root, segments) {
+            return Some(path);
+        }
+        let src_root = root.join("src");
+        if let Some(path) = find_module_candidates(&src_root, segments) {
+            return Some(path);
+        }
+    }
+
+    let project_root = project_root(entry);
+    if segments.len() == 1 {
+        let src_root = project_root.join("src");
+        if let Some(path) = find_module_candidates(&src_root, segments) {
+            return Some(path);
+        }
+    }
+
+    if let Some(path) = find_module_candidates(&project_root, segments) {
+        return Some(path);
+    }
+
+    if segments.first().map(String::as_str) != Some("src") {
+        let src_root = project_root.join("src");
+        if let Some(path) = find_module_candidates(&src_root, segments) {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn resolve_relative_import(
+    current_path: &Path,
+    relative_level: u8,
+    segments: &[String],
+) -> Option<PathBuf> {
+    if segments.is_empty() {
+        return None;
+    }
+
+    let mut base = current_path.parent()?.to_path_buf();
+    for _ in 1..relative_level {
+        base = base.parent()?.to_path_buf();
+    }
+    find_module_candidates(&base, segments)
+}
+
+fn find_module_candidates(root: &Path, segments: &[String]) -> Option<PathBuf> {
+    if segments.is_empty() {
+        return None;
+    }
+
+    let candidate = segments
+        .iter()
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
+    let file = candidate.with_extension("tg");
+    if file.is_file() {
+        return Some(file);
+    }
+
+    let nested_main = candidate.join("main.tg");
+    if nested_main.is_file() {
+        return Some(nested_main);
+    }
+
     None
 }
 
 fn stdlib_root() -> PathBuf {
+    if let Some(configured) = std::env::var_os("THAGORE_STDLIB") {
+        return PathBuf::from(configured);
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../stdlib")
+        .to_path_buf()
+}
+
+fn project_root(entry: &Path) -> PathBuf {
+    let normalized = normalize_path(entry);
+    let mut ancestors = normalized.ancestors().peekable();
+    while let Some(ancestor) = ancestors.next() {
+        if ancestor.file_name().and_then(|name| name.to_str()) == Some("src") {
+            if let Some(parent) = ancestor.parent() {
+                return parent.to_path_buf();
+            }
+        }
+    }
+    normalized
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| Path::new("."))
         .to_path_buf()
 }
 
@@ -705,13 +987,89 @@ fn module_namespace(segments: &[String]) -> String {
     segments.join("__")
 }
 
+fn module_label_from_segments(segments: &[String]) -> String {
+    segments
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "__module__".to_string())
+}
+
+fn import_path_label(import_decl: &thagore_ast::ImportDecl<'_>, segments: &[String]) -> String {
+    let mut label = String::new();
+    for _ in 0..import_decl.relative_level {
+        label.push('.');
+    }
+    if !segments.is_empty() {
+        if !label.is_empty() && !label.ends_with('.') {
+            label.push('.');
+        }
+        label.push_str(&segments.join("."));
+    }
+    if label.is_empty() {
+        "<empty>".to_string()
+    } else {
+        label
+    }
+}
+
+fn is_relative_module_import(import_decl: &thagore_ast::ImportDecl<'_>) -> bool {
+    import_decl.is_from && import_decl.relative_level > 0 && import_decl.path_segments.is_empty()
+}
+
+fn collect_module_exports(
+    decls: &[Decl<'_>],
+    source_symbols: &BTreeMap<InternedStr, String>,
+    namespace: &str,
+) -> Vec<ExportedSymbol> {
+    let mut exports = Vec::new();
+    for symbol in top_level_symbols(decls) {
+        let local_name = source_symbols
+            .get(&symbol)
+            .cloned()
+            .unwrap_or_else(|| format!("sym_{}", symbol.as_u32()));
+        let qualified_name = if namespace.is_empty() {
+            local_name.clone()
+        } else {
+            format!("{namespace}__{local_name}")
+        };
+        exports.push(ExportedSymbol {
+            local_name,
+            qualified_name,
+        });
+    }
+    exports
+}
+
+fn include_all_binding(
+    exports: &[ExportedSymbol],
+    module_label: String,
+    parser: &mut Parser<'_, '_, '_>,
+    intern_cache: &mut HashMap<String, InternedStr>,
+) -> IncludeAllBinding {
+    IncludeAllBinding {
+        module_label,
+        symbols: exports
+            .iter()
+            .map(|export| {
+                (
+                    export.local_name.clone(),
+                    intern_owned_cached(parser, intern_cache, &export.qualified_name),
+                )
+            })
+            .collect(),
+    }
+}
+
 struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
     arena: &'ast Bump,
     parser: &'a mut Parser<'src, 'tok, 'ast>,
     next_node_id: &'a mut u32,
     intern_cache: &'a mut HashMap<String, InternedStr>,
+    diagnostics: &'a mut Vec<CompilerDiagnostic>,
     source_symbols: &'a BTreeMap<InternedStr, String>,
     import_namespaces: HashMap<InternedStr, String>,
+    direct_imports: HashMap<InternedStr, InternedStr>,
+    include_all_symbols: HashMap<String, Vec<(String, InternedStr)>>,
     top_level_renames: HashMap<InternedStr, InternedStr>,
     canonical_symbols: HashMap<InternedStr, InternedStr>,
     scope_bindings: Vec<Vec<InternedStr>>,
@@ -724,14 +1082,29 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         parser: &'a mut Parser<'src, 'tok, 'ast>,
         next_node_id: &'a mut u32,
         intern_cache: &'a mut HashMap<String, InternedStr>,
+        diagnostics: &'a mut Vec<CompilerDiagnostic>,
         source_symbols: &'a BTreeMap<InternedStr, String>,
         decls: &[Decl<'ast>],
         namespace: Option<&str>,
-        imports: &[ImportBinding],
+        imports: &ImportBindings,
     ) -> Self {
         let mut import_namespaces = HashMap::new();
-        for import in imports {
+        for import in &imports.module_aliases {
             import_namespaces.insert(import.alias, import.namespace.clone());
+        }
+        let direct_imports = imports
+            .direct_symbols
+            .iter()
+            .map(|binding| (binding.local_name, binding.qualified_name))
+            .collect::<HashMap<_, _>>();
+        let mut include_all_symbols: HashMap<String, Vec<(String, InternedStr)>> = HashMap::new();
+        for import in &imports.include_all {
+            for (name, qualified) in &import.symbols {
+                include_all_symbols
+                    .entry(name.clone())
+                    .or_default()
+                    .push((import.module_label.clone(), *qualified));
+            }
         }
 
         let mut top_level_renames = HashMap::new();
@@ -753,8 +1126,11 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             parser,
             next_node_id,
             intern_cache,
+            diagnostics,
             source_symbols,
             import_namespaces,
+            direct_imports,
+            include_all_symbols,
             top_level_renames,
             canonical_symbols: HashMap::new(),
             scope_bindings: Vec::new(),
@@ -1074,7 +1450,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             Expr::Ident(node) => Expr::Ident(IdentExpr {
                 id: self.new_node_id(),
                 span: node.span,
-                name: self.rewrite_identifier(node.name),
+                name: self.rewrite_identifier(node.name, Some(node.span)),
             }),
             Expr::Literal(node) => Expr::Literal(LitExpr {
                 id: self.new_node_id(),
@@ -1126,11 +1502,43 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
-    fn rewrite_identifier(&mut self, symbol: InternedStr) -> InternedStr {
+    fn rewrite_identifier(&mut self, symbol: InternedStr, span: Option<Span>) -> InternedStr {
         if self.is_local(symbol) {
             self.canonical_symbol(symbol)
         } else if let Some(renamed) = self.top_level_renames.get(&symbol).copied() {
             renamed
+        } else if let Some(imported) = self.direct_imports.get(&symbol).copied() {
+            imported
+        } else if let Some(include_all) = self.include_all_symbols.get(self.text_of(symbol)) {
+            if include_all.len() == 1 {
+                include_all[0].1
+            } else {
+                self.diagnostics.push(
+                    CompilerDiagnostic::new(
+                        "CLI009",
+                        "ambiguous symbol",
+                        format!(
+                            "`{}` is imported from: {}",
+                            self.text_of(symbol),
+                            include_all
+                                .iter()
+                                .map(|(module, _)| module.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        span,
+                    )
+                    .with_hint(format!(
+                        "use {}",
+                        include_all
+                            .iter()
+                            .map(|(module, _)| format!("{module}.{}", self.text_of(symbol)))
+                            .collect::<Vec<_>>()
+                            .join(" or ")
+                    )),
+                );
+                self.canonical_symbol(symbol)
+            }
         } else {
             self.canonical_symbol(symbol)
         }
@@ -1874,6 +2282,12 @@ impl<'ast> Visitor<'ast> for SymbolCollector {
     fn visit_import_decl(&mut self, decl: &'ast thagore_ast::ImportDecl<'ast>) {
         for segment in decl.path_segments {
             self.record(*segment);
+        }
+        for symbol in decl.symbols {
+            self.record(symbol.name);
+            if let Some(alias) = symbol.alias {
+                self.record(alias);
+            }
         }
         if let Some(alias) = decl.alias {
             self.record(alias);

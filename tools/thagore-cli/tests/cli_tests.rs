@@ -433,6 +433,105 @@ fn check_rewrites_alias_qualified_calls_from_imported_modules() {
 }
 
 #[test]
+fn check_supports_from_import_symbol_aliases() {
+    let dir = TempDir::new().expect("temp dir");
+    let include_root = dir.path().join("deps");
+    fs::create_dir_all(&include_root).expect("create include dir");
+    fs::write(
+        include_root.join("calc.tg"),
+        "func sqrt(value: f64) -> f64:\n  return value\n",
+    )
+    .expect("write imported module");
+    let source = dir.path().join("main.tg");
+    fs::write(
+        &source,
+        "from calc import sqrt as root\n\nfunc main() -> i32:\n  if (root(16.0) == 16.0):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "check",
+            source.to_str().expect("utf8"),
+            "--include-dir",
+            include_root.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc check");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn check_reports_ambiguous_include_all_symbols_at_use_site() {
+    let dir = TempDir::new().expect("temp dir");
+    let include_root = dir.path().join("deps");
+    fs::create_dir_all(&include_root).expect("create include dir");
+    fs::write(
+        include_root.join("alpha.tg"),
+        "func len(value: i32) -> i32:\n  return value\n",
+    )
+    .expect("write alpha module");
+    fs::write(
+        include_root.join("beta.tg"),
+        "func len(value: i32) -> i32:\n  return value\n",
+    )
+    .expect("write beta module");
+    let source = dir.path().join("main.tg");
+    fs::write(
+        &source,
+        "import alpha include all\nimport beta include all\n\nfunc main() -> i32:\n  return len(1)\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "check",
+            source.to_str().expect("utf8"),
+            "--include-dir",
+            include_root.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ambiguous symbol"), "{stderr}");
+    assert!(stderr.contains("alpha.len"), "{stderr}");
+    assert!(stderr.contains("beta.len"), "{stderr}");
+}
+
+#[test]
+fn check_resolves_relative_module_imports() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    fs::write(
+        dir.path().join("utils.tg"),
+        "func helper() -> i32:\n  return 0\n",
+    )
+    .expect("write utils module");
+    fs::write(
+        &source,
+        "from . import utils\n\nfunc main() -> i32:\n  return utils.helper()\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);
