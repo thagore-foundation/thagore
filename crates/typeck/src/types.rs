@@ -73,6 +73,8 @@ pub enum TypeKind {
     Unknown,
     /// Primitive `i32`.
     I32,
+    /// Primitive `i64`.
+    I64,
     /// Primitive `f64`.
     F64,
     /// Primitive `bool`.
@@ -87,6 +89,8 @@ pub enum TypeKind {
     Function(FunctionType),
     /// Local inference variable.
     Infer(u32),
+    /// Integer-literal inference variable.
+    IntInfer(u32),
 }
 
 /// Canonical type storage with structural interning.
@@ -96,6 +100,7 @@ pub struct TypeArena {
     unit: TypeId,
     unknown: TypeId,
     i32: TypeId,
+    i64: TypeId,
     f64: TypeId,
     bool: TypeId,
     str: TypeId,
@@ -116,6 +121,7 @@ impl TypeArena {
         let unit = Self::push_builtin(&mut kinds, TypeKind::Unit);
         let unknown = Self::push_builtin(&mut kinds, TypeKind::Unknown);
         let i32 = Self::push_builtin(&mut kinds, TypeKind::I32);
+        let i64 = Self::push_builtin(&mut kinds, TypeKind::I64);
         let f64 = Self::push_builtin(&mut kinds, TypeKind::F64);
         let bool = Self::push_builtin(&mut kinds, TypeKind::Bool);
         let str = Self::push_builtin(&mut kinds, TypeKind::Str);
@@ -125,6 +131,7 @@ impl TypeArena {
             unit,
             unknown,
             i32,
+            i64,
             f64,
             bool,
             str,
@@ -167,6 +174,12 @@ impl TypeArena {
         self.i32
     }
 
+    /// Returns the built-in `i64` type.
+    #[must_use]
+    pub const fn i64(&self) -> TypeId {
+        self.i64
+    }
+
     /// Returns the built-in `f64` type.
     #[must_use]
     pub const fn f64(&self) -> TypeId {
@@ -200,7 +213,7 @@ impl TypeArena {
     /// Returns `true` when `id` is a numeric primitive.
     #[must_use]
     pub fn is_numeric(&self, id: TypeId) -> bool {
-        matches!(self.kind(id), TypeKind::I32 | TypeKind::F64)
+        matches!(self.kind(id), TypeKind::I32 | TypeKind::I64 | TypeKind::F64)
     }
 
     /// Returns `true` when `id` is a sentinel unknown type.
@@ -212,7 +225,7 @@ impl TypeArena {
     /// Returns `true` when `id` is an inference variable.
     #[must_use]
     pub fn is_infer(&self, id: TypeId) -> bool {
-        matches!(self.kind(id), TypeKind::Infer(_))
+        matches!(self.kind(id), TypeKind::Infer(_) | TypeKind::IntInfer(_))
     }
 
     /// Interns a fresh local inference variable.
@@ -220,6 +233,13 @@ impl TypeArena {
         let infer = self.next_infer;
         self.next_infer = self.next_infer.saturating_add(1);
         self.push(TypeKind::Infer(infer))
+    }
+
+    /// Interns a fresh integer-literal inference variable.
+    pub fn fresh_int_infer(&mut self) -> TypeId {
+        let infer = self.next_infer;
+        self.next_infer = self.next_infer.saturating_add(1);
+        self.push(TypeKind::IntInfer(infer))
     }
 
     /// Interns or reuses an array type.

@@ -120,6 +120,10 @@ impl InferenceSolver {
                 self.union(left_root, right_root);
                 self.resolve(left_root)
             }
+            (TypeKind::IntInfer(_), TypeKind::IntInfer(_)) => {
+                self.union(left_root, right_root);
+                self.resolve(left_root)
+            }
             (TypeKind::Infer(_), _) => {
                 self.union(left_root, right_root);
                 right_root
@@ -127,6 +131,30 @@ impl InferenceSolver {
             (_, TypeKind::Infer(_)) => {
                 self.union(right_root, left_root);
                 left_root
+            }
+            (TypeKind::IntInfer(_), TypeKind::I32 | TypeKind::I64) => {
+                self.union(left_root, right_root);
+                right_root
+            }
+            (TypeKind::I32 | TypeKind::I64, TypeKind::IntInfer(_)) => {
+                self.union(right_root, left_root);
+                left_root
+            }
+            (TypeKind::IntInfer(_), _) => {
+                errors.push(TypeError::TypeMismatch {
+                    expected: arena.i32(),
+                    found: right_root,
+                    span,
+                });
+                arena.unknown()
+            }
+            (_, TypeKind::IntInfer(_)) => {
+                errors.push(TypeError::TypeMismatch {
+                    expected: left_root,
+                    found: arena.i32(),
+                    span,
+                });
+                arena.unknown()
             }
             (TypeKind::Array(left_element), TypeKind::Array(right_element)) => {
                 self.unify(*left_element, *right_element, span, arena, errors);

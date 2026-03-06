@@ -420,13 +420,14 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
                     TypeKind::Unit => self.types.unit(),
                     TypeKind::Unknown => self.types.unknown(),
                     TypeKind::I32 => self.types.i32(),
+                    TypeKind::I64 => self.types.i64(),
                     TypeKind::F64 => self.types.f64(),
                     TypeKind::Bool => self.types.bool(),
                     TypeKind::Str => self.types.str(),
                     TypeKind::Struct(_) => iter_ty,
                     TypeKind::Array(element) => *element,
                     TypeKind::Function(FunctionType { return_type, .. }) => *return_type,
-                    TypeKind::Infer(_) => self.types.unknown(),
+                    TypeKind::Infer(_) | TypeKind::IntInfer(_) => self.types.unknown(),
                 };
                 self.errors.push(LoweringError::NotIndexable {
                     found,

@@ -45,11 +45,18 @@ fn emit_const<'ctx>(
 ) -> Result<(), CodegenError> {
     let type_id = type_of(function, value)?;
     let runtime = match constant {
-        Const::Int(number) => context
-            .llvm
-            .i32_type()
-            .const_int(*number as u64, true)
-            .as_basic_value_enum(),
+        Const::Int(number) => match context.types.kind(type_id) {
+            TypeKind::I64 => context
+                .llvm
+                .i64_type()
+                .const_int(*number as u64, true)
+                .as_basic_value_enum(),
+            _ => context
+                .llvm
+                .i32_type()
+                .const_int(*number as u64, true)
+                .as_basic_value_enum(),
+        },
         Const::Float(number) => context
             .llvm
             .f64_type()
@@ -92,7 +99,7 @@ fn emit_bin_op<'ctx>(
     let right_value = lookup_value(context, function, right)?;
     let left_ty = type_of(function, left)?;
     let result = match context.types.kind(left_ty) {
-        TypeKind::I32 | TypeKind::Bool => {
+        TypeKind::I32 | TypeKind::I64 | TypeKind::Bool => {
             let lhs = left_value.into_int_value();
             let rhs = right_value.into_int_value();
             match op {
@@ -223,7 +230,7 @@ fn emit_un_op<'ctx>(
     let runtime = lookup_value(context, function, operand)?;
     let operand_ty = type_of(function, operand)?;
     let lowered = match context.types.kind(operand_ty) {
-        TypeKind::I32 => {
+        TypeKind::I32 | TypeKind::I64 => {
             let operand = runtime.into_int_value();
             match op {
                 thagore_ir::UnOp::Plus => operand.as_basic_value_enum(),

@@ -42,6 +42,8 @@ impl<'ctx> TypeMap<'ctx> {
         map.basic_types
             .insert(arena.i32(), context.i32_type().into());
         map.basic_types
+            .insert(arena.i64(), context.i64_type().into());
+        map.basic_types
             .insert(arena.f64(), context.f64_type().into());
         map.basic_types
             .insert(arena.bool(), context.bool_type().into());
@@ -69,8 +71,8 @@ impl<'ctx> TypeMap<'ctx> {
                 TypeKind::Unit => {
                     map.void_types.insert(type_id, context.void_type());
                 }
-                TypeKind::Unknown | TypeKind::Infer(_) => {}
-                TypeKind::I32 | TypeKind::F64 | TypeKind::Bool | TypeKind::Str => {}
+                TypeKind::Unknown | TypeKind::Infer(_) | TypeKind::IntInfer(_) => {}
+                TypeKind::I32 | TypeKind::I64 | TypeKind::F64 | TypeKind::Bool | TypeKind::Str => {}
                 TypeKind::Struct(struct_ty) => {
                     let field_types = struct_ty
                         .fields

@@ -596,6 +596,7 @@ fn lowers_if_while_and_for_control_flow() {
                 }
                 Stmt::Return(node) => table.insert(node.id, types.unit()),
                 Stmt::Expr(node) => table.insert(node.expr.id(), types.i32()),
+                Stmt::Break(_) | Stmt::Continue(_) => {}
                 Stmt::Let(_) => {}
             }
         }

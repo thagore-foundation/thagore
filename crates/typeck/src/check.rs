@@ -234,10 +234,11 @@ impl TypeChecker {
     fn resolve_named_type(&mut self, ty: &NamedTypeExpr) -> TypeId {
         let resolved = match self.symbol_name(ty.name) {
             Some("i32") => self.types.i32(),
+            Some("i64") => self.types.i64(),
             Some("f64") => self.types.f64(),
             Some("bool") => self.types.bool(),
-            Some("str") => self.types.str(),
-            Some("()") => self.types.unit(),
+            Some("str") | Some("ptr") => self.types.str(),
+            Some("()") | Some("void") => self.types.unit(),
             _ => self.struct_types.get(&ty.name).copied().unwrap_or_else(|| {
                 self.errors.push(TypeError::unknown(ty.span));
                 self.types.unknown()
@@ -309,7 +310,10 @@ impl TypeChecker {
 
     fn require_numeric(&mut self, ty: TypeId, span: thagore_ast::Span) -> TypeId {
         let resolved = self.resolved_type(ty);
-        if self.types.is_numeric(resolved) || self.types.is_unknown(resolved) {
+        if self.types.is_numeric(resolved)
+            || self.types.is_unknown(resolved)
+            || self.types.is_infer(resolved)
+        {
             return ty;
         }
 
@@ -346,7 +350,7 @@ impl TypeChecker {
                     resolved
                 }
             }
-            None => self.resolved_type(inferred),
+            None => self.default_inferred_type(inferred),
         };
 
         self.table.insert(decl_id, result);
@@ -386,6 +390,17 @@ impl TypeChecker {
             signature.params[1..].to_vec()
         };
         Some(self.types.intern_function(params, signature.return_type))
+    }
+
+    fn default_inferred_type(&mut self, inferred: TypeId) -> TypeId {
+        let resolved = self.resolved_type(inferred);
+        if self.types.is_infer(resolved) {
+            let default = self.types.i32();
+            self.unify(default, inferred, thagore_ast::Span::empty());
+            default
+        } else {
+            resolved
+        }
     }
 }
 
@@ -746,7 +761,11 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
     fn visit_lit_expr(&mut self, expr: &'ast LitExpr) {
         let ty = match expr.literal {
-            Literal::Int(_) => self.types.i32(),
+            Literal::Int(_) => {
+                let infer = self.types.fresh_int_infer();
+                self.infer.sync_with_arena(&self.types);
+                infer
+            }
             Literal::Float(_) => self.types.f64(),
             Literal::Bool(_) => self.types.bool(),
             Literal::Str(_) => self.types.str(),

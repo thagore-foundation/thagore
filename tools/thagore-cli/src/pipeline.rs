@@ -1019,6 +1019,7 @@ fn render_type(ty: TypeId, arena: &TypeArena, parser: &Parser<'_, '_, '_>) -> St
         TypeKind::Unit => "()".to_string(),
         TypeKind::Unknown => "<unknown>".to_string(),
         TypeKind::I32 => "i32".to_string(),
+        TypeKind::I64 => "i64".to_string(),
         TypeKind::F64 => "f64".to_string(),
         TypeKind::Bool => "bool".to_string(),
         TypeKind::Str => "str".to_string(),
