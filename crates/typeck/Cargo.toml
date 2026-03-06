@@ -6,3 +6,9 @@ license = "MIT"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+thagore-ast = { path = "../ast" }
+thagore-lexer = { path = "../lexer" }
+# indexmap is required for ordered O(1) lexical scope lookup without depending on std collections.
+indexmap = { version = "2.12.0", default-features = false }
