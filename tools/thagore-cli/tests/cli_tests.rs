@@ -23,6 +23,100 @@ use error::{CompilerDiagnostic, ErrorReporter};
 use run::RunWorkspace;
 use timer::{Timer, TimingReport};
 
+const CHECK_FIXTURES: &[&str] = &[
+    "tests/fixtures/basic/arithmetic.tg",
+    "tests/fixtures/basic/booleans.tg",
+    "tests/fixtures/basic/hello.tg",
+    "tests/fixtures/basic/strings.tg",
+    "tests/fixtures/basic/variables.tg",
+    "tests/fixtures/bench/binary_tree.tg",
+    "tests/fixtures/bench/fibonacci.tg",
+    "tests/fixtures/bench/loop_sum.tg",
+    "tests/fixtures/bench/matrix_mul.tg",
+    "tests/fixtures/bench/string_search.tg",
+    "tests/fixtures/bench/struct_alloc.tg",
+    "tests/fixtures/bench/struct_heavy.tg",
+    "tests/fixtures/control/early_return.tg",
+    "tests/fixtures/control/for_loop.tg",
+    "tests/fixtures/control/if_else.tg",
+    "tests/fixtures/control/while_loop.tg",
+    "tests/fixtures/ffi/extern_math.tg",
+    "tests/fixtures/ffi/extern_printf.tg",
+    "tests/fixtures/flow/basic_flow.tg",
+    "tests/fixtures/flow/nested_stages.tg",
+    "tests/fixtures/flow/payment_flow.tg",
+    "tests/fixtures/functions/basic_func.tg",
+    "tests/fixtures/functions/multiple_return.tg",
+    "tests/fixtures/functions/recursion.tg",
+    "tests/fixtures/functions/void_func.tg",
+    "tests/fixtures/hello.tg",
+    "tests/fixtures/imports/import_multi.tg",
+    "tests/fixtures/imports/import_std.tg",
+    "tests/fixtures/intent/basic_intent.tg",
+    "tests/fixtures/intent/intent_search.tg",
+    "tests/fixtures/intent/intent_sort.tg",
+    "tests/fixtures/structs/basic_struct.tg",
+    "tests/fixtures/structs/impl_methods.tg",
+    "tests/fixtures/structs/nested_struct.tg",
+];
+
+const RUN_ZERO_FIXTURES: &[&str] = &[
+    "tests/fixtures/basic/arithmetic.tg",
+    "tests/fixtures/basic/booleans.tg",
+    "tests/fixtures/basic/hello.tg",
+    "tests/fixtures/basic/strings.tg",
+    "tests/fixtures/basic/variables.tg",
+    "tests/fixtures/control/early_return.tg",
+    "tests/fixtures/control/for_loop.tg",
+    "tests/fixtures/control/if_else.tg",
+    "tests/fixtures/control/while_loop.tg",
+    "tests/fixtures/ffi/extern_math.tg",
+    "tests/fixtures/ffi/extern_printf.tg",
+    "tests/fixtures/flow/basic_flow.tg",
+    "tests/fixtures/flow/nested_stages.tg",
+    "tests/fixtures/flow/payment_flow.tg",
+    "tests/fixtures/functions/basic_func.tg",
+    "tests/fixtures/functions/multiple_return.tg",
+    "tests/fixtures/functions/recursion.tg",
+    "tests/fixtures/functions/void_func.tg",
+    "tests/fixtures/hello.tg",
+    "tests/fixtures/imports/import_multi.tg",
+    "tests/fixtures/imports/import_std.tg",
+    "tests/fixtures/intent/basic_intent.tg",
+    "tests/fixtures/intent/intent_search.tg",
+    "tests/fixtures/intent/intent_sort.tg",
+    "tests/fixtures/structs/basic_struct.tg",
+    "tests/fixtures/structs/impl_methods.tg",
+    "tests/fixtures/structs/nested_struct.tg",
+];
+
+const RUN_BENCH_FIXTURES: &[&str] = &[
+    "tests/fixtures/bench/binary_tree.tg",
+    "tests/fixtures/bench/fibonacci.tg",
+    "tests/fixtures/bench/loop_sum.tg",
+    "tests/fixtures/bench/matrix_mul.tg",
+    "tests/fixtures/bench/string_search.tg",
+    "tests/fixtures/bench/struct_alloc.tg",
+    "tests/fixtures/bench/struct_heavy.tg",
+];
+
+const ERROR_FIXTURES: &[&str] = &[
+    "tests/fixtures/errors/bad_indent.tg",
+    "tests/fixtures/errors/missing_paren.tg",
+    "tests/fixtures/errors/missing_return.tg",
+    "tests/fixtures/errors/tab_indent.tg",
+    "tests/fixtures/errors/type_mismatch.tg",
+    "tests/fixtures/errors/unknown_var.tg",
+];
+
+fn repo_path(relative: &str) -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+        .display()
+        .to_string()
+}
+
 #[test]
 fn parses_build_arguments() {
     let cli = Cli::try_parse_from([
@@ -180,4 +274,75 @@ fn check_json_emits_array_payload() {
     let stdout = String::from_utf8(output.stdout).expect("utf8");
     assert!(stdout.contains("\"file\""));
     assert!(stdout.contains("\"code\""));
+}
+
+#[test]
+fn all_positive_fixtures_pass_check() {
+    for fixture in CHECK_FIXTURES {
+        let fixture_path = repo_path(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_thagore"))
+            .args(["check", &fixture_path])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to check {fixture}: {error}"));
+        assert!(
+            output.status.success(),
+            "check failed for {fixture}:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn non_benchmark_fixtures_exit_zero() {
+    for fixture in RUN_ZERO_FIXTURES {
+        let fixture_path = repo_path(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_thagore"))
+            .args(["run", &fixture_path])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run {fixture}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "run failed for {fixture}:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn benchmark_fixtures_exit_normally() {
+    for fixture in RUN_BENCH_FIXTURES {
+        let fixture_path = repo_path(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_thagore"))
+            .args(["run", &fixture_path])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to run {fixture}: {error}"));
+        assert!(
+            output.status.code().is_some(),
+            "benchmark fixture terminated by signal for {fixture}:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn negative_fixtures_emit_diagnostics() {
+    for fixture in ERROR_FIXTURES {
+        let fixture_path = repo_path(fixture);
+        let output = Command::new(env!("CARGO_BIN_EXE_thagore"))
+            .args(["check", &fixture_path])
+            .output()
+            .unwrap_or_else(|error| panic!("failed to check {fixture}: {error}"));
+        assert!(
+            !output.status.success(),
+            "negative fixture unexpectedly passed: {fixture}"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("error["),
+            "missing diagnostic for {fixture}:\n{stderr}"
+        );
+    }
 }
