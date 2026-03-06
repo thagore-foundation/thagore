@@ -129,3 +129,40 @@ impl fmt::Display for Span {
         write!(f, "{}..{}", self.start, self.end)
     }
 }
+
+/// Interned string handle carried by identifiers and string literals.
+///
+/// The numeric payload is an index into the compiler's string interner. AST
+/// nodes never own heap-allocated `String` values.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InternedStr(u32);
+
+impl InternedStr {
+    /// Creates a new interned string handle from a raw interner index.
+    #[must_use]
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    /// Returns the raw interner index.
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl From<u32> for InternedStr {
+    fn from(value: u32) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<InternedStr> for u32 {
+    fn from(value: InternedStr) -> Self {
+        value.as_u32()
+    }
+}
+
+/// Borrowed sequence of AST elements stored inside the arena.
+pub type AstSlice<'ast, T> = &'ast [T];
