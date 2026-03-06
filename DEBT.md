@@ -13,9 +13,9 @@
       Fix: Delete the parser-local symbol table and thread lexer-owned interned symbols directly into AST construction.
 
 - [ ] [typeck] Remove explicit symbol-name registration once the frontend exposes a canonical symbol resolver
-      Introduced: uncommitted
+      Introduced: 8b684c66
       Fix: Thread the lexer or parser interner through type checking so builtins, arrays, and nominal types can be resolved without a manual symbol-name side table.
 
 - [ ] [ast] Add a struct literal AST node so type checking can validate field-complete struct construction
-      Introduced: uncommitted
+      Introduced: 8b684c66
       Fix: Extend the AST and parser with a dedicated struct literal expression node and then add the missing type rule in `typeck`.
