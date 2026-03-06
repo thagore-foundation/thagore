@@ -1,0 +1,17 @@
+func main() -> i32:
+  let i: i32 = 0
+  let total: i32 = 0
+  while (i < 256):
+    let j: i32 = 0
+    while (j < 256):
+      let sum: i32 = 0
+      let k: i32 = 0
+      while (k < 256):
+        let left: i32 = ((i * 17) + (k * 31)) % 97
+        let right: i32 = ((k * 13) + (j * 19)) % 89
+        sum = sum + (left * right)
+        k = k + 1
+      total = total + (sum % 251)
+      j = j + 1
+    i = i + 1
+  return total % 251

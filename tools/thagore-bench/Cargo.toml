@@ -1,0 +1,18 @@
+[package]
+name = "thagore-bench"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "thagore-bench"
+path = "src/main.rs"
+
+[dependencies]
+# `clap` provides the benchmark CLI surface.
+clap = { version = "4.5.60", features = ["derive"] }
+# `serde` and `serde_json` serialize benchmark reports for machine consumption.
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+# `tempfile` manages isolated build directories for each benchmark run.
+tempfile = "3.26.0"

@@ -1,0 +1,8 @@
+func walk(depth: i32, index: i32) -> i32:
+  if (depth == 0):
+    return index % 97
+  else:
+    return walk(depth - 1, index * 2) + walk(depth - 1, (index * 2) + 1)
+
+func main() -> i32:
+  return walk(20, 1) % 251

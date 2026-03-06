@@ -1,0 +1,21 @@
+struct Quad:
+  x: i32
+  y: i32
+  z: i32
+  w: i32
+
+func main() -> i32:
+  let i: i32 = 0
+  let x: i32 = 1
+  let y: i32 = 2
+  let z: i32 = 3
+  let w: i32 = 4
+  let total: i32 = 0
+  while (i < 2000000):
+    x = x + 3
+    y = y + x
+    z = z + y
+    w = w + z
+    total = total + x + y + z + w
+    i = i + 1
+  return total % 251
