@@ -1,2 +1,63 @@
 # module: stdlib/math
-# description: Standard math compatibility surface for module resolution tests.
+# description: Runtime-backed floating-point and integer math helpers.
+
+extern func thag_rt_pow(base: f64, exp: f64) -> f64
+extern func thag_rt_sqrt(value: f64) -> f64
+extern func thag_rt_floor(value: f64) -> f64
+extern func thag_rt_ceil(value: f64) -> f64
+extern func thag_rt_round(value: f64) -> f64
+extern func thag_rt_log(value: f64) -> f64
+extern func thag_rt_log2(value: f64) -> f64
+extern func thag_rt_log10(value: f64) -> f64
+extern func thag_rt_gcd(left: i32, right: i32) -> i32
+extern func thag_rt_lcm(left: i32, right: i32) -> i32
+extern func thag_rt_is_even(value: i32) -> bool
+extern func thag_rt_is_odd(value: i32) -> bool
+
+# pow: Raises `base` to `exp`.
+func pow(base: f64, exp: f64) -> f64:
+  return thag_rt_pow(base, exp)
+
+# sqrt: Returns the square root of `value`.
+func sqrt(value: f64) -> f64:
+  return thag_rt_sqrt(value)
+
+# floor: Floors a floating-point value.
+func floor(value: f64) -> f64:
+  return thag_rt_floor(value)
+
+# ceil: Ceils a floating-point value.
+func ceil(value: f64) -> f64:
+  return thag_rt_ceil(value)
+
+# round: Rounds a floating-point value to the nearest integer value in f64 form.
+func round(value: f64) -> f64:
+  return thag_rt_round(value)
+
+# log: Returns the natural logarithm.
+func log(value: f64) -> f64:
+  return thag_rt_log(value)
+
+# log2: Returns the base-2 logarithm.
+func log2(value: f64) -> f64:
+  return thag_rt_log2(value)
+
+# log10: Returns the base-10 logarithm.
+func log10(value: f64) -> f64:
+  return thag_rt_log10(value)
+
+# gcd: Returns the greatest common divisor of two i32 values.
+func gcd(left: i32, right: i32) -> i32:
+  return thag_rt_gcd(left, right)
+
+# lcm: Returns the least common multiple of two i32 values.
+func lcm(left: i32, right: i32) -> i32:
+  return thag_rt_lcm(left, right)
+
+# is_even: Returns true when the input is even.
+func is_even(value: i32) -> bool:
+  return thag_rt_is_even(value)
+
+# is_odd: Returns true when the input is odd.
+func is_odd(value: i32) -> bool:
+  return thag_rt_is_odd(value)

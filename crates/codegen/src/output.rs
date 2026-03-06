@@ -151,12 +151,13 @@ pub fn emit_object(
 
 /// Links an object file into a native executable via `cc`.
 pub fn link_binary(object: &Path, binary: &Path) -> Result<(), CodegenError> {
+    let runtime_object = compile_runtime_object(binary)?;
     let mut attempts = linker_candidates();
     attempts.push(Linker::SystemCc);
 
     let mut last_error = None;
     for linker in attempts {
-        match try_link(linker, object, binary) {
+        match try_link(linker, object, &runtime_object, binary) {
             Ok(()) => return Ok(()),
             Err(error) => last_error = Some(error),
         }
@@ -166,6 +167,31 @@ pub fn link_binary(object: &Path, binary: &Path) -> Result<(), CodegenError> {
         linker: "cc".into(),
         message: "no usable linker found".into(),
     }))
+}
+
+fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
+    let runtime_source = Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/thagore_rt.c");
+    let runtime_object = binary.with_extension("thagore_rt.o");
+    let output = Command::new("cc")
+        .arg("-c")
+        .arg("-O2")
+        .arg(&runtime_source)
+        .arg("-o")
+        .arg(&runtime_object)
+        .output()
+        .map_err(|error| CodegenError::LinkFailed {
+            linker: "cc".into(),
+            message: error.to_string(),
+        })?;
+
+    if output.status.success() {
+        Ok(runtime_object)
+    } else {
+        Err(CodegenError::LinkFailed {
+            linker: "cc".into(),
+            message: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,9 +212,19 @@ fn linker_candidates() -> Vec<Linker> {
     linkers
 }
 
-fn try_link(linker: Linker, object: &Path, binary: &Path) -> Result<(), CodegenError> {
+fn try_link(
+    linker: Linker,
+    object: &Path,
+    runtime_object: &Path,
+    binary: &Path,
+) -> Result<(), CodegenError> {
     let mut command = Command::new("cc");
-    command.arg(object).arg("-o").arg(binary);
+    command
+        .arg(object)
+        .arg(runtime_object)
+        .arg("-lm")
+        .arg("-o")
+        .arg(binary);
     let linker_name = match linker {
         Linker::Mold => {
             command.arg("-fuse-ld=mold");

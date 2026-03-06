@@ -1,0 +1,137 @@
+# module: stdlib/string
+# description: Runtime-backed string helpers for Thagore programs.
+
+extern func thag_rt_str_eq(left: str, right: str) -> bool
+extern func thag_rt_concat(left: str, right: str) -> str
+extern func thag_rt_trim(value: str) -> str
+extern func thag_rt_from_int(value: i32) -> str
+extern func thag_rt_to_int(value: str) -> i32
+extern func thag_rt_len(value: str) -> i32
+extern func thag_rt_contains(value: str, sub: str) -> bool
+extern func thag_rt_starts_with(value: str, prefix: str) -> bool
+extern func thag_rt_ends_with(value: str, suffix: str) -> bool
+extern func thag_rt_find(value: str, sub: str) -> i32
+extern func thag_rt_replace(value: str, old_value: str, new_value: str) -> str
+extern func thag_rt_to_upper(value: str) -> str
+extern func thag_rt_to_lower(value: str) -> str
+extern func thag_rt_pad_left(value: str, width: i32, ch: str) -> str
+extern func thag_rt_pad_right(value: str, width: i32, ch: str) -> str
+extern func thag_rt_repeat(value: str, count: i32) -> str
+extern func thag_rt_reverse(value: str) -> str
+extern func thag_rt_strip(value: str, chars: str) -> str
+extern func thag_rt_char_at(value: str, index: i32) -> str
+extern func thag_rt_to_f64(value: str) -> f64
+extern func thag_rt_from_f64(value: f64) -> str
+extern func thag_rt_from_bool(value: bool) -> str
+extern func thag_rt_to_bool(value: str) -> bool
+extern func thag_rt_is_empty(value: str) -> bool
+extern func thag_rt_split(value: str, sep: str) -> Array[str]
+extern func thag_rt_join(parts: Array[str], sep: str) -> str
+
+# str_eq: Returns true when both strings are equal.
+func str_eq(left: str, right: str) -> bool:
+  return thag_rt_str_eq(left, right)
+
+# concat: Concatenates two strings.
+func concat(left: str, right: str) -> str:
+  return thag_rt_concat(left, right)
+
+# split: Splits a string by a separator into an array of strings.
+func split(value: str, sep: str) -> Array[str]:
+  return thag_rt_split(value, sep)
+
+# trim: Removes leading and trailing whitespace.
+func trim(value: str) -> str:
+  return thag_rt_trim(value)
+
+# from_int: Formats an i32 as a string.
+func from_int(value: i32) -> str:
+  return thag_rt_from_int(value)
+
+# to_int: Parses an i32 from a string.
+func to_int(value: str) -> i32:
+  return thag_rt_to_int(value)
+
+# len: Returns the byte length of a string.
+func len(value: str) -> i32:
+  return thag_rt_len(value)
+
+# slen: Backward-compatible alias for `len`.
+func slen(value: str) -> i32:
+  return len(value)
+
+# contains: Returns true when `sub` is contained in `value`.
+func contains(value: str, sub: str) -> bool:
+  return thag_rt_contains(value, sub)
+
+# starts_with: Returns true when `value` starts with `prefix`.
+func starts_with(value: str, prefix: str) -> bool:
+  return thag_rt_starts_with(value, prefix)
+
+# ends_with: Returns true when `value` ends with `suffix`.
+func ends_with(value: str, suffix: str) -> bool:
+  return thag_rt_ends_with(value, suffix)
+
+# find: Returns the first index of `sub` or -1.
+func find(value: str, sub: str) -> i32:
+  return thag_rt_find(value, sub)
+
+# replace: Replaces all `old_value` occurrences with `new_value`.
+func replace(value: str, old_value: str, new_value: str) -> str:
+  return thag_rt_replace(value, old_value, new_value)
+
+# to_upper: Uppercases a string.
+func to_upper(value: str) -> str:
+  return thag_rt_to_upper(value)
+
+# to_lower: Lowercases a string.
+func to_lower(value: str) -> str:
+  return thag_rt_to_lower(value)
+
+# pad_left: Left-pads a string to `width`.
+func pad_left(value: str, width: i32, ch: str) -> str:
+  return thag_rt_pad_left(value, width, ch)
+
+# pad_right: Right-pads a string to `width`.
+func pad_right(value: str, width: i32, ch: str) -> str:
+  return thag_rt_pad_right(value, width, ch)
+
+# repeat: Repeats a string `count` times.
+func repeat(value: str, count: i32) -> str:
+  return thag_rt_repeat(value, count)
+
+# reverse: Reverses a string byte-wise.
+func reverse(value: str) -> str:
+  return thag_rt_reverse(value)
+
+# strip: Strips leading and trailing characters present in `chars`.
+func strip(value: str, chars: str) -> str:
+  return thag_rt_strip(value, chars)
+
+# char_at: Returns a single-character string at `index` or empty string.
+func char_at(value: str, index: i32) -> str:
+  return thag_rt_char_at(value, index)
+
+# to_f64: Parses an f64 from a string.
+func to_f64(value: str) -> f64:
+  return thag_rt_to_f64(value)
+
+# from_f64: Formats an f64 as a string.
+func from_f64(value: f64) -> str:
+  return thag_rt_from_f64(value)
+
+# from_bool: Formats a bool as a string.
+func from_bool(value: bool) -> str:
+  return thag_rt_from_bool(value)
+
+# to_bool: Parses a bool from a string.
+func to_bool(value: str) -> bool:
+  return thag_rt_to_bool(value)
+
+# is_empty: Returns true when the string is empty.
+func is_empty(value: str) -> bool:
+  return thag_rt_is_empty(value)
+
+# join: Joins an array of strings with `sep`.
+func join(parts: Array[str], sep: str) -> str:
+  return thag_rt_join(parts, sep)

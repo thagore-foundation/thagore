@@ -1,2 +1,8 @@
 # module: stdlib/time
-# description: Standard time compatibility surface for module resolution tests.
+# description: Minimal time helpers backed by the bundled Thagore runtime.
+
+extern func thag_rt_now_ms() -> i64
+
+# now_ms: Returns the current runtime clock in milliseconds.
+func now_ms() -> i64:
+  return thag_rt_now_ms()

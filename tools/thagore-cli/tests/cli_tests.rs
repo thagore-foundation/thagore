@@ -532,6 +532,99 @@ fn check_resolves_relative_module_imports() {
 }
 
 #[test]
+fn build_and_run_std_string_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("string_stdlib");
+    fs::write(
+        &source,
+        "import std.string as string\n\nfunc main() -> i32:\n  let value: str = string.concat(\"tha\", \"gore\")\n  if (string.len(value) == 7 and string.contains(value, \"gor\")):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn build_and_run_std_math_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("math_stdlib");
+    fs::write(
+        &source,
+        "import std.math as math\n\nfunc main() -> i32:\n  if (math.sqrt(16.0) == 4.0 and math.gcd(12, 18) == 6 and math.is_even(8)):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn build_and_run_std_io_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("io_stdlib");
+    fs::write(
+        &source,
+        "import std.io as io\n\nfunc main() -> i32:\n  io.println(\"stdio ok\")\n  io.flush()\n  return 0\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);

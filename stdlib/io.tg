@@ -1,2 +1,68 @@
 # module: stdlib/io
-# description: Standard I/O compatibility surface for module resolution tests.
+# description: Standard I/O functions backed by the bundled Thagore runtime.
+
+extern func thag_rt_print(value: str) -> void
+extern func thag_rt_println(value: str) -> void
+extern func thag_rt_flush() -> void
+extern func thag_rt_eprint(value: str) -> void
+extern func thag_rt_eprintln(value: str) -> void
+extern func thag_rt_read_line() -> str
+extern func thag_rt_read_int() -> i32
+extern func thag_rt_read_i64() -> i64
+extern func thag_rt_read_f64() -> f64
+extern func thag_rt_read_word() -> str
+extern func thag_rt_read_all() -> str
+extern func thag_rt_read_ints(count: i32) -> Array[i32]
+extern func thag_rt_read_i64s(count: i32) -> Array[i64]
+
+# print: Writes a string to stdout without a trailing newline.
+func print(value: str):
+  thag_rt_print(value)
+
+# println: Writes a string to stdout followed by a newline.
+func println(value: str):
+  thag_rt_println(value)
+
+# flush: Flushes buffered stdout output.
+func flush():
+  thag_rt_flush()
+
+# read_line: Reads one line from stdin without the trailing newline.
+func read_line() -> str:
+  return thag_rt_read_line()
+
+# read_int: Reads one i32 token from stdin.
+func read_int() -> i32:
+  return thag_rt_read_int()
+
+# read_i64: Reads one i64 token from stdin.
+func read_i64() -> i64:
+  return thag_rt_read_i64()
+
+# read_f64: Reads one f64 token from stdin.
+func read_f64() -> f64:
+  return thag_rt_read_f64()
+
+# read_word: Reads one whitespace-delimited token from stdin.
+func read_word() -> str:
+  return thag_rt_read_word()
+
+# read_all: Reads the remaining stdin stream into a string.
+func read_all() -> str:
+  return thag_rt_read_all()
+
+# read_ints: Reads `count` integers into a runtime array.
+func read_ints(count: i32) -> Array[i32]:
+  return thag_rt_read_ints(count)
+
+# read_i64s: Reads `count` i64 values into a runtime array.
+func read_i64s(count: i32) -> Array[i64]:
+  return thag_rt_read_i64s(count)
+
+# eprint: Writes a string to stderr without a trailing newline.
+func eprint(value: str):
+  thag_rt_eprint(value)
+
+# eprintln: Writes a string to stderr followed by a newline.
+func eprintln(value: str):
+  thag_rt_eprintln(value)
