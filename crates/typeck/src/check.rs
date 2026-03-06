@@ -90,6 +90,7 @@ impl TypeChecker {
         }
 
         if self.errors.is_empty() {
+            self.finalize_table_inferences();
             Ok(mem::take(&mut self.table))
         } else {
             Err(mem::take(&mut self.errors))
@@ -401,6 +402,22 @@ impl TypeChecker {
         } else {
             resolved
         }
+    }
+
+    fn finalize_table_inferences(&mut self) {
+        self.infer.sync_with_arena(&self.types);
+        let default_i32 = self.types.i32();
+        let infer = &mut self.infer;
+        let types = &self.types;
+        let table = &mut self.table;
+        table.rewrite_all(|type_id| {
+            let resolved = infer.resolve(type_id);
+            if types.is_infer(resolved) {
+                default_i32
+            } else {
+                resolved
+            }
+        });
     }
 }
 

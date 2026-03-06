@@ -48,4 +48,13 @@ impl TypeTable {
     pub fn contains(&self, node_id: NodeId) -> bool {
         self.get(node_id).is_some()
     }
+
+    /// Rewrites every recorded type id in place.
+    pub fn rewrite_all(&mut self, mut rewrite: impl FnMut(TypeId) -> TypeId) {
+        for entry in &mut self.entries {
+            if let Some(type_id) = entry {
+                *type_id = rewrite(*type_id);
+            }
+        }
+    }
 }

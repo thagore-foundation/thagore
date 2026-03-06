@@ -257,8 +257,15 @@ struct FunctionLowerer<'a, 'b> {
     table: &'a TypeTable,
     errors: &'b mut Vec<LoweringError>,
     env: LoweringEnv,
+    loop_targets: Vec<LoopTargets>,
     current_block: BlockId,
     next_block: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LoopTargets {
+    break_block: BlockId,
+    continue_block: BlockId,
 }
 
 impl<'a, 'b> FunctionLowerer<'a, 'b> {
@@ -279,6 +286,7 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
             table,
             errors,
             env: LoweringEnv::new(),
+            loop_targets: Vec::new(),
             current_block: entry,
             next_block: 1,
         }
@@ -323,18 +331,26 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
             Stmt::While(node) => self.lower_while(node.condition, node.body, node.span),
             Stmt::For(node) => self.lower_for(node.binding, node.iterator, node.body, node.span),
             Stmt::Break(node) => {
-                self.errors.push(LoweringError::InvalidLoweringState {
-                    message: "break lowering requires loop control targets",
-                    span: node.span,
-                });
-                self.emit_unreachable(node.span);
+                if let Some(targets) = self.loop_targets.last().copied() {
+                    self.set_terminator(Terminator::Jump(targets.break_block), node.span);
+                } else {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "break used outside of a loop",
+                        span: node.span,
+                    });
+                    self.emit_unreachable(node.span);
+                }
             }
             Stmt::Continue(node) => {
-                self.errors.push(LoweringError::InvalidLoweringState {
-                    message: "continue lowering requires loop control targets",
-                    span: node.span,
-                });
-                self.emit_unreachable(node.span);
+                if let Some(targets) = self.loop_targets.last().copied() {
+                    self.set_terminator(Terminator::Jump(targets.continue_block), node.span);
+                } else {
+                    self.errors.push(LoweringError::InvalidLoweringState {
+                        message: "continue used outside of a loop",
+                        span: node.span,
+                    });
+                    self.emit_unreachable(node.span);
+                }
             }
         }
     }
@@ -395,7 +411,12 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
         );
 
         self.set_current_block(body_block);
+        self.loop_targets.push(LoopTargets {
+            break_block: exit_block,
+            continue_block: header,
+        });
         self.lower_block(body);
+        self.loop_targets.pop();
         if !self.current_block_terminated() {
             self.set_terminator(Terminator::Jump(header), body.span);
         }
@@ -450,6 +471,7 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
 
         let header = self.new_block();
         let body_block = self.new_block();
+        let continue_block = self.new_block();
         let exit_block = self.new_block();
         let preheader = self.current_block;
         self.set_terminator(Terminator::Jump(header), span);
@@ -467,15 +489,23 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
         self.emit(Instr::Store(binding_slot, element_value));
         self.env.push_scope();
         self.env.insert(binding, binding_slot);
+        self.loop_targets.push(LoopTargets {
+            break_block: exit_block,
+            continue_block,
+        });
         self.lower_block(body);
+        self.loop_targets.pop();
         self.env.pop_scope();
+        if !self.current_block_terminated() {
+            self.set_terminator(Terminator::Jump(continue_block), body.span);
+        }
+
+        self.set_current_block(continue_block);
         let one = self.emit_const(Const::Int(1), self.types.i32());
         let next_index = self.new_value(self.types.i32());
         self.emit(Instr::BinOp(next_index, BinOp::Add, phi_index, one));
-        if !self.current_block_terminated() {
-            self.set_terminator(Terminator::Jump(header), body.span);
-        }
-        self.patch_phi_input(header, index_value, next_index, body_block);
+        self.set_terminator(Terminator::Jump(header), body.span);
+        self.patch_phi_input(header, index_value, next_index, continue_block);
         self.set_current_block(exit_block);
     }
 

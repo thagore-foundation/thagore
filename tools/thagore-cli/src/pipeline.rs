@@ -1038,6 +1038,7 @@ fn render_type(ty: TypeId, arena: &TypeArena, parser: &Parser<'_, '_, '_>) -> St
             )
         }
         TypeKind::Infer(index) => format!("_t{index}"),
+        TypeKind::IntInfer(index) => format!("_i{index}"),
     }
 }
 
