@@ -1,0 +1,19 @@
+# fixture: flow/nested_stages
+# expect: ok
+# description: lowers a three-stage flow with control flow inside stages
+flow Pipeline:
+  stage parse:
+    let i: i32 = 0
+    while (i < 2):
+      i = i + 1
+  stage analyze:
+    let ready: bool = true
+    if (ready):
+      let score: i32 = 7
+  stage emit:
+    let emitted: i32 = 1
+  compensate:
+    let cleanup: i32 = 1
+
+func main() -> i32:
+  return 0

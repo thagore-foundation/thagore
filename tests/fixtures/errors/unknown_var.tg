@@ -1,0 +1,5 @@
+# fixture: errors/unknown_var
+# expect: error
+# description: references an undeclared variable
+func main() -> i32:
+  return missing_value

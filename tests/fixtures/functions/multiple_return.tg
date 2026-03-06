@@ -1,0 +1,23 @@
+# fixture: functions/multiple_return
+# expect: ok
+# description: uses separate functions returning i32, f64, bool, and str
+extern func printf(message: str) -> i32
+
+func make_count() -> i32:
+  return 7
+
+func make_ratio() -> f64:
+  return 3.5
+
+func is_ready() -> bool:
+  return true
+
+func make_message() -> str:
+  return "multiple return ok\n"
+
+func main() -> i32:
+  printf(make_message())
+  if ((make_count() == 7) and is_ready() and (make_ratio() == 3.5)):
+    return 0
+  else:
+    return 1

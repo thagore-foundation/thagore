@@ -1,0 +1,14 @@
+# fixture: functions/recursion
+# expect: ok
+# description: computes fibonacci recursively
+func fib(n: i32) -> i32:
+  if (n < 2):
+    return n
+  else:
+    return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+  if (fib(10) == 55):
+    return 0
+  else:
+    return 1

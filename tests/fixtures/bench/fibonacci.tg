@@ -1,3 +1,6 @@
+# fixture: bench/fibonacci
+# expect: ok
+# description: computes fib(35) recursively for benchmark coverage
 func fib(n: i32) -> i32:
   if (n < 2):
     return n
@@ -5,4 +8,4 @@ func fib(n: i32) -> i32:
     return fib(n - 1) + fib(n - 2)
 
 func main() -> i32:
-  return fib(42) % 251
+  return fib(35) % 251

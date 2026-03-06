@@ -1,0 +1,15 @@
+# fixture: intent/intent_sort
+# expect: ok
+# description: declares a sort-oriented intent goal and lowers its body
+func sort_score(value: i32) -> i32:
+  return value
+
+intent SortArray:
+  minimize sort_score(4)
+  body:
+    let passes: i32 = 0
+    while (passes < 3):
+      passes = passes + 1
+
+func main() -> i32:
+  return 0

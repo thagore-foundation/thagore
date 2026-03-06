@@ -1,0 +1,10 @@
+# fixture: ffi/extern_math
+# expect: ok
+# description: declares a libc math helper and calls it directly
+extern func abs(value: i32) -> i32
+
+func main() -> i32:
+  if (abs(-9) == 9):
+    return 0
+  else:
+    return 1

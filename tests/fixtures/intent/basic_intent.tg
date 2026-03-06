@@ -1,0 +1,12 @@
+# fixture: intent/basic_intent
+# expect: ok
+# description: lowers a basic intent block with a minimize constraint and loop body
+intent Optimize:
+  minimize 1
+  body:
+    let i: i32 = 0
+    while (i < 8):
+      i = i + 1
+
+func main() -> i32:
+  return 0

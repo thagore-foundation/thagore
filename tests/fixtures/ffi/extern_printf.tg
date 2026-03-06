@@ -1,0 +1,8 @@
+# fixture: ffi/extern_printf
+# expect: ok
+# description: declares libc printf and calls it directly
+extern func printf(message: str) -> i32
+
+func main() -> i32:
+  printf("ffi printf ok\n")
+  return 0

@@ -1,0 +1,11 @@
+# fixture: control/for_loop
+# expect: ok
+# description: lowers a for loop over an Array[i32] parameter and keeps the binary runnable
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+
+func main() -> i32:
+  return 0

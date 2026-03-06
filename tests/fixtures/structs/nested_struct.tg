@@ -1,0 +1,17 @@
+# fixture: structs/nested_struct
+# expect: ok
+# description: nests one struct inside another and reads nested fields
+struct Point:
+  x: i32
+  y: i32
+
+struct Rect:
+  origin: Point
+  width: i32
+  height: i32
+
+func perimeter_seed(rect: Rect) -> i32:
+  return rect.origin.x + rect.origin.y + rect.width + rect.height
+
+func main() -> i32:
+  return 0

@@ -1,0 +1,11 @@
+# fixture: functions/basic_func
+# expect: ok
+# description: defines a basic function with parameters and an explicit return type
+func add(x: i32, y: i32) -> i32:
+  return x + y
+
+func main() -> i32:
+  if (add(20, 22) == 42):
+    return 0
+  else:
+    return 1

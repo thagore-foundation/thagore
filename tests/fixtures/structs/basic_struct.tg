@@ -1,0 +1,12 @@
+# fixture: structs/basic_struct
+# expect: ok
+# description: defines a struct and reads its fields through a typed parameter
+struct Point:
+  x: i32
+  y: i32
+
+func sum(point: Point) -> i32:
+  return point.x + point.y
+
+func main() -> i32:
+  return 0

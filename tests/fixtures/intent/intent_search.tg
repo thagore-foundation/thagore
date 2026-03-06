@@ -1,0 +1,18 @@
+# fixture: intent/intent_search
+# expect: ok
+# description: declares a search-oriented intent goal and lowers its body
+func search_score(hit: bool) -> i32:
+  if (hit):
+    return 0
+  else:
+    return 1
+
+intent SearchGoal:
+  minimize search_score(true)
+  body:
+    let probes: i32 = 0
+    while (probes < 5):
+      probes = probes + 1
+
+func main() -> i32:
+  return 0

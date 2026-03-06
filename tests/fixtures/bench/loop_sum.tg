@@ -1,0 +1,10 @@
+# fixture: bench/loop_sum
+# expect: ok
+# description: sums i32 values to twenty million and returns a reduced checksum
+func main() -> i32:
+  let i: i32 = 0
+  let acc: i32 = 0
+  while (i < 20000000):
+    acc = acc + i
+    i = i + 1
+  return acc % 251

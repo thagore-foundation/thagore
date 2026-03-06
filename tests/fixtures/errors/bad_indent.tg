@@ -1,0 +1,5 @@
+# fixture: errors/bad_indent
+# expect: error
+# description: uses a three-space indent to trigger an indentation width error
+func main() -> i32:
+   return 0

@@ -1,0 +1,11 @@
+# fixture: errors/missing_return
+# expect: error
+# description: violates a declared return contract in a function body
+func broken(flag: bool) -> i32:
+  if (flag):
+    return 1
+  else:
+    return false
+
+func main() -> i32:
+  return broken(false)

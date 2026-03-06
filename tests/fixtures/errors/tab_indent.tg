@@ -1,0 +1,5 @@
+# fixture: errors/tab_indent
+# expect: error
+# description: uses a tab indentation character to trigger a lexer error
+func main() -> i32:
+	return 0

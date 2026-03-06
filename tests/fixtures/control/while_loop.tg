@@ -1,0 +1,16 @@
+# fixture: control/while_loop
+# expect: ok
+# description: counts with a while loop and validates the accumulated sum
+func sum_to(limit: i32) -> i32:
+  let index: i32 = 0
+  let total: i32 = 0
+  while (index < limit):
+    total = total + index
+    index = index + 1
+  return total
+
+func main() -> i32:
+  if (sum_to(6) == 15):
+    return 0
+  else:
+    return 1

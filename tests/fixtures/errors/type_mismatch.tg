@@ -1,0 +1,6 @@
+# fixture: errors/type_mismatch
+# expect: error
+# description: assigns an f64 expression to an i32 binding
+func main() -> i32:
+  let value: i32 = 3.14
+  return 0

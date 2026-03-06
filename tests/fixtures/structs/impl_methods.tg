@@ -1,0 +1,15 @@
+# fixture: structs/impl_methods
+# expect: ok
+# description: defines methods in an impl block and accesses self fields
+struct Counter:
+  value: i32
+
+impl Counter:
+  func current(self) -> i32:
+    return self.value
+
+  func bump(self) -> i32:
+    return self.value + 1
+
+func main() -> i32:
+  return 0

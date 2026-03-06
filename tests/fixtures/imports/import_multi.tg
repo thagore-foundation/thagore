@@ -1,0 +1,9 @@
+# fixture: imports/import_multi
+# expect: ok
+# description: imports multiple modules in one program
+import std.io
+import std.math
+import std.time
+
+func main() -> i32:
+  return 0

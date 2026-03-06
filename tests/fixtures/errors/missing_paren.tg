@@ -1,0 +1,8 @@
+# fixture: errors/missing_paren
+# expect: error
+# description: omits required parentheses around an if condition
+func main() -> i32:
+  let flag: bool = true
+  if flag:
+    return 0
+  return 1

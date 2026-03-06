@@ -1,0 +1,9 @@
+# fixture: imports/import_std
+# expect: ok
+# description: imports std.io and calls an extern print function
+import std.io
+extern func printf(message: str) -> i32
+
+func main() -> i32:
+  printf("import std ok\n")
+  return 0

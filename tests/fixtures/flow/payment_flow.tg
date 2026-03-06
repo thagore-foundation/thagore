@@ -1,0 +1,15 @@
+# fixture: flow/payment_flow
+# expect: ok
+# description: models a payment transaction flow with charge, inventory, notify, and compensation
+flow Payment:
+  stage charge:
+    let charged: i32 = 1
+  stage inventory:
+    let reserved: i32 = 2
+  stage notify:
+    let notified: i32 = 3
+  compensate:
+    let refunded: i32 = 0
+
+func main() -> i32:
+  return 0

@@ -1,0 +1,12 @@
+# fixture: functions/void_func
+# expect: ok
+# description: defines and calls a function with no explicit return type
+extern func printf(message: str) -> i32
+
+func announce(value: i32):
+  if (value > 0):
+    printf("void func ok\n")
+
+func main() -> i32:
+  announce(1)
+  return 0

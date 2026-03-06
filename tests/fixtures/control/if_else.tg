@@ -1,0 +1,17 @@
+# fixture: control/if_else
+# expect: ok
+# description: exercises if, if/else, and nested if branches
+func choose(flag: bool, nested: bool) -> i32:
+  if (flag):
+    if (nested):
+      return 1
+    else:
+      return 2
+  else:
+    return 3
+
+func main() -> i32:
+  if ((choose(true, true) == 1) and (choose(true, false) == 2) and (choose(false, false) == 3)):
+    return 0
+  else:
+    return 1
