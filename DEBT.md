@@ -48,6 +48,6 @@
       Introduced: 5c6b58a7
       Fix: Add a safe process measurement layer or a narrowly scoped platform abstraction that can capture child peak RSS directly while preserving benchmark isolation.
 
-- [ ] [stdlib] Replace the compatibility-only stdlib modules with full Tier 1-3 implementations once the language/runtime can allocate owned strings and heap-backed containers
+- [ ] [stdlib] Complete the remaining Tier 1-3 stdlib surface once the language supports overloads/generics for container APIs and top-level constant lowering
       Introduced: 54a1ce69
-      Fix: Add real runtime primitives for owned strings, heap allocation, and generic/container operations, then implement `math/io/string/vec/sort/collections/iter/fmt/convert` against that runtime instead of shipping stub compatibility modules.
+      Fix: Extend the language with overloads or generics for APIs such as `abs/min/max/vec/sort/collections`, add a lowering path for top-level constant bindings like `PI/E/INF`, and then finish the remaining stdlib modules on top of the new runtime-backed string/IO foundation.
