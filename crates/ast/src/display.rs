@@ -3,8 +3,9 @@
 use core::fmt;
 
 use crate::decl::{
-    Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
-    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
+    ConstDecl, Decl, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, GenericFuncDecl,
+    GenericImplBlock, GenericStructDecl, ImplBlock, ImportDecl, ImportSymbol, IntentDecl, LetDecl,
+    Param, StructDecl,
 };
 use crate::expr::{
     AssignExpr, BinOp, BinaryExpr, CallExpr, Expr, FieldAccessExpr, IdentExpr, IndexExpr, LitExpr,
@@ -14,7 +15,9 @@ use crate::node::InternedStr;
 use crate::stmt::{
     Block, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, WhileStmt,
 };
-use crate::types::{GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr};
+use crate::types::{
+    Constraint, ConstraintKind, GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr, TypeParam,
+};
 
 const INDENT: &str = "    ";
 
@@ -133,6 +136,47 @@ fn fmt_assign_expr(f: &mut fmt::Formatter<'_>, expr: &AssignExpr<'_>) -> fmt::Re
     fmt_expr(f, expr.value, 1)
 }
 
+fn fmt_constraint_kind(f: &mut fmt::Formatter<'_>, kind: ConstraintKind) -> fmt::Result {
+    match kind {
+        ConstraintKind::Ordered => f.write_str("Ordered"),
+        ConstraintKind::Eq => f.write_str("Eq"),
+        ConstraintKind::Numeric => f.write_str("Numeric"),
+    }
+}
+
+fn fmt_constraint(f: &mut fmt::Formatter<'_>, constraint: &Constraint) -> fmt::Result {
+    fmt_constraint_kind(f, constraint.kind)
+}
+
+fn fmt_type_param(f: &mut fmt::Formatter<'_>, type_param: &TypeParam<'_>) -> fmt::Result {
+    write_symbol(f, type_param.name)?;
+    if !type_param.constraints.is_empty() {
+        f.write_str(": ")?;
+        for (index, constraint) in type_param.constraints.iter().enumerate() {
+            if index > 0 {
+                f.write_str(" + ")?;
+            }
+            fmt_constraint(f, constraint)?;
+        }
+    }
+    Ok(())
+}
+
+fn fmt_type_params(f: &mut fmt::Formatter<'_>, type_params: &[TypeParam<'_>]) -> fmt::Result {
+    if type_params.is_empty() {
+        return Ok(());
+    }
+
+    f.write_str("<")?;
+    for (index, type_param) in type_params.iter().enumerate() {
+        if index > 0 {
+            f.write_str(", ")?;
+        }
+        fmt_type_param(f, type_param)?;
+    }
+    f.write_str(">")
+}
+
 fn fmt_type_expr(f: &mut fmt::Formatter<'_>, ty: &TypeExpr<'_>) -> fmt::Result {
     match ty {
         TypeExpr::Named(node) => fmt_named_type_expr(f, node),
@@ -147,14 +191,14 @@ fn fmt_named_type_expr(f: &mut fmt::Formatter<'_>, ty: &NamedTypeExpr) -> fmt::R
 
 fn fmt_generic_type_expr(f: &mut fmt::Formatter<'_>, ty: &GenericTypeExpr<'_>) -> fmt::Result {
     write_symbol(f, ty.name)?;
-    f.write_str("[")?;
+    f.write_str("<")?;
     for (index, arg) in ty.args.iter().enumerate() {
         if index > 0 {
             f.write_str(", ")?;
         }
         fmt_type_expr(f, arg)?;
     }
-    f.write_str("]")
+    f.write_str(">")
 }
 
 fn fmt_infer_type_expr(f: &mut fmt::Formatter<'_>, _ty: &InferTypeExpr) -> fmt::Result {
@@ -271,9 +315,13 @@ fn fmt_continue_stmt(
 fn fmt_decl(f: &mut fmt::Formatter<'_>, decl: &Decl<'_>, indent: usize) -> fmt::Result {
     match decl {
         Decl::Func(node) => fmt_func_decl(f, node, indent),
+        Decl::GenericFunc(node) => fmt_generic_func_decl(f, node, indent),
         Decl::Let(node) => fmt_let_decl(f, node, indent),
+        Decl::Const(node) => fmt_const_decl(f, node, indent),
         Decl::Struct(node) => fmt_struct_decl(f, node, indent),
+        Decl::GenericStruct(node) => fmt_generic_struct_decl(f, node, indent),
         Decl::Impl(node) => fmt_impl_block(f, node, indent),
+        Decl::GenericImpl(node) => fmt_generic_impl_block(f, node, indent),
         Decl::Import(node) => fmt_import_decl(f, node, indent),
         Decl::Extern(node) => fmt_extern_decl(f, node, indent),
         Decl::Intent(node) => fmt_intent_decl(f, node, indent),
@@ -281,22 +329,51 @@ fn fmt_decl(f: &mut fmt::Formatter<'_>, decl: &Decl<'_>, indent: usize) -> fmt::
     }
 }
 
-fn fmt_func_decl(f: &mut fmt::Formatter<'_>, decl: &FuncDecl<'_>, indent: usize) -> fmt::Result {
-    write_indent(f, indent)?;
+fn fmt_func_signature(
+    f: &mut fmt::Formatter<'_>,
+    name: InternedStr,
+    type_params: &[TypeParam<'_>],
+    params: &[Param<'_>],
+    return_type: Option<&TypeExpr<'_>>,
+) -> fmt::Result {
     f.write_str("func ")?;
-    write_symbol(f, decl.name)?;
+    write_symbol(f, name)?;
+    fmt_type_params(f, type_params)?;
     f.write_str("(")?;
-    for (index, param) in decl.params.iter().enumerate() {
+    for (index, param) in params.iter().enumerate() {
         if index > 0 {
             f.write_str(", ")?;
         }
         fmt_param(f, param)?;
     }
     f.write_str(")")?;
-    if let Some(return_type) = decl.return_type {
+    if let Some(return_type) = return_type {
         f.write_str(" -> ")?;
         fmt_type_expr(f, return_type)?;
     }
+    Ok(())
+}
+
+fn fmt_func_decl(f: &mut fmt::Formatter<'_>, decl: &FuncDecl<'_>, indent: usize) -> fmt::Result {
+    write_indent(f, indent)?;
+    fmt_func_signature(f, decl.name, &[], decl.params, decl.return_type)?;
+    f.write_str(":\n")?;
+    fmt_block(f, decl.body, indent + 1)
+}
+
+fn fmt_generic_func_decl(
+    f: &mut fmt::Formatter<'_>,
+    decl: &GenericFuncDecl<'_>,
+    indent: usize,
+) -> fmt::Result {
+    write_indent(f, indent)?;
+    fmt_func_signature(
+        f,
+        decl.name,
+        decl.type_params,
+        decl.params,
+        decl.return_type,
+    )?;
     f.write_str(":\n")?;
     fmt_block(f, decl.body, indent + 1)
 }
@@ -313,6 +390,39 @@ fn fmt_let_decl(f: &mut fmt::Formatter<'_>, decl: &LetDecl<'_>, indent: usize) -
     fmt_expr(f, decl.initializer, 0)
 }
 
+fn fmt_const_decl(
+    f: &mut fmt::Formatter<'_>,
+    decl: &ConstDecl<'_>,
+    indent: usize,
+) -> fmt::Result {
+    write_indent(f, indent)?;
+    f.write_str("const ")?;
+    write_symbol(f, decl.name)?;
+    f.write_str(": ")?;
+    fmt_type_expr(f, decl.type_ann)?;
+    f.write_str(" = ")?;
+    fmt_expr(f, decl.value, 0)
+}
+
+fn fmt_struct_body(
+    f: &mut fmt::Formatter<'_>,
+    fields: &[FieldDef<'_>],
+    indent: usize,
+) -> fmt::Result {
+    if fields.is_empty() {
+        write_indent(f, indent + 1)?;
+        f.write_str("# empty")
+    } else {
+        for (index, field) in fields.iter().enumerate() {
+            if index > 0 {
+                f.write_str("\n")?;
+            }
+            fmt_field_def(f, field, indent + 1)?;
+        }
+        Ok(())
+    }
+}
+
 fn fmt_struct_decl(
     f: &mut fmt::Formatter<'_>,
     decl: &StructDecl<'_>,
@@ -322,15 +432,36 @@ fn fmt_struct_decl(
     f.write_str("struct ")?;
     write_symbol(f, decl.name)?;
     f.write_str(":\n")?;
-    if decl.fields.is_empty() {
+    fmt_struct_body(f, decl.fields, indent)
+}
+
+fn fmt_generic_struct_decl(
+    f: &mut fmt::Formatter<'_>,
+    decl: &GenericStructDecl<'_>,
+    indent: usize,
+) -> fmt::Result {
+    write_indent(f, indent)?;
+    f.write_str("struct ")?;
+    write_symbol(f, decl.name)?;
+    fmt_type_params(f, decl.type_params)?;
+    f.write_str(":\n")?;
+    fmt_struct_body(f, decl.fields, indent)
+}
+
+fn fmt_impl_methods(
+    f: &mut fmt::Formatter<'_>,
+    methods: &[FuncDecl<'_>],
+    indent: usize,
+) -> fmt::Result {
+    if methods.is_empty() {
         write_indent(f, indent + 1)?;
         f.write_str("# empty")
     } else {
-        for (index, field) in decl.fields.iter().enumerate() {
+        for (index, method) in methods.iter().enumerate() {
             if index > 0 {
-                f.write_str("\n")?;
+                f.write_str("\n\n")?;
             }
-            fmt_field_def(f, field, indent + 1)?;
+            fmt_func_decl(f, method, indent + 1)?;
         }
         Ok(())
     }
@@ -341,18 +472,20 @@ fn fmt_impl_block(f: &mut fmt::Formatter<'_>, decl: &ImplBlock<'_>, indent: usiz
     f.write_str("impl ")?;
     write_symbol(f, decl.target)?;
     f.write_str(":\n")?;
-    if decl.methods.is_empty() {
-        write_indent(f, indent + 1)?;
-        f.write_str("# empty")
-    } else {
-        for (index, method) in decl.methods.iter().enumerate() {
-            if index > 0 {
-                f.write_str("\n\n")?;
-            }
-            fmt_func_decl(f, method, indent + 1)?;
-        }
-        Ok(())
-    }
+    fmt_impl_methods(f, decl.methods, indent)
+}
+
+fn fmt_generic_impl_block(
+    f: &mut fmt::Formatter<'_>,
+    decl: &GenericImplBlock<'_>,
+    indent: usize,
+) -> fmt::Result {
+    write_indent(f, indent)?;
+    f.write_str("impl ")?;
+    write_symbol(f, decl.target)?;
+    fmt_type_params(f, decl.type_params)?;
+    f.write_str(":\n")?;
+    fmt_impl_methods(f, decl.methods, indent)
 }
 
 fn fmt_import_decl(
@@ -503,9 +636,21 @@ impl fmt::Display for FuncDecl<'_> {
     }
 }
 
+impl fmt::Display for GenericFuncDecl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_generic_func_decl(f, self, 0)
+    }
+}
+
 impl fmt::Display for LetDecl<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_let_decl(f, self, 0)
+    }
+}
+
+impl fmt::Display for ConstDecl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_const_decl(f, self, 0)
     }
 }
 
@@ -515,9 +660,21 @@ impl fmt::Display for StructDecl<'_> {
     }
 }
 
+impl fmt::Display for GenericStructDecl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_generic_struct_decl(f, self, 0)
+    }
+}
+
 impl fmt::Display for ImplBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt_impl_block(f, self, 0)
+    }
+}
+
+impl fmt::Display for GenericImplBlock<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_generic_impl_block(f, self, 0)
     }
 }
 
@@ -545,21 +702,15 @@ impl fmt::Display for FlowDecl<'_> {
     }
 }
 
-impl fmt::Display for Param<'_> {
+impl fmt::Display for TypeExpr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_param(f, self)
+        fmt_type_expr(f, self)
     }
 }
 
-impl fmt::Display for FieldDef<'_> {
+impl fmt::Display for Expr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_field_def(f, self, 0)
-    }
-}
-
-impl fmt::Display for FlowStage<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_flow_stage(f, self, 0)
+        fmt_expr(f, self, 0)
     }
 }
 
@@ -575,87 +726,39 @@ impl fmt::Display for Block<'_> {
     }
 }
 
-impl fmt::Display for ExprStmt<'_> {
+impl fmt::Display for Param<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_expr_stmt(f, self, 0)
+        fmt_param(f, self)
     }
 }
 
-impl fmt::Display for ReturnStmt<'_> {
+impl fmt::Display for FieldDef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_return_stmt(f, self, 0)
+        fmt_field_def(f, self, 0)
     }
 }
 
-impl fmt::Display for IfStmt<'_> {
+impl fmt::Display for ImportSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_if_stmt(f, self, 0)
+        fmt_import_symbol(f, self)
     }
 }
 
-impl fmt::Display for WhileStmt<'_> {
+impl fmt::Display for TypeParam<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_while_stmt(f, self, 0)
+        fmt_type_param(f, self)
     }
 }
 
-impl fmt::Display for ForStmt<'_> {
+impl fmt::Display for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_for_stmt(f, self, 0)
+        fmt_constraint(f, self)
     }
 }
 
-impl fmt::Display for Expr<'_> {
+impl fmt::Display for ConstraintKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_expr(f, self, 0)
-    }
-}
-
-impl fmt::Display for BinaryExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_binary_expr(f, self)
-    }
-}
-
-impl fmt::Display for UnaryExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_unary_expr(f, self)
-    }
-}
-
-impl fmt::Display for CallExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_call_expr(f, self)
-    }
-}
-
-impl fmt::Display for FieldAccessExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_field_access_expr(f, self)
-    }
-}
-
-impl fmt::Display for IndexExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_index_expr(f, self)
-    }
-}
-
-impl fmt::Display for IdentExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_ident_expr(f, self)
-    }
-}
-
-impl fmt::Display for LitExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_lit_expr(f, self)
-    }
-}
-
-impl fmt::Display for AssignExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_assign_expr(f, self)
+        fmt_constraint_kind(f, *self)
     }
 }
 
@@ -663,9 +766,9 @@ impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int(value) => write!(f, "{value}"),
-            Self::Float(value) => write!(f, "{value:?}"),
+            Self::Float(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
-            Self::Str(value) => write_string_symbol(f, *value),
+            Self::Str(symbol) => write_string_symbol(f, *symbol),
         }
     }
 }
@@ -695,31 +798,7 @@ impl fmt::Display for UnaryOp {
         f.write_str(match self {
             Self::Plus => "+",
             Self::Neg => "-",
-            Self::Not => "!",
+            Self::Not => "not ",
         })
-    }
-}
-
-impl fmt::Display for TypeExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_type_expr(f, self)
-    }
-}
-
-impl fmt::Display for NamedTypeExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_named_type_expr(f, self)
-    }
-}
-
-impl fmt::Display for GenericTypeExpr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_generic_type_expr(f, self)
-    }
-}
-
-impl fmt::Display for InferTypeExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt_infer_type_expr(f, self)
     }
 }

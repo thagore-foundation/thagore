@@ -1,8 +1,9 @@
 //! Visitor support for walking the Thagore AST.
 
 use crate::decl::{
-    Decl, DeclRef, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl, ImplBlock, ImportDecl,
-    ImportSymbol, IntentDecl, LetDecl, Param, StructDecl,
+    ConstDecl, Decl, DeclRef, ExternDecl, FieldDef, FlowDecl, FlowStage, FuncDecl,
+    GenericFuncDecl, GenericImplBlock, GenericStructDecl, ImplBlock, ImportDecl, ImportSymbol,
+    IntentDecl, LetDecl, Param, StructDecl,
 };
 use crate::expr::{
     AssignExpr, BinaryExpr, CallExpr, Expr, ExprRef, FieldAccessExpr, IdentExpr, IndexExpr,
@@ -12,7 +13,9 @@ use crate::stmt::{
     BlockRef, BreakStmt, ContinueStmt, ExprStmt, ForStmt, IfStmt, ReturnStmt, Stmt, StmtRef,
     WhileStmt,
 };
-use crate::types::{GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr, TypeExprRef};
+use crate::types::{
+    Constraint, GenericTypeExpr, InferTypeExpr, NamedTypeExpr, TypeExpr, TypeExprRef, TypeParam,
+};
 
 /// A visitor over arena-allocated AST nodes.
 ///
@@ -23,12 +26,20 @@ pub trait Visitor<'ast> {
     fn visit_decl(&mut self, _decl: DeclRef<'ast>) {}
     /// Visits a function declaration.
     fn visit_func_decl(&mut self, _decl: &'ast FuncDecl<'ast>) {}
+    /// Visits a generic function declaration.
+    fn visit_generic_func_decl(&mut self, _decl: &'ast GenericFuncDecl<'ast>) {}
     /// Visits a `let` declaration.
     fn visit_let_decl(&mut self, _decl: &'ast LetDecl<'ast>) {}
+    /// Visits a `const` declaration.
+    fn visit_const_decl(&mut self, _decl: &'ast ConstDecl<'ast>) {}
     /// Visits a struct declaration.
     fn visit_struct_decl(&mut self, _decl: &'ast StructDecl<'ast>) {}
+    /// Visits a generic struct declaration.
+    fn visit_generic_struct_decl(&mut self, _decl: &'ast GenericStructDecl<'ast>) {}
     /// Visits an `impl` block.
     fn visit_impl_block(&mut self, _decl: &'ast ImplBlock<'ast>) {}
+    /// Visits a generic `impl` block.
+    fn visit_generic_impl_block(&mut self, _decl: &'ast GenericImplBlock<'ast>) {}
     /// Visits an import declaration.
     fn visit_import_decl(&mut self, _decl: &'ast ImportDecl<'ast>) {}
     /// Visits an imported symbol entry.
@@ -43,6 +54,10 @@ pub trait Visitor<'ast> {
     fn visit_param(&mut self, _param: &'ast Param<'ast>) {}
     /// Visits a field definition node.
     fn visit_field_def(&mut self, _field: &'ast FieldDef<'ast>) {}
+    /// Visits a type parameter node.
+    fn visit_type_param(&mut self, _param: &'ast TypeParam<'ast>) {}
+    /// Visits a built-in constraint node.
+    fn visit_constraint(&mut self, _constraint: &'ast Constraint) {}
     /// Visits a flow stage node.
     fn visit_flow_stage(&mut self, _stage: &'ast FlowStage<'ast>) {}
 
@@ -102,9 +117,13 @@ where
     visitor.visit_decl(decl);
     match decl {
         Decl::Func(node) => walk_func_decl(visitor, node),
+        Decl::GenericFunc(node) => walk_generic_func_decl(visitor, node),
         Decl::Let(node) => walk_let_decl(visitor, node),
+        Decl::Const(node) => walk_const_decl(visitor, node),
         Decl::Struct(node) => walk_struct_decl(visitor, node),
+        Decl::GenericStruct(node) => walk_generic_struct_decl(visitor, node),
         Decl::Impl(node) => walk_impl_block(visitor, node),
+        Decl::GenericImpl(node) => walk_generic_impl_block(visitor, node),
         Decl::Import(node) => walk_import_decl(visitor, node),
         Decl::Extern(node) => walk_extern_decl(visitor, node),
         Decl::Intent(node) => walk_intent_decl(visitor, node),
@@ -146,6 +165,24 @@ where
     walk_block(visitor, decl.body);
 }
 
+/// Walks a generic function declaration and its children.
+pub fn walk_generic_func_decl<'ast, V>(visitor: &mut V, decl: &'ast GenericFuncDecl<'ast>)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_generic_func_decl(decl);
+    for type_param in decl.type_params {
+        walk_type_param(visitor, type_param);
+    }
+    for param in decl.params {
+        walk_param(visitor, param);
+    }
+    if let Some(return_type) = decl.return_type {
+        walk_type_expr(visitor, return_type);
+    }
+    walk_block(visitor, decl.body);
+}
+
 /// Walks a `let` declaration and its children.
 pub fn walk_let_decl<'ast, V>(visitor: &mut V, decl: &'ast LetDecl<'ast>)
 where
@@ -156,6 +193,16 @@ where
         walk_type_expr(visitor, ty);
     }
     walk_expr(visitor, decl.initializer);
+}
+
+/// Walks a `const` declaration and its children.
+pub fn walk_const_decl<'ast, V>(visitor: &mut V, decl: &'ast ConstDecl<'ast>)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_const_decl(decl);
+    walk_type_expr(visitor, decl.type_ann);
+    walk_expr(visitor, decl.value);
 }
 
 /// Walks a struct declaration and its children.
@@ -169,12 +216,44 @@ where
     }
 }
 
+/// Walks a generic struct declaration and its children.
+pub fn walk_generic_struct_decl<'ast, V>(
+    visitor: &mut V,
+    decl: &'ast GenericStructDecl<'ast>,
+) where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_generic_struct_decl(decl);
+    for type_param in decl.type_params {
+        walk_type_param(visitor, type_param);
+    }
+    for field in decl.fields {
+        walk_field_def(visitor, field);
+    }
+}
+
 /// Walks an `impl` block and its children.
 pub fn walk_impl_block<'ast, V>(visitor: &mut V, decl: &'ast ImplBlock<'ast>)
 where
     V: Visitor<'ast> + ?Sized,
 {
     visitor.visit_impl_block(decl);
+    for method in decl.methods {
+        walk_func_decl(visitor, method);
+    }
+}
+
+/// Walks a generic `impl` block and its children.
+pub fn walk_generic_impl_block<'ast, V>(
+    visitor: &mut V,
+    decl: &'ast GenericImplBlock<'ast>,
+) where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_generic_impl_block(decl);
+    for type_param in decl.type_params {
+        walk_type_param(visitor, type_param);
+    }
     for method in decl.methods {
         walk_func_decl(visitor, method);
     }
@@ -234,6 +313,25 @@ where
 {
     visitor.visit_field_def(field);
     walk_type_expr(visitor, field.ty);
+}
+
+/// Walks a type parameter and its constraints.
+pub fn walk_type_param<'ast, V>(visitor: &mut V, param: &'ast TypeParam<'ast>)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_type_param(param);
+    for constraint in param.constraints {
+        walk_constraint(visitor, constraint);
+    }
+}
+
+/// Walks a built-in generic constraint node.
+pub fn walk_constraint<'ast, V>(visitor: &mut V, constraint: &'ast Constraint)
+where
+    V: Visitor<'ast> + ?Sized,
+{
+    visitor.visit_constraint(constraint);
 }
 
 /// Walks a flow stage and its children.

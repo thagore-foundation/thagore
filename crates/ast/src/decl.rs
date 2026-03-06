@@ -3,7 +3,7 @@
 use crate::expr::ExprRef;
 use crate::node::{AstSlice, InternedStr, NodeId, Span};
 use crate::stmt::BlockRef;
-use crate::types::TypeExprRef;
+use crate::types::{TypeExprRef, TypeParam};
 
 /// Borrowed arena reference to a declaration node.
 pub type DeclRef<'ast> = &'ast Decl<'ast>;
@@ -13,12 +13,20 @@ pub type DeclRef<'ast> = &'ast Decl<'ast>;
 pub enum Decl<'ast> {
     /// A function declaration.
     Func(FuncDecl<'ast>),
+    /// A generic function declaration.
+    GenericFunc(GenericFuncDecl<'ast>),
     /// A `let` declaration.
     Let(LetDecl<'ast>),
+    /// A top-level constant declaration.
+    Const(ConstDecl<'ast>),
     /// A struct declaration.
     Struct(StructDecl<'ast>),
+    /// A generic struct declaration.
+    GenericStruct(GenericStructDecl<'ast>),
     /// An implementation block.
     Impl(ImplBlock<'ast>),
+    /// A generic implementation block.
+    GenericImpl(GenericImplBlock<'ast>),
     /// An import declaration.
     Import(ImportDecl<'ast>),
     /// An external function declaration.
@@ -35,9 +43,13 @@ impl<'ast> Decl<'ast> {
     pub const fn id(&self) -> NodeId {
         match self {
             Self::Func(node) => node.id,
+            Self::GenericFunc(node) => node.id,
             Self::Let(node) => node.id,
+            Self::Const(node) => node.id,
             Self::Struct(node) => node.id,
+            Self::GenericStruct(node) => node.id,
             Self::Impl(node) => node.id,
+            Self::GenericImpl(node) => node.id,
             Self::Import(node) => node.id,
             Self::Extern(node) => node.id,
             Self::Intent(node) => node.id,
@@ -50,9 +62,13 @@ impl<'ast> Decl<'ast> {
     pub const fn span(&self) -> Span {
         match self {
             Self::Func(node) => node.span,
+            Self::GenericFunc(node) => node.span,
             Self::Let(node) => node.span,
+            Self::Const(node) => node.span,
             Self::Struct(node) => node.span,
+            Self::GenericStruct(node) => node.span,
             Self::Impl(node) => node.span,
+            Self::GenericImpl(node) => node.span,
             Self::Import(node) => node.span,
             Self::Extern(node) => node.span,
             Self::Intent(node) => node.span,
@@ -104,6 +120,25 @@ pub struct FuncDecl<'ast> {
     pub body: BlockRef<'ast>,
 }
 
+/// A generic function declaration with one or more type parameters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericFuncDecl<'ast> {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full declaration.
+    pub span: Span,
+    /// Interned function name.
+    pub name: InternedStr,
+    /// Declared type parameters in source order.
+    pub type_params: AstSlice<'ast, TypeParam<'ast>>,
+    /// Runtime parameters in source order.
+    pub params: AstSlice<'ast, Param<'ast>>,
+    /// Optional return type annotation.
+    pub return_type: Option<TypeExprRef<'ast>>,
+    /// Function body block.
+    pub body: BlockRef<'ast>,
+}
+
 /// A `let` declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetDecl<'ast> {
@@ -119,6 +154,21 @@ pub struct LetDecl<'ast> {
     pub initializer: ExprRef<'ast>,
 }
 
+/// A top-level `const` declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstDecl<'ast> {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full declaration.
+    pub span: Span,
+    /// Interned constant name.
+    pub name: InternedStr,
+    /// Required type annotation.
+    pub type_ann: TypeExprRef<'ast>,
+    /// Constant initializer expression.
+    pub value: ExprRef<'ast>,
+}
+
 /// A struct declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDecl<'ast> {
@@ -132,6 +182,21 @@ pub struct StructDecl<'ast> {
     pub fields: AstSlice<'ast, FieldDef<'ast>>,
 }
 
+/// A generic struct declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericStructDecl<'ast> {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full declaration.
+    pub span: Span,
+    /// Interned struct name.
+    pub name: InternedStr,
+    /// Declared type parameters.
+    pub type_params: AstSlice<'ast, TypeParam<'ast>>,
+    /// Field definitions.
+    pub fields: AstSlice<'ast, FieldDef<'ast>>,
+}
+
 /// An `impl` block containing methods for a struct.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock<'ast> {
@@ -141,6 +206,21 @@ pub struct ImplBlock<'ast> {
     pub span: Span,
     /// Target struct name.
     pub target: InternedStr,
+    /// Method declarations.
+    pub methods: AstSlice<'ast, FuncDecl<'ast>>,
+}
+
+/// A generic `impl` block containing methods specialized by type parameters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericImplBlock<'ast> {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full declaration.
+    pub span: Span,
+    /// Target struct name.
+    pub target: InternedStr,
+    /// Declared type parameters.
+    pub type_params: AstSlice<'ast, TypeParam<'ast>>,
     /// Method declarations.
     pub methods: AstSlice<'ast, FuncDecl<'ast>>,
 }

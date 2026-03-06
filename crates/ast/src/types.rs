@@ -10,7 +10,7 @@ pub type TypeExprRef<'ast> = &'ast TypeExpr<'ast>;
 pub enum TypeExpr<'ast> {
     /// A named type such as `i32` or `Result`.
     Named(NamedTypeExpr),
-    /// A generic type application such as `Option[i32]`.
+    /// A generic type application such as `Vec<i32>`.
     Generic(GenericTypeExpr<'ast>),
     /// An inferred type placeholder.
     Infer(InferTypeExpr),
@@ -49,7 +49,7 @@ pub struct NamedTypeExpr {
     pub name: InternedStr,
 }
 
-/// A generic type application such as `Map[str, i32]`.
+/// A generic type application such as `Map<str, i32>`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericTypeExpr<'ast> {
     /// Stable identity for this AST node.
@@ -69,4 +69,39 @@ pub struct InferTypeExpr {
     pub id: NodeId,
     /// Source span for the placeholder token.
     pub span: Span,
+}
+
+/// Built-in generic constraints supported by the language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstraintKind {
+    /// Types that support ordering comparisons.
+    Ordered,
+    /// Types that support equality comparisons.
+    Eq,
+    /// Types that support numeric arithmetic.
+    Numeric,
+}
+
+/// A single constraint attached to a type parameter.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Constraint {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the constraint name.
+    pub span: Span,
+    /// Built-in constraint selected by the source.
+    pub kind: ConstraintKind,
+}
+
+/// A generic type parameter declared by a function, struct, or impl block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam<'ast> {
+    /// Stable identity for this AST node.
+    pub id: NodeId,
+    /// Source span for the full type parameter, including constraints.
+    pub span: Span,
+    /// Interned type parameter name.
+    pub name: InternedStr,
+    /// Attached built-in constraints.
+    pub constraints: AstSlice<'ast, Constraint>,
 }
