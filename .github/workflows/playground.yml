@@ -36,4 +36,6 @@ jobs:
           publish_dir: ./playground
           force_orphan: true
           enable_jekyll: false
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
           full_commit_message: "deploy: publish playground from thagore@${{ github.sha }}"
