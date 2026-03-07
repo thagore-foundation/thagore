@@ -6,6 +6,7 @@ DEPLOY_BRANCH = gh-pages
 
 wasm:
 	cd wasm && wasm-pack build --target web --out-dir pkg --release
+	rm -f wasm/pkg/.gitignore
 
 serve:
 	python3 -m http.server 8080
