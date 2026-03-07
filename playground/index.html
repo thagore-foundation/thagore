@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Thagore Playground</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" defer></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="brand">
+          <span class="brand-mark">T</span>
+          <div>
+            <h1>Thagore Playground</h1>
+            <p>Run Thagore in the browser with a WASM compiler + interpreter.</p>
+          </div>
+        </div>
+        <div class="toolbar">
+          <select id="examples" aria-label="Examples">
+            <option value="">Examples</option>
+          </select>
+          <button id="share-button">Share</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel">
+          <div class="panel-header">
+            <span>Code Editor</span>
+            <span>Ctrl+Enter to run</span>
+          </div>
+          <div class="editor-shell">
+            <div id="editor" class="editor" contenteditable="true" spellcheck="false" autocapitalize="off" aria-label="Thagore editor"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <span>Terminal Output</span>
+            <span>Browser WASM runtime</span>
+          </div>
+          <div id="terminal" class="terminal" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <footer class="status">
+        <div class="status-actions">
+          <button id="run-button" class="button-primary">▶ Run</button>
+          <button id="format-button">⚙ Format</button>
+          <span id="status-text">Loading WASM…</span>
+        </div>
+        <div class="status-meta">
+          <span id="error-count">0 errors</span>
+          <span id="elapsed">0ms</span>
+        </div>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
