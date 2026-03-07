@@ -1,0 +1,196 @@
+---
+title: Install
+description: Build the current Thagore toolchain from source and verify that thagc, thagore-fmt, thagore-lsp, and drago work on your machine.
+sidebar:
+  order: 0
+---
+
+# Install
+
+The current repository builds the Thagore toolchain from source. This page documents the workflow that matches the codebase as it exists today: `thagc`, `thagore-fmt`, and `thagore-lsp` are Rust binaries built with Cargo, and `drago` is a Thagore program bootstrapped by `thagc`.
+
+## What you will build
+
+The source tree currently provides these command-line tools:
+
+| Tool | Role | Source |
+| --- | --- | --- |
+| `thagc` | Compiler driver | `tools/thagore-cli` |
+| `thagore` | Alias of `thagc` | `tools/thagore-cli` |
+| `thagore-fmt` | Official formatter | `tools/thagore-fmt` |
+| `thagore-lsp` | Language Server Protocol server | `tools/thagore-lsp` |
+| `drago` | Package manager, built with `thagc` | separate repo |
+
+## Prerequisites
+
+You need:
+
+| Requirement | Notes |
+| --- | --- |
+| Rust stable toolchain | Build system for `thagc`, `thagore-fmt`, and `thagore-lsp` |
+| Cargo | Comes with Rust |
+| C toolchain | Required for runtime compilation and final linking |
+| LLVM 14 development files | The current backend builds against `inkwell` with LLVM 14 |
+| `cc` linker | Used by the codegen output path |
+| `python3` | Useful for local docs and static site tooling |
+
+On Debian or Ubuntu, a working baseline is:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential clang llvm-14 llvm-14-dev llvm-14-tools lld pkg-config python3 curl git
+curl https://sh.rustup.rs -sSf | sh
+```
+
+If your LLVM 14 binaries are installed under a non-default prefix, export `LLVM_SYS_140_PREFIX` before building:
+
+```bash
+export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
+```
+
+## Build the toolchain
+
+Clone the compiler repository and build the active tools:
+
+```bash
+git clone https://github.com/thagore-foundation/thagore.git
+cd thagore
+cargo build -p thagore-cli -p thagore-fmt -p thagore-lsp
+```
+
+This produces:
+
+| Binary | Path |
+| --- | --- |
+| `thagc` | `target/debug/thagc` |
+| `thagore` | `target/debug/thagore` |
+| `thagore-fmt` | `target/debug/thagore-fmt` |
+| `thagore-lsp` | `target/debug/thagore-lsp` |
+
+## Verify the compiler
+
+Check the compiler version:
+
+```bash
+./target/debug/thagc version
+```
+
+At the time of writing, the repository reports:
+
+```text
+thagc 0.9.0
+llvm:   14.0.0
+host:   x86_64-linux-gnu
+```
+
+Create a minimal program:
+
+```thagore
+func main():
+  println("Hello, Thagore!")
+```
+
+Save it as `hello.tg`, then compile and run it:
+
+```bash
+./target/debug/thagc build hello.tg -o hello
+./hello
+```
+
+You can also typecheck without code generation:
+
+```bash
+./target/debug/thagc check hello.tg
+```
+
+## Verify the formatter
+
+The formatter is a separate binary:
+
+```bash
+./target/debug/thagore-fmt --help
+```
+
+Format a file in place:
+
+```bash
+./target/debug/thagore-fmt hello.tg
+```
+
+Check formatting without rewriting:
+
+```bash
+./target/debug/thagore-fmt --check hello.tg
+```
+
+## Verify the language server
+
+Build output already includes the LSP server:
+
+```bash
+./target/debug/thagore-lsp --help
+```
+
+Editor integrations should launch `thagore-lsp` over stdio. The repository also contains a VS Code extension scaffold under `editors/vscode/`.
+
+## Optional: install binaries into your PATH
+
+If you want the tools available globally from your shell:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+cp target/debug/thagc "$HOME/.local/bin/"
+cp target/debug/thagore "$HOME/.local/bin/"
+cp target/debug/thagore-fmt "$HOME/.local/bin/"
+cp target/debug/thagore-lsp "$HOME/.local/bin/"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add the `PATH` export to your shell profile if you want it to persist.
+
+## Build drago from source
+
+`drago` lives in a separate repository and is compiled by `thagc`.
+
+Clone `drago` next to `thagore` or anywhere you prefer:
+
+```bash
+git clone https://github.com/thagore-foundation/drago.git
+cd drago
+```
+
+Point `drago` at the compiler you just built:
+
+```bash
+THAGC=/absolute/path/to/thagore/target/debug/thagc
+$THAGC build src/main.tg -o drago.bin
+./drago.bin version
+```
+
+The current `drago` codebase expects `thagc >= 0.9.0`.
+
+## Common build issues
+
+### LLVM not found
+
+If Cargo fails while compiling the backend or `llvm-sys`, your LLVM 14 development files are missing or not discoverable. Install LLVM 14 and set `LLVM_SYS_140_PREFIX` to the correct directory.
+
+### Linker errors
+
+`thagc` uses a C runtime object during final linking. Make sure a working C toolchain is installed and that `cc` is available in `PATH`.
+
+### `drago` cannot find `thagc`
+
+`drago` resolves the compiler from:
+
+1. `THAGC`
+2. common local build paths
+3. `PATH`
+
+If in doubt, set `THAGC` explicitly to the `thagc` binary you want it to use.
+
+## Next steps
+
+- Read [Language Overview](/language/overview/) for the core language model.
+- Read [Imports](/language/imports/) before building multi-file projects.
+- Read [Drago](/drago/) if you want package management and project workflows.
