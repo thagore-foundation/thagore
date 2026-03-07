@@ -615,6 +615,10 @@ name = "thagore-lsp"
 version = "0.1.0"
 
 [[package]]
+name = "thagore-module-graph"
+version = "0.1.0"
+
+[[package]]
 name = "thagore-parser"
 version = "0.1.0"
 dependencies = [

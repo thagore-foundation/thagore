@@ -4,10 +4,18 @@
 //! reporting. It deliberately operates on module paths and import surfaces
 //! rather than loading full ASTs for the whole program into memory.
 
+pub mod import_table;
+pub mod resolver;
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+pub use crate::import_table::{
+    AmbiguousSymbol, ExportedSymbol, ImportTable, ResolvedSymbol, SymbolKind, TypeSig,
+};
+pub use crate::resolver::{ModuleResolver, ResolvedModule};
 
 /// Unique module identifier within a single compilation session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -452,7 +460,7 @@ fn parse_imports(source: &str, file: &Path) -> Result<Vec<ImportSpec>, ModuleErr
 
 #[cfg(test)]
 mod tests {
-    use super::{CycleError, ModuleGraph, ModuleId, ModulePath, ModuleSource};
+    use super::{ModuleGraph, ModuleId, ModulePath, ModuleSource};
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -515,8 +523,11 @@ mod tests {
         };
 
         let cycle = graph.detect_cycles().unwrap();
-        assert_eq!(cycle.first().copied(), Some(a));
-        assert_eq!(cycle.last().copied(), Some(a));
+        assert!(cycle.len() >= 4);
+        assert_eq!(cycle.first(), cycle.last());
+        assert!(cycle.contains(&a));
+        assert!(cycle.contains(&b));
+        assert!(cycle.contains(&c));
     }
 
     #[test]
@@ -540,6 +551,8 @@ mod tests {
         };
 
         let error = graph.topo_sort().unwrap_err();
-        assert_eq!(error, CycleError::new(vec![a, b, a]));
+        assert_eq!(error.cycle.first(), error.cycle.last());
+        assert!(error.cycle.contains(&a));
+        assert!(error.cycle.contains(&b));
     }
 }

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/module_graph",
     "crates/lexer",
     "crates/parser",
     "crates/ast",
