@@ -49,11 +49,13 @@ func checkout() -> str:
   return "order-1"
 
 func charge(order: str) -> str:
-  println("stage: charge " + order)
+  println("stage: charge")
+  println(order)
   return "payment-1"
 
 func notify(payment: str):
-  println("stage: notify " + payment)
+  println("stage: notify")
+  println(payment)
 
 func main():
   let order = checkout()
