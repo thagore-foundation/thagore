@@ -38,8 +38,9 @@ jobs:
             target: x86_64-unknown-linux-musl
             tier: stable
             archive: tar.gz
-            build_mode: cargo
+            build_mode: skip
             llvm_arch: x64
+            skip_reason: "musl release build still needs a dedicated hosted toolchain image"
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             tier: stable
@@ -68,8 +69,9 @@ jobs:
             target: aarch64-pc-windows-msvc
             tier: stable
             archive: zip
-            build_mode: cargo
+            build_mode: skip
             llvm_arch: arm64
+            skip_reason: "LLVM 14 does not publish a hosted Windows ARM64 package for this lane"
           - runner: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
             tier: extended
