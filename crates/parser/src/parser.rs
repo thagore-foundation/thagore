@@ -88,6 +88,12 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.symbols.get(symbol.as_u32() as usize).copied()
     }
 
+    /// Returns a stable snapshot of all parser-local interned symbol texts.
+    #[must_use]
+    pub fn symbols_snapshot(&self) -> &[&'src str] {
+        self.symbols.as_slice()
+    }
+
     /// Returns the current token without consuming it.
     #[must_use]
     pub fn peek(&self) -> Token {

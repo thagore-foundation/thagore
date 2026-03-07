@@ -1,20 +1,14 @@
 //! CLI entrypoint for `thagore-fmt`.
 
-mod config;
-mod diff;
-mod formatter;
-mod rules;
-
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
+use thagore_fmt::config::{find_project_root, FmtConfig, StylePreset};
+use thagore_fmt::diff::{needs_formatting, unified_diff};
+use thagore_fmt::formatter::format_source;
 use walkdir::WalkDir;
-
-use crate::config::{find_project_root, FmtConfig, StylePreset};
-use crate::diff::{needs_formatting, unified_diff};
-use crate::formatter::format_source;
 
 #[derive(Debug, Parser)]
 #[command(name = "thagore-fmt", version = "0.1.0")]
