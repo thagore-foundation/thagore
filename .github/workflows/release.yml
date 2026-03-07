@@ -26,165 +26,47 @@ jobs:
             target: x86_64-unknown-linux-gnu
             tier: stable
             archive: tar.gz
-            build_mode: cargo
-            llvm_arch: x64
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             tier: stable
             archive: tar.gz
-            build_mode: cargo
-            llvm_arch: arm64
-          - runner: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            tier: stable
-            archive: tar.gz
-            build_mode: skip
-            llvm_arch: x64
-            skip_reason: "musl release build still needs a dedicated hosted toolchain image"
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-            tier: stable
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "aarch64 musl toolchain is not yet provisioned on hosted runners"
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             tier: stable
             archive: tar.gz
-            build_mode: cargo
-            llvm_arch: x64
           - runner: macos-14
             target: aarch64-apple-darwin
             tier: stable
             archive: tar.gz
-            build_mode: cargo
-            llvm_arch: arm64
-          - runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            tier: stable
-            archive: zip
-            build_mode: cargo
-            llvm_arch: x64
-          - runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            tier: stable
-            archive: zip
-            build_mode: skip
-            llvm_arch: arm64
-            skip_reason: "LLVM 14 does not publish a hosted Windows ARM64 package for this lane"
-          - runner: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "armv7 cross-image for LLVM 14 is not yet provisioned on hosted CI"
-          - runner: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "arm cross-image for LLVM 14 is not yet provisioned on hosted CI"
-          - runner: ubuntu-latest
-            target: riscv64gc-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "riscv64 cross-image for LLVM 14 is not yet provisioned on hosted CI"
-          - runner: ubuntu-latest
-            target: powerpc64le-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "powerpc64le cross-image for LLVM 14 is not yet provisioned on hosted CI"
-          - runner: ubuntu-latest
-            target: s390x-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "s390x cross-image for LLVM 14 is not yet provisioned on hosted CI"
-          - runner: ubuntu-latest
-            target: x86_64-unknown-freebsd
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "FreeBSD builder is not available on GitHub-hosted runners"
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-freebsd
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "FreeBSD ARM64 builder is not available on GitHub-hosted runners"
-          - runner: ubuntu-latest
-            target: x86_64-unknown-openbsd
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "OpenBSD builder is not available on GitHub-hosted runners"
-          - runner: ubuntu-latest
-            target: x86_64-unknown-netbsd
-            tier: extended
-            archive: tar.gz
-            build_mode: skip
-            skip_reason: "NetBSD builder is not available on GitHub-hosted runners"
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-        if: matrix.build_mode == 'cargo'
         with:
           target: ${{ matrix.target }}
 
       - name: Install Linux prerequisites
-        if: runner.os == 'Linux' && matrix.build_mode == 'cargo'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config zip
-          if [[ "${{ matrix.target }}" == *"musl"* ]]; then
-            sudo apt-get install -y musl-tools
-          fi
           echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
 
       - name: Install macOS prerequisites
-        if: runner.os == 'macOS' && matrix.build_mode == 'cargo'
+        if: runner.os == 'macOS'
         run: |
           brew install llvm@14
           echo "LLVM_SYS_140_PREFIX=$(brew --prefix llvm@14)" >> "$GITHUB_ENV"
 
-      - name: Install Windows LLVM
-        if: runner.os == 'Windows' && matrix.build_mode == 'cargo'
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "14.0.6"
-          arch: ${{ matrix.llvm_arch }}
-
-      - name: Export Windows LLVM environment
-        if: runner.os == 'Windows' && matrix.build_mode == 'cargo'
-        shell: pwsh
-        run: |
-          "LLVM_SYS_140_PREFIX=$env:LLVM_PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LLVM_CONFIG_PATH=$env:LLVM_PATH\bin\llvm-config.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Mark skipped target
-        if: matrix.build_mode == 'skip'
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Skipping ${TARGET}: ${REASON}"
-        env:
-          TARGET: ${{ matrix.target }}
-          REASON: ${{ matrix.skip_reason }}
-
       - name: Build release binaries
-        if: matrix.build_mode == 'cargo'
         shell: bash
         run: |
           set -euo pipefail
           cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
 
       - name: Package archive
-        if: matrix.build_mode == 'cargo'
         shell: bash
         run: |
           set -euo pipefail
@@ -202,7 +84,6 @@ jobs:
             --out-dir "dist"
 
       - uses: actions/upload-artifact@v4
-        if: matrix.build_mode == 'cargo'
         with:
           name: release-${{ matrix.target }}
           path: dist/*

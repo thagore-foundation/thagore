@@ -2,31 +2,28 @@
 
 This document defines the release tiers used by the Thagore toolchain.
 
-## Stable
+## Official SemVer Release Targets
 
-Stable targets are the primary distribution set for end users. Release automation treats
-these artifacts as the default install surface exposed by `thagup.sh`, `thagup.ps1`, and
-`thagc --print-target-list`.
-
-Stable targets:
+SemVer releases only publish targets that are verified end to end in GitHub Actions at the
+time the tag is cut. The current official set is:
 
 - `x86_64-unknown-linux-gnu`
 - `aarch64-unknown-linux-gnu`
-- `x86_64-unknown-linux-musl`
-- `aarch64-unknown-linux-musl`
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
+
+Targets are promoted into this set only after they build, package, and pass smoke verification
+without manual intervention on public CI.
+
+## Deferred Release Targets
+
+These targets remain part of the wider support plan, but they are not included in semver
+releases until a real builder lane exists and passes consistently:
+
+- `x86_64-unknown-linux-musl`
+- `aarch64-unknown-linux-musl`
 - `x86_64-pc-windows-msvc`
 - `aarch64-pc-windows-msvc`
-
-## Extended
-
-Extended targets are published from the same semver release train when a builder is available.
-The release manifest exposes them, but incident response and smoke coverage are lower priority
-than the stable lane.
-
-Extended targets:
-
 - `armv7-unknown-linux-gnueabihf`
 - `arm-unknown-linux-gnueabihf`
 - `riscv64gc-unknown-linux-gnu`
