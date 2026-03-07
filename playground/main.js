@@ -4,40 +4,53 @@ import { highlightThagore, normalizeEditorText } from "./highlight.js";
 import { encodeShare, decodeShare } from "./share.js";
 import { Terminal } from "./terminal.js";
 
-const editor = document.getElementById("editor");
-const examples = document.getElementById("examples");
-const runButton = document.getElementById("run-button");
-const formatButton = document.getElementById("format-button");
+const editor = document.getElementById("ca");
+const lineNumbers = document.getElementById("lnums");
+const divider = document.getElementById("div");
+const workspace = document.getElementById("ws");
+const editorPanel = document.getElementById("edp");
+const dropdownWrap = document.getElementById("ddwrap");
+const dropdownButton = document.getElementById("btn-dd");
+const dropdownMenu = document.getElementById("ddmenu");
 const shareButton = document.getElementById("share-button");
-const terminalEl = document.getElementById("terminal");
-const statusText = document.getElementById("status-text");
-const errorCountEl = document.getElementById("error-count");
-const elapsedEl = document.getElementById("elapsed");
-const toastEl = document.getElementById("toast");
+const runButton = document.getElementById("btnrun");
+const formatButton = document.getElementById("btnfmt");
+const terminalBody = document.getElementById("tbody");
+const terminalDot = document.getElementById("tdot");
+const terminalState = document.getElementById("tstatxt");
+const errorStat = document.getElementById("stat-err");
+const elapsedStat = document.getElementById("stat-ms");
+const cursorStat = document.getElementById("stat-cur");
+const toast = document.getElementById("toast");
+const stdlibTab = document.getElementById("stdlib-tab");
 
-const terminal = new Terminal(terminalEl);
+const terminal = new Terminal(terminalBody);
 
 let wasmReady = false;
 let diagnostics = [];
 let debounceHandle = null;
+let activeExampleId = EXAMPLES[0].id;
+let dragState = null;
 
-function showStatus(text) {
-  statusText.textContent = text;
+function showToast(text) {
+  toast.textContent = text;
+  toast.classList.add("visible");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.remove("visible"), 2000);
+}
+
+function setTerminalStatus(state, label) {
+  terminalDot.className = state ? `tdot ${state}` : "tdot";
+  terminalState.textContent = label;
 }
 
 function updateErrorCount(count) {
-  errorCountEl.textContent = `${count} error${count === 1 ? "" : "s"}`;
+  errorStat.textContent = `${count} error${count === 1 ? "" : "s"}`;
+  errorStat.className = count > 0 ? "tbstat err" : "tbstat ok";
 }
 
 function updateElapsed(ms) {
-  elapsedEl.textContent = `${ms}ms`;
-}
-
-function showToast(text) {
-  toastEl.textContent = text;
-  toastEl.classList.add("visible");
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toastEl.classList.remove("visible"), 2000);
+  elapsedStat.textContent = `${ms}ms`;
 }
 
 function getSelectionOffsets(root) {
@@ -46,6 +59,9 @@ function getSelectionOffsets(root) {
     return { start: 0, end: 0 };
   }
   const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+    return { start: 0, end: 0 };
+  }
   const pre = range.cloneRange();
   pre.selectNodeContents(root);
   pre.setEnd(range.startContainer, range.startOffset);
@@ -58,6 +74,7 @@ function restoreSelection(root, offsets) {
   if (!selection) {
     return;
   }
+
   const range = document.createRange();
   let start = offsets.start;
   let end = offsets.end;
@@ -101,14 +118,42 @@ function getEditorContent() {
   return normalizeEditorText(editor.innerText || "");
 }
 
+function currentCursor() {
+  const offsets = getSelectionOffsets(editor);
+  const prefix = getEditorContent().slice(0, offsets.end);
+  const lines = prefix.split("\n");
+  return {
+    line: Math.max(1, lines.length),
+    col: (lines.at(-1) || "").length + 1,
+  };
+}
+
+function updateLineNumbers(source, activeLine = currentCursor().line) {
+  const lines = source.split("\n");
+  lineNumbers.innerHTML = lines
+    .map((_, index) => `<div class="lnum${index + 1 === activeLine ? " hl" : ""}">${index + 1}</div>`)
+    .join("");
+}
+
+function updateCursorUi() {
+  const position = currentCursor();
+  cursorStat.textContent = `Ln ${position.line}, Col ${position.col}`;
+  updateLineNumbers(getEditorContent(), position.line);
+}
+
 function renderEditor(source, currentDiagnostics = diagnostics) {
   const selection = getSelectionOffsets(editor);
   editor.innerHTML = highlightThagore(source, currentDiagnostics);
   restoreSelection(editor, selection);
+  updateCursorUi();
 }
 
 function setEditorContent(source) {
   renderEditor(source, diagnostics);
+}
+
+function insertText(text) {
+  document.execCommand("insertText", false, text);
 }
 
 function scheduleCheck() {
@@ -132,40 +177,113 @@ function runCheck() {
   updateElapsed(Math.round(performance.now() - started));
 }
 
-function insertText(text) {
-  document.execCommand("insertText", false, text);
+function populateExamples() {
+  dropdownMenu.innerHTML = "";
+  for (const example of EXAMPLES) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "ddi";
+    item.innerHTML = `
+      <span class="ddi-dot" style="background:${example.color}"></span>
+      <span class="ddi-name">${example.name}</span>
+      <span class="ddi-tag">${example.tag}</span>
+    `;
+    item.addEventListener("click", () => {
+      activeExampleId = example.id;
+      diagnostics = [];
+      setEditorContent(example.code);
+      updateErrorCount(0);
+      markActiveExample();
+      closeDropdown();
+      scheduleCheck();
+    });
+    dropdownMenu.appendChild(item);
+  }
+  markActiveExample();
+}
+
+function markActiveExample() {
+  const items = dropdownMenu.querySelectorAll(".ddi");
+  items.forEach((item, index) => {
+    item.classList.toggle("active", EXAMPLES[index].id === activeExampleId);
+  });
+}
+
+function openDropdown() {
+  dropdownMenu.classList.add("open");
+  dropdownButton.classList.add("open");
+  dropdownButton.setAttribute("aria-expanded", "true");
+}
+
+function closeDropdown() {
+  dropdownMenu.classList.remove("open");
+  dropdownButton.classList.remove("open");
+  dropdownButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleDropdown() {
+  if (dropdownMenu.classList.contains("open")) {
+    closeDropdown();
+  } else {
+    openDropdown();
+  }
+}
+
+async function shareCode() {
+  const link = encodeShare(getEditorContent());
+  history.replaceState(null, "", link);
+  await navigator.clipboard.writeText(link);
+  showToast("Link copied!");
 }
 
 async function runCode() {
   if (!wasmReady) {
     return;
   }
+
   const source = getEditorContent();
   terminal.clear();
-  terminal.writeLine("Running...", "system");
+  terminal.writeLine("$ thagore playground run", "dim");
+  setTerminalStatus("running", "running");
+  runButton.classList.add("running");
+  runButton.innerHTML = "<span>⏳</span> Running…";
+
   const started = performance.now();
-  let result = null;
+  let result;
   try {
     result = compile_and_run(source);
   } catch (error) {
-    terminal.writeLine(String(error), "error");
+    terminal.writeSpacer();
+    terminal.writeLine(String(error), "err");
+    terminal.writeRunResult(false, Math.round(performance.now() - started));
+    setTerminalStatus("err", "error");
+    runButton.classList.remove("running");
+    runButton.innerHTML = "<span>▶</span> Run <span class=\"btn-sub\">(Ctrl+Enter)</span>";
     return;
   }
+
   const elapsed = Math.round(performance.now() - started);
   updateElapsed(elapsed);
   const errors = JSON.parse(result.errors || "[]");
   diagnostics = errors;
   renderEditor(source, diagnostics);
   updateErrorCount(errors.length);
-  for (const line of (result.output || "").split("\n")) {
-    if (line.length > 0) {
-      terminal.writeLine(line, "output");
-    }
+
+  terminal.writeSpacer();
+  const output = (result.output || "").split("\n").filter((line) => line.length > 0);
+  for (const line of output) {
+    terminal.writeLine(line, "out");
   }
   for (const error of errors) {
-    terminal.writeError(error);
+    terminal.writeError(error, source);
+    terminal.writeSpacer();
   }
-  terminal.writeRunResult(result, elapsed);
+  terminal.writeRunResult(Boolean(result.success), elapsed);
+  terminal.addCursor();
+
+  setTerminalStatus(result.success && errors.length === 0 ? "ok" : "err", result.success ? "done" : "error");
+  runButton.classList.remove("running");
+  runButton.innerHTML = "<span>▶</span> Run <span class=\"btn-sub\">(Ctrl+Enter)</span>";
 }
 
 function formatCode() {
@@ -176,36 +294,11 @@ function formatCode() {
   diagnostics = [];
   setEditorContent(formatted);
   updateErrorCount(0);
-  showStatus("Formatted");
+  setTerminalStatus("ok", "formatted");
   scheduleCheck();
 }
 
-async function shareCode() {
-  const link = encodeShare(getEditorContent());
-  history.replaceState(null, "", link);
-  await navigator.clipboard.writeText(link);
-  showToast("Link copied!");
-}
-
-function populateExamples() {
-  for (const example of EXAMPLES) {
-    const option = document.createElement("option");
-    option.value = example.name;
-    option.textContent = example.name;
-    examples.appendChild(option);
-  }
-  examples.addEventListener("change", () => {
-    const example = EXAMPLES.find((item) => item.name === examples.value);
-    if (example) {
-      diagnostics = [];
-      setEditorContent(example.code);
-      updateErrorCount(0);
-      scheduleCheck();
-    }
-  });
-}
-
-function handleKeydown(event) {
+function handleEditorKeydown(event) {
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     runCode();
@@ -233,28 +326,87 @@ function handleKeydown(event) {
   }
 }
 
+function bindDivider() {
+  divider.addEventListener("mousedown", (event) => {
+    dragState = {
+      startX: event.clientX,
+      startWidth: editorPanel.offsetWidth,
+    };
+    divider.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  });
+
+  document.addEventListener("mousemove", (event) => {
+    if (!dragState || window.innerWidth <= 768) {
+      return;
+    }
+    const nextWidth = Math.max(200, Math.min(
+      dragState.startWidth + (event.clientX - dragState.startX),
+      workspace.offsetWidth - 200,
+    ));
+    editorPanel.style.width = `${nextWidth}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragState) {
+      return;
+    }
+    dragState = null;
+    divider.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+  });
+}
+
 async function boot() {
   populateExamples();
-  editor.addEventListener("keydown", handleKeydown);
-  editor.addEventListener("input", () => scheduleCheck());
+  terminal.clear();
+  terminal.writeLine("thagore playground — load wasm runtime", "dim");
+  terminal.addCursor();
+  setTerminalStatus("", "loading");
+
+  dropdownButton.addEventListener("click", toggleDropdown);
+  document.addEventListener("click", (event) => {
+    if (!dropdownWrap.contains(event.target)) {
+      closeDropdown();
+    }
+  });
+  shareButton.addEventListener("click", shareCode);
   runButton.addEventListener("click", runCode);
   formatButton.addEventListener("click", formatCode);
-  shareButton.addEventListener("click", shareCode);
+  stdlibTab.addEventListener("click", () => {
+    showToast("Stdlib tab is a visual stub in the browser playground.");
+  });
+
+  editor.addEventListener("keydown", handleEditorKeydown);
+  editor.addEventListener("input", () => {
+    updateCursorUi();
+    scheduleCheck();
+  });
+  document.addEventListener("selectionchange", () => {
+    if (document.activeElement === editor) {
+      updateCursorUi();
+    }
+  });
+
+  bindDivider();
 
   try {
     await init();
     wasmReady = true;
-    showStatus("Ready");
+    setTerminalStatus("ok", "ready");
   } catch (error) {
-    showStatus("WASM failed to load");
-    terminal.writeLine(String(error), "error");
+    terminal.writeSpacer();
+    terminal.writeLine(String(error), "err");
+    setTerminalStatus("err", "wasm error");
     return;
   }
 
   const shared = decodeShare();
   const initial = shared || EXAMPLES[0].code;
-  examples.value = EXAMPLES[0].name;
   setEditorContent(initial);
+  updateCursorUi();
   runCheck();
 }
 

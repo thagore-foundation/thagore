@@ -1,64 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Thagore Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300;1,9..144,700&display=swap"
+      rel="stylesheet"
+    >
     <link rel="stylesheet" href="./style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js" defer></script>
   </head>
   <body>
-    <div class="app">
-      <header class="header">
-        <div class="brand">
-          <span class="brand-mark">T</span>
-          <div>
-            <h1>Thagore Playground</h1>
-            <p>Run Thagore in the browser with a WASM compiler + interpreter.</p>
-          </div>
+    <header>
+      <div class="logo">
+        <div class="logo-gem"></div>
+        <div class="logo-word">Tha<span>gore</span></div>
+      </div>
+      <div class="hsep"></div>
+      <button class="ftab active" type="button" aria-current="page">
+        <span class="fdot"></span>
+        main.tg
+      </button>
+      <button class="ftab" id="stdlib-tab" type="button">
+        stdlib.tg
+      </button>
+      <div class="hspace"></div>
+      <div class="hactions">
+        <div class="ddwrap" id="ddwrap">
+          <button class="btn-ex" id="btn-dd" type="button" aria-haspopup="true" aria-expanded="false">
+            Examples
+            <svg width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true">
+              <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <div class="ddmenu" id="ddmenu" role="menu"></div>
         </div>
-        <div class="toolbar">
-          <select id="examples" aria-label="Examples">
-            <option value="">Examples</option>
-          </select>
-          <button id="share-button">Share</button>
-        </div>
-      </header>
+        <button class="btn-share" id="share-button" type="button">Share</button>
+      </div>
+    </header>
 
-      <main class="workspace">
-        <section class="panel">
-          <div class="panel-header">
-            <span>Code Editor</span>
-            <span>Ctrl+Enter to run</span>
-          </div>
-          <div class="editor-shell">
-            <div id="editor" class="editor" contenteditable="true" spellcheck="false" autocapitalize="off" aria-label="Thagore editor"></div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <span>Terminal Output</span>
-            <span>Browser WASM runtime</span>
-          </div>
-          <div id="terminal" class="terminal" aria-live="polite"></div>
-        </section>
-      </main>
-
-      <footer class="status">
-        <div class="status-actions">
-          <button id="run-button" class="button-primary">▶ Run</button>
-          <button id="format-button">⚙ Format</button>
-          <span id="status-text">Loading WASM…</span>
+    <div class="workspace" id="ws">
+      <section class="ed-panel" id="edp" style="width:55%">
+        <div class="ph">
+          <span class="ph-label">Editor</span>
+          <span class="ph-lang">Thagore · WASM</span>
         </div>
-        <div class="status-meta">
-          <span id="error-count">0 errors</span>
-          <span id="elapsed">0ms</span>
+        <div class="ed-scroll">
+          <div class="lnums" id="lnums" aria-hidden="true"></div>
+          <div
+            class="code-area"
+            id="ca"
+            contenteditable="true"
+            spellcheck="false"
+            autocorrect="off"
+            autocapitalize="off"
+            aria-label="Thagore code editor"
+          ></div>
         </div>
-      </footer>
+      </section>
+
+      <div class="divider" id="div" aria-hidden="true"></div>
+
+      <section class="term-panel" id="termp">
+        <div class="term-ph">
+          <span class="ph-label">Terminal</span>
+          <div class="tstat">
+            <div class="tdot" id="tdot"></div>
+            <span class="tstat-txt" id="tstatxt">loading</span>
+          </div>
+        </div>
+        <div class="term-body" id="tbody" aria-live="polite"></div>
+      </section>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer class="toolbar">
+      <button class="btn-run" id="btnrun" type="button">
+        <span>▶</span>
+        Run
+        <span class="btn-sub">(Ctrl+Enter)</span>
+      </button>
+      <button class="btn-fmt" id="btnfmt" type="button">⚙ Format</button>
+      <div class="tbsep"></div>
+      <span class="tbstat ok" id="stat-err">0 errors</span>
+      <span class="tbstat" id="stat-ms">0ms</span>
+      <div class="tbspace"></div>
+      <div class="tbright">
+        <div class="kbhint"><span class="kbd">Ctrl</span>+<span class="kbd">Enter</span> run</div>
+        <div class="kbhint"><span class="kbd">Ctrl</span>+<span class="kbd">S</span> format</div>
+        <span class="tbstat" id="stat-cur">Ln 1, Col 1</span>
+      </div>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
