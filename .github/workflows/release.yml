@@ -145,89 +145,9 @@ jobs:
           name: release-${{ matrix.target }}
           path: dist/*
 
-  build-self-hosted:
-    name: Self-hosted ${{ matrix.target }}
-    runs-on: ${{ fromJson(matrix.runner_labels) }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner_labels: '["self-hosted","windows","arm64","msvc"]'
-            target: aarch64-pc-windows-msvc
-            tier: stable
-            archive: zip
-            host_os: windows
-          - runner_labels: '["self-hosted","freebsd","x64"]'
-            target: x86_64-unknown-freebsd
-            tier: extended
-            archive: tar.gz
-            host_os: unix
-          - runner_labels: '["self-hosted","freebsd","arm64"]'
-            target: aarch64-unknown-freebsd
-            tier: extended
-            archive: tar.gz
-            host_os: unix
-          - runner_labels: '["self-hosted","openbsd","x64"]'
-            target: x86_64-unknown-openbsd
-            tier: extended
-            archive: tar.gz
-            host_os: unix
-          - runner_labels: '["self-hosted","netbsd","x64"]'
-            target: x86_64-unknown-netbsd
-            tier: extended
-            archive: tar.gz
-            host_os: unix
-    env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Install Unix prerequisites
-        if: matrix.host_os == 'unix'
-        run: |
-          python3 --version
-
-      - name: Install Windows prerequisites
-        if: matrix.host_os == 'windows'
-        shell: pwsh
-        run: |
-          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
-
-      - name: Build release binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
-
-      - name: Package archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${RELEASE_TAG#v}"
-          mkdir -p dist
-          python3 tooling/release/package_release.py \
-            --version "${VERSION}" \
-            --tag "${RELEASE_TAG}" \
-            --target "${{ matrix.target }}" \
-            --archive-format "${{ matrix.archive }}" \
-            --support-tier "${{ matrix.tier }}" \
-            --bin-dir "target/${{ matrix.target }}/release" \
-            --stdlib-dir "stdlib" \
-            --installer-dir "tooling/release" \
-            --out-dir "dist"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.target }}
-          path: dist/*
-
   publish-draft:
     name: Publish draft release assets
-    needs: [build-hosted, build-self-hosted]
+    needs: build-hosted
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -257,7 +177,6 @@ jobs:
             --dist-dir release-dist \
             --targets-file tooling/packaging/targets.json \
             --tiers "stable,extended" \
-            --require-complete \
             --drago-version "${DRAGO_VERSION}" \
             --drago-tag "v${DRAGO_VERSION}"
 

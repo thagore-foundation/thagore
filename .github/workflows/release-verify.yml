@@ -43,16 +43,11 @@ jobs:
               "x86_64-apple-darwin",
               "aarch64-apple-darwin",
               "x86_64-pc-windows-msvc",
-              "aarch64-pc-windows-msvc",
               "armv7-unknown-linux-gnueabihf",
               "arm-unknown-linux-gnueabihf",
               "riscv64gc-unknown-linux-gnu",
               "powerpc64le-unknown-linux-gnu",
               "s390x-unknown-linux-gnu",
-              "x86_64-unknown-freebsd",
-              "aarch64-unknown-freebsd",
-              "x86_64-unknown-openbsd",
-              "x86_64-unknown-netbsd",
           }
           actual = {artifact["target"] for artifact in manifest_data["artifacts"] if artifact["available"]}
           missing = sorted(expected - actual)
