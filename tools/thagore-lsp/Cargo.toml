@@ -7,3 +7,26 @@ license = "MIT"
 [[bin]]
 name = "thagore-lsp"
 path = "src/main.rs"
+
+[dependencies]
+# `bumpalo` allocates parser arenas for transient AST analysis.
+bumpalo = "3.17.0"
+# `dashmap` stores concurrent per-document analysis state across async LSP requests.
+dashmap = "5.5.3"
+# `ropey` applies incremental text edits without rewriting whole files.
+ropey = "1.6.1"
+# `serde_json` serializes and parses JSON payloads used by LSP tests and protocol glue.
+serde_json = "1.0.140"
+# `tokio` drives the async stdio server and debounce tasks.
+tokio = { version = "1.44.2", features = ["full"] }
+# `tower-lsp` provides the LSP transport, protocol types, and backend traits.
+tower-lsp = "0.20.0"
+thagore-ast = { path = "../../crates/ast" }
+thagore-lexer = { path = "../../crates/lexer" }
+thagore-module-graph = { path = "../../crates/module_graph" }
+thagore-parser = { path = "../../crates/parser" }
+thagore-typeck = { path = "../../crates/typeck" }
+
+[dev-dependencies]
+# `tempfile` creates isolated workspaces for end-to-end LSP tests.
+tempfile = "3.20.0"

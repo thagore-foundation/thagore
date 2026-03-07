@@ -1,0 +1,29 @@
+{
+  "name": "thagore",
+  "displayName": "Thagore",
+  "description": "Thagore language support",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:thagore"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "thagore",
+        "aliases": ["Thagore", "tg"],
+        "extensions": [".tg"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "thagore",
+        "scopeName": "source.thagore",
+        "path": "./syntaxes/thagore.tmLanguage.json"
+      }
+    ]
+  }
+}
