@@ -1,99 +1,80 @@
 ---
 title: Print & Output
-description: How to output values in Thagore using the built-in print() function.
+description: How to output values in Thagore using the built-in print and println functions.
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 # Print & Output
 
-The `print()` function is a built-in that outputs values to stdout. It automatically handles different types.
+`print` and `println` are built-in functions — no import needed. Both take a single `str` argument.
 
-## Basic Usage
+## Basic usage
 
-```python title="hello.tg"
+```thagore
 func main() -> i32:
-    print("Hello Self-Hosted World!")
-    return 0
+  print("Hello, Thagore!")
+  println("Hello, Thagore!")
+  return 0
 ```
 
-```
-Output: Hello Self-Hosted World!
-```
+`print` writes to stdout without a trailing newline. `println` appends a newline.
 
-## Printing Different Types
+## Formatting values
 
-`print()` can handle integers, floats, and strings:
+`print` accepts only `str`. Use `std.string` helpers to format other types before printing:
 
-```python title="print_types.tg"
-# Print a string
-print("Thagore is awesome")
-
-# Print an integer
-let x = 42
-print(x)
-
-# Print a float
-let pi = 3.14159
-print(pi)
-
-# Print a computed expression
-let a = 10
-let b = 32
-print(a + b)
-```
-
-## String Concatenation for Output
-
-Use `+` to concatenate strings for more complex output:
-
-```python title="string_concat_output.tg"
-func main() -> i32:
-    let name = "Developer"
-    let greeting = "Hello, " + name + "!"
-    print(greeting)
-    return 0
-```
-
-```
-Output: Hello, Developer!
-```
-
-## Printing Struct Fields
-
-Access struct fields with `.` notation and print them individually:
-
-```python title="print_struct.tg"
-struct Point:
-    x: i32
-    y: i32
-
-let p = Point(10, 20)
-print(p.x)   # Output: 10
-print(p.y)   # Output: 20
-```
-
-<Aside type="note" title="No Format Strings (Yet)">
-Thagore does not currently have `printf`-style format strings as a built-in. Use string concatenation or the C FFI `printf` via `extern func` for advanced formatting.
-</Aside>
-
-## Using `extern func printf` for Formatted Output
-
-```python title="formatted.tg"
-extern func printf(fmt: String, value: i32) -> i32
+```thagore
+import std.string as string
 
 func main() -> i32:
-    printf("The answer is %d\n", 42)
-    return 0
+  println(string.from_int(42))
+  println(string.from_f64(3.14))
+  println(string.from_bool(true))
+  return 0
 ```
 
-## Top-Level Print
+## Building output strings
 
-Print statements can appear at the top level (outside `main`):
+Use `string.concat` to assemble output from multiple parts:
 
-```python title="top_level.tg"
-let message = "Hello from top level!"
-print(message)
+```thagore
+import std.string as string
+
+func main() -> i32:
+  let value: i32 = 7
+  let label = string.concat("answer = ", string.from_int(value))
+  println(label)
+  return 0
 ```
 
-The compiler wraps top-level statements in an auto-generated `main` function.
+## Stderr output
+
+`eprint` and `eprintln` write to stderr:
+
+```thagore
+func main() -> i32:
+  eprintln("error: something went wrong")
+  return 1
+```
+
+## Flush
+
+`flush` flushes buffered stdout output:
+
+```thagore
+func main() -> i32:
+  print("loading...")
+  flush()
+  return 0
+```
+
+## Using extern func printf
+
+For C-style format-string output, declare printf via FFI:
+
+```thagore
+extern func printf(fmt: str, value: i32) -> i32
+
+func main() -> i32:
+  printf("The answer is %d\n", 42)
+  return 0
+```

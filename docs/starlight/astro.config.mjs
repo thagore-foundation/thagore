@@ -47,6 +47,7 @@ export default defineConfig({
             { label: "iter", link: "/stdlib/iter/" },
             { label: "fmt", link: "/stdlib/fmt/" },
             { label: "convert", link: "/stdlib/convert/" },
+            { label: "time", link: "/stdlib/time/" },
           ]
         },
         {

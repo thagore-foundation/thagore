@@ -5,11 +5,11 @@ description: Learn core algorithm patterns in Thagore with beginner-friendly exa
 
 # Beginner Algorithms Tutorial
 
-This guide is for new users who want to learn practical problem solving in Thagore.
+This guide uses only features available in the current compiler.
 
 ## 1. Conditionals and loops
 
-```python
+```thagore
 func abs_i32(x: i32) -> i32:
   if (x < 0):
     return 0 - x
@@ -24,54 +24,93 @@ func sum_to(n: i32) -> i32:
   return total
 ```
 
-## 2. Linear search
+## 2. Linear search over input array
 
-```python
-func find_index(arr: [i32; 5], target: i32) -> i32:
-  let i: i32 = 0
-  while (i < len(arr)):
-    if (arr[i] == target):
-      return i
-    i = i + 1
+Arrays are supplied by runtime APIs like `io.read_ints`. Use `for item in items:` to iterate.
+
+```thagore
+import std.io as io
+import std.string as string
+
+func find_first_positive(items: Array[i32]) -> i32:
+  for item in items:
+    if (item > 0):
+      return item
   return -1
-```
 
-## 3. Insertion sort
-
-```python
-func insertion_sort(data: [i32; 6]) -> [i32; 6]:
-  let i: i32 = 1
-  while (i < len(data)):
-    let key = data[i]
-    let j: i32 = i - 1
-    while (j >= 0 && data[j] > key):
-      data[j + 1] = data[j]
-      j = j - 1
-    data[j + 1] = key
-    i = i + 1
-  return data
-```
-
-## 4. Full beginner exercise
-
-```python
 func main() -> i32:
-  let arr = [9, 4, 7, 1, 6, 2]
-  let sorted = insertion_sort(arr)
-  let idx = find_index(sorted, 7)
-  print(idx)
+  let n = io.read_int()
+  let values = io.read_ints(n)
+  let result = find_first_positive(values)
+  println(string.from_int(result))
   return 0
 ```
 
-Compile and run:
+## 3. Reduction over array
+
+```thagore
+import std.io as io
+import std.string as string
+
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+
+func main() -> i32:
+  let n = io.read_int()
+  let values = io.read_ints(n)
+  println(string.from_int(sum_items(values)))
+  return 0
+```
+
+## 4. Recursive algorithms
+
+```thagore
+func fib(n: i32) -> i32:
+  if (n <= 1):
+    return n
+  return fib(n - 1) + fib(n - 2)
+
+func factorial(n: i32) -> i32:
+  if (n <= 1):
+    return 1
+  return n * factorial(n - 1)
+```
+
+## 5. Manual counting with while
+
+There is no numeric range syntax (`0..10`). Use `while` instead:
+
+```thagore
+import std.string as string
+
+func count_even(limit: i32) -> i32:
+  let i: i32 = 0
+  let count: i32 = 0
+  while (i <= limit):
+    if (i % 2 == 0):
+      count = count + 1
+    i = i + 1
+  return count
+
+func main() -> i32:
+  println(string.from_int(count_even(10)))
+  return 0
+```
+
+## Compile and run
 
 ```bash
 thagc build beginner.tg -o beginner
 ./beginner
 ```
 
-## Next steps
+## Current limitations
 
-1. Replace fixed-size arrays with user input.
-2. Add duplicate handling to `find_index`.
-3. Add a benchmark loop and compare different sorting algorithms.
+- No fixed-size array literals (`[1, 2, 3]` does not exist)
+- No array indexing by position (`arr[i]` does not exist)
+- No `len()` builtin for arrays
+- No range loops (`0..10` does not exist) — use `while`
+- Use `for item in items:` to iterate over `Array[T]` values from runtime APIs

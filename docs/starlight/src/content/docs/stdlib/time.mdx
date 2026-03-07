@@ -1,0 +1,58 @@
+---
+title: std.time
+description: Time utilities in the Thagore standard library.
+sidebar:
+  order: 11
+---
+
+# std.time
+
+The `std.time` module provides access to the current runtime clock.
+
+## Import
+
+```thagore
+import std.time as time
+```
+
+## API
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `now_ms` | `func now_ms() -> i64` | Current time in milliseconds since epoch |
+
+## Example
+
+```thagore
+import std.time as time
+
+func main() -> i32:
+  let t = time.now_ms()
+  return 0
+```
+
+`now_ms` returns `i64`. There is no `string.from_i64` in the current standard library, so printing a timestamp directly is not supported without an intermediate cast. To compare timestamps, use arithmetic:
+
+## Timing elapsed duration
+
+```thagore
+import std.time as time
+
+func main() -> i32:
+  let start = time.now_ms()
+  let i: i32 = 0
+  while (i < 1000000):
+    i = i + 1
+  let elapsed = time.now_ms() - start
+  if (elapsed > 0):
+    return 0
+  return 1
+```
+
+## Full reference
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `now_ms` | `func now_ms() -> i64` | milliseconds since epoch |
+
+`sleep_ms` and other time utilities are not implemented in the current compiler.

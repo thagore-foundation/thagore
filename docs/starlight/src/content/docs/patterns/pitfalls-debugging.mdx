@@ -3,202 +3,185 @@ title: Pitfalls & Debugging
 description: Common mistakes, error messages, and debugging strategies for Thagore development.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 # Pitfalls & Debugging
 
 ## Common Pitfalls
 
-### 1. Missing Parentheses in `if`/`while`
+### 1. Missing parentheses in `if`/`while`
 
 ❌ **Wrong:**
-```python
+```thagore
 if x > 0:
-    print(x)
+  println("positive")
 ```
 
 ✅ **Correct:**
-```python
+```thagore
 if (x > 0):
-    print(x)
+  println("positive")
 ```
 
-Thagore requires parentheses around conditions in `if` and `while` statements.
+Thagore requires parentheses around conditions in `if` and `while`.
 
-### 2. No `++` or `--` Operators
+### 2. No `++` or `--` operators
 
 ❌ **Wrong:**
-```python
+```thagore
 i++
 ```
 
 ✅ **Correct:**
-```python
+```thagore
 i = i + 1
 ```
 
-### 3. No `+=` or `-=` Operators
+### 3. No `+=` or `-=` operators
 
 ❌ **Wrong:**
-```python
+```thagore
 total += x
 ```
 
 ✅ **Correct:**
-```python
+```thagore
 total = total + x
 ```
 
-### 4. Forgetting to Reassign Struct Updates
-
-Since struct methods return new instances:
+### 4. Printing integers — print only accepts `str`
 
 ❌ **Wrong:**
-```python
-let sb = builder_new()
-append(sb, "hello")    # Return value is discarded!
+```thagore
+let n = 42
+println(n)
 ```
 
 ✅ **Correct:**
-```python
-let sb = builder_new()
-sb = append(sb, "hello")    # Reassign to capture update
-```
+```thagore
+import std.string as string
 
-### 5. Top-Level `defer`
-
-❌ **Wrong:**
-```python
-defer cleanup()    # Top-level defer is rejected
-```
-
-✅ **Correct:**
-```python
 func main() -> i32:
-    defer cleanup()    # Defer inside a function
+  let n = 42
+  println(string.from_int(n))
+  return 0
+```
+
+### 5. String concatenation — no `+` operator on strings
+
+❌ **Wrong:**
+```thagore
+let s = "hello" + " world"
+```
+
+✅ **Correct:**
+```thagore
+import std.string as string
+
+func main() -> i32:
+  let s = string.concat("hello", " world")
+  println(s)
+  return 0
+```
+
+### 6. No array literals or fixed-size array types
+
+❌ **Wrong:**
+```thagore
+let arr = [1, 2, 3]
+let arr: [i32; 3] = [1, 2, 3]
+```
+
+✅ **Correct** (arrays come from runtime APIs):
+```thagore
+import std.io as io
+
+func main() -> i32:
+  let values = io.read_ints(3)
+  return 0
+```
+
+### 7. No range loops
+
+❌ **Wrong:**
+```thagore
+for i in 0..10:
+  println("x")
+```
+
+✅ **Correct** (use `while` for counted loops):
+```thagore
+func main() -> i32:
+  let i: i32 = 0
+  while (i < 10):
+    println("x")
+    i = i + 1
+  return 0
+```
+
+### 8. Features that are not implemented
+
+The following are **not in the current compiler** and will cause errors:
+
+| Feature | Status |
+|---------|--------|
+| `enum` | not implemented |
+| `match` | not implemented |
+| `defer` | not implemented |
+| `type` alias | not implemented |
+| `trait` / `impl for` | not implemented |
+| closures / lambdas | not implemented |
+| array literals `[1, 2, 3]` | not implemented |
+| range loops `0..10` | not implemented |
+| string interpolation | not implemented |
+| operator overloading | not implemented |
+
+### 9. Wrong indentation
+
+❌ **Wrong (tabs or 4 spaces):**
+```thagore
+func main() -> i32:
     return 0
 ```
 
-### 6. `match` Without `enum`
-
-Using `match` requires at least one `enum` declaration:
-
-❌ **Wrong:**
-```python
-match value:    # No enum defined → E_TYPE_MATCH_MISSING_ENUM
-    1: print("one")
+✅ **Correct (2 spaces):**
+```thagore
+func main() -> i32:
+  return 0
 ```
 
-✅ **Correct:**
-```python
-enum Kind:
-    One
-    Two
-
-match kind:
-    One: print("one")
-    Two: print("two")
-```
-
-### 7. Malformed Range Loop
-
-❌ **Wrong:**
-```python
-for i in 0...10:    # Three dots instead of two
-    print(i)
-```
-
-✅ **Correct:**
-```python
-for i in 0..10:     # Exactly two dots
-    print(i)
-```
-
-## Compiler Error Reference
-
-| Error Code | Description | Fix |
-|-----------|-------------|-----|
-| `E_TYPE_MATCH_MISSING_ENUM` | `match` used without an `enum` | Add an `enum` declaration |
-| `E_TYPE_RANGE_HEADER` | Malformed `for i in a..b:` | Fix the range loop syntax |
-| `E_TYPE_IF_EXPR` | Malformed if-expression | Check if-expression syntax |
-| `E_TYPE_CLOSURE` | Malformed closure | Check closure syntax |
-| `E_TYPE_TRAIT_CONSTRAINT` | Trait/impl constraint check failed | Review trait/impl declarations |
-| `E_TYPE_INTENT_GOAL` | Unsupported intent goal | Use a valid goal: `auto_plan`, `reduce_sum`, `off` |
-| `E_TYPE_PIPELINE_VALIDATE` | General pipeline validation failure | Check source for syntax issues |
-| `E_INDENT` | Indentation mismatch | Fix indentation levels |
+Tabs are rejected. Odd-count spaces are rounded down (3 spaces → treated as 2).
 
 ## Debugging Strategies
 
-### 1. Inspect LLVM IR
+### 1. Use print debugging
+
+Insert `println()` calls to trace execution:
+
+```thagore
+import std.string as string
+
+func compute(n: i32) -> i32:
+  println(string.concat("input: ", string.from_int(n)))
+  let result = n * 2
+  println(string.concat("result: ", string.from_int(result)))
+  return result
+```
+
+### 2. Use `--emit-llvm` to inspect IR
 
 ```bash
-thagore build program.tg --emit-llvm
-# Produces program.ll — inspect generated LLVM IR
+thagc build program.tg --emit-llvm
 ```
 
-### 2. Use Print Debugging
+Produces a `.ll` file with the generated LLVM IR.
 
-Insert `print()` calls to trace execution:
+### 3. Use `thagc check`
 
-```python
-func complex_algorithm(n: i32) -> i32:
-    print("input:")
-    print(n)
-    let result = n * 2
-    print("result:")
-    print(result)
-    return result
-```
-
-### 3. Run Autofix Doctor
+Typecheck without linking:
 
 ```bash
-thagore fix doctor entry.tg
+thagc check program.tg
 ```
 
-This diagnoses issues without applying fixes.
+### 4. Simplify to isolate the issue
 
-### 4. Check Feature Set
-
-If a feature isn't working, verify it's being detected by the parser. The feature set includes tags like `;enum_payload;match;range_loop;if_expr;` etc.
-
-### 5. Verify Self-Hosting
-
-If you suspect a compiler bug, try the self-hosting test:
-
-```bash
-# Build Stage2 from your current compiler
-stage2.exe build src/thagore.tg -o stage2b.exe
-
-# If this succeeds, the compiler is consistent
-```
-
-## Memory Debugging
-
-For memory issues (crashes, leaks):
-
-```python title="memory_test.tg"
-func create_garbage() -> i32:
-    let s1 = "Part 1 "
-    let s2 = "Part 2"
-    let res = s1 + s2
-    print(res)
-    return 0
-
-func main() -> i32:
-    let i = 0
-    while (i < 1000):
-        create_garbage()
-        i = i + 1
-    print("Finished without crashing!")
-    return 0
-```
-
-This pattern tests that string operations don't leak memory over many iterations.
-
-<Aside type="tip" title="When in Doubt">
-1. Check file encoding (use UTF-8, LF line endings)
-2. Verify LLVM version (`clang --version` → should be 21.x)
-3. Ensure runtime ABI library is accessible
-4. Simplify the program to isolate the issue
-</Aside>
+Strip the program down to the smallest form that reproduces the error. Add back pieces one at a time.

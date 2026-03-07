@@ -3,136 +3,87 @@ title: Variables & let
 description: Variable declarations, type inference, reassignment, and scope rules in Thagore.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 # Variables & `let`
 
-## Declaring Variables
+## Declaring variables
 
-Use `let` to create a new variable binding. Thagore uses **type inference** — you don't need to specify the type if it can be inferred:
+Use `let` to create a local binding. The type can be annotated explicitly or inferred from the initializer:
 
-```python title="variables.tg"
-let x = 42          # i32 (inferred)
-let name = "Alice"  # String (inferred)
-let pi = 3.14       # f32 or f64 (inferred)
-let flag = true     # bool (inferred)
+```thagore
+func main() -> i32:
+  let x = 42
+  let ratio = 3.5
+  let name = "thagore"
+  let flag = true
+  return 0
 ```
 
-## Explicit Type Annotations
+## Explicit type annotations
 
-You can specify types explicitly in function parameters and struct fields:
-
-```python title="typed_params.tg"
-func add(a: i32, b: i32) -> i32:
-    return a + b
-
-struct Config:
-    width: i32
-    height: i32
-    name: String
+```thagore
+func main() -> i32:
+  let count: i32 = 10
+  let ratio: f64 = 1.5
+  let label: str = "ok"
+  let done: bool = false
+  return 0
 ```
 
-## Supported Primitive Types
+## Supported primitive types
 
 | Type | Description | Example |
 |------|-------------|---------|
-| `i32` | 32-bit signed integer | `let x = 42` |
-| `f32` | 32-bit float | `let x = 3.14` |
-| `f64` | 64-bit float | `let x = 3.14159265` |
-| `String` | UTF-8 string | `let s = "hello"` |
-| `bool` | Boolean (`true`/`false`) | `let b = true` |
-| `ptr` | Raw pointer | `let p = __thg_ptr_null()` |
-| `void` | No return value | Used in `extern func` |
+| `i32` | 32-bit signed integer | `let x: i32 = 42` |
+| `i64` | 64-bit signed integer | `let x: i64 = 1000000000` |
+| `f64` | 64-bit floating point | `let x: f64 = 3.14` |
+| `bool` | Boolean | `let b: bool = true` |
+| `str` | String handle | `let s: str = "hello"` |
+
+The float type is `f64`. There is no `f32` user-facing type in the current compiler.
 
 ## Reassignment
 
-Variables declared with `let` can be reassigned:
+`let` bindings are mutable by default — reassign with `=`:
 
-```python title="reassignment.tg"
+```thagore
 func main() -> i32:
-    let x = 1
-    let y = 2
-    let z = x + y
-    x = z           # reassign x to the value of z
-    print(x)        # Output: 3
-    return 0
+  let x: i32 = 1
+  x = x + 1
+  return x - 2
 ```
 
-<Aside type="note" title="No mut Keyword">
-Unlike Rust, there is no `mut` keyword. All `let` bindings are mutable by default in the current version.
-</Aside>
+## Scope
 
-## Scope Rules
+Variables are scoped to their enclosing block:
 
-Variables are scoped to their enclosing block (function body, if/else block, while body, etc.):
-
-```python title="scope.tg"
-func main() -> i32:
-    let x = 10
-    if (x > 5):
-        let y = 20      # y is scoped to this if-block
-        print(y)
-    # y is not accessible here
-    print(x)            # x is still accessible
-    return 0
+```thagore
+func classify(value: i32) -> i32:
+  let result: i32 = 0
+  if (value > 0):
+    let adjusted: i32 = value + 1
+    result = adjusted
+  return result
 ```
 
-## String Variables
+## Top-level constants
 
-Strings support concatenation with `+`:
+Use `const` for module-level immutable values. `const` requires an explicit type annotation:
 
-```python title="strings.tg"
-let first = "Hello"
-let space = " "
-let world = "Thagore"
-let greeting = first + space + world
-print(greeting)    # Output: Hello Thagore
-```
-
-## String Comparison
-
-Strings can be compared with `==` and `!=`:
-
-```python title="string_compare.tg"
-let a = "hello"
-let b = "hello"
-if (a == b):
-    print("Strings are equal!")
-```
-
-## Boolean Values
-
-```python title="booleans.tg"
-let active = true
-let done = false
-
-if (active):
-    print("Active!")
+```thagore
+const MAX: i32 = 100
+const SCALE: f64 = 0.5
 ```
 
 ## Arrays
 
-Fixed-size arrays are declared with `[type; size]` syntax:
+Arrays are runtime-backed. The type is `Array[T]`:
 
-```python title="arrays.tg"
-# Declare and initialize an array
-let nums = [10, 20, 30, 40]
-
-# Access by index
-print(nums[2])       # Output: 30
-
-# Modify by index
-nums[0] = 999
-
-# Pass to functions
-func sum_array(arr: [i32; 4]) -> i32:
-    let i = 0
-    let total = 0
-    while (i < 4):
-        total = total + arr[i]
-        i = i + 1
-    return total
-
-let s = sum_array(nums)
-print(s)
+```thagore
+func sum(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
 ```
+
+Arrays cannot be created with literal syntax. They come from stdlib functions such as `io.read_ints` and `string.split`.

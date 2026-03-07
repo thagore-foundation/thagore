@@ -84,7 +84,7 @@ stage2.exe build examples/hello.tg -o hello.exe
 
 ## Code Style Guidelines
 
-1. **Indentation**: Use 4 spaces (no tabs)
+1. **Indentation**: Use 2 spaces (no tabs, no 4 spaces)
 2. **Line endings**: Unix-style LF (not CRLF)
 3. **File encoding**: UTF-8
 4. **Naming conventions**:
@@ -92,20 +92,20 @@ stage2.exe build examples/hello.tg -o hello.exe
    - Structs: `PascalCase` — `ProgramAstNative`, `CoreProgram`
    - Constants: `UPPER_SNAKE_CASE` (when applicable)
    - Private/internal functions: prefix with `_` — `_trim`, `_next_line_pos`
-5. **Comments**: Use `#` for comments, `//` is also supported
+5. **Comments**: Use `#` for comments
 6. **Function signatures**: Always include explicit return type
 
 ### Example
 
-```python title="good_style.tg"
+```thagore
 # Calculate the dot product of two 2D vectors
 func dot_product(ax: i32, ay: i32, bx: i32, by: i32) -> i32:
-    return ax * bx + ay * by
+  return ax * bx + ay * by
 
 func _validate_input(n: i32) -> i32:
-    if (n < 0):
-        return 1
-    return 0
+  if (n < 0):
+    return 1
+  return 0
 ```
 
 ## Submitting a PR

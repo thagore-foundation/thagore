@@ -21,7 +21,7 @@ Thagore was created with a clear mission: **build a modern, statically-typed com
 
 4. **Zero C++ Fallback** — The bootstrap chain is Stage1 → Stage2 → Stage2b with no C++ compiler stage. The runtime ABI is delivered as pre-built artifacts, not built from C++ source.
 
-5. **Practical Interoperability** — Direct C FFI via `extern func` and a Python bridge let you leverage existing ecosystems without compromise.
+5. **Practical Interoperability** — Direct C FFI via `extern func` lets you leverage existing C ecosystems without compromise.
 
 ## What Makes Thagore Different?
 
@@ -43,9 +43,9 @@ Thagore was created with a clear mission: **build a modern, statically-typed com
 - **Practical focus** — designed for real-world systems programming, not academic correctness
 
 ### vs. Go
-- **Richer type system** — structs with methods, operator overloading, traits/impl
+- **Structs with methods** — `impl` blocks attach methods to structs
 - **No garbage collector** — deterministic memory behavior
-- **LLVM backend** — full optimization pipeline from LLVM 21
+- **LLVM backend** — full optimization pipeline through LLVM
 
 ## Trade-offs
 

@@ -1,152 +1,94 @@
 ---
 title: Functions
-description: Function declarations, parameters, return types, entry points, and function patterns in Thagore.
+description: Function declarations, parameters, return types, and generics in Thagore.
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 # Functions
 
-## Basic Function Declaration
+## Basic declaration
 
-Functions are declared with the `func` keyword, followed by the name, parameters in parentheses, return type after `->`, and a `:` to open the body:
+Functions are declared with `func`, followed by the name, parameters in parentheses, an optional return type after `->`, and `:` to open the body:
 
-```python title="functions.tg"
+```thagore
 func add(a: i32, b: i32) -> i32:
-    return a + b
-
-func greet(name: String) -> String:
-    return "Hello " + name
+  return a + b
 
 func main() -> i32:
-    let result = add(10, 32)
-    print(result)       # Output: 42
-
-    let msg = greet("Thagore")
-    print(msg)          # Output: Hello Thagore
-    return 0
+  let result = add(10, 32)
+  return result - 42
 ```
 
-## Function Syntax
+Parameters always require explicit type annotations. The return type is optional — if omitted it is inferred from `return` statements.
 
+## Inferred return types
+
+```thagore
+func double(value: i32):
+  return value * 2
 ```
-func <name>(<param1>: <type1>, <param2>: <type2>, ...) -> <return_type>:
-    <body>
-```
 
-### Rules
+The compiler infers the return type as `i32`. A function with no `return value` infers `void`.
 
-1. **Parameters** must have explicit type annotations: `name: Type`
-2. **Return type** is specified after `->` and before `:`
-3. **`return`** statement is required to return a value
-4. **Indentation** defines the function body
+## Entry point
 
-## Entry Point: `main`
+`func main() -> i32` is the standard entry point. There are no top-level executable statements — all logic lives inside functions:
 
-`func main() -> i32` is the standard entry point for Thagore programs:
-
-```python title="entry_point.tg"
+```thagore
 func main() -> i32:
-    print("Program started")
-    return 0    # 0 = success
+  println("Program started")
+  return 0
 ```
 
-<Aside type="tip" title="Auto-Generated main">
-If your source file has no `func main()`, the compiler wraps all top-level statements in an auto-generated `main` function. This lets you write scripts without boilerplate:
+## Calling functions
 
-```python title="script.tg"
-let x = 10
-print(x)
-```
-
-If `func main()` is defined, top-level executable statements are rejected. Keep executable logic inside `main`.
-</Aside>
-
-## Multiple Functions
-
-Functions can call each other:
-
-```python title="multi_func.tg"
+```thagore
 func square(n: i32) -> i32:
-    return n * n
+  return n * n
 
 func sum_of_squares(a: i32, b: i32) -> i32:
-    return square(a) + square(b)
+  return square(a) + square(b)
 
 func main() -> i32:
-    let result = sum_of_squares(3, 4)
-    print(result)    # Output: 25
-    return 0
+  return sum_of_squares(3, 4) - 25
 ```
 
-## Recursive Functions
+## Recursion
 
-Thagore supports recursion natively:
-
-```python title="fib.tg"
+```thagore
 func fib(n: i32) -> i32:
-    if (n < 2):
-        return n
-    return fib(n - 1) + fib(n - 2)
+  if (n < 2):
+    return n
+  return fib(n - 1) + fib(n - 2)
 
 func main() -> i32:
-    let result = fib(35)
-    print(result)    # Output: 9227465
-    return 0
+  return fib(10) - 55
 ```
 
-## Functions with String Parameters
+## Generic functions
 
-```python title="string_funcs.tg"
-func make_greeting(first: String, last: String) -> String:
-    return "Hello, " + first + " " + last + "!"
+Functions can take type parameters with built-in constraints:
+
+```thagore
+func abs<T: Numeric>(value: T) -> T:
+  if (value < 0):
+    return -value
+  return value
 
 func main() -> i32:
-    let greeting = make_greeting("John", "Doe")
-    print(greeting)
-    return 0
+  let x: i32 = abs(-5)
+  return x - 5
 ```
 
-## Functions with Float Parameters
+Supported constraints: `Ordered`, `Eq`, `Numeric`.
 
-```python title="float_func.tg"
-func calc_circle(radius: f32) -> f32:
-    let pi = 3.14159
-    return 2.0 * pi * radius
+## extern func
 
-func main() -> i32:
-    let circumference = calc_circle(5.0)
-    print(circumference)
-    return 0
-```
+Use `extern func` to declare external C functions (see [FFI & Import](/syntax/ffi-and-import/)):
 
-## Functions with Default Parameters
-
-Some standard library functions support default parameters:
-
-```python title="default_params.tg"
-# In the standard library (lib/io.tg):
-# func input_prompt(prompt: String = "") -> String:
-#     ...
-
-import io
+```thagore
+extern func printf(fmt: str) -> i32
 
 func main() -> i32:
-    let name = io.input_prompt("Enter your name: ")
-    print("Hello, " + name)
-    return 0
-```
-
-## `extern func` — Foreign Function Declarations
-
-Use `extern func` to declare external C functions (see [FFI & Import](/syntax/ffi-and-import) for details):
-
-```python title="extern_func.tg"
-extern func sqrtf(x: f32) -> f32
-extern func pow(base: f64, exp: f64) -> f64
-
-func main() -> i32:
-    let h = sqrtf(9.0 + 16.0)
-    print(h)    # Output: 5.0
-    return 0
+  printf("Hello, Thagore!\n")
+  return 0
 ```

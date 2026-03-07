@@ -1,171 +1,83 @@
 ---
-title: C FFI & Python Bridge
-description: Complete guide to calling C functions and interfacing with Python/PyTorch from Thagore.
+title: C FFI
+description: Guide to calling C functions from Thagore using extern func.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
-# C FFI & Python Bridge
-
-## C Foreign Function Interface
+# C FFI
 
 Thagore provides direct access to C functions through `extern func` declarations. Any function available in a C shared library or the system's C standard library can be called.
 
-### Basic C FFI
+## Basic C FFI
 
-```python title="ffi_basic.tg"
-# Declare C standard library functions
-extern func strlen(s: String) -> i32
-extern func puts(text: String) -> i32
-extern func printf(fmt: String, value: i32) -> i32
+```thagore
+extern func strlen(s: str) -> i32
+extern func puts(text: str) -> i32
 
 func main() -> i32:
-    let msg = "Hello from FFI!"
-    puts(msg)
-    printf("String length: %d\n", strlen(msg))
-    return 0
+  let msg = "Hello from FFI!"
+  puts(msg)
+  return 0
 ```
 
-### Math Library FFI
+## Math library FFI
 
 Call C math functions directly:
 
-```python title="ffi_math.tg"
-# Float math functions
-extern func sqrtf(x: f32) -> f32
-extern func powf(base: f32, exp: f32) -> f32
-extern func sinf(x: f32) -> f32
-extern func cosf(x: f32) -> f32
-extern func fabsf(x: f32) -> f32
-
-# Double math functions
+```thagore
 extern func sqrt(x: f64) -> f64
 extern func pow(base: f64, exp: f64) -> f64
+extern func fabs(x: f64) -> f64
 
-func calc_hypotenuse(a: f32, b: f32) -> f32:
-    return sqrtf(a * a + b * b)
+func calc_hypotenuse(a: f64, b: f64) -> f64:
+  return sqrt(a * a + b * b)
 
 func main() -> i32:
-    let h = calc_hypotenuse(3.0, 4.0)
-    print(h)    # Output: 5.0
-    return 0
+  return 0
 ```
 
-### Memory Management FFI
+## Memory management FFI
 
-```python title="ffi_memory.tg"
+```thagore
 extern func malloc(size: i32) -> ptr
 extern func free(p: ptr) -> void
 extern func memcpy(dst: ptr, src: ptr, size: i32) -> ptr
 
-func allocate_buffer(size: i32) -> ptr:
-    let buffer = malloc(size)
-    return buffer
-
 func main() -> i32:
-    let buf = allocate_buffer(1024)
-    # ... use buffer ...
-    free(buf)
-    return 0
+  let buf = malloc(1024)
+  free(buf)
+  return 0
 ```
 
-### FFI Type Mapping Reference
+## FFI type mapping
 
-| Thagore Type | C Type | Notes |
-|-------------|--------|-------|
-| `i32` | `int` / `int32_t` | 32-bit signed integer |
-| `f32` | `float` | IEEE 754 single precision |
-| `f64` | `double` | IEEE 754 double precision |
-| `String` | `const char*` | Null-terminated C string |
-| `ptr` | `void*` | Generic pointer |
-| `void` | `void` | No return value |
+| Thagore type | C equivalent |
+|-------------|--------------|
+| `i32` | `int` / `int32_t` |
+| `i64` | `int64_t` |
+| `f64` | `double` |
+| `str` | `const char*` |
+| `ptr` | `void*` |
+| `void` | `void` |
 
-<Aside type="caution" title="ABI Compatibility">
-The `extern func` name must exactly match the C symbol. The Thagore compiler emits LLVM IR declarations that the linker resolves against the linked libraries.
-</Aside>
+There is no `f32` type available to user code. Use `f64` for floating-point FFI, or declare the extern with `f64` and accept the implicit widening.
 
----
+The symbol name in `extern func` must exactly match the C symbol resolved at link time.
 
-## Python Bridge
+## Linking external libraries
 
-Thagore can interface with Python through the runtime's Python bridge. This enables calling Python libraries (including NumPy, PyTorch, etc.) from Thagore code.
+Pass link flags to `thagc build`:
 
-### Python Bridge Functions
-
-| Function | Purpose |
-|----------|---------|
-| `__thg_py_initialize()` | Initialize the Python interpreter |
-| `__thg_py_finalize()` | Shutdown the Python interpreter |
-| `__thg_py_import(name)` | Import a Python module |
-| `__thg_py_getattr(obj, name)` | Get an attribute from a Python object |
-| `__thg_py_call0(callable)` | Call a Python callable with zero arguments |
-| `__thg_py_call_2(func, a1, a2)` | Call with two arguments |
-| `__thg_py_from_i32(val)` | Convert Thagore i32 to Python int |
-| `__thg_py_print_obj(obj)` | Print a Python object to stdout |
-
-### Basic Python Usage
-
-```python title="python_basic.tg"
-extern func __thg_py_initialize() -> void
-extern func __thg_py_finalize() -> void
-extern func __thg_py_import(name: String) -> ptr
-extern func __thg_py_print_obj(obj: ptr) -> void
-
-func main() -> i32:
-    print("Importing Python math module...")
-    __thg_py_initialize()
-
-    let math_mod = __thg_py_import("math")
-    __thg_py_print_obj(math_mod)
-
-    __thg_py_finalize()
-    return 0
+```bash
+thagc build app.tg -o app \
+  --link-dir=/opt/vendor/lib \
+  --link-lib=vendor \
+  --link-arg=-Wl,-rpath,/opt/vendor/lib
 ```
 
-### PyTorch Integration
+## What is not in the current compiler
 
-Call PyTorch from Thagore for tensor operations:
-
-```python title="pytorch_tensor.tg"
-extern func __thg_py_initialize() -> void
-extern func __thg_py_import(name: String) -> ptr
-extern func __thg_py_getattr(obj: ptr, name: String) -> ptr
-extern func __thg_py_print_obj(obj: ptr) -> void
-extern func __thg_py_from_i32(val: i32) -> ptr
-extern func __thg_py_call_2(func_obj: ptr, a1: ptr, a2: ptr) -> ptr
-
-func main() -> i32:
-    __thg_py_initialize()
-
-    print("Loading PyTorch...")
-    let torch = __thg_py_import("torch")
-
-    # Get torch.rand function
-    let rand_func = __thg_py_getattr(torch, "rand")
-
-    # Create dimensions
-    let dim1 = __thg_py_from_i32(3)
-    let dim2 = __thg_py_from_i32(3)
-
-    # Generate a 3x3 random tensor
-    print("Generating Tensor(3, 3)...")
-    let tensor = __thg_py_call_2(rand_func, dim1, dim2)
-
-    __thg_py_print_obj(tensor)
-    return 0
-```
-
-### Requirements
-
-To use the Python bridge:
-1. Python 3.x must be installed and on PATH
-2. Link against the Python shared library
-3. Required Python packages must be installed (`pip install torch` for PyTorch)
-
-<Aside type="tip" title="Use Cases">
-The Python bridge is ideal for:
-- **Machine learning** — use PyTorch/TensorFlow from Thagore
-- **Data processing** — leverage NumPy, Pandas from native code
-- **Scripting** — call Python scripts for automation tasks
-- **Prototyping** — test algorithms in Python before porting to Thagore
-</Aside>
+| Feature | Status |
+|---------|--------|
+| Python bridge (`__thg_py_*`) | not implemented |
+| `f32` type | not available to user code |
+| variadic C functions | limited support |

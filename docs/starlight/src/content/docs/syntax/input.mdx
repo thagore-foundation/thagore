@@ -1,226 +1,98 @@
 ---
 title: Reading Input
-description: How to read user input from stdin in Thagore — input(), input_i32(), io.input_prompt(), and stdin helpers.
+description: How to read user input from stdin in Thagore using std.io.
 sidebar:
   order: 9
 ---
 
-import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
-
 # Reading Input
 
-Thagore provides built-in and standard library functions for reading from stdin. The built-in `input()` function reads a line from the console, and the `io` module adds prompts and bulk-read helpers.
+All stdin reading in Thagore uses the `std.io` module. There is no `input()` builtin.
 
----
+## Import
 
-## Built-in: `input()`
-
-The `input()` function is a **language built-in** — no import needed. It reads one line from standard input and returns it as a `String`. The trailing newline is stripped automatically.
-
-```python title="hello_input.tg"
-func main() -> i32:
-    print("What is your name?")
-    let name = input()
-    print("Hello, " + name + "!")
-    return 0
+```thagore
+import std.io as io
 ```
 
-```
-What is your name?
-> Minh
-Hello, Minh!
-```
+## Reading a line
 
-<Aside type="note">
-`input()` returns an empty string `""` on EOF (e.g. piped input that has ended) — it never returns `null`.
-</Aside>
-
----
-
-## Built-in: `input()` with `i32` parse
-
-To read an integer, read the string first then parse with `str.parse_i32()`, **or** use `io.input_i32()` from the `io` module:
-
-```python title="read_number.tg"
-import "lib/io.tg" as io
+```thagore
+import std.io as io
 
 func main() -> i32:
-    print("Enter a number:")
-    let n = io.input_i32()
-    print(n * 2)
-    return 0
+  let line = io.read_line()
+  println(line)
+  return 0
 ```
 
-```
-Enter a number:
-> 21
-42
-```
+`read_line` returns the line without the trailing newline.
 
-<Aside type="tip" title="Legacy built-in">
-In older Stage1 code you may see the bare `input()` call being used as an `i32` — this is the original Stage1 codegen behaviour where `input()` compiled directly to `@__thg_input_i32()`. In modern code, use `io.input_i32()` for clarity.
-</Aside>
+## Reading a single word
 
----
-
-## `io` Module Functions
-
-Import the `io` module for all input helpers:
-
-```python
-import "lib/io.tg" as io
-```
-
-### Function Reference
-
-| Function | Return | Description |
-|----------|--------|-------------|
-| `io.input_prompt(prompt)` | `String` | Print a prompt then read a line from stdin |
-| `io.input_prompt()` | `String` | Read a line with no prompt (same as `input()`) |
-| `io.input_i32()` | `i32` | Read a line and parse it as a signed integer |
-| `io.stdin_read_line(prompt)` | `String` | Alias for `input_prompt` |
-| `io.stdin_read_all()` | `String` | Read entire stdin into a single string |
-| `io.stdread(path)` | `String` | Read from a file or from stdin if path is `""`, `"-"`, or `"stdin"` |
-
----
-
-## `io.input_prompt()` — Prompt + Read
-
-Shows a prompt on the same line, then waits for input:
-
-```python title="greet.tg"
-import "lib/io.tg" as io
-import "lib/string.tg" as str
+```thagore
+import std.io as io
 
 func main() -> i32:
-    let name = str.trim(io.input_prompt("Enter your name: "))
-    let age_s = str.trim(io.input_prompt("Enter your age: "))
-    print("Hello " + name + "! You entered age: " + age_s)
-    return 0
+  let word = io.read_word()
+  println(word)
+  return 0
 ```
 
-```
-Enter your name: Minh
-Enter your age: 22
-Hello Minh! You entered age: 22
-```
+## Reading integers
 
----
-
-## `io.stdin_read_all()` — Read All of Stdin
-
-Reads everything from stdin into a single `String`. Useful when piping input into a program:
-
-```python title="echo_all.tg"
-import "lib/io.tg" as io
+```thagore
+import std.io as io
+import std.string as string
 
 func main() -> i32:
-    let text = io.stdin_read_all()
-    print("You sent " + text)
-    return 0
+  let n = io.read_int()
+  println(string.from_int(n * 2))
+  return 0
 ```
 
-```bash
-echo "hello world" | ./echo_all
-# You sent hello world
-```
+`read_int` reads one whitespace-delimited `i32` token. Use `read_i64` for 64-bit integers, `read_f64` for floats.
 
----
+## Reading multiple integers
 
-## `io.stdread()` — File or Stdin
+```thagore
+import std.io as io
+import std.string as string
 
-`stdread(path)` reads from a file path, **or** from stdin if the path is one of the standard stdin selectors:
-
-| Path value | Behaviour |
-|------------|-----------|
-| `""` (empty string) | reads stdin |
-| `"-"` | reads stdin |
-| `"stdin"` / `"STDIN"` | reads stdin |
-| `"con"` / `"CON"` | reads stdin (Windows console) |
-| `"/dev/stdin"` | reads stdin |
-| any other path | reads that file |
-
-```python title="cat.tg"
-import "lib/io.tg" as io
-import "lib/env.tg" as env
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
 
 func main() -> i32:
-    let path = env.get(1)
-    let text = io.stdread(path)
-    print(text)
-    return 0
+  let values = io.read_ints(3)
+  println(string.from_int(sum_items(values)))
+  return 0
 ```
 
-```bash
-./cat myfile.txt      # reads myfile.txt
-./cat -               # reads stdin
-./cat                 # reads stdin (empty path)
-```
+## Reading all of stdin
 
----
-
-## Reading Multiple Lines (Loop)
-
-Use a loop with `input()` to read until EOF:
-
-```python title="sum_lines.tg"
-import "lib/string.tg" as str
+```thagore
+import std.io as io
 
 func main() -> i32:
-    let total = 0
-    let line = input()
-    while (str.len(line) > 0):
-        let n = str.parse_i32(line)
-        total = total + n
-        line = input()
-    print(total)
-    return 0
+  let text = io.read_all()
+  println(text)
+  return 0
 ```
 
-```bash
-printf "10\n20\n30\n" | ./sum_lines
-# 60
-```
+## Full reference
 
----
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `read_line` | `func read_line() -> str` | one line, trailing newline stripped |
+| `read_word` | `func read_word() -> str` | one whitespace-delimited token |
+| `read_int` | `func read_int() -> i32` | one i32 token |
+| `read_i64` | `func read_i64() -> i64` | one i64 token |
+| `read_f64` | `func read_f64() -> f64` | one f64 token |
+| `read_all` | `func read_all() -> str` | remaining stdin as a string |
+| `read_ints` | `func read_ints(count: i32) -> Array[i32]` | `count` integers into array |
+| `read_i64s` | `func read_i64s(count: i32) -> Array[i64]` | `count` i64 values into array |
 
-## Practical Example: Simple Calculator
-
-```python title="calc.tg"
-import "lib/io.tg" as io
-import "lib/string.tg" as str
-
-func main() -> i32:
-    let a = str.parse_i32(str.trim(io.input_prompt("First number:  ")))
-    let b = str.parse_i32(str.trim(io.input_prompt("Second number: ")))
-    print("Sum:      " + str.from_i32(a + b))
-    print("Diff:     " + str.from_i32(a - b))
-    print("Product:  " + str.from_i32(a * b))
-    return 0
-```
-
-```
-First number:  10
-Second number: 3
-Sum:      13
-Diff:     7
-Product:  30
-```
-
----
-
-## Summary
-
-| Use case | Code |
-|----------|------|
-| Read a string line (no prompt) | `let s = input()` |
-| Read a string with prompt | `let s = io.input_prompt("Enter: ")` |
-| Read an integer | `let n = io.input_i32()` |
-| Read all of stdin | `let text = io.stdin_read_all()` |
-| Read file or stdin | `let text = io.stdread(path)` |
-
-<Aside type="tip" title="Next Steps">
-- [Print & Output](/syntax/print) — the counterpart to input
-- [Strings](/stdlib/core-std) — `str.trim()`, `str.parse_i32()`, `str.from_i32()`
-- [Standard I/O modules](/stdlib/io-env-process) — full `io` module reference
-</Aside>
+See [std.io](/stdlib/io/) for the complete module reference.

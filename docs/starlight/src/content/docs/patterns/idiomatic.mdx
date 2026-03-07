@@ -3,222 +3,145 @@ title: Idiomatic Patterns
 description: Common coding patterns and best practices for writing effective Thagore code.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 # Idiomatic Patterns
 
-## Pattern 1: Immutable Update for Structs
+## Pattern 1: Struct methods with explicit self
 
-Since Thagore struct methods return new instances rather than mutating in place, use the reassignment pattern:
+Methods in `impl` blocks take an explicit `self` parameter and return a value. There is no mutation in place.
 
-```python title="immutable_update.tg"
+```thagore
 struct Counter:
-    value: i32
+  value: i32
 
-func increment(self: Counter) -> Counter:
-    return Counter(self.value + 1)
+impl Counter:
+  func current(self) -> i32:
+    return self.value
 
-func main() -> i32:
-    let c = Counter(0)
-    c = increment(c)    # Reassign to capture the new value
-    c = increment(c)
-    print(c.value)       # Output: 2
-    return 0
+  func bump(self) -> i32:
+    return self.value + 1
 ```
 
-## Pattern 2: Error Handling with Return Codes
+## Pattern 2: Error handling with return codes
 
 Use `i32` return codes for error signaling:
 
-```python title="error_handling.tg"
-import fs
-
-func process_config(path: String) -> i32:
-    if (fs.exists(path) == 0):
-        print("Error: config not found")
-        return 1
-    let content = fs.read_text(path)
-    if (content == ""):
-        print("Error: empty config")
-        return 2
-    print("Config loaded: " + content)
-    return 0
-
-func main() -> i32:
-    let rc = process_config("config.txt")
-    if (rc != 0):
-        print("Failed with code:")
-        print(rc)
-    return rc
-```
-
-## Pattern 3: Builder Pattern
-
-Build complex objects step-by-step:
-
-```python title="builder.tg"
-import "std/string.tg" as sstr
-
-func build_html_list(items: [String; 3]) -> String:
-    let sb = sstr.builder_new()
-    sb = sstr.append(sb, "<ul>")
-    let i = 0
-    while (i < 3):
-        sb = sstr.append(sb, "<li>")
-        sb = sstr.append(sb, items[i])
-        sb = sstr.append(sb, "</li>")
-        i = i + 1
-    sb = sstr.append(sb, "</ul>")
-    return sstr.to_string(sb)
-```
-
-## Pattern 4: CLI Argument Parsing
-
-Build command-line tools using the `env` module:
-
-```python title="cli_pattern.tg"
-import env
-
-func main() -> i32:
-    let argc = env.count()
-    if (argc < 2):
-        print("Usage: mytool <command> [options]")
-        return 1
-
-    let cmd = env.get(1)
-    if (cmd == "hello"):
-        print("Hello!")
-        return 0
-    if (cmd == "version"):
-        print("mytool v1.0.0")
-        return 0
-
-    print("Unknown command: " + cmd)
+```thagore
+func validate(n: i32) -> i32:
+  if (n < 0):
     return 1
-```
-
-## Pattern 5: Resource Cleanup
-
-Use explicit cleanup calls (or `defer` when available):
-
-```python title="cleanup.tg"
-import fs
-
-func process_file(path: String) -> i32:
-    let handle = fs.open_read(path)
-    # ... process data ...
-    let data = fs.read_bytes(handle, 1024)
-    print(data)
-    fs.close(handle)    # Always close the handle
-    return 0
-```
-
-## Pattern 6: Struct as Namespace
-
-Group related functions using a struct with `impl`:
-
-```python title="namespace.tg"
-struct Math:
-    dummy: i32
-
-impl Math:
-    func max(self, a: i32, b: i32) -> i32:
-        if (a > b):
-            return a
-        return b
-
-    func min(self, a: i32, b: i32) -> i32:
-        if (a < b):
-            return a
-        return b
-
-    func abs(self, x: i32) -> i32:
-        if (x < 0):
-            return 0 - x
-        return x
-```
-
-## Pattern 7: FFI Wrapper
-
-Wrap C functions in a safe Thagore API:
-
-```python title="ffi_wrapper.tg"
-extern func sqrtf(x: f32) -> f32
-extern func powf(base: f32, exp: f32) -> f32
-extern func sinf(x: f32) -> f32
-extern func cosf(x: f32) -> f32
-
-func sqrt(x: f32) -> f32:
-    if (x < 0.0):
-        return 0.0    # Guard against negative input
-    return sqrtf(x)
-
-func distance(x1: f32, y1: f32, x2: f32, y2: f32) -> f32:
-    let dx = x2 - x1
-    let dy = y2 - y1
-    return sqrt(dx * dx + dy * dy)
-```
-
-## Pattern 8: Test Organization
-
-Structure tests with clear names and expected outputs:
-
-```python title="test_example.tg"
-func test_addition() -> i32:
-    let result = 2 + 3
-    if (result != 5):
-        print("FAIL: test_addition")
-        return 1
-    print("PASS: test_addition")
-    return 0
-
-func test_string_concat() -> i32:
-    let s = "a" + "b"
-    if (s != "ab"):
-        print("FAIL: test_string_concat")
-        return 1
-    print("PASS: test_string_concat")
-    return 0
+  if (n > 1000):
+    return 2
+  return 0
 
 func main() -> i32:
-    let failures = 0
-    failures = failures + test_addition()
-    failures = failures + test_string_concat()
-    if (failures > 0):
-        print("Some tests failed!")
-    else:
-        print("All tests passed!")
-    return failures
+  let rc = validate(42)
+  if (rc != 0):
+    println("Validation failed")
+  return rc
 ```
 
-## Pattern 9: Process Orchestration
+## Pattern 3: String building with concat
 
-Chain shell commands for automation:
+Use `std.string.concat` to assemble strings:
 
-```python title="orchestration.tg"
-import process
-import fs
+```thagore
+import std.string as string
 
-func build_and_test(source: String) -> i32:
-    let rc = process.run("thagore build " + source + " -o test_binary.exe")
-    if (rc != 0):
-        print("Build failed!")
-        return 1
+func build_label(key: str, value: i32) -> str:
+  return string.concat(key, string.concat("=", string.from_int(value)))
 
-    rc = process.run(".\\test_binary.exe")
-    if (rc != 0):
-        print("Test failed!")
-        return 2
-
-    print("Build and test passed!")
-    return 0
+func main() -> i32:
+  println(build_label("count", 42))
+  return 0
 ```
 
-<Aside type="tip" title="Style Guide Summary">
-1. Use 4-space indentation consistently
-2. Prefer `func main() -> i32:` for all programs
-3. Return `0` for success, non-zero for errors
-4. Use descriptive function and variable names
-5. Clean up resources explicitly (close handles, dispose lists)
-6. Wrap C FFI functions in safe Thagore wrappers
-</Aside>
+## Pattern 4: Reading and processing input
+
+```thagore
+import std.io as io
+import std.string as string
+
+func main() -> i32:
+  let n = io.read_int()
+  let values = io.read_ints(n)
+  let total: i32 = 0
+  for v in values:
+    total = total + v
+  println(string.from_int(total))
+  return 0
+```
+
+## Pattern 5: Nested struct access
+
+```thagore
+struct Point:
+  x: i32
+  y: i32
+
+struct Rect:
+  origin: Point
+  width: i32
+  height: i32
+
+func area(rect: Rect) -> i32:
+  return rect.width * rect.height
+
+func offset_x(rect: Rect) -> i32:
+  return rect.origin.x
+```
+
+## Pattern 6: Using std.math helpers
+
+```thagore
+import std.math as math
+
+func clamp_score(value: i32) -> i32:
+  return math.clamp(value, 0, 100)
+
+func hypotenuse(a: f64, b: f64) -> f64:
+  return math.sqrt(math.pow(a, 2.0) + math.pow(b, 2.0))
+```
+
+## Pattern 7: extern func for C FFI
+
+Wrap C functions with type-safe Thagore wrappers:
+
+```thagore
+extern func sqrt(x: f64) -> f64
+extern func pow(base: f64, exp: f64) -> f64
+
+func safe_sqrt(x: f64) -> f64:
+  if (x < 0.0):
+    return 0.0
+  return sqrt(x)
+```
+
+## Pattern 8: Test with return codes
+
+```thagore
+func test_addition() -> i32:
+  let result = 2 + 3
+  if (result != 5):
+    println("FAIL: test_addition")
+    return 1
+  println("PASS: test_addition")
+  return 0
+
+func main() -> i32:
+  let failures: i32 = 0
+  failures = failures + test_addition()
+  if (failures > 0):
+    println("Some tests failed!")
+  else:
+    println("All tests passed!")
+  return failures
+```
+
+## Style summary
+
+- **2-space indentation** — tabs are rejected
+- **Conditions require parentheses** — `if (x > 0):`
+- **No `++`/`--`** — use `i = i + 1`
+- **No string `+`** — use `string.concat(a, b)`
+- **No array literals** — arrays come from `io.read_ints`, `string.split`, etc.
+- **`func main() -> i32:`** for all programs; return `0` for success

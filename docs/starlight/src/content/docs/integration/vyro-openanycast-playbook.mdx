@@ -9,67 +9,47 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## Overview
 
-This playbook describes how to integrate Thagore-compiled programs with the Vyro network engine and OpenAnycast infrastructure.
+This playbook describes how Thagore programs can integrate with Vyro and OpenAnycast infrastructure through C FFI and native process spawning.
 
-## Vyro Integration
+## Current limitations
 
-Vyro is a network infrastructure component that Thagore can target through its native compilation and process execution capabilities.
+The current standard library does **not** provide `fs`, `process`, `env`, or `http` modules. Integration with external systems must go through `extern func` declarations pointing to C runtime functions, or through programs that read from stdin and write to stdout.
 
-### Basic Integration Pattern
+## Pattern: stdin/stdout pipeline
 
-```python title="vyro_integration.tg"
-import fs
-import process
-import env
+The most portable integration pattern uses stdin/stdout:
 
-func deploy_to_vyro(binary_path: String, config_path: String) -> i32:
-    # Verify binary exists
-    if (fs.exists(binary_path) == 0):
-        print("Error: binary not found: " + binary_path)
-        return 1
-
-    # Read deployment config
-    let config = fs.read_text(config_path)
-    if (config == ""):
-        print("Error: empty or missing config")
-        return 2
-
-    # Execute deployment
-    let rc = process.run("vyro deploy " + binary_path)
-    return rc
+```thagore
+import std.io as io
+import std.string as string
 
 func main() -> i32:
-    let binary = env.get(1)
-    let config = env.get(2)
-    return deploy_to_vyro(binary, config)
+  let line = io.read_line()
+  let processed = string.concat("processed: ", line)
+  println(processed)
+  return 0
 ```
 
-## OpenAnycast Integration
+This program can be composed in a shell pipeline with Vyro or any external system that reads stdin.
 
-OpenAnycast configurations can be generated and managed from Thagore programs.
+## Pattern: extern func for system calls
 
-### Configuration Generation
+Use `extern func` to call C system functions directly:
 
-```python title="anycast_config.tg"
-import fs
-import "std/string.tg" as sstr
-
-func generate_config(region: String, port: i32) -> String:
-    let sb = sstr.builder_new()
-    sb = sstr.append(sb, "region: ")
-    sb = sstr.append(sb, region)
-    sb = sstr.append(sb, "\nport: ")
-    sb = sstr.append(sb, sstr.to_string_i32(port))
-    sb = sstr.append(sb, "\n")
-    return sstr.to_string(sb)
+```thagore
+extern func system(cmd: str) -> i32
 
 func main() -> i32:
-    let config = generate_config("us-east-1", 8080)
-    fs.write_text("anycast.conf", config)
-    print("Config generated: anycast.conf")
-    return 0
+  let rc = system("vyro status")
+  return rc
 ```
 
 <Aside type="note" title="External Dependencies">
 Vyro and OpenAnycast integration requires their respective CLI tools and runtime services to be installed and configured separately.
+</Aside>
+
+<Aside type="caution" title="Missing stdlib modules">
+The following modules are not present in the current compiler and cannot be used:
+`lib/fs.tg`, `lib/process.tg`, `lib/env.tg`, `lib/http.tg`.
+Use `extern func` to declare C functions directly. See [C FFI](/integration/c-ffi-python/) for details.
 </Aside>

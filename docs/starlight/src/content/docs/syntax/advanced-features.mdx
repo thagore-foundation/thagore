@@ -1,271 +1,93 @@
 ---
 title: Advanced Features
-description: Enums, match, traits, comptime, defer, unsafe, intent system, and other advanced Thagore features.
+description: Generics, intent, flow, and pub in the current Thagore compiler.
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 # Advanced Features
 
-This page covers Thagore's advanced language features that go beyond basic syntax.
+## Generics
 
-## Enums
+Functions can take type parameters with built-in constraints: `Ordered`, `Eq`, `Numeric`.
 
-Define algebraic data types with `enum`:
+```thagore
+func abs<T: Numeric>(value: T) -> T:
+  if (value < 0):
+    return -value
+  return value
 
-```python title="enums.tg"
-enum Color:
-    Red
-    Green
-    Blue
-
-enum Shape:
-    Circle(f32)
-    Rectangle(f32, f32)
+func min<T: Ordered>(left: T, right: T) -> T:
+  if (left < right):
+    return left
+  return right
 ```
 
-Enums with payloads (data attached to variants) are tracked by the compiler's feature counter system.
+Multiple constraints can be combined with `+`:
 
-## Match Expressions
-
-Pattern match on enum variants:
-
-```python title="match.tg"
-enum Direction:
-    North
-    South
-    East
-    West
-
-func describe(d: Direction) -> String:
-    match d:
-        North:
-            return "going up"
-        South:
-            return "going down"
-        East:
-            return "going right"
-        West:
-            return "going left"
+```thagore
+func example<T: Ordered + Eq>(left: T, right: T) -> bool:
+  return left == right
 ```
 
-<Aside type="note" title="Match + Enum Requirement">
-The compiler validates that `match` is only used with at least one enum declaration in scope. A `match` without enums triggers error `E_TYPE_MATCH_MISSING_ENUM`.
-</Aside>
+Generic structs and generic impl blocks are parsed by the compiler but are not yet fully available end to end. Use non-generic structs for production code.
 
-## Type Aliases
+## pub
 
-Create type aliases with the `type` keyword:
+`pub` is a contextual keyword accepted on declarations. It is parsed and stored in the AST but does not yet affect visibility or module exports:
 
-```python title="type_alias.tg"
-type Distance = f32
-type Name = String
-```
-
-## Traits and `impl for`
-
-Define interfaces with `trait` and implement them:
-
-```python title="traits.tg"
-trait Printable:
-    func display(self) -> String
-
-struct Point:
-    x: i32
-    y: i32
-
-impl Printable for Point:
-    func display(self) -> String:
-        return "Point"
-```
-
-<Aside type="caution" title="Trait Status">
-Trait declarations and `impl for` blocks are parsed and tracked by the compiler's feature counter (`extension_impl_count`), but full trait-based dispatch is still being implemented in the lowering pipeline.
-</Aside>
-
-## Visibility: `pub`
-
-Mark declarations as public with `pub`:
-
-```python title="visibility.tg"
+```thagore
 pub func api_function() -> i32:
-    return 42
-
-pub struct PublicConfig:
-    name: String
+  return 42
 ```
 
-## `unsafe` Blocks
+## intent
 
-Mark code that requires unsafe operations:
+`intent` declares a constraint-based block that the compiler lowers to IR. An intent has optional `minimize`/`maximize` constraint expressions and an optional `body` block:
 
-```python title="unsafe.tg"
-unsafe:
-    let raw = malloc(1024)
-    # raw pointer operations
-    free(raw)
-```
-
-## `defer`
-
-Schedule cleanup code that runs when the function exits:
-
-```python title="defer.tg"
-func process_file() -> i32:
-    let handle = fs.open_read("data.txt")
-    defer fs.close(handle)
-    # ... process the file ...
-    return 0
-    # fs.close(handle) runs here automatically
-```
-
-<Aside type="caution" title="Function Scope Only">
-`defer` is only valid inside function bodies. Top-level `defer` is rejected by the validation pipeline.
-</Aside>
-
-## `comptime` — Compile-Time Evaluation
-
-Execute code at compile time:
-
-```python title="comptime.tg"
-comptime:
-    let size = 4 * 1024
-    # compile-time evaluated
-```
-
-The compiler tracks `comptime` blocks and evaluates them during the lowering phase via `lowering/transform/comptime/eval.tg`.
-
-## Closures
-
-Lambda-style anonymous functions:
-
-```python title="closures.tg"
-# Closure syntax is parsed and tracked
-# Full closure semantics are in development
-```
-
-## Tuple Destructuring
-
-```python title="tuple_destruct.tg"
-# let (a, b) = get_pair()
-# Parsed and tracked by the compiler
-```
-
-## Array Literals and Slicing
-
-```python title="array_slice.tg"
-let nums = [1, 2, 3, 4, 5]
-
-# Array slice (tracked feature)
-# let sub = nums[1..3]
-```
-
-## Loop Labels
-
-```python title="loop_labels.tg"
-# Named loops for break/continue targeting
-# outer: while (true):
-#     inner: while (true):
-#         break outer
-```
-
-## Result Sugar
-
-```python title="result_sugar.tg"
-# Error handling with ? operator
-# let value = try_parse(input)?
-```
-
-## Raw Strings
-
-```python title="raw_strings.tg"
-# Raw strings with r# prefix
-# let pattern = r#"no escapes \n here"#
-```
-
-## Interpolated Strings
-
-```python title="interpolated.tg"
-# String interpolation with v"..." syntax
-# let msg = v"Hello {name}, you are {age} years old"
-```
-
-## Intent System
-
-Thagore's unique **intent system** allows declarative, constraint-based programming:
-
-```python title="intent_demo.tg"
-intent func fib(n: i32) -> i32:
-    goal: auto_plan
-    constraints:
-        deterministic == true
-
-func fib(n: i32) -> i32:
-    if (n < 2):
-        return n
-    return fib(n - 1) + fib(n - 2)
+```thagore
+intent Optimize:
+  minimize 1
+  body:
+    let i: i32 = 0
+    while (i < 8):
+      i = i + 1
 
 func main() -> i32:
-    print(fib(35))
-    return 0
+  return 0
 ```
 
-### Intent Block Structure
+## flow
 
-```
-intent func <name>(<params>) -> <type>:
-    goal: <goal_name>
-    strategy: <strategy> (optional)
-    examples:
-        <assertion expressions>
-    constraints:
-        <constraint expressions>
-```
+`flow` declares a sequential pipeline with named `stage` blocks and an optional `compensate` block:
 
-### Supported Goals
+```thagore
+flow Transaction:
+  stage acquire:
+    let auth_state: i32 = 1
+  stage commit:
+    let commit_state: i32 = 2
+  compensate:
+    let rollback_state: i32 = 3
 
-| Goal | Description |
-|------|-------------|
-| `auto_plan` | Compiler automatically selects an optimization strategy |
-| `reduce_sum` | Optimize for sum reduction patterns |
-| `off` | Disable intent optimization for this function |
-
-### Intent with Examples and Constraints
-
-```python title="intent_full.tg"
-intent loop i in 0..10:
-    goal: reduce_sum
-    examples:
-        reduce_sum([1,2,3]) == 6
-    constraints:
-        deterministic == true
-        time <= O(n)
+func main() -> i32:
+  return 0
 ```
 
-<Aside type="tip" title="Intent Validation">
-The compiler validates intent goals through the `semantics/intent/matcher.tg` module. Unsupported goals trigger error `E_TYPE_INTENT_GOAL`.
-</Aside>
+## What is NOT in the current compiler
 
-## Feature Detection Summary
+The following features are **not implemented** in the current compiler and do not exist in the language today:
 
-The compiler tracks usage of advanced features through its AST parser. Here are all tracked features:
-
-| Feature | Compiler Field | Status |
-|---------|----------------|--------|
-| Enum payloads | `enum_payload_count` | Parsed |
-| Match expressions | `match_count` | Parsed + validated |
-| Range loops | `range_loop_count` | Parsed + validated |
-| If expressions | `if_expr_count` | Parsed |
-| Closures | `closure_count` | Parsed |
-| Unsafe blocks | `unsafe_count` | Parsed |
-| Extension impl | `extension_impl_count` | Parsed |
-| Pub visibility | `visibility_count` | Parsed |
-| Tuple destruct | `tuple_destruct_count` | Parsed |
-| Array literals | `array_literal_count` | Parsed |
-| Slice expressions | `slice_expr_count` | Parsed |
-| Loop labels | `loop_label_count` | Parsed |
-| Raw strings | `raw_string_count` | Parsed |
-| Interpolated strings | `interpolated_string_count` | Parsed |
-| Result sugar | `result_sugar_count` | Parsed |
-| Defer | `defer_scope_count` | Parsed |
-| Comptime | `comptime_count` | Parsed |
+| Feature | Status |
+|---------|--------|
+| `enum` | not implemented |
+| `match` | not implemented |
+| `trait` / `impl for` | not implemented |
+| `type` alias | not implemented |
+| `unsafe` blocks | not implemented |
+| `defer` | not implemented |
+| `comptime` | not implemented |
+| closures / lambdas | not implemented |
+| range loops (`0..10`) | not implemented |
+| array literals | not implemented |
+| string interpolation | not implemented |
+| `loop` keyword | not implemented |
+| `?` result operator | not implemented |

@@ -1,175 +1,51 @@
 ---
 title: "Path, HTTP & Time"
-description: "File path manipulation, HTTP client, and time utilities."
+description: "Available time module and modules that do not exist in the current compiler."
 ---
-
-import { Aside } from "@astrojs/starlight/components";
 
 # Path, HTTP & Time
 
-## `lib/path.tg` — Path Manipulation
+## `std.time` — Time Utilities
 
-Functions for working with file system paths.
+The `std.time` module provides a single function for reading the current runtime clock.
+
+```thagore
+import std.time as time
+```
 
 ### API
 
-```python
-func join(left: String, right: String) -> String       # Join two path segments
-func basename(path: String) -> String                   # File name from path
-func dirname(path: String) -> String                    # Directory from path
-func ext(path: String) -> String                        # File extension
-func stem(path: String) -> String                       # File name without extension
-func strip_trailing(path: String) -> String             # Remove trailing separator
-func strip_leading(path: String) -> String              # Remove leading separator
-```
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `now_ms` | `func now_ms() -> i64` | Current time in milliseconds since epoch |
 
-### Examples
+### Example
 
-```python title="path_ops.tg"
-import path
+```thagore
+import std.time as time
 
 func main() -> i32:
-    let full = path.join("src", "main.tg")
-    print(full)                     # Output: src/main.tg
-
-    print(path.basename("src/main.tg"))   # Output: main.tg
-    print(path.dirname("src/main.tg"))    # Output: src
-    print(path.ext("src/main.tg"))        # Output: tg
-    print(path.stem("src/main.tg"))       # Output: main
+  let start = time.now_ms()
+  let i: i32 = 0
+  while (i < 1000):
+    i = i + 1
+  let elapsed = time.now_ms() - start
+  if (elapsed > 0):
     return 0
+  return 1
 ```
 
----
+`now_ms` returns `i64`. There is no `string.from_i64` in the current standard library.
 
-## `lib/http.tg` — HTTP Client
+## Modules that do not exist
 
-A simple HTTP client for GET and POST requests.
+The following modules are **not present** in the current compiler:
 
-### API
+| Name | Status |
+|------|--------|
+| `lib/path.tg` | not implemented |
+| `lib/http.tg` | not implemented |
+| `lib/fs.tg` | not implemented |
+| `sleep_ms` in `std.time` | not implemented |
 
-```python
-func get(url: String) -> String                              # HTTP GET
-func post(url: String, body: String) -> String                # HTTP POST
-func request(method: String, url: String, body: String) -> String  # Generic request
-```
-
-### Examples
-
-```python title="http_example.tg"
-import http
-
-func main() -> i32:
-    # GET request
-    let response = http.get("https://httpbin.org/get")
-    print(response)
-
-    # POST request
-    let result = http.post("https://httpbin.org/post", "key=value")
-    print(result)
-    return 0
-```
-
-<Aside type="note" title="Return Values">
-Both `get` and `post` return the response body as a `String`. If the request fails, an empty string is returned.
-</Aside>
-
----
-
-## `lib/time.tg` — Time Utilities
-
-### API
-
-```python
-func now_ms() -> i32             # Current time in milliseconds
-func sleep_ms(ms: i32) -> i32   # Sleep for specified milliseconds
-```
-
-### Examples
-
-```python title="time_example.tg"
-import time
-
-func main() -> i32:
-    let start = time.now_ms()
-
-    # Do some work
-    let i = 0
-    while (i < 1000):
-        i = i + 1
-
-    let elapsed = time.now_ms() - start
-    print(elapsed)    # Prints elapsed time in ms
-
-    # Pause execution
-    time.sleep_ms(500)    # Sleep for 500ms
-    return 0
-```
-
----
-
-## `lib/fs.tg` — File System
-
-### File I/O
-
-```python
-func read_text(path: String) -> String                     # Read entire file as text
-func write_text(path: String, text: String) -> i32          # Write text to file
-func exists(path: String) -> i32                            # Check if path exists (1=yes)
-func mkdir(path: String) -> i32                             # Create directory
-func ensure_dir(path: String) -> i32                        # Create dir if missing
-func list_dir(path: String) -> String                       # List directory contents
-func move(src: String, dst: String) -> i32                  # Move/rename file
-```
-
-### Binary File Operations
-
-```python
-func open_binary(path: String, mode: String) -> ptr         # Open file in binary mode
-func open_write(path: String) -> ptr                        # Shorthand: open for writing
-func open_read(path: String) -> ptr                         # Shorthand: open for reading
-func write_bytes(handle: ptr, buffer: String) -> i32        # Write bytes
-func read_bytes(handle: ptr, size: i32) -> String           # Read bytes
-func seek(handle: ptr, offset: i32, whence: i32) -> i32    # Seek in file
-func close(handle: ptr) -> i32                              # Close file handle
-```
-
-### Examples
-
-```python title="file_io.tg"
-import "std/fs.tg" as fs
-
-func main() -> i32:
-    # Write a file
-    print("Writing to test.txt...")
-    fs.write_text("test.txt", "Hello Thagore System!")
-
-    # Read a file
-    let content = fs.read_text("test.txt")
-    print(content)
-
-    # Check existence
-    if (fs.exists("test.txt") == 1):
-        print("File exists!")
-
-    # Create directory
-    fs.ensure_dir("output")
-
-    return 0
-```
-
-```python title="binary_io.tg"
-import fs
-
-func main() -> i32:
-    # Binary write
-    let f = fs.open_write("data.bin")
-    fs.write_bytes(f, "binary content")
-    fs.close(f)
-
-    # Binary read
-    let r = fs.open_read("data.bin")
-    let data = fs.read_bytes(r, 14)
-    print(data)
-    fs.close(r)
-    return 0
-```
+File system access, HTTP requests, and path manipulation are not provided by the current standard library.

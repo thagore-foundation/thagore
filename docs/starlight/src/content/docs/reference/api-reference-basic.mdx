@@ -13,7 +13,6 @@ description: Quick API reference for thagc CLI, core stdlib modules, and FFI/lin
 | `thagc run <file.tg>` | Build and run |
 | `thagc check <file.tg>` | Validate parse/type/codegen without final link |
 | `thagc fmt <file.tg>` | Normalize source formatting |
-| `thagc migrate` | Migrate legacy project metadata to drago manifest |
 
 Dependency, registry, and update flows are handled by `drago`.
 
@@ -27,33 +26,36 @@ Dependency, registry, and update flows are handled by `drago`.
 | `--link-dir=<path>` | Add `-L<path>` to linker |
 | `--link-arg=<arg>` | Pass raw linker argument |
 
-## Common stdlib modules
+## Shipped stdlib modules
 
-| Module | Key functions |
-| --- | --- |
-| `lib.fs` | `read_file`, `write_file`, `exists`, `mkdir`, `remove` |
-| `lib.process` | `run`, `capture`, `env`, `arg_count`, `arg_at` |
-| `lib.string` | `trim`, `contains`, `split`, `join`, `replace` |
-| `lib.toml` | `parse`, `get_int`, `get_str`, `free` |
-| `lib.http` | `http_get`, `http_post` |
-| `lib.tensor` | `new_i64`, `fill_i64`, `axpy_i64`, `pytorch_axpy_i64`, `cuda_available`, `opencl_available` |
+| Module | Import | Key functions |
+| --- | --- | --- |
+| `std.io` | `import std.io as io` | `read_line`, `read_int`, `read_ints`, `read_word`, `read_all` |
+| `std.math` | `import std.math as math` | `abs`, `min`, `max`, `clamp`, `sqrt`, `pow`, `gcd`, `lcm` |
+| `std.string` | `import std.string as string` | `concat`, `from_int`, `to_int`, `from_f64`, `split`, `trim`, `contains` |
+| `std.time` | `import std.time as time` | `now_ms` |
+
+The following modules do **not** exist: `lib.fs`, `lib.process`, `lib.env`, `lib.http`, `lib.toml`, `lib.tensor`, `lib.map`.
+
+## Builtins (no import needed)
+
+| Name | Signature | Description |
+| --- | --- | --- |
+| `print` | `print(s: str)` | write to stdout without newline |
+| `println` | `println(s: str)` | write to stdout with newline |
+| `eprint` | `eprint(s: str)` | write to stderr without newline |
+| `eprintln` | `eprintln(s: str)` | write to stderr with newline |
+| `flush` | `flush()` | flush stdout |
 
 ## FFI declaration form
 
-```python
+```thagore
 extern func symbol_name(arg1: i32, arg2: ptr) -> i32
 ```
 
-Guidelines:
+- Signature must match the C symbol ABI exactly.
+- Use `str` for `const char*`, `ptr` for `void*`, `f64` for `double`.
+- There is no `f32` type available to user code.
+- Add explicit link flags (`--link-lib`, `--link-dir`) for external libraries.
 
-- signature must match the C symbol ABI exactly.
-- manage ownership and lifetime for all pointer values.
-- add explicit link flags (`--link-lib`, `--link-dir`) for external libraries.
-
-Read the full checklist in `/integration/ffi-safety-guidelines`.
-
-## Compatibility matrix
-
-Platform and LLVM compatibility details:
-
-- `/reference/compatibility-matrix`
+See [FFI Safety Guidelines](/integration/ffi-safety-guidelines/) for the full checklist.

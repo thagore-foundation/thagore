@@ -1,103 +1,55 @@
 ---
 title: Syntax Overview
-description: Complete guide to Thagore language syntax — the starting point for learning the language.
+description: Quick reference for Thagore syntax — indentation, types, declarations, and control flow.
 ---
-
-import { CardGrid, Card, Aside } from "@astrojs/starlight/components";
 
 # Syntax Overview
 
-Thagore uses **Python-like syntax** with indentation-based scoping. Every block is opened by a `:` and indented. Source files use the `.tg` extension.
+Thagore uses Python-style indentation for blocks. Every block header ends with `:` and the body is indented with **2 spaces**.
 
-<Aside type="tip" title="Key Syntax Rules">
-- **Indentation defines blocks** — use 4 spaces (or consistent indentation)
+## Key rules
+
+- **2-space indentation** — tabs are rejected, odd-space counts are rounded down
 - **No semicolons** — each statement is one line
-- **Parentheses required** in `if` and `while` conditions: `if (x > 0):`
-- **Comments** use `#` (line comment) or `//` (also supported)
+- **Conditions require parentheses** — `if (x > 0):` and `while (x > 0):`
+- **Comments** use `#`
 - **File extension** is `.tg`
-</Aside>
 
-## Quick Reference
+## Minimal program
 
-```python title="complete_example.tg"
-# Import a standard library module
-import fs
+```thagore
+func main() -> i32:
+  println("Hello, Thagore!")
+  return 0
+```
 
-# Define a struct
+## Top-level forms
+
+A source file contains top-level declarations only. There are no bare executable statements outside functions.
+
+```thagore
+import std.math as math
+
+const LIMIT: i32 = 10
+
 struct Point:
-    x: i32
-    y: i32
+  x: i32
+  y: i32
 
-# Implement methods on the struct
-impl Point:
-    func magnitude(self) -> i32:
-        return self.x * self.x + self.y * self.y
+func distance(point: Point) -> i32:
+  return math.abs(point.x) + math.abs(point.y)
 
-# Define a function
-func greet(name: String) -> String:
-    return "Hello, " + name + "!"
-
-# Entry point
 func main() -> i32:
-    let p = Point(3, 4)
-    let mag = p.magnitude()
-    print(mag)
-
-    let msg = greet("Developer")
-    print(msg)
-
-    let i = 0
-    while (i < 5):
-        print(i)
-        i = i + 1
-
-    return 0
+  return 0
 ```
 
-## Syntax Topics
+## Syntax topics
 
-<CardGrid>
-  <Card title="Print & Output" href="/syntax/print">
-    The `print()` function, outputting values, and side effects.
-  </Card>
-  <Card title="Variables & let" href="/syntax/variables-and-let">
-    Variable declarations with `let`, type inference, reassignment, and scope rules.
-  </Card>
-  <Card title="Functions" href="/syntax/functions">
-    Function declarations, parameters, return types, and the `main` entry point.
-  </Card>
-  <Card title="Control Flow" href="/syntax/control-flow">
-    `if`/`else`, `while` loops, `for..in` range loops, and `match` expressions.
-  </Card>
-  <Card title="Structs & impl" href="/syntax/structs-and-impl">
-    Struct definitions, method implementations, and operator overloading.
-  </Card>
-  <Card title="FFI & Import" href="/syntax/ffi-and-import">
-    Module imports, `extern func` for C FFI, and the module system.
-  </Card>
-  <Card title="Advanced Features" href="/syntax/advanced-features">
-    Enums, match, traits, comptime, defer, unsafe, and closures.
-  </Card>
-</CardGrid>
-
-## Minimal Program
-
-The simplest valid Thagore program:
-
-```python title="minimal.tg"
-print("Hello!")
-```
-
-Thagore supports **top-level statements** — if your source has no `func main()`, the compiler wraps top-level code in an auto-generated `main` function.
-
-## Program with Explicit Entry Point
-
-```python title="explicit_main.tg"
-func main() -> i32:
-    print("Hello from main!")
-    return 0
-```
-
-<Aside type="note" title="Return Code Convention">
-`func main() -> i32` is the standard entry point. Return `0` for success, non-zero for errors. This matches C/Unix conventions.
-</Aside>
+- [Print & Output](/syntax/print/) — `print`, `println`, output to stdout and stderr
+- [Variables & let](/syntax/variables-and-let/) — `let` declarations, type inference, reassignment
+- [Functions](/syntax/functions/) — `func`, parameters, return types
+- [Control Flow](/syntax/control-flow/) — `if`/`else`, `while`, `for`, `break`, `continue`
+- [Structs & impl](/syntax/structs-and-impl/) — struct definitions and methods
+- [FFI & Import](/syntax/ffi-and-import/) — `import`, `extern func`
+- [Advanced Features](/syntax/advanced-features/) — `intent`, `flow`, generics
+- [Reading Input](/syntax/input/) — reading from stdin via `std.io`
