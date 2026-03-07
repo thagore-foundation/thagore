@@ -16,26 +16,75 @@ export default defineConfig({
       sidebar: [
         {
           label: "Overview",
-          items: [{ label: "Home", link: "/" }]
+          items: [
+            { label: "Home", link: "/" },
+            { label: "Install", link: "/install/" },
+          ]
+        },
+        {
+          label: "Language",
+          items: [
+            { label: "Overview", link: "/language/overview/" },
+            { label: "Syntax", link: "/language/syntax/" },
+            { label: "Types", link: "/language/types/" },
+            { label: "Functions", link: "/language/functions/" },
+            { label: "Structs", link: "/language/structs/" },
+            { label: "Control Flow", link: "/language/control/" },
+            { label: "Imports", link: "/language/imports/" },
+            { label: "Constants", link: "/language/constants/" },
+          ]
+        },
+        {
+          label: "Standard Library",
+          items: [
+            { label: "Overview", link: "/stdlib/" },
+            { label: "math", link: "/stdlib/math/" },
+            { label: "io", link: "/stdlib/io/" },
+            { label: "string", link: "/stdlib/string/" },
+            { label: "vec", link: "/stdlib/vec/" },
+            { label: "sort", link: "/stdlib/sort/" },
+            { label: "collections", link: "/stdlib/collections/" },
+            { label: "iter", link: "/stdlib/iter/" },
+            { label: "fmt", link: "/stdlib/fmt/" },
+            { label: "convert", link: "/stdlib/convert/" },
+          ]
+        },
+        {
+          label: "Drago",
+          items: [
+            { label: "Overview", link: "/drago/" },
+            { label: "Commands", link: "/drago/commands/" },
+            { label: "Manifest", link: "/drago/manifest/" },
+            { label: "Workspaces", link: "/drago/workspaces/" },
+          ]
+        },
+        {
+          label: "Competitive Programming",
+          items: [
+            { label: "Overview", link: "/cp/" },
+            { label: "Sorting", link: "/cp/sorting/" },
+            { label: "Graph", link: "/cp/graph/" },
+            { label: "Dynamic Programming", link: "/cp/dp/" },
+            { label: "Math", link: "/cp/math/" },
+          ]
         },
         { label: "Philosophy", autogenerate: { directory: "philosophy" } },
+        { label: "Compiler", autogenerate: { directory: "compiler" } },
+        { label: "Integration", autogenerate: { directory: "integration" } },
         {
-          label: "Install & Tooling",
+          label: "Legacy Reference",
           items: [
             { label: "Quick Start", link: "/install/quick-start/" },
             { label: "Updating Thagore", link: "/install/update/" },
             { label: "CLI Reference", link: "/install/cli-reference/" },
             { label: "Release & Installers", link: "/install/release-installers/" },
+            { label: "Old Syntax Guide", link: "/syntax/" },
+            { label: "Patterns", link: "/patterns/" },
+            { label: "Memory", link: "/memory/managed-string-runtime/" },
+            { label: "Type System", link: "/type-system/static-typing-model/" },
+            { label: "Reference", link: "/reference/api-reference-basic/" },
           ]
         },
-        { label: "Syntax", autogenerate: { directory: "syntax" } },
-        { label: "Compiler", autogenerate: { directory: "compiler" } },
-        { label: "Standard Library", autogenerate: { directory: "stdlib" } },
-        { label: "Patterns", autogenerate: { directory: "patterns" } },
-        { label: "Integration", autogenerate: { directory: "integration" } },
-        { label: "Memory", autogenerate: { directory: "memory" } },
-        { label: "Type System", autogenerate: { directory: "type-system" } },
-        { label: "Reference", autogenerate: { directory: "reference" } },
         { label: "Contributing", autogenerate: { directory: "contributing" } }
       ]
     })
