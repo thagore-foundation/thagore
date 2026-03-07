@@ -1,0 +1,190 @@
+name: Release Toolchain
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    continue-on-error: ${{ matrix.allow_failure }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            tier: stable
+            archive: tar.gz
+            allow_failure: false
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            tier: stable
+            archive: tar.gz
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            tier: stable
+            archive: tar.gz
+            allow_failure: false
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            tier: stable
+            archive: tar.gz
+            allow_failure: true
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            tier: stable
+            archive: tar.gz
+            allow_failure: false
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            tier: stable
+            archive: tar.gz
+            allow_failure: false
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            tier: stable
+            archive: zip
+            allow_failure: false
+          - runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            tier: stable
+            archive: zip
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            tier: extended
+            archive: tar.gz
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            tier: extended
+            archive: tar.gz
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
+            tier: extended
+            archive: tar.gz
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: powerpc64le-unknown-linux-gnu
+            tier: extended
+            archive: tar.gz
+            allow_failure: true
+          - runner: ubuntu-latest
+            target: s390x-unknown-linux-gnu
+            tier: extended
+            archive: tar.gz
+            allow_failure: true
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      RELEASE_VERSION: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools lld pkg-config zip
+          cargo install cross --locked
+
+      - name: Install macOS build prerequisites
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@14
+          echo "LLVM_SYS_140_PREFIX=$(brew --prefix llvm@14)" >> "$GITHUB_ENV"
+
+      - name: Install Windows build prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --version=14.0.6 -y
+          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.target }}" != "x86_64-unknown-linux-gnu" ]]; then
+            cross build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
+          else
+            cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
+          fi
+
+      - name: Package archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG}"
+          VERSION="${TAG#v}"
+          mkdir -p dist
+          python3 tooling/release/package_release.py \
+            --version "${VERSION}" \
+            --tag "${TAG}" \
+            --target "${{ matrix.target }}" \
+            --archive-format "${{ matrix.archive }}" \
+            --support-tier "${{ matrix.tier }}" \
+            --bin-dir "target/${{ matrix.target }}/release" \
+            --stdlib-dir "stdlib" \
+            --out-dir "dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+
+  publish:
+    name: Publish GitHub release assets
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      DRAGO_VERSION: "1.0.6"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Normalize dist layout
+        run: |
+          mkdir -p release-dist
+          find dist -type f -maxdepth 2 -exec cp {} release-dist/ \;
+
+      - name: Generate manifest and checksums
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          python3 tooling/release/generate_release_manifest.py \
+            --version "${VERSION}" \
+            --tag "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dist-dir release-dist \
+            --targets-file tooling/packaging/targets.json \
+            --drago-version "${DRAGO_VERSION}" \
+            --drago-tag "v${DRAGO_VERSION}"
+
+      - name: Create or update draft release
+        run: |
+          gh release view "${RELEASE_TAG}" >/dev/null 2>&1 || \
+            gh release create "${RELEASE_TAG}" --draft --title "${RELEASE_TAG}" --notes "Automated Thagore release ${RELEASE_TAG}"
+          gh release upload "${RELEASE_TAG}" release-dist/* --clobber

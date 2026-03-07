@@ -1,52 +1,51 @@
 # Rewrite Status
 
-This dashboard tracks full compiler rewrite progress against `contracts/manifest.json`.
+This dashboard tracks the current Rust toolchain in this repository.
 
-Roadmap to product milestone `v2.5`: `ROADMAP.md`.
-Current release cut: `v2.5.0` (production-complete baseline: query cache + explain + LSP hover/diagnostics).
+Current release cut: `v0.9.0`.
 
 ## Frontend
 
 - Lexer: implemented
 - Parser: implemented
-- Typechecker parity: implemented (HIR-assisted bidirectional checks)
+- Typechecker parity: implemented
+- Generic function monomorphisation: implemented
+- Return type inference: implemented
+- Builtin root-scope functions: implemented
 
 ## Middleend
 
-- Core IR model: implemented
-- Lowering parity: implemented
-- HIR/type layer: implemented (`compiler/include/thagc/hir`, `compiler/include/thagc/ty`)
-- HM inference/unifier: implemented baseline (`Unifier`, ty-level infer/check in HIR)
-- Generic type validation: implemented for `Option<T>` / `Result<T,E>` inference/check paths
-- MIR ownership layer: implemented baseline (`compiler/include/thagc/mir/mir.hpp`, `compiler/src/middleend/ownership.cpp`)
+- Module graph and import table: implemented
+- Session-based per-module compilation: implemented
+- Typed IR model: implemented
+- Per-module lowering: implemented
+- Incremental object reuse: implemented baseline
 
 ## Backend
 
 - LLVM IR emission: implemented
 - Object emission: implemented
-- Link planner (no legacy runtime binding): implemented
+- Linker selection (`mold` -> `lld` -> `cc`): implemented
+- Embedded runtime source for installed binaries: implemented
 
 ## Driver / CLI groups
 
-- Query incremental parse cache: implemented baseline (`compiler/include/thagc/query/query.hpp` + `parse_file` wiring in `compiler/src/driver/builder.cpp`)
-- build: implemented (milestone quality)
-- run: implemented (milestone quality)
-- check: implemented (parse/type/lowering/codegen validation without final link)
-- fmt: implemented (source normalization lane)
-- fix: implemented (safe autofix lane for syntax normalization and missing block colon)
-- repl: implemented (interactive execution lane)
-- lsp: implemented (`--stdio` with completion + definition + hover + diagnostics)
-- target: implemented (target init/list/show)
-- state: implemented (typestate explain/doctor)
-- migrate: implemented (legacy manifest/lock to drago format)
+- `thagc build`: implemented
+- `thagc run`: implemented
+- `thagc check`: implemented
+- `thagc --json-errors`: implemented
+- `thagc --print-target-list`: implemented with the release target matrix
+- Legacy flatten pipeline: retained behind `--legacy-flatten`
+- `thagore-fmt`: implemented
+- `thagore-lsp`: implemented
+- Playground WASM bridge: implemented
 
 ## Quality gates
 
 - Unit tests: implemented
 - Integration tests: implemented
-- E2E parity: implemented
-- Inference + generics suites: implemented (`tests/inference`, `tests/generics`)
-- Ownership suites: implemented (`tests/ownership`)
-- Deterministic gate: implemented
-- Soak gate: implemented
-- 3-OS matrix release gate: implemented
+- E2E fixture matrix: implemented
+- Generic and const fixtures: implemented
+- Playground WASM build: implemented
+- Release packaging scripts: implemented
+- Release and nightly GitHub Actions: implemented

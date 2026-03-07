@@ -1,0 +1,42 @@
+name: Verify Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-dist
+          gh release download "${{ github.event.inputs.tag }}" --dir release-dist
+
+      - name: Verify checksums and installer dry-run
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          dist = Path("release-dist")
+          checksums = next(dist.glob("SHA256SUMS-*.txt"))
+          entries = [line.strip().split("  ", 1) for line in checksums.read_text().splitlines() if line.strip()]
+          for expected, filename in entries:
+              path = dist / filename
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              if digest != expected:
+                  raise SystemExit(f"checksum mismatch for {filename}")
+          PY
+          bash tooling/release/thagup.sh --tag "${{ github.event.inputs.tag }}" --target x86_64-unknown-linux-gnu --dry-run

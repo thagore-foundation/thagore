@@ -4,100 +4,75 @@ Quick map for contributors:
 
 ## I need to change parser behavior
 
-- `compiler/include/thagc/frontend/parser.hpp`
-- `compiler/src/frontend/parser.cpp`
-- `compiler/src/frontend/expr.cpp`
-- `compiler/src/frontend/syntax.cpp`
+- `crates/lexer/src/token.rs`
+- `crates/lexer/src/lexer.rs`
+- `crates/parser/src/parser.rs`
+- `crates/parser/src/decl.rs`
+- `crates/parser/src/expr.rs`
+- `crates/parser/src/stmt.rs`
+- `crates/parser/src/types.rs`
 
 ## I need to change type checks
 
-- `compiler/include/thagc/frontend/typechecker.hpp`
-- `compiler/src/frontend/builder.cpp`
+- `crates/typeck/src/check.rs`
+- `crates/typeck/src/module_check.rs`
+- `crates/typeck/src/infer.rs`
+- `crates/typeck/src/return_infer.rs`
+- `crates/typeck/src/func_check.rs`
 
 ## I need to change lowering/IR contracts
 
-- `compiler/include/thagc/middleend/core_ir.hpp`
-- `compiler/src/middleend/builder.cpp`
-- `compiler/include/thagc/mir/mir.hpp`
-- `compiler/include/thagc/middleend/mir_lowering.hpp`
-- `compiler/src/middleend/mir_lowering.cpp`
-- `compiler/include/thagc/middleend/ownership.hpp`
-- `compiler/src/middleend/ownership.cpp`
-- `compiler/include/thagc/hir/expr.hpp`
-- `compiler/include/thagc/hir/typecheck.hpp`
-- `compiler/src/middleend/hir_typecheck.cpp`
-- `compiler/include/thagc/ty/ty.hpp`
+- `crates/ir/src/lower.rs`
+- `crates/ir/src/module_lower.rs`
+- `crates/ir/src/module.rs`
+- `crates/ir/src/instr.rs`
+- `crates/ir/src/block.rs`
 
 ## I need to change LLVM output
 
-- `compiler/include/thagc/backend/llvm_emitter.hpp`
-- `compiler/src/backend/expr.cpp`
-- `compiler/src/backend/emit.cpp`
-- `compiler/src/backend/module.cpp`
-- `compiler/src/backend/tokens.cpp`
-- `compiler/src/backend/types.cpp`
-- `compiler/src/backend/llvm_emitter.cpp`
+- `crates/codegen/src/context.rs`
+- `crates/codegen/src/func.rs`
+- `crates/codegen/src/instr.rs`
+- `crates/codegen/src/module_emit.rs`
+- `crates/codegen/src/output.rs`
+- `crates/codegen/runtime/thagore_rt.c`
 
-## I need to change query-based incremental compilation behavior
+## I need to change module/session compilation behavior
 
-- `compiler/include/thagc/query/query.hpp`
-- `compiler/src/driver/builder.cpp`
-- `tests/parity/test_v25_query_incremental_pipeline.py`
-- `tests/integration/test_import_system.py`
+- `crates/module_graph/src/lib.rs`
+- `crates/module_graph/src/resolver.rs`
+- `crates/module_graph/src/import_table.rs`
+- `tools/thagore-cli/src/session.rs`
+- `tools/thagore-cli/src/pipeline.rs`
 
 ## I need to change CLI commands
 
-- `compiler/include/thagc/driver/command_router.hpp`
-- `compiler/src/driver/core.cpp` (dispatcher)
-- `compiler/src/driver/parser.cpp` (command parsing)
-- `compiler/src/driver/build.cpp`
-- `compiler/src/driver/run.cpp`
-- `compiler/src/driver/check.cpp`
-- `compiler/src/driver/fmt.cpp`
-- `compiler/src/driver/fix.cpp`
-- `compiler/src/driver/repl.cpp`
-- `compiler/src/driver/lsp.cpp`
-- `compiler/src/driver/target.cpp`
-- `compiler/src/driver/state.cpp`
-- `compiler/src/driver/migrate.cpp`
-- `compiler/src/driver/resolver.cpp`
+- `tools/thagore-cli/src/cli.rs`
+- `tools/thagore-cli/src/main.rs`
+- `tools/thagore-cli/src/pipeline.rs`
+- `tools/thagore-cli/src/session.rs`
+- `tools/thagore-fmt/src/main.rs`
+- `tools/thagore-lsp/src/main.rs`
 
-## I need to update parity baseline contracts
+## I need to change browser execution or playground behavior
 
-- `tooling/baseline/*`
-- `contracts/*`
-- `tests/parity/*`
+- `crates/interpreter/src/*`
+- `playground/wasm/thagore_wasm.rs`
+- `playground/index.html`
+- `playground/main.js`
+- `playground/style.css`
 
-## I need to update HM inference / generics gates (v2.3)
+## I need to update stdlib or language examples
 
-- `tests/inference/*`
-- `tests/generics/*`
-- `compiler/src/middleend/hir_typecheck.cpp`
-- `compiler/src/frontend/builder.cpp`
-
-## I need to update ownership / borrow gates (v2.4)
-
-- `tests/ownership/*`
-- `tests/parity/test_v24_mir_ownership_pipeline.py`
-- `compiler/include/thagc/mir/mir.hpp`
-- `compiler/src/middleend/ownership.cpp`
-
-## I need to change runtime concurrency / cancel / timeout
-
-- `runtime/include/thag_runtime.h`
-- `runtime/src/concurrency.cpp`
-- `contracts/concurrency/*`
-- `tests/integration/*` and `tests/soak/*`
-
-## I need to change stdlib client surfaces (HTTP/WebSocket/DB/time/map)
-
-- `stdlib/lib/*`
-- `stdlib/std/*`
-- `contracts/io/*`
+- `stdlib/*`
+- `tests/fixtures/*`
+- `docs/starlight/src/content/docs/stdlib/*`
+- `docs/starlight/src/content/docs/language/*`
 
 ## I need to update release/policy automation
 
 - `.github/workflows/*`
-- `tooling/policy/*`
 - `tooling/packaging/*`
+- `tooling/release/*`
 - `tooling/community/*`
+- `docs/starlight/src/content/docs/install.mdx`

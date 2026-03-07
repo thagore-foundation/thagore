@@ -70,10 +70,14 @@ flow deploy(input: DeployInput) -> Result<DeployOut, DeployErr>:
 | `crates/ast` | Implemented — arena-allocated nodes for all declarations, expressions, statements, types |
 | `crates/parser` | Implemented — recursive-descent parser with structured error recovery |
 | `crates/typeck` | Implemented — scope analysis, type inference, structured diagnostics |
-| `crates/ir` | Scaffold — not yet implemented |
-| `crates/codegen` | Scaffold — not yet implemented |
-| `tools/thagore-cli` | In progress |
-| `tools/thagore-lsp` | In progress |
+| `crates/ir` | Implemented — typed lowering and module-aware IR generation |
+| `crates/codegen` | Implemented — LLVM 14 backend, object emission, linker integration |
+| `crates/interpreter` | Implemented — browser-safe interpreter used by the playground |
+| `crates/module_graph` | Implemented — module resolution, dependency graph, import table |
+| `tools/thagore-cli` | Implemented — `thagc` / `thagore` compiler driver |
+| `tools/thagore-fmt` | Implemented — AST-based formatter |
+| `tools/thagore-lsp` | Implemented — stdio LSP server |
+| `playground/wasm` | Implemented — browser WASM bridge for the static playground |
 
 ---
 
@@ -85,19 +89,28 @@ crates/
   ast/            Arena-allocated AST node types
   parser/         Recursive-descent parser
   typeck/         Type checker and structured diagnostics
-  ir/             Intermediate representation  [scaffold]
-  codegen/        Code generation backend      [scaffold]
+  ir/             Intermediate representation and lowering
+  codegen/        LLVM backend and artifact emission
+  interpreter/    Tree-walking interpreter for playground/WASM
+  module_graph/   Module resolution, graph build, import table
 
 tools/
-  thagore-cli/    Command-line driver
+  thagore-cli/    Command-line compiler driver (`thagc`, `thagore`)
+  thagore-fmt/    Official formatter
   thagore-lsp/    Language server (LSP)
+  thagore-bench/  Comparative benchmark runner
 
-stdlib/           Standard library source (planned)
+stdlib/           Standard library source
+tooling/
+  packaging/      Release target metadata shared by the CLI and workflows
+  release/        Archive packager, manifest generator, installers
+  community/      Release/support policy documents
 
 docs/
   starlight/      Documentation website (Astro Starlight)
-  idea/           Language design RFCs
-  runbooks/       Operational runbooks
+  architecture/   Architecture map and status docs
+  contributor-guide/
+  adr/
 
 tests/fixtures/   End-to-end test programs (.tg files)
 ```
@@ -113,12 +126,28 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-Build the CLI binary:
+Build the core toolchain:
 
 ```bash
-cargo build -p thagore-cli --release
-# binary: target/release/thagore-cli
+cargo build -p thagore-cli -p thagore-fmt -p thagore-lsp --release
 ```
+
+The release system also supports packaged toolchain archives plus installer scripts:
+
+- POSIX installer: `tooling/release/thagup.sh`
+- PowerShell installer: `tooling/release/thagup.ps1`
+- Release policy: `tooling/community/release-support-policy.md`
+
+Stable release targets:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-unknown-linux-musl`
+- `aarch64-unknown-linux-musl`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
 
 ---
 

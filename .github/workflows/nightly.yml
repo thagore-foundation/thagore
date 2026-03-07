@@ -1,0 +1,68 @@
+name: Nightly Toolchain
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: i686-unknown-linux-gnu
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools lld pkg-config zip
+          cargo install cross --locked
+
+      - name: Build nightly binaries
+        run: |
+          cross build --release --target i686-unknown-linux-gnu -p thagore-cli -p thagore-fmt -p thagore-lsp
+
+      - name: Create nightly tag
+        id: nightly
+        run: |
+          TAG="nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Package nightly host archive
+        run: |
+          mkdir -p dist
+          python3 tooling/release/package_release.py \
+            --version "${{ steps.nightly.outputs.version }}" \
+            --tag "${{ steps.nightly.outputs.tag }}" \
+            --target "i686-unknown-linux-gnu" \
+            --archive-format "tar.gz" \
+            --support-tier "nightly" \
+            --bin-dir "target/i686-unknown-linux-gnu/release" \
+            --stdlib-dir "stdlib" \
+            --out-dir "dist"
+
+      - name: Generate nightly manifest
+        run: |
+          python3 tooling/release/generate_release_manifest.py \
+            --version "${{ steps.nightly.outputs.version }}" \
+            --tag "${{ steps.nightly.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --dist-dir dist \
+            --targets-file tooling/packaging/targets.json \
+            --drago-version "1.0.6" \
+            --drago-tag "v1.0.6"
+
+      - name: Publish nightly release
+        run: |
+          gh release view "${{ steps.nightly.outputs.tag }}" >/dev/null 2>&1 || \
+            gh release create "${{ steps.nightly.outputs.tag }}" --prerelease --title "${{ steps.nightly.outputs.tag }}" --notes "Automated nightly build"
+          gh release upload "${{ steps.nightly.outputs.tag }}" dist/* --clobber

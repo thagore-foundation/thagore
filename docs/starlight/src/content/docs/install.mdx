@@ -1,17 +1,20 @@
 ---
 title: Install
-description: Build the current Thagore toolchain from source and verify that thagc, thagore-fmt, thagore-lsp, and drago work on your machine.
+description: Install prebuilt Thagore toolchain archives or build from source, then verify thagc, thagore-fmt, thagore-lsp, and drago on your machine.
 sidebar:
   order: 0
 ---
 
 # Install
 
-The current repository builds the Thagore toolchain from source. This page documents the workflow that matches the codebase as it exists today: `thagc`, `thagore-fmt`, and `thagore-lsp` are Rust binaries built with Cargo, and `drago` is a Thagore program bootstrapped by `thagc`.
+Thagore ships two installation paths:
 
-## What you will build
+1. prebuilt release archives installed with `thagup.sh` or `thagup.ps1`
+2. source builds from this repository with Cargo
 
-The source tree currently provides these command-line tools:
+## What you will install
+
+The toolchain currently provides these command-line tools:
 
 | Tool | Role | Source |
 | --- | --- | --- |
@@ -19,7 +22,72 @@ The source tree currently provides these command-line tools:
 | `thagore` | Alias of `thagc` | `tools/thagore-cli` |
 | `thagore-fmt` | Official formatter | `tools/thagore-fmt` |
 | `thagore-lsp` | Language Server Protocol server | `tools/thagore-lsp` |
-| `drago` | Package manager, built with `thagc` | separate repo |
+| `drago` | Package manager, version-checked against `thagc` | separate repo |
+
+## Prebuilt installers
+
+Release installers live in this repository:
+
+| Script | Platform |
+| --- | --- |
+| `tooling/release/thagup.sh` | Linux, macOS, BSD, other POSIX shells |
+| `tooling/release/thagup.ps1` | Windows PowerShell |
+
+The installer resolves the correct archive from the release manifest, verifies SHA256, then installs:
+
+- binaries into `PREFIX/bin`
+- the standard library into `PREFIX/share/thagore/stdlib`
+
+### Install the latest stable toolchain
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh | sh
+```
+
+### Install to a custom prefix
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh | sh -s -- --prefix "$HOME/.thagore"
+```
+
+### Install a specific target or channel
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh | sh -s -- \
+  --channel extended \
+  --target x86_64-unknown-linux-musl
+```
+
+### Windows PowerShell
+
+```powershell
+irm https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.ps1 | iex
+```
+
+### Release channels
+
+| Channel | Meaning |
+| --- | --- |
+| `stable` | Official end-user toolchain builds |
+| `extended` | Additional semver release artifacts when a builder is available |
+| `nightly` | Preview prerelease artifacts |
+
+The canonical target matrix is exposed by:
+
+```bash
+thagc --print-target-list
+```
+
+Stable targets:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-unknown-linux-musl`
+- `aarch64-unknown-linux-musl`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
 
 ## Prerequisites
 
@@ -48,7 +116,7 @@ If your LLVM 14 binaries are installed under a non-default prefix, export `LLVM_
 export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
 ```
 
-## Build the toolchain
+## Build from source
 
 Clone the compiler repository and build the active tools:
 
@@ -133,7 +201,7 @@ Build output already includes the LSP server:
 
 Editor integrations should launch `thagore-lsp` over stdio. The repository also contains a VS Code extension scaffold under `editors/vscode/`.
 
-## Optional: install binaries into your PATH
+## Optional: install source-built binaries into your PATH
 
 If you want the tools available globally from your shell:
 
@@ -178,6 +246,10 @@ If Cargo fails while compiling the backend or `llvm-sys`, your LLVM 14 developme
 ### Linker errors
 
 `thagc` uses a C runtime object during final linking. Make sure a working C toolchain is installed and that `cc` is available in `PATH`.
+
+### Installer cannot find the requested target
+
+Pass `--target <triple>` explicitly. The installer defaults to the host target, and only installs artifacts present in the release manifest.
 
 ### `drago` cannot find `thagc`
 

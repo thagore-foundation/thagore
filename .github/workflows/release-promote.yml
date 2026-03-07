@@ -1,0 +1,22 @@
+name: Promote Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to promote"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish draft release
+        run: |
+          gh release edit "${{ github.event.inputs.tag }}" --draft=false --latest
