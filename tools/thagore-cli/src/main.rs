@@ -5,6 +5,7 @@ mod error;
 mod ice;
 mod pipeline;
 mod run;
+mod session;
 mod timer;
 
 use std::io::{self, Write};
@@ -19,7 +20,8 @@ use termcolor::{ColorChoice, StandardStream};
 use crate::cli::{Cli, Command};
 use crate::error::ErrorReporter;
 use crate::ice::with_ice_handler;
-use crate::pipeline::{build_file, build_options_for_run, check_file};
+use crate::pipeline::build_options_for_run;
+use crate::session::{build_file, check_file};
 use crate::run::{execute_binary, RunWorkspace};
 
 const SUCCESS_EXIT_CODE: i32 = 0;
@@ -47,7 +49,14 @@ fn real_main() -> i32 {
     match cli.command {
         Some(Command::Build(args)) => handle_build(&args.entry, &args.options),
         Some(Command::Check(args)) => {
-            handle_check(&args.file, args.json, &args.include_dirs, &args.defines, &args.features)
+            handle_check(
+                &args.file,
+                args.json,
+                &args.include_dirs,
+                &args.defines,
+                &args.features,
+                args.legacy_flatten,
+            )
         }
         Some(Command::Run(args)) => handle_run(&args),
         Some(Command::Version) => handle_version_human(),
@@ -85,8 +94,9 @@ fn handle_check(
     include_dirs: &[std::path::PathBuf],
     defines: &[String],
     features: &[String],
+    legacy_flatten: bool,
 ) -> i32 {
-    match check_file(path, include_dirs, defines, features) {
+    match check_file(path, include_dirs, defines, features, legacy_flatten) {
         Ok(_) => {
             if json {
                 let _ = writeln!(io::stdout(), "[]");

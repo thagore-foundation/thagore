@@ -89,6 +89,9 @@ pub struct BuildOptions {
     /// Emit structured compiler diagnostics as JSON to stdout.
     #[arg(long = "json-errors")]
     pub json_errors: bool,
+    /// Force the legacy flat-merge module loader for debugging.
+    #[arg(long = "legacy-flatten")]
+    pub legacy_flatten: bool,
     /// Print per-stage timing after the pipeline completes.
     #[arg(long = "time")]
     pub time: bool,
@@ -111,6 +114,9 @@ pub struct CheckArgs {
     /// Active feature flags exposed as compile-time booleans.
     #[arg(long = "features", value_delimiter = ',')]
     pub features: Vec<String>,
+    /// Force the legacy flat-merge module loader for debugging.
+    #[arg(long = "legacy-flatten")]
+    pub legacy_flatten: bool,
 }
 
 /// Command-line arguments for `thagore run`.
@@ -158,6 +164,9 @@ pub struct RunOptions {
     /// Emit structured compiler diagnostics as JSON to stdout.
     #[arg(long = "json-errors")]
     pub json_errors: bool,
+    /// Force the legacy flat-merge module loader for debugging.
+    #[arg(long = "legacy-flatten")]
+    pub legacy_flatten: bool,
     /// Print per-stage timing after the pipeline completes.
     #[arg(long = "time")]
     pub time: bool,

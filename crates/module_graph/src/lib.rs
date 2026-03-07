@@ -412,47 +412,100 @@ fn parse_imports(source: &str, file: &Path) -> Result<Vec<ImportSpec>, ModuleErr
             continue;
         }
 
-        if !trimmed.starts_with("import ") {
+        if trimmed.starts_with("import ") {
+            let body = trimmed.trim_start_matches("import ").trim();
+            if body.is_empty() {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            }
+
+            let mut alias = None;
+            let mut parts = body.split_whitespace();
+            let path_part = parts.next().unwrap_or_default();
+            let remaining: Vec<&str> = parts.collect();
+
+            if remaining.len() == 2 && remaining[0] == "as" {
+                alias = Some(remaining[1].to_string());
+            } else if remaining.len() == 2 && remaining[0] == "include" && remaining[1] == "all" {
+            } else if remaining.len() == 4
+                && remaining[0] == "as"
+                && remaining[2] == "include"
+                && remaining[3] == "all"
+            {
+                alias = Some(remaining[1].to_string());
+            } else if !remaining.is_empty() {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            }
+
+            if path_part.is_empty() {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            }
+
+            imports.push(ImportSpec {
+                path: path_part.to_string(),
+                alias,
+                line: line_number,
+            });
             continue;
         }
 
-        let body = trimmed.trim_start_matches("import ").trim();
-        if body.is_empty() {
-            return Err(ModuleError::InvalidImport {
-                file: file.to_path_buf(),
+        if trimmed.starts_with("from ") {
+            let Some((module_path, import_tail)) = trimmed
+                .trim_start_matches("from ")
+                .trim()
+                .split_once(" import ")
+            else {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            };
+            if module_path.trim().is_empty() {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            }
+            let module_path = module_path.trim();
+            let path = if module_path == "." || module_path == ".." {
+                let symbol = import_tail
+                    .split(',')
+                    .next()
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .trim();
+                if symbol.is_empty() {
+                    module_path.to_string()
+                } else if module_path == "." {
+                    format!("./{symbol}")
+                } else {
+                    format!("../{symbol}")
+                }
+            } else {
+                module_path.to_string()
+            };
+            imports.push(ImportSpec {
+                path,
+                alias: None,
                 line: line_number,
-                text: line.to_string(),
             });
+            continue;
         }
-
-        let mut alias = None;
-        let mut parts = body.split_whitespace();
-        let path_part = parts.next().unwrap_or_default();
-        let remaining: Vec<&str> = parts.collect();
-
-        if remaining.len() == 2 && remaining[0] == "as" {
-            alias = Some(remaining[1].to_string());
-        } else if !remaining.is_empty() {
-            return Err(ModuleError::InvalidImport {
-                file: file.to_path_buf(),
-                line: line_number,
-                text: line.to_string(),
-            });
-        }
-
-        if path_part.is_empty() {
-            return Err(ModuleError::InvalidImport {
-                file: file.to_path_buf(),
-                line: line_number,
-                text: line.to_string(),
-            });
-        }
-
-        imports.push(ImportSpec {
-            path: path_part.to_string(),
-            alias,
-            line: line_number,
-        });
     }
 
     Ok(imports)

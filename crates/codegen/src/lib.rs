@@ -12,6 +12,7 @@ pub mod debug;
 pub mod error;
 pub mod func;
 pub mod instr;
+pub mod module_emit;
 pub mod optimize;
 pub mod output;
 pub mod structs;
@@ -24,10 +25,11 @@ pub use crate::context::{
 };
 pub use crate::debug::{DebugOptions, DebugState};
 pub use crate::error::CodegenError;
+pub use crate::module_emit::emit_module;
 pub use crate::optimize::OptimizationLevel;
 pub use crate::output::{
-    emit_bitcode, emit_llvm_ir, emit_object, emit_outputs, link_binary, OutputArtifacts,
-    OutputConfig,
+    emit_bitcode, emit_llvm_ir, emit_object, emit_outputs, link_binary, link_objects,
+    OutputArtifacts, OutputConfig,
 };
 pub use crate::types::TypeMap;
 

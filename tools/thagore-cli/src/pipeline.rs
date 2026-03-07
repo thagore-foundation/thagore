@@ -29,7 +29,7 @@ use crate::cli::{BuildOptions, EmitKind, OptLevel, RunOptions};
 use crate::error::CompilerDiagnostic;
 use crate::timer::TimingReport;
 
-const MODULE_SYMBOL: InternedStr = InternedStr::new(u32::MAX - 32);
+pub(crate) const MODULE_SYMBOL: InternedStr = InternedStr::new(u32::MAX - 32);
 
 /// Successful `build` pipeline result.
 #[derive(Debug)]
@@ -52,7 +52,7 @@ pub(crate) struct PipelineFailure {
 }
 
 /// Runs lexing, parsing, and type checking without code generation.
-pub(crate) fn check_file(
+pub(crate) fn legacy_check_file(
     path: &Path,
     include_dirs: &[PathBuf],
     defines: &[String],
@@ -115,7 +115,7 @@ pub(crate) fn check_file(
 }
 
 /// Runs the full compiler pipeline and emits requested output artifacts.
-pub(crate) fn build_file(
+pub(crate) fn legacy_build_file(
     path: &Path,
     options: &BuildOptions,
 ) -> Result<BuildResult, PipelineFailure> {
@@ -321,6 +321,7 @@ pub(crate) fn build_options_for_run(options: &RunOptions) -> BuildOptions {
         defines: options.defines.clone(),
         features: options.features.clone(),
         json_errors: options.json_errors,
+        legacy_flatten: options.legacy_flatten,
         time: options.time,
     }
 }
@@ -338,7 +339,7 @@ fn read_source(path: &Path, timings: &TimingReport) -> Result<String, PipelineFa
     })
 }
 
-fn module_name_from_path(path: &Path) -> String {
+pub(crate) fn module_name_from_path(path: &Path) -> String {
     path.file_stem()
         .and_then(|stem| stem.to_str())
         .filter(|stem| !stem.is_empty())
@@ -346,7 +347,7 @@ fn module_name_from_path(path: &Path) -> String {
         .to_string()
 }
 
-fn default_binary_output(path: &Path) -> PathBuf {
+pub(crate) fn default_binary_output(path: &Path) -> PathBuf {
     let stem = path
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -357,7 +358,7 @@ fn default_binary_output(path: &Path) -> PathBuf {
         .join(stem)
 }
 
-fn inject_compile_time_bindings<'src, 'tok, 'ast>(
+pub(crate) fn inject_compile_time_bindings<'src, 'tok, 'ast>(
     decls: &mut Vec<Decl<'ast>>,
     parser: &mut Parser<'src, 'tok, 'ast>,
     arena: &'ast Bump,
@@ -451,28 +452,28 @@ fn load_program<'src, 'tok, 'ast>(
 }
 
 #[derive(Debug, Clone)]
-struct ModuleAliasBinding {
-    alias: InternedStr,
-    namespace: String,
+pub(crate) struct ModuleAliasBinding {
+    pub(crate) alias: InternedStr,
+    pub(crate) namespace: String,
 }
 
 #[derive(Debug, Clone)]
-struct DirectImportBinding {
-    local_name: InternedStr,
-    qualified_name: InternedStr,
+pub(crate) struct DirectImportBinding {
+    pub(crate) local_name: InternedStr,
+    pub(crate) qualified_name: InternedStr,
 }
 
 #[derive(Debug, Clone)]
-struct IncludeAllBinding {
-    module_label: String,
-    symbols: Vec<(String, InternedStr)>,
+pub(crate) struct IncludeAllBinding {
+    pub(crate) module_label: String,
+    pub(crate) symbols: Vec<(String, InternedStr)>,
 }
 
 #[derive(Debug, Clone)]
-struct ImportBindings {
-    module_aliases: Vec<ModuleAliasBinding>,
-    direct_symbols: Vec<DirectImportBinding>,
-    include_all: Vec<IncludeAllBinding>,
+pub(crate) struct ImportBindings {
+    pub(crate) module_aliases: Vec<ModuleAliasBinding>,
+    pub(crate) direct_symbols: Vec<DirectImportBinding>,
+    pub(crate) include_all: Vec<IncludeAllBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -483,9 +484,9 @@ struct ResolvedModuleTarget {
 }
 
 #[derive(Debug, Clone)]
-struct ExportedSymbol {
-    local_name: String,
-    qualified_name: String,
+pub(crate) struct ExportedSymbol {
+    pub(crate) local_name: String,
+    pub(crate) qualified_name: String,
 }
 
 struct ModuleLoader<'a, 'src, 'tok, 'ast> {
@@ -958,7 +959,7 @@ fn find_module_candidates(root: &Path, segments: &[String]) -> Option<PathBuf> {
     None
 }
 
-fn stdlib_root() -> PathBuf {
+pub(crate) fn stdlib_root() -> PathBuf {
     if let Some(configured) = std::env::var_os("THAGORE_STDLIB") {
         return PathBuf::from(configured);
     }
@@ -967,7 +968,7 @@ fn stdlib_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn project_root(entry: &Path) -> PathBuf {
+pub(crate) fn project_root(entry: &Path) -> PathBuf {
     let normalized = normalize_path(entry);
     let mut ancestors = normalized.ancestors().peekable();
     while let Some(ancestor) = ancestors.next() {
@@ -984,22 +985,25 @@ fn project_root(entry: &Path) -> PathBuf {
         .to_path_buf()
 }
 
-fn normalize_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn module_namespace(segments: &[String]) -> String {
+pub(crate) fn module_namespace(segments: &[String]) -> String {
     segments.join("__")
 }
 
-fn module_label_from_segments(segments: &[String]) -> String {
+pub(crate) fn module_label_from_segments(segments: &[String]) -> String {
     segments
         .last()
         .cloned()
         .unwrap_or_else(|| "__module__".to_string())
 }
 
-fn import_path_label(import_decl: &thagore_ast::ImportDecl<'_>, segments: &[String]) -> String {
+pub(crate) fn import_path_label(
+    import_decl: &thagore_ast::ImportDecl<'_>,
+    segments: &[String],
+) -> String {
     let mut label = String::new();
     for _ in 0..import_decl.relative_level {
         label.push('.');
@@ -1017,11 +1021,11 @@ fn import_path_label(import_decl: &thagore_ast::ImportDecl<'_>, segments: &[Stri
     }
 }
 
-fn is_relative_module_import(import_decl: &thagore_ast::ImportDecl<'_>) -> bool {
+pub(crate) fn is_relative_module_import(import_decl: &thagore_ast::ImportDecl<'_>) -> bool {
     import_decl.is_from && import_decl.relative_level > 0 && import_decl.path_segments.is_empty()
 }
 
-fn collect_module_exports(
+pub(crate) fn collect_module_exports(
     decls: &[Decl<'_>],
     source_symbols: &BTreeMap<InternedStr, String>,
     namespace: &str,
@@ -1045,7 +1049,7 @@ fn collect_module_exports(
     exports
 }
 
-fn include_all_binding(
+pub(crate) fn include_all_binding(
     exports: &[ExportedSymbol],
     module_label: String,
     parser: &mut Parser<'_, '_, '_>,
@@ -1065,7 +1069,7 @@ fn include_all_binding(
     }
 }
 
-struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
+pub(crate) struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
     arena: &'ast Bump,
     parser: &'a mut Parser<'src, 'tok, 'ast>,
     next_node_id: &'a mut u32,
@@ -1082,7 +1086,7 @@ struct ModuleRewriter<'a, 'src, 'tok, 'ast> {
 }
 
 impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
-    fn new(
+    pub(crate) fn new(
         arena: &'ast Bump,
         parser: &'a mut Parser<'src, 'tok, 'ast>,
         next_node_id: &'a mut u32,
@@ -1143,7 +1147,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
-    fn rewrite_program(&mut self, decls: &[Decl<'ast>]) -> Vec<Decl<'ast>> {
+    pub(crate) fn rewrite_program(&mut self, decls: &[Decl<'ast>]) -> Vec<Decl<'ast>> {
         decls
             .iter()
             .filter_map(|decl| self.rewrite_decl(decl))
@@ -1835,13 +1839,13 @@ fn make_literal_binding<'src, 'tok, 'ast>(
     })
 }
 
-fn next_synthetic_node(next_id: &mut u32) -> NodeId {
+pub(crate) fn next_synthetic_node(next_id: &mut u32) -> NodeId {
     let id = NodeId::new(*next_id);
     *next_id = next_id.saturating_add(1);
     id
 }
 
-fn max_existing_node_id<'ast>(decls: &[Decl<'ast>]) -> u32 {
+pub(crate) fn max_existing_node_id<'ast>(decls: &[Decl<'ast>]) -> u32 {
     let mut collector = MaxNodeIdCollector::default();
     for decl in decls {
         walk_decl(&mut collector, decl);
@@ -1944,15 +1948,15 @@ fn map_opt_level(level: OptLevel) -> OptimizationLevel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RequestedOutputs {
-    ll: bool,
-    bc: bool,
-    obj: bool,
-    bin: bool,
+pub(crate) struct RequestedOutputs {
+    pub(crate) ll: bool,
+    pub(crate) bc: bool,
+    pub(crate) obj: bool,
+    pub(crate) bin: bool,
 }
 
 impl RequestedOutputs {
-    fn new(requested: &[EmitKind], force_bin: bool) -> Self {
+    pub(crate) fn new(requested: &[EmitKind], force_bin: bool) -> Self {
         let mut outputs = Self {
             ll: false,
             bc: false,
@@ -1971,7 +1975,7 @@ impl RequestedOutputs {
     }
 }
 
-fn convert_parse_error(error: &ParseError) -> CompilerDiagnostic {
+pub(crate) fn convert_parse_error(error: &ParseError) -> CompilerDiagnostic {
     match &error.kind {
         ErrorKind::UnexpectedToken { .. } => CompilerDiagnostic::new(
             "P001",
@@ -2025,7 +2029,7 @@ fn convert_parse_error(error: &ParseError) -> CompilerDiagnostic {
     }
 }
 
-fn convert_type_error(
+pub(crate) fn convert_type_error(
     error: &TypeError,
     types: &TypeArena,
     parser: &Parser<'_, '_, '_>,
@@ -2123,7 +2127,7 @@ fn convert_type_error(
     }
 }
 
-fn convert_lowering_error(
+pub(crate) fn convert_lowering_error(
     error: &LoweringError,
     types: &TypeArena,
     parser: &Parser<'_, '_, '_>,
@@ -2194,7 +2198,7 @@ fn convert_lowering_error(
     }
 }
 
-fn convert_codegen_error(
+pub(crate) fn convert_codegen_error(
     error: &thagore_codegen::CodegenError,
     types: &TypeArena,
     parser: &Parser<'_, '_, '_>,
@@ -2289,14 +2293,14 @@ fn render_type(ty: TypeId, arena: &TypeArena, parser: &Parser<'_, '_, '_>) -> St
     }
 }
 
-fn render_symbol(symbol: InternedStr, parser: &Parser<'_, '_, '_>) -> String {
+pub(crate) fn render_symbol(symbol: InternedStr, parser: &Parser<'_, '_, '_>) -> String {
     parser
         .resolve_symbol(symbol)
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("sym_{}", symbol.as_u32()))
 }
 
-fn intern_owned_cached(
+pub(crate) fn intern_owned_cached(
     parser: &mut Parser<'_, '_, '_>,
     cache: &mut HashMap<String, InternedStr>,
     text: &str,
@@ -2311,7 +2315,7 @@ fn intern_owned_cached(
     symbol
 }
 
-fn collect_symbol_texts(
+pub(crate) fn collect_symbol_texts(
     decls: &[Decl<'_>],
     parser: &Parser<'_, '_, '_>,
 ) -> BTreeMap<InternedStr, String> {
@@ -2327,7 +2331,7 @@ fn collect_symbol_texts(
         .collect()
 }
 
-fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
+pub(crate) fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
     let mut symbols = BTreeSet::new();
     for decl in decls {
         match decl {
@@ -2361,7 +2365,7 @@ fn top_level_symbols<'ast>(decls: &[Decl<'ast>]) -> BTreeSet<InternedStr> {
     symbols
 }
 
-fn register_symbols(
+pub(crate) fn register_symbols(
     decls: &[Decl<'_>],
     parser: &Parser<'_, '_, '_>,
     checker: &mut TypeChecker,

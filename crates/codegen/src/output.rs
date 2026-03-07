@@ -151,13 +151,18 @@ pub fn emit_object(
 
 /// Links an object file into a native executable via `cc`.
 pub fn link_binary(object: &Path, binary: &Path) -> Result<(), CodegenError> {
+    link_objects(core::slice::from_ref(&object.to_path_buf()), binary)
+}
+
+/// Links multiple object files into a native executable via `cc`.
+pub fn link_objects(objects: &[PathBuf], binary: &Path) -> Result<(), CodegenError> {
     let runtime_object = compile_runtime_object(binary)?;
     let mut attempts = linker_candidates();
     attempts.push(Linker::SystemCc);
 
     let mut last_error = None;
     for linker in attempts {
-        match try_link(linker, object, &runtime_object, binary) {
+        match try_link(linker, objects, &runtime_object, binary) {
             Ok(()) => return Ok(()),
             Err(error) => last_error = Some(error),
         }
@@ -214,17 +219,15 @@ fn linker_candidates() -> Vec<Linker> {
 
 fn try_link(
     linker: Linker,
-    object: &Path,
+    objects: &[PathBuf],
     runtime_object: &Path,
     binary: &Path,
 ) -> Result<(), CodegenError> {
     let mut command = Command::new("cc");
-    command
-        .arg(object)
-        .arg(runtime_object)
-        .arg("-lm")
-        .arg("-o")
-        .arg(binary);
+    for object in objects {
+        command.arg(object);
+    }
+    command.arg(runtime_object).arg("-lm").arg("-o").arg(binary);
     let linker_name = match linker {
         Linker::Mold => {
             command.arg("-fuse-ld=mold");

@@ -88,13 +88,21 @@ impl ModuleResolver {
         }
 
         if segments.first() == Some(&"std") {
-            return self
-                .resolve_from_root(&self.stdlib_root, &segments[1..], ModuleSource::Stdlib)
-                .map(|module| ResolvedModule {
+            if let Some(module) = self.resolve_project_path(&segments) {
+                return Ok(ResolvedModule {
                     module,
                     label: import.path.clone(),
-                })
-                .ok_or_else(|| self.not_found_message(&import.path));
+                });
+            }
+            if let Some(module) =
+                self.resolve_from_root(&self.stdlib_root, &segments[1..], ModuleSource::Stdlib)
+            {
+                return Ok(ResolvedModule {
+                    module,
+                    label: import.path.clone(),
+                });
+            }
+            return Err(self.not_found_message(&import.path));
         }
 
         self.resolve_project_path(&segments)
