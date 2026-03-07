@@ -37,17 +37,9 @@ jobs:
           manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
           expected = {
               "x86_64-unknown-linux-gnu",
-              "aarch64-unknown-linux-gnu",
-              "x86_64-unknown-linux-musl",
-              "aarch64-unknown-linux-musl",
               "x86_64-apple-darwin",
               "aarch64-apple-darwin",
               "x86_64-pc-windows-msvc",
-              "armv7-unknown-linux-gnueabihf",
-              "arm-unknown-linux-gnueabihf",
-              "riscv64gc-unknown-linux-gnu",
-              "powerpc64le-unknown-linux-gnu",
-              "s390x-unknown-linux-gnu",
           }
           actual = {artifact["target"] for artifact in manifest_data["artifacts"] if artifact["available"]}
           missing = sorted(expected - actual)

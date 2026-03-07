@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-hosted:
-    name: Hosted ${{ matrix.target }}
+    name: ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -27,21 +27,6 @@ jobs:
             tier: stable
             archive: tar.gz
             use_cross: false
-          - runner: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            tier: stable
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            tier: stable
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            tier: stable
-            archive: tar.gz
-            use_cross: true
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             tier: stable
@@ -57,31 +42,6 @@ jobs:
             tier: stable
             archive: zip
             use_cross: false
-          - runner: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            tier: extended
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: arm-unknown-linux-gnueabihf
-            tier: extended
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: riscv64gc-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: powerpc64le-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            use_cross: true
-          - runner: ubuntu-latest
-            target: s390x-unknown-linux-gnu
-            tier: extended
-            archive: tar.gz
-            use_cross: true
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
@@ -95,7 +55,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools lld pkg-config zip
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config zip
           if [[ "${{ matrix.use_cross }}" == "true" ]]; then
             cargo install cross --locked
           fi
@@ -110,7 +70,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm --version=14.0.6 -y
+          choco upgrade llvm --version=14.0.6 --allow-downgrade -y
           echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
 
       - name: Build release binaries
