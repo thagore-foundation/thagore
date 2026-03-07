@@ -1,7 +1,9 @@
 //! Output artifact emission for the Thagore LLVM backend.
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::process::Command;
 
 use inkwell::module::Module;
@@ -10,6 +12,8 @@ use inkwell::targets::{FileType, TargetMachine};
 use crate::context::{create_target_machine, TargetMachineConfig};
 use crate::error::CodegenError;
 use crate::optimize::OptimizationLevel;
+
+const EMBEDDED_RUNTIME_SOURCE: &str = include_str!("../runtime/thagore_rt.c");
 
 /// Files emitted by the backend.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -175,8 +179,20 @@ pub fn link_objects(objects: &[PathBuf], binary: &Path) -> Result<(), CodegenErr
 }
 
 fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
-    let runtime_source = Path::new(env!("CARGO_MANIFEST_DIR")).join("runtime/thagore_rt.c");
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let runtime_source = env::temp_dir().join(format!(
+        "thagore_rt_{}_{}.c",
+        std::process::id(),
+        nonce
+    ));
     let runtime_object = binary.with_extension("thagore_rt.o");
+    fs::write(&runtime_source, EMBEDDED_RUNTIME_SOURCE).map_err(|error| CodegenError::LinkFailed {
+        linker: "cc".into(),
+        message: error.to_string(),
+    })?;
     let output = Command::new("cc")
         .arg("-c")
         .arg("-O2")
@@ -188,6 +204,8 @@ fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
             linker: "cc".into(),
             message: error.to_string(),
         })?;
+
+    let _ = fs::remove_file(&runtime_source);
 
     if output.status.success() {
         Ok(runtime_object)

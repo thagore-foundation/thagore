@@ -8,6 +8,7 @@ mod pipeline;
 mod run;
 mod session;
 mod timer;
+mod targets;
 
 use std::io::{self, Write};
 use std::path::Path;
@@ -189,7 +190,7 @@ fn handle_version_json() -> i32 {
 }
 
 fn handle_print_target_list() -> i32 {
-    let payload = json!([detect_host_triple().unwrap_or_else(|| "unknown".to_string())]);
+    let payload = json!(targets::target_triples());
     println!("{payload}");
     SUCCESS_EXIT_CODE
 }

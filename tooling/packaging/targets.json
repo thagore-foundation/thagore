@@ -1,0 +1,245 @@
+[
+  {
+    "target": "x86_64-unknown-linux-gnu",
+    "tier": "stable",
+    "os": "linux",
+    "arch": "x86_64",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "aarch64-unknown-linux-gnu",
+    "tier": "stable",
+    "os": "linux",
+    "arch": "aarch64",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "x86_64-unknown-linux-musl",
+    "tier": "stable",
+    "os": "linux",
+    "arch": "x86_64",
+    "abi": "musl",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "aarch64-unknown-linux-musl",
+    "tier": "stable",
+    "os": "linux",
+    "arch": "aarch64",
+    "abi": "musl",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "x86_64-apple-darwin",
+    "tier": "stable",
+    "os": "macos",
+    "arch": "x86_64",
+    "abi": "darwin",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "aarch64-apple-darwin",
+    "tier": "stable",
+    "os": "macos",
+    "arch": "aarch64",
+    "abi": "darwin",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "x86_64-pc-windows-msvc",
+    "tier": "stable",
+    "os": "windows",
+    "arch": "x86_64",
+    "abi": "msvc",
+    "archive": "zip",
+    "automated": true
+  },
+  {
+    "target": "aarch64-pc-windows-msvc",
+    "tier": "stable",
+    "os": "windows",
+    "arch": "aarch64",
+    "abi": "msvc",
+    "archive": "zip",
+    "automated": true
+  },
+  {
+    "target": "armv7-unknown-linux-gnueabihf",
+    "tier": "extended",
+    "os": "linux",
+    "arch": "armv7",
+    "abi": "gnueabihf",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "arm-unknown-linux-gnueabihf",
+    "tier": "extended",
+    "os": "linux",
+    "arch": "arm",
+    "abi": "gnueabihf",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "riscv64gc-unknown-linux-gnu",
+    "tier": "extended",
+    "os": "linux",
+    "arch": "riscv64gc",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "powerpc64le-unknown-linux-gnu",
+    "tier": "extended",
+    "os": "linux",
+    "arch": "powerpc64le",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "s390x-unknown-linux-gnu",
+    "tier": "extended",
+    "os": "linux",
+    "arch": "s390x",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "x86_64-unknown-freebsd",
+    "tier": "extended",
+    "os": "freebsd",
+    "arch": "x86_64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "aarch64-unknown-freebsd",
+    "tier": "extended",
+    "os": "freebsd",
+    "arch": "aarch64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "x86_64-unknown-openbsd",
+    "tier": "extended",
+    "os": "openbsd",
+    "arch": "x86_64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "x86_64-unknown-netbsd",
+    "tier": "extended",
+    "os": "netbsd",
+    "arch": "x86_64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "x86_64-unknown-dragonfly",
+    "tier": "nightly",
+    "os": "dragonflybsd",
+    "arch": "x86_64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "x86_64-unknown-illumos",
+    "tier": "nightly",
+    "os": "illumos",
+    "arch": "x86_64",
+    "abi": "system",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "x86_64-pc-windows-gnu",
+    "tier": "nightly",
+    "os": "windows",
+    "arch": "x86_64",
+    "abi": "gnu",
+    "archive": "zip",
+    "automated": true
+  },
+  {
+    "target": "i686-pc-windows-msvc",
+    "tier": "nightly",
+    "os": "windows",
+    "arch": "i686",
+    "abi": "msvc",
+    "archive": "zip",
+    "automated": true
+  },
+  {
+    "target": "i686-pc-windows-gnu",
+    "tier": "nightly",
+    "os": "windows",
+    "arch": "i686",
+    "abi": "gnu",
+    "archive": "zip",
+    "automated": true
+  },
+  {
+    "target": "i686-unknown-linux-gnu",
+    "tier": "nightly",
+    "os": "linux",
+    "arch": "i686",
+    "abi": "glibc",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "x86_64-linux-android",
+    "tier": "nightly",
+    "os": "android",
+    "arch": "x86_64",
+    "abi": "android",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "aarch64-linux-android",
+    "tier": "nightly",
+    "os": "android",
+    "arch": "aarch64",
+    "abi": "android",
+    "archive": "tar.gz",
+    "automated": false
+  },
+  {
+    "target": "wasm32-wasip1",
+    "tier": "nightly",
+    "os": "wasi",
+    "arch": "wasm32",
+    "abi": "wasi",
+    "archive": "tar.gz",
+    "automated": true
+  },
+  {
+    "target": "wasm32-unknown-unknown",
+    "tier": "nightly",
+    "os": "wasm",
+    "arch": "wasm32",
+    "abi": "unknown",
+    "archive": "tar.gz",
+    "automated": true
+  }
+]

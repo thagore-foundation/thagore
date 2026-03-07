@@ -985,9 +985,27 @@ pub(crate) fn stdlib_root() -> PathBuf {
     if let Some(configured) = std::env::var_os("THAGORE_STDLIB") {
         return PathBuf::from(configured);
     }
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../stdlib")
-        .to_path_buf()
+    if let Some(home) = std::env::var_os("THAGORE_HOME") {
+        let candidate = PathBuf::from(home).join("share/thagore/stdlib");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(bin_dir) = executable.parent() {
+            let installed = bin_dir
+                .parent()
+                .map(|prefix| prefix.join("share/thagore/stdlib"));
+            if let Some(candidate) = installed.filter(|candidate| candidate.is_dir()) {
+                return candidate;
+            }
+            let sibling = bin_dir.join("../share/thagore/stdlib");
+            if sibling.is_dir() {
+                return sibling;
+            }
+        }
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../stdlib")
 }
 
 pub(crate) fn project_root(entry: &Path) -> PathBuf {
