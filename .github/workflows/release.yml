@@ -42,7 +42,7 @@ jobs:
             tier: stable
             archive: tar.gz
             use_cross: true
-          - runner: macos-13
+          - runner: macos-15-intel
             target: x86_64-apple-darwin
             tier: stable
             archive: tar.gz
