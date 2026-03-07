@@ -1,0 +1,34 @@
+---
+title: Competitive Programming
+description: What the current Thagore toolchain supports for contest-style programming.
+---
+
+# Competitive Programming
+
+Thagore already has useful building blocks for contest code: fast numeric helpers in `std.math`, buffered input in `std.io`, and explicit low-level control flow. The current limitation is collections: the repository does not yet ship `vec`, `sort`, `heap`, or `iter` modules, so some classic contest patterns still require manual setup or are not yet ergonomic.
+
+## What works well today
+
+| Area | Current support |
+| --- | --- |
+| integer math | strong |
+| recursion | strong |
+| manual loops | strong |
+| buffered token input | available through `std.io` |
+| arrays from runtime | available through `Array[T]` values |
+
+## Current gaps
+
+| Missing piece | Effect |
+| --- | --- |
+| vector module | no standard growable container |
+| heap module | no standard priority queue |
+| sort module | no shipped `sort` helpers |
+| map/set collections | no shipped associative containers |
+
+## Pages in this section
+
+- [Sorting](/cp/sorting/)
+- [Graph](/cp/graph/)
+- [Dynamic Programming](/cp/dp/)
+- [Math](/cp/math/)

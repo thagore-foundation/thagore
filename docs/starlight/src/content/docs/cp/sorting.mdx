@@ -1,0 +1,63 @@
+---
+title: Sorting
+description: Sorting-related patterns that are realistic in the current toolchain.
+---
+
+# Sorting
+
+The current repository does not ship `std.sort` or `std.vec`, so full contest-grade sorting workflows are not yet ergonomic. This page focuses on the pieces that are real today and calls out the missing parts directly.
+
+## Current status by problem
+
+| Problem | Current status |
+| --- | --- |
+| bubble sort on dynamic arrays | blocked by missing vector/sort module |
+| merge sort | blocked by missing growable arrays |
+| quicksort | blocked by missing growable arrays |
+| binary search | feasible when the array and its length are already available |
+| lower/upper bound helpers | feasible as handwritten functions over `Array[i32]` inputs |
+
+## Verified pattern: answer-space binary search
+
+This pattern only needs integers and condition checks:
+
+```thagore
+func first_true(lo: i32, hi: i32) -> i32:
+  let left: i32 = lo
+  let right: i32 = hi
+  while (left < right):
+    let mid: i32 = (left + right) / 2
+    if (mid * mid >= 30):
+      right = mid
+    else:
+      left = mid + 1
+  return left
+```
+
+Time complexity: `O(log(hi - lo))`  
+Space complexity: `O(1)`
+
+## Verified pattern: compare-and-order two values
+
+```thagore
+import std.math as math
+
+func smaller_first(left: i32, right: i32) -> i32:
+  return math.min(left, right)
+```
+
+Time complexity: `O(1)`  
+Space complexity: `O(1)`
+
+## When full sorting lands
+
+Once `vec` and `sort` are shipped, this page should expand to complete implementations of:
+
+- bubble sort
+- merge sort
+- quicksort
+- binary search
+- lower bound
+- upper bound
+
+Until then, treat these docs as the current limit of what is practical in the live repository.

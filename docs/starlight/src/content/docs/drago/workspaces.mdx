@@ -1,0 +1,65 @@
+---
+title: Workspaces
+description: Multi-package layout and selection rules in the current drago implementation.
+---
+
+# Workspaces
+
+`drago` supports multi-package workspaces through a root `drago.toml` file with a `[workspace]` section.
+
+## Declaring members
+
+```toml
+[workspace]
+members = ["apps/api", "apps/cli", "libs/core"]
+```
+
+Each member path must contain its own `drago.toml`.
+
+## Member selection
+
+Commands that support workspaces can target:
+
+- every workspace member
+- one member selected by `-p` or `--package`
+
+The selector matches:
+
+- the package name from that member's `drago.toml`
+- the full member root path
+- the trailing path segment
+
+## Commands that work across members
+
+The current `drago` implementation expands workspace members for:
+
+| Command | Workspace behavior |
+| --- | --- |
+| `build` | runs for every selected member |
+| `check` | runs for every selected member |
+| `test` | runs for every selected member |
+| `tree` | prints dependency trees for selected members |
+| `why` | searches selected members |
+| `outdated` | checks selected members |
+| `install` | installs for selected members |
+| `update` | updates selected members |
+
+## `run` behavior
+
+`run` is stricter:
+
+- if multiple members match, `drago run` fails and asks for `--package`
+- if you are in a workspace root, use `drago run --package <name>`
+
+## Lockfile behavior
+
+The current implementation merges member lock data into a workspace `drago.lock` and checks consistency when commands are run with `--locked` or `--frozen`.
+
+## Example
+
+```bash
+drago build
+drago check --package cli
+drago test --package core
+drago run --package api
+```

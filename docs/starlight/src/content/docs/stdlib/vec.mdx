@@ -1,0 +1,57 @@
+---
+title: vec
+description: Current status of vector support and the closest available patterns in the live toolchain.
+---
+
+# vec
+
+The current repository does **not** ship a `stdlib/vec.tg` module. There is no standard `Vec<T>` API available to import today.
+
+## Current status
+
+| Item | Status |
+| --- | --- |
+| `stdlib/vec.tg` file | not present |
+| `Vec<T>` as a shipped stdlib type | not present |
+| Generic vector methods like `push`, `pop`, `len` | not present |
+
+## What you can use today
+
+The current toolchain does expose runtime arrays and array-like values through other APIs:
+
+| Current API | Signature | Notes |
+| --- | --- | --- |
+| `std.io.read_ints` | `func read_ints(count: i32) -> Array[i32]` | read integers into a runtime array |
+| `std.io.read_i64s` | `func read_i64s(count: i32) -> Array[i64]` | read 64-bit integers into a runtime array |
+| `std.string.split` | `func split(value: str, sep: str) -> Array[str]` | split text into a runtime array |
+| `for item in items` | `items: Array[T]` | iterate over runtime arrays |
+
+## Examples
+
+```thagore
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+```
+
+```thagore
+import std.io as io
+
+func main():
+  let values = io.read_ints(3)
+  let total = 0
+  for value in values:
+    total = total + value
+  println("done")
+```
+
+```thagore
+import std.string as string
+
+func main():
+  let parts = string.split("a,b,c", ",")
+  for part in parts:
+    println(part)
+```

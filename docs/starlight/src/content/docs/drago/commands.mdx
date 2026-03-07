@@ -1,0 +1,113 @@
+---
+title: Commands
+description: Command and flag reference for the current drago implementation.
+---
+
+# Commands
+
+This page documents the commands dispatched by the current `drago/src/main.tg` implementation.
+
+## Global flags
+
+These flags are parsed before command dispatch and can be combined with multiple commands when they make sense.
+
+| Flag | Meaning |
+| --- | --- |
+| `--quiet` | reduce user-facing progress output |
+| `--verbose` | request more output from commands that support it |
+| `--locked` | enforce lockfile consistency |
+| `--frozen` | enforce lockfile consistency and offline behavior |
+| `--offline` | disable network access for dependency resolution where supported |
+| `--yes` | auto-confirm commands that support confirmation |
+| `-p`, `--package <name>` | select one workspace member |
+| `--features <csv>` | enable named feature set |
+| `--all-features` | enable all manifest features |
+| `--no-default-features` | disable the `default` feature |
+| `--git <url>` | use a git dependency source for `add` and `install` |
+| `--path <dir>` | use a local path dependency source for `add` and `install` |
+| `--alias <name>` | set the dependency name for `--git` or `--path` |
+| `--ref <ref>` | git ref for `--git` dependencies |
+
+## Core commands
+
+| Command | Description |
+| --- | --- |
+| `drago new <name>` | scaffold a new package |
+| `drago build` | build the current package or selected workspace member |
+| `drago run` | build and run one package |
+| `drago test` | run package tests |
+| `drago check` | compile-check without a normal run step |
+| `drago fmt` | run `thagore-fmt` |
+| `drago version` | print drago and thagc versions |
+| `drago help` | print usage |
+
+## Dependency commands
+
+| Command | Description |
+| --- | --- |
+| `drago add <package> [version]` | add a registry dependency |
+| `drago add --git <url> [ref] --alias <name>` | add a git dependency |
+| `drago add --path <dir> [version] --alias <name>` | add a local path dependency |
+| `drago remove <package>` | remove one dependency |
+| `drago install` | install all dependencies from the manifest |
+| `drago install <package> [version]` | npm-style alias of `add` |
+| `drago update` | update all dependencies |
+| `drago update <dependency>` | update one dependency |
+| `drago update drago` | self-update drago |
+| `drago update thagc` | self-update thagc |
+| `drago update toolchain` | self-update the whole toolchain |
+| `drago update all` | same intent as `toolchain` |
+
+## Registry and inspection commands
+
+| Command | Description |
+| --- | --- |
+| `drago publish` | publish the current package |
+| `drago cache list` | list cache entries |
+| `drago cache size` | print cache size |
+| `drago cache clean` | clean cache files |
+| `drago cache purge` | remove the cache completely |
+| `drago cache purge-unused` | remove cache entries not referenced by lockfiles |
+| `drago audit` | audit dependencies |
+| `drago tree` | print a dependency tree |
+| `drago why <package>` | explain why a package is present |
+| `drago outdated` | check for newer versions |
+| `drago runtime-path <package> [asset-dir]` | print cached runtime path for a dependency |
+
+## Examples
+
+Create a new project:
+
+```bash
+drago new demo
+```
+
+Build the current package:
+
+```bash
+drago build
+```
+
+Run one workspace member:
+
+```bash
+drago run --package app
+```
+
+Add a registry dependency:
+
+```bash
+drago add http 1.2.0
+```
+
+Add a local path dependency:
+
+```bash
+drago add --path ../shared --alias shared
+```
+
+Format the current project:
+
+```bash
+drago fmt
+```

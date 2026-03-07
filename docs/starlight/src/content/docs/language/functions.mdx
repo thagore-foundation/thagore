@@ -1,0 +1,98 @@
+---
+title: Functions
+description: Function declarations, return inference, and generic functions in Thagore.
+---
+
+# Functions
+
+Functions are declared with `func`. Parameters always have explicit types. Return types are optional because the compiler can infer them from `return` statements.
+
+## Basic syntax
+
+```thagore
+func add(left: i32, right: i32) -> i32:
+  return left + right
+```
+
+## Implicit return type inference
+
+If you omit the return annotation, the type checker infers it from the explicit `return` statements.
+
+```thagore
+func double(value: i32):
+  return value * 2
+```
+
+The inferred return type of `double` is `i32`.
+
+If a function has no explicit `return value`, the inferred type is `void`:
+
+```thagore
+func greet(name: str):
+  println(name)
+```
+
+The compiler also checks consistency across multiple return paths:
+
+```thagore
+func abs_value(value: i32):
+  if (value < 0):
+    return -value
+  return value
+```
+
+## Builtin constraints for generics
+
+The current compiler supports generic **functions** with these built-in constraints:
+
+| Constraint | Meaning |
+| --- | --- |
+| `Ordered` | supports ordering comparisons |
+| `Eq` | supports equality comparisons |
+| `Numeric` | supports arithmetic |
+
+## Generic functions
+
+```thagore
+func abs<T: Numeric>(value: T) -> T:
+  if (value < 0):
+    return -value
+  return value
+```
+
+Call-site inference chooses the concrete type from the arguments:
+
+```thagore
+func main() -> i32:
+  let left: i32 = abs(-5)
+  let right: f64 = abs(-3.5)
+  if (left == 5 and right == 3.5):
+    return 0
+  return 1
+```
+
+## Multiple type parameters
+
+The parser accepts multiple generic parameters and generic type syntax:
+
+```thagore
+func choose_left<T: Eq>(left: T, right: T) -> T:
+  if (left == right):
+    return left
+  return left
+```
+
+## Recursion
+
+Recursive functions are supported:
+
+```thagore
+func fib(n: i32) -> i32:
+  if (n <= 1):
+    return n
+  return fib(n - 1) + fib(n - 2)
+```
+
+## Current boundary
+
+The current compiler fully supports generic **functions** end to end. Generic `struct` and `impl` surface syntax is parsed and represented in the AST, but it is not yet available as a complete user-facing feature across the full pipeline.

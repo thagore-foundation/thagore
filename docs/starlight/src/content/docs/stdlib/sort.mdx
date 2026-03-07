@@ -1,0 +1,59 @@
+---
+title: sort
+description: Current status of sorting helpers and practical substitutes in the live standard library.
+---
+
+# sort
+
+The current repository does **not** ship a `stdlib/sort.tg` module. Sorting APIs such as `sort`, `binary_search`, `lower_bound`, and `upper_bound` are planned, but there is no shipped module to import today.
+
+## Current status
+
+| Item | Status |
+| --- | --- |
+| `stdlib/sort.tg` file | not present |
+| `sort(v)` helper | not present |
+| `binary_search(v, x)` helper | not present |
+| `lower_bound` / `upper_bound` helpers | not present |
+
+## Available building blocks
+
+Today, the closest shipped helpers are in `std.math` and the core language:
+
+| Current API | Signature | Use |
+| --- | --- | --- |
+| `math.min` | `func min<T: Ordered>(left: T, right: T) -> T` | choose lower value |
+| `math.max` | `func max<T: Ordered>(left: T, right: T) -> T` | choose higher value |
+| `math.clamp` | `func clamp<T: Ordered>(value: T, lo: T, hi: T) -> T` | bound comparisons |
+| `for item in items` | `items: Array[T]` | iterate over runtime arrays |
+
+## Examples
+
+```thagore
+import std.math as math
+
+func sort_two(left: i32, right: i32) -> i32:
+  return math.min(left, right)
+```
+
+```thagore
+import std.math as math
+
+func cap_score(value: i32) -> i32:
+  return math.clamp(value, 0, 100)
+```
+
+```thagore
+func is_non_decreasing(items: Array[i32]) -> bool:
+  let first = true
+  let prev: i32 = 0
+  for item in items:
+    if (first):
+      prev = item
+      first = false
+    else:
+      if (item < prev):
+        return false
+      prev = item
+  return true
+```

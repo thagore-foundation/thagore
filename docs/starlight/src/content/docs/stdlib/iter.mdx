@@ -1,0 +1,54 @@
+---
+title: iter
+description: Current status of iterator helpers and the loop patterns available today.
+---
+
+# iter
+
+The current repository does **not** ship a `stdlib/iter.tg` module. There are no built-in iterator adapters such as `map`, `filter`, `zip`, or `collect` in the shipped stdlib.
+
+## Current status
+
+| Item | Status |
+| --- | --- |
+| `stdlib/iter.tg` file | not present |
+| iterator adapters | not present |
+| lazy iterator pipelines | not present |
+
+## Available patterns
+
+You can express the same control flow manually with loops:
+
+| Pattern | Current tool |
+| --- | --- |
+| simple counting | `while` |
+| array traversal | `for item in items` |
+| reduction | local accumulator variables |
+
+## Examples
+
+```thagore
+func count_to(limit: i32) -> i32:
+  let index: i32 = 0
+  let total: i32 = 0
+  while (index < limit):
+    total = total + index
+    index = index + 1
+  return total
+```
+
+```thagore
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+```
+
+```thagore
+func any_negative(items: Array[i32]) -> bool:
+  for item in items:
+    if (item < 0):
+      return true
+  return false
+```

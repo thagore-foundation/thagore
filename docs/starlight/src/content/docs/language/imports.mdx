@@ -1,0 +1,97 @@
+---
+title: Imports
+description: Import forms, module sources, aliasing, and include-all conflict rules.
+---
+
+# Imports
+
+Thagore supports direct imports, alias imports, `from` imports, relative imports, and `include all`. Resolution is deterministic; ambiguity is only possible at use sites when multiple `include all` imports expose the same symbol.
+
+## Import forms
+
+### Import a module and use its name directly
+
+```thagore
+import std.math
+
+func main() -> i32:
+  return 0
+```
+
+### Import with an alias
+
+```thagore
+import std.math as math
+
+func main() -> i32:
+  if (math.PI > 3.14):
+    return 0
+  return 1
+```
+
+### Import specific symbols
+
+```thagore
+from math import sqrt, abs as absolute
+```
+
+### Import everything from a module
+
+```thagore
+import src.utils include all
+```
+
+### Relative imports
+
+```thagore
+from . import utils
+from .. import core
+from .utils import helper as helper_alias
+from . import shared include all
+```
+
+## Module sources
+
+The current resolver recognizes these sources:
+
+| Source | Example |
+| --- | --- |
+| Stdlib | `import std.math` |
+| Dependency include dirs | `import http` |
+| Project modules | `import src.build.compiler as compiler` |
+| Relative modules | `from . import utils` |
+
+## Resolution order
+
+The active resolver uses this order:
+
+1. relative imports like `./` and `../`
+2. single-name imports resolved as stdlib, then include dirs, then project `src/`
+3. dotted project imports such as `src.build.compiler`
+
+Examples:
+
+```thagore
+import lib.fs as fs
+import src.project.manifest as manifest
+from .utils import helper
+```
+
+## Include-all conflicts
+
+`include all` is resolved lazily. The import itself is accepted, and ambiguity is reported when you use the colliding name.
+
+Conceptually:
+
+```thagore
+import math include all
+import vec include all
+```
+
+If both modules export `len`, an unqualified `len(...)` is rejected and you must write a qualified reference instead.
+
+## Practical guidance
+
+- Prefer explicit imports in application code.
+- Use aliases for frequently referenced modules such as `std.math as math`.
+- Reserve `include all` for small local modules where conflicts are easy to manage.

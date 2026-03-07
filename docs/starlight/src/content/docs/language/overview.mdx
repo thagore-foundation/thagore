@@ -1,0 +1,82 @@
+---
+title: Language Overview
+description: Core language model, file structure, and what the current Thagore toolchain supports.
+---
+
+# Language Overview
+
+Thagore is a statically typed compiled language with indentation-based blocks, nominal structs, compile-time generics, a native LLVM backend, and a package workflow built around `drago`. The current compiler also supports a browser interpreter for the playground, but the language reference on this page describes the source language itself.
+
+## A minimal program
+
+```thagore
+func main():
+  println("Hello, Thagore!")
+```
+
+`main` can omit an explicit return type. In that case, the compiler infers `void` if the function has no explicit `return value`.
+
+## Files and modules
+
+A Thagore source file is a sequence of top-level declarations:
+
+- `import`
+- `const`
+- `let`
+- `struct`
+- `impl`
+- `func`
+- `intent`
+- `flow`
+- `extern func`
+
+Example:
+
+```thagore
+import std.math as math
+
+const LIMIT: i32 = 10
+
+struct Point:
+  x: i32
+  y: i32
+
+func distance_seed(point: Point) -> i32:
+  return math.abs(point.x) + math.abs(point.y)
+```
+
+## Execution model
+
+The native compiler pipeline is:
+
+1. lex source into tokens
+2. parse into an AST
+3. typecheck and resolve generics
+4. lower to IR
+5. emit LLVM IR, object code, and a native binary
+
+The playground uses the same parser and typechecker, then executes through a tree-walking interpreter instead of LLVM code generation.
+
+## Current language surface
+
+The current codebase supports:
+
+| Area | Status |
+| --- | --- |
+| Indentation-based blocks | shipped |
+| `i32`, `i64`, `f64`, `bool`, `str`, `void`, `ptr` | shipped |
+| Top-level `const` | shipped |
+| Functions with inferred return types | shipped |
+| Generic functions with `Ordered`, `Eq`, `Numeric` constraints | shipped |
+| Structs and impl blocks | shipped |
+| Generic struct and generic impl surface syntax | parsed, but not fully available end to end |
+| Imports, aliases, `from ... import ...`, `include all`, relative imports | shipped |
+| `intent` and `flow` syntax | shipped |
+| Builtin `print`, `println`, `eprint`, `eprintln`, `flush` | shipped |
+
+## What to read next
+
+- [Syntax](/language/syntax/) for indentation, comments, and operators
+- [Types](/language/types/) for primitive and composite types
+- [Functions](/language/functions/) for return inference and generics
+- [Imports](/language/imports/) for module resolution rules

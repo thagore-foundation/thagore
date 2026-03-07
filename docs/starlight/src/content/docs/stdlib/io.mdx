@@ -1,0 +1,66 @@
+---
+title: std.io
+description: Runtime-backed console output and buffered input.
+---
+
+# std.io
+
+`std.io` is the standard I/O module currently shipped in the repository.
+
+## Import
+
+```thagore
+import std.io as io
+```
+
+## Reference
+
+| Name | Signature | Description |
+| --- | --- | --- |
+| `print` | `func print(value: str)` | write to stdout without newline |
+| `println` | `func println(value: str)` | write to stdout with newline |
+| `flush` | `func flush()` | flush stdout |
+| `read_line` | `func read_line() -> str` | read one line without trailing newline |
+| `read_int` | `func read_int() -> i32` | read one `i32` token |
+| `read_i64` | `func read_i64() -> i64` | read one `i64` token |
+| `read_f64` | `func read_f64() -> f64` | read one `f64` token |
+| `read_word` | `func read_word() -> str` | read one whitespace-delimited token |
+| `read_all` | `func read_all() -> str` | read the remaining stdin stream |
+| `read_ints` | `func read_ints(count: i32) -> Array[i32]` | read `count` integers |
+| `read_i64s` | `func read_i64s(count: i32) -> Array[i64]` | read `count` 64-bit integers |
+| `eprint` | `func eprint(value: str)` | write to stderr without newline |
+| `eprintln` | `func eprintln(value: str)` | write to stderr with newline |
+
+## Examples
+
+```thagore
+import std.io as io
+
+func main():
+  io.print("hello")
+  io.flush()
+```
+
+```thagore
+import std.io as io
+import std.string as string
+
+func main():
+  let name = io.read_word()
+  io.println(string.concat("hi ", name))
+```
+
+```thagore
+import std.io as io
+import std.string as string
+
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+
+func main():
+  let items = io.read_ints(3)
+  io.println(string.from_int(sum_items(items)))
+```

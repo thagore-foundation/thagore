@@ -1,0 +1,81 @@
+---
+title: Control Flow
+description: Conditional branches, loops, and loop control in the current Thagore compiler.
+---
+
+# Control Flow
+
+Thagore supports `if`, `else`, `while`, `for`, `break`, and `continue`. Conditions in `if` and `while` must always be wrapped in parentheses.
+
+## If and else
+
+```thagore
+func choose(flag: bool, nested: bool) -> i32:
+  if (flag):
+    if (nested):
+      return 1
+    else:
+      return 2
+  else:
+    return 3
+```
+
+There is no dedicated `elif` keyword in the current compiler. Use `else` followed by another `if` when you need multiple branches.
+
+## While loops
+
+```thagore
+func sum_to(limit: i32) -> i32:
+  let index: i32 = 0
+  let total: i32 = 0
+  while (index < limit):
+    total = total + index
+    index = index + 1
+  return total
+```
+
+## For loops
+
+`for` iterates over `Array[T]` values:
+
+```thagore
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+```
+
+In current practice, arrays usually come from runtime-backed APIs such as `std.io.read_ints` or external/runtime code.
+
+## Early return
+
+```thagore
+func classify(value: i32) -> i32:
+  if (value < 0):
+    return 1
+  let adjusted: i32 = value + 1
+  if (adjusted > 10):
+    return 2
+  return 0
+```
+
+## Break and continue
+
+`break` and `continue` are available inside loops:
+
+```thagore
+func bounded_sum(limit: i32) -> i32:
+  let i: i32 = 0
+  let total: i32 = 0
+  while (i < limit):
+    i = i + 1
+    if (i == 2):
+      continue
+    if (i == 5):
+      break
+    total = total + i
+  return total
+```
+
+These forms are parsed and typechecked by the current compiler and are used by the `drago` codebase itself.

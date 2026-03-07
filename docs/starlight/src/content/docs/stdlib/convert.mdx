@@ -1,0 +1,52 @@
+---
+title: convert
+description: Current conversion APIs in the shipped standard library.
+---
+
+# convert
+
+There is no separate `stdlib/convert.tg` module in the current repository. Conversion helpers live in `std.string`.
+
+## Current status
+
+| Item | Status |
+| --- | --- |
+| `stdlib/convert.tg` file | not present |
+| dedicated conversion module | not present |
+
+## Current conversion APIs
+
+| Name | Signature | Description |
+| --- | --- | --- |
+| `string.from_int` | `func from_int(value: i32) -> str` | `i32` to `str` |
+| `string.to_int` | `func to_int(value: str) -> i32` | `str` to `i32` |
+| `string.from_f64` | `func from_f64(value: f64) -> str` | `f64` to `str` |
+| `string.to_f64` | `func to_f64(value: str) -> f64` | `str` to `f64` |
+| `string.from_bool` | `func from_bool(value: bool) -> str` | `bool` to `str` |
+| `string.to_bool` | `func to_bool(value: str) -> bool` | `str` to `bool` |
+
+## Examples
+
+```thagore
+import std.string as string
+
+func main():
+  let text = string.from_int(42)
+  println(text)
+```
+
+```thagore
+import std.string as string
+
+func main() -> i32:
+  let value = string.to_int("42")
+  return value - 42
+```
+
+```thagore
+import std.string as string
+
+func main():
+  println(string.from_f64(string.to_f64("3.5")))
+  println(string.from_bool(string.to_bool("true")))
+```

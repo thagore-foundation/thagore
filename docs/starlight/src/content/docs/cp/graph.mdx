@@ -1,0 +1,51 @@
+---
+title: Graph
+description: Graph-algorithm patterns that are possible today and the current library gaps.
+---
+
+# Graph
+
+The current toolchain does not yet ship a queue or heap module, so classic BFS and Dijkstra implementations are not ergonomic in the live stdlib. DFS-style recursion over an implicit graph is available today.
+
+## Current status by problem
+
+| Problem | Current status |
+| --- | --- |
+| BFS shortest path | blocked by missing queue module |
+| DFS traversal | available over implicit graphs or fixed recursive structure |
+| Dijkstra with heap | blocked by missing heap / priority queue module |
+
+## Verified pattern: DFS over an implicit binary tree
+
+```thagore
+func dfs_sum(node: i32, limit: i32) -> i32:
+  if (node > limit):
+    return 0
+  return node + dfs_sum(node * 2, limit) + dfs_sum(node * 2 + 1, limit)
+```
+
+Time complexity: `O(n)` over visited nodes  
+Space complexity: `O(h)` recursion depth
+
+## Verified pattern: reachability in an implicit graph
+
+```thagore
+func reaches(target: i32, node: i32, limit: i32) -> bool:
+  if (node == target):
+    return true
+  if (node > limit):
+    return false
+  if (reaches(target, node * 2, limit)):
+    return true
+  return reaches(target, node * 2 + 1, limit)
+```
+
+Time complexity: `O(n)` in the explored region  
+Space complexity: `O(h)` recursion depth
+
+## What is missing for full contest graph support
+
+- queue-backed BFS
+- heap-backed Dijkstra
+- vector-backed adjacency lists
+- map/set helpers for visited-state bookkeeping

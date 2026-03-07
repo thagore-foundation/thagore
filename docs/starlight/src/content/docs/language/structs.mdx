@@ -1,0 +1,77 @@
+---
+title: Structs
+description: Nominal structs, field access, and impl methods in the current Thagore compiler.
+---
+
+# Structs
+
+Structs are nominal record types declared with named fields. Methods are attached in `impl` blocks.
+
+## Declaring a struct
+
+```thagore
+struct Point:
+  x: i32
+  y: i32
+```
+
+Fields are declared one per line inside the indented body.
+
+## Using a struct type
+
+```thagore
+struct Point:
+  x: i32
+  y: i32
+
+func sum(point: Point) -> i32:
+  return point.x + point.y
+```
+
+Field access uses `.` and is typechecked against the declared struct shape.
+
+## Nested structs
+
+```thagore
+struct Point:
+  x: i32
+  y: i32
+
+struct Rect:
+  origin: Point
+  width: i32
+  height: i32
+
+func perimeter_seed(rect: Rect) -> i32:
+  return rect.origin.x + rect.origin.y + rect.width + rect.height
+```
+
+## Impl blocks
+
+Methods live in an `impl` block named after the target struct:
+
+```thagore
+struct Counter:
+  value: i32
+
+impl Counter:
+  func current(self) -> i32:
+    return self.value
+
+  func bump(self) -> i32:
+    return self.value + 1
+```
+
+The current method model uses an explicit `self` parameter.
+
+## Generic struct surface
+
+The parser also accepts generic struct syntax:
+
+```thagore
+struct Vec<T>:
+  data: ptr
+  len: i32
+```
+
+That syntax is part of the current AST and parser surface, but generic structs and generic impl blocks are not yet fully available end to end in the compiler pipeline. For production code in the current toolchain, use non-generic structs.

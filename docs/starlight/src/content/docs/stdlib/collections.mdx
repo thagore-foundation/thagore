@@ -1,0 +1,57 @@
+---
+title: collections
+description: Current status of collection modules and the nearest available language features.
+---
+
+# collections
+
+The current repository does **not** ship `collections.hashmap`, `collections.hashset`, `collections.heap`, `collections.deque`, `collections.stack`, or `collections.queue` as Thagore stdlib modules.
+
+## Current status
+
+| Module | Status |
+| --- | --- |
+| `collections.hashmap` | not present |
+| `collections.hashset` | not present |
+| `collections.heap` | not present |
+| `collections.deque` | not present |
+| `collections.stack` | not present |
+| `collections.queue` | not present |
+
+## What exists today
+
+The closest available patterns are:
+
+| Feature | Use |
+| --- | --- |
+| structs | fixed record-like grouping |
+| runtime arrays | sequential data supplied by runtime APIs |
+| explicit loops | manual traversal, aggregation, and filtering |
+
+## Examples
+
+```thagore
+struct Pair:
+  left: i32
+  right: i32
+
+func pair_sum(pair: Pair) -> i32:
+  return pair.left + pair.right
+```
+
+```thagore
+func count_positive(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    if (item > 0):
+      total = total + 1
+  return total
+```
+
+```thagore
+func contains_zero(items: Array[i32]) -> bool:
+  for item in items:
+    if (item == 0):
+      return true
+  return false
+```

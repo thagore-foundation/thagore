@@ -1,0 +1,74 @@
+---
+title: std.string
+description: Runtime-backed string processing and text conversion helpers.
+---
+
+# std.string
+
+`std.string` is the current text-processing module. It also carries the conversion helpers that other languages might place in a dedicated `fmt` or `convert` package.
+
+## Import
+
+```thagore
+import std.string as string
+```
+
+## Reference
+
+| Name | Signature | Description |
+| --- | --- | --- |
+| `str_eq` | `func str_eq(left: str, right: str) -> bool` | string equality |
+| `concat` | `func concat(left: str, right: str) -> str` | concatenate two strings |
+| `split` | `func split(value: str, sep: str) -> Array[str]` | split into array |
+| `trim` | `func trim(value: str) -> str` | trim whitespace |
+| `from_int` | `func from_int(value: i32) -> str` | format `i32` |
+| `to_int` | `func to_int(value: str) -> i32` | parse `i32` |
+| `len` | `func len(value: str) -> i32` | byte length |
+| `slen` | `func slen(value: str) -> i32` | alias of `len` |
+| `contains` | `func contains(value: str, sub: str) -> bool` | substring test |
+| `starts_with` | `func starts_with(value: str, prefix: str) -> bool` | prefix test |
+| `ends_with` | `func ends_with(value: str, suffix: str) -> bool` | suffix test |
+| `find` | `func find(value: str, sub: str) -> i32` | first index or `-1` |
+| `replace` | `func replace(value: str, old_value: str, new_value: str) -> str` | replace all |
+| `to_upper` | `func to_upper(value: str) -> str` | uppercase |
+| `to_lower` | `func to_lower(value: str) -> str` | lowercase |
+| `pad_left` | `func pad_left(value: str, width: i32, ch: str) -> str` | left pad |
+| `pad_right` | `func pad_right(value: str, width: i32, ch: str) -> str` | right pad |
+| `repeat` | `func repeat(value: str, count: i32) -> str` | repeat |
+| `reverse` | `func reverse(value: str) -> str` | reverse byte-wise |
+| `strip` | `func strip(value: str, chars: str) -> str` | strip edge chars |
+| `char_at` | `func char_at(value: str, index: i32) -> str` | single-character string |
+| `to_f64` | `func to_f64(value: str) -> f64` | parse `f64` |
+| `from_f64` | `func from_f64(value: f64) -> str` | format `f64` |
+| `from_bool` | `func from_bool(value: bool) -> str` | format `bool` |
+| `to_bool` | `func to_bool(value: str) -> bool` | parse `bool` |
+| `is_empty` | `func is_empty(value: str) -> bool` | empty test |
+| `join` | `func join(parts: Array[str], sep: str) -> str` | join array of strings |
+
+## Examples
+
+```thagore
+import std.string as string
+
+func main():
+  let text = string.concat("Hello, ", "Thagore")
+  println(text)
+```
+
+```thagore
+import std.string as string
+
+func main() -> i32:
+  if (string.contains("compiler", "pile") and string.starts_with("compiler", "com")):
+    return 0
+  return 1
+```
+
+```thagore
+import std.string as string
+
+func main():
+  println(string.from_int(42))
+  println(string.from_f64(3.5))
+  println(string.from_bool(true))
+```

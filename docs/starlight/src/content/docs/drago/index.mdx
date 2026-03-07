@@ -1,0 +1,36 @@
+---
+title: Drago
+description: Project management, dependency resolution, and workspace tooling for Thagore.
+---
+
+# Drago
+
+`drago` is the package manager and project tool for Thagore. It is implemented in Thagore itself and built by `thagc`.
+
+## What drago does
+
+| Area | Role |
+| --- | --- |
+| project scaffolding | `drago new` |
+| build and run | `drago build`, `drago run`, `drago check`, `drago test` |
+| dependencies | `drago add`, `drago remove`, `drago install`, `drago update` |
+| maintenance | `drago fmt`, `drago audit`, `drago cache`, `drago tree`, `drago why`, `drago outdated` |
+| package publishing | `drago publish` |
+
+## Version contract
+
+The current `drago` repository identifies itself as `1.0.6` and requires `thagc >= 0.9.0`.
+
+## Typical workflow
+
+1. create a package with `drago new hello`
+2. enter the project directory
+3. build or run with `drago run`
+4. add dependencies with `drago add <package>`
+5. format with `drago fmt`
+
+## Related pages
+
+- [Commands](/drago/commands/)
+- [Manifest](/drago/manifest/)
+- [Workspaces](/drago/workspaces/)

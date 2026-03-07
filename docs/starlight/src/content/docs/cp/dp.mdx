@@ -1,0 +1,56 @@
+---
+title: Dynamic Programming
+description: DP patterns that are realistic in the current repository and the cases still blocked by missing containers.
+---
+
+# Dynamic Programming
+
+Dynamic programming is possible when the state fits in recursion or a small fixed number of variables. Table-heavy problems remain awkward because the current stdlib does not ship vectors or maps.
+
+## Current status by problem
+
+| Problem | Current status |
+| --- | --- |
+| Fibonacci | available |
+| knapsack | blocked by missing table containers |
+| longest common subsequence | blocked by missing table containers |
+
+## Verified pattern: recursive Fibonacci
+
+```thagore
+func fib(n: i32) -> i32:
+  if (n <= 1):
+    return n
+  return fib(n - 1) + fib(n - 2)
+```
+
+Time complexity: `O(2^n)`  
+Space complexity: `O(n)` recursion depth
+
+## Verified pattern: rolling-state DP
+
+```thagore
+func fib_iter(n: i32) -> i32:
+  if (n <= 1):
+    return n
+  let index: i32 = 2
+  let prev2: i32 = 0
+  let prev1: i32 = 1
+  while (index <= n):
+    let next: i32 = prev1 + prev2
+    prev2 = prev1
+    prev1 = next
+    index = index + 1
+  return prev1
+```
+
+Time complexity: `O(n)`  
+Space complexity: `O(1)`
+
+## What is still missing
+
+To write knapsack, LCS, and similar table-driven solutions comfortably, the live repository still needs:
+
+- a growable vector module
+- indexed mutable buffers as first-class stdlib tools
+- associative containers for memoization

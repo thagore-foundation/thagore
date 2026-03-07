@@ -1,0 +1,52 @@
+---
+title: fmt
+description: Current formatting and string-construction APIs in the live standard library.
+---
+
+# fmt
+
+There is no shipped `stdlib/fmt.tg` module today. Formatting is currently handled through `std.string`.
+
+## Current status
+
+| Item | Status |
+| --- | --- |
+| `stdlib/fmt.tg` file | not present |
+| template formatting API | not present |
+| numeric base formatting helpers | not present |
+
+## Current replacements
+
+| Current API | Signature | Use |
+| --- | --- | --- |
+| `string.from_int` | `func from_int(value: i32) -> str` | integer formatting |
+| `string.from_f64` | `func from_f64(value: f64) -> str` | floating formatting |
+| `string.from_bool` | `func from_bool(value: bool) -> str` | boolean formatting |
+| `string.concat` | `func concat(left: str, right: str) -> str` | string assembly |
+| `string.pad_left` | `func pad_left(value: str, width: i32, ch: str) -> str` | left padding |
+| `string.pad_right` | `func pad_right(value: str, width: i32, ch: str) -> str` | right padding |
+
+## Examples
+
+```thagore
+import std.string as string
+
+func main():
+  println(string.from_int(42))
+```
+
+```thagore
+import std.string as string
+
+func main():
+  let label = string.concat("answer=", string.from_int(42))
+  println(label)
+```
+
+```thagore
+import std.string as string
+
+func main():
+  println(string.pad_left("7", 3, "0"))
+  println(string.pad_right("tg", 4, "."))
+```

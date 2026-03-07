@@ -1,0 +1,140 @@
+---
+title: Syntax
+description: Indentation, comments, keywords, and operators in the current Thagore compiler.
+---
+
+# Syntax
+
+Thagore uses Python-style indentation for blocks and a colon at the end of block-introducing lines. The parser is strict about layout and the lexer treats indentation errors as hard errors.
+
+## Indentation
+
+Rules:
+
+- indentation width is 2 spaces
+- TAB characters are rejected by the lexer
+- block headers end with `:`
+- `if` and `while` conditions must be wrapped in parentheses
+
+Valid:
+
+```thagore
+func main() -> i32:
+  let value: i32 = 3
+  if (value > 0):
+    return 0
+  return 1
+```
+
+Invalid:
+
+```thagore
+func main() -> i32:
+   return 0
+```
+
+The second example uses 3 spaces and is rejected as invalid indentation.
+
+## Comments
+
+Single-line comments start with `#`:
+
+```thagore
+# this is a comment
+func main():
+  # comments can appear inside blocks
+  println("ok")
+```
+
+## Keywords
+
+The current compiler recognizes these declaration and control-flow keywords directly:
+
+| Keyword | Role |
+| --- | --- |
+| `let` | local or top-level binding |
+| `const` | top-level constant |
+| `func` | function declaration |
+| `if` | conditional branch |
+| `else` | alternate branch |
+| `while` | loop |
+| `for` | loop over `Array[T]` |
+| `return` | return from function |
+| `import` | import declaration |
+| `from` | selective import |
+| `extern` | external function declaration |
+| `struct` | nominal struct declaration |
+| `impl` | method block |
+| `intent` | intent declaration |
+| `flow` | flow declaration |
+| `include` | `import ... include all` form |
+
+The parser also recognizes these contextual keywords in specific positions:
+
+| Contextual keyword | Role |
+| --- | --- |
+| `as` | alias in imports |
+| `all` | `include all` import form |
+| `pub` | public export marker |
+| `break` | loop exit |
+| `continue` | next loop iteration |
+| `and` | boolean conjunction |
+| `or` | boolean disjunction |
+| `not` | boolean negation |
+| `in` | `for item in items` |
+| `stage`, `body`, `compensate`, `minimize` | flow and intent bodies |
+
+## Operators
+
+The current parser uses Pratt precedence with the following order, from low to high:
+
+| Level | Operators |
+| --- | --- |
+| 1 | `=` |
+| 2 | `or` |
+| 3 | `and` |
+| 4 | prefix `not` |
+| 5 | `==`, `!=` |
+| 6 | `<`, `>`, `<=`, `>=` |
+| 7 | `+`, `-` |
+| 8 | `*`, `/`, `%` |
+| 9 | prefix `-` |
+| 10 | `.`, `[]`, `()` |
+
+Example:
+
+```thagore
+func logic(a: i32, b: i32, c: i32, d: i32, e: i32, f: i32, g: i32):
+  return a or b and not c == d < e + f * g
+```
+
+## Statement forms
+
+Top-level and block-level syntax is direct and explicit:
+
+```thagore
+import std.math as math
+
+const LIMIT: i32 = 5
+
+func classify(value: i32) -> i32:
+  if (value < 0):
+    return 1
+  else:
+    return 0
+```
+
+## Notes on unsupported surface
+
+The current compiler does **not** implement `elif` as a separate keyword. Use nested `if` inside `else` instead:
+
+```thagore
+func classify(value: i32) -> i32:
+  if (value < 0):
+    return 0
+  else:
+    if (value == 0):
+      return 1
+    else:
+      return 2
+```

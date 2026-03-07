@@ -1,0 +1,112 @@
+---
+title: Types
+description: Primitive, composite, and generic type syntax supported by the current compiler.
+---
+
+# Types
+
+Thagore is statically typed. Every binding has a known type by the end of type checking, either from an explicit annotation or from inference.
+
+## Primitive types
+
+| Type | Size | Range / semantics | Default value |
+| --- | --- | --- | --- |
+| `i32` | 32-bit signed integer | `-2147483648` to `2147483647` | none; bindings must be initialized |
+| `i64` | 64-bit signed integer | 64-bit signed integer range | none; bindings must be initialized |
+| `f64` | 64-bit IEEE floating point | double-precision floating point | none; bindings must be initialized |
+| `bool` | logical boolean | `true` or `false` | none; bindings must be initialized |
+| `str` | runtime-managed string handle | immutable string value | none; bindings must be initialized |
+| `void` | no value | used for functions that do not return a value | implicit at function end |
+| `ptr` | raw pointer-like runtime value | low-level interop and runtime APIs | none; bindings must be initialized |
+
+Thagore does not currently auto-initialize local variables. A declaration must either include a value or receive one before use.
+
+## Simple annotations
+
+```thagore
+func main() -> i32:
+  let count: i32 = 42
+  let ratio: f64 = 3.5
+  let ok: bool = true
+  let name: str = "thagore"
+  return 0
+```
+
+## Inference
+
+You can omit the type when the initializer is enough:
+
+```thagore
+func main() -> i32:
+  let count = 42
+  let ratio = 3.5
+  let label = "compiler"
+  return 0
+```
+
+## Arrays
+
+The type checker supports runtime arrays as `Array[T]` or `Array<T>`. In current code, arrays mostly enter the program through runtime-backed APIs such as `std.io.read_ints`.
+
+```thagore
+func sum_items(items: Array[i32]) -> i32:
+  let total: i32 = 0
+  for item in items:
+    total = total + item
+  return total
+```
+
+## Struct types
+
+Structs are nominal types:
+
+```thagore
+struct Point:
+  x: i32
+  y: i32
+
+func sum(point: Point) -> i32:
+  return point.x + point.y
+```
+
+## Generic type syntax
+
+The AST and parser support generic type syntax with either angle brackets or legacy brackets:
+
+```thagore
+func takes_vec(items: Vec<i32>) -> i32:
+  return 0
+
+func takes_array(items: Array[i32]) -> i32:
+  return 0
+```
+
+`Array[i32]` is the currently exercised form in compiler tests and fixtures.
+
+## Conversion patterns
+
+The language does not have a general cast operator today. Use stdlib helpers instead:
+
+```thagore
+import std.string as string
+
+func main():
+  let text = string.from_int(42)
+  println(text)
+```
+
+```thagore
+import std.string as string
+
+func main() -> i32:
+  let value: i32 = string.to_int("42")
+  return value - 42
+```
+
+```thagore
+import std.string as string
+
+func main():
+  println(string.from_f64(3.5))
+  println(string.from_bool(true))
+```

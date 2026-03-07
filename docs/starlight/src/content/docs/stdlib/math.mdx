@@ -1,0 +1,69 @@
+---
+title: std.math
+description: Runtime-backed numeric helpers and shipped math constants.
+---
+
+# std.math
+
+`std.math` provides the numeric helpers and constants currently shipped in the repository.
+
+## Import
+
+```thagore
+import std.math as math
+```
+
+## Reference
+
+| Name | Signature | Description |
+| --- | --- | --- |
+| `PI` | `f64` | Archimedes' constant |
+| `E` | `f64` | Euler's number |
+| `INF` | `f64` | positive infinity |
+| `MAX_I32` | `i32` | maximum signed 32-bit integer |
+| `MIN_I32` | `i32` | minimum signed 32-bit integer |
+| `abs` | `func abs<T: Numeric>(value: T) -> T` | magnitude of a numeric value |
+| `min` | `func min<T: Ordered>(left: T, right: T) -> T` | smaller of two values |
+| `max` | `func max<T: Ordered>(left: T, right: T) -> T` | larger of two values |
+| `clamp` | `func clamp<T: Ordered>(value: T, lo: T, hi: T) -> T` | clamp to inclusive range |
+| `pow` | `func pow(base: f64, exp: f64) -> f64` | raise `base` to `exp` |
+| `sqrt` | `func sqrt(value: f64) -> f64` | square root |
+| `floor` | `func floor(value: f64) -> f64` | floor |
+| `ceil` | `func ceil(value: f64) -> f64` | ceil |
+| `round` | `func round(value: f64) -> f64` | nearest integer in `f64` form |
+| `log` | `func log(value: f64) -> f64` | natural logarithm |
+| `log2` | `func log2(value: f64) -> f64` | base-2 logarithm |
+| `log10` | `func log10(value: f64) -> f64` | base-10 logarithm |
+| `gcd` | `func gcd(left: i32, right: i32) -> i32` | greatest common divisor |
+| `lcm` | `func lcm(left: i32, right: i32) -> i32` | least common multiple |
+| `is_even` | `func is_even(value: i32) -> bool` | even test |
+| `is_odd` | `func is_odd(value: i32) -> bool` | odd test |
+
+## Examples
+
+```thagore
+import std.math as math
+
+func main() -> i32:
+  if (math.abs(-5) == 5 and math.abs(-3.5) == 3.5):
+    return 0
+  return 1
+```
+
+```thagore
+import std.math as math
+
+func main() -> i32:
+  if (math.gcd(48, 18) == 6 and math.lcm(6, 8) == 24):
+    return 0
+  return 1
+```
+
+```thagore
+import std.math as math
+
+func main() -> i32:
+  if (math.PI > 3.14 and math.PI < 3.15 and math.E > 2.71):
+    return 0
+  return 1
+```

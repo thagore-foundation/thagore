@@ -1,50 +1,47 @@
 ---
-title: Standard Library Overview
-description: Complete reference for Thagore's standard library modules.
+title: Standard Library
+description: What the current Thagore repository ships today and what is still planned.
 ---
 
-import { CardGrid, Card, Aside } from "@astrojs/starlight/components";
+# Standard Library
 
-# Standard Library Overview
+The current repository ships a small runtime-backed standard library. The modules that are fully present in `stdlib/` today are `std.io`, `std.math`, `std.string`, and `std.time`.
 
-Thagore's standard library is split across two locations:
+## Shipped modules
 
-| Directory | Purpose | Import Style |
-|-----------|---------|-------------|
-| `lib/` | High-level modules (fs, string, io, env, process, path, http, time, map) | `import fs` |
-| `std/` | Low-level core primitives (core, string, list) | `import "std/core.tg"` |
+| Module | Import style | Status |
+| --- | --- | --- |
+| `std.io` | `import std.io as io` | shipped |
+| `std.math` | `import std.math as math` | shipped |
+| `std.string` | `import std.string as string` | shipped |
+| `std.time` | `import std.time as time` | shipped |
 
-## Module Reference
+## Planned but not yet shipped as stdlib modules
 
-<CardGrid>
-  <Card title="Core & std" href="/stdlib/core-std">
-    Low-level primitives: memory, pointers, string builder, list data structure.
-  </Card>
-  <Card title="I/O, Env & Process" href="/stdlib/io-env-process">
-    Console I/O, environment variables, command-line args, and process management.
-  </Card>
-  <Card title="Path, HTTP & Time" href="/stdlib/path-http-time">
-    File path manipulation, HTTP client, and time functions.
-  </Card>
-</CardGrid>
+These pages exist in the docs because they are part of the intended surface area, but the repository does not currently contain matching `stdlib/*.tg` modules:
 
-## Quick Reference
+| Module page | Repository status |
+| --- | --- |
+| `vec` | no `stdlib/vec.tg` yet |
+| `sort` | no `stdlib/sort.tg` yet |
+| `collections` | no `stdlib/collections/` tree yet |
+| `iter` | no `stdlib/iter.tg` yet |
+| `fmt` | no `stdlib/fmt.tg` yet |
+| `convert` | no `stdlib/convert.tg` yet |
 
-| Module | Import | Key Functions |
-|--------|--------|---------------|
-| **fs** | `import fs` | `read_text`, `write_text`, `exists`, `mkdir`, `list_dir`, `open_read`, `open_write` |
-| **string** (lib) | `import "lib/string.tg" as str` | `len`, `trim`, `contains`, `starts_with`, `ends_with`, `replace`, `lower`, `upper`, `quote` |
-| **string** (std) | `import "std/string.tg"` | `substring`, `char_at`, `to_string_i32`, `builder_new`, `append` |
-| **io** | `import io` | `input`, `input_prompt`, `stdin_read_all`, `stdread`, `input_i32` |
-| **env** | `import env` | `count`, `get`, `program_name`, `get_var`, `set_var`, `cwd` |
-| **process** | `import process` | `run`, `exec`, `exec_timeout`, `exec_redirect`, `download`, `unzip` |
-| **path** | `import path` | `join`, `basename`, `dirname`, `ext`, `stem` |
-| **http** | `import http` | `get`, `post`, `request` |
-| **time** | `import time` | `now_ms`, `sleep_ms` |
-| **list** (std) | `import list` | `new`, `push`, `get`, `set`, `len`, `dispose` |
-| **map** | `import map` | `new`, `put`, `get`, `is_null_ptr` |
-| **core** (std) | `import "std/core.tg"` | `malloc`, `free`, `print_i32`, `print_str`, `abort` |
+Those pages document the current gap and point to the closest available APIs in the live toolchain.
 
-<Aside type="note" title="Two String Modules">
-There are two string modules: `lib/string.tg` (high-level operations like `trim`, `replace`, `lower`) and `std/string.tg` (lower-level operations like `substring`, `char_at`, `StringBuilder`). Most programs should use the `lib/` version.
-</Aside>
+## Typical imports
+
+```thagore
+import std.io as io
+import std.math as math
+import std.string as string
+```
+
+## Practical guidance
+
+- Use `std.io` for console I/O and buffered input.
+- Use `std.math` for arithmetic helpers and builtin constants.
+- Use `std.string` for conversion and text processing.
+- Use `std.time` when you need timestamps in current builds.

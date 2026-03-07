@@ -1,0 +1,76 @@
+---
+title: Math
+description: Contest-style math helpers that are already practical in current Thagore.
+---
+
+# Math
+
+Math-heavy contest code is one of the strongest current use cases because it only depends on integers, loops, recursion, and `std.math`.
+
+## Current status by problem
+
+| Problem | Current status |
+| --- | --- |
+| gcd / lcm | available through `std.math` |
+| fast power | available as handwritten recursion or iteration |
+| modular inverse | available with extended Euclid |
+| sieve of Eratosthenes | blocked by missing convenient growable arrays |
+
+## GCD and LCM
+
+```thagore
+import std.math as math
+
+func main() -> i32:
+  if (math.gcd(48, 18) == 6 and math.lcm(6, 8) == 24):
+    return 0
+  return 1
+```
+
+Time complexity: `O(log min(a, b))`  
+Space complexity: `O(1)`
+
+## Fast power
+
+```thagore
+func fast_pow(base: i32, exp: i32) -> i32:
+  if (exp == 0):
+    return 1
+  let half = fast_pow(base, exp / 2)
+  if (exp % 2 == 0):
+    return half * half
+  return half * half * base
+```
+
+Time complexity: `O(log exp)`  
+Space complexity: `O(log exp)`
+
+## Modular inverse with extended Euclid
+
+```thagore
+func egcd_a(a: i32, b: i32) -> i32:
+  if (b == 0):
+    return 1
+  return egcd_b(a, b)
+
+func egcd_b(a: i32, b: i32) -> i32:
+  if (b == 0):
+    return 0
+  let x1 = egcd_a(b, a % b)
+  let y1 = egcd_b(b, a % b)
+  return x1 - (a / b) * y1
+
+func mod_inverse(a: i32, m: i32) -> i32:
+  let x = egcd_a(a, m)
+  let out = x % m
+  if (out < 0):
+    return out + m
+  return out
+```
+
+Time complexity: `O(log m)`  
+Space complexity: `O(log m)`
+
+## Sieve status
+
+A full sieve implementation is not comfortable in the current standard library because there is no shipped growable vector or dense mutable boolean array abstraction yet.
