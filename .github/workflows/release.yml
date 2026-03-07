@@ -38,6 +38,10 @@ jobs:
             target: aarch64-apple-darwin
             tier: stable
             archive: tar.gz
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            tier: stable
+            archive: zip
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
@@ -59,6 +63,25 @@ jobs:
         run: |
           brew install llvm@14
           echo "LLVM_SYS_140_PREFIX=$(brew --prefix llvm@14)" >> "$GITHUB_ENV"
+
+      - name: Install Windows LLVM 14 bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6'
+          $archive = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z' `
+            -OutFile $archive
+          7z x $archive "-o$llvmRoot" -y | Out-Null
+          $llvmConfig = Join-Path $llvmRoot 'bin\llvm-config.exe'
+          if (-not (Test-Path $llvmConfig)) {
+            throw "llvm-config.exe not found at $llvmConfig"
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$llvmConfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmRoot\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build release binaries
         shell: bash
