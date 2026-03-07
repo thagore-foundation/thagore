@@ -5,9 +5,11 @@ extern crate alloc;
 
 pub mod check;
 pub mod error;
+pub mod func_check;
 pub mod generics;
 pub mod infer;
 pub mod module_check;
+pub mod return_infer;
 pub mod scope;
 pub mod table;
 pub mod types;

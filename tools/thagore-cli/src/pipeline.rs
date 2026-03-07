@@ -25,6 +25,9 @@ use thagore_lexer::Lexer;
 use thagore_parser::{ConditionDelimiter, ErrorKind, ParseError, Parser};
 use thagore_typeck::{TypeArena, TypeChecker, TypeError, TypeId, TypeKind};
 
+use crate::builtins::{
+    builtin_suggestion, prepend_builtin_externs, register_builtin_runtime_symbols,
+};
 use crate::cli::{BuildOptions, EmitKind, OptLevel, RunOptions};
 use crate::error::CompilerDiagnostic;
 use crate::timer::TimingReport;
@@ -84,6 +87,15 @@ pub(crate) fn legacy_check_file(
     }
 
     let mut decls = load_program(path, include_dirs, &mut parser, &arena, decls, &source, &timings)?;
+    let mut intern_cache = HashMap::new();
+    let mut next_id = max_existing_node_id(&decls).saturating_add(1);
+    let _builtin_bindings = prepend_builtin_externs(
+        &arena,
+        &mut parser,
+        &mut intern_cache,
+        &mut next_id,
+        &mut decls,
+    );
     inject_compile_time_bindings(
         &mut decls,
         &mut parser,
@@ -153,6 +165,15 @@ pub(crate) fn legacy_build_file(
         &source,
         &timings,
     )?;
+    let mut intern_cache = HashMap::new();
+    let mut next_id = max_existing_node_id(&decls).saturating_add(1);
+    let builtin_bindings = prepend_builtin_externs(
+        &arena,
+        &mut parser,
+        &mut intern_cache,
+        &mut next_id,
+        &mut decls,
+    );
     inject_compile_time_bindings(
         &mut decls,
         &mut parser,
@@ -168,6 +189,7 @@ pub(crate) fn legacy_build_file(
     let module_name = module_name_from_path(path);
     codegen.register_symbol_name(MODULE_SYMBOL, &module_name);
     register_symbols(&decls, &parser, &mut checker, Some(&mut codegen));
+    register_builtin_runtime_symbols(&mut codegen, &builtin_bindings);
 
     let stage = Instant::now();
     let table = checker.check(&decls);
@@ -2050,12 +2072,19 @@ pub(crate) fn convert_type_error(
             Some(*span),
         )
         .with_hint("make both sides use the same type"),
-        TypeError::UnknownIdentifier { name, span } => CompilerDiagnostic::new(
-            "E002",
-            "unknown identifier",
-            format!("`{}` is not in scope", render_symbol(*name, parser)),
-            Some(*span),
-        ),
+        TypeError::UnknownIdentifier { name, span } => {
+            let rendered = render_symbol(*name, parser);
+            let mut diagnostic = CompilerDiagnostic::new(
+                "E002",
+                "unknown identifier",
+                format!("`{}` is not in scope", rendered),
+                Some(*span),
+            );
+            if let Some(suggestion) = builtin_suggestion(&rendered) {
+                diagnostic = diagnostic.with_hint(format!("did you mean `{suggestion}`?"));
+            }
+            diagnostic
+        }
         TypeError::UnknownField {
             struct_name,
             field,

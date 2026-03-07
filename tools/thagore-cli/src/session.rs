@@ -23,6 +23,7 @@ use thagore_module_graph::{
 use thagore_parser::Parser;
 use thagore_typeck::{check_module, TypeChecker};
 
+use crate::builtins::{prepend_builtin_externs, register_builtin_runtime_symbols};
 use crate::cli::{BuildOptions, EmitKind, OptLevel};
 use crate::error::CompilerDiagnostic;
 use crate::pipeline::{
@@ -37,6 +38,7 @@ use crate::pipeline::{
 use crate::timer::TimingReport;
 
 const SESSION_FALLBACK_CODE: &str = "CLI900";
+const MODULE_CACHE_VERSION: &str = "session-v2";
 
 /// Runs the session pipeline for `thagc check`.
 pub(crate) fn check_file(
@@ -431,6 +433,13 @@ impl CompilationSession {
             &imports.externs,
             &mut decls,
         );
+        let builtin_bindings = prepend_builtin_externs(
+            &arena,
+            &mut parser,
+            &mut intern_cache,
+            &mut next_node_id,
+            &mut decls,
+        );
         inject_compile_time_bindings(
             &mut decls,
             &mut parser,
@@ -446,6 +455,7 @@ impl CompilationSession {
         let module_name = self.module_symbol(&mut parser, &mut intern_cache, &namespace);
         codegen.register_symbol_name(MODULE_SYMBOL, &module_name);
         register_symbols(&decls, &parser, &mut checker, Some(&mut codegen));
+        register_builtin_runtime_symbols(&mut codegen, &builtin_bindings);
 
         let stage = std::time::Instant::now();
         let table = match check_module(&mut checker, &decls) {
@@ -649,6 +659,13 @@ impl CompilationSession {
             &mut intern_cache,
             &mut next_node_id,
             &imports.externs,
+            &mut decls,
+        );
+        let _builtin_bindings = prepend_builtin_externs(
+            &arena,
+            &mut parser,
+            &mut intern_cache,
+            &mut next_node_id,
             &mut decls,
         );
         inject_compile_time_bindings(
@@ -973,6 +990,7 @@ impl CompilationSession {
 
     fn module_hash(&self, source: &str, namespace: &str) -> String {
         let mut hasher = Sha256::new();
+        hasher.update(MODULE_CACHE_VERSION.as_bytes());
         hasher.update(source.as_bytes());
         hasher.update(namespace.as_bytes());
         hasher.update(format!("{:?}{:?}{:?}", self.options.opt, self.options.target, self.options.debug));

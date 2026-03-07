@@ -1,0 +1,10 @@
+# fixture: builtins/implicit_io
+# expect: ok
+# description: builtin print family is available without imports
+func main() -> i32:
+  print("hello")
+  println(" world")
+  eprint("err")
+  eprintln(" line")
+  flush()
+  return 0

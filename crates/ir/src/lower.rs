@@ -248,10 +248,13 @@ impl<'a> IrLowerer<'a> {
         decl: &'ast FuncDecl<'ast>,
         monomorph_lookup: &BTreeMap<(InternedStr, TypeId), InternedStr>,
     ) -> IrFunction {
-        let return_type = decl
-            .return_type
-            .map(|ty| self.node_type(ty.id(), ty.span()))
-            .unwrap_or_else(|| self.types.unit());
+        let return_type = match self.types.kind(self.node_type(decl.id, decl.span)).clone() {
+            TypeKind::Function(signature) => signature.return_type,
+            _ => decl
+                .return_type
+                .map(|ty| self.node_type(ty.id(), ty.span()))
+                .unwrap_or_else(|| self.types.unit()),
+        };
         let param_types: Vec<(InternedStr, TypeId)> = decl
             .params
             .iter()

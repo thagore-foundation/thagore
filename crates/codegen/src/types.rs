@@ -111,6 +111,9 @@ impl<'ctx> TypeMap<'ctx> {
                         .insert(type_id, fat_ptr.as_basic_type_enum());
                 }
                 TypeKind::Function(signature) => {
+                    if signature_has_unresolved_types(arena, signature) {
+                        continue;
+                    }
                     let return_type =
                         match map.function_type_for_signature(context, arena, signature) {
                             Ok(Some(function_type)) => function_type,
@@ -122,7 +125,14 @@ impl<'ctx> TypeMap<'ctx> {
                                 continue;
                             }
                             Err(error) => {
-                                errors.push(error);
+                                match &error {
+                                    CodegenError::MissingType { ty, .. }
+                                        if arena.is_infer(*ty) || arena.is_unknown(*ty) =>
+                                    {
+                                        continue;
+                                    }
+                                    _ => errors.push(error),
+                                }
                                 continue;
                             }
                         };
@@ -254,5 +264,32 @@ impl<'ctx> TypeMap<'ctx> {
         self.basic_type(ty)
             .map(|basic| basic.ptr_type(AddressSpace::default()))
             .ok_or(CodegenError::MissingType { ty, span: None })
+    }
+}
+
+fn signature_has_unresolved_types(
+    arena: &TypeArena,
+    signature: &thagore_typeck::FunctionType,
+) -> bool {
+    signature
+        .params
+        .iter()
+        .copied()
+        .chain(core::iter::once(signature.return_type))
+        .any(|ty| type_has_unresolved_components(arena, ty))
+}
+
+fn type_has_unresolved_components(arena: &TypeArena, ty: TypeId) -> bool {
+    match arena.kind(ty) {
+        TypeKind::Unknown | TypeKind::Infer(_) | TypeKind::IntInfer(_) => true,
+        TypeKind::Array(element) => type_has_unresolved_components(arena, *element),
+        TypeKind::Function(signature) => signature_has_unresolved_types(arena, signature),
+        TypeKind::Unit
+        | TypeKind::I32
+        | TypeKind::I64
+        | TypeKind::F64
+        | TypeKind::Bool
+        | TypeKind::Str
+        | TypeKind::Struct(_) => false,
     }
 }

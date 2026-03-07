@@ -1,0 +1,30 @@
+func explicit_add(a: i32, b: i32) -> i32:
+  return a + b
+
+func double(x: i32):
+  return x * 2
+
+func greet(name: str):
+  println(name)
+
+func abs_i32(x: i32):
+  if (x < 0):
+    return -x
+  return x
+
+func fib(n: i32):
+  if (n <= 1):
+    return n
+  return fib(n - 1) + fib(n - 2)
+
+func main() -> i32:
+  if (explicit_add(2, 3) != 5):
+    return 1
+  if (double(9) != 18):
+    return 2
+  greet("return inference ok")
+  if (abs_i32(-7) != 7):
+    return 3
+  if (fib(8) != 21):
+    return 4
+  return 0

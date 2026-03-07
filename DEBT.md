@@ -51,3 +51,7 @@
 - [ ] [stdlib] Complete the remaining Tier 1-3 stdlib surface once the language supports overloads/generics for container APIs and top-level constant lowering
       Introduced: 54a1ce69
       Fix: Extend the language with overloads or generics for APIs such as `abs/min/max/vec/sort/collections`, add a lowering path for top-level constant bindings like `PI/E/INF`, and then finish the remaining stdlib modules on top of the new runtime-backed string/IO foundation.
+
+## drago-compat
+
+No open debt from the builtin-scope and implicit-return-inference fixes in this change set.

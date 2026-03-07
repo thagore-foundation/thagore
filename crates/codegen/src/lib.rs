@@ -8,6 +8,7 @@ use thagore_ir::IrModule;
 use thagore_typeck::TypeArena;
 
 pub mod context;
+pub mod builtins;
 pub mod debug;
 pub mod error;
 pub mod func;

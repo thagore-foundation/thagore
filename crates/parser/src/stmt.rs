@@ -213,6 +213,8 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         matches!(
             self.peek().kind,
             TokenKind::Identifier
+                | TokenKind::From
+                | TokenKind::Include
                 | TokenKind::Integer
                 | TokenKind::Float
                 | TokenKind::String

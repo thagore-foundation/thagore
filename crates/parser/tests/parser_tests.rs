@@ -294,6 +294,33 @@ func logic(a: i32, b: i32, c: i32, d: i32, e: i32, f: i32, g: i32):
 }
 
 #[test]
+fn parses_multiline_call_arguments() {
+    let source = "\
+func build(root: str):
+  let output = linker.build_command(
+    root,
+    root,
+    root
+  )
+  return output
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert!(errors.is_empty(), "{errors:?}");
+        let Decl::Func(func) = &decls[0] else {
+            panic!("expected function")
+        };
+        let Stmt::Let(binding) = &func.body.statements[0] else {
+            panic!("expected let binding")
+        };
+        let Expr::Call(call) = binding.initializer else {
+            panic!("expected call expression")
+        };
+        assert_eq!(call.args.len(), 3);
+    });
+}
+
+#[test]
 fn parses_control_flow_statements() {
     let source = "\
 func iterate(flag: bool, items: i32):

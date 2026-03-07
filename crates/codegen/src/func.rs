@@ -138,8 +138,6 @@ fn apply_function_attributes<'ctx>(
     ir_function: &IrFunction,
 ) {
     add_enum_attribute(context, llvm_function, "nounwind", 0);
-    add_enum_attribute(context, llvm_function, "willreturn", 0);
-    add_enum_attribute(context, llvm_function, "mustprogress", 0);
 
     if context.target.fast_math {
         llvm_function.add_attribute(
@@ -201,6 +199,10 @@ enum Purity {
 }
 
 fn purity(function: &IrFunction) -> Purity {
+    if function.is_extern {
+        return Purity::Impure;
+    }
+
     let mut saw_memory_read = false;
 
     for block in &function.blocks {

@@ -325,9 +325,15 @@ fn emit_call<'ctx>(
     let Some(target) = context.functions.get(&name).copied() else {
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
+    let param_types = target.get_type().get_param_types();
     let args = args
         .iter()
-        .map(|value| lookup_value(context, function, *value).map(BasicMetadataValueEnum::from))
+        .enumerate()
+        .map(|(index, value)| {
+            let runtime = lookup_value(context, function, *value)?;
+            let coerced = coerce_call_argument(context, runtime, param_types.get(index).copied())?;
+            Ok(BasicMetadataValueEnum::from(coerced))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let call = context
         .builder
@@ -337,6 +343,29 @@ fn emit_call<'ctx>(
         function.values.insert(value, result);
     }
     Ok(())
+}
+
+fn coerce_call_argument<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    value: BasicValueEnum<'ctx>,
+    target: Option<inkwell::types::BasicTypeEnum<'ctx>>,
+) -> Result<BasicValueEnum<'ctx>, CodegenError> {
+    let Some(target) = target else {
+        return Ok(value);
+    };
+
+    match (value, target) {
+        (BasicValueEnum::IntValue(int_value), inkwell::types::BasicTypeEnum::IntType(int_type))
+            if int_value.get_type().get_bit_width() == 32 && int_type.get_bit_width() == 64 =>
+        {
+            Ok(context
+                .builder
+                .build_int_s_extend(int_value, int_type, "call.arg.sext")
+                .map_err(builder_error)?
+                .as_basic_value_enum())
+        }
+        (other, _) => Ok(other),
+    }
 }
 
 fn emit_get_field<'ctx>(

@@ -202,6 +202,15 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
+    pub(crate) fn skip_soft_layout(&mut self) {
+        while matches!(
+            self.peek().kind,
+            TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent
+        ) {
+            self.advance();
+        }
+    }
+
     pub(crate) fn consume_statement_terminator(&mut self) {
         if self.at(TokenKind::Newline) {
             self.skip_newlines();
@@ -293,7 +302,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
 
     pub(crate) fn parse_identifier_symbol(&mut self, expected: Expectation) -> InternedStr {
         let token = self.peek();
-        if token.kind == TokenKind::Identifier {
+        if token_can_name_value(token.kind) {
             let token = self.advance();
             return self.intern_token_symbol(token);
         }
@@ -311,7 +320,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
 
     pub(crate) fn parse_name_symbol(&mut self, expected: Expectation) -> InternedStr {
         let token = self.peek();
-        if token.kind == TokenKind::Identifier || token.kind.is_builtin_type() {
+        if token_can_name_value(token.kind) || token.kind.is_builtin_type() {
             let token = self.advance();
             return self.intern_token_symbol(token);
         }
@@ -340,4 +349,8 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let id = self.new_node_id();
         self.alloc_type(TypeExpr::Infer(InferTypeExpr { id, span }))
     }
+}
+
+fn token_can_name_value(kind: TokenKind) -> bool {
+    matches!(kind, TokenKind::Identifier | TokenKind::From | TokenKind::Include)
 }

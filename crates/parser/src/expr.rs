@@ -125,7 +125,10 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let token = self.peek();
         let span = self.current_span();
         match token.kind {
-            kind if kind == TokenKind::Identifier || kind.is_builtin_type() => {
+            kind
+                if matches!(kind, TokenKind::Identifier | TokenKind::From | TokenKind::Include)
+                    || kind.is_builtin_type() =>
+            {
                 self.parse_identifier_like_prefix()
             }
             TokenKind::Integer => {
@@ -283,11 +286,14 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             TokenKind::LParen => {
                 self.advance();
                 let mut args = self.bump_vec();
+                self.skip_soft_layout();
                 while !self.at(TokenKind::RParen) && !self.at(TokenKind::Eof) {
                     args.push(self.parse_expr(0));
+                    self.skip_soft_layout();
                     if self.match_kind(TokenKind::Comma).is_none() {
                         break;
                     }
+                    self.skip_soft_layout();
                 }
                 let end = if let Some(rparen) = self.match_kind(TokenKind::RParen) {
                     self.span_of(rparen)

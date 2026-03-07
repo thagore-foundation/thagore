@@ -15,17 +15,19 @@ use thagore_ast::{
 };
 
 use crate::error::TypeError;
+use crate::func_check::{infer_function_return_type, ResolvedReturnType};
 use crate::generics::{
     check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
     MonomorphInstance, MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
 };
 use crate::infer::InferenceSolver;
+use crate::return_infer::{block_guarantees_return, collect_return_sites};
 use crate::scope::{FnvBuildHasher, ScopeMap, ScopeStack};
 use crate::table::TypeTable;
 use crate::types::{StructField, TypeArena, TypeId, TypeKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct MethodKey {
+pub(crate) struct MethodKey {
     struct_name: thagore_ast::InternedStr,
     method_name: thagore_ast::InternedStr,
 }
@@ -120,6 +122,7 @@ impl TypeChecker {
         }
 
         self.check_pending_monomorphs(decls);
+        self.finalize_inferred_function_signatures(decls);
 
         if self.errors.is_empty() {
             self.finalize_table_inferences();
@@ -291,7 +294,11 @@ impl TypeChecker {
         let return_type = decl
             .return_type
             .map(|ty| self.resolve_type_expr(ty))
-            .unwrap_or_else(|| self.types.unit());
+            .unwrap_or_else(|| {
+                let infer = self.types.fresh_infer();
+                self.infer.sync_with_arena(&self.types);
+                infer
+            });
         self.types.intern_function(params, return_type)
     }
 
@@ -652,6 +659,12 @@ impl TypeChecker {
             .add_equality(expected, found, span, &self.types, &mut self.errors)
     }
 
+    fn can_widen_argument(&mut self, expected: TypeId, found: TypeId) -> bool {
+        let expected = self.resolved_type(expected);
+        let found = self.resolved_type(found);
+        expected == self.types.i64() && found == self.types.i32()
+    }
+
     fn resolved_type(&mut self, ty: TypeId) -> TypeId {
         self.infer.sync_with_arena(&self.types);
         self.infer.resolve(ty)
@@ -779,6 +792,98 @@ impl TypeChecker {
                 resolved
             }
         });
+    }
+
+    fn finalize_inferred_function_signatures<'ast>(&mut self, decls: &'ast [Decl<'ast>]) {
+        for decl in decls {
+            match decl {
+                Decl::Func(func_decl) => self.finalize_inferred_function(func_decl, None),
+                Decl::Impl(impl_decl) => {
+                    for method in impl_decl.methods {
+                        self.finalize_inferred_function(
+                            method,
+                            Some(MethodKey {
+                                struct_name: impl_decl.target,
+                                method_name: method.name,
+                            }),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn finalize_inferred_function<'ast>(
+        &mut self,
+        decl: &'ast FuncDecl<'ast>,
+        method_key: Option<MethodKey>,
+    ) {
+        if decl.return_type.is_some() {
+            return;
+        }
+
+        let Some(function_type) = self.table.get(decl.id) else {
+            return;
+        };
+        let TypeKind::Function(signature) = self.types.kind(function_type).clone() else {
+            return;
+        };
+        let mut returns = Vec::new();
+        collect_return_sites(decl.body, &mut returns);
+        let resolved_returns = returns
+            .into_iter()
+            .map(|site| {
+                let ty = match site.value {
+                    Some(expr) => self
+                        .table
+                        .get(expr.id())
+                        .map(|ty| self.default_inferred_type(ty))
+                        .unwrap_or_else(|| self.types.unit()),
+                    None => self.types.unit(),
+                };
+                ResolvedReturnType {
+                    ty: self.resolved_type(ty),
+                    span: site.span,
+                }
+            })
+            .collect::<Vec<_>>();
+        let inferred = match infer_function_return_type(
+            &resolved_returns,
+            block_guarantees_return(decl.body),
+            self.types.unit(),
+        ) {
+            Ok(inferred) => inferred,
+            Err(error) => {
+                self.errors.push(TypeError::ReturnTypeMismatch {
+                    expected: error.expected,
+                    found: error.found,
+                    span: error.span,
+                });
+                self.types.unknown()
+            }
+        };
+
+        let unified = self.unify(signature.return_type, inferred, decl.span);
+        let resolved_return = self.resolved_type(unified);
+        let final_return = if self.types.is_unknown(resolved_return) {
+            let expected = self.resolved_type(signature.return_type);
+            self.errors.push(TypeError::ReturnTypeMismatch {
+                expected,
+                found: inferred,
+                span: decl.span,
+            });
+            inferred
+        } else {
+            resolved_return
+        };
+
+        let final_signature = self.types.intern_function(signature.params.clone(), final_return);
+        self.table.insert(decl.id, final_signature);
+        self.scopes.insert(decl.name, final_signature);
+        if let Some(method_key) = method_key {
+            self.method_types.insert(method_key, final_signature);
+        }
     }
 }
 
@@ -1111,6 +1216,9 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
         for (expected, arg) in signature.params.iter().zip(expr.args.iter()) {
             let found = self.check_expr(arg);
+            if self.can_widen_argument(*expected, found) {
+                continue;
+            }
             self.unify(*expected, found, arg.span());
         }
 

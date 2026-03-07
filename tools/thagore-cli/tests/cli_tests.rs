@@ -667,6 +667,82 @@ fn build_and_run_std_io_module() {
 }
 
 #[test]
+fn build_and_run_builtin_scope_fixture() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("builtins");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/builtins_tests.tg");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            fixture.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "hello world\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "err line\n");
+}
+
+#[test]
+fn build_and_run_return_inference_fixture() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("return-infer");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/return_infer_tests.tg");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            fixture.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("return inference ok"));
+}
+
+#[test]
+fn check_reports_inconsistent_inferred_return_types() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("bad_return.tg");
+    fs::write(
+        &source,
+        "func bad(x: i32):\n  if (x < 0):\n    return -x\n  return \"oops\"\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("return type mismatch"), "{stderr}");
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);

@@ -1,5 +1,6 @@
 //! Entrypoint for the Thagore compiler CLI.
 
+mod builtins;
 mod cli;
 mod error;
 mod ice;
