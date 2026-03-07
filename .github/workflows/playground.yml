@@ -4,9 +4,11 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/playground.yml"
       - "playground/**"
       - "crates/**"
       - "tools/thagore-fmt/**"
+  workflow_dispatch:
 
 jobs:
   deploy:
