@@ -1,0 +1,33 @@
+[package]
+name = "thagore-fmt"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "thagore-fmt"
+path = "src/main.rs"
+
+[dependencies]
+# `thagore-lexer` tokenizes source before parsing.
+thagore-lexer = { path = "../../crates/lexer" }
+# `thagore-ast` provides the declaration, statement, and expression nodes formatted by this tool.
+thagore-ast = { path = "../../crates/ast" }
+# `thagore-parser` produces the AST that the formatter pretty-prints.
+thagore-parser = { path = "../../crates/parser" }
+# `clap` drives the formatter command-line interface.
+clap = { version = "4.5.60", features = ["derive"] }
+# `toml` parses `.thagore-fmt.toml` configuration files.
+toml = "0.8.23"
+# `serde` deserializes formatter config files into `FmtConfig`.
+serde = { version = "1.0.228", features = ["derive"] }
+# `similar` renders unified diffs for `--check` and `--diff`.
+similar = "2.7.0"
+# `walkdir` discovers project-wide `.tg` sources for `--project`.
+walkdir = "2.5.0"
+# `bumpalo` allocates parser arenas during formatting.
+bumpalo = "3.17.0"
+
+[dev-dependencies]
+# `tempfile` isolates formatter tests in temporary workspaces.
+tempfile = "3.20.0"

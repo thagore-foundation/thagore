@@ -10,5 +10,6 @@ members = [
     "tools/thagore-cli",
     "tools/thagore-bench",
     "tools/thagore-lsp",
+    "tools/thagore-fmt",
 ]
 resolver = "2"
