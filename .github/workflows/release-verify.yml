@@ -24,19 +24,49 @@ jobs:
           mkdir -p release-dist
           gh release download "${{ github.event.inputs.tag }}" --dir release-dist
 
-      - name: Verify checksums and installer dry-run
+      - name: Verify checksums and manifest completeness
         run: |
           python3 - <<'PY'
           import hashlib
+          import json
           from pathlib import Path
 
           dist = Path("release-dist")
           checksums = next(dist.glob("SHA256SUMS-*.txt"))
+          manifest = next(dist.glob("release-manifest-*.json"))
+          manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+          expected = {
+              "x86_64-unknown-linux-gnu",
+              "aarch64-unknown-linux-gnu",
+              "x86_64-unknown-linux-musl",
+              "aarch64-unknown-linux-musl",
+              "x86_64-apple-darwin",
+              "aarch64-apple-darwin",
+              "x86_64-pc-windows-msvc",
+              "aarch64-pc-windows-msvc",
+              "armv7-unknown-linux-gnueabihf",
+              "arm-unknown-linux-gnueabihf",
+              "riscv64gc-unknown-linux-gnu",
+              "powerpc64le-unknown-linux-gnu",
+              "s390x-unknown-linux-gnu",
+              "x86_64-unknown-freebsd",
+              "aarch64-unknown-freebsd",
+              "x86_64-unknown-openbsd",
+              "x86_64-unknown-netbsd",
+          }
+          actual = {artifact["target"] for artifact in manifest_data["artifacts"] if artifact["available"]}
+          missing = sorted(expected - actual)
+          if missing:
+              raise SystemExit(f"missing release artifacts: {', '.join(missing)}")
+
           entries = [line.strip().split("  ", 1) for line in checksums.read_text().splitlines() if line.strip()]
-          for expected, filename in entries:
+          for expected_hash, filename in entries:
               path = dist / filename
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
-              if digest != expected:
+              if digest != expected_hash:
                   raise SystemExit(f"checksum mismatch for {filename}")
           PY
+
+      - name: Installer dry-run
+        run: |
           bash tooling/release/thagup.sh --tag "${{ github.event.inputs.tag }}" --target x86_64-unknown-linux-gnu --dry-run

@@ -9,60 +9,190 @@ permissions:
   contents: write
 
 jobs:
-  nightly:
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
+  build-hosted:
+    name: Nightly hosted ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            target: x86_64-pc-windows-gnu
+            archive: zip
+            use_cross: false
+          - runner: windows-latest
+            target: i686-pc-windows-msvc
+            archive: zip
+            use_cross: false
+          - runner: windows-latest
+            target: i686-pc-windows-gnu
+            archive: zip
+            use_cross: false
+          - runner: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            archive: tar.gz
+            use_cross: true
+          - runner: ubuntu-latest
+            target: wasm32-wasip1
+            archive: tar.gz
+            use_cross: false
+          - runner: ubuntu-latest
+            target: wasm32-unknown-unknown
+            archive: tar.gz
+            use_cross: false
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          target: i686-unknown-linux-gnu
+          target: ${{ matrix.target }}
 
-      - name: Install prerequisites
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools lld pkg-config zip
-          cargo install cross --locked
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            cargo install cross --locked
+          fi
+
+      - name: Install Windows prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --version=14.0.6 -y
+          choco install mingw -y
+          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
 
       - name: Build nightly binaries
+        shell: bash
         run: |
-          cross build --release --target i686-unknown-linux-gnu -p thagore-cli -p thagore-fmt -p thagore-lsp
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Linux" && "${{ matrix.use_cross }}" == "true" ]]; then
+            cross build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
+          else
+            cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
+          fi
 
-      - name: Create nightly tag
-        id: nightly
+      - name: Package nightly archive
+        shell: bash
         run: |
+          set -euo pipefail
           TAG="nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Package nightly host archive
-        run: |
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
           mkdir -p dist
           python3 tooling/release/package_release.py \
-            --version "${{ steps.nightly.outputs.version }}" \
-            --tag "${{ steps.nightly.outputs.tag }}" \
-            --target "i686-unknown-linux-gnu" \
-            --archive-format "tar.gz" \
+            --version "${TAG}" \
+            --tag "${TAG}" \
+            --target "${{ matrix.target }}" \
+            --archive-format "${{ matrix.archive }}" \
             --support-tier "nightly" \
-            --bin-dir "target/i686-unknown-linux-gnu/release" \
+            --bin-dir "target/${{ matrix.target }}/release" \
             --stdlib-dir "stdlib" \
+            --installer-dir "tooling/release" \
             --out-dir "dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.target }}
+          path: dist/*
+
+  build-self-hosted:
+    name: Nightly self-hosted ${{ matrix.target }}
+    runs-on: ${{ fromJson(matrix.runner_labels) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_labels: '["self-hosted","dragonflybsd","x64"]'
+            target: x86_64-unknown-dragonfly
+            archive: tar.gz
+          - runner_labels: '["self-hosted","illumos","x64"]'
+            target: x86_64-unknown-illumos
+            archive: tar.gz
+          - runner_labels: '["self-hosted","android","x64"]'
+            target: x86_64-linux-android
+            archive: tar.gz
+          - runner_labels: '["self-hosted","android","arm64"]'
+            target: aarch64-linux-android
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Build nightly binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
+
+      - name: Package nightly archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          mkdir -p dist
+          python3 tooling/release/package_release.py \
+            --version "${TAG}" \
+            --tag "${TAG}" \
+            --target "${{ matrix.target }}" \
+            --archive-format "${{ matrix.archive }}" \
+            --support-tier "nightly" \
+            --bin-dir "target/${{ matrix.target }}/release" \
+            --stdlib-dir "stdlib" \
+            --installer-dir "tooling/release" \
+            --out-dir "dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.target }}
+          path: dist/*
+
+  publish-nightly:
+    name: Publish nightly assets
+    needs: [build-hosted, build-self-hosted]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRAGO_VERSION: "1.0.7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve nightly tag
+        run: |
+          TAG="nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Normalize dist layout
+        run: |
+          mkdir -p release-dist
+          find dist -type f -maxdepth 2 -exec cp {} release-dist/ \;
+          cp tooling/release/thagup.sh release-dist/
+          cp tooling/release/thagup.ps1 release-dist/
 
       - name: Generate nightly manifest
         run: |
           python3 tooling/release/generate_release_manifest.py \
-            --version "${{ steps.nightly.outputs.version }}" \
-            --tag "${{ steps.nightly.outputs.tag }}" \
+            --version "${RELEASE_TAG}" \
+            --tag "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --dist-dir dist \
+            --dist-dir release-dist \
             --targets-file tooling/packaging/targets.json \
-            --drago-version "1.0.6" \
-            --drago-tag "v1.0.6"
+            --tiers "nightly" \
+            --require-complete \
+            --drago-version "${DRAGO_VERSION}" \
+            --drago-tag "v${DRAGO_VERSION}"
 
       - name: Publish nightly release
         run: |
-          gh release view "${{ steps.nightly.outputs.tag }}" >/dev/null 2>&1 || \
-            gh release create "${{ steps.nightly.outputs.tag }}" --prerelease --title "${{ steps.nightly.outputs.tag }}" --notes "Automated nightly build"
-          gh release upload "${{ steps.nightly.outputs.tag }}" dist/* --clobber
+          gh release view "${RELEASE_TAG}" >/dev/null 2>&1 || \
+            gh release create "${RELEASE_TAG}" --prerelease --title "${RELEASE_TAG}" --notes "Automated nightly build"
+          gh release upload "${RELEASE_TAG}" release-dist/* --clobber
