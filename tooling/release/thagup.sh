@@ -10,6 +10,7 @@ TAG=""
 WITHOUT_DRAGO=0
 DRY_RUN=0
 DRAGO_TAG=""
+FORCE=0
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,7 @@ Options:
   --prefix <dir>
   --tag <release-tag>
   --drago-tag <release-tag>
+  --force
   --without-drago
   --dry-run
   -h, --help
@@ -36,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --prefix) PREFIX="$2"; shift 2 ;;
     --tag) TAG="$2"; shift 2 ;;
     --drago-tag) DRAGO_TAG="$2"; shift 2 ;;
+    --force) FORCE=1; shift ;;
     --without-drago) WITHOUT_DRAGO=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -233,8 +236,60 @@ print(f"Add {bin_dir} to PATH if it is not already visible.")
 PY
 
 if [[ "$WITHOUT_DRAGO" -eq 0 ]]; then
-  echo "note: thagup currently installs the Thagore toolchain only."
-  if [[ -n "$DRAGO_TAG" ]]; then
-    echo "note: drago tag ${DRAGO_TAG} was requested but companion drago installation is not yet automated."
+  DRAGO_JSON="$(python3 - "$MANIFEST_PATH" <<'PY'
+import json
+import sys
+
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+companion = manifest.get("companion", {}).get("drago")
+if companion:
+    print(json.dumps(companion))
+PY
+)"
+  if [[ -n "$DRAGO_JSON" ]]; then
+    DRAGO_REPO="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["repository"])' "$DRAGO_JSON")"
+    DRAGO_RELEASE_TAG="${DRAGO_TAG:-$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$DRAGO_JSON")}"
+    DRAGO_SOURCE_URL="$(python3 - "$DRAGO_JSON" "$DRAGO_RELEASE_TAG" <<'PY'
+import json
+import sys
+
+companion = json.loads(sys.argv[1])
+tag = sys.argv[2]
+url = companion.get("source_archive_url", "")
+manifest_tag = companion.get("tag", "")
+if manifest_tag and tag and manifest_tag != tag:
+    needle = f"/refs/tags/{manifest_tag}.tar.gz"
+    if needle in url:
+        url = url.replace(needle, f"/refs/tags/{tag}.tar.gz")
+print(url)
+PY
+)"
+    DRAGO_ARCHIVE="${TMPDIR}/drago-source.tar.gz"
+    curl -fsSL "$DRAGO_SOURCE_URL" -o "$DRAGO_ARCHIVE"
+    DRAGO_SOURCE_ROOT="$(python3 - "$DRAGO_ARCHIVE" "$TMPDIR" <<'PY'
+import sys
+import tarfile
+from pathlib import Path
+
+archive = Path(sys.argv[1])
+temp_root = Path(sys.argv[2])
+extract_root = temp_root / "drago-src"
+extract_root.mkdir(parents=True, exist_ok=True)
+with tarfile.open(archive, "r:gz") as handle:
+    handle.extractall(extract_root)
+roots = [path for path in extract_root.iterdir() if path.is_dir()]
+if not roots:
+    raise SystemExit("error: extracted drago source archive is empty")
+print(roots[0])
+PY
+)"
+    THAGC_BIN="${PREFIX}/bin/thagc"
+    DRAGO_BIN="${PREFIX}/bin/drago"
+    if [[ ! -x "$THAGC_BIN" ]]; then
+      echo "error: installed thagc binary not found at ${THAGC_BIN}" >&2
+      exit 1
+    fi
+    "$THAGC_BIN" build "${DRAGO_SOURCE_ROOT}/src/main.tg" -o "$DRAGO_BIN"
+    echo "Installed drago from ${DRAGO_REPO}@${DRAGO_RELEASE_TAG}"
   fi
 fi

@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--readme", type=Path, default=Path("README.md"))
     parser.add_argument("--license", type=Path, default=Path("LICENSE"))
+    parser.add_argument("--installer-dir", type=Path, default=Path("tooling/release"))
     return parser.parse_args()
 
 
@@ -64,13 +65,17 @@ def main() -> int:
         bin_root = staging_root / "bin"
         share_root = staging_root / "share" / "thagore"
         stdlib_root = share_root / "stdlib"
+        installer_root = share_root / "install"
         bin_root.mkdir(parents=True, exist_ok=True)
         stdlib_root.mkdir(parents=True, exist_ok=True)
+        installer_root.mkdir(parents=True, exist_ok=True)
 
         for binary in binary_names(args.target):
             shutil.copy2(args.bin_dir / binary, bin_root / binary)
 
         copy_tree(args.stdlib_dir, stdlib_root)
+        for installer in ("thagup.sh", "thagup.ps1"):
+            shutil.copy2(args.installer_dir / installer, installer_root / installer)
 
         metadata = {
             "version": args.version,
@@ -80,6 +85,7 @@ def main() -> int:
             "layout": {
                 "bin": "bin",
                 "stdlib": "share/thagore/stdlib",
+                "installers": "share/thagore/install",
             },
         }
         (share_root / "version.json").write_text(

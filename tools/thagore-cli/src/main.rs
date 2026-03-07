@@ -7,6 +7,7 @@ mod ice;
 mod pipeline;
 mod run;
 mod session;
+mod self_update;
 mod timer;
 mod targets;
 
@@ -29,7 +30,7 @@ use crate::run::{execute_binary, RunWorkspace};
 const SUCCESS_EXIT_CODE: i32 = 0;
 const COMPILE_ERROR_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 101;
-const THAGC_VERSION: &str = "0.9.0";
+const THAGC_VERSION: &str = "0.9.1";
 
 fn main() {
     process::exit(with_ice_handler(real_main));
@@ -61,6 +62,7 @@ fn real_main() -> i32 {
             )
         }
         Some(Command::Run(args)) => handle_run(&args),
+        Some(Command::SelfUpdate(args)) => handle_self_update(&args),
         Some(Command::Version) => handle_version_human(),
         None => USAGE_EXIT_CODE,
     }
@@ -166,6 +168,16 @@ fn handle_run(args: &cli::RunArgs) -> i32 {
             if args.options.time {
                 let _ = failure.timings.write(io::stderr());
             }
+            COMPILE_ERROR_EXIT_CODE
+        }
+    }
+}
+
+fn handle_self_update(args: &cli::SelfUpdateArgs) -> i32 {
+    match self_update::run(args) {
+        Ok(()) => SUCCESS_EXIT_CODE,
+        Err(error) => {
+            eprintln!("{error}");
             COMPILE_ERROR_EXIT_CODE
         }
     }

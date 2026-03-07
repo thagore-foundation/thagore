@@ -6,6 +6,7 @@ param(
   [string]$Prefix = "",
   [string]$Tag = "",
   [string]$DragoTag = "",
+  [switch]$Force,
   [switch]$WithoutDrago,
   [switch]$DryRun
 )
@@ -142,9 +143,31 @@ try {
   Write-Host "Installed Thagore to $Prefix"
   Write-Host "Add $(Join-Path $Prefix 'bin') to PATH if needed."
   if (-not $WithoutDrago) {
-    Write-Host "note: thagup currently installs the Thagore toolchain only."
-    if ($DragoTag) {
-      Write-Host "note: drago tag $DragoTag was requested but companion drago installation is not yet automated."
+    $drago = $manifest.companion.drago
+    if ($drago) {
+      $effectiveDragoTag = if ($DragoTag) { $DragoTag } else { $drago.tag }
+      $sourceUrl = [string]$drago.source_archive_url
+      if ($drago.tag -and $effectiveDragoTag -and $drago.tag -ne $effectiveDragoTag) {
+        $needle = "/refs/tags/$($drago.tag).tar.gz"
+        $replacement = "/refs/tags/$effectiveDragoTag.tar.gz"
+        $sourceUrl = $sourceUrl.Replace($needle, $replacement)
+      }
+      $dragoArchive = Join-Path $tempRoot "drago-source.tar.gz"
+      Invoke-WebRequest -Uri $sourceUrl -OutFile $dragoArchive | Out-Null
+      $dragoSourceRoot = Join-Path $tempRoot "drago-src"
+      New-Item -ItemType Directory -Path $dragoSourceRoot -Force | Out-Null
+      tar -xf $dragoArchive -C $dragoSourceRoot
+      $sourceDir = Get-ChildItem $dragoSourceRoot -Directory | Select-Object -First 1
+      $thagcBin = Join-Path $Prefix "bin\\thagc.exe"
+      $dragoBin = Join-Path $Prefix "bin\\drago.exe"
+      if (-not (Test-Path $thagcBin)) {
+        throw "Installed thagc binary not found at $thagcBin."
+      }
+      & $thagcBin build (Join-Path $sourceDir.FullName "src\\main.tg") -o $dragoBin
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to bootstrap drago with the freshly installed thagc."
+      }
+      Write-Host "Installed drago from $($drago.repository)@$effectiveDragoTag"
     }
   }
 } finally {

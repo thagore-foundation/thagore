@@ -13,7 +13,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "thagc",
-    version = "0.1.0",
+    version = env!("CARGO_PKG_VERSION"),
     about = "Thagore compiler driver",
     long_about = None,
     arg_required_else_help = true,
@@ -40,8 +40,29 @@ pub enum Command {
     Check(CheckArgs),
     /// Build and immediately execute a `.tg` source file.
     Run(RunArgs),
+    /// Update the installed toolchain in place via the official installer.
+    SelfUpdate(SelfUpdateArgs),
     /// Print the compiler version, LLVM version, host triple, and commit.
     Version,
+}
+
+/// Release channels supported by installer-driven updates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ReleaseChannel {
+    Stable,
+    Extended,
+    Nightly,
+}
+
+#[allow(dead_code)]
+impl ReleaseChannel {
+    pub fn as_ref(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Extended => "extended",
+            Self::Nightly => "nightly",
+        }
+    }
 }
 
 /// Command-line arguments for `thagore build`.
@@ -170,6 +191,38 @@ pub struct RunOptions {
     /// Print per-stage timing after the pipeline completes.
     #[arg(long = "time")]
     pub time: bool,
+}
+
+/// Command-line arguments for `thagore self-update`.
+#[derive(Debug, Clone, Args)]
+pub struct SelfUpdateArgs {
+    /// Release channel to install.
+    #[arg(long = "channel", value_enum, default_value = "stable")]
+    pub channel: ReleaseChannel,
+    /// Explicit target triple override.
+    #[arg(long = "target")]
+    pub target: Option<String>,
+    /// Architecture override used when the target triple is inferred.
+    #[arg(long = "arch")]
+    pub arch: Option<String>,
+    /// Installation prefix.
+    #[arg(long = "prefix")]
+    pub prefix: Option<PathBuf>,
+    /// Explicit Thagore release tag.
+    #[arg(long = "tag")]
+    pub tag: Option<String>,
+    /// Explicit companion drago tag.
+    #[arg(long = "drago-tag")]
+    pub drago_tag: Option<String>,
+    /// Skip companion drago installation.
+    #[arg(long = "without-drago")]
+    pub without_drago: bool,
+    /// Print the resolved install plan without mutating anything.
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
+    /// Replace the install prefix in place.
+    #[arg(long = "force")]
+    pub force: bool,
 }
 
 /// Supported LLVM optimization levels.
