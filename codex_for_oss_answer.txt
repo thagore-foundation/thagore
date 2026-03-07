@@ -1,1 +1,0 @@
-This repository is the core infrastructure of the Thagore ecosystem. It contains the compiler, package manager, standard library, formatter, language server, and conformance tests in one public codebase. Every Thagore user and downstream tool depends on it. Supporting this project strengthens the entire toolchain and has ecosystem-wide impact beyond a single package or app.
