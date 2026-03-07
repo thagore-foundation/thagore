@@ -11,6 +11,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -25,8 +27,13 @@ jobs:
       - name: Build WASM
         run: cd playground && make wasm
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to thagore-foundation/playground
         uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          personal_token: ${{ secrets.PLAYGROUND_DEPLOY_TOKEN }}
+          external_repository: thagore-foundation/playground
+          publish_branch: gh-pages
           publish_dir: ./playground
+          force_orphan: true
+          enable_jekyll: false
+          full_commit_message: "deploy: publish playground from thagore@${{ github.sha }}"
