@@ -6,3 +6,4 @@ build-*/
 .thagore/
 **/.thagore/
 target/
+playground/wasm/pkg/
