@@ -11,6 +11,8 @@ time the tag is cut. The current official set is:
 - `aarch64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
 
 Targets are promoted into this set only after they build, package, and pass smoke verification
 without manual intervention on public CI.
@@ -22,8 +24,6 @@ releases until a real builder lane exists and passes consistently:
 
 - `x86_64-unknown-linux-musl`
 - `aarch64-unknown-linux-musl`
-- `x86_64-pc-windows-msvc`
-- `aarch64-pc-windows-msvc`
 - `armv7-unknown-linux-gnueabihf`
 - `arm-unknown-linux-gnueabihf`
 - `riscv64gc-unknown-linux-gnu`

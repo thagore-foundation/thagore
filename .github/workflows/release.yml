@@ -42,6 +42,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             tier: stable
             archive: zip
+            llvm_mode: bundle
+            msvc_arch: amd64
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            tier: stable
+            archive: zip
+            llvm_mode: source
+            msvc_arch: arm64
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
@@ -64,17 +72,46 @@ jobs:
           brew install llvm@14
           echo "LLVM_SYS_140_PREFIX=$(brew --prefix llvm@14)" >> "$GITHUB_ENV"
 
-      - name: Install Windows LLVM 14 bundle
+      - name: Set up MSVC toolchain
         if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Install Windows LLVM 14 bundle
+        if: runner.os == 'Windows' && matrix.llvm_mode == 'bundle'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-extract'
+          $llvmRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-x64'
           $archive = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z'
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
+          }
+          if (Test-Path $llvmRoot) {
+            Remove-Item -Recurse -Force $llvmRoot
+          }
+          New-Item -ItemType Directory -Path $extractRoot | Out-Null
           Invoke-WebRequest `
             -Uri 'https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z' `
             -OutFile $archive
-          7z x $archive "-o$llvmRoot" -y | Out-Null
+          7z x $archive "-o$extractRoot" -y | Out-Null
+          $candidates = Get-ChildItem -Path $extractRoot -Directory -Recurse | Where-Object {
+            (Test-Path (Join-Path $_.FullName 'bin')) -and
+            (Test-Path (Join-Path $_.FullName 'lib')) -and
+            (Test-Path (Join-Path $_.FullName 'include'))
+          } | Sort-Object FullName
+          if ($candidates.Count -eq 0) {
+            Write-Host 'Extracted layout (depth 3):'
+            Get-ChildItem -Path $extractRoot -Recurse -Depth 3 | ForEach-Object {
+              Write-Host $_.FullName
+            }
+            throw "LLVM root not found under $extractRoot"
+          }
+          $sourceRoot = $candidates[0].FullName
+          New-Item -ItemType Directory -Path $llvmRoot | Out-Null
+          Copy-Item -Path (Join-Path $sourceRoot '*') -Destination $llvmRoot -Recurse -Force
           $llvmBin = Join-Path $llvmRoot 'bin'
           $llvmLib = Join-Path $llvmRoot 'lib'
           $llvmInclude = Join-Path $llvmRoot 'include'
@@ -162,6 +199,58 @@ jobs:
           "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LLVM_CONFIG_PATH=$shimExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Windows ARM64 LLVM 14 from source
+        if: runner.os == 'Windows' && matrix.llvm_mode == 'source'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --no-progress -y
+          }
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+          }
+          $archive = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src.tar.xz'
+          $sourceRoot = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src'
+          $buildRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-arm64-build'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-arm64'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-project-14.0.6.src.tar.xz' `
+            -OutFile $archive
+          if (Test-Path $sourceRoot) {
+            Remove-Item -Recurse -Force $sourceRoot
+          }
+          if (Test-Path $buildRoot) {
+            Remove-Item -Recurse -Force $buildRoot
+          }
+          if (Test-Path $installRoot) {
+            Remove-Item -Recurse -Force $installRoot
+          }
+          tar -xf $archive -C $env:RUNNER_TEMP
+          cmake `
+            -S (Join-Path $sourceRoot 'llvm') `
+            -B $buildRoot `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=$installRoot `
+            -DLLVM_TARGETS_TO_BUILD='AArch64;X86;WebAssembly' `
+            -DLLVM_ENABLE_ASSERTIONS=OFF `
+            -DLLVM_INCLUDE_TESTS=OFF `
+            -DLLVM_INCLUDE_EXAMPLES=OFF `
+            -DLLVM_INCLUDE_BENCHMARKS=OFF `
+            -DLLVM_INCLUDE_DOCS=OFF `
+            -DLLVM_ENABLE_TERMINFO=OFF `
+            -DLLVM_ENABLE_ZLIB=OFF `
+            -DLLVM_ENABLE_ZSTD=OFF `
+            -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON
+          cmake --build $buildRoot --config Release --target install --parallel 4
+          $llvmBin = Join-Path $installRoot 'bin'
+          if (-not (Test-Path (Join-Path $llvmBin 'llvm-config.exe'))) {
+            throw "llvm-config.exe not found under $llvmBin"
+          }
+          "LLVM_SYS_140_PREFIX=$installRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build release binaries
