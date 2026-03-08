@@ -5,9 +5,9 @@ REPO="thagore-foundation/thagore"
 CHANNEL="stable"
 TARGET=""
 ARCH_OVERRIDE=""
-PREFIX="${HOME}/.local"
+PREFIX="${HOME}/.thagore"
 TAG=""
-WITHOUT_DRAGO=0
+WITH_DRAGO=0
 DRY_RUN=0
 DRAGO_TAG=""
 FORCE=0
@@ -24,7 +24,7 @@ Options:
   --tag <release-tag>
   --drago-tag <release-tag>
   --force
-  --without-drago
+  --with-drago
   --dry-run
   -h, --help
 EOF
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
     --tag) TAG="$2"; shift 2 ;;
     --drago-tag) DRAGO_TAG="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
-    --without-drago) WITHOUT_DRAGO=1; shift ;;
+    --with-drago) WITH_DRAGO=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unknown option: $1" >&2; usage; exit 2 ;;
@@ -176,6 +176,11 @@ echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"
 echo "  archive: ${ARCHIVE_NAME}"
+if [ "$WITH_DRAGO" -eq 1 ]; then
+  echo "  drago:   enabled"
+else
+  echo "  drago:   skipped (pass --with-drago to install it too)"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
@@ -186,7 +191,6 @@ curl -fsSL "$ARCHIVE_URL" -o "$ARCHIVE_PATH"
 
 python3 - "$ARCHIVE_PATH" "$ARCHIVE_SHA" "$PREFIX" <<'PY'
 import hashlib
-import os
 import sys
 import tarfile
 import zipfile
@@ -233,9 +237,10 @@ else:
 bin_dir = prefix / "bin"
 print(f"Installed Thagore to {prefix}")
 print(f"Add {bin_dir} to PATH if it is not already visible.")
+print("Verify with: thagc version")
 PY
 
-if [ "$WITHOUT_DRAGO" -eq 0 ]; then
+if [ "$WITH_DRAGO" -eq 1 ]; then
   DRAGO_JSON="$(python3 - "$MANIFEST_PATH" <<'PY'
 import json
 import sys

@@ -7,18 +7,14 @@ param(
   [string]$Tag = "",
   [string]$DragoTag = "",
   [switch]$Force,
-  [switch]$WithoutDrago,
+  [switch]$WithDrago,
   [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Prefix)) {
-  if ($env:LOCALAPPDATA) {
-    $Prefix = Join-Path $env:LOCALAPPDATA "Thagore"
-  } else {
-    $Prefix = Join-Path $HOME "AppData\\Local\\Thagore"
-  }
+  $Prefix = Join-Path $HOME ".thagore"
 }
 
 $repo = "thagore-foundation/thagore"
@@ -89,6 +85,11 @@ try {
   Write-Host "  target:  $Target"
   Write-Host "  prefix:  $Prefix"
   Write-Host "  archive: $($artifact.archive)"
+  if ($WithDrago) {
+    Write-Host "  drago:   enabled"
+  } else {
+    Write-Host "  drago:   skipped (pass -WithDrago to install it too)"
+  }
 
   if ($DryRun) {
     return
@@ -142,7 +143,8 @@ try {
 
   Write-Host "Installed Thagore to $Prefix"
   Write-Host "Add $(Join-Path $Prefix 'bin') to PATH if needed."
-  if (-not $WithoutDrago) {
+  Write-Host "Verify with: thagc version"
+  if ($WithDrago) {
     $drago = $manifest.companion.drago
     if ($drago) {
       $effectiveDragoTag = if ($DragoTag) { $DragoTag } else { $drago.tag }
