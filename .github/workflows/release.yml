@@ -315,6 +315,9 @@ jobs:
           find dist -type f -maxdepth 2 -exec cp {} release-dist/ \;
           cp tooling/release/thagup.sh release-dist/
           cp tooling/release/thagup.ps1 release-dist/
+          VERSION="${RELEASE_TAG#v}"
+          cp tooling/release/thagup.sh "release-dist/thagup-v${VERSION}.sh"
+          cp tooling/release/thagup.ps1 "release-dist/thagup-v${VERSION}.ps1"
 
       - name: Generate manifest and checksums
         run: |
