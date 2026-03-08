@@ -1,0 +1,94 @@
+name: Build Windows ARM64 LLVM Prebuilt
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-llvm:
+    name: aarch64-pc-windows-msvc LLVM 14
+    runs-on: windows-11-arm
+    env:
+      LLVM_VERSION: 14.0.6
+      LLVM_RELEASE_TAG: llvm-prebuilt-14.0.6
+      LLVM_ARCHIVE: llvm-14.0.6-aarch64-pc-windows-msvc.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+
+      - name: Build LLVM 14 from source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --no-progress -y
+          }
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+          }
+          $archive = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src.tar.xz'
+          $sourceRoot = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src'
+          $buildRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-aarch64-pc-windows-msvc-build'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-aarch64-pc-windows-msvc'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-project-14.0.6.src.tar.xz' `
+            -OutFile $archive
+          if (Test-Path $sourceRoot) {
+            Remove-Item -Recurse -Force $sourceRoot
+          }
+          if (Test-Path $buildRoot) {
+            Remove-Item -Recurse -Force $buildRoot
+          }
+          if (Test-Path $installRoot) {
+            Remove-Item -Recurse -Force $installRoot
+          }
+          tar -xf $archive -C $env:RUNNER_TEMP
+          cmake `
+            -S (Join-Path $sourceRoot 'llvm') `
+            -B $buildRoot `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=$installRoot `
+            -DLLVM_TARGETS_TO_BUILD='AArch64;X86;WebAssembly' `
+            -DLLVM_ENABLE_ASSERTIONS=OFF `
+            -DLLVM_INCLUDE_TESTS=OFF `
+            -DLLVM_INCLUDE_EXAMPLES=OFF `
+            -DLLVM_INCLUDE_BENCHMARKS=OFF `
+            -DLLVM_INCLUDE_DOCS=OFF `
+            -DLLVM_ENABLE_TERMINFO=OFF `
+            -DLLVM_ENABLE_ZLIB=OFF `
+            -DLLVM_ENABLE_ZSTD=OFF `
+            -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON
+          cmake --build $buildRoot --config Release --target install --parallel 2
+          if (-not (Test-Path (Join-Path $installRoot 'bin\\llvm-config.exe'))) {
+            throw "llvm-config.exe not found under $installRoot\\bin"
+          }
+
+      - name: Package LLVM prebuilt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-aarch64-pc-windows-msvc'
+          $stagingRoot = Join-Path $env:RUNNER_TEMP 'llvm-prebuilt-staging'
+          $archive = Join-Path $env:RUNNER_TEMP $env:LLVM_ARCHIVE
+          if (Test-Path $stagingRoot) {
+            Remove-Item -Recurse -Force $stagingRoot
+          }
+          New-Item -ItemType Directory -Path $stagingRoot | Out-Null
+          Copy-Item -Path $installRoot -Destination $stagingRoot -Recurse -Force
+          Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $archive -Force
+
+      - name: Publish LLVM prebuilt release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release view "${LLVM_RELEASE_TAG}" >/dev/null 2>&1 || \
+            gh release create "${LLVM_RELEASE_TAG}" --title "${LLVM_RELEASE_TAG}" --notes "Windows ARM64 LLVM ${LLVM_VERSION} prebuilt for Thagore release automation."
+          gh release upload "${LLVM_RELEASE_TAG}" "${RUNNER_TEMP}/${LLVM_ARCHIVE}" --clobber
