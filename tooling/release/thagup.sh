@@ -107,13 +107,18 @@ if [ -z "$TARGET" ]; then
   exit 2
 fi
 
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
 if [ -z "$TAG" ]; then
   if [ "$CHANNEL" = "nightly" ]; then
-    TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" | python3 - <<'PY'
+    RELEASES_JSON_PATH="${TMPDIR}/releases.json"
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases" -o "$RELEASES_JSON_PATH"
+    TAG="$(python3 - "$RELEASES_JSON_PATH" <<'PY'
 import json
 import sys
 
-releases = json.load(sys.stdin)
+releases = json.load(open(sys.argv[1], encoding="utf-8"))
 for release in releases:
     if release.get("prerelease") and str(release.get("tag_name", "")).startswith("nightly-"):
         print(release["tag_name"])
@@ -121,10 +126,12 @@ for release in releases:
 PY
 )"
   else
-    TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | python3 - <<'PY'
+    RELEASE_LATEST_JSON_PATH="${TMPDIR}/release-latest.json"
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" -o "$RELEASE_LATEST_JSON_PATH"
+    TAG="$(python3 - "$RELEASE_LATEST_JSON_PATH" <<'PY'
 import json
 import sys
-print(json.load(sys.stdin)["tag_name"])
+print(json.load(open(sys.argv[1], encoding="utf-8"))["tag_name"])
 PY
 )"
   fi
@@ -136,8 +143,6 @@ if [ -z "$TAG" ]; then
 fi
 
 MANIFEST_URL="https://github.com/${REPO}/releases/download/${TAG}/release-manifest-${TAG}.json"
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
 MANIFEST_PATH="${TMPDIR}/manifest.json"
 curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_PATH"
 
