@@ -42,7 +42,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             tier: stable
             archive: zip
-            llvm_mode: bundle
+            llvm_mode: source
             msvc_arch: amd64
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
@@ -202,7 +202,7 @@ jobs:
           "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Build Windows ARM64 LLVM 14 from source
+      - name: Build Windows LLVM 14 from source
         if: runner.os == 'Windows' && matrix.llvm_mode == 'source'
         shell: pwsh
         run: |
@@ -215,8 +215,8 @@ jobs:
           }
           $archive = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src.tar.xz'
           $sourceRoot = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src'
-          $buildRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-arm64-build'
-          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-arm64'
+          $buildRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-${{ matrix.target }}-build"
+          $installRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-${{ matrix.target }}"
           Invoke-WebRequest `
             -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-project-14.0.6.src.tar.xz' `
             -OutFile $archive
@@ -246,7 +246,7 @@ jobs:
             -DLLVM_ENABLE_ZLIB=OFF `
             -DLLVM_ENABLE_ZSTD=OFF `
             -DLLVM_INSTALL_TOOLCHAIN_ONLY=ON
-          cmake --build $buildRoot --config Release --target install --parallel 4
+          cmake --build $buildRoot --config Release --target install --parallel 2
           $llvmBin = Join-Path $installRoot 'bin'
           if (-not (Test-Path (Join-Path $llvmBin 'llvm-config.exe'))) {
             throw "llvm-config.exe not found under $llvmBin"
