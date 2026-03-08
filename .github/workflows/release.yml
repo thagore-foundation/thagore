@@ -110,74 +110,74 @@ jobs:
           $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
           if (-not (Test-Path $configCandidate)) {
             $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config.cs'
-            @"
-            using System;
-            using System.IO;
-            using System.Linq;
-
-            internal static class Program
-            {
-                private static int Main(string[] args)
-                {
-                    string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";
-                    string lib = Path.Combine(root, "lib");
-                    string include = Path.Combine(root, "include");
-
-                    if (args.Contains("--version"))
-                    {
-                        Console.WriteLine("14.0.6");
-                        return 0;
-                    }
-                    if (args.Contains("--prefix"))
-                    {
-                        Console.WriteLine(root);
-                        return 0;
-                    }
-                    if (args.Contains("--libdir"))
-                    {
-                        Console.WriteLine(lib);
-                        return 0;
-                    }
-                    if (args.Contains("--includedir"))
-                    {
-                        Console.WriteLine(include);
-                        return 0;
-                    }
-                    if (args.Contains("--build-mode"))
-                    {
-                        Console.WriteLine("Release");
-                        return 0;
-                    }
-                    if (args.Contains("--cflags"))
-                    {
-                        Console.WriteLine("-I" + include);
-                        return 0;
-                    }
-                    if (args.Contains("--ldflags"))
-                    {
-                        Console.WriteLine("");
-                        return 0;
-                    }
-                    if (args.Contains("--system-libs"))
-                    {
-                        Console.WriteLine("");
-                        return 0;
-                    }
-                    if (args.Contains("--libnames") || args.Contains("--libs"))
-                    {
-                        var libs = Directory.EnumerateFiles(lib, "*.lib")
-                            .Select(Path.GetFileName)
-                            .Where(name => !string.IsNullOrWhiteSpace(name))
-                            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
-                        Console.WriteLine(string.Join(" ", libs));
-                        return 0;
-                    }
-
-                    Console.WriteLine("");
-                    return 0;
-                }
-            }
-            "@ | Set-Content -Path $shimSource -Encoding UTF8
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '',
+              '        if (args.Contains("--version"))',
+              '        {',
+              '            Console.WriteLine("14.0.6");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--prefix"))',
+              '        {',
+              '            Console.WriteLine(root);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libdir"))',
+              '        {',
+              '            Console.WriteLine(lib);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--includedir"))',
+              '        {',
+              '            Console.WriteLine(include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--build-mode"))',
+              '        {',
+              '            Console.WriteLine("Release");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--cflags"))',
+              '        {',
+              '            Console.WriteLine("-I" + include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--ldflags"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--system-libs"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
             & csc /nologo "/out:$configCandidate" $shimSource
           }
           "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
