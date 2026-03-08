@@ -6,10 +6,10 @@ mod error;
 mod ice;
 mod pipeline;
 mod run;
-mod session;
 mod self_update;
-mod timer;
+mod session;
 mod targets;
+mod timer;
 
 use std::io::{self, Write};
 use std::path::Path;
@@ -24,8 +24,8 @@ use crate::cli::{Cli, Command};
 use crate::error::ErrorReporter;
 use crate::ice::with_ice_handler;
 use crate::pipeline::build_options_for_run;
-use crate::session::{build_file, check_file};
 use crate::run::{execute_binary, RunWorkspace};
+use crate::session::{build_file, check_file};
 
 const SUCCESS_EXIT_CODE: i32 = 0;
 const COMPILE_ERROR_EXIT_CODE: i32 = 1;
@@ -51,16 +51,14 @@ fn real_main() -> i32 {
 
     match cli.command {
         Some(Command::Build(args)) => handle_build(&args.entry, &args.options),
-        Some(Command::Check(args)) => {
-            handle_check(
-                &args.file,
-                args.json,
-                &args.include_dirs,
-                &args.defines,
-                &args.features,
-                args.legacy_flatten,
-            )
-        }
+        Some(Command::Check(args)) => handle_check(
+            &args.file,
+            args.json,
+            &args.include_dirs,
+            &args.defines,
+            &args.features,
+            args.legacy_flatten,
+        ),
         Some(Command::Run(args)) => handle_run(&args),
         Some(Command::SelfUpdate(args)) => handle_self_update(&args),
         Some(Command::Version) => handle_version_human(),
@@ -78,11 +76,20 @@ fn handle_build(path: &Path, options: &cli::BuildOptions) -> i32 {
         }
         Err(failure) => {
             if options.json_errors {
-                let _ = ErrorReporter::emit_json(io::stdout(), path, &failure.source, &failure.diagnostics);
+                let _ = ErrorReporter::emit_json(
+                    io::stdout(),
+                    path,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
             } else {
                 let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-                let _ =
-                    ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+                let _ = ErrorReporter::emit_text(
+                    &mut stderr,
+                    path,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
             }
             if options.time {
                 let _ = failure.timings.write(io::stderr());
@@ -109,10 +116,20 @@ fn handle_check(
         }
         Err(failure) => {
             if json {
-                let _ = ErrorReporter::emit_json(io::stdout(), path, &failure.source, &failure.diagnostics);
+                let _ = ErrorReporter::emit_json(
+                    io::stdout(),
+                    path,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
             } else {
                 let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-                let _ = ErrorReporter::emit_text(&mut stderr, path, &failure.source, &failure.diagnostics);
+                let _ = ErrorReporter::emit_text(
+                    &mut stderr,
+                    path,
+                    &failure.source,
+                    &failure.diagnostics,
+                );
             }
             COMPILE_ERROR_EXIT_CODE
         }
@@ -185,9 +202,18 @@ fn handle_self_update(args: &cli::SelfUpdateArgs) -> i32 {
 
 fn handle_version_human() -> i32 {
     println!("thagc {THAGC_VERSION}");
-    println!("llvm:   {}", detect_llvm_version().unwrap_or_else(|| "unknown".to_string()));
-    println!("host:   {}", detect_host_triple().unwrap_or_else(|| "unknown".to_string()));
-    println!("commit: {}", detect_commit().unwrap_or_else(|| "unknown".to_string()));
+    println!(
+        "llvm:   {}",
+        detect_llvm_version().unwrap_or_else(|| "unknown".to_string())
+    );
+    println!(
+        "host:   {}",
+        detect_host_triple().unwrap_or_else(|| "unknown".to_string())
+    );
+    println!(
+        "commit: {}",
+        detect_commit().unwrap_or_else(|| "unknown".to_string())
+    );
     SUCCESS_EXIT_CODE
 }
 
@@ -222,10 +248,8 @@ fn handle_clap_error(error: clap::Error) -> i32 {
 }
 
 fn detect_llvm_version() -> Option<String> {
-    let output = ProcessCommand::new("llvm-config")
-        .arg("--version")
-        .output()
-        .ok()?;
+    let mut command = llvm_config_command();
+    let output = command.arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -233,8 +257,21 @@ fn detect_llvm_version() -> Option<String> {
     Some(version.trim().to_string())
 }
 
+fn llvm_config_command() -> ProcessCommand {
+    if let Ok(path) = std::env::var("LLVM_CONFIG_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return ProcessCommand::new(trimmed);
+        }
+    }
+    ProcessCommand::new("llvm-config")
+}
+
 fn detect_host_triple() -> Option<String> {
-    let output = ProcessCommand::new("cc").arg("-dumpmachine").output().ok()?;
+    let output = ProcessCommand::new("cc")
+        .arg("-dumpmachine")
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }

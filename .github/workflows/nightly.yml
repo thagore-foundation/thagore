@@ -60,9 +60,109 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm --version=14.0.6 -y
+          $ErrorActionPreference = 'Stop'
+          $llvmRoot = Join-Path $env:RUNNER_TEMP 'LLVM-14.0.6-win64'
+          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-14.0.6-win64.exe'
+          if (Test-Path $llvmRoot) {
+            Remove-Item -Recurse -Force $llvmRoot
+          }
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' `
+            -OutFile $installer
+          & $installer /S "/D=$llvmRoot"
+          if ($LASTEXITCODE -ne 0) {
+            throw "LLVM installer failed with exit code $LASTEXITCODE"
+          }
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $llvmLib = Join-Path $llvmRoot 'lib'
+          $llvmInclude = Join-Path $llvmRoot 'include'
+          if (-not (Test-Path $llvmBin)) {
+            throw "LLVM bin directory not found at $llvmBin"
+          }
+          if (-not (Test-Path $llvmLib)) {
+            throw "LLVM lib directory not found at $llvmLib"
+          }
+          if (-not (Test-Path $llvmInclude)) {
+            throw "LLVM include directory not found at $llvmInclude"
+          }
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-nightly.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '',
+              '        if (args.Contains("--version"))',
+              '        {',
+              '            Console.WriteLine("14.0.6");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--prefix"))',
+              '        {',
+              '            Console.WriteLine(root);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libdir"))',
+              '        {',
+              '            Console.WriteLine(lib);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--includedir"))',
+              '        {',
+              '            Console.WriteLine(include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--build-mode"))',
+              '        {',
+              '            Console.WriteLine("Release");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--cflags"))',
+              '        {',
+              '            Console.WriteLine("-I" + include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--ldflags"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--system-libs"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
           choco install mingw -y
-          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build nightly binaries
         shell: bash
