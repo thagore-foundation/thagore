@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 REPO="thagore-foundation/thagore"
 CHANNEL="stable"
@@ -30,7 +30,7 @@ Options:
 EOF
 }
 
-while [[ $# -gt 0 ]]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
     --channel) CHANNEL="$2"; shift 2 ;;
     --target) TARGET="$2"; shift 2 ;;
@@ -98,17 +98,17 @@ print(target)
 PY
 }
 
-if [[ -z "$TARGET" ]]; then
+if [ -z "$TARGET" ]; then
   TARGET="$(detect_target)"
 fi
 
-if [[ -z "$TARGET" ]]; then
+if [ -z "$TARGET" ]; then
   echo "error: could not determine a supported target triple; pass --target explicitly" >&2
   exit 2
 fi
 
-if [[ -z "$TAG" ]]; then
-  if [[ "$CHANNEL" == "nightly" ]]; then
+if [ -z "$TAG" ]; then
+  if [ "$CHANNEL" = "nightly" ]; then
     TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" | python3 - <<'PY'
 import json
 import sys
@@ -130,7 +130,7 @@ PY
   fi
 fi
 
-if [[ -z "$TAG" ]]; then
+if [ -z "$TAG" ]; then
   echo "error: failed to resolve a release tag for channel '${CHANNEL}'" >&2
   exit 1
 fi
@@ -177,7 +177,7 @@ echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"
 echo "  archive: ${ARCHIVE_NAME}"
 
-if [[ "$DRY_RUN" -eq 1 ]]; then
+if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
@@ -235,7 +235,7 @@ print(f"Installed Thagore to {prefix}")
 print(f"Add {bin_dir} to PATH if it is not already visible.")
 PY
 
-if [[ "$WITHOUT_DRAGO" -eq 0 ]]; then
+if [ "$WITHOUT_DRAGO" -eq 0 ]; then
   DRAGO_JSON="$(python3 - "$MANIFEST_PATH" <<'PY'
 import json
 import sys
@@ -246,7 +246,7 @@ if companion:
     print(json.dumps(companion))
 PY
 )"
-  if [[ -n "$DRAGO_JSON" ]]; then
+  if [ -n "$DRAGO_JSON" ]; then
     DRAGO_REPO="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["repository"])' "$DRAGO_JSON")"
     DRAGO_RELEASE_TAG="${DRAGO_TAG:-$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$DRAGO_JSON")}"
     DRAGO_SOURCE_URL="$(python3 - "$DRAGO_JSON" "$DRAGO_RELEASE_TAG" <<'PY'
@@ -285,7 +285,7 @@ PY
 )"
     THAGC_BIN="${PREFIX}/bin/thagc"
     DRAGO_BIN="${PREFIX}/bin/drago"
-    if [[ ! -x "$THAGC_BIN" ]]; then
+    if [ ! -x "$THAGC_BIN" ]; then
       echo "error: installed thagc binary not found at ${THAGC_BIN}" >&2
       exit 1
     fi
