@@ -138,6 +138,16 @@ The release system also supports packaged toolchain archives plus installer scri
 - PowerShell installer: `tooling/release/thagup.ps1`
 - Release policy: `tooling/community/release-support-policy.md`
 
+Recommended end-user install commands are pinned to a release tag, not `main`:
+
+```bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.1/thagup.sh | sh
+```
+
+```powershell
+irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.1/thagup.ps1 | iex
+```
+
 Stable release targets:
 
 - `x86_64-unknown-linux-gnu`
