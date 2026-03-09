@@ -60,8 +60,8 @@ drago --version
 curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagore-0.9.6-x86_64-unknown-linux-gnu.tar.gz -o thagore.tar.gz
 curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/SHA256SUMS-v0.9.6.txt -o SHA256SUMS-v0.9.6.txt
 sha256sum --check --ignore-missing SHA256SUMS-v0.9.6.txt
-mkdir -p ~/.thagore/toolchains/stable
- tar -xzf thagore.tar.gz -C ~/.thagore/toolchains/stable
+mkdir -p ~/.local/share/thagore/toolchains/indev
+tar -xzf thagore.tar.gz -C ~/.local/share/thagore/toolchains/indev
 ```
 
 ## Installer URLs
@@ -76,4 +76,4 @@ mkdir -p ~/.thagore/toolchains/stable
 
 ## Release channels
 
-`stable` is only the manifest tier name. It does not mean the language surface is complete or frozen; it only identifies the main published artifact set.
+`indev` is the public release track name. It means the toolchain is still in development and may change.

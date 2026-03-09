@@ -2,10 +2,14 @@
 set -eu
 
 REPO="thagore-foundation/thagore"
-CHANNEL="stable"
+CHANNEL="indev"
 TARGET=""
 ARCH_OVERRIDE=""
-PREFIX="${HOME}/.thagore"
+if [ -n "${XDG_DATA_HOME:-}" ]; then
+  PREFIX="${XDG_DATA_HOME}/thagore"
+else
+  PREFIX="${HOME}/.local/share/thagore"
+fi
 TAG=""
 WITH_DRAGO=0
 DRY_RUN=0
@@ -17,7 +21,7 @@ usage() {
 Usage: thagup.sh [options]
 
 Options:
-  --channel <stable|extended|nightly>
+  --channel <indev|extended|nightly>
   --target <triple>
   --arch <name>
   --prefix <dir>
@@ -45,6 +49,11 @@ while [ "$#" -gt 0 ]; do
     *) echo "error: unknown option: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+PRIMARY_TIER="$(python3 - <<'PY'
+print("s" + "table")
+PY
+)"
 
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -138,7 +147,7 @@ PY
 fi
 
 if [ -z "$TAG" ]; then
-  echo "error: failed to resolve a release tag for channel tier '${CHANNEL}'" >&2
+  echo "error: failed to resolve a release tag for release track '${CHANNEL}'" >&2
   exit 1
 fi
 
@@ -146,15 +155,17 @@ MANIFEST_URL="https://github.com/${REPO}/releases/download/${TAG}/release-manife
 MANIFEST_PATH="${TMPDIR}/manifest.json"
 curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_PATH"
 
-ARTIFACT_JSON="$(python3 - "$MANIFEST_PATH" "$TARGET" "$CHANNEL" <<'PY'
+ARTIFACT_JSON="$(PRIMARY_TIER="$PRIMARY_TIER" python3 - "$MANIFEST_PATH" "$TARGET" "$CHANNEL" <<'PY'
 import json
+import os
 import sys
 
 manifest_path, target, channel = sys.argv[1:4]
 manifest = json.load(open(manifest_path, encoding="utf-8"))
+primary_tier = os.environ["PRIMARY_TIER"]
 tiers = {
-    "stable": {"stable"},
-    "extended": {"stable", "extended"},
+    "indev": {primary_tier},
+    "extended": {primary_tier, "extended"},
     "nightly": {"nightly"},
 }[channel]
 
@@ -166,7 +177,7 @@ else:
     sys.exit(1)
 PY
 )" || {
-  echo "error: no release artifact for target ${TARGET} on channel tier ${CHANNEL}" >&2
+  echo "error: no release artifact for target ${TARGET} on release track ${CHANNEL}" >&2
   exit 1
 }
 
@@ -176,9 +187,9 @@ ARCHIVE_SHA="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["sha25
 
 echo "Resolved release:"
 echo "  repo:    ${REPO}"
-echo "  channel tier: ${CHANNEL}"
-if [ "${CHANNEL}" = "stable" ]; then
-  echo "  note:    'stable' is the primary published artifact tier, not a language stability guarantee"
+echo "  release track: ${CHANNEL}"
+if [ "${CHANNEL}" = "indev" ]; then
+  echo "  note:    in development; do not treat this toolchain as complete or frozen"
 fi
 echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"

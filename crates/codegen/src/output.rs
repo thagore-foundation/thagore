@@ -2,9 +2,9 @@
 
 use std::env;
 use std::fs;
+use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::process::Command;
 
 use inkwell::module::Module;
 use inkwell::targets::{FileType, TargetMachine};
@@ -163,10 +163,11 @@ pub fn link_objects(objects: &[PathBuf], binary: &Path) -> Result<(), CodegenErr
     let runtime_object = compile_runtime_object(binary)?;
     let mut attempts = linker_candidates();
     attempts.push(Linker::SystemCc);
+    let compiler = c_compiler();
 
     let mut last_error = None;
     for linker in attempts {
-        match try_link(linker, objects, &runtime_object, binary) {
+        match try_link(&compiler, linker, objects, &runtime_object, binary) {
             Ok(()) => return Ok(()),
             Err(error) => last_error = Some(error),
         }
@@ -193,15 +194,16 @@ fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
         linker: "cc".into(),
         message: error.to_string(),
     })?;
-    let output = Command::new("cc")
+    let compiler = c_compiler();
+    let output = Command::new(&compiler)
         .arg("-c")
         .arg("-O2")
-        .arg(&runtime_source)
+        .arg(command_path(&runtime_source))
         .arg("-o")
-        .arg(&runtime_object)
+        .arg(command_path(&runtime_object))
         .output()
         .map_err(|error| CodegenError::LinkFailed {
-            linker: "cc".into(),
+            linker: compiler.clone(),
             message: error.to_string(),
         })?;
 
@@ -211,7 +213,7 @@ fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
         Ok(runtime_object)
     } else {
         Err(CodegenError::LinkFailed {
-            linker: "cc".into(),
+            linker: compiler,
             message: String::from_utf8_lossy(&output.stderr).into_owned(),
         })
     }
@@ -236,16 +238,21 @@ fn linker_candidates() -> Vec<Linker> {
 }
 
 fn try_link(
+    compiler: &str,
     linker: Linker,
     objects: &[PathBuf],
     runtime_object: &Path,
     binary: &Path,
 ) -> Result<(), CodegenError> {
-    let mut command = Command::new("cc");
+    let mut command = Command::new(compiler);
     for object in objects {
-        command.arg(object);
+        command.arg(command_path(object));
     }
-    command.arg(runtime_object).arg("-lm").arg("-o").arg(binary);
+    command.arg(command_path(runtime_object));
+    if !cfg!(windows) {
+        command.arg("-lm");
+    }
+    command.arg("-o").arg(command_path(binary));
     let linker_name = match linker {
         Linker::Mold => {
             command.arg("-fuse-ld=mold");
@@ -270,6 +277,26 @@ fn try_link(
         linker: linker_name.into(),
         message: String::from_utf8_lossy(&output.stderr).into_owned(),
     })
+}
+
+fn c_compiler() -> String {
+    if let Some(compiler) = env::var_os("CC").filter(|value| !value.is_empty()) {
+        return compiler.to_string_lossy().into_owned();
+    }
+
+    if cfg!(windows) && which("clang") {
+        return "clang".into();
+    }
+
+    "cc".into()
+}
+
+fn command_path(path: &Path) -> String {
+    if cfg!(windows) {
+        path.to_string_lossy().replace('\\', "/")
+    } else {
+        path.to_string_lossy().into_owned()
+    }
 }
 
 fn which(program: &str) -> bool {

@@ -38,7 +38,7 @@ The installer resolves the correct archive from the release manifest, verifies S
 - binaries into `PREFIX/bin`
 - the standard library into `PREFIX/share/thagore/stdlib`
 
-### Install the latest stable toolchain
+### Install the current in-develop toolchain
 
 ```bash
 curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
@@ -47,7 +47,7 @@ curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.
 ### Install to a custom prefix
 
 ```bash
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh -s -- --prefix "$HOME/.thagore"
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh -s -- --prefix "$HOME/.local/share/thagore"
 ```
 
 ### Install a specific target or channel
@@ -68,7 +68,7 @@ irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagu
 
 | Channel | Meaning |
 | --- | --- |
-| `stable` | Official end-user toolchain builds |
+| `indev` | Current public in-develop toolchain builds |
 | `extended` | Additional semver release artifacts when a builder is available |
 | `nightly` | Preview prerelease artifacts |
 
@@ -78,7 +78,7 @@ The canonical target matrix is exposed by:
 thagc --print-target-list
 ```
 
-Stable targets:
+Current in-develop targets:
 
 - `x86_64-unknown-linux-gnu`
 - `aarch64-unknown-linux-gnu`
@@ -95,7 +95,7 @@ You need:
 
 | Requirement | Notes |
 | --- | --- |
-| Rust stable toolchain | Build system for `thagc`, `thagore-fmt`, and `thagore-lsp` |
+| Current Rust toolchain | Build system for `thagc`, `thagore-fmt`, and `thagore-lsp` |
 | Cargo | Comes with Rust |
 | C toolchain | Required for runtime compilation and final linking |
 | LLVM 14 development files | The current backend builds against `inkwell` with LLVM 14 |

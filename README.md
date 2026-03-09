@@ -119,7 +119,7 @@ tests/fixtures/   End-to-end test programs (.tg files)
 
 ## Building from Source
 
-**Prerequisite:** Rust stable toolchain, edition 2024.
+**Prerequisite:** current Rust toolchain, edition 2024.
 
 ```bash
 cargo build --workspace
@@ -148,7 +148,7 @@ curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.
 irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1 | iex
 ```
 
-Stable release targets:
+Current in-develop release targets:
 
 - `x86_64-unknown-linux-gnu`
 - `aarch64-unknown-linux-gnu`

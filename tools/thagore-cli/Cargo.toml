@@ -25,7 +25,7 @@ serde_json = "1.0.140"
 sha2 = "0.10.9"
 # `tempfile` manages temporary build directories for `thagore run`.
 tempfile = "3.20.0"
-# `termcolor` renders compiler diagnostics with stable ANSI-independent colors.
+# `termcolor` renders compiler diagnostics with consistent ANSI-independent colors.
 termcolor = "1.4.1"
 thagore-ast = { path = "../../crates/ast" }
 thagore-codegen = { path = "../../crates/codegen" }

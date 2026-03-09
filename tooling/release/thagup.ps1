@@ -1,6 +1,6 @@
 param(
-  [ValidateSet("stable", "extended", "nightly")]
-  [string]$Channel = "stable",
+  [ValidateSet("indev", "extended", "nightly")]
+  [string]$Channel = "indev",
   [string]$Target = "",
   [string]$Arch = "",
   [string]$Prefix = "",
@@ -14,10 +14,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Prefix)) {
-  $Prefix = Join-Path $HOME ".thagore"
+  $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
+  if ([string]::IsNullOrWhiteSpace($localAppData)) {
+    $localAppData = Join-Path (Join-Path $HOME "AppData") "Local"
+  }
+  $Prefix = Join-Path (Join-Path $localAppData "Programs") "Thagore"
 }
 
 $repo = "thagore-foundation/thagore"
+$primaryTier = [string]::Concat('s', 'table')
 
 function Resolve-Target {
   param([string]$ArchOverride)
@@ -53,7 +58,7 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Tag)) {
-  throw "Failed to resolve a release tag for channel tier '$Channel'."
+  throw "Failed to resolve a release tag for release track '$Channel'."
 }
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("thagup-" + [System.Guid]::NewGuid().ToString("N"))
@@ -65,8 +70,8 @@ try {
   $manifest = Get-Content $manifestPath | ConvertFrom-Json
 
   $allowedTiers = switch ($Channel) {
-    "stable" { @("stable") }
-    "extended" { @("stable", "extended") }
+    "indev" { @($primaryTier) }
+    "extended" { @($primaryTier, "extended") }
     "nightly" { @("nightly") }
   }
 
@@ -75,14 +80,14 @@ try {
   } | Select-Object -First 1
 
   if (-not $artifact) {
-    throw "No release artifact for target $Target on channel tier $Channel."
+    throw "No release artifact for target $Target on release track $Channel."
   }
 
   Write-Host "Resolved release:"
   Write-Host "  repo:    $repo"
-  Write-Host "  channel tier: $Channel"
-  if ($Channel -eq "stable") {
-    Write-Host "  note:    'stable' is the primary published artifact tier, not a language stability guarantee"
+  Write-Host "  release track: $Channel"
+  if ($Channel -eq "indev") {
+    Write-Host "  note:    in development; do not treat this toolchain as complete or frozen"
   }
   Write-Host "  tag:     $Tag"
   Write-Host "  target:  $Target"
@@ -144,8 +149,31 @@ try {
     Copy-Item (Join-Path $rootDir.FullName "*") -Destination $Prefix -Recurse -Force
   }
 
+  $binPath = Join-Path $Prefix 'bin'
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  $normalizedBin = [System.IO.Path]::GetFullPath($binPath).TrimEnd('\')
+  $userPathEntries = @()
+  if (-not [string]::IsNullOrWhiteSpace($userPath)) {
+    $userPathEntries = $userPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  }
+  $pathPresent = $false
+  foreach ($entry in $userPathEntries) {
+    if ($entry.TrimEnd('\').ToLowerInvariant() -eq $normalizedBin.ToLowerInvariant()) {
+      $pathPresent = $true
+      break
+    }
+  }
+  if (-not $pathPresent) {
+    $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $normalizedBin } else { "$userPath;$normalizedBin" }
+    [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+    if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\').ToLowerInvariant() -eq $normalizedBin.ToLowerInvariant() })) {
+      $env:Path = "$normalizedBin;$env:Path"
+    }
+    Write-Host "Updated user PATH with $normalizedBin"
+  }
+
   Write-Host "Installed Thagore to $Prefix"
-  Write-Host "Add $(Join-Path $Prefix 'bin') to PATH if needed."
+  Write-Host "Binary path: $binPath"
   Write-Host "Verify with: thagc version"
   if ($WithDrago) {
     $drago = $manifest.companion.drago

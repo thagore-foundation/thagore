@@ -54,11 +54,12 @@ curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.
 
 ```bash
 thagc --version
-drago --version
 ```
 
+If you want `drago` too, install with `--with-drago` on POSIX or `-WithDrago` on PowerShell, then run `drago --version`.
+
 <Aside type="tip" title="PATH">
-`thagup` adds `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin` on Windows) to user PATH. Open a new terminal if `thagc` is not found in the current shell.
+`thagup` installs into `~/.local/share/thagore/bin` on POSIX by default and `%LOCALAPPDATA%\Programs\Thagore\bin` on Windows. The Windows installer updates user PATH automatically. Open a new terminal if `thagc` is not found in the current shell.
 </Aside>
 
 ## Step 2: First Program
@@ -68,6 +69,7 @@ Create `hello.tg`:
 ```tg
 func main() -> i32:
   print("hello")
+  return 0
 ```
 
 Run it:
