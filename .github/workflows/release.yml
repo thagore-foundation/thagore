@@ -42,13 +42,13 @@ jobs:
             target: x86_64-pc-windows-msvc
             tier: stable
             archive: zip
-            llvm_mode: source
+            llvm_mode: prebuilt
             msvc_arch: amd64
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             tier: stable
             archive: zip
-            llvm_mode: source
+            llvm_mode: prebuilt
             msvc_arch: arm64
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -187,27 +187,28 @@ jobs:
           "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Install Windows ARM64 LLVM 14 prebuilt
+      - name: Install Windows LLVM 14 prebuilt
         if: runner.os == 'Windows' && matrix.llvm_mode == 'prebuilt'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-aarch64-prebuilt'
-          $archive = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-aarch64-pc-windows-msvc.zip'
+          $target = '${{ matrix.target }}'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
           if (Test-Path $extractRoot) {
             Remove-Item -Recurse -Force $extractRoot
           }
           Invoke-WebRequest `
-            -Uri 'https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-aarch64-pc-windows-msvc.zip' `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
             -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
-          $llvmRoot = Join-Path $extractRoot 'llvm-14.0.6-aarch64-pc-windows-msvc'
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
           $llvmBin = Join-Path $llvmRoot 'bin'
           $llvmLib = Join-Path $llvmRoot 'lib'
           $llvmInclude = Join-Path $llvmRoot 'include'
           $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
           if (-not (Test-Path $configCandidate)) {
-            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-arm64.cs'
+            $shimSource = Join-Path $env:RUNNER_TEMP "llvm-config-$target.cs"
             @(
               'using System;',
               'using System.IO;',
@@ -278,6 +279,18 @@ jobs:
             ) | Set-Content -Path $shimSource -Encoding UTF8
             & csc /nologo "/out:$configCandidate" $shimSource
           }
+          if (-not (Test-Path $llvmBin)) {
+            throw "LLVM bin directory not found at $llvmBin"
+          }
+          if (-not (Test-Path $llvmLib)) {
+            throw "LLVM lib directory not found at $llvmLib"
+          }
+          if (-not (Test-Path $llvmInclude)) {
+            throw "LLVM include directory not found at $llvmInclude"
+          }
+          if (-not (Test-Path (Join-Path $llvmInclude 'llvm-c\Target.h'))) {
+            throw "LLVM C API headers not found under $llvmInclude"
+          }
           if (-not (Test-Path $configCandidate)) {
             throw "llvm-config.exe not found under $llvmBin"
           }
@@ -335,8 +348,7 @@ jobs:
             "-DLLVM_INCLUDE_DOCS=OFF" `
             "-DLLVM_ENABLE_TERMINFO=OFF" `
             "-DLLVM_ENABLE_ZLIB=OFF" `
-            "-DLLVM_ENABLE_ZSTD=OFF" `
-            "-DLLVM_INSTALL_TOOLCHAIN_ONLY=ON"
+            "-DLLVM_ENABLE_ZSTD=OFF"
           cmake --build $buildRoot --config Release --target install --parallel 2
           $llvmBin = Join-Path $installRoot 'bin'
           $configCandidate = Join-Path $llvmBin 'llvm-config.exe'

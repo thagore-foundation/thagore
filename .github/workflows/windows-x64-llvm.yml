@@ -1,0 +1,155 @@
+name: Build Windows X64 LLVM Prebuilt
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-llvm:
+    name: x86_64-pc-windows-msvc LLVM 14
+    runs-on: windows-latest
+    env:
+      LLVM_VERSION: 14.0.6
+      LLVM_RELEASE_TAG: llvm-prebuilt-14.0.6
+      LLVM_ARCHIVE: llvm-14.0.6-x86_64-pc-windows-msvc.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Install LLVM 14 official package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-x86_64-pc-windows-msvc'
+          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-14.0.6-win64.exe'
+          if (Test-Path $installRoot) {
+            Remove-Item -Recurse -Force $installRoot
+          }
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' `
+            -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$installRoot" -Wait -PassThru
+          if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
+            throw "LLVM installer failed with exit code $($process.ExitCode)"
+          }
+          $llvmBin = Join-Path $installRoot 'bin'
+          $llvmLib = Join-Path $installRoot 'lib'
+          $llvmInclude = Join-Path $installRoot 'include'
+          if (-not (Test-Path $llvmBin)) {
+            throw "LLVM bin directory not found at $llvmBin"
+          }
+          if (-not (Test-Path $llvmLib)) {
+            throw "LLVM lib directory not found at $llvmLib"
+          }
+          if (-not (Test-Path $llvmInclude)) {
+            throw "LLVM include directory not found at $llvmInclude"
+          }
+          if (-not (Test-Path (Join-Path $llvmInclude 'llvm-c\\Target.h'))) {
+            throw "LLVM C API headers not found under $llvmInclude"
+          }
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-x64.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '',
+              '        if (args.Contains("--version"))',
+              '        {',
+              '            Console.WriteLine("14.0.6");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--prefix"))',
+              '        {',
+              '            Console.WriteLine(root);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libdir"))',
+              '        {',
+              '            Console.WriteLine(lib);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--includedir"))',
+              '        {',
+              '            Console.WriteLine(include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--build-mode"))',
+              '        {',
+              '            Console.WriteLine("Release");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--cflags"))',
+              '        {',
+              '            Console.WriteLine("-I" + include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--ldflags"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--system-libs"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          if (-not (Test-Path $configCandidate)) {
+            throw "llvm-config.exe not found under $llvmBin"
+          }
+          "THAGORE_LLVM_ROOT=$installRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package LLVM prebuilt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-x86_64-pc-windows-msvc'
+          $stagingRoot = Join-Path $env:RUNNER_TEMP 'llvm-prebuilt-staging-x64'
+          $archive = Join-Path $env:RUNNER_TEMP $env:LLVM_ARCHIVE
+          if (Test-Path $stagingRoot) {
+            Remove-Item -Recurse -Force $stagingRoot
+          }
+          New-Item -ItemType Directory -Path $stagingRoot | Out-Null
+          Copy-Item -Path $installRoot -Destination $stagingRoot -Recurse -Force
+          Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $archive -Force
+
+      - name: Publish LLVM prebuilt release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release view "${LLVM_RELEASE_TAG}" >/dev/null 2>&1 || \
+            gh release create "${LLVM_RELEASE_TAG}" --title "${LLVM_RELEASE_TAG}" --notes "Windows LLVM ${LLVM_VERSION} prebuilts for Thagore release automation."
+          gh release upload "${LLVM_RELEASE_TAG}" "${RUNNER_TEMP}/${LLVM_ARCHIVE}" --clobber
