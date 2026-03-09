@@ -30,7 +30,7 @@ use crate::session::{build_file, check_file};
 const SUCCESS_EXIT_CODE: i32 = 0;
 const COMPILE_ERROR_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 101;
-const THAGC_VERSION: &str = "0.9.2";
+const THAGC_VERSION: &str = "0.9.3";
 
 fn main() {
     process::exit(with_ice_handler(real_main));

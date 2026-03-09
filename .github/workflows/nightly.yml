@@ -69,9 +69,9 @@ jobs:
           Invoke-WebRequest `
             -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' `
             -OutFile $installer
-          & $installer /S "/D=$llvmRoot"
-          if ($LASTEXITCODE -ne 0) {
-            throw "LLVM installer failed with exit code $LASTEXITCODE"
+          $process = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$llvmRoot" -Wait -PassThru
+          if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
+            throw "LLVM installer failed with exit code $($process.ExitCode)"
           }
           $llvmBin = Join-Path $llvmRoot 'bin'
           $llvmLib = Join-Path $llvmRoot 'lib'
@@ -165,6 +165,7 @@ jobs:
           "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build nightly binaries
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -173,6 +174,20 @@ jobs:
           else
             cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
           fi
+
+      - name: Build nightly binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arch = if ('${{ matrix.target }}' -like 'i686-*') { 'x86' } else { 'x64' }
+          $linker = Join-Path $env:VCToolsInstallDir "bin\Hostx64\$arch\link.exe"
+          if (-not (Test-Path $linker)) {
+            throw "MSVC linker not found at $linker"
+          }
+          $targetEnv = ('CARGO_TARGET_' + '${{ matrix.target }}'.ToUpperInvariant().Replace('-', '_') + '_LINKER')
+          Set-Item -Path "Env:$targetEnv" -Value $linker
+          cargo build --release --target "${{ matrix.target }}" -p thagore-cli -p thagore-fmt -p thagore-lsp
 
       - name: Package nightly archive
         shell: bash
