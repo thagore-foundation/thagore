@@ -22,22 +22,49 @@ jobs:
         with:
           arch: amd64
 
-      - name: Install LLVM 14 official package
+      - name: Build LLVM 14 from source
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja --no-progress -y
+          }
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+          }
           $installRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-x86_64-pc-windows-msvc'
-          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-14.0.6-win64.exe'
+          $archive = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src.tar.xz'
+          $sourceRoot = Join-Path $env:RUNNER_TEMP 'llvm-project-14.0.6.src'
+          $buildRoot = Join-Path $env:RUNNER_TEMP 'llvm-14.0.6-x86_64-pc-windows-msvc-build'
           if (Test-Path $installRoot) {
             Remove-Item -Recurse -Force $installRoot
           }
-          Invoke-WebRequest `
-            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' `
-            -OutFile $installer
-          $process = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$installRoot" -Wait -PassThru
-          if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
-            throw "LLVM installer failed with exit code $($process.ExitCode)"
+          if (Test-Path $sourceRoot) {
+            Remove-Item -Recurse -Force $sourceRoot
           }
+          if (Test-Path $buildRoot) {
+            Remove-Item -Recurse -Force $buildRoot
+          }
+          Invoke-WebRequest `
+            -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/llvm-project-14.0.6.src.tar.xz' `
+            -OutFile $archive
+          tar -xf $archive -C $env:RUNNER_TEMP
+          cmake `
+            "-S" (Join-Path $sourceRoot 'llvm') `
+            "-B" $buildRoot `
+            "-G" "Ninja" `
+            "-DCMAKE_BUILD_TYPE=Release" `
+            "-DCMAKE_INSTALL_PREFIX=$installRoot" `
+            "-DLLVM_TARGETS_TO_BUILD=X86;AArch64;WebAssembly" `
+            "-DLLVM_ENABLE_ASSERTIONS=OFF" `
+            "-DLLVM_INCLUDE_TESTS=OFF" `
+            "-DLLVM_INCLUDE_EXAMPLES=OFF" `
+            "-DLLVM_INCLUDE_BENCHMARKS=OFF" `
+            "-DLLVM_INCLUDE_DOCS=OFF" `
+            "-DLLVM_ENABLE_TERMINFO=OFF" `
+            "-DLLVM_ENABLE_ZLIB=OFF" `
+            "-DLLVM_ENABLE_ZSTD=OFF"
+          cmake --build $buildRoot --config Release --target install --parallel 2
           $llvmBin = Join-Path $installRoot 'bin'
           $llvmLib = Join-Path $installRoot 'lib'
           $llvmInclude = Join-Path $installRoot 'include'
