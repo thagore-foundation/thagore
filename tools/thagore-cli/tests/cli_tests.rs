@@ -328,7 +328,7 @@ fn version_flag_returns_json_contract() {
     assert!(output.status.success());
     let value: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("parse version json");
-    assert_eq!(value["thagc"], "0.9.3");
+    assert_eq!(value["thagc"], "0.9.4");
     assert!(value.get("llvm").is_some());
     assert!(value.get("host").is_some());
 }

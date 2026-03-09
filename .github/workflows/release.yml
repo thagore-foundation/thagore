@@ -48,7 +48,7 @@ jobs:
             target: aarch64-pc-windows-msvc
             tier: stable
             archive: zip
-            llvm_mode: prebuilt
+            llvm_mode: source
             msvc_arch: arm64
     env:
       RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -360,7 +360,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $linker = Join-Path $env:VCToolsInstallDir "bin\Host${{ matrix.msvc_arch }}\${{ matrix.msvc_arch }}\link.exe"
+          $hostArch = $env:VSCMD_ARG_HOST_ARCH
+          $targetArch = $env:VSCMD_ARG_TGT_ARCH
+          $linker = Join-Path $env:VCToolsInstallDir "bin\Host$hostArch\$targetArch\link.exe"
           if (-not (Test-Path $linker)) {
             throw "MSVC linker not found at $linker"
           }
