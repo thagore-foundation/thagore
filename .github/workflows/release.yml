@@ -42,7 +42,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             tier: stable
             archive: zip
-            llvm_mode: official
+            llvm_mode: source
             msvc_arch: amd64
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc

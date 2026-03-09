@@ -201,7 +201,7 @@ mod tests {
             target: Some("x86_64-unknown-linux-musl".into()),
             arch: Some("x86_64".into()),
             prefix: Some(PathBuf::from("/tmp/toolchain")),
-            tag: Some("v0.9.4".into()),
+            tag: Some("v0.9.5".into()),
             drago_tag: Some("v1.0.7".into()),
             without_drago: false,
             dry_run: true,
@@ -222,7 +222,7 @@ mod tests {
         assert!(output.contains(&OsString::from("x86_64-unknown-linux-musl")));
         assert!(output.contains(&OsString::from("x86_64")));
         assert!(output.contains(&OsString::from("/tmp/toolchain")));
-        assert!(output.contains(&OsString::from("v0.9.4")));
+        assert!(output.contains(&OsString::from("v0.9.5")));
         assert!(output.contains(&OsString::from("v1.0.7")));
     }
 }
