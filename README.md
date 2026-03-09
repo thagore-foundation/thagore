@@ -141,11 +141,11 @@ The release system also supports packaged toolchain archives plus installer scri
 Recommended end-user install commands are pinned to a release tag, not `main`:
 
 ```bash
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.1/thagup-v0.9.1.sh | sh
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.2/thagup-v0.9.2.sh | sh
 ```
 
 ```powershell
-irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.1/thagup-v0.9.1.ps1 | iex
+irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.2/thagup-v0.9.2.ps1 | iex
 ```
 
 Stable release targets:
