@@ -22,8 +22,6 @@ if ([string]::IsNullOrWhiteSpace($Prefix)) {
 }
 
 $repo = "thagore-foundation/thagore"
-$primaryTier = [string]::Concat('s', 'table')
-
 function Resolve-Target {
   param([string]$ArchOverride)
   $system = "windows"
@@ -70,8 +68,8 @@ try {
   $manifest = Get-Content $manifestPath | ConvertFrom-Json
 
   $allowedTiers = switch ($Channel) {
-    "indev" { @($primaryTier) }
-    "extended" { @($primaryTier, "extended") }
+    "indev" { @("indev") }
+    "extended" { @("indev", "extended") }
     "nightly" { @("nightly") }
   }
 

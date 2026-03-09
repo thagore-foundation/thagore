@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--dist-dir", type=Path, required=True)
     parser.add_argument("--targets-file", type=Path, required=True)
-    parser.add_argument("--tiers", default="stable,extended")
+    parser.add_argument("--tiers", default="indev,extended")
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--drago-version", default="")
     parser.add_argument("--drago-tag", default="")

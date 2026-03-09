@@ -14,7 +14,7 @@ use thagore_ast::{
     Expr, ExprStmt, ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl,
     GenericFuncDecl, GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr, IfStmt,
     ImplBlock, IntentDecl, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
-    ReturnStmt, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, WhileStmt, Span,
+    ReturnStmt, Span, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, WhileStmt,
 };
 use thagore_codegen::{
     link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
@@ -86,7 +86,15 @@ pub(crate) fn legacy_check_file(
         });
     }
 
-    let mut decls = load_program(path, include_dirs, &mut parser, &arena, decls, &source, &timings)?;
+    let mut decls = load_program(
+        path,
+        include_dirs,
+        &mut parser,
+        &arena,
+        decls,
+        &source,
+        &timings,
+    )?;
     let mut intern_cache = HashMap::new();
     let mut next_id = max_existing_node_id(&decls).saturating_add(1);
     let _builtin_bindings = prepend_builtin_externs(
@@ -375,9 +383,37 @@ pub(crate) fn default_binary_output(path: &Path) -> PathBuf {
         .and_then(|stem| stem.to_str())
         .filter(|stem| !stem.is_empty())
         .unwrap_or("a.out");
-    path.parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(stem)
+    let mut output = path.parent().unwrap_or_else(|| Path::new(".")).join(stem);
+    if cfg!(windows) && output.extension().is_none() {
+        output.set_extension("exe");
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_binary_output;
+    use std::path::Path;
+
+    #[test]
+    fn derives_output_name_from_source_stem() {
+        let output = default_binary_output(Path::new("examples/hello.tg"));
+        if cfg!(windows) {
+            assert_eq!(output, Path::new("examples/hello.exe"));
+        } else {
+            assert_eq!(output, Path::new("examples/hello"));
+        }
+    }
+
+    #[test]
+    fn falls_back_to_current_directory_for_bare_file_names() {
+        let output = default_binary_output(Path::new("hello.tg"));
+        if cfg!(windows) {
+            assert_eq!(output, Path::new("hello.exe"));
+        } else {
+            assert_eq!(output, Path::new("hello"));
+        }
+    }
 }
 
 pub(crate) fn inject_compile_time_bindings<'src, 'tok, 'ast>(
@@ -606,10 +642,15 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                 CompilerDiagnostic::new(
                     "CLI003",
                     "cyclic import",
-                    format!("cyclic module load detected for `{}`", module_path.display()),
+                    format!(
+                        "cyclic module load detected for `{}`",
+                        module_path.display()
+                    ),
                     None,
                 )
-                .with_hint("break the cycle by moving shared definitions into a lower-level module"),
+                .with_hint(
+                    "break the cycle by moving shared definitions into a lower-level module",
+                ),
             );
             return;
         }
@@ -678,7 +719,10 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                 if !self.loading.contains(&target.resolved_path)
                     && !self.loaded.contains(&target.resolved_path)
                 {
-                    self.load_imported_module(target.resolved_path.clone(), target.namespace.clone());
+                    self.load_imported_module(
+                        target.resolved_path.clone(),
+                        target.namespace.clone(),
+                    );
                 }
 
                 let Some(exports) = self.module_exports.get(&target.resolved_path) else {
@@ -687,9 +731,10 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
 
                 if import_decl.is_from {
                     if is_relative_module_import(import_decl) {
-                        let local_alias = import_decl.symbols.first().and_then(|symbol| {
-                            symbol.alias.or(Some(symbol.name))
-                        });
+                        let local_alias = import_decl
+                            .symbols
+                            .first()
+                            .and_then(|symbol| symbol.alias.or(Some(symbol.name)));
                         if let Some(alias) = local_alias {
                             bindings.module_aliases.push(ModuleAliasBinding {
                                 alias,
@@ -713,7 +758,8 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                             .get(&symbol.name)
                             .cloned()
                             .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
-                        if let Some(export) = exports.iter().find(|item| item.local_name == symbol_name)
+                        if let Some(export) =
+                            exports.iter().find(|item| item.local_name == symbol_name)
                         {
                             bindings.direct_symbols.push(DirectImportBinding {
                                 local_name,
@@ -793,7 +839,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
             relative_level,
             segments,
         )
-            .map(|path| normalize_path(&path));
+        .map(|path| normalize_path(&path));
         self.import_resolution_cache.insert(key, resolved.clone());
         resolved
     }
@@ -865,7 +911,10 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                 CompilerDiagnostic::new(
                     "CLI003",
                     "unresolved import",
-                    format!("could not resolve import `{}`", import_path_label(import_decl, &module_segments)),
+                    format!(
+                        "could not resolve import `{}`",
+                        import_path_label(import_decl, &module_segments)
+                    ),
                     Some(import_decl.span),
                 )
                 .with_hint("check stdlib, dependency include dirs, and project module paths"),
@@ -1198,7 +1247,9 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         match decl {
             Decl::Import(_) => None,
             Decl::Func(node) => Some(Decl::Func(self.rewrite_func_decl(node))),
-            Decl::GenericFunc(node) => Some(Decl::GenericFunc(self.rewrite_generic_func_decl(node))),
+            Decl::GenericFunc(node) => {
+                Some(Decl::GenericFunc(self.rewrite_generic_func_decl(node)))
+            }
             Decl::Let(node) => Some(Decl::Let(self.rewrite_let_decl(node, true))),
             Decl::Const(node) => Some(Decl::Const(self.rewrite_const_decl(node, true))),
             Decl::Struct(node) => Some(Decl::Struct(self.rewrite_struct_decl(node))),
@@ -1258,7 +1309,11 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
-    fn rewrite_const_decl(&mut self, decl: &ConstDecl<'ast>, is_top_level: bool) -> ConstDecl<'ast> {
+    fn rewrite_const_decl(
+        &mut self,
+        decl: &ConstDecl<'ast>,
+        is_top_level: bool,
+    ) -> ConstDecl<'ast> {
         let value = self.rewrite_expr(decl.value);
         let type_ann = self.rewrite_type_expr(decl.type_ann);
         let name = if is_top_level {
@@ -1572,12 +1627,11 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
                 if let Expr::Ident(base) = node.object {
                     if !self.is_local(base.name) {
                         if let Some(namespace) = self.import_namespaces.get(&base.name) {
-                            let symbol =
-                                intern_owned_cached(
-                                    self.parser,
-                                    self.intern_cache,
-                                    &format!("{namespace}__{}", self.text_of(node.field)),
-                                );
+                            let symbol = intern_owned_cached(
+                                self.parser,
+                                self.intern_cache,
+                                &format!("{namespace}__{}", self.text_of(node.field)),
+                            );
                             Expr::Ident(IdentExpr {
                                 id: self.new_node_id(),
                                 span: node.span,
@@ -1801,14 +1855,7 @@ fn make_boolean_binding<'src, 'tok, 'ast>(
     value: bool,
     next_id: &mut u32,
 ) -> Decl<'ast> {
-    make_literal_binding(
-        parser,
-        arena,
-        name,
-        Literal::Bool(value),
-        "bool",
-        next_id,
-    )
+    make_literal_binding(parser, arena, name, Literal::Bool(value), "bool", next_id)
 }
 
 fn make_define_binding<'src, 'tok, 'ast>(
@@ -1822,14 +1869,7 @@ fn make_define_binding<'src, 'tok, 'ast>(
         return make_boolean_binding(parser, arena, name, value == "true", next_id);
     }
     if let Ok(int_value) = value.parse::<i64>() {
-        return make_literal_binding(
-            parser,
-            arena,
-            name,
-            Literal::Int(int_value),
-            "i32",
-            next_id,
-        );
+        return make_literal_binding(parser, arena, name, Literal::Int(int_value), "i32", next_id);
     }
     if let Ok(float_value) = value.parse::<f64>() {
         return make_literal_binding(
@@ -2120,13 +2160,19 @@ pub(crate) fn convert_type_error(
         TypeError::NotCallable { found, span } => CompilerDiagnostic::new(
             "E004",
             "value is not callable",
-            format!("type {} cannot be called", render_type(*found, types, parser)),
+            format!(
+                "type {} cannot be called",
+                render_type(*found, types, parser)
+            ),
             Some(*span),
         ),
         TypeError::NotIndexable { found, span } => CompilerDiagnostic::new(
             "E005",
             "value is not indexable",
-            format!("type {} cannot be indexed", render_type(*found, types, parser)),
+            format!(
+                "type {} cannot be indexed",
+                render_type(*found, types, parser)
+            ),
             Some(*span),
         ),
         TypeError::ArgumentCountMismatch {
@@ -2256,7 +2302,10 @@ pub(crate) fn convert_codegen_error(
         CodegenError::MissingType { ty, span } => CompilerDiagnostic::new(
             "C001",
             "missing LLVM type mapping",
-            format!("no LLVM type mapping for {}", render_type(*ty, types, parser)),
+            format!(
+                "no LLVM type mapping for {}",
+                render_type(*ty, types, parser)
+            ),
             *span,
         ),
         CodegenError::UnknownFunction { name, span } => CompilerDiagnostic::new(
@@ -2302,13 +2351,26 @@ pub(crate) fn convert_codegen_error(
         CodegenError::InvalidBranchCondition { found, span, .. } => CompilerDiagnostic::new(
             "C006",
             "invalid branch condition",
-            format!("expected bool, found {}", render_type(*found, types, parser)),
+            format!(
+                "expected bool, found {}",
+                render_type(*found, types, parser)
+            ),
             *span,
         ),
         CodegenError::OutputFailed { .. } | CodegenError::LinkFailed { .. } => {
-            CompilerDiagnostic::new("C007", "failed to emit output artifact", error.to_string(), None)
+            CompilerDiagnostic::new(
+                "C007",
+                "failed to emit output artifact",
+                error.to_string(),
+                None,
+            )
         }
-        _ => CompilerDiagnostic::new("C999", "code generation failed", error.to_string(), error.span()),
+        _ => CompilerDiagnostic::new(
+            "C999",
+            "code generation failed",
+            error.to_string(),
+            error.span(),
+        ),
     }
 }
 
@@ -2374,7 +2436,11 @@ pub(crate) fn collect_symbol_texts(
     collector
         .symbols
         .into_iter()
-        .filter_map(|symbol| parser.resolve_symbol(symbol).map(|text| (symbol, text.to_string())))
+        .filter_map(|symbol| {
+            parser
+                .resolve_symbol(symbol)
+                .map(|text| (symbol, text.to_string()))
+        })
         .collect()
 }
 

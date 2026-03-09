@@ -50,11 +50,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-PRIMARY_TIER="$(python3 - <<'PY'
-print("s" + "table")
-PY
-)"
-
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "error: required tool '$1' not found" >&2
@@ -155,17 +150,15 @@ MANIFEST_URL="https://github.com/${REPO}/releases/download/${TAG}/release-manife
 MANIFEST_PATH="${TMPDIR}/manifest.json"
 curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_PATH"
 
-ARTIFACT_JSON="$(PRIMARY_TIER="$PRIMARY_TIER" python3 - "$MANIFEST_PATH" "$TARGET" "$CHANNEL" <<'PY'
+ARTIFACT_JSON="$(python3 - "$MANIFEST_PATH" "$TARGET" "$CHANNEL" <<'PY'
 import json
-import os
 import sys
 
 manifest_path, target, channel = sys.argv[1:4]
 manifest = json.load(open(manifest_path, encoding="utf-8"))
-primary_tier = os.environ["PRIMARY_TIER"]
 tiers = {
-    "indev": {primary_tier},
-    "extended": {primary_tier, "extended"},
+    "indev": {"indev"},
+    "extended": {"indev", "extended"},
     "nightly": {"nightly"},
 }[channel]
 

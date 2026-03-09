@@ -24,29 +24,29 @@ jobs:
         include:
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            tier: stable
+            tier: indev
             archive: tar.gz
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            tier: stable
+            tier: indev
             archive: tar.gz
           - runner: macos-15-intel
             target: x86_64-apple-darwin
-            tier: stable
+            tier: indev
             archive: tar.gz
           - runner: macos-14
             target: aarch64-apple-darwin
-            tier: stable
+            tier: indev
             archive: tar.gz
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
-            tier: stable
+            tier: indev
             archive: zip
             llvm_mode: prebuilt
             msvc_arch: amd64
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            tier: stable
+            tier: indev
             archive: zip
             llvm_mode: prebuilt
             msvc_arch: arm64
@@ -440,7 +440,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --dist-dir release-dist \
             --targets-file tooling/packaging/targets.json \
-            --tiers "stable,extended" \
+            --tiers "indev,extended" \
             --drago-version "${DRAGO_VERSION}" \
             --drago-tag "v${DRAGO_VERSION}"
 

@@ -49,7 +49,7 @@ pub enum Command {
 /// Release channels supported by installer-driven updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ReleaseChannel {
-    Stable,
+    Indev,
     Extended,
     Nightly,
 }
@@ -58,7 +58,7 @@ pub enum ReleaseChannel {
 impl ReleaseChannel {
     pub fn as_ref(self) -> &'static str {
         match self {
-            Self::Stable => "stable",
+            Self::Indev => "indev",
             Self::Extended => "extended",
             Self::Nightly => "nightly",
         }
@@ -197,7 +197,7 @@ pub struct RunOptions {
 #[derive(Debug, Clone, Args)]
 pub struct SelfUpdateArgs {
     /// Release channel to install.
-    #[arg(long = "channel", value_enum, default_value = "stable")]
+    #[arg(long = "channel", value_enum, default_value = "indev")]
     pub channel: ReleaseChannel,
     /// Explicit target triple override.
     #[arg(long = "target")]

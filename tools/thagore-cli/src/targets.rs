@@ -47,7 +47,10 @@ mod tests {
         let targets = release_targets();
         assert_eq!(targets.len(), 27);
         assert_eq!(
-            targets.iter().filter(|target| target.tier == "stable").count(),
+            targets
+                .iter()
+                .filter(|target| target.tier == "indev")
+                .count(),
             8
         );
         assert_eq!(
@@ -58,7 +61,10 @@ mod tests {
             9
         );
         assert_eq!(
-            targets.iter().filter(|target| target.tier == "nightly").count(),
+            targets
+                .iter()
+                .filter(|target| target.tier == "nightly")
+                .count(),
             10
         );
     }

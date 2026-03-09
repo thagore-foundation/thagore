@@ -1,7 +1,7 @@
 [
   {
     "target": "x86_64-unknown-linux-gnu",
-    "tier": "stable",
+    "tier": "indev",
     "os": "linux",
     "arch": "x86_64",
     "abi": "glibc",
@@ -10,7 +10,7 @@
   },
   {
     "target": "aarch64-unknown-linux-gnu",
-    "tier": "stable",
+    "tier": "indev",
     "os": "linux",
     "arch": "aarch64",
     "abi": "glibc",
@@ -19,7 +19,7 @@
   },
   {
     "target": "x86_64-unknown-linux-musl",
-    "tier": "stable",
+    "tier": "indev",
     "os": "linux",
     "arch": "x86_64",
     "abi": "musl",
@@ -28,7 +28,7 @@
   },
   {
     "target": "aarch64-unknown-linux-musl",
-    "tier": "stable",
+    "tier": "indev",
     "os": "linux",
     "arch": "aarch64",
     "abi": "musl",
@@ -37,7 +37,7 @@
   },
   {
     "target": "x86_64-apple-darwin",
-    "tier": "stable",
+    "tier": "indev",
     "os": "macos",
     "arch": "x86_64",
     "abi": "darwin",
@@ -46,7 +46,7 @@
   },
   {
     "target": "aarch64-apple-darwin",
-    "tier": "stable",
+    "tier": "indev",
     "os": "macos",
     "arch": "aarch64",
     "abi": "darwin",
@@ -55,7 +55,7 @@
   },
   {
     "target": "x86_64-pc-windows-msvc",
-    "tier": "stable",
+    "tier": "indev",
     "os": "windows",
     "arch": "x86_64",
     "abi": "msvc",
@@ -64,7 +64,7 @@
   },
   {
     "target": "aarch64-pc-windows-msvc",
-    "tier": "stable",
+    "tier": "indev",
     "os": "windows",
     "arch": "aarch64",
     "abi": "msvc",
