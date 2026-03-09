@@ -1,63 +1,50 @@
 ---
 title: Release & Installers
-description: How Thagore releases are built, published, and how to use pre-built installers.
+description: How Thagore releases are built, published, and installed.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
 # Release & Installers
 
-## Release Artifacts
+## Release artifacts
 
-Each Thagore release publishes the following artifacts on GitHub Releases:
-
-### Installer entry points
+Each Thagore release publishes these installer entry points:
 
 | Artifact | Purpose |
 |----------|---------|
-| `thagup.sh` | Installer for Linux/macOS (auto-detect OS + CPU arch) |
-| `thagup.ps1` | Installer for Windows PowerShell (auto-detect CPU arch) |
+| `thagup.sh` | Manifest-based installer for POSIX targets |
+| `thagup.ps1` | Manifest-based installer for Windows PowerShell |
+| `release-manifest-v<version>.json` | Artifact matrix and checksums consumed by `thagup` |
+| `SHA256SUMS-v<version>.txt` | Human-readable checksum summary |
 
-### Core bundles (compiler binary)
+Platform archives follow this layout:
 
-| Artifact | Platform/arch | Contents |
-|----------|---------------|----------|
-| `thagc-core-linux-x86_64.tar.gz` | Linux x86-64 | `thagc` binary |
-| `thagc-core-linux-aarch64.tar.gz` | Linux ARM64 | `thagc` binary |
-| `thagc-core-macos-x86_64.tar.gz` | macOS x86-64 | `thagc` binary |
-| `thagc-core-macos-aarch64.tar.gz` | macOS ARM64 | `thagc` binary |
-| `thagc-core-windows-x86_64.tar.gz` | Windows x86-64 | `thagc.exe` binary |
-| `thagc-core-windows-aarch64.tar.gz` | Windows ARM64 | `thagc.exe` binary |
+| Artifact | Platform |
+|----------|----------|
+| `thagore-<version>-x86_64-unknown-linux-gnu.tar.gz` | Linux x86-64 |
+| `thagore-<version>-aarch64-unknown-linux-gnu.tar.gz` | Linux ARM64 |
+| `thagore-<version>-x86_64-apple-darwin.tar.gz` | macOS x86-64 |
+| `thagore-<version>-aarch64-apple-darwin.tar.gz` | macOS ARM64 |
+| `thagore-<version>-x86_64-pc-windows-msvc.zip` | Windows x86-64 |
+| `thagore-<version>-aarch64-pc-windows-msvc.zip` | Windows ARM64 |
 
-### Checksums
-
-| File | Covers |
-|------|--------|
-| `SHA256SUMS-thagc.txt` | Installers + all core artifacts |
-
-<Aside type="note" title="Embedded LLVM">
-Runtime support is already embedded into the released `thagc` binary.
+<Aside type="note" title="Runtime layout">
+Release archives contain `thagc`, `thagore`, `thagore-fmt`, `thagore-lsp`, and the shipped standard library.
 </Aside>
 
-<Aside type="note" title="What thagup installs">
-`thagup` installs both `thagc` and `drago` by default, then wires launchers into `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin`).
-</Aside>
-
-## Using Pre-built Releases
-
-### Recommended: thagup installer
+## Recommended install flow
 
 Linux/macOS:
 
 ```bash
-curl -fsSL https://thagore.org/thagup-init.sh | bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
 ```
 
 Windows:
 
 ```powershell
-Invoke-WebRequest -Uri "https://thagore.org/thagup.ps1" -OutFile thagup.ps1
-powershell -ExecutionPolicy Bypass -File .\thagup.ps1
+irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1 | iex
 ```
 
 Verify:
@@ -67,66 +54,26 @@ thagc --version
 drago --version
 ```
 
-### Manual installation (Linux x86-64 example)
+## Manual installation example
 
 ```bash
-# Download core bundle and verify checksum
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagc-core-linux-x86_64.tar.gz -o thagc-core-linux-x86_64.tar.gz
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/SHA256SUMS-thagc.txt -o SHA256SUMS-thagc.txt
-sha256sum --check --ignore-missing SHA256SUMS-thagc.txt
-
-# Extract
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagore-0.9.6-x86_64-unknown-linux-gnu.tar.gz -o thagore.tar.gz
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/SHA256SUMS-v0.9.6.txt -o SHA256SUMS-v0.9.6.txt
+sha256sum --check --ignore-missing SHA256SUMS-v0.9.6.txt
 mkdir -p ~/.thagore/toolchains/stable
-tar -xzf thagc-core-linux-x86_64.tar.gz -C ~/.thagore/toolchains/stable
-
-# Add to PATH
-echo 'export PATH="$HOME/.thagore/bin:$PATH"' >> ~/.bashrc
-export PATH="$HOME/.thagore/bin:$PATH"
-ln -sf ~/.thagore/toolchains/stable/bin/thagc ~/.thagore/bin/thagc
-
-thagc --version
+ tar -xzf thagore.tar.gz -C ~/.thagore/toolchains/stable
 ```
 
-## thagup entry points
+## Installer URLs
 
 | Endpoint | Description |
 |----------|-------------|
-| `https://thagore.org/thagup-init.sh` | Bootstrap installer (installs thagc + drago) |
-| `https://thagore.org/thagup.sh` | Latest stable installer script (Linux/macOS) |
-| `https://thagore.org/thagup.ps1` | Latest stable installer script (Windows PowerShell) |
-| `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh` | Raw source (always current `main`) |
+| `https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh` | Pinned POSIX installer for `v0.9.6` |
+| `https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1` | Pinned Windows installer for `v0.9.6` |
+| `https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.sh` | Latest POSIX installer asset |
+| `https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.ps1` | Latest Windows installer asset |
+| `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh` | Raw source on `main` |
 
-## thagup installer options
+## Release channels
 
-Use these options when invoking `thagup.sh`:
-
-```bash
-thagup.sh --tag v1.0.0                # install specific thagc release
-thagup.sh --drago-tag v1.0.0          # pin drago version
-thagup.sh --without-drago             # install thagc only
-thagup.sh --channel nightly           # install into custom channel directory
-thagup.sh --install-root /opt/thagore # custom install root
-thagup.sh --force                     # overwrite existing channel
-```
-
-## CI/CD Pipelines
-
-Thagore uses multiple CI pipelines to ensure correctness:
-
-| Workflow | Purpose |
-|----------|---------|
-| **CI** | Build + test on push/PR |
-| **Selfhost Matrix** | Verify self-hosting across all target platforms |
-| **Release** | Build release artifacts and publish |
-| **Bootstrap Seed** | Generate and promote new Stage1 seed binaries |
-
-## Merge Requirements
-
-A merge to `main` requires **3 consecutive green runs**:
-- ✅ CI pipeline
-- ✅ Selfhost Matrix
-- ✅ Release (dry-run)
-
-<Aside type="caution" title="Strict Policy">
-There is no automatic fallback. If any pipeline fails, the merge is blocked until all three pass consecutively.
-</Aside>
+`stable` is only the manifest tier name. It does not mean the language surface is complete or frozen; it only identifies the main published artifact set.

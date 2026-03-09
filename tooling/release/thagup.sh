@@ -138,7 +138,7 @@ PY
 fi
 
 if [ -z "$TAG" ]; then
-  echo "error: failed to resolve a release tag for channel '${CHANNEL}'" >&2
+  echo "error: failed to resolve a release tag for channel tier '${CHANNEL}'" >&2
   exit 1
 fi
 
@@ -166,7 +166,7 @@ else:
     sys.exit(1)
 PY
 )" || {
-  echo "error: no release artifact for target ${TARGET} on channel ${CHANNEL}" >&2
+  echo "error: no release artifact for target ${TARGET} on channel tier ${CHANNEL}" >&2
   exit 1
 }
 
@@ -176,7 +176,10 @@ ARCHIVE_SHA="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["sha25
 
 echo "Resolved release:"
 echo "  repo:    ${REPO}"
-echo "  channel: ${CHANNEL}"
+echo "  channel tier: ${CHANNEL}"
+if [ "${CHANNEL}" = "stable" ]; then
+  echo "  note:    'stable' is the primary published artifact tier, not a language stability guarantee"
+fi
 echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"

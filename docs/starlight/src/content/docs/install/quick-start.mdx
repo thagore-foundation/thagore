@@ -1,6 +1,6 @@
 ---
 title: "Quick Start: Install Thagore"
-description: Install Thagore and run your first program in about 60 seconds.
+description: Install Thagore from the current release and run your first program.
 sidebar:
   order: 0
 ---
@@ -9,7 +9,7 @@ import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
 
 # Quick Start: Install Thagore
 
-Use the official `thagup-init` installer — one command installs `thagc` + `drago`. No separate LLVM installation required.
+Use the official release installer. It installs `thagc` from the current GitHub release and can optionally bootstrap `drago`.
 
 ## Step 1: Install
 
@@ -17,43 +17,38 @@ Use the official `thagup-init` installer — one command installs `thagc` + `dra
   <TabItem label="Linux (Ubuntu/Debian)">
 
 ```bash
-curl -fsSL https://thagore.org/thagup-init.sh | bash
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
 ```
-
-Installs `thagc` and `drago` to `~/.thagore/bin` (embedded runtime, no system LLVM needed).
 
   </TabItem>
   <TabItem label="Linux (generic)">
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode linux
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
 ```
 
   </TabItem>
   <TabItem label="macOS">
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --mode macos
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
 ```
 
   </TabItem>
   <TabItem label="Windows">
 
 ```powershell
-Invoke-WebRequest -Uri "https://thagore.org/thagup.ps1" -OutFile thagup.ps1
-powershell -ExecutionPolicy Bypass -File .\thagup.ps1
+irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1 | iex
 ```
 
   </TabItem>
 </Tabs>
 
-Or install a specific version:
+Or install a specific version explicitly:
 
 ```bash
-curl -fsSL https://thagore.org/thagup.sh | bash -s -- --tag v1.0.0
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh -s -- --tag v0.9.6
 ```
-
-`thagup` auto-detects OS + CPU architecture by default. Use `--mode` / `--arch` only when you need to override detection.
 
 **Verify:**
 
@@ -63,42 +58,40 @@ drago --version
 ```
 
 <Aside type="tip" title="PATH">
-`thagup` auto-adds `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin` on Windows) to user PATH.
-Open a new terminal if `thagc` is not found in the current shell.
+`thagup` adds `~/.thagore/bin` (or `%USERPROFILE%\.thagore\bin` on Windows) to user PATH. Open a new terminal if `thagc` is not found in the current shell.
 </Aside>
 
-## Step 2: First Drago Project
+## Step 2: First Program
 
-Create and run:
+Create `hello.tg`:
+
+```tg
+func main() -> i32:
+  print("hello")
+```
+
+Run it:
 
 <Tabs>
   <TabItem label="Linux/macOS">
 
 ```bash
-drago new hello
-cd hello
-drago run
+thagc run hello.tg
 ```
 
   </TabItem>
   <TabItem label="Windows">
 
 ```powershell
-drago new hello
-cd hello
-drago run
+thagc run hello.tg
 ```
 
   </TabItem>
 </Tabs>
 
-<Aside type="note" title="No system LLVM required">
-`thagc` release artifacts are self-contained for end users — no separate LLVM installation needed.
-</Aside>
-
 ## Links
 
-- Bootstrap script (Linux/macOS): `https://thagore.org/thagup-init.sh`
-- Bootstrap script (Windows PowerShell): `https://thagore.org/thagup.ps1`
-- Raw bootstrap source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh`
+- POSIX installer (release): `https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh`
+- PowerShell installer (release): `https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1`
+- Raw installer source (GitHub): `https://raw.githubusercontent.com/thagore-foundation/thagore/main/tooling/release/thagup.sh`
 - All releases: `https://github.com/thagore-foundation/thagore/releases`

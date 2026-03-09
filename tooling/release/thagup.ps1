@@ -53,7 +53,7 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Tag)) {
-  throw "Failed to resolve a release tag for channel '$Channel'."
+  throw "Failed to resolve a release tag for channel tier '$Channel'."
 }
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("thagup-" + [System.Guid]::NewGuid().ToString("N"))
@@ -75,12 +75,15 @@ try {
   } | Select-Object -First 1
 
   if (-not $artifact) {
-    throw "No release artifact for target $Target on channel $Channel."
+    throw "No release artifact for target $Target on channel tier $Channel."
   }
 
   Write-Host "Resolved release:"
   Write-Host "  repo:    $repo"
-  Write-Host "  channel: $Channel"
+  Write-Host "  channel tier: $Channel"
+  if ($Channel -eq "stable") {
+    Write-Host "  note:    'stable' is the primary published artifact tier, not a language stability guarantee"
+  }
   Write-Host "  tag:     $Tag"
   Write-Host "  target:  $Target"
   Write-Host "  prefix:  $Prefix"

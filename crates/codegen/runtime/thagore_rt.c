@@ -1,5 +1,8 @@
+#ifdef _WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -10,9 +13,93 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#include <io.h>
+#include <windows.h>
+
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+
+#define stat _stat
+#define lstat _stat
+#define mkdir(path, mode) _mkdir(path)
+#define rmdir _rmdir
+#define unlink _unlink
+#define getcwd _getcwd
+#define popen _popen
+#define pclose _pclose
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
+#endif
+
+struct dirent {
+    char d_name[MAX_PATH];
+};
+
+typedef struct {
+    HANDLE handle;
+    WIN32_FIND_DATAA data;
+    struct dirent entry;
+    int first;
+} DIR;
+
+static DIR *opendir(const char *path) {
+    if (path == NULL || path[0] == '\0') {
+        return NULL;
+    }
+
+    char pattern[MAX_PATH];
+    snprintf(pattern, sizeof(pattern), "%s\\*", path);
+
+    DIR *dir = (DIR *) malloc(sizeof(DIR));
+    if (dir == NULL) {
+        return NULL;
+    }
+
+    dir->handle = FindFirstFileA(pattern, &dir->data);
+    if (dir->handle == INVALID_HANDLE_VALUE) {
+        free(dir);
+        return NULL;
+    }
+
+    dir->first = 1;
+    return dir;
+}
+
+static struct dirent *readdir(DIR *dir) {
+    if (dir == NULL) {
+        return NULL;
+    }
+
+    WIN32_FIND_DATAA *data = &dir->data;
+    if (dir->first) {
+        dir->first = 0;
+    } else if (!FindNextFileA(dir->handle, data)) {
+        return NULL;
+    }
+
+    strncpy(dir->entry.d_name, data->cFileName, sizeof(dir->entry.d_name) - 1);
+    dir->entry.d_name[sizeof(dir->entry.d_name) - 1] = '\0';
+    return &dir->entry;
+}
+
+static int closedir(DIR *dir) {
+    if (dir == NULL) {
+        return -1;
+    }
+
+    int rc = FindClose(dir->handle) ? 0 : -1;
+    free(dir);
+    return rc;
+}
+#else
+#include <dirent.h>
 #include <unistd.h>
+#endif
 
 typedef struct {
     int64_t len;
@@ -946,16 +1033,29 @@ void thag_sleep_ms(int64_t millis) {
     if (millis <= 0) {
         return;
     }
+#ifdef _WIN32
+    Sleep((DWORD) millis);
+#else
     struct timespec req;
     req.tv_sec = millis / 1000;
     req.tv_nsec = (long) ((millis % 1000) * 1000000LL);
     nanosleep(&req, NULL);
+#endif
 }
 
 int64_t thag_now_ms(void) {
+#ifdef _WIN32
+    FILETIME ft;
+    ULARGE_INTEGER value;
+    GetSystemTimeAsFileTime(&ft);
+    value.LowPart = ft.dwLowDateTime;
+    value.HighPart = ft.dwHighDateTime;
+    return (int64_t) ((value.QuadPart - 116444736000000000ULL) / 10000ULL);
+#else
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     return (int64_t) now.tv_sec * 1000LL + (int64_t) now.tv_nsec / 1000000LL;
+#endif
 }
 
 char *thag_str_concat(const char *a, const char *b) {
@@ -1231,10 +1331,14 @@ int32_t thag_process_run(const char *cmd) {
     if (rc == -1) {
         return 1;
     }
+#ifdef _WIN32
+    return rc;
+#else
     if (WIFEXITED(rc)) {
         return WEXITSTATUS(rc);
     }
     return 1;
+#endif
 }
 
 char *thag_process_capture(const char *cmd) {
