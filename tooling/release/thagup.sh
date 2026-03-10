@@ -184,6 +184,49 @@ echo "  release track: ${CHANNEL}"
 if [ "${CHANNEL}" = "indev" ]; then
   echo "  note:    in development; do not treat this toolchain as complete or frozen"
 fi
+
+resolve_drago_json() {
+  python3 - "$MANIFEST_PATH" "${DRAGO_TAG}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+manifest_path, requested_tag = sys.argv[1:3]
+manifest = json.load(open(manifest_path, encoding="utf-8"))
+companion = manifest.get("companion", {}).get("drago") or {}
+repo = companion.get("repository", "thagore-foundation/drago")
+tag = requested_tag or companion.get("tag", "")
+source_url = companion.get("source_archive_url", "")
+
+if companion.get("tag") and tag and companion["tag"] != tag and source_url:
+    needle = f"/refs/tags/{companion['tag']}.tar.gz"
+    source_url = source_url.replace(needle, f"/refs/tags/{tag}.tar.gz")
+
+def url_exists(url: str) -> bool:
+    if not url:
+        return False
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request):
+            return True
+    except Exception:
+        return False
+
+if not url_exists(source_url):
+    with urllib.request.urlopen("https://api.github.com/repos/thagore-foundation/drago/releases/latest") as response:
+        release = json.load(response)
+    tag = release["tag_name"]
+    repo = "thagore-foundation/drago"
+    source_url = f"https://github.com/thagore-foundation/drago/archive/refs/tags/{tag}.tar.gz"
+
+print(json.dumps({
+    "repository": repo,
+    "tag": tag,
+    "source_archive_url": source_url,
+}))
+PY
+}
 echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"
@@ -249,34 +292,11 @@ print("Verify with: thagc version")
 PY
 
 if [ "$WITH_DRAGO" -eq 1 ]; then
-  DRAGO_JSON="$(python3 - "$MANIFEST_PATH" <<'PY'
-import json
-import sys
-
-manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-companion = manifest.get("companion", {}).get("drago")
-if companion:
-    print(json.dumps(companion))
-PY
-)"
+  DRAGO_JSON="$(resolve_drago_json)"
   if [ -n "$DRAGO_JSON" ]; then
     DRAGO_REPO="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["repository"])' "$DRAGO_JSON")"
-    DRAGO_RELEASE_TAG="${DRAGO_TAG:-$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$DRAGO_JSON")}"
-    DRAGO_SOURCE_URL="$(python3 - "$DRAGO_JSON" "$DRAGO_RELEASE_TAG" <<'PY'
-import json
-import sys
-
-companion = json.loads(sys.argv[1])
-tag = sys.argv[2]
-url = companion.get("source_archive_url", "")
-manifest_tag = companion.get("tag", "")
-if manifest_tag and tag and manifest_tag != tag:
-    needle = f"/refs/tags/{manifest_tag}.tar.gz"
-    if needle in url:
-        url = url.replace(needle, f"/refs/tags/{tag}.tar.gz")
-print(url)
-PY
-)"
+    DRAGO_RELEASE_TAG="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$DRAGO_JSON")"
+    DRAGO_SOURCE_URL="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["source_archive_url"])' "$DRAGO_JSON")"
     DRAGO_ARCHIVE="${TMPDIR}/drago-source.tar.gz"
     curl -fsSL "$DRAGO_SOURCE_URL" -o "$DRAGO_ARCHIVE"
     DRAGO_SOURCE_ROOT="$(python3 - "$DRAGO_ARCHIVE" "$TMPDIR" <<'PY'

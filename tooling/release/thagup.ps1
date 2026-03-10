@@ -265,6 +265,69 @@ function Install-MsvcBuildTools {
   }
 }
 
+function Resolve-DragoCompanion($ManifestCompanion, [string]$RequestedTag) {
+  $companion = $ManifestCompanion
+  if ($null -eq $companion) {
+    $release = Invoke-RestMethod "https://api.github.com/repos/thagore-foundation/drago/releases/latest"
+    return [PSCustomObject]@{
+      repository = "thagore-foundation/drago"
+      tag = [string]$release.tag_name
+      source_archive_url = "https://github.com/thagore-foundation/drago/archive/refs/tags/$($release.tag_name).tar.gz"
+    }
+  }
+
+  $effectiveTag = if ([string]::IsNullOrWhiteSpace($RequestedTag)) { [string]$companion.tag } else { $RequestedTag }
+  $sourceUrl = [string]$companion.source_archive_url
+  if ($companion.tag -and $effectiveTag -and $companion.tag -ne $effectiveTag) {
+    $needle = "/refs/tags/$($companion.tag).tar.gz"
+    $replacement = "/refs/tags/$effectiveTag.tar.gz"
+    $sourceUrl = $sourceUrl.Replace($needle, $replacement)
+  }
+
+  try {
+    Invoke-WebRequest -Uri $sourceUrl -Method Head -UseBasicParsing | Out-Null
+  } catch {
+    Log "Companion drago source $sourceUrl was unavailable. Falling back to the latest public drago release."
+    $release = Invoke-RestMethod "https://api.github.com/repos/thagore-foundation/drago/releases/latest"
+    $effectiveTag = [string]$release.tag_name
+    $sourceUrl = "https://github.com/thagore-foundation/drago/archive/refs/tags/$effectiveTag.tar.gz"
+  }
+
+  return [PSCustomObject]@{
+    repository = if ($companion.repository) { [string]$companion.repository } else { "thagore-foundation/drago" }
+    tag = $effectiveTag
+    source_archive_url = $sourceUrl
+  }
+}
+
+function Install-DragoReleaseBinary([string]$Repo, [string]$Tag, [string]$Target, [string]$DestinationPath, [string]$TempRoot) {
+  $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/tags/$Tag"
+  $assetNames = switch -Wildcard ($Target) {
+    "x86_64-pc-windows-msvc" { @("drago-$Tag-windows-x86_64.zip", "drago-$Tag-windows-amd64.zip") }
+    "aarch64-pc-windows-msvc" { @("drago-$Tag-windows-aarch64.zip", "drago-$Tag-windows-arm64.zip") }
+    default { @() }
+  }
+  $asset = $release.assets | Where-Object { $assetNames -contains $_.name } | Select-Object -First 1
+  if ($null -eq $asset) {
+    return $false
+  }
+
+  $archivePath = Join-Path $TempRoot $asset.name
+  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archivePath | Out-Null
+  $extractDir = Join-Path $TempRoot "drago-release"
+  if (Test-Path $extractDir) {
+    Remove-Item $extractDir -Recurse -Force
+  }
+  New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+  Expand-Archive -Path $archivePath -DestinationPath $extractDir -Force
+  $candidate = Get-ChildItem -Path $extractDir -Recurse -File -Filter "drago*.exe" | Select-Object -First 1
+  if ($null -eq $candidate) {
+    return $false
+  }
+  Copy-Item $candidate.FullName -Destination $DestinationPath -Force
+  return $true
+}
+
 if ([string]::IsNullOrWhiteSpace($Target)) {
   $Target = Resolve-Target -ArchOverride $Arch
 }
@@ -411,33 +474,28 @@ try {
   Write-Host "Binary path: $binPath"
   Write-Host "Verify with: thagc version"
 
-  $drago = $manifest.companion.drago
+  $drago = Resolve-DragoCompanion -ManifestCompanion $manifest.companion.drago -RequestedTag $DragoTag
   if ($drago) {
-    $effectiveDragoTag = if ($DragoTag) { $DragoTag } else { $drago.tag }
-    $sourceUrl = [string]$drago.source_archive_url
-    if ($drago.tag -and $effectiveDragoTag -and $drago.tag -ne $effectiveDragoTag) {
-      $needle = "/refs/tags/$($drago.tag).tar.gz"
-      $replacement = "/refs/tags/$effectiveDragoTag.tar.gz"
-      $sourceUrl = $sourceUrl.Replace($needle, $replacement)
-    }
-    $dragoArchive = Join-Path $tempRoot "drago-source.tar.gz"
-    Invoke-WebRequest -Uri $sourceUrl -OutFile $dragoArchive | Out-Null
-    $dragoSourceRoot = Join-Path $tempRoot "drago-src"
-    New-Item -ItemType Directory -Path $dragoSourceRoot -Force | Out-Null
-    tar -xf $dragoArchive -C $dragoSourceRoot
-    $sourceDir = Get-ChildItem $dragoSourceRoot -Directory | Select-Object -First 1
-    $thagcBin = Join-Path $Prefix "bin\thagc.exe"
+    $effectiveDragoTag = [string]$drago.tag
     $dragoBin = Join-Path $Prefix "bin\drago.exe"
-    if (-not (Test-Path $thagcBin)) {
-      throw "Installed thagc binary not found at $thagcBin."
-    }
-    & $thagcBin build (Join-Path $sourceDir.FullName "src\main.tg") -o $dragoBin
-    if ($LASTEXITCODE -ne 0) {
-      throw "Failed to bootstrap drago with the freshly installed thagc."
+    if (-not (Install-DragoReleaseBinary -Repo $drago.repository -Tag $effectiveDragoTag -Target $Target -DestinationPath $dragoBin -TempRoot $tempRoot)) {
+      $sourceUrl = [string]$drago.source_archive_url
+      $dragoArchive = Join-Path $tempRoot "drago-source.tar.gz"
+      Invoke-WebRequest -Uri $sourceUrl -OutFile $dragoArchive | Out-Null
+      $dragoSourceRoot = Join-Path $tempRoot "drago-src"
+      New-Item -ItemType Directory -Path $dragoSourceRoot -Force | Out-Null
+      tar -xf $dragoArchive -C $dragoSourceRoot
+      $sourceDir = Get-ChildItem $dragoSourceRoot -Directory | Select-Object -First 1
+      $thagcBin = Join-Path $Prefix "bin\thagc.exe"
+      if (-not (Test-Path $thagcBin)) {
+        throw "Installed thagc binary not found at $thagcBin."
+      }
+      & $thagcBin build (Join-Path $sourceDir.FullName "src\main.tg") -o $dragoBin
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to bootstrap drago with the freshly installed thagc."
+      }
     }
     Write-Host "Installed drago from $($drago.repository)@$effectiveDragoTag"
-  } else {
-    Log "Release manifest did not publish drago companion metadata."
   }
 } finally {
   if (Test-Path $tempRoot) {
