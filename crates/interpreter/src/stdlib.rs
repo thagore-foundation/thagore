@@ -405,6 +405,9 @@ fn builtin_replace(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
     let text = expect_string(&args[0], "replace")?;
     let old = expect_string(&args[1], "replace")?;
     let new = expect_string(&args[2], "replace")?;
+    if old.is_empty() {
+        return Ok(Value::Str(text));
+    }
     Ok(Value::Str(text.replace(&old, &new)))
 }
 
@@ -488,7 +491,7 @@ fn builtin_char_at(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
     let text = expect_string(&args[0], "char_at")?;
     let index = expect_i32(&args[1], "char_at")?;
     if index < 0 {
-        return Err(RuntimeError::message("char_at index must be non-negative"));
+        return Ok(Value::Str(String::new()));
     }
     Ok(Value::Str(
         text.chars()
@@ -502,6 +505,13 @@ fn builtin_split(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Run
     expect_arity(&args, 2, "split")?;
     let text = expect_string(&args[0], "split")?;
     let sep = expect_string(&args[1], "split")?;
+    if sep.is_empty() {
+        return Ok(Value::Vec(
+            text.chars()
+                .map(|part| Value::Str(part.to_string()))
+                .collect(),
+        ));
+    }
     Ok(Value::Vec(
         text.split(&sep)
             .map(|part| Value::Str(part.to_string()))
@@ -905,5 +915,61 @@ mod tests {
         .expect_err("join should reject non-string elements");
 
         assert!(matches!(error, RuntimeError::Message(message) if message.contains("join expected vec[str]")));
+    }
+
+    #[test]
+    fn replace_empty_old_value_matches_runtime_surface() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("replace").expect("replace handler");
+
+        let result = handler(
+            &mut interpreter,
+            vec![
+                Value::Str(String::from("abc")),
+                Value::Str(String::new()),
+                Value::Str(String::from("x")),
+            ],
+        )
+        .expect("replace result");
+
+        assert_eq!(result, Value::Str(String::from("abc")));
+    }
+
+    #[test]
+    fn split_empty_separator_avoids_boundary_empty_strings() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("split").expect("split handler");
+
+        let result = handler(
+            &mut interpreter,
+            vec![Value::Str(String::from("abc")), Value::Str(String::new())],
+        )
+        .expect("split result");
+
+        assert_eq!(
+            result,
+            Value::Vec(vec![
+                Value::Str(String::from("a")),
+                Value::Str(String::from("b")),
+                Value::Str(String::from("c")),
+            ])
+        );
+    }
+
+    #[test]
+    fn char_at_negative_index_returns_empty_string() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("char_at").expect("char_at handler");
+
+        let result = handler(
+            &mut interpreter,
+            vec![Value::Str(String::from("abc")), Value::I32(-1)],
+        )
+        .expect("char_at result");
+
+        assert_eq!(result, Value::Str(String::new()));
     }
 }

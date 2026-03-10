@@ -585,7 +585,7 @@ fn build_and_run_std_string_runtime_helpers() {
     let binary = dir.path().join("string_runtime");
     fs::write(
         &source,
-        "import std.string as string\n\nfunc main() -> i32:\n  println(string.from_int(string.len(\"hé\")))\n  println(string.pad_left(\"é\", 4, \" \"))\n  println(string.strip(\"--hello__\", \"-_\"))\n  println(string.from_bool(string.to_bool(\"true\")))\n  return 0\n",
+        "import std.string as string\n\nfunc main() -> i32:\n  println(string.from_int(string.len(\"hé\")))\n  println(string.pad_left(\"é\", 4, \" \"))\n  println(string.strip(\"--hello__\", \"-_\"))\n  println(string.from_bool(string.to_bool(\"true\")))\n  println(string.replace(\"abc\", \"\", \"x\"))\n  println(string.char_at(\"abc\", -1))\n  return 0\n",
     )
     .expect("write source");
 
@@ -609,7 +609,7 @@ fn build_and_run_std_string_runtime_helpers() {
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
-        "3\n  é\nhello\ntrue\n"
+        "3\n  é\nhello\ntrue\nabc\n\n"
     );
 }
 
