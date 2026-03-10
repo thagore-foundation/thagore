@@ -17,8 +17,8 @@ import std.io as io
 
 | Name | Signature | Description |
 | --- | --- | --- |
-| `print` | `func print(value: str)` | write to stdout without newline |
-| `println` | `func println(value: str)` | write to stdout with newline |
+| `print` | `func print(value)` | write `str`, `bool`, `i32`, `i64`, or `f64` to stdout without newline |
+| `println` | `func println(value)` | write `str`, `bool`, `i32`, `i64`, or `f64` to stdout with newline |
 | `flush` | `func flush()` | flush stdout |
 | `read_line` | `func read_line() -> str` | read one line without trailing newline |
 | `read_int` | `func read_int() -> i32` | read one `i32` token |
@@ -28,10 +28,8 @@ import std.io as io
 | `read_all` | `func read_all() -> str` | read the remaining stdin stream |
 | `read_ints` | `func read_ints(count: i32) -> Array[i32]` | read `count` integers |
 | `read_i64s` | `func read_i64s(count: i32) -> Array[i64]` | read `count` 64-bit integers |
-| `eprint` | `func eprint(value: str)` | write to stderr without newline |
-| `eprintln` | `func eprintln(value: str)` | write to stderr with newline |
-
-For direct primitive output without importing `std.io`, prefer the built-in `print` / `println` functions.
+| `eprint` | `func eprint(value)` | write `str`, `bool`, `i32`, `i64`, or `f64` to stderr without newline |
+| `eprintln` | `func eprintln(value)` | write `str`, `bool`, `i32`, `i64`, or `f64` to stderr with newline |
 
 ## Examples
 
@@ -40,6 +38,7 @@ import std.io as io
 
 func main():
   io.print("hello")
+  io.println(42)
   io.flush()
 ```
 
@@ -54,7 +53,6 @@ func main():
 
 ```thagore
 import std.io as io
-import std.string as string
 
 func sum_items(items: Array[i32]) -> i32:
   let total: i32 = 0
@@ -64,5 +62,5 @@ func sum_items(items: Array[i32]) -> i32:
 
 func main():
   let items = io.read_ints(3)
-  io.println(string.from_int(sum_items(items)))
+  io.println(sum_items(items))
 ```

@@ -34,7 +34,11 @@ impl RunWorkspace {
             .and_then(|stem| stem.to_str())
             .filter(|stem| !stem.is_empty())
             .unwrap_or("thagore-run");
-        self.path().join(stem)
+        let mut binary = self.path().join(stem);
+        if cfg!(windows) {
+            binary.set_extension("exe");
+        }
+        binary
     }
 }
 
@@ -68,10 +72,8 @@ mod tests {
         let workspace = RunWorkspace::new().expect("workspace");
         let binary = workspace.binary_path(Path::new("examples/hello.tg"));
 
-        assert_eq!(
-            binary.file_name().and_then(|name| name.to_str()),
-            Some("hello")
-        );
+        let expected = if cfg!(windows) { "hello.exe" } else { "hello" };
+        assert_eq!(binary.file_name().and_then(|name| name.to_str()), Some(expected));
         assert!(fs::metadata(workspace.path()).is_ok());
     }
 }

@@ -217,10 +217,8 @@ fn expect_i32(value: &Value, name: &str) -> Result<i32, RuntimeError> {
 fn expect_f64(value: &Value, name: &str) -> Result<f64, RuntimeError> {
     match value {
         Value::F64(number) => Ok(*number),
-        Value::I32(number) => Ok(f64::from(*number)),
-        Value::I64(number) => Ok(*number as f64),
         other => Err(RuntimeError::message(format!(
-            "{name} expected f64-compatible numeric value, found {}",
+            "{name} expected f64, found {}",
             other.type_name()
         ))),
     }
@@ -339,7 +337,7 @@ fn builtin_to_f64(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Ru
 fn builtin_to_bool(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "to_bool")?;
     let text = expect_string(&args[0], "to_bool")?;
-    Ok(Value::Bool(matches!(text.trim(), "true" | "1" | "yes")))
+    Ok(Value::Bool(matches!(text.trim(), "true" | "1")))
 }
 
 fn builtin_len(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -785,5 +783,23 @@ mod tests {
         println_handler(&mut interpreter, vec![Value::I32(7)]).expect("println result");
         println_handler(&mut interpreter, vec![Value::Bool(true)]).expect("println result");
         assert_eq!(interpreter.stdout(), "7\ntrue\n");
+    }
+
+    #[test]
+    fn to_bool_matches_runtime_surface() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("to_bool").expect("to_bool handler");
+
+        let true_value = handler(&mut interpreter, vec![Value::Str(String::from("true"))])
+            .expect("to_bool true");
+        let one_value =
+            handler(&mut interpreter, vec![Value::Str(String::from("1"))]).expect("to_bool one");
+        let yes_value =
+            handler(&mut interpreter, vec![Value::Str(String::from("yes"))]).expect("to_bool yes");
+
+        assert_eq!(true_value, Value::Bool(true));
+        assert_eq!(one_value, Value::Bool(true));
+        assert_eq!(yes_value, Value::Bool(false));
     }
 }

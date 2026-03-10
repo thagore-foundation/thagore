@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use bumpalo::Bump;
 use tempfile::NamedTempFile;
-use thagore_ast::visitor::{walk_decl, Visitor};
+use thagore_ast::visitor::{Visitor, walk_decl};
 use thagore_ast::{
     AssignExpr, BinaryExpr, Block, BreakStmt, CallExpr, ConstDecl, Constraint, ContinueStmt, Decl,
     Expr, ExprStmt, ExternDecl, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl,
@@ -17,8 +17,8 @@ use thagore_ast::{
     ReturnStmt, Span, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, WhileStmt,
 };
 use thagore_codegen::{
-    link_binary, Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts,
-    OutputConfig, TargetMachineConfig,
+    Codegen, CodegenOptions, DebugOptions, OptimizationLevel, OutputArtifacts, OutputConfig,
+    TargetMachineConfig, link_binary,
 };
 use thagore_ir::{IrLowerer, LoweringError};
 use thagore_lexer::Lexer;
@@ -1266,6 +1266,13 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
         }
     }
 
+    fn builtin_io_symbol(&mut self, field: InternedStr) -> Option<InternedStr> {
+        match self.text_of(field) {
+            "print" | "println" | "eprint" | "eprintln" | "flush" => Some(field),
+            _ => None,
+        }
+    }
+
     fn rewrite_func_decl(&mut self, decl: &FuncDecl<'ast>) -> FuncDecl<'ast> {
         self.push_scope();
         let params = decl
@@ -1626,7 +1633,15 @@ impl<'a, 'src, 'tok, 'ast> ModuleRewriter<'a, 'src, 'tok, 'ast> {
             Expr::FieldAccess(node) => {
                 if let Expr::Ident(base) = node.object {
                     if !self.is_local(base.name) {
-                        if let Some(namespace) = self.import_namespaces.get(&base.name) {
+                        if let Some(symbol) = self.builtin_io_symbol(node.field) {
+                            Expr::Ident(IdentExpr {
+                                id: self.new_node_id(),
+                                span: node.span,
+                                name: symbol,
+                            })
+                        } else if let Some(namespace) =
+                            self.import_namespaces.get(&base.name).cloned()
+                        {
                             let symbol = intern_owned_cached(
                                 self.parser,
                                 self.intern_cache,

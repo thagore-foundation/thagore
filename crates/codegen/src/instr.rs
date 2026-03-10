@@ -8,13 +8,6 @@ use thagore_typeck::TypeKind;
 use crate::context::{CodegenContext, FunctionContext};
 use crate::error::CodegenError;
 
-const PRINT_RUNTIME_NAMES: &[&str] = &[
-    "thagore_print",
-    "thagore_println",
-    "thagore_eprint",
-    "thagore_eprintln",
-];
-
 /// Emits a single IR instruction into the current LLVM block.
 pub fn emit_instr<'ctx>(
     context: &mut CodegenContext<'ctx>,
@@ -337,8 +330,8 @@ fn emit_call<'ctx>(
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
     let runtime_name = context.symbol_name(name);
-    if PRINT_RUNTIME_NAMES.contains(&runtime_name.as_str()) {
-        emit_print_call(context, function, value, target, &runtime_name, args)?;
+    if let Some(print_runtime) = print_runtime_name(&runtime_name) {
+        emit_print_call(context, function, value, print_runtime, args)?;
         return Ok(());
     }
 
@@ -366,10 +359,22 @@ fn emit_print_call<'ctx>(
     context: &mut CodegenContext<'ctx>,
     function: &mut FunctionContext<'ctx>,
     value: Value,
-    default_target: inkwell::values::FunctionValue<'ctx>,
     runtime_name: &str,
     args: &[Value],
 ) -> Result<(), CodegenError> {
+    let default_target = runtime_print_variant(
+        context,
+        runtime_name,
+        "",
+        context.llvm.void_type().fn_type(
+            &[context
+                .llvm
+                .i8_type()
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()],
+            false,
+        ),
+    );
     let Some(arg_id) = args.first().copied() else {
         let call = context
             .builder
@@ -479,11 +484,25 @@ fn runtime_print_variant<'ctx>(
     suffix: &str,
     function_type: inkwell::types::FunctionType<'ctx>,
 ) -> inkwell::values::FunctionValue<'ctx> {
-    let name = format!("{runtime_name}_{suffix}");
+    let name = if suffix.is_empty() {
+        runtime_name.to_string()
+    } else {
+        format!("{runtime_name}_{suffix}")
+    };
     context
         .module
         .get_function(&name)
         .unwrap_or_else(|| context.module.add_function(&name, function_type, None))
+}
+
+fn print_runtime_name(name: &str) -> Option<&'static str> {
+    match name {
+        "thagore_print" | "print" | "std__io__print" => Some("thagore_print"),
+        "thagore_println" | "println" | "std__io__println" => Some("thagore_println"),
+        "thagore_eprint" | "eprint" | "std__io__eprint" => Some("thagore_eprint"),
+        "thagore_eprintln" | "eprintln" | "std__io__eprintln" => Some("thagore_eprintln"),
+        _ => None,
+    }
 }
 
 fn emit_get_field<'ctx>(

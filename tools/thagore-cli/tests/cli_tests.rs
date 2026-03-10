@@ -654,7 +654,7 @@ fn build_and_run_std_io_module() {
     let binary = dir.path().join("io_stdlib");
     fs::write(
         &source,
-        "import std.io as io\n\nfunc main() -> i32:\n  io.println(\"stdio ok\")\n  io.flush()\n  return 0\n",
+        "import std.io as io\n\nfunc main() -> i32:\n  io.println(42)\n  io.println(true)\n  io.flush()\n  return 0\n",
     )
     .expect("write source");
 
@@ -674,8 +674,38 @@ fn build_and_run_std_io_module() {
         String::from_utf8_lossy(&build.stderr)
     );
 
-    let status = Command::new(&binary).status().expect("run built binary");
-    assert_eq!(status.code(), Some(0));
+    let output = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        "42\ntrue\n"
+    );
+}
+
+#[test]
+fn run_std_io_module_uses_windows_safe_temp_binary_path() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    fs::write(
+        &source,
+        "import std.io as io\nimport std.string as string\n\nfunc fib_iter(n: i32) -> i32:\n  if (n <= 1):\n    return n\n  let index: i32 = 2\n  let prev2: i32 = 0\n  let prev1: i32 = 1\n  while (index <= n):\n    let next: i32 = prev1 + prev2\n    prev2 = prev1\n    prev1 = next\n    index = index + 1\n  return prev1\n\nfunc main() -> i32:\n  io.println(string.from_int(fib_iter(10)))\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["run", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc run");
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        "55\n"
+    );
 }
 
 #[test]

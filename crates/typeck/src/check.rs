@@ -666,10 +666,9 @@ impl TypeChecker {
     }
 
     fn is_print_builtin_name(&self, name: thagore_ast::InternedStr) -> bool {
-        matches!(
-            self.symbol_name(name),
-            Some("print" | "println" | "eprint" | "eprintln")
-        )
+        self.symbol_name(name)
+            .and_then(print_builtin_surface_name)
+            .is_some()
     }
 
     fn is_printable_type(&mut self, ty: TypeId) -> bool {
@@ -681,7 +680,7 @@ impl TypeChecker {
             || self.types.is_infer(resolved)
     }
 
-    fn visit_print_builtin_call(&mut self, ident: &IdentExpr, expr: &CallExpr<'_>) {
+    fn visit_print_builtin_call(&mut self, expr: &CallExpr<'_>) {
         let callee = self.check_expr(expr.callee);
         if expr.args.len() != 1 {
             self.errors.push(TypeError::ArgumentCountMismatch {
@@ -689,7 +688,6 @@ impl TypeChecker {
                 found: expr.args.len(),
                 span: expr.span,
             });
-            self.table.insert(ident.id, callee);
             self.table.insert(expr.id, self.types.unknown());
             return;
         }
@@ -702,12 +700,11 @@ impl TypeChecker {
                 found,
                 span: expr.args[0].span(),
             });
-            self.table.insert(ident.id, callee);
             self.table.insert(expr.id, self.types.unknown());
             return;
         }
 
-        self.table.insert(ident.id, callee);
+        let _ = callee;
         self.table.insert(expr.id, self.types.unit());
     }
 
@@ -932,6 +929,16 @@ impl TypeChecker {
         if let Some(method_key) = method_key {
             self.method_types.insert(method_key, final_signature);
         }
+    }
+}
+
+fn print_builtin_surface_name(name: &str) -> Option<&'static str> {
+    match name {
+        "print" | "std__io__print" => Some("print"),
+        "println" | "std__io__println" => Some("println"),
+        "eprint" | "std__io__eprint" => Some("eprint"),
+        "eprintln" | "std__io__eprintln" => Some("eprintln"),
+        _ => None,
     }
 }
 
@@ -1241,11 +1248,20 @@ impl<'ast> Visitor<'ast> for TypeChecker {
                 }
                 return;
             }
+        }
 
-            if self.is_print_builtin_name(ident.name) {
-                self.visit_print_builtin_call(ident, expr);
-                return;
-            }
+        let is_print_call = match expr.callee {
+            Expr::Ident(ident) => self.is_print_builtin_name(ident.name),
+            Expr::FieldAccess(field) => self
+                .symbol_name(field.field)
+                .and_then(print_builtin_surface_name)
+                .is_some(),
+            _ => false,
+        };
+
+        if is_print_call {
+            self.visit_print_builtin_call(expr);
+            return;
         }
 
         let callee = self.check_expr(expr.callee);
