@@ -527,10 +527,27 @@ static char *thag_capture_command(const char *cmd) {
     return buffer;
 }
 
+static thag_str_array_handle *THAG_CMDLINE_CACHE = NULL;
+
 static thag_str_array_handle *thag_read_cmdline(void) {
+    if (THAG_CMDLINE_CACHE != NULL) {
+        return THAG_CMDLINE_CACHE;
+    }
+
     thag_str_array_handle *args = thag_new_string_array();
+#ifdef _WIN32
+    extern int __argc;
+    extern char **__argv;
+
+    for (int i = 0; i < __argc; ++i) {
+        thag_string_array_push_owned(args, thag_strdup_cstr(__argv[i]));
+    }
+    THAG_CMDLINE_CACHE = args;
+    return args;
+#else
     FILE *file = fopen("/proc/self/cmdline", "rb");
     if (file == NULL) {
+        THAG_CMDLINE_CACHE = args;
         return args;
     }
 
@@ -567,7 +584,9 @@ static thag_str_array_handle *thag_read_cmdline(void) {
         thag_string_array_push_owned(args, thag_strdup_len(buffer + start, len - start));
     }
     free(buffer);
+    THAG_CMDLINE_CACHE = args;
     return args;
+#endif
 }
 
 void thag_rt_print(const char *value) {
