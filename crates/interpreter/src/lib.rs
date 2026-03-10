@@ -168,10 +168,36 @@ impl<'ast> Interpreter<'ast> {
         Ok(())
     }
 
+    pub(crate) fn write_stdout_value(
+        &mut self,
+        value: &Value,
+        trailing_newline: bool,
+    ) -> Result<(), RuntimeError> {
+        let mut rendered = String::new();
+        value.render_into(&mut rendered);
+        if trailing_newline {
+            rendered.push('\n');
+        }
+        self.write_stdout(&rendered)
+    }
+
     pub(crate) fn write_stderr(&mut self, text: &str) -> Result<(), RuntimeError> {
         self.check_output_growth(text.len())?;
         self.stderr.push_str(text);
         Ok(())
+    }
+
+    pub(crate) fn write_stderr_value(
+        &mut self,
+        value: &Value,
+        trailing_newline: bool,
+    ) -> Result<(), RuntimeError> {
+        let mut rendered = String::new();
+        value.render_into(&mut rendered);
+        if trailing_newline {
+            rendered.push('\n');
+        }
+        self.write_stderr(&rendered)
     }
 
     fn check_output_growth(&self, additional: usize) -> Result<(), RuntimeError> {

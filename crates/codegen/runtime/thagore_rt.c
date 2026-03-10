@@ -578,6 +578,22 @@ void thagore_print(const char *value) {
     thag_rt_print(value);
 }
 
+void thagore_print_i64(int64_t value) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%lld", (long long) value);
+    thag_rt_print(buffer);
+}
+
+void thagore_print_f64(double value) {
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.15g", value);
+    thag_rt_print(buffer);
+}
+
+void thagore_print_bool(bool value) {
+    thag_rt_print(value ? "true" : "false");
+}
+
 void thag_rt_println(const char *value) {
     fputs(value == NULL ? "" : value, stdout);
     fputc('\n', stdout);
@@ -585,6 +601,22 @@ void thag_rt_println(const char *value) {
 
 void thagore_println(const char *value) {
     thag_rt_println(value);
+}
+
+void thagore_println_i64(int64_t value) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%lld", (long long) value);
+    thag_rt_println(buffer);
+}
+
+void thagore_println_f64(double value) {
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.15g", value);
+    thag_rt_println(buffer);
+}
+
+void thagore_println_bool(bool value) {
+    thag_rt_println(value ? "true" : "false");
 }
 
 void thag_rt_flush(void) {
@@ -603,6 +635,22 @@ void thagore_eprint(const char *value) {
     thag_rt_eprint(value);
 }
 
+void thagore_eprint_i64(int64_t value) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%lld", (long long) value);
+    thag_rt_eprint(buffer);
+}
+
+void thagore_eprint_f64(double value) {
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.15g", value);
+    thag_rt_eprint(buffer);
+}
+
+void thagore_eprint_bool(bool value) {
+    thag_rt_eprint(value ? "true" : "false");
+}
+
 void thag_rt_eprintln(const char *value) {
     fputs(value == NULL ? "" : value, stderr);
     fputc('\n', stderr);
@@ -610,6 +658,22 @@ void thag_rt_eprintln(const char *value) {
 
 void thagore_eprintln(const char *value) {
     thag_rt_eprintln(value);
+}
+
+void thagore_eprintln_i64(int64_t value) {
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%lld", (long long) value);
+    thag_rt_eprintln(buffer);
+}
+
+void thagore_eprintln_f64(double value) {
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%.15g", value);
+    thag_rt_eprintln(buffer);
+}
+
+void thagore_eprintln_bool(bool value) {
+    thag_rt_eprintln(value ? "true" : "false");
 }
 
 char *thag_rt_read_line(void) {

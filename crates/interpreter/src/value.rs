@@ -63,37 +63,66 @@ impl Value {
     /// Returns the value rendered using Thagore-facing text conventions.
     #[must_use]
     pub fn render(&self) -> String {
+        let mut rendered = String::new();
+        self.render_into(&mut rendered);
+        rendered
+    }
+
+    /// Appends the rendered representation to an existing string buffer.
+    pub fn render_into(&self, output: &mut String) {
         match self {
-            Self::I32(value) => value.to_string(),
-            Self::I64(value) => value.to_string(),
+            Self::I32(value) => output.push_str(&value.to_string()),
+            Self::I64(value) => output.push_str(&value.to_string()),
             Self::F64(value) => {
                 let text = value.to_string();
                 if text.contains('.') {
-                    text
+                    output.push_str(&text);
                 } else {
-                    format!("{text}.0")
+                    output.push_str(&text);
+                    output.push_str(".0");
                 }
             }
-            Self::Bool(value) => value.to_string(),
-            Self::Str(value) => value.clone(),
-            Self::Void => String::new(),
+            Self::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
+            Self::Str(value) => output.push_str(value),
+            Self::Void => {}
             Self::Vec(values) => {
-                let parts = values.iter().map(Self::render).collect::<Vec<_>>().join(", ");
-                format!("[{parts}]")
+                output.push('[');
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        output.push_str(", ");
+                    }
+                    value.render_into(output);
+                }
+                output.push(']');
             }
             Self::Struct { name, fields } => {
-                let mut parts = fields
-                    .iter()
-                    .map(|(field, value)| format!("{field}: {}", value.render()))
-                    .collect::<Vec<_>>();
-                parts.sort();
-                format!("{name} {{ {} }}", parts.join(", "))
+                output.push_str(name);
+                output.push_str(" { ");
+                let mut entries = fields.iter().collect::<Vec<_>>();
+                entries.sort_by(|left, right| left.0.cmp(right.0));
+                for (index, (field, value)) in entries.into_iter().enumerate() {
+                    if index > 0 {
+                        output.push_str(", ");
+                    }
+                    output.push_str(field);
+                    output.push_str(": ");
+                    value.render_into(output);
+                }
+                output.push_str(" }");
             }
-            Self::Return(value) => value.render(),
-            Self::Break => String::from("<break>"),
-            Self::Continue => String::from("<continue>"),
-            Self::Module(name) => format!("<module {name}>"),
-            Self::Callable(name) => format!("<callable {name}>"),
+            Self::Return(value) => value.render_into(output),
+            Self::Break => output.push_str("<break>"),
+            Self::Continue => output.push_str("<continue>"),
+            Self::Module(name) => {
+                output.push_str("<module ");
+                output.push_str(name);
+                output.push('>');
+            }
+            Self::Callable(name) => {
+                output.push_str("<callable ");
+                output.push_str(name);
+                output.push('>');
+            }
         }
     }
 

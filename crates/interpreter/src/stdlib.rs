@@ -84,20 +84,61 @@ impl StdlibRegistry {
         registry.register("read_ints", builtin_read_ints);
         registry.register("read_i64s", builtin_read_i64s);
 
-        registry.register_module("math", &[
-            "abs", "min", "max", "clamp", "pow", "sqrt", "floor", "ceil", "round", "log",
-            "log2", "log10", "gcd", "lcm", "is_even", "is_odd",
-        ]);
-        registry.register_module("string", &[
-            "len", "concat", "split", "trim", "contains", "starts_with", "ends_with", "find",
-            "replace", "to_upper", "to_lower", "pad_left", "pad_right", "repeat", "reverse",
-            "strip", "char_at", "to_int", "to_f64", "to_bool", "from_int", "from_f64",
-            "from_bool", "is_empty", "join",
-        ]);
-        registry.register_module("io", &[
-            "print", "println", "eprint", "eprintln", "flush", "read_line", "read_int",
-            "read_i64", "read_f64", "read_word", "read_all", "read_ints", "read_i64s",
-        ]);
+        registry.register_module(
+            "math",
+            &[
+                "abs", "min", "max", "clamp", "pow", "sqrt", "floor", "ceil", "round", "log",
+                "log2", "log10", "gcd", "lcm", "is_even", "is_odd",
+            ],
+        );
+        registry.register_module(
+            "string",
+            &[
+                "len",
+                "concat",
+                "split",
+                "trim",
+                "contains",
+                "starts_with",
+                "ends_with",
+                "find",
+                "replace",
+                "to_upper",
+                "to_lower",
+                "pad_left",
+                "pad_right",
+                "repeat",
+                "reverse",
+                "strip",
+                "char_at",
+                "to_int",
+                "to_f64",
+                "to_bool",
+                "from_int",
+                "from_f64",
+                "from_bool",
+                "is_empty",
+                "join",
+            ],
+        );
+        registry.register_module(
+            "io",
+            &[
+                "print",
+                "println",
+                "eprint",
+                "eprintln",
+                "flush",
+                "read_line",
+                "read_int",
+                "read_i64",
+                "read_f64",
+                "read_word",
+                "read_all",
+                "read_ints",
+                "read_i64s",
+            ],
+        );
 
         registry
     }
@@ -173,17 +214,6 @@ fn expect_i32(value: &Value, name: &str) -> Result<i32, RuntimeError> {
     }
 }
 
-fn expect_i64(value: &Value, name: &str) -> Result<i64, RuntimeError> {
-    match value {
-        Value::I64(number) => Ok(*number),
-        Value::I32(number) => Ok(i64::from(*number)),
-        other => Err(RuntimeError::message(format!(
-            "{name} expected i64, found {}",
-            other.type_name()
-        ))),
-    }
-}
-
 fn expect_f64(value: &Value, name: &str) -> Result<f64, RuntimeError> {
     match value {
         Value::F64(number) => Ok(*number),
@@ -196,7 +226,11 @@ fn expect_f64(value: &Value, name: &str) -> Result<f64, RuntimeError> {
     }
 }
 
-fn expect_numeric_pair(left: &Value, right: &Value, name: &str) -> Result<(Value, Value), RuntimeError> {
+fn expect_numeric_pair(
+    left: &Value,
+    right: &Value,
+    name: &str,
+) -> Result<(Value, Value), RuntimeError> {
     match (left, right) {
         (Value::I32(_), Value::I32(_))
         | (Value::I64(_), Value::I64(_))
@@ -210,27 +244,39 @@ fn expect_numeric_pair(left: &Value, right: &Value, name: &str) -> Result<(Value
     }
 }
 
-fn builtin_print(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_print(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "print")?;
-    interpreter.write_stdout(&args[0].render())?;
+    interpreter.write_stdout_value(&args[0], false)?;
     Ok(Value::Void)
 }
 
-fn builtin_println(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_println(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "println")?;
-    interpreter.write_stdout(&format!("{}\n", args[0].render()))?;
+    interpreter.write_stdout_value(&args[0], true)?;
     Ok(Value::Void)
 }
 
-fn builtin_eprint(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_eprint(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "eprint")?;
-    interpreter.write_stderr(&args[0].render())?;
+    interpreter.write_stderr_value(&args[0], false)?;
     Ok(Value::Void)
 }
 
-fn builtin_eprintln(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_eprintln(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "eprintln")?;
-    interpreter.write_stderr(&format!("{}\n", args[0].render()))?;
+    interpreter.write_stderr_value(&args[0], true)?;
     Ok(Value::Void)
 }
 
@@ -241,7 +287,17 @@ fn builtin_flush(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Run
 
 fn builtin_from_int(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "from_int")?;
-    Ok(Value::Str(expect_i64(&args[0], "from_int")?.to_string()))
+    let rendered = match args[0] {
+        Value::I32(value) => value.to_string(),
+        Value::I64(value) => value.to_string(),
+        ref other => {
+            return Err(RuntimeError::message(format!(
+                "from_int expected i32 or i64, found {}",
+                other.type_name()
+            )))
+        }
+    };
+    Ok(Value::Str(rendered))
 }
 
 fn builtin_from_f64(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -300,12 +356,18 @@ fn builtin_len(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Runti
 
 fn builtin_concat(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "concat")?;
-    Ok(Value::Str(format!("{}{}", args[0].render(), args[1].render())))
+    Ok(Value::Str(format!(
+        "{}{}",
+        args[0].render(),
+        args[1].render()
+    )))
 }
 
 fn builtin_trim(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "trim")?;
-    Ok(Value::Str(expect_string(&args[0], "trim")?.trim().to_string()))
+    Ok(Value::Str(
+        expect_string(&args[0], "trim")?.trim().to_string(),
+    ))
 }
 
 fn builtin_contains(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -318,7 +380,8 @@ fn builtin_contains(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, 
 fn builtin_starts_with(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "starts_with")?;
     Ok(Value::Bool(
-        expect_string(&args[0], "starts_with")?.starts_with(&expect_string(&args[1], "starts_with")?),
+        expect_string(&args[0], "starts_with")?
+            .starts_with(&expect_string(&args[1], "starts_with")?),
     ))
 }
 
@@ -348,36 +411,54 @@ fn builtin_replace(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
 
 fn builtin_to_upper(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "to_upper")?;
-    Ok(Value::Str(expect_string(&args[0], "to_upper")?.to_uppercase()))
+    Ok(Value::Str(
+        expect_string(&args[0], "to_upper")?.to_uppercase(),
+    ))
 }
 
 fn builtin_to_lower(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "to_lower")?;
-    Ok(Value::Str(expect_string(&args[0], "to_lower")?.to_lowercase()))
+    Ok(Value::Str(
+        expect_string(&args[0], "to_lower")?.to_lowercase(),
+    ))
 }
 
 fn builtin_pad_left(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 3, "pad_left")?;
     let text = expect_string(&args[0], "pad_left")?;
     let width = expect_i32(&args[1], "pad_left")?.max(0) as usize;
-    let ch = expect_string(&args[2], "pad_left")?.chars().next().unwrap_or(' ');
+    let ch = expect_string(&args[2], "pad_left")?
+        .chars()
+        .next()
+        .unwrap_or(' ');
     if text.chars().count() >= width {
         return Ok(Value::Str(text));
     }
     let padding = width - text.chars().count();
-    Ok(Value::Str(format!("{}{}", ch.to_string().repeat(padding), text)))
+    Ok(Value::Str(format!(
+        "{}{}",
+        ch.to_string().repeat(padding),
+        text
+    )))
 }
 
 fn builtin_pad_right(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 3, "pad_right")?;
     let text = expect_string(&args[0], "pad_right")?;
     let width = expect_i32(&args[1], "pad_right")?.max(0) as usize;
-    let ch = expect_string(&args[2], "pad_right")?.chars().next().unwrap_or(' ');
+    let ch = expect_string(&args[2], "pad_right")?
+        .chars()
+        .next()
+        .unwrap_or(' ');
     if text.chars().count() >= width {
         return Ok(Value::Str(text));
     }
     let padding = width - text.chars().count();
-    Ok(Value::Str(format!("{}{}", text, ch.to_string().repeat(padding))))
+    Ok(Value::Str(format!(
+        "{}{}",
+        text,
+        ch.to_string().repeat(padding)
+    )))
 }
 
 fn builtin_repeat(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -389,13 +470,18 @@ fn builtin_repeat(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Ru
 
 fn builtin_reverse(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "reverse")?;
-    Ok(Value::Str(expect_string(&args[0], "reverse")?.chars().rev().collect()))
+    Ok(Value::Str(
+        expect_string(&args[0], "reverse")?.chars().rev().collect(),
+    ))
 }
 
 fn builtin_strip(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "strip")?;
     let text = expect_string(&args[0], "strip")?;
-    let ch = expect_string(&args[1], "strip")?.chars().next().unwrap_or(' ');
+    let ch = expect_string(&args[1], "strip")?
+        .chars()
+        .next()
+        .unwrap_or(' ');
     Ok(Value::Str(text.trim_matches(ch).to_string()))
 }
 
@@ -407,7 +493,10 @@ fn builtin_char_at(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
         return Err(RuntimeError::message("char_at index must be non-negative"));
     }
     Ok(Value::Str(
-        text.chars().nth(index as usize).map(|ch| ch.to_string()).unwrap_or_default(),
+        text.chars()
+            .nth(index as usize)
+            .map(|ch| ch.to_string())
+            .unwrap_or_default(),
     ))
 }
 
@@ -416,7 +505,9 @@ fn builtin_split(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Run
     let text = expect_string(&args[0], "split")?;
     let sep = expect_string(&args[1], "split")?;
     Ok(Value::Vec(
-        text.split(&sep).map(|part| Value::Str(part.to_string())).collect(),
+        text.split(&sep)
+            .map(|part| Value::Str(part.to_string()))
+            .collect(),
     ))
 }
 
@@ -512,7 +603,9 @@ fn builtin_clamp(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Run
 
 fn builtin_pow(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "pow")?;
-    Ok(Value::F64(expect_f64(&args[0], "pow")?.powf(expect_f64(&args[1], "pow")?)))
+    Ok(Value::F64(
+        expect_f64(&args[0], "pow")?.powf(expect_f64(&args[1], "pow")?),
+    ))
 }
 
 fn builtin_sqrt(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -584,12 +677,18 @@ fn builtin_is_odd(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Ru
     Ok(Value::Bool(expect_i32(&args[0], "is_odd")? % 2 != 0))
 }
 
-fn builtin_read_line(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_line(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_line")?;
     Ok(Value::Str(interpreter.read_line()))
 }
 
-fn builtin_read_int(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_int(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_int")?;
     let word = interpreter.read_word()?;
     let parsed = word
@@ -598,7 +697,10 @@ fn builtin_read_int(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Resu
     Ok(Value::I32(parsed))
 }
 
-fn builtin_read_i64(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_i64(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_i64")?;
     let word = interpreter.read_word()?;
     let parsed = word
@@ -607,7 +709,10 @@ fn builtin_read_i64(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Resu
     Ok(Value::I64(parsed))
 }
 
-fn builtin_read_f64(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_f64(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_f64")?;
     let word = interpreter.read_word()?;
     let parsed = word
@@ -616,17 +721,26 @@ fn builtin_read_f64(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Resu
     Ok(Value::F64(parsed))
 }
 
-fn builtin_read_word(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_word(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_word")?;
     Ok(Value::Str(interpreter.read_word()?))
 }
 
-fn builtin_read_all(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_all(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 0, "read_all")?;
     Ok(Value::Str(interpreter.read_all()))
 }
 
-fn builtin_read_ints(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_ints(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "read_ints")?;
     let count = expect_i32(&args[0], "read_ints")?.max(0) as usize;
     let mut values = Vec::with_capacity(count);
@@ -636,7 +750,10 @@ fn builtin_read_ints(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Res
     Ok(Value::Vec(values))
 }
 
-fn builtin_read_i64s(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+fn builtin_read_i64s(
+    interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "read_i64s")?;
     let count = expect_i32(&args[0], "read_i64s")?.max(0) as usize;
     let mut values = Vec::with_capacity(count);
@@ -644,4 +761,29 @@ fn builtin_read_i64s(interpreter: &mut Interpreter<'_>, args: Vec<Value>) -> Res
         values.push(builtin_read_i64(interpreter, Vec::new())?);
     }
     Ok(Value::Vec(values))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StdlibRegistry;
+    use crate::{Interpreter, SymbolTable, Value};
+
+    #[test]
+    fn from_int_accepts_i32_values() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("from_int").expect("from_int handler");
+        let result = handler(&mut interpreter, vec![Value::I32(42)]).expect("from_int result");
+        assert_eq!(result, Value::Str(String::from("42")));
+    }
+
+    #[test]
+    fn print_handlers_render_without_intermediate_type_errors() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let println_handler = registry.handler("println").expect("println handler");
+        println_handler(&mut interpreter, vec![Value::I32(7)]).expect("println result");
+        println_handler(&mut interpreter, vec![Value::Bool(true)]).expect("println result");
+        assert_eq!(interpreter.stdout(), "7\ntrue\n");
+    }
 }

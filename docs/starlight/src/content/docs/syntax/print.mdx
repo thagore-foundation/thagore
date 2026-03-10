@@ -5,14 +5,15 @@ description: How to output values in Thagore using the built-in print and printl
 
 # Print & Output
 
-`print` and `println` are built-in functions — no import needed. Both take a single `str` argument.
+`print` and `println` are built-in functions - no import needed. Both take a single value.
 
 ## Basic usage
 
 ```thagore
 func main() -> i32:
   print("Hello, Thagore!")
-  println("Hello, Thagore!")
+  println(42)
+  println(true)
   return 0
 ```
 
@@ -20,21 +21,7 @@ func main() -> i32:
 
 ## Formatting values
 
-`print` accepts only `str`. Use `std.string` helpers to format other types before printing:
-
-```thagore
-import std.string as string
-
-func main() -> i32:
-  println(string.from_int(42))
-  println(string.from_f64(3.14))
-  println(string.from_bool(true))
-  return 0
-```
-
-## Building output strings
-
-Use `string.concat` to assemble output from multiple parts:
+`print` and `println` accept `str`, `bool`, `i32`, `i64`, and `f64` directly. `std.string` helpers still matter when you need to build composite strings:
 
 ```thagore
 import std.string as string

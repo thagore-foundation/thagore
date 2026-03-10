@@ -336,24 +336,56 @@ fn emit_call<'ctx>(
     let Some(target) = context.functions.get(&name).copied() else {
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
-    let param_types = target.get_type().get_param_types();
     let runtime_name = context.symbol_name(name);
+    if PRINT_RUNTIME_NAMES.contains(&runtime_name.as_str()) {
+        emit_print_call(context, function, value, target, &runtime_name, args)?;
+        return Ok(());
+    }
+
+    let param_types = target.get_type().get_param_types();
     let args = args
         .iter()
         .enumerate()
         .map(|(index, value)| {
             let runtime = lookup_value(context, function, *value)?;
-            let coerced = if PRINT_RUNTIME_NAMES.contains(&runtime_name.as_str()) {
-                coerce_print_argument(context, runtime)?
-            } else {
-                coerce_call_argument(context, runtime, param_types.get(index).copied())?
-            };
+            let coerced = coerce_call_argument(context, runtime, param_types.get(index).copied())?;
             Ok(BasicMetadataValueEnum::from(coerced))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let call = context
         .builder
         .build_call(target, &args, "call")
+        .map_err(builder_error)?;
+    if let Some(result) = call.try_as_basic_value().left() {
+        function.values.insert(value, result);
+    }
+    Ok(())
+}
+
+fn emit_print_call<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+    default_target: inkwell::values::FunctionValue<'ctx>,
+    runtime_name: &str,
+    args: &[Value],
+) -> Result<(), CodegenError> {
+    let Some(arg_id) = args.first().copied() else {
+        let call = context
+            .builder
+            .build_call(default_target, &[], "call")
+            .map_err(builder_error)?;
+        if let Some(result) = call.try_as_basic_value().left() {
+            function.values.insert(value, result);
+        }
+        return Ok(());
+    };
+
+    let runtime = lookup_value(context, function, arg_id)?;
+    let (target, arg) = select_print_target(context, runtime_name, default_target, runtime)?;
+    let call = context
+        .builder
+        .build_call(target, &[BasicMetadataValueEnum::from(arg)], "call")
         .map_err(builder_error)?;
     if let Some(result) = call.try_as_basic_value().left() {
         function.values.insert(value, result);
@@ -384,31 +416,26 @@ fn coerce_call_argument<'ctx>(
     }
 }
 
-fn coerce_print_argument<'ctx>(
+fn select_print_target<'ctx>(
     context: &mut CodegenContext<'ctx>,
+    runtime_name: &str,
+    default_target: inkwell::values::FunctionValue<'ctx>,
     value: BasicValueEnum<'ctx>,
-) -> Result<BasicValueEnum<'ctx>, CodegenError> {
+) -> Result<(inkwell::values::FunctionValue<'ctx>, BasicValueEnum<'ctx>), CodegenError> {
     match value {
-        BasicValueEnum::PointerValue(_) => Ok(value),
+        BasicValueEnum::PointerValue(_) => Ok((default_target, value)),
         BasicValueEnum::IntValue(int_value) => {
             if int_value.get_type().get_bit_width() == 1 {
-                let converter = runtime_string_converter(
+                let target = runtime_print_variant(
                     context,
-                    "thag_rt_from_bool",
+                    runtime_name,
+                    "bool",
                     context
                         .llvm
-                        .i8_type()
-                        .ptr_type(inkwell::AddressSpace::default())
+                        .void_type()
                         .fn_type(&[context.llvm.bool_type().into()], false),
                 );
-                let call = context
-                    .builder
-                    .build_call(converter, &[int_value.into()], "print.bool")
-                    .map_err(builder_error)?;
-                Ok(call
-                    .try_as_basic_value()
-                    .left()
-                    .expect("bool conversion returns string"))
+                Ok((target, int_value.as_basic_value_enum()))
             } else {
                 let widened = if int_value.get_type().get_bit_width() == 32 {
                     context
@@ -418,57 +445,45 @@ fn coerce_print_argument<'ctx>(
                 } else {
                     int_value
                 };
-                let converter = runtime_string_converter(
+                let target = runtime_print_variant(
                     context,
-                    "thag_str_from_int",
+                    runtime_name,
+                    "i64",
                     context
                         .llvm
-                        .i8_type()
-                        .ptr_type(inkwell::AddressSpace::default())
+                        .void_type()
                         .fn_type(&[context.llvm.i64_type().into()], false),
                 );
-                let call = context
-                    .builder
-                    .build_call(converter, &[widened.into()], "print.int")
-                    .map_err(builder_error)?;
-                Ok(call
-                    .try_as_basic_value()
-                    .left()
-                    .expect("int conversion returns string"))
+                Ok((target, widened.as_basic_value_enum()))
             }
         }
         BasicValueEnum::FloatValue(float_value) => {
-            let converter = runtime_string_converter(
+            let target = runtime_print_variant(
                 context,
-                "thag_rt_from_f64",
+                runtime_name,
+                "f64",
                 context
                     .llvm
-                    .i8_type()
-                    .ptr_type(inkwell::AddressSpace::default())
+                    .void_type()
                     .fn_type(&[context.llvm.f64_type().into()], false),
             );
-            let call = context
-                .builder
-                .build_call(converter, &[float_value.into()], "print.f64")
-                .map_err(builder_error)?;
-            Ok(call
-                .try_as_basic_value()
-                .left()
-                .expect("f64 conversion returns string"))
+            Ok((target, float_value.as_basic_value_enum()))
         }
-        other => Ok(other),
+        other => Ok((default_target, other)),
     }
 }
 
-fn runtime_string_converter<'ctx>(
+fn runtime_print_variant<'ctx>(
     context: &mut CodegenContext<'ctx>,
-    name: &str,
+    runtime_name: &str,
+    suffix: &str,
     function_type: inkwell::types::FunctionType<'ctx>,
 ) -> inkwell::values::FunctionValue<'ctx> {
+    let name = format!("{runtime_name}_{suffix}");
     context
         .module
-        .get_function(name)
-        .unwrap_or_else(|| context.module.add_function(name, function_type, None))
+        .get_function(&name)
+        .unwrap_or_else(|| context.module.add_function(&name, function_type, None))
 }
 
 fn emit_get_field<'ctx>(
