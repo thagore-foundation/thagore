@@ -2,11 +2,18 @@
 
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue};
 use inkwell::{FloatPredicate, IntPredicate};
-use thagore_ir::{BinOp, Const, Instr, Value, ARRAY_LEN_INTRINSIC};
+use thagore_ir::{ARRAY_LEN_INTRINSIC, BinOp, Const, Instr, Value};
 use thagore_typeck::TypeKind;
 
 use crate::context::{CodegenContext, FunctionContext};
 use crate::error::CodegenError;
+
+const PRINT_RUNTIME_NAMES: &[&str] = &[
+    "thagore_print",
+    "thagore_println",
+    "thagore_eprint",
+    "thagore_eprintln",
+];
 
 /// Emits a single IR instruction into the current LLVM block.
 pub fn emit_instr<'ctx>(
@@ -213,7 +220,7 @@ fn emit_bin_op<'ctx>(
                 expected: "numeric or bool",
                 found: left_ty,
                 span: None,
-            })
+            });
         }
     };
     function.values.insert(value, result);
@@ -261,7 +268,7 @@ fn emit_un_op<'ctx>(
                         expected: "bool or integer",
                         found: operand_ty,
                         span: None,
-                    })
+                    });
                 }
             }
         }
@@ -279,7 +286,7 @@ fn emit_un_op<'ctx>(
                         expected: "numeric",
                         found: operand_ty,
                         span: None,
-                    })
+                    });
                 }
             }
         }
@@ -289,7 +296,7 @@ fn emit_un_op<'ctx>(
                 expected: "numeric or bool",
                 found: operand_ty,
                 span: None,
-            })
+            });
         }
     };
     function.values.insert(value, lowered);
@@ -313,7 +320,11 @@ fn emit_call<'ctx>(
         let lowered = match context.types.kind(result_ty) {
             TypeKind::I32 => context
                 .builder
-                .build_int_truncate(len.into_int_value(), context.llvm.i32_type(), "array.len.i32")
+                .build_int_truncate(
+                    len.into_int_value(),
+                    context.llvm.i32_type(),
+                    "array.len.i32",
+                )
                 .map_err(builder_error)?
                 .as_basic_value_enum(),
             _ => len,
@@ -326,12 +337,17 @@ fn emit_call<'ctx>(
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
     let param_types = target.get_type().get_param_types();
+    let runtime_name = context.symbol_name(name);
     let args = args
         .iter()
         .enumerate()
         .map(|(index, value)| {
             let runtime = lookup_value(context, function, *value)?;
-            let coerced = coerce_call_argument(context, runtime, param_types.get(index).copied())?;
+            let coerced = if PRINT_RUNTIME_NAMES.contains(&runtime_name.as_str()) {
+                coerce_print_argument(context, runtime)?
+            } else {
+                coerce_call_argument(context, runtime, param_types.get(index).copied())?
+            };
             Ok(BasicMetadataValueEnum::from(coerced))
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -368,6 +384,93 @@ fn coerce_call_argument<'ctx>(
     }
 }
 
+fn coerce_print_argument<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    value: BasicValueEnum<'ctx>,
+) -> Result<BasicValueEnum<'ctx>, CodegenError> {
+    match value {
+        BasicValueEnum::PointerValue(_) => Ok(value),
+        BasicValueEnum::IntValue(int_value) => {
+            if int_value.get_type().get_bit_width() == 1 {
+                let converter = runtime_string_converter(
+                    context,
+                    "thag_rt_from_bool",
+                    context
+                        .llvm
+                        .i8_type()
+                        .ptr_type(inkwell::AddressSpace::default())
+                        .fn_type(&[context.llvm.bool_type().into()], false),
+                );
+                let call = context
+                    .builder
+                    .build_call(converter, &[int_value.into()], "print.bool")
+                    .map_err(builder_error)?;
+                Ok(call
+                    .try_as_basic_value()
+                    .left()
+                    .expect("bool conversion returns string"))
+            } else {
+                let widened = if int_value.get_type().get_bit_width() == 32 {
+                    context
+                        .builder
+                        .build_int_s_extend(int_value, context.llvm.i64_type(), "print.i64")
+                        .map_err(builder_error)?
+                } else {
+                    int_value
+                };
+                let converter = runtime_string_converter(
+                    context,
+                    "thag_str_from_int",
+                    context
+                        .llvm
+                        .i8_type()
+                        .ptr_type(inkwell::AddressSpace::default())
+                        .fn_type(&[context.llvm.i64_type().into()], false),
+                );
+                let call = context
+                    .builder
+                    .build_call(converter, &[widened.into()], "print.int")
+                    .map_err(builder_error)?;
+                Ok(call
+                    .try_as_basic_value()
+                    .left()
+                    .expect("int conversion returns string"))
+            }
+        }
+        BasicValueEnum::FloatValue(float_value) => {
+            let converter = runtime_string_converter(
+                context,
+                "thag_rt_from_f64",
+                context
+                    .llvm
+                    .i8_type()
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .fn_type(&[context.llvm.f64_type().into()], false),
+            );
+            let call = context
+                .builder
+                .build_call(converter, &[float_value.into()], "print.f64")
+                .map_err(builder_error)?;
+            Ok(call
+                .try_as_basic_value()
+                .left()
+                .expect("f64 conversion returns string"))
+        }
+        other => Ok(other),
+    }
+}
+
+fn runtime_string_converter<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    name: &str,
+    function_type: inkwell::types::FunctionType<'ctx>,
+) -> inkwell::values::FunctionValue<'ctx> {
+    context
+        .module
+        .get_function(name)
+        .unwrap_or_else(|| context.module.add_function(name, function_type, None))
+}
+
 fn emit_get_field<'ctx>(
     context: &mut CodegenContext<'ctx>,
     function: &mut FunctionContext<'ctx>,
@@ -380,7 +483,11 @@ fn emit_get_field<'ctx>(
     let (_, field_index) = struct_field_index(context, object_ty, field)?;
     let loaded = context
         .builder
-        .build_extract_value(object_value.into_struct_value(), field_index as u32, "field.load")
+        .build_extract_value(
+            object_value.into_struct_value(),
+            field_index as u32,
+            "field.load",
+        )
         .map_err(builder_error)?;
     function.values.insert(value, loaded);
     Ok(())
@@ -427,7 +534,7 @@ fn emit_index<'ctx>(
                 expected: "array",
                 found: array_ty,
                 span: None,
-            })
+            });
         }
     }
 
@@ -532,23 +639,21 @@ pub fn resolve_pending_phis<'ctx>(
 ) -> Result<(), CodegenError> {
     let pending = function.pending_phis.drain().collect::<Vec<_>>();
     for (_, pending_phi) in pending {
-        let incoming_pairs = pending_phi
-            .incoming
-            .iter()
-            .map(|(incoming_value, block_id)| {
-                let runtime = lookup_value(context, function, *incoming_value)?;
-                let block =
-                    function
-                        .blocks
-                        .get(block_id)
-                        .copied()
-                        .ok_or(CodegenError::UnknownBlock {
+        let incoming_pairs =
+            pending_phi
+                .incoming
+                .iter()
+                .map(|(incoming_value, block_id)| {
+                    let runtime = lookup_value(context, function, *incoming_value)?;
+                    let block = function.blocks.get(block_id).copied().ok_or(
+                        CodegenError::UnknownBlock {
                             block: *block_id,
                             function: function.name,
-                        })?;
-                Ok((runtime, block))
-            })
-            .collect::<Result<Vec<_>, CodegenError>>()?;
+                        },
+                    )?;
+                    Ok((runtime, block))
+                })
+                .collect::<Result<Vec<_>, CodegenError>>()?;
         let refs = incoming_pairs
             .iter()
             .map(|(value, block)| (value as &dyn BasicValue<'ctx>, *block))

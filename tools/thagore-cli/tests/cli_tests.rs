@@ -27,6 +27,7 @@ const CHECK_FIXTURES: &[&str] = &[
     "tests/fixtures/basic/arithmetic.tg",
     "tests/fixtures/basic/booleans.tg",
     "tests/fixtures/basic/hello.tg",
+    "tests/fixtures/basic/print_values.tg",
     "tests/fixtures/basic/strings.tg",
     "tests/fixtures/basic/variables.tg",
     "tests/fixtures/bench/binary_tree.tg",
@@ -66,6 +67,7 @@ const RUN_ZERO_FIXTURES: &[&str] = &[
     "tests/fixtures/basic/arithmetic.tg",
     "tests/fixtures/basic/booleans.tg",
     "tests/fixtures/basic/hello.tg",
+    "tests/fixtures/basic/print_values.tg",
     "tests/fixtures/basic/strings.tg",
     "tests/fixtures/basic/variables.tg",
     "tests/fixtures/control/early_return.tg",
@@ -150,7 +152,10 @@ fn parses_build_arguments() {
     let Some(CliCommand::Build(build)) = cli.command else {
         panic!("expected build command");
     };
-    assert_eq!(build.options.output.as_deref(), Some(Path::new("out/hello")));
+    assert_eq!(
+        build.options.output.as_deref(),
+        Some(Path::new("out/hello"))
+    );
     assert_eq!(build.options.opt, OptLevel::O3);
     assert!(build.options.emit.contains(&EmitKind::Ll));
     assert!(build.options.emit.contains(&EmitKind::Obj));
@@ -216,7 +221,12 @@ fn emits_contract_json_diagnostics() {
     assert_eq!(array[0]["line"], 1);
     assert_eq!(array[0]["col"], 14);
     assert_eq!(array[0]["severity"], "error");
-    assert!(array[0]["message"].as_str().expect("message").contains("type mismatch"));
+    assert!(
+        array[0]["message"]
+            .as_str()
+            .expect("message")
+            .contains("type mismatch")
+    );
 }
 
 #[test]
@@ -270,8 +280,7 @@ fn compile_errors_return_1() {
 fn build_fixture_produces_runnable_binary() {
     let out_dir = TempDir::new().expect("temp dir");
     let binary = out_dir.path().join("hello");
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures/hello.tg");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hello.tg");
 
     let status = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -380,8 +389,11 @@ fn check_resolves_imports_through_include_dirs() {
     let dir = TempDir::new().expect("temp dir");
     let include_root = dir.path().join("deps");
     fs::create_dir_all(&include_root).expect("create include dir");
-    fs::write(include_root.join("dep.tg"), "func helper() -> i32:\n  return 0\n")
-        .expect("write dep module");
+    fs::write(
+        include_root.join("dep.tg"),
+        "func helper() -> i32:\n  return 0\n",
+    )
+    .expect("write dep module");
     let source = dir.path().join("main.tg");
     fs::write(&source, "import dep\n\nfunc main() -> i32:\n  return 0\n").expect("write source");
 
@@ -670,8 +682,7 @@ fn build_and_run_std_io_module() {
 fn build_and_run_builtin_scope_fixture() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("builtins");
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/builtins_tests.tg");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/builtins_tests.tg");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -699,8 +710,7 @@ fn build_and_run_builtin_scope_fixture() {
 fn build_and_run_return_inference_fixture() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("return-infer");
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/return_infer_tests.tg");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/return_infer_tests.tg");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -721,6 +731,41 @@ fn build_and_run_return_inference_fixture() {
     let output = Command::new(&binary).output().expect("run built binary");
     assert_eq!(output.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&output.stdout).contains("return inference ok"));
+}
+
+#[test]
+fn build_and_run_builtin_prints_primitive_values() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("print_values.tg");
+    let binary = dir.path().join("print-values");
+    fs::write(
+        &source,
+        "func fib_iter(n: i32) -> i32:\n  if (n <= 1):\n    return n\n  let index: i32 = 2\n  let prev2: i32 = 0\n  let prev1: i32 = 1\n  while (index <= n):\n    let next: i32 = prev1 + prev2\n    prev2 = prev1\n    prev1 = next\n    index = index + 1\n  return prev1\n\nfunc main() -> i32:\n  println(fib_iter(10))\n  println(true)\n  println(1.5)\n  return 0\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary).output().expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        "55\ntrue\n1.5\n"
+    );
 }
 
 #[test]

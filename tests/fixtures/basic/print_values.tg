@@ -1,0 +1,8 @@
+# fixture: basic/print_values
+# expect: ok
+# description: builtin print helpers accept primitive values without manual string conversion
+func main() -> i32:
+  println(42)
+  println(true)
+  println(3.25)
+  return 0

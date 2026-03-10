@@ -15,10 +15,10 @@ use thagore_ast::{
 };
 
 use crate::error::TypeError;
-use crate::func_check::{infer_function_return_type, ResolvedReturnType};
+use crate::func_check::{ResolvedReturnType, infer_function_return_type};
 use crate::generics::{
-    check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
-    MonomorphInstance, MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
+    GenericFunctionTemplate, GenericParamSpec, MonomorphInstance, MonomorphRequest,
+    MonomorphResult, MonomorphWorkList, TemplateType, check_constraint, mangle_type_args,
 };
 use crate::infer::InferenceSolver;
 use crate::return_infer::{block_guarantees_return, collect_return_sites};
@@ -210,7 +210,11 @@ impl TypeChecker {
             .iter()
             .map(|param| GenericParamSpec {
                 name: param.name,
-                constraints: param.constraints.iter().map(|constraint| constraint.kind).collect(),
+                constraints: param
+                    .constraints
+                    .iter()
+                    .map(|constraint| constraint.kind)
+                    .collect(),
             })
             .collect();
         let params = decl
@@ -553,14 +557,10 @@ impl TypeChecker {
             let request = self.monomorphs.pending()[cursor].clone();
             cursor += 1;
 
-            if self
-                .monomorph_instances
-                .iter()
-                .any(|instance| {
-                    instance.generic_name == request.generic_name
-                        && instance.type_args == request.type_args
-                })
-            {
+            if self.monomorph_instances.iter().any(|instance| {
+                instance.generic_name == request.generic_name
+                    && instance.type_args == request.type_args
+            }) {
                 continue;
             }
 
@@ -663,6 +663,52 @@ impl TypeChecker {
         let expected = self.resolved_type(expected);
         let found = self.resolved_type(found);
         expected == self.types.i64() && found == self.types.i32()
+    }
+
+    fn is_print_builtin_name(&self, name: thagore_ast::InternedStr) -> bool {
+        matches!(
+            self.symbol_name(name),
+            Some("print" | "println" | "eprint" | "eprintln")
+        )
+    }
+
+    fn is_printable_type(&mut self, ty: TypeId) -> bool {
+        let resolved = self.resolved_type(ty);
+        matches!(
+            self.types.kind(resolved),
+            TypeKind::Str | TypeKind::I32 | TypeKind::I64 | TypeKind::F64 | TypeKind::Bool
+        ) || self.types.is_unknown(resolved)
+            || self.types.is_infer(resolved)
+    }
+
+    fn visit_print_builtin_call(&mut self, ident: &IdentExpr, expr: &CallExpr<'_>) {
+        let callee = self.check_expr(expr.callee);
+        if expr.args.len() != 1 {
+            self.errors.push(TypeError::ArgumentCountMismatch {
+                expected: 1,
+                found: expr.args.len(),
+                span: expr.span,
+            });
+            self.table.insert(ident.id, callee);
+            self.table.insert(expr.id, self.types.unknown());
+            return;
+        }
+
+        let arg = self.check_expr(expr.args[0]);
+        if !self.is_printable_type(arg) {
+            let found = self.resolved_type(arg);
+            self.errors.push(TypeError::TypeMismatch {
+                expected: self.types.str(),
+                found,
+                span: expr.args[0].span(),
+            });
+            self.table.insert(ident.id, callee);
+            self.table.insert(expr.id, self.types.unknown());
+            return;
+        }
+
+        self.table.insert(ident.id, callee);
+        self.table.insert(expr.id, self.types.unit());
     }
 
     fn resolved_type(&mut self, ty: TypeId) -> TypeId {
@@ -878,7 +924,9 @@ impl TypeChecker {
             resolved_return
         };
 
-        let final_signature = self.types.intern_function(signature.params.clone(), final_return);
+        let final_signature = self
+            .types
+            .intern_function(signature.params.clone(), final_return);
         self.table.insert(decl.id, final_signature);
         self.scopes.insert(decl.name, final_signature);
         if let Some(method_key) = method_key {
@@ -1191,6 +1239,11 @@ impl<'ast> Visitor<'ast> for TypeChecker {
                 } else {
                     self.table.insert(expr.id, self.types.unknown());
                 }
+                return;
+            }
+
+            if self.is_print_builtin_name(ident.name) {
+                self.visit_print_builtin_call(ident, expr);
                 return;
             }
         }
