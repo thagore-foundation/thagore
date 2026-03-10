@@ -41,19 +41,19 @@ The installer resolves the correct archive from the release manifest, verifies S
 ### Install the current in-develop toolchain
 
 ```bash
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.sh | sh
 ```
 
 ### Install to a custom prefix
 
 ```bash
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh -s -- --prefix "$HOME/.local/share/thagore"
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.sh | sh -s -- --prefix "$HOME/.local/share/thagore"
 ```
 
 ### Install a specific target or channel
 
 ```bash
-curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.sh | sh -s -- \
+curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.sh | sh -s -- \
   --channel extended \
   --target x86_64-unknown-linux-musl
 ```
@@ -61,7 +61,7 @@ curl -fsSL https://github.com/thagore-foundation/thagore/releases/download/v0.9.
 ### Windows PowerShell
 
 ```powershell
-irm https://github.com/thagore-foundation/thagore/releases/download/v0.9.6/thagup-v0.9.6.ps1 | iex
+irm https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.ps1 | iex
 ```
 
 ### Release channels
