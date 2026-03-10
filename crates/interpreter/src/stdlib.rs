@@ -343,7 +343,7 @@ fn builtin_to_bool(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
 fn builtin_len(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "len")?;
     match &args[0] {
-        Value::Str(text) => Ok(Value::I32(text.chars().count() as i32)),
+        Value::Str(text) => Ok(Value::I32(text.len() as i32)),
         Value::Vec(values) => Ok(Value::I32(values.len() as i32)),
         other => Err(RuntimeError::message(format!(
             "len expected str or vec, found {}",
@@ -354,11 +354,12 @@ fn builtin_len(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Runti
 
 fn builtin_concat(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "concat")?;
-    Ok(Value::Str(format!(
-        "{}{}",
-        args[0].render(),
-        args[1].render()
-    )))
+    let left = expect_string(&args[0], "concat")?;
+    let right = expect_string(&args[1], "concat")?;
+    let mut result = String::with_capacity(left.len() + right.len());
+    result.push_str(&left);
+    result.push_str(&right);
+    Ok(Value::Str(result))
 }
 
 fn builtin_trim(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -429,10 +430,10 @@ fn builtin_pad_left(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, 
         .chars()
         .next()
         .unwrap_or(' ');
-    if text.chars().count() >= width {
+    if text.len() >= width {
         return Ok(Value::Str(text));
     }
-    let padding = width - text.chars().count();
+    let padding = width - text.len();
     Ok(Value::Str(format!(
         "{}{}",
         ch.to_string().repeat(padding),
@@ -448,10 +449,10 @@ fn builtin_pad_right(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value,
         .chars()
         .next()
         .unwrap_or(' ');
-    if text.chars().count() >= width {
+    if text.len() >= width {
         return Ok(Value::Str(text));
     }
-    let padding = width - text.chars().count();
+    let padding = width - text.len();
     Ok(Value::Str(format!(
         "{}{}",
         text,
@@ -476,11 +477,10 @@ fn builtin_reverse(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, R
 fn builtin_strip(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "strip")?;
     let text = expect_string(&args[0], "strip")?;
-    let ch = expect_string(&args[1], "strip")?
-        .chars()
-        .next()
-        .unwrap_or(' ');
-    Ok(Value::Str(text.trim_matches(ch).to_string()))
+    let chars = expect_string(&args[1], "strip")?;
+    Ok(Value::Str(
+        text.trim_matches(|ch| chars.contains(ch)).to_string(),
+    ))
 }
 
 fn builtin_char_at(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -512,7 +512,21 @@ fn builtin_split(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Run
 fn builtin_join(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 2, "join")?;
     let parts = match &args[0] {
-        Value::Vec(values) => values.iter().map(Value::render).collect::<Vec<_>>(),
+        Value::Vec(values) => {
+            let mut rendered = Vec::with_capacity(values.len());
+            for value in values {
+                match value {
+                    Value::Str(text) => rendered.push(text.clone()),
+                    other => {
+                        return Err(RuntimeError::message(format!(
+                            "join expected vec[str], found {} element",
+                            other.type_name()
+                        )))
+                    }
+                }
+            }
+            rendered
+        }
         other => {
             return Err(RuntimeError::message(format!(
                 "join expected vec, found {}",
@@ -764,7 +778,7 @@ fn builtin_read_i64s(
 #[cfg(test)]
 mod tests {
     use super::StdlibRegistry;
-    use crate::{Interpreter, SymbolTable, Value};
+    use crate::{Interpreter, RuntimeError, SymbolTable, Value};
 
     #[test]
     fn from_int_accepts_i32_values() {
@@ -801,5 +815,95 @@ mod tests {
         assert_eq!(true_value, Value::Bool(true));
         assert_eq!(one_value, Value::Bool(true));
         assert_eq!(yes_value, Value::Bool(false));
+    }
+
+    #[test]
+    fn len_uses_runtime_byte_count_for_strings() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("len").expect("len handler");
+
+        let result =
+            handler(&mut interpreter, vec![Value::Str(String::from("hé"))]).expect("len result");
+
+        assert_eq!(result, Value::I32(3));
+    }
+
+    #[test]
+    fn pad_left_and_right_follow_runtime_width_rules() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let pad_left = registry.handler("pad_left").expect("pad_left handler");
+        let pad_right = registry.handler("pad_right").expect("pad_right handler");
+
+        let left = pad_left(
+            &mut interpreter,
+            vec![
+                Value::Str(String::from("é")),
+                Value::I32(4),
+                Value::Str(String::from(" ")),
+            ],
+        )
+        .expect("pad_left result");
+        let right = pad_right(
+            &mut interpreter,
+            vec![
+                Value::Str(String::from("é")),
+                Value::I32(4),
+                Value::Str(String::from(" ")),
+            ],
+        )
+        .expect("pad_right result");
+
+        assert_eq!(left, Value::Str(String::from("  é")));
+        assert_eq!(right, Value::Str(String::from("é  ")));
+    }
+
+    #[test]
+    fn strip_removes_all_requested_edge_characters() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("strip").expect("strip handler");
+
+        let result = handler(
+            &mut interpreter,
+            vec![
+                Value::Str(String::from("--hello__")),
+                Value::Str(String::from("-_")),
+            ],
+        )
+        .expect("strip result");
+
+        assert_eq!(result, Value::Str(String::from("hello")));
+    }
+
+    #[test]
+    fn concat_requires_string_arguments() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("concat").expect("concat handler");
+
+        let error = handler(&mut interpreter, vec![Value::I32(1), Value::Str(String::from("x"))])
+            .expect_err("concat should reject non-string");
+
+        assert!(matches!(error, RuntimeError::Message(message) if message.contains("concat expected str")));
+    }
+
+    #[test]
+    fn join_requires_array_of_strings() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("join").expect("join handler");
+
+        let error = handler(
+            &mut interpreter,
+            vec![
+                Value::Vec(vec![Value::Str(String::from("a")), Value::I32(2)]),
+                Value::Str(String::from(",")),
+            ],
+        )
+        .expect_err("join should reject non-string elements");
+
+        assert!(matches!(error, RuntimeError::Message(message) if message.contains("join expected vec[str]")));
     }
 }
