@@ -118,9 +118,6 @@ fn posix_args(args: &SelfUpdateArgs) -> Vec<OsString> {
         "--tag",
         "--drago-tag",
     );
-    if args.without_drago {
-        output.push(OsString::from("--without-drago"));
-    }
     if args.dry_run {
         output.push(OsString::from("--dry-run"));
     }
@@ -143,9 +140,6 @@ fn windows_args(args: &SelfUpdateArgs) -> Vec<OsString> {
         "-Tag",
         "-DragoTag",
     );
-    if args.without_drago {
-        output.push(OsString::from("-WithoutDrago"));
-    }
     if args.dry_run {
         output.push(OsString::from("-DryRun"));
     }

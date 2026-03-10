@@ -13,8 +13,7 @@ use thagore_ast::{
 use thagore_lexer::{Interner, Token, TokenKind};
 
 use crate::error::{
-    is_lexer_error_token, is_statement_boundary, is_sync_point, span_from_lexer, Expectation,
-    ParseError,
+    is_lexer_error_token, is_statement_boundary, span_from_lexer, Expectation, ParseError,
 };
 
 /// Hand-written recursive-descent parser for Thagore source.
@@ -224,7 +223,15 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
     }
 
     pub(crate) fn synchronize_statement(&mut self) {
-        while !is_sync_point(self.peek().kind) {
+        if self.at(TokenKind::Eof) {
+            return;
+        }
+
+        if !is_statement_boundary(self.peek().kind) {
+            self.advance();
+        }
+
+        while !is_statement_boundary(self.peek().kind) {
             self.advance();
         }
 

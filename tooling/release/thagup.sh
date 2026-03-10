@@ -11,7 +11,7 @@ else
   PREFIX="${HOME}/.local/share/thagore"
 fi
 TAG=""
-WITH_DRAGO=0
+WITH_DRAGO=1
 DRY_RUN=0
 DRAGO_TAG=""
 FORCE=0
@@ -188,11 +188,7 @@ echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"
 echo "  archive: ${ARCHIVE_NAME}"
-if [ "$WITH_DRAGO" -eq 1 ]; then
-  echo "  drago:   enabled"
-else
-  echo "  drago:   skipped (pass --with-drago to install it too)"
-fi
+echo "  drago:   bundled"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   exit 0

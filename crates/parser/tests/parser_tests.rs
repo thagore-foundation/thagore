@@ -342,6 +342,24 @@ func iterate(flag: bool, items: i32):
 }
 
 #[test]
+fn invalid_top_level_expression_reports_error_without_hanging() {
+    let source = "\
+func fib_iter(n: i32) -> i32:
+  return n
+
+print(fib_iter(10))
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert_eq!(decls.len(), 1);
+        assert!(
+            !errors.is_empty(),
+            "expected a parser error for invalid top-level expression"
+        );
+    });
+}
+
+#[test]
 fn recovers_after_syntax_error() {
     let source = "\
 let broken = 

@@ -41,8 +41,8 @@ impl EnvStack {
     /// Assigns an existing binding in the nearest containing scope.
     pub fn assign(&mut self, name: &str, value: Value) -> bool {
         for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(name) {
-                scope.insert(name.to_string(), value);
+            if let Some(slot) = scope.get_mut(name) {
+                *slot = value;
                 return true;
             }
         }

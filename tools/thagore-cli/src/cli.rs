@@ -214,7 +214,7 @@ pub struct SelfUpdateArgs {
     /// Explicit companion drago tag.
     #[arg(long = "drago-tag")]
     pub drago_tag: Option<String>,
-    /// Skip companion drago installation.
+    /// Deprecated no-op kept for installer compatibility.
     #[arg(long = "without-drago")]
     pub without_drago: bool,
     /// Print the resolved install plan without mutating anything.
