@@ -330,6 +330,14 @@ fn emit_call<'ctx>(
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
     let runtime_name = context.symbol_name(name);
+    if runtime_name == "thag_rt_split" || runtime_name == "std__string__split" {
+        emit_string_split_call(context, function, value, args)?;
+        return Ok(());
+    }
+    if runtime_name == "thag_rt_join" || runtime_name == "std__string__join" {
+        emit_string_join_call(context, function, value, args)?;
+        return Ok(());
+    }
     if let Some(print_runtime) = print_runtime_name(&runtime_name) {
         emit_print_call(context, function, value, print_runtime, args)?;
         return Ok(());
@@ -348,6 +356,165 @@ fn emit_call<'ctx>(
     let call = context
         .builder
         .build_call(target, &args, "call")
+        .map_err(builder_error)?;
+    if let Some(result) = call.try_as_basic_value().left() {
+        function.values.insert(value, result);
+    }
+    Ok(())
+}
+
+fn emit_string_split_call<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+    args: &[Value],
+) -> Result<(), CodegenError> {
+    let Some(input_arg) = args.first().copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+    let Some(sep_arg) = args.get(1).copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+
+    let i8_ptr = context
+        .llvm
+        .i8_type()
+        .ptr_type(inkwell::AddressSpace::default());
+    let i8_ptr_ptr = i8_ptr.ptr_type(inkwell::AddressSpace::default());
+    let split_into = context.module.get_function("thag_str_split_into").unwrap_or_else(|| {
+        context.module.add_function(
+            "thag_str_split_into",
+            context.llvm.void_type().fn_type(
+                &[
+                    i8_ptr.into(),
+                    i8_ptr.into(),
+                    context
+                        .llvm
+                        .i64_type()
+                        .ptr_type(inkwell::AddressSpace::default())
+                        .into(),
+                    i8_ptr_ptr.ptr_type(inkwell::AddressSpace::default()).into(),
+                ],
+                false,
+            ),
+            None,
+        )
+    });
+
+    let len_slot = context
+        .builder
+        .build_alloca(context.llvm.i64_type(), "split.len")
+        .map_err(builder_error)?;
+    let data_slot = context
+        .builder
+        .build_alloca(i8_ptr_ptr, "split.data")
+        .map_err(builder_error)?;
+    let input = lookup_value(context, function, input_arg)?;
+    let separator = lookup_value(context, function, sep_arg)?;
+    context
+        .builder
+        .build_call(
+            split_into,
+            &[
+                BasicMetadataValueEnum::from(input),
+                BasicMetadataValueEnum::from(separator),
+                BasicMetadataValueEnum::from(len_slot.as_basic_value_enum()),
+                BasicMetadataValueEnum::from(data_slot.as_basic_value_enum()),
+            ],
+            "split.call",
+        )
+        .map_err(builder_error)?;
+
+    let len = build_load(context, len_slot, "split.len.value")?;
+    let data = build_load(context, data_slot, "split.data.value")?;
+    let result_ty = context.basic_type(type_of(function, value)?)?.into_struct_type();
+    let result_ptr = context
+        .builder
+        .build_alloca(result_ty, "split.result")
+        .map_err(builder_error)?;
+    let len_ptr = context
+        .builder
+        .build_struct_gep(result_ptr, 0, "split.result.len")
+        .map_err(builder_error)?;
+    context
+        .builder
+        .build_store(len_ptr, len)
+        .map_err(builder_error)?;
+    let data_ptr = context
+        .builder
+        .build_struct_gep(result_ptr, 1, "split.result.data")
+        .map_err(builder_error)?;
+    context
+        .builder
+        .build_store(data_ptr, data)
+        .map_err(builder_error)?;
+    let result = build_load(context, result_ptr, "split.result.value")?;
+    function.values.insert(value, result);
+    Ok(())
+}
+
+fn emit_string_join_call<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+    args: &[Value],
+) -> Result<(), CodegenError> {
+    let Some(parts_arg) = args.first().copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+    let Some(sep_arg) = args.get(1).copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+
+    let i8_ptr = context
+        .llvm
+        .i8_type()
+        .ptr_type(inkwell::AddressSpace::default());
+    let i8_ptr_ptr = i8_ptr.ptr_type(inkwell::AddressSpace::default());
+    let join_parts = context.module.get_function("thag_str_join_parts").unwrap_or_else(|| {
+        context.module.add_function(
+            "thag_str_join_parts",
+            i8_ptr.fn_type(
+                &[context.llvm.i64_type().into(), i8_ptr_ptr.into(), i8_ptr.into()],
+                false,
+            ),
+            None,
+        )
+    });
+
+    let parts = lookup_value(context, function, parts_arg)?.into_struct_value();
+    let len = context
+        .builder
+        .build_extract_value(parts, 0, "join.parts.len")
+        .map_err(builder_error)?;
+    let data = context
+        .builder
+        .build_extract_value(parts, 1, "join.parts.data")
+        .map_err(builder_error)?;
+    let separator = lookup_value(context, function, sep_arg)?;
+    let call = context
+        .builder
+        .build_call(
+            join_parts,
+            &[
+                BasicMetadataValueEnum::from(len),
+                BasicMetadataValueEnum::from(data),
+                BasicMetadataValueEnum::from(separator),
+            ],
+            "join.call",
+        )
         .map_err(builder_error)?;
     if let Some(result) = call.try_as_basic_value().left() {
         function.values.insert(value, result);

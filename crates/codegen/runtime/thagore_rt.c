@@ -1153,6 +1153,23 @@ char *thag_str_join(void *parts, const char *sep) {
     return thag_rt_join(thag_string_array_view((thag_str_array_handle *) parts), sep);
 }
 
+void thag_str_split_into(const char *s, const char *delim, int64_t *out_len, char ***out_data) {
+    thag_array_str array = thag_rt_split(s, delim);
+    if (out_len != NULL) {
+        *out_len = array.len;
+    }
+    if (out_data != NULL) {
+        *out_data = array.data;
+    }
+}
+
+char *thag_str_join_parts(int64_t len, char **data, const char *sep) {
+    thag_array_str array;
+    array.len = len;
+    array.data = data;
+    return thag_rt_join(array, sep);
+}
+
 char *thag_str_trim(const char *s) {
     return thag_rt_trim(s);
 }
