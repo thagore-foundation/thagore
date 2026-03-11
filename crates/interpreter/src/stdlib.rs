@@ -1,6 +1,8 @@
 //! Interpreter-side standard library implemented in pure Rust.
 
 use std::collections::HashMap;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::value::Value;
 use crate::{Interpreter, RuntimeError};
@@ -75,6 +77,8 @@ impl StdlibRegistry {
         registry.register("lcm", builtin_lcm);
         registry.register("is_even", builtin_is_even);
         registry.register("is_odd", builtin_is_odd);
+        registry.register("now_ms", builtin_now_ms);
+        registry.register("sleep_ms", builtin_sleep_ms);
         registry.register("read_line", builtin_read_line);
         registry.register("read_int", builtin_read_int);
         registry.register("read_i64", builtin_read_i64);
@@ -139,6 +143,7 @@ impl StdlibRegistry {
                 "read_i64s",
             ],
         );
+        registry.register_module("time", &["now_ms", "sleep_ms"]);
 
         registry
     }
@@ -699,6 +704,26 @@ fn builtin_is_odd(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Ru
     Ok(Value::Bool(expect_i32(&args[0], "is_odd")? % 2 != 0))
 }
 
+fn builtin_now_ms(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 0, "now_ms")?;
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| RuntimeError::message(format!("now_ms failed: {error}")))?;
+    let millis = elapsed.as_millis();
+    let millis = i64::try_from(millis)
+        .map_err(|_| RuntimeError::message("now_ms overflowed i64 range"))?;
+    Ok(Value::I64(millis))
+}
+
+fn builtin_sleep_ms(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "sleep_ms")?;
+    let millis = expect_i64(&args[0], "sleep_ms")?;
+    if millis > 0 {
+        thread::sleep(Duration::from_millis(millis as u64));
+    }
+    Ok(Value::Void)
+}
+
 fn builtin_read_line(
     interpreter: &mut Interpreter<'_>,
     args: Vec<Value>,
@@ -971,5 +996,37 @@ mod tests {
         .expect("char_at result");
 
         assert_eq!(result, Value::Str(String::new()));
+    }
+
+    #[test]
+    fn time_module_exports_runtime_clock_and_sleep() {
+        let registry = StdlibRegistry::new();
+        let exports = registry.module_exports("time").expect("time exports");
+        assert!(exports.iter().any(|name| name == "now_ms"));
+        assert!(exports.iter().any(|name| name == "sleep_ms"));
+    }
+
+    #[test]
+    fn now_ms_and_sleep_ms_progress_time() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let now_ms = registry.handler("now_ms").expect("now_ms handler");
+        let sleep_ms = registry.handler("sleep_ms").expect("sleep_ms handler");
+
+        let start = now_ms(&mut interpreter, Vec::new()).expect("start");
+        sleep_ms(&mut interpreter, vec![Value::I64(20)]).expect("sleep");
+        let end = now_ms(&mut interpreter, Vec::new()).expect("end");
+
+        let start = match start {
+            Value::I64(value) => value,
+            other => panic!("unexpected now_ms value: {other:?}"),
+        };
+        let end = match end {
+            Value::I64(value) => value,
+            other => panic!("unexpected now_ms value: {other:?}"),
+        };
+
+        assert!(end >= start);
+        assert!(end - start >= 10);
     }
 }
