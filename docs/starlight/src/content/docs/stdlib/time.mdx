@@ -7,7 +7,7 @@ sidebar:
 
 # std.time
 
-The `std.time` module provides access to the current runtime clock.
+The `std.time` module provides access to the current runtime clock and basic sleep control.
 
 ## Import
 
@@ -20,6 +20,7 @@ import std.time as time
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `now_ms` | `func now_ms() -> i64` | Current time in milliseconds since epoch |
+| `sleep_ms` | `func sleep_ms(ms: i64)` | Pause the current thread for at least `ms` milliseconds |
 
 ## Example
 
@@ -49,10 +50,23 @@ func main() -> i32:
   return 1
 ```
 
+## Sleeping
+
+```thagore
+import std.time as time
+
+func main() -> i32:
+  let start = time.now_ms()
+  time.sleep_ms(25)
+  let elapsed = time.now_ms() - start
+  if (elapsed >= 10):
+    return 0
+  return 1
+```
+
 ## Full reference
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `now_ms` | `func now_ms() -> i64` | milliseconds since epoch |
-
-`sleep_ms` and other time utilities are not implemented in the current compiler.
+| `sleep_ms` | `func sleep_ms(ms: i64)` | sleep for at least `ms` milliseconds |

@@ -1108,8 +1108,15 @@ bool thag_rt_is_odd(int32_t value) {
     return (value % 2) != 0;
 }
 
+int64_t thag_now_ms(void);
+void thag_sleep_ms(int64_t millis);
+
 int64_t thag_rt_now_ms(void) {
-    return 0;
+    return thag_now_ms();
+}
+
+void thag_rt_sleep_ms(int64_t millis) {
+    thag_sleep_ms(millis);
 }
 
 void thag_sleep_ms(int64_t millis) {

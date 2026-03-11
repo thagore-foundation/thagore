@@ -2,7 +2,12 @@
 # description: Minimal time helpers backed by the bundled Thagore runtime.
 
 extern func thag_rt_now_ms() -> i64
+extern func thag_rt_sleep_ms(ms: i64) -> void
 
 # now_ms: Returns the current runtime clock in milliseconds.
 func now_ms() -> i64:
   return thag_rt_now_ms()
+
+# sleep_ms: Suspends the current thread for at least the requested duration.
+func sleep_ms(ms: i64):
+  thag_rt_sleep_ms(ms)

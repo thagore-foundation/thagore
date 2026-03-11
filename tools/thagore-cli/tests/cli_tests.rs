@@ -649,6 +649,37 @@ fn build_and_run_std_string_split_join() {
 }
 
 #[test]
+fn build_and_run_std_time_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("time_stdlib");
+    fs::write(
+        &source,
+        "import std.time as time\n\nfunc main() -> i32:\n  let start = time.now_ms()\n  time.sleep_ms(25)\n  let elapsed = time.now_ms() - start\n  if (elapsed >= 10):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn build_and_run_std_math_module() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");
