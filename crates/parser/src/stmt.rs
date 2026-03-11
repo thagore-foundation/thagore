@@ -42,7 +42,16 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let block_start = self.current_span();
         self.skip_newlines();
 
-        if self.expect_indent().is_none() {
+        if !self.at(TokenKind::Indent) {
+            self.emit_statement_error(ParseError::unexpected_token(
+                self.peek().kind,
+                self.current_span(),
+                Expectation::Block,
+            ));
+            if !matches!(self.peek().kind, TokenKind::Newline | TokenKind::Dedent | TokenKind::Eof)
+            {
+                self.synchronize_statement();
+            }
             let id = self.new_node_id();
             return self.alloc_block(Block {
                 id,
@@ -50,6 +59,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
                 statements: self.bump_vec::<Stmt<'ast>>().into_bump_slice(),
             });
         }
+        self.advance();
 
         let mut statements = self.bump_vec();
         let mut end_span = block_start;

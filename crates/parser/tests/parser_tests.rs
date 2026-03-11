@@ -458,3 +458,21 @@ func next() -> i32:
         assert!(matches!(decls[1], Decl::Func(_)));
     });
 }
+
+#[test]
+fn inline_block_body_does_not_escape_into_following_top_level_parse() {
+    let source = "\
+func main() -> i32:
+  if (true): return 1
+  return 0
+func next() -> i32:
+  return 1
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert_eq!(decls.len(), 2);
+        assert!(!errors.is_empty());
+        assert!(matches!(decls[0], Decl::Func(_)));
+        assert!(matches!(decls[1], Decl::Func(_)));
+    });
+}

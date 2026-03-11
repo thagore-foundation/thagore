@@ -2130,6 +2130,12 @@ pub(crate) fn convert_type_error(
     parser: &Parser<'_, '_, '_>,
 ) -> CompilerDiagnostic {
     match error {
+        TypeError::UnsupportedFeature { feature, span } => CompilerDiagnostic::new(
+            "E000",
+            "unsupported language feature",
+            format!("`{feature}` is parsed but not implemented end to end yet"),
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,

@@ -20,12 +20,12 @@ cd thagore
 
 Ensure you have:
 - **LLVM 21.x** — installed and on PATH
-- **Stage1 seed** — downloaded from the latest release
+- **Current hosted toolchain** — downloaded from the latest release
 - **Python 3.x** — for build scripts (optional)
 
 See [Prerequisites](/install/prerequisites) for detailed installation instructions.
 
-### 3. Bootstrap the Compiler
+### 3. Install and verify the current toolchain
 
 ```bash
 # Windows
@@ -38,9 +38,9 @@ bash scripts/bootstrap.sh
 ### 4. Verify Your Setup
 
 ```bash
-stage2.exe build examples/hello.tg -o hello.exe
+thagc build tests/fixtures/hello.tg -o hello.exe
 .\hello.exe
-# Should output: Hello Self-Hosted World!
+# Should exit successfully
 ```
 
 ## Making Changes
@@ -49,12 +49,12 @@ stage2.exe build examples/hello.tg -o hello.exe
 
 | Directory | Contains |
 |-----------|----------|
-| `src/` | Compiler source code (Thagore `.tg` files) |
-| `lib/` | Standard library modules |
-| `std/` | Core primitives and data structures |
+| `crates/` | Core compiler crates |
+| `tools/` | CLI, formatter, and related tooling |
+| `stdlib/` | Shipped standard library modules |
 | `examples/` | Example programs |
 | `tests/` | Test suite |
-| `scripts/` | Build and automation scripts |
+| `tooling/` | Release and automation scripts |
 | `docs/` | Documentation |
 
 ### Development Workflow
@@ -64,22 +64,18 @@ stage2.exe build examples/hello.tg -o hello.exe
    git checkout -b feature/my-change
    ```
 
-2. **Make your changes** to the `.tg` source files
+2. **Make your changes** in the relevant Rust/std/runtime/docs source files
 
-3. **Self-host test** — verify the compiler can still compile itself:
-   ```bash
-   stage2.exe build src/thagore.tg -o stage2b.exe
-   ```
+3. **Run targeted checks** for the area you changed
 
 4. **Run tests:**
    ```bash
-   stage2.exe test --workspace
+   cargo test --workspace
    ```
 
 5. **Build sample programs** to verify nothing is broken:
    ```bash
-   stage2.exe build examples/hello.tg -o hello.exe
-   stage2.exe build examples/fib.tg -o fib.exe
+   thagc build tests/fixtures/hello.tg -o hello.exe
    ```
 
 ## Code Style Guidelines
@@ -124,11 +120,11 @@ Before submitting:
 
 Your PR must pass all three CI pipelines with **3 consecutive green runs**:
 1. ✅ **CI** — build and test
-2. ✅ **Selfhost Matrix** — self-hosting on all platforms
+2. ✅ **Hosted Toolchain Matrix** — compiler and tooling checks on supported platforms
 3. ✅ **Release (dry-run)** — release artifact generation
 
 <Aside type="caution" title="Bootstrap Policy">
-**Never** introduce a C++ fallback, Stage0 path, or any implicit fallback mechanism. The Thagore compiler must remain strictly self-hosted through the Stage1 seed chain.
+**Never** introduce a hidden legacy fallback or undocumented bootstrap path. Keep the hosted toolchain and any future bootstrap chain explicit and auditable.
 </Aside>
 
 ## Where to Contribute

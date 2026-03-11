@@ -13,6 +13,13 @@ use crate::types::TypeId;
 /// A structured type-checking diagnostic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeError {
+    /// A parsed construct exists in syntax but is not implemented end to end.
+    UnsupportedFeature {
+        /// Human-readable feature name.
+        feature: &'static str,
+        /// Source location of the unsupported construct.
+        span: Span,
+    },
     /// Two types were required to be equal but were not.
     TypeMismatch {
         /// Expected type.
@@ -100,7 +107,8 @@ impl TypeError {
     #[must_use]
     pub const fn span(&self) -> Span {
         match self {
-            Self::TypeMismatch { span, .. }
+            Self::UnsupportedFeature { span, .. }
+            | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
             | Self::NotCallable { span, .. }
@@ -117,6 +125,9 @@ impl TypeError {
 impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedFeature { feature, span } => {
+                write!(f, "unsupported feature '{feature}' at {span}")
+            }
             Self::TypeMismatch {
                 expected,
                 found,

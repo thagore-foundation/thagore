@@ -951,10 +951,18 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             Decl::Const(node) => self.visit_const_decl(node),
             Decl::Struct(node) => self.visit_struct_decl(node),
             Decl::GenericStruct(node) => {
+                self.errors.push(TypeError::UnsupportedFeature {
+                    feature: "generic structs",
+                    span: node.span,
+                });
                 self.table.insert(node.id, self.types.unit());
             }
             Decl::Impl(node) => self.visit_impl_block(node),
             Decl::GenericImpl(node) => {
+                self.errors.push(TypeError::UnsupportedFeature {
+                    feature: "generic impl blocks",
+                    span: node.span,
+                });
                 self.table.insert(node.id, self.types.unit());
             }
             Decl::Import(node) => self.visit_import_decl(node),

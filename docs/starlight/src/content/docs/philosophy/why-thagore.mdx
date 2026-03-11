@@ -9,43 +9,28 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## Design Philosophy
 
-Thagore was created with a clear mission: **build a modern, statically-typed compiled language that combines the readability of Python with the performance of C, while being entirely self-hosted**.
+Thagore was created with a clear mission: **build a modern, statically-typed compiled language with readable indentation syntax, native code generation, and a path toward future self-hosting**.
 
 ### Core Principles
 
 1. **Readability First** — Python-like indentation syntax makes code easy to read and write. No curly braces, no semicolons — just clean, expressive code.
 
-2. **Self-Hosted from Day One** — The Thagore compiler is written in Thagore itself. This is both a technical achievement and a design constraint that keeps the language practical and dogfooded.
+2. **Bootstrap-Oriented Design** — Thagore is being hardened so the language and toolchain can eventually sustain a real bootstrap chain. It is not fully self-hosted today.
 
 3. **Native Performance** — Every Thagore program compiles to native machine code through LLVM IR. No interpreter, no VM, no garbage collector overhead at runtime.
 
-4. **Zero C++ Fallback** — The bootstrap chain is Stage1 → Stage2 → Stage2b with no C++ compiler stage. The runtime ABI is delivered as pre-built artifacts, not built from C++ source.
+4. **No Hidden Legacy Fallback** — The current line keeps a clear path toward bootstrap without pretending the compiler is already self-hosted. Runtime ABI artifacts are shipped explicitly.
 
 5. **Practical Interoperability** — Direct C FFI via `extern func` lets you leverage existing C ecosystems without compromise.
 
 ## What Makes Thagore Different?
 
-### vs. Python
-- Thagore is **compiled to native code** — programs run 10-100x faster
-- Thagore is **statically typed** — type errors are caught at compile time
-- Thagore keeps Python's **indentation-based syntax** for readability
-- No runtime interpreter or GIL
+## What matters in the current line
 
-### vs. C/C++
-- **Simpler syntax** — no header files, no preprocessor, no complex build systems
-- **Type inference** — `let x = 42` just works
-- **Module system** — `import fs` instead of `#include`
-- **Safer defaults** — managed strings, no manual null termination
-
-### vs. Rust
-- **Gentler learning curve** — no borrow checker, no lifetime annotations
-- **Faster iteration** — simpler type system, faster compile times
-- **Practical focus** — designed for real-world systems programming, not academic correctness
-
-### vs. Go
-- **Structs with methods** — `impl` blocks attach methods to structs
-- **No garbage collector** — deterministic memory behavior
-- **LLVM backend** — full optimization pipeline through LLVM
+- **Readable block syntax** — indentation and `:` headers stay central to the language surface.
+- **Static typing** — the compiler keeps pushing errors into compile time instead of runtime.
+- **Native backend** — Thagore emits LLVM-backed native binaries rather than targeting a VM.
+- **Interop** — direct C FFI remains part of the core practical surface.
 
 ## Trade-offs
 
@@ -58,7 +43,7 @@ Thagore is actively evolving. These are known trade-offs in the current version:
 | **No generics yet** | Generic signatures are parsed but lowered via mangling — full parametric polymorphism is in progress |
 | **Limited error types** | Error handling uses return codes (`i32`); `Result<T, E>` sugar is parsed but not fully lowered |
 | **String-heavy IR** | Internal representations (token streams, AST nodes) use string-encoded data structures |
-| **Bootstrap dependency** | You need a Stage1 seed binary to build the compiler from source |
+| **Bootstrap dependency** | A future bootstrap chain still depends on seed artifacts and more language/runtime hardening |
 
 ## Target Audience
 
@@ -66,5 +51,5 @@ Thagore is ideal for developers who:
 - Want **native performance** without C/C++ complexity
 - Prefer **Python-like syntax** but need compiled-language speed
 - Need **C FFI** to integrate with existing native libraries
-- Want to understand how a **self-hosted compiler** works from the inside
+- Want to follow the evolution from a hosted compiler toward a future self-hosted toolchain
 - Are building **systems tools, CLI applications, or performance-critical software**

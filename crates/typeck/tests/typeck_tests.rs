@@ -1,9 +1,9 @@
 use thagore_ast::{
     BinOp, BinaryExpr, Block, CallExpr, ConstDecl, Constraint, ConstraintKind, Decl, Expr,
     ExprStmt, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericFuncDecl,
-    GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr, InferTypeExpr, InternedStr, LetDecl,
-    LitExpr, Literal, NamedTypeExpr, NodeId, Param, ReturnStmt, Span, Stmt, StructDecl, TypeExpr,
-    TypeParam, UnaryExpr, UnaryOp, WhileStmt,
+    GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr,
+    InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
+    ReturnStmt, Span, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, UnaryOp, WhileStmt,
 };
 use thagore_typeck::{
     InferenceSolver, ScopeStack, TypeArena, TypeChecker, TypeConstraint, TypeError, TypeId,
@@ -995,4 +995,65 @@ fn binds_top_level_consts_into_scope() {
     };
     let value = ret.value.expect("const value");
     assert_eq!(table.get(value.id()), Some(checker.types().f64()));
+}
+
+#[test]
+fn reports_generic_struct_and_impl_as_unsupported() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let field_ty = ast.named_type(syms.i32_);
+    let type_param = TypeParam {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        constraints: leak_slice(vec![]),
+    };
+
+    let generic_struct = Decl::GenericStruct(GenericStructDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.point,
+        type_params: leak_slice(vec![type_param.clone()]),
+        fields: leak_slice(vec![FieldDef {
+            id: ast.id(),
+            span: span(),
+            name: syms.x,
+            ty: field_ty,
+        }]),
+    });
+
+    let method_body = {
+        let zero = ast.int(0);
+        let stmt = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt])
+    };
+
+    let generic_impl = Decl::GenericImpl(GenericImplBlock {
+        id: ast.id(),
+        span: span(),
+        target: syms.point,
+        type_params: leak_slice(vec![type_param]),
+        methods: leak_slice(vec![FuncDecl {
+            id: ast.id(),
+            span: span(),
+            name: syms.distance,
+            params: leak_slice(vec![]),
+            return_type: Some(ast.named_type(syms.i32_)),
+            body: method_body,
+        }]),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[generic_struct, generic_impl])
+        .expect_err("generic struct/impl should not type check");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsupportedFeature { feature, .. } if *feature == "generic structs"
+    )));
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsupportedFeature { feature, .. } if *feature == "generic impl blocks"
+    )));
 }
