@@ -219,6 +219,16 @@ fn expect_i32(value: &Value, name: &str) -> Result<i32, RuntimeError> {
     }
 }
 
+fn expect_i64(value: &Value, name: &str) -> Result<i64, RuntimeError> {
+    match value {
+        Value::I64(number) => Ok(*number),
+        other => Err(RuntimeError::message(format!(
+            "{name} expected i64, found {}",
+            other.type_name()
+        ))),
+    }
+}
+
 fn expect_f64(value: &Value, name: &str) -> Result<f64, RuntimeError> {
     match value {
         Value::F64(number) => Ok(*number),
