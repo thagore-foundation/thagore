@@ -947,7 +947,13 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         match decl {
             Decl::Func(node) => self.visit_func_decl(node),
             Decl::GenericFunc(node) => self.visit_generic_func_decl(node),
-            Decl::Let(node) => self.visit_let_decl(node),
+            Decl::Let(node) => {
+                self.errors.push(TypeError::UnsupportedFeature {
+                    feature: "top-level let declarations",
+                    span: node.span,
+                });
+                self.visit_let_decl(node);
+            }
             Decl::Const(node) => self.visit_const_decl(node),
             Decl::Struct(node) => self.visit_struct_decl(node),
             Decl::GenericStruct(node) => {

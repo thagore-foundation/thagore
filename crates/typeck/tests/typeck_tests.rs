@@ -420,10 +420,13 @@ fn infers_let_types_and_collects_forward_declarations() {
     });
 
     let mut checker = checker_with_symbols();
-    let table = checker
+    let errors = checker
         .check(&[function, point_struct, Decl::Let(let_decl.clone())])
-        .expect("type check should succeed");
-    assert_eq!(table.get(let_decl.id), Some(checker.types().i32()));
+        .expect_err("top-level let should now fail early");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsupportedFeature { feature, .. } if *feature == "top-level let declarations"
+    )));
 }
 
 #[test]
@@ -1055,5 +1058,28 @@ fn reports_generic_struct_and_impl_as_unsupported() {
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnsupportedFeature { feature, .. } if *feature == "generic impl blocks"
+    )));
+}
+
+#[test]
+fn reports_top_level_let_as_unsupported() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let top_level_let = Decl::Let(LetDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        ty: Some(ast.named_type(syms.i32_)),
+        initializer: ast.int(1),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[top_level_let])
+        .expect_err("top-level let should not type check");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsupportedFeature { feature, .. } if *feature == "top-level let declarations"
     )));
 }
