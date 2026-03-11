@@ -360,6 +360,46 @@ print(fib_iter(10))
 }
 
 #[test]
+fn malformed_decl_block_does_not_escape_into_following_top_level_parse() {
+    let source = "\
+struct Point: x: i32
+func next() -> i32:
+  return 1
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert_eq!(decls.len(), 2);
+        assert!(
+            !errors.is_empty(),
+            "expected a parser error for malformed struct body"
+        );
+        assert!(matches!(decls[0], Decl::Struct(_)));
+        assert!(matches!(decls[1], Decl::Func(_)));
+    });
+}
+
+#[test]
+fn malformed_intent_and_flow_headers_recover_to_following_declarations() {
+    let source = "\
+intent Optimize: minimize memory
+flow Transaction: stage acquire
+func next() -> i32:
+  return 1
+";
+
+    with_parsed_source(source, |decls, errors| {
+        assert_eq!(decls.len(), 3);
+        assert!(
+            !errors.is_empty(),
+            "expected parser errors for malformed intent/flow bodies"
+        );
+        assert!(matches!(decls[0], Decl::Intent(_)));
+        assert!(matches!(decls[1], Decl::Flow(_)));
+        assert!(matches!(decls[2], Decl::Func(_)));
+    });
+}
+
+#[test]
 fn recovers_after_syntax_error() {
     let source = "\
 let broken = 

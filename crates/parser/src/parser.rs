@@ -222,6 +222,25 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
     }
 
+    pub(crate) fn enter_indented_section(&mut self) -> bool {
+        self.skip_newlines();
+
+        if self.at(TokenKind::Indent) {
+            self.advance();
+            return true;
+        }
+
+        self.emit_statement_error(ParseError::unexpected_token(
+            self.peek().kind,
+            self.current_span(),
+            Expectation::Block,
+        ));
+        if !matches!(self.peek().kind, TokenKind::Newline | TokenKind::Dedent | TokenKind::Eof) {
+            self.synchronize_statement();
+        }
+        false
+    }
+
     pub(crate) fn synchronize_statement(&mut self) {
         if self.at(TokenKind::Eof) {
             return;

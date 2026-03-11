@@ -161,12 +161,11 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.expect_block_colon();
 
         let start = self.span_of(struct_token);
-        self.skip_newlines();
-        self.expect_indent();
+        let entered_block = self.enter_indented_section();
 
         let mut fields = self.bump_vec();
         let mut end = start;
-        while !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
+        while entered_block && !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
             self.skip_newlines();
             if self.at(TokenKind::Dedent) || self.at(TokenKind::Eof) {
                 break;
@@ -189,10 +188,14 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.consume_statement_terminator();
         }
 
-        if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
-            end = end.join(self.span_of(dedent));
+        if entered_block {
+            if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
+                end = end.join(self.span_of(dedent));
+            } else if !self.at(TokenKind::Eof) {
+                self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            }
         } else if !self.at(TokenKind::Eof) {
-            self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            end = end.join(self.current_span());
         }
 
         let id = self.new_node_id();
@@ -223,12 +226,11 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.expect_block_colon();
 
         let start = self.span_of(impl_token);
-        self.skip_newlines();
-        self.expect_indent();
+        let entered_block = self.enter_indented_section();
 
         let mut methods = self.bump_vec();
         let mut end = start;
-        while !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
+        while entered_block && !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
             self.skip_newlines();
             if self.at(TokenKind::Dedent) || self.at(TokenKind::Eof) {
                 break;
@@ -250,10 +252,14 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.consume_statement_terminator();
         }
 
-        if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
-            end = end.join(self.span_of(dedent));
+        if entered_block {
+            if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
+                end = end.join(self.span_of(dedent));
+            } else if !self.at(TokenKind::Eof) {
+                self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            }
         } else if !self.at(TokenKind::Eof) {
-            self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            end = end.join(self.current_span());
         }
 
         let id = self.new_node_id();
@@ -426,13 +432,12 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let name = self.parse_identifier_symbol(Expectation::Identifier);
         self.expect_block_colon();
 
-        self.skip_newlines();
-        self.expect_indent();
+        let entered_block = self.enter_indented_section();
 
         let mut constraints = self.bump_vec();
         let mut body = None;
         let mut end = self.span_of(intent_token);
-        while !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
+        while entered_block && !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
             self.skip_newlines();
             if self.at(TokenKind::Dedent) || self.at(TokenKind::Eof) {
                 break;
@@ -456,10 +461,14 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.consume_statement_terminator();
         }
 
-        if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
-            end = end.join(self.span_of(dedent));
+        if entered_block {
+            if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
+                end = end.join(self.span_of(dedent));
+            } else if !self.at(TokenKind::Eof) {
+                self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            }
         } else if !self.at(TokenKind::Eof) {
-            self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            end = end.join(self.current_span());
         }
 
         let body = if let Some(body) = body {
@@ -487,14 +496,13 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let name = self.parse_identifier_symbol(Expectation::Identifier);
         self.expect_block_colon();
 
-        self.skip_newlines();
-        self.expect_indent();
+        let entered_block = self.enter_indented_section();
 
         let mut stages = self.bump_vec();
         let mut compensation = None;
         let mut end = self.span_of(flow_token);
 
-        while !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
+        while entered_block && !self.at(TokenKind::Dedent) && !self.at(TokenKind::Eof) {
             self.skip_newlines();
             if self.at(TokenKind::Dedent) || self.at(TokenKind::Eof) {
                 break;
@@ -533,10 +541,14 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             self.synchronize_statement();
         }
 
-        if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
-            end = end.join(self.span_of(dedent));
+        if entered_block {
+            if let Some(dedent) = self.match_kind(TokenKind::Dedent) {
+                end = end.join(self.span_of(dedent));
+            } else if !self.at(TokenKind::Eof) {
+                self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            }
         } else if !self.at(TokenKind::Eof) {
-            self.emit_statement_error(ParseError::missing_dedent(self.current_span()));
+            end = end.join(self.current_span());
         }
 
         FlowDecl {
