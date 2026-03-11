@@ -325,7 +325,54 @@ function Install-DragoReleaseBinary([string]$Repo, [string]$Tag, [string]$Target
     return $false
   }
   Copy-Item $candidate.FullName -Destination $DestinationPath -Force
+  if (-not (Test-DragoBinary $DestinationPath)) {
+    Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue
+    return $false
+  }
   return $true
+}
+
+function Install-DragoFromSourceArchive([string]$SourceUrl, [string]$Prefix, [string]$DestinationPath, [string]$TempRoot) {
+  $dragoArchive = Join-Path $TempRoot "drago-source.tar.gz"
+  Invoke-WebRequest -Uri $SourceUrl -OutFile $dragoArchive | Out-Null
+  $dragoSourceRoot = Join-Path $TempRoot "drago-src"
+  if (Test-Path $dragoSourceRoot) {
+    Remove-Item $dragoSourceRoot -Recurse -Force
+  }
+  New-Item -ItemType Directory -Path $dragoSourceRoot -Force | Out-Null
+  tar -xf $dragoArchive -C $dragoSourceRoot
+  $sourceDir = Get-ChildItem $dragoSourceRoot -Directory | Select-Object -First 1
+  $thagcBin = Join-Path $Prefix "bin\thagc.exe"
+  if (-not (Test-Path $thagcBin)) {
+    throw "Installed thagc binary not found at $thagcBin."
+  }
+  & $thagcBin build (Join-Path $sourceDir.FullName "src\main.tg") -o $DestinationPath
+  if ($LASTEXITCODE -ne 0) {
+    return $false
+  }
+  return (Test-DragoBinary $DestinationPath)
+}
+
+function Test-DragoBinary([string]$Path) {
+  if (-not (Test-Path $Path)) {
+    return $false
+  }
+  try {
+    $output = & $Path --version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      return $false
+    }
+    $text = ($output | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+      return $false
+    }
+    if ($text.Contains("<command>") -or $text.Contains("commands:")) {
+      return $false
+    }
+    return $text.StartsWith("drago ")
+  } catch {
+    return $false
+  }
 }
 
 if ([string]::IsNullOrWhiteSpace($Target)) {
@@ -479,20 +526,16 @@ try {
     $effectiveDragoTag = [string]$drago.tag
     $dragoBin = Join-Path $Prefix "bin\drago.exe"
     if (-not (Install-DragoReleaseBinary -Repo $drago.repository -Tag $effectiveDragoTag -Target $Target -DestinationPath $dragoBin -TempRoot $tempRoot)) {
+      Log "Falling back to drago source bootstrap because the published Windows binary is unavailable or invalid."
       $sourceUrl = [string]$drago.source_archive_url
-      $dragoArchive = Join-Path $tempRoot "drago-source.tar.gz"
-      Invoke-WebRequest -Uri $sourceUrl -OutFile $dragoArchive | Out-Null
-      $dragoSourceRoot = Join-Path $tempRoot "drago-src"
-      New-Item -ItemType Directory -Path $dragoSourceRoot -Force | Out-Null
-      tar -xf $dragoArchive -C $dragoSourceRoot
-      $sourceDir = Get-ChildItem $dragoSourceRoot -Directory | Select-Object -First 1
-      $thagcBin = Join-Path $Prefix "bin\thagc.exe"
-      if (-not (Test-Path $thagcBin)) {
-        throw "Installed thagc binary not found at $thagcBin."
+      $sourceInstalled = Install-DragoFromSourceArchive -SourceUrl $sourceUrl -Prefix $Prefix -DestinationPath $dragoBin -TempRoot $tempRoot
+      if (-not $sourceInstalled -and $sourceUrl -notlike "*/refs/heads/main.tar.gz") {
+        $mainSourceUrl = "https://github.com/$($drago.repository)/archive/refs/heads/main.tar.gz"
+        Log "Falling back to drago main source because the tagged source build is not usable yet."
+        $sourceInstalled = Install-DragoFromSourceArchive -SourceUrl $mainSourceUrl -Prefix $Prefix -DestinationPath $dragoBin -TempRoot $tempRoot
       }
-      & $thagcBin build (Join-Path $sourceDir.FullName "src\main.tg") -o $dragoBin
-      if ($LASTEXITCODE -ne 0) {
-        throw "Failed to bootstrap drago with the freshly installed thagc."
+      if (-not $sourceInstalled) {
+        throw "Failed to bootstrap a usable drago with the freshly installed thagc."
       }
     }
     Write-Host "Installed drago from $($drago.repository)@$effectiveDragoTag"

@@ -330,11 +330,15 @@ fn emit_call<'ctx>(
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
     let runtime_name = context.symbol_name(name);
-    if runtime_name == "thag_rt_split" || runtime_name == "std__string__split" {
+    if (runtime_name == "thag_rt_split" || runtime_name == "std__string__split")
+        && result_is_string_array(context, function, value)?
+    {
         emit_string_split_call(context, function, value, args)?;
         return Ok(());
     }
-    if runtime_name == "thag_rt_join" || runtime_name == "std__string__join" {
+    if (runtime_name == "thag_rt_join" || runtime_name == "std__string__join")
+        && first_arg_is_string_array(context, function, args)?
+    {
         emit_string_join_call(context, function, value, args)?;
         return Ok(());
     }
@@ -361,6 +365,31 @@ fn emit_call<'ctx>(
         function.values.insert(value, result);
     }
     Ok(())
+}
+
+fn result_is_string_array<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+) -> Result<bool, CodegenError> {
+    Ok(matches!(
+        context.types.kind(type_of(function, value)?),
+        TypeKind::Array(element) if *element == context.types.str()
+    ))
+}
+
+fn first_arg_is_string_array<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    args: &[Value],
+) -> Result<bool, CodegenError> {
+    let Some(first) = args.first().copied() else {
+        return Ok(false);
+    };
+    Ok(matches!(
+        context.types.kind(type_of(function, first)?),
+        TypeKind::Array(element) if *element == context.types.str()
+    ))
 }
 
 fn emit_string_split_call<'ctx>(
@@ -494,7 +523,21 @@ fn emit_string_join_call<'ctx>(
         )
     });
 
-    let parts = lookup_value(context, function, parts_arg)?.into_struct_value();
+    let parts_runtime = lookup_value(context, function, parts_arg)?;
+    let parts = match parts_runtime {
+        BasicValueEnum::StructValue(struct_value) => struct_value,
+        BasicValueEnum::PointerValue(pointer) => {
+            build_load(context, pointer, "join.parts.load")?.into_struct_value()
+        }
+        _ => {
+            return Err(CodegenError::InvalidOperandType {
+                value: parts_arg,
+                expected: "array",
+                found: type_of(function, parts_arg)?,
+                span: None,
+            })
+        }
+    };
     let len = context
         .builder
         .build_extract_value(parts, 0, "join.parts.len")
