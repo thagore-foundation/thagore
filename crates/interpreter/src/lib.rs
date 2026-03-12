@@ -5,7 +5,7 @@ mod eval;
 mod stdlib;
 mod value;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use thagore_ast::{Decl, FuncDecl, InternedStr};
 
@@ -80,6 +80,7 @@ impl SymbolTable {
 pub struct Interpreter<'ast> {
     env: EnvStack,
     functions: HashMap<String, &'ast FuncDecl<'ast>>,
+    const_symbols: HashSet<String>,
     struct_names: Vec<String>,
     symbols: SymbolTable,
     stdlib: StdlibRegistry,
@@ -101,6 +102,7 @@ impl<'ast> Interpreter<'ast> {
         Self {
             env: EnvStack::new(),
             functions: HashMap::new(),
+            const_symbols: HashSet::new(),
             struct_names: Vec::new(),
             symbols,
             stdlib: StdlibRegistry::new(),
@@ -305,6 +307,26 @@ mod tests {
         }))
     }
 
+    fn ident(symbol: InternedStr) -> &'static thagore_ast::Expr<'static> {
+        leak_value(thagore_ast::Expr::Ident(thagore_ast::IdentExpr {
+            id: NodeId::new(12),
+            span: span(),
+            name: symbol,
+        }))
+    }
+
+    fn call(
+        callee: &'static thagore_ast::Expr<'static>,
+        args: Vec<&'static thagore_ast::Expr<'static>>,
+    ) -> &'static thagore_ast::Expr<'static> {
+        leak_value(thagore_ast::Expr::Call(thagore_ast::CallExpr {
+            id: NodeId::new(13),
+            span: span(),
+            callee,
+            args: leak_slice(args),
+        }))
+    }
+
     fn named_type(symbol: InternedStr) -> &'static TypeExpr<'static> {
         leak_value(TypeExpr::Named(NamedTypeExpr {
             id: NodeId::new(2),
@@ -432,5 +454,36 @@ mod tests {
 
         assert_eq!(result, Ok(Value::Void));
         assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+    }
+
+    #[test]
+    fn rejects_non_constant_top_level_const_initializers() {
+        let decls = [
+            Decl::Func(FuncDecl {
+                id: NodeId::new(14),
+                span: span(),
+                name: InternedStr::new(0),
+                params: &[],
+                return_type: None,
+                body: empty_block(),
+            }),
+            Decl::Const(ConstDecl {
+                id: NodeId::new(15),
+                span: span(),
+                name: InternedStr::new(1),
+                type_ann: named_type(InternedStr::new(2)),
+                value: call(ident(InternedStr::new(0)), Vec::new()),
+            }),
+        ];
+        let mut interpreter = Interpreter::new(symbol_table(&["main", "answer", "i32"]));
+
+        let result = interpreter.run(&decls);
+
+        assert_eq!(
+            result,
+            Err(RuntimeError::message(
+                "top-level const initializers must be compile-time constant expressions",
+            ))
+        );
     }
 }

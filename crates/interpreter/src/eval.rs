@@ -27,8 +27,14 @@ impl<'ast> Interpreter<'ast> {
                 }
                 Decl::Import(import_decl) => self.register_import(import_decl)?,
                 Decl::Const(const_decl) => {
+                    if !self.is_compile_time_const_expr(const_decl.value)? {
+                        return Err(RuntimeError::message(
+                            "top-level const initializers must be compile-time constant expressions",
+                        ));
+                    }
                     let name = self.name(const_decl.name)?;
                     let value = self.eval_expr(const_decl.value)?;
+                    self.const_symbols.insert(name.clone());
                     self.env.define(name, value);
                 }
                 Decl::Let(_) => {
@@ -60,6 +66,28 @@ impl<'ast> Interpreter<'ast> {
             }
         }
         Ok(())
+    }
+
+    fn is_compile_time_const_expr(
+        &self,
+        expr: ExprRef<'ast>,
+    ) -> Result<bool, RuntimeError> {
+        match expr {
+            Expr::Literal(_) => Ok(true),
+            Expr::Ident(node) => {
+                let name = self.name(node.name)?;
+                Ok(self.const_symbols.contains(&name))
+            }
+            Expr::Unary(node) => self.is_compile_time_const_expr(node.operand),
+            Expr::Binary(node) => Ok(
+                self.is_compile_time_const_expr(node.left)?
+                    && self.is_compile_time_const_expr(node.right)?,
+            ),
+            Expr::Call(_)
+            | Expr::FieldAccess(_)
+            | Expr::Index(_)
+            | Expr::Assign(_) => Ok(false),
+        }
     }
 
     fn register_struct(&mut self, decl: &'ast StructDecl<'ast>) -> Result<(), RuntimeError> {
