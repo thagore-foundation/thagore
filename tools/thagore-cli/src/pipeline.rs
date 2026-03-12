@@ -2196,6 +2196,15 @@ pub(crate) fn convert_type_error(
             ),
             Some(*span),
         ),
+        TypeError::NotFieldAccessible { found, span } => CompilerDiagnostic::new(
+            "E010",
+            "value has no fields",
+            format!(
+                "type {} does not support field access",
+                render_type(*found, types, parser)
+            ),
+            Some(*span),
+        ),
         TypeError::NotCallable { found, span } => CompilerDiagnostic::new(
             "E004",
             "value is not callable",

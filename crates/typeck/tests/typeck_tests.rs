@@ -1355,3 +1355,39 @@ fn rejects_assignments_to_non_mutable_bindings() {
             >= 2
     );
 }
+
+#[test]
+fn reports_field_access_on_non_struct_values() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let field_expr = {
+        let number = ast.int(1);
+        ast.field(number, syms.x)
+    };
+    let stmt = expr_stmt(&mut ast, field_expr);
+    let body = {
+        let zero = ast.int(0);
+        let ret = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt, ret])
+    };
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[func])
+        .expect_err("field access on i32 should fail");
+
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::NotFieldAccessible { .. }))
+    );
+}

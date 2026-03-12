@@ -1376,7 +1376,8 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             }
             TypeKind::Unknown => self.types.unknown(),
             _ => {
-                self.errors.push(TypeError::Unknown {
+                self.errors.push(TypeError::NotFieldAccessible {
+                    found: object_resolved,
                     span: expr.object.span(),
                 });
                 self.types.unknown()

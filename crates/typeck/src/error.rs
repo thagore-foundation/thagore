@@ -62,6 +62,13 @@ pub enum TypeError {
         /// Source location of the field access.
         span: Span,
     },
+    /// A field access targeted a value that cannot expose fields or methods.
+    NotFieldAccessible {
+        /// Type that was used as the field access base.
+        found: TypeId,
+        /// Source location of the field access.
+        span: Span,
+    },
     /// A call expression targeted a non-function type.
     NotCallable {
         /// Type that was used as the callee.
@@ -131,6 +138,7 @@ impl TypeError {
             | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
+            | Self::NotFieldAccessible { span, .. }
             | Self::NotCallable { span, .. }
             | Self::NotIndexable { span, .. }
             | Self::ArgumentCountMismatch { span, .. }
@@ -179,6 +187,9 @@ impl fmt::Display for TypeError {
                 f,
                 "unknown field {field:?} on struct {struct_name:?} at {span}"
             ),
+            Self::NotFieldAccessible { found, span } => {
+                write!(f, "type {found} has no fields or methods at {span}")
+            }
             Self::NotCallable { found, span } => {
                 write!(f, "type {found} is not callable at {span}")
             }
