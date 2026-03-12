@@ -2154,6 +2154,24 @@ pub(crate) fn convert_type_error(
             "top-level const initializers must be compile-time constant expressions".to_string(),
             Some(*span),
         ),
+        TypeError::UnknownType { name, span } => CompilerDiagnostic::new(
+            "E006",
+            "unknown type",
+            format!(
+                "`{}` is not a builtin type or declared struct",
+                render_symbol(*name, parser)
+            ),
+            Some(*span),
+        ),
+        TypeError::InvalidImplTarget { target, span } => CompilerDiagnostic::new(
+            "E007",
+            "invalid impl target",
+            format!(
+                "`{}` is not a declared struct, so methods cannot be attached to it",
+                render_symbol(*target, parser)
+            ),
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,
@@ -2206,7 +2224,7 @@ pub(crate) fn convert_type_error(
             Some(*span),
         ),
         TypeError::NotCallable { found, span } => CompilerDiagnostic::new(
-            "E004",
+            "E011",
             "value is not callable",
             format!(
                 "type {} cannot be called",
@@ -2215,7 +2233,7 @@ pub(crate) fn convert_type_error(
             Some(*span),
         ),
         TypeError::NotIndexable { found, span } => CompilerDiagnostic::new(
-            "E005",
+            "E012",
             "value is not indexable",
             format!(
                 "type {} cannot be indexed",
@@ -2228,7 +2246,7 @@ pub(crate) fn convert_type_error(
             found,
             span,
         } => CompilerDiagnostic::new(
-            "E006",
+            "E013",
             "argument count mismatch",
             format!("expected {expected} arguments, found {found}"),
             Some(*span),
@@ -2238,7 +2256,7 @@ pub(crate) fn convert_type_error(
             found,
             span,
         } => CompilerDiagnostic::new(
-            "E007",
+            "E014",
             "return type mismatch",
             format!(
                 "expected {}, found {}",
@@ -2248,13 +2266,13 @@ pub(crate) fn convert_type_error(
             Some(*span),
         ),
         TypeError::ConditionNotBool { found, span } => CompilerDiagnostic::new(
-            "E008",
+            "E015",
             "condition must be bool",
             format!("found {}", render_type(*found, types, parser)),
             Some(*span),
         ),
         TypeError::InferenceFailure { span } => CompilerDiagnostic::new(
-            "E009",
+            "E016",
             "type inference failed",
             "the compiler could not infer a concrete type".to_string(),
             Some(*span),

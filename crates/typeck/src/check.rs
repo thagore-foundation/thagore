@@ -328,7 +328,10 @@ impl TypeChecker {
 
     fn collect_impl_signatures<'ast>(&mut self, decl: &'ast thagore_ast::ImplBlock<'ast>) {
         let Some(target_type) = self.struct_types.get(&decl.target).copied() else {
-            self.errors.push(TypeError::unknown(decl.span));
+            self.errors.push(TypeError::InvalidImplTarget {
+                target: decl.target,
+                span: decl.span,
+            });
             return;
         };
 
@@ -378,7 +381,7 @@ impl TypeChecker {
             Some("str") | Some("ptr") => self.types.str(),
             Some("()") | Some("void") => self.types.unit(),
             _ => self.struct_types.get(&name).copied().unwrap_or_else(|| {
-                self.errors.push(TypeError::unknown(span));
+                self.errors.push(TypeError::UnknownType { name, span });
                 self.types.unknown()
             }),
         }
@@ -395,7 +398,10 @@ impl TypeChecker {
                 self.types.intern_array(*element)
             }
             _ => {
-                self.errors.push(TypeError::unknown(ty.span));
+                self.errors.push(TypeError::UnknownType {
+                    name: ty.name,
+                    span: ty.span,
+                });
                 self.types.unknown()
             }
         };

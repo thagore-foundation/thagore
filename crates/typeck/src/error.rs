@@ -37,6 +37,20 @@ pub enum TypeError {
         /// Source location of the invalid initializer.
         span: Span,
     },
+    /// A named type could not be resolved to a builtin or declared struct.
+    UnknownType {
+        /// Missing type symbol.
+        name: InternedStr,
+        /// Source location of the unknown type.
+        span: Span,
+    },
+    /// An impl block targeted a type that is not a declared struct.
+    InvalidImplTarget {
+        /// Missing impl target symbol.
+        target: InternedStr,
+        /// Source location of the invalid impl block.
+        span: Span,
+    },
     /// Two types were required to be equal but were not.
     TypeMismatch {
         /// Expected type.
@@ -135,6 +149,8 @@ impl TypeError {
             | Self::InvalidControlFlow { span, .. }
             | Self::InvalidAssignmentTarget { span }
             | Self::InvalidConstInitializer { span }
+            | Self::UnknownType { span, .. }
+            | Self::InvalidImplTarget { span, .. }
             | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
@@ -166,6 +182,15 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "top-level const initializer must be compile-time constant at {span}"
+                )
+            }
+            Self::UnknownType { name, span } => {
+                write!(f, "unknown type {name:?} at {span}")
+            }
+            Self::InvalidImplTarget { target, span } => {
+                write!(
+                    f,
+                    "impl target {target:?} is not a declared struct at {span}"
                 )
             }
             Self::TypeMismatch {

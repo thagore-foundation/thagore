@@ -1391,3 +1391,97 @@ fn reports_field_access_on_non_struct_values() {
             .any(|error| matches!(error, TypeError::NotFieldAccessible { .. }))
     );
 }
+
+#[test]
+fn reports_unknown_named_and_generic_types() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let unknown_named = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.value,
+            ty: ast.named_type(syms.missing),
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    });
+
+    let unknown_generic = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.bar,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.items,
+            ty: {
+                let element = ast.named_type(syms.i32_);
+                ast.array_type(syms.missing, element)
+            },
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[unknown_named, unknown_generic])
+        .expect_err("unknown type surfaces should fail");
+
+    assert!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::UnknownType { .. }))
+            .count()
+            >= 2
+    );
+}
+
+#[test]
+fn reports_invalid_impl_target() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let method = FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.distance,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    };
+    let invalid_impl = Decl::Impl(ImplBlock {
+        id: ast.id(),
+        span: span(),
+        target: syms.missing,
+        methods: leak_slice(vec![method]),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[invalid_impl])
+        .expect_err("impl on unknown target should fail");
+
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::InvalidImplTarget { .. }))
+    );
+}
