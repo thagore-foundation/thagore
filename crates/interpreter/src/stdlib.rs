@@ -239,6 +239,78 @@ fn expect_f64(value: &Value, name: &str) -> Result<f64, RuntimeError> {
     }
 }
 
+fn parse_i32_like_runtime(text: &str) -> i32 {
+    let trimmed = text.trim_start();
+    let bytes = trimmed.as_bytes();
+    let mut end = 0usize;
+
+    if matches!(bytes.first(), Some(b'+') | Some(b'-')) {
+        end += 1;
+    }
+
+    let digits_start = end;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+
+    if end == digits_start {
+        return 0;
+    }
+
+    trimmed[..end]
+        .parse::<i64>()
+        .map(|value| value.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+        .unwrap_or(0)
+}
+
+fn parse_f64_like_runtime(text: &str) -> f64 {
+    let trimmed = text.trim_start();
+    let bytes = trimmed.as_bytes();
+    let mut end = 0usize;
+
+    if matches!(bytes.first(), Some(b'+') | Some(b'-')) {
+        end += 1;
+    }
+
+    let int_start = end;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+    let has_int = end > int_start;
+
+    if end < bytes.len() && bytes[end] == b'.' {
+        end += 1;
+        let frac_start = end;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if !has_int && end == frac_start {
+            return 0.0;
+        }
+    } else if !has_int {
+        return 0.0;
+    }
+
+    let exponent_start = end;
+    if end < bytes.len() && matches!(bytes[end], b'e' | b'E') {
+        let mut exp_end = end + 1;
+        if exp_end < bytes.len() && matches!(bytes[exp_end], b'+' | b'-') {
+            exp_end += 1;
+        }
+        let exp_digits_start = exp_end;
+        while exp_end < bytes.len() && bytes[exp_end].is_ascii_digit() {
+            exp_end += 1;
+        }
+        if exp_end > exp_digits_start {
+            end = exp_end;
+        } else {
+            end = exponent_start;
+        }
+    }
+
+    trimmed[..end].parse::<f64>().unwrap_or(0.0)
+}
+
 fn expect_numeric_pair(
     left: &Value,
     right: &Value,
@@ -332,21 +404,13 @@ fn builtin_from_bool(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value,
 fn builtin_to_int(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "to_int")?;
     let text = expect_string(&args[0], "to_int")?;
-    let parsed = text
-        .trim()
-        .parse::<i32>()
-        .map_err(|_| RuntimeError::message(format!("to_int could not parse '{text}' as i32")))?;
-    Ok(Value::I32(parsed))
+    Ok(Value::I32(parse_i32_like_runtime(&text)))
 }
 
 fn builtin_to_f64(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "to_f64")?;
     let text = expect_string(&args[0], "to_f64")?;
-    let parsed = text
-        .trim()
-        .parse::<f64>()
-        .map_err(|_| RuntimeError::message(format!("to_f64 could not parse '{text}' as f64")))?;
-    Ok(Value::F64(parsed))
+    Ok(Value::F64(parse_f64_like_runtime(&text)))
 }
 
 fn builtin_to_bool(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -1006,6 +1070,39 @@ mod tests {
         .expect("char_at result");
 
         assert_eq!(result, Value::Str(String::new()));
+    }
+
+    #[test]
+    fn to_int_matches_runtime_parse_fallbacks() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("to_int").expect("to_int handler");
+
+        let invalid = handler(&mut interpreter, vec![Value::Str(String::from("abc"))])
+            .expect("invalid to_int result");
+        let prefix = handler(&mut interpreter, vec![Value::Str(String::from("  -34ms"))])
+            .expect("prefix to_int result");
+
+        assert_eq!(invalid, Value::I32(0));
+        assert_eq!(prefix, Value::I32(-34));
+    }
+
+    #[test]
+    fn to_f64_matches_runtime_parse_fallbacks() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let handler = registry.handler("to_f64").expect("to_f64 handler");
+
+        let invalid = handler(&mut interpreter, vec![Value::Str(String::from("abc"))])
+            .expect("invalid to_f64 result");
+        let prefix = handler(
+            &mut interpreter,
+            vec![Value::Str(String::from("  -2.5e2ms"))],
+        )
+        .expect("prefix to_f64 result");
+
+        assert_eq!(invalid, Value::F64(0.0));
+        assert_eq!(prefix, Value::F64(-250.0));
     }
 
     #[test]
