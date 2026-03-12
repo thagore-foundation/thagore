@@ -2136,6 +2136,12 @@ pub(crate) fn convert_type_error(
             format!("`{feature}` is parsed but not implemented end to end yet"),
             Some(*span),
         ),
+        TypeError::InvalidControlFlow { message, span } => CompilerDiagnostic::new(
+            "E003",
+            "invalid control flow",
+            (*message).to_string(),
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,

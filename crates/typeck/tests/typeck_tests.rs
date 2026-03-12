@@ -1,5 +1,5 @@
 use thagore_ast::{
-    BinOp, BinaryExpr, Block, CallExpr, ConstDecl, Constraint, ConstraintKind, Decl, Expr,
+    BinOp, BinaryExpr, Block, BreakStmt, CallExpr, ConstDecl, Constraint, ConstraintKind, ContinueStmt, Decl, Expr,
     ExprStmt, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericFuncDecl,
     GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr,
     InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
@@ -1081,5 +1081,44 @@ fn reports_top_level_let_as_unsupported() {
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnsupportedFeature { feature, .. } if *feature == "top-level let declarations"
+    )));
+}
+
+#[test]
+fn reports_break_and_continue_outside_loops() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+    let break_stmt = Stmt::Break(BreakStmt {
+        id: ast.id(),
+        span: span(),
+    });
+    let continue_stmt = Stmt::Continue(ContinueStmt {
+        id: ast.id(),
+        span: span(),
+    });
+    let zero = ast.int(0);
+    let ret_stmt = return_stmt(&mut ast, Some(zero));
+
+    let body = ast.block(vec![break_stmt, continue_stmt, ret_stmt]);
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[func])
+        .expect_err("break/continue outside loops should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::InvalidControlFlow { message, .. } if *message == "break can only be used inside a loop"
+    )));
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::InvalidControlFlow { message, .. } if *message == "continue can only be used inside a loop"
     )));
 }

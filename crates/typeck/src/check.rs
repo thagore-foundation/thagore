@@ -52,6 +52,7 @@ pub struct TypeChecker {
     monomorph_instances: Vec<MonomorphInstance>,
     current_return_types: Vec<TypeId>,
     current_impl_targets: Vec<TypeId>,
+    current_loop_depth: usize,
     synthetic_symbol_cursor: u32,
 }
 
@@ -79,6 +80,7 @@ impl TypeChecker {
             monomorph_instances: Vec::new(),
             current_return_types: Vec::new(),
             current_impl_targets: Vec::new(),
+            current_loop_depth: 0,
             synthetic_symbol_cursor: 1_000_000,
         }
     }
@@ -145,6 +147,7 @@ impl TypeChecker {
         self.monomorph_instances.clear();
         self.current_return_types.clear();
         self.current_impl_targets.clear();
+        self.current_loop_depth = 0;
         self.synthetic_symbol_cursor = 1_000_000;
     }
 
@@ -1163,7 +1166,9 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     fn visit_while_stmt(&mut self, stmt: &'ast WhileStmt<'ast>) {
         let condition = self.check_expr(stmt.condition);
         self.require_bool(condition, stmt.condition.span());
+        self.current_loop_depth = self.current_loop_depth.saturating_add(1);
         self.visit_block(stmt.body);
+        self.current_loop_depth = self.current_loop_depth.saturating_sub(1);
         self.table.insert(stmt.id, self.types.unit());
     }
 
@@ -1184,16 +1189,30 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
         self.scopes.push_scope();
         self.scopes.insert(stmt.binding, element_type);
+        self.current_loop_depth = self.current_loop_depth.saturating_add(1);
         self.visit_block(stmt.body);
+        self.current_loop_depth = self.current_loop_depth.saturating_sub(1);
         self.scopes.pop_scope();
         self.table.insert(stmt.id, self.types.unit());
     }
 
     fn visit_break_stmt(&mut self, stmt: &'ast thagore_ast::BreakStmt) {
+        if self.current_loop_depth == 0 {
+            self.errors.push(TypeError::InvalidControlFlow {
+                message: "break can only be used inside a loop",
+                span: stmt.span,
+            });
+        }
         self.table.insert(stmt.id, self.types.unit());
     }
 
     fn visit_continue_stmt(&mut self, stmt: &'ast thagore_ast::ContinueStmt) {
+        if self.current_loop_depth == 0 {
+            self.errors.push(TypeError::InvalidControlFlow {
+                message: "continue can only be used inside a loop",
+                span: stmt.span,
+            });
+        }
         self.table.insert(stmt.id, self.types.unit());
     }
 
