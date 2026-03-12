@@ -1629,3 +1629,65 @@ fn rejects_method_value_field_access_outside_call() {
         TypeError::UnknownField { field, .. } if *field == syms.distance
     )));
 }
+
+#[test]
+fn reports_unknown_member_calls_without_cascade_not_callable() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let point_struct = Decl::Struct(StructDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.point,
+        fields: leak_slice(vec![FieldDef {
+            id: ast.id(),
+            span: span(),
+            name: syms.x,
+            ty: ast.named_type(syms.i32_),
+        }]),
+    });
+    let missing_call = {
+        let value = ast.ident(syms.value);
+        let member = ast.field(value, syms.y);
+        ast.call(member, vec![])
+    };
+    let body = {
+        let stmt = expr_stmt(&mut ast, missing_call);
+        let zero = ast.int(0);
+        let ret = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt, ret])
+    };
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.value,
+            ty: ast.named_type(syms.point),
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[point_struct, func])
+        .expect_err("missing member call should fail");
+
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::UnknownField { field, .. } if *field == syms.y))
+            .count(),
+        1
+    );
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::NotCallable { .. }))
+            .count(),
+        0
+    );
+}

@@ -1408,13 +1408,16 @@ impl<'ast> Visitor<'ast> for TypeChecker {
                 _ => unreachable!("method_for_field always returns a function type"),
             }
         } else {
+            let baseline_errors = self.errors.len();
             let callee = self.check_expr(expr.callee);
             let callee_resolved = self.resolved_type(callee);
             let TypeKind::Function(signature) = self.types.kind(callee_resolved).clone() else {
-                self.errors.push(TypeError::NotCallable {
-                    found: callee_resolved,
-                    span: expr.callee.span(),
-                });
+                if self.errors.len() == baseline_errors {
+                    self.errors.push(TypeError::NotCallable {
+                        found: callee_resolved,
+                        span: expr.callee.span(),
+                    });
+                }
                 self.table.insert(expr.id, self.types.unknown());
                 return;
             };
