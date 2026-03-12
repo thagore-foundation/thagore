@@ -126,6 +126,7 @@ impl<'ast> Interpreter<'ast> {
 
     /// Runs a parsed Thagore compilation unit and returns `main()`'s result.
     pub fn run(&mut self, decls: &'ast [Decl<'ast>]) -> Result<Value, RuntimeError> {
+        self.reset_program_state();
         self.install_default_bindings();
         self.collect_declarations(decls)?;
         if self.functions.contains_key("main") {
@@ -264,6 +265,18 @@ impl<'ast> Interpreter<'ast> {
         let rest = self.stdin[self.stdin_cursor..].to_string();
         self.stdin_cursor = self.stdin.len();
         rest
+    }
+
+    fn reset_program_state(&mut self) {
+        self.env = EnvStack::new();
+        self.functions.clear();
+        self.const_symbols.clear();
+        self.struct_names.clear();
+        self.stdout.clear();
+        self.stderr.clear();
+        self.stdin_cursor = 0;
+        self.call_depth = 0;
+        self.step_count = 0;
     }
 }
 
@@ -454,6 +467,42 @@ mod tests {
 
         assert_eq!(result, Ok(Value::Void));
         assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+    }
+
+    #[test]
+    fn resets_program_state_between_runs() {
+        let first = [
+            Decl::Const(ConstDecl {
+                id: NodeId::new(16),
+                span: span(),
+                name: InternedStr::new(0),
+                type_ann: named_type(InternedStr::new(1)),
+                value: int_literal(7),
+            }),
+            Decl::Func(FuncDecl {
+                id: NodeId::new(17),
+                span: span(),
+                name: InternedStr::new(2),
+                params: &[],
+                return_type: None,
+                body: empty_block(),
+            }),
+        ];
+        let second = [Decl::Func(FuncDecl {
+            id: NodeId::new(18),
+            span: span(),
+            name: InternedStr::new(2),
+            params: &[],
+            return_type: None,
+            body: empty_block(),
+        })];
+        let mut interpreter = Interpreter::new(symbol_table(&["answer", "i32", "main"]));
+
+        assert_eq!(interpreter.run(&first), Ok(Value::Void));
+        assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+
+        assert_eq!(interpreter.run(&second), Ok(Value::Void));
+        assert_eq!(interpreter.env.get("answer"), None);
     }
 
     #[test]
