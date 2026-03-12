@@ -1552,3 +1552,76 @@ fn reports_invalid_impl_method_receiver() {
             >= 2
     );
 }
+
+#[test]
+fn rejects_method_value_field_access_outside_call() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let point_struct = Decl::Struct(StructDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.point,
+        fields: leak_slice(vec![FieldDef {
+            id: ast.id(),
+            span: span(),
+            name: syms.x,
+            ty: ast.named_type(syms.i32_),
+        }]),
+    });
+    let method_impl = Decl::Impl(ImplBlock {
+        id: ast.id(),
+        span: span(),
+        target: syms.point,
+        methods: leak_slice(vec![FuncDecl {
+            id: ast.id(),
+            span: span(),
+            name: syms.distance,
+            params: leak_slice(vec![Param {
+                id: ast.id(),
+                span: span(),
+                name: syms.value,
+                ty: ast.named_type(syms.point),
+            }]),
+            return_type: Some(ast.named_type(syms.i32_)),
+            body: {
+                let zero = ast.int(0);
+                let ret = return_stmt(&mut ast, Some(zero));
+                ast.block(vec![ret])
+            },
+        }]),
+    });
+    let method_value = {
+        let value = ast.ident(syms.value);
+        ast.field(value, syms.distance)
+    };
+    let body = {
+        let stmt = expr_stmt(&mut ast, method_value);
+        let zero = ast.int(0);
+        let ret = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt, ret])
+    };
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.value,
+            ty: ast.named_type(syms.point),
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[point_struct, method_impl, func])
+        .expect_err("method values should not be accepted as plain field access");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnknownField { field, .. } if *field == syms.distance
+    )));
+}

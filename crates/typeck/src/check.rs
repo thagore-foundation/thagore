@@ -1349,15 +1349,37 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             return;
         }
 
-        let callee = self.check_expr(expr.callee);
-        let callee_resolved = self.resolved_type(callee);
-        let TypeKind::Function(signature) = self.types.kind(callee_resolved).clone() else {
-            self.errors.push(TypeError::NotCallable {
-                found: callee_resolved,
-                span: expr.callee.span(),
-            });
-            self.table.insert(expr.id, self.types.unknown());
-            return;
+        let method_signature = match expr.callee {
+            Expr::FieldAccess(field) => {
+                let object = self.check_expr(field.object);
+                let object_resolved = self.resolved_type(object);
+                match self.types.kind(object_resolved).clone() {
+                    TypeKind::Struct(struct_ty) => self.method_for_field(struct_ty.name, field.field),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+
+        let signature = if let Some(method_type) = method_signature {
+            self.table.insert(expr.callee.id(), method_type);
+            let method_type = self.resolved_type(method_type);
+            match self.types.kind(method_type).clone() {
+                TypeKind::Function(signature) => signature,
+                _ => unreachable!("method_for_field always returns a function type"),
+            }
+        } else {
+            let callee = self.check_expr(expr.callee);
+            let callee_resolved = self.resolved_type(callee);
+            let TypeKind::Function(signature) = self.types.kind(callee_resolved).clone() else {
+                self.errors.push(TypeError::NotCallable {
+                    found: callee_resolved,
+                    span: expr.callee.span(),
+                });
+                self.table.insert(expr.id, self.types.unknown());
+                return;
+            };
+            signature
         };
 
         if signature.params.len() != expr.args.len() {
@@ -1390,8 +1412,6 @@ impl<'ast> Visitor<'ast> for TypeChecker {
                     .find(|field| field.name == expr.field)
                 {
                     field.ty
-                } else if let Some(method) = self.method_for_field(struct_ty.name, expr.field) {
-                    method
                 } else {
                     self.errors.push(TypeError::UnknownField {
                         struct_name: struct_ty.name,
