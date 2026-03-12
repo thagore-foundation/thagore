@@ -264,3 +264,173 @@ impl<'ast> Interpreter<'ast> {
         rest
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Interpreter, RuntimeError, SymbolTable, Value};
+    use thagore_ast::{
+        Block, ConstDecl, Decl, ExternDecl, FlowDecl, FlowStage, FuncDecl, ImplBlock, InternedStr,
+        IntentDecl, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Span, StructDecl, TypeExpr,
+    };
+
+    fn span() -> Span {
+        Span::empty()
+    }
+
+    fn leak_value<T>(value: T) -> &'static T {
+        Box::leak(Box::new(value))
+    }
+
+    fn leak_slice<T>(items: Vec<T>) -> &'static [T] {
+        Box::leak(items.into_boxed_slice())
+    }
+
+    fn symbol_table(names: &[&str]) -> SymbolTable {
+        SymbolTable::from_snapshot(names)
+    }
+
+    fn empty_block() -> &'static Block<'static> {
+        leak_value(Block {
+            id: NodeId::new(0),
+            span: span(),
+            statements: &[],
+        })
+    }
+
+    fn int_literal(value: i64) -> &'static thagore_ast::Expr<'static> {
+        leak_value(thagore_ast::Expr::Literal(LitExpr {
+            id: NodeId::new(1),
+            span: span(),
+            literal: Literal::Int(value),
+        }))
+    }
+
+    fn named_type(symbol: InternedStr) -> &'static TypeExpr<'static> {
+        leak_value(TypeExpr::Named(NamedTypeExpr {
+            id: NodeId::new(2),
+            span: span(),
+            name: symbol,
+        }))
+    }
+
+    #[test]
+    fn rejects_top_level_let_declarations() {
+        let mut interpreter = Interpreter::new(symbol_table(&["answer"]));
+        let decls = [Decl::Let(LetDecl {
+            id: NodeId::new(3),
+            span: span(),
+            name: InternedStr::new(0),
+            ty: None,
+            initializer: int_literal(42),
+        })];
+
+        let result = interpreter.run(&decls);
+
+        assert_eq!(
+            result,
+            Err(RuntimeError::unsupported(
+                "top-level let declarations are not supported in the playground interpreter",
+            ))
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_top_level_declarations() {
+        let extern_decls = [Decl::Extern(ExternDecl {
+            id: NodeId::new(4),
+            span: span(),
+            name: InternedStr::new(0),
+            params: &[],
+            return_type: named_type(InternedStr::new(1)),
+        })];
+        let mut interpreter = Interpreter::new(symbol_table(&["ffi_call", "i32"]));
+        assert_eq!(
+            interpreter.run(&extern_decls),
+            Err(RuntimeError::unsupported(
+                "extern declarations are not supported in the playground interpreter",
+            ))
+        );
+
+        let impl_decls = [Decl::Impl(ImplBlock {
+            id: NodeId::new(5),
+            span: span(),
+            target: InternedStr::new(0),
+            methods: &[],
+        })];
+        let mut interpreter = Interpreter::new(symbol_table(&["Widget"]));
+        assert_eq!(
+            interpreter.run(&impl_decls),
+            Err(RuntimeError::unsupported(
+                "impl blocks are not supported in the playground interpreter",
+            ))
+        );
+
+        let intent_decls = [Decl::Intent(IntentDecl {
+            id: NodeId::new(6),
+            span: span(),
+            name: InternedStr::new(0),
+            constraints: &[],
+            body: empty_block(),
+        })];
+        let mut interpreter = Interpreter::new(symbol_table(&["ship_order"]));
+        assert_eq!(
+            interpreter.run(&intent_decls),
+            Err(RuntimeError::unsupported(
+                "intent declarations are not supported in the playground interpreter",
+            ))
+        );
+
+        let flow_decls = [Decl::Flow(FlowDecl {
+            id: NodeId::new(7),
+            span: span(),
+            name: InternedStr::new(0),
+            stages: leak_slice(vec![FlowStage {
+                id: NodeId::new(8),
+                span: span(),
+                name: InternedStr::new(1),
+                body: empty_block(),
+            }]),
+            compensation: None,
+        })];
+        let mut interpreter = Interpreter::new(symbol_table(&["checkout", "charge"]));
+        assert_eq!(
+            interpreter.run(&flow_decls),
+            Err(RuntimeError::unsupported(
+                "flow declarations are not supported in the playground interpreter",
+            ))
+        );
+    }
+
+    #[test]
+    fn still_runs_supported_top_level_declarations() {
+        let decls = [
+            Decl::Const(ConstDecl {
+                id: NodeId::new(9),
+                span: span(),
+                name: InternedStr::new(0),
+                type_ann: named_type(InternedStr::new(1)),
+                value: int_literal(7),
+            }),
+            Decl::Struct(StructDecl {
+                id: NodeId::new(10),
+                span: span(),
+                name: InternedStr::new(2),
+                fields: &[],
+            }),
+            Decl::Func(FuncDecl {
+                id: NodeId::new(11),
+                span: span(),
+                name: InternedStr::new(3),
+                params: &[],
+                return_type: None,
+                body: empty_block(),
+            }),
+        ];
+        let mut interpreter = Interpreter::new(symbol_table(&["answer", "i32", "Widget", "main"]));
+
+        let result = interpreter.run(&decls);
+
+        assert_eq!(result, Ok(Value::Void));
+        assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+    }
+}

@@ -31,13 +31,32 @@ impl<'ast> Interpreter<'ast> {
                     let value = self.eval_expr(const_decl.value)?;
                     self.env.define(name, value);
                 }
-                Decl::Let(let_decl) => {
-                    let name = self.name(let_decl.name)?;
-                    let value = self.eval_expr(let_decl.initializer)?;
-                    self.env.define(name, value);
+                Decl::Let(_) => {
+                    return Err(RuntimeError::unsupported(
+                        "top-level let declarations are not supported in the playground interpreter",
+                    ));
                 }
                 Decl::Struct(struct_decl) => self.register_struct(struct_decl)?,
-                Decl::Extern(_) | Decl::Impl(_) | Decl::Intent(_) | Decl::Flow(_) => {}
+                Decl::Extern(_) => {
+                    return Err(RuntimeError::unsupported(
+                        "extern declarations are not supported in the playground interpreter",
+                    ));
+                }
+                Decl::Impl(_) => {
+                    return Err(RuntimeError::unsupported(
+                        "impl blocks are not supported in the playground interpreter",
+                    ));
+                }
+                Decl::Intent(_) => {
+                    return Err(RuntimeError::unsupported(
+                        "intent declarations are not supported in the playground interpreter",
+                    ));
+                }
+                Decl::Flow(_) => {
+                    return Err(RuntimeError::unsupported(
+                        "flow declarations are not supported in the playground interpreter",
+                    ));
+                }
             }
         }
         Ok(())
