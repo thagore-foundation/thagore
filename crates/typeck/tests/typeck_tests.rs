@@ -1485,3 +1485,70 @@ fn reports_invalid_impl_target() {
             .any(|error| matches!(error, TypeError::InvalidImplTarget { .. }))
     );
 }
+
+#[test]
+fn reports_invalid_impl_method_receiver() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let point_struct = Decl::Struct(StructDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.point,
+        fields: leak_slice(vec![FieldDef {
+            id: ast.id(),
+            span: span(),
+            name: syms.x,
+            ty: ast.named_type(syms.i32_),
+        }]),
+    });
+
+    let wrong_receiver_method = FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.distance,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.value,
+            ty: ast.named_type(syms.i32_),
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    };
+    let missing_receiver_method = FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.add,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    };
+    let invalid_impl = Decl::Impl(ImplBlock {
+        id: ast.id(),
+        span: span(),
+        target: syms.point,
+        methods: leak_slice(vec![wrong_receiver_method, missing_receiver_method]),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[point_struct, invalid_impl])
+        .expect_err("impl methods without a valid receiver should fail");
+
+    assert!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::InvalidMethodReceiver { .. }))
+            .count()
+            >= 2
+    );
+}

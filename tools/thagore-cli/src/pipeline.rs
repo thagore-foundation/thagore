@@ -2172,6 +2172,29 @@ pub(crate) fn convert_type_error(
             ),
             Some(*span),
         ),
+        TypeError::InvalidMethodReceiver {
+            method,
+            expected,
+            found,
+            span,
+        } => CompilerDiagnostic::new(
+            "E008",
+            "invalid impl method receiver",
+            match found {
+                Some(found) => format!(
+                    "method `{}` must take `{}` as its first parameter, found {}",
+                    render_symbol(*method, parser),
+                    render_type(*expected, types, parser),
+                    render_type(*found, types, parser)
+                ),
+                None => format!(
+                    "method `{}` must declare `{}` as its first parameter",
+                    render_symbol(*method, parser),
+                    render_type(*expected, types, parser)
+                ),
+            },
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,

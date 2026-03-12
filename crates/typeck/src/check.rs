@@ -338,6 +338,7 @@ impl TypeChecker {
         self.table.insert(decl.id, target_type);
         for method in decl.methods {
             let method_type = self.collect_function_signature(method, Some(target_type));
+            self.validate_impl_method_receiver(method, target_type);
             self.method_types.insert(
                 MethodKey {
                     struct_name: decl.target,
@@ -346,6 +347,26 @@ impl TypeChecker {
                 method_type,
             );
             self.table.insert(method.id, method_type);
+        }
+    }
+
+    fn validate_impl_method_receiver<'ast>(
+        &mut self,
+        method: &'ast FuncDecl<'ast>,
+        target_type: TypeId,
+    ) {
+        let found = method
+            .params
+            .first()
+            .and_then(|param| self.table.get(param.id))
+            .map(|ty| self.resolved_type(ty));
+        if found != Some(target_type) {
+            self.errors.push(TypeError::InvalidMethodReceiver {
+                method: method.name,
+                expected: target_type,
+                found,
+                span: method.span,
+            });
         }
     }
 

@@ -51,6 +51,17 @@ pub enum TypeError {
         /// Source location of the invalid impl block.
         span: Span,
     },
+    /// An impl method does not declare a valid receiver matching the impl target.
+    InvalidMethodReceiver {
+        /// Method symbol.
+        method: InternedStr,
+        /// Declared impl target type.
+        expected: TypeId,
+        /// First parameter type if present.
+        found: Option<TypeId>,
+        /// Source location of the invalid method signature.
+        span: Span,
+    },
     /// Two types were required to be equal but were not.
     TypeMismatch {
         /// Expected type.
@@ -151,6 +162,7 @@ impl TypeError {
             | Self::InvalidConstInitializer { span }
             | Self::UnknownType { span, .. }
             | Self::InvalidImplTarget { span, .. }
+            | Self::InvalidMethodReceiver { span, .. }
             | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
@@ -193,6 +205,21 @@ impl fmt::Display for TypeError {
                     "impl target {target:?} is not a declared struct at {span}"
                 )
             }
+            Self::InvalidMethodReceiver {
+                method,
+                expected,
+                found,
+                span,
+            } => match found {
+                Some(found) => write!(
+                    f,
+                    "impl method {method:?} must take receiver of type {expected}, found {found} at {span}"
+                ),
+                None => write!(
+                    f,
+                    "impl method {method:?} must declare a first receiver parameter of type {expected} at {span}"
+                ),
+            },
             Self::TypeMismatch {
                 expected,
                 found,
