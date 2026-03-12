@@ -41,6 +41,7 @@ type MethodTypes = ScopeMap<MethodKey, TypeId>;
 pub struct TypeChecker {
     types: TypeArena,
     scopes: ScopeStack<thagore_ast::InternedStr, TypeId>,
+    assignable_symbols: ScopeStack<thagore_ast::InternedStr, ()>,
     table: TypeTable,
     infer: InferenceSolver,
     errors: Vec<TypeError>,
@@ -70,6 +71,7 @@ impl TypeChecker {
         Self {
             types: TypeArena::new(),
             scopes: ScopeStack::new(),
+            assignable_symbols: ScopeStack::new(),
             table: TypeTable::new(),
             infer: InferenceSolver::new(),
             errors: Vec::new(),
@@ -139,6 +141,7 @@ impl TypeChecker {
     fn reset_state(&mut self) {
         self.types.clear();
         self.scopes.clear();
+        self.assignable_symbols.clear();
         self.table.clear();
         self.infer.clear();
         self.errors.clear();
@@ -779,6 +782,7 @@ impl TypeChecker {
 
         self.table.insert(decl_id, result);
         self.scopes.insert(name, result);
+        self.assignable_symbols.insert(name, ());
     }
 
     fn lookup_identifier(
@@ -990,11 +994,13 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             .get(decl.id)
             .unwrap_or_else(|| self.collect_function_signature(decl, None));
         self.scopes.push_scope();
+        self.assignable_symbols.push_scope();
 
         if let TypeKind::Function(signature) = self.types.kind(function_type).clone() {
             for (param, ty) in decl.params.iter().zip(signature.params) {
                 self.table.insert(param.id, ty);
                 self.scopes.insert(param.name, ty);
+                self.assignable_symbols.insert(param.name, ());
             }
             self.current_return_types.push(signature.return_type);
         } else {
@@ -1004,6 +1010,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         self.visit_block(decl.body);
         self.current_return_types.pop();
         self.scopes.pop_scope();
+        self.assignable_symbols.pop_scope();
     }
 
     fn visit_let_decl(&mut self, decl: &'ast LetDecl<'ast>) {
@@ -1022,8 +1029,9 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         let declared = self.resolve_type_expr(decl.type_ann);
         let inferred = self.check_expr(decl.value);
         if !self.is_compile_time_const_expr(decl.value) {
-            self.errors
-                .push(TypeError::InvalidConstInitializer { span: decl.value.span() });
+            self.errors.push(TypeError::InvalidConstInitializer {
+                span: decl.value.span(),
+            });
         }
         let result = self.unify(declared, inferred, decl.span);
         let resolved = self.resolved_type(result);
@@ -1082,6 +1090,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
     fn visit_intent_decl(&mut self, decl: &'ast IntentDecl<'ast>) {
         self.scopes.push_scope();
+        self.assignable_symbols.push_scope();
         self.current_return_types.push(self.types.unit());
         for constraint in decl.constraints {
             self.check_expr(*constraint);
@@ -1089,11 +1098,13 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         self.visit_block(decl.body);
         self.current_return_types.pop();
         self.scopes.pop_scope();
+        self.assignable_symbols.pop_scope();
         self.table.insert(decl.id, self.types.unit());
     }
 
     fn visit_flow_decl(&mut self, decl: &'ast FlowDecl<'ast>) {
         self.scopes.push_scope();
+        self.assignable_symbols.push_scope();
         self.current_return_types.push(self.types.unit());
         for stage in decl.stages {
             self.visit_flow_stage(stage);
@@ -1103,6 +1114,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         }
         self.current_return_types.pop();
         self.scopes.pop_scope();
+        self.assignable_symbols.pop_scope();
         self.table.insert(decl.id, self.types.unit());
     }
 
@@ -1126,10 +1138,12 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
     fn visit_block(&mut self, block: BlockRef<'ast>) {
         self.scopes.push_scope();
+        self.assignable_symbols.push_scope();
         for stmt in block.statements {
             self.visit_stmt(stmt);
         }
         self.scopes.pop_scope();
+        self.assignable_symbols.pop_scope();
         self.table.insert(block.id, self.types.unit());
     }
 
@@ -1196,11 +1210,14 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         };
 
         self.scopes.push_scope();
+        self.assignable_symbols.push_scope();
         self.scopes.insert(stmt.binding, element_type);
+        self.assignable_symbols.insert(stmt.binding, ());
         self.current_loop_depth = self.current_loop_depth.saturating_add(1);
         self.visit_block(stmt.body);
         self.current_loop_depth = self.current_loop_depth.saturating_sub(1);
         self.scopes.pop_scope();
+        self.assignable_symbols.pop_scope();
         self.table.insert(stmt.id, self.types.unit());
     }
 
@@ -1410,7 +1427,8 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         let target = self.check_expr(expr.target);
         let value = self.check_expr(expr.value);
         if !self.is_supported_assignment_target(expr.target) {
-            self.errors.push(TypeError::InvalidAssignmentTarget { span: expr.span });
+            self.errors
+                .push(TypeError::InvalidAssignmentTarget { span: expr.span });
         }
         let result = self.unify(target, value, expr.span);
         let resolved = self.resolved_type(result);
@@ -1452,8 +1470,11 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 impl TypeChecker {
     fn is_supported_assignment_target<'ast>(&self, target: ExprRef<'ast>) -> bool {
         match target {
-            Expr::Ident(_) => true,
-            Expr::FieldAccess(field) => matches!(field.object, Expr::Ident(_)),
+            Expr::Ident(ident) => self.assignable_symbols.get(&ident.name).is_some(),
+            Expr::FieldAccess(field) => match field.object {
+                Expr::Ident(base) => self.assignable_symbols.get(&base.name).is_some(),
+                _ => false,
+            },
             _ => false,
         }
     }

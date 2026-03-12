@@ -54,9 +54,14 @@ fn collect_stmt_returns<'ast>(stmt: StmtRef<'ast>, returns: &mut Vec<ReturnSite<
 fn stmt_guarantees_return(stmt: StmtRef<'_>) -> bool {
     match stmt {
         Stmt::Return(_) => true,
-        Stmt::If(node) => node
-            .else_block
-            .is_some_and(|else_block| block_guarantees_return(node.then_block) && block_guarantees_return(else_block)),
-        Stmt::While(_) | Stmt::For(_) | Stmt::Let(_) | Stmt::Expr(_) | Stmt::Break(_) | Stmt::Continue(_) => false,
+        Stmt::If(node) => node.else_block.is_some_and(|else_block| {
+            block_guarantees_return(node.then_block) && block_guarantees_return(else_block)
+        }),
+        Stmt::While(_)
+        | Stmt::For(_)
+        | Stmt::Let(_)
+        | Stmt::Expr(_)
+        | Stmt::Break(_)
+        | Stmt::Continue(_) => false,
     }
 }

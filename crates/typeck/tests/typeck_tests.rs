@@ -1,9 +1,10 @@
 use thagore_ast::{
-    BinOp, BinaryExpr, Block, BreakStmt, CallExpr, ConstDecl, Constraint, ConstraintKind, ContinueStmt, Decl, Expr,
-    ExprStmt, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt, FuncDecl, GenericFuncDecl,
-    GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr, IfStmt, ImplBlock, IndexExpr,
-    InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal, NamedTypeExpr, NodeId, Param,
-    ReturnStmt, Span, Stmt, StructDecl, TypeExpr, TypeParam, UnaryExpr, UnaryOp, WhileStmt,
+    BinOp, BinaryExpr, Block, BreakStmt, CallExpr, ConstDecl, Constraint, ConstraintKind,
+    ContinueStmt, Decl, Expr, ExprStmt, FieldAccessExpr, FieldDef, FlowDecl, FlowStage, ForStmt,
+    FuncDecl, GenericFuncDecl, GenericImplBlock, GenericStructDecl, GenericTypeExpr, IdentExpr,
+    IfStmt, ImplBlock, IndexExpr, InferTypeExpr, InternedStr, LetDecl, LitExpr, Literal,
+    NamedTypeExpr, NodeId, Param, ReturnStmt, Span, Stmt, StructDecl, TypeExpr, TypeParam,
+    UnaryExpr, UnaryOp, WhileStmt,
 };
 use thagore_typeck::{
     InferenceSolver, ScopeStack, TypeArena, TypeChecker, TypeConstraint, TypeError, TypeId,
@@ -445,12 +446,16 @@ fn reports_type_mismatch_unknown_identifier_and_inference_failure() {
 
     let mut checker = checker_with_symbols();
     let errors = checker.check(&[unknown_decl]).expect_err("expected errors");
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::UnknownIdentifier { .. })));
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::InferenceFailure { .. })));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::UnknownIdentifier { .. }))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::InferenceFailure { .. }))
+    );
 
     let mut ast = AstFactory::new();
     let bool_ty = ast.named_type(syms.bool_);
@@ -467,9 +472,11 @@ fn reports_type_mismatch_unknown_identifier_and_inference_failure() {
     let errors = checker
         .check(&[mismatch_decl])
         .expect_err("expected mismatch");
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::TypeMismatch { .. })));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::TypeMismatch { .. }))
+    );
 }
 
 #[test]
@@ -522,12 +529,16 @@ fn reports_unknown_field_and_not_indexable() {
     let errors = checker
         .check(&[point_struct, function])
         .expect_err("expected field and index errors");
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::UnknownField { .. })));
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::NotIndexable { .. })));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::UnknownField { .. }))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::NotIndexable { .. }))
+    );
 }
 
 #[test]
@@ -595,15 +606,21 @@ fn reports_call_errors_and_return_type_mismatch() {
     let errors = checker
         .check(&[callee, caller])
         .expect_err("expected call and return errors");
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::ArgumentCountMismatch { .. })));
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::NotCallable { .. })));
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::ReturnTypeMismatch { .. })));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::ArgumentCountMismatch { .. }))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::NotCallable { .. }))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::ReturnTypeMismatch { .. }))
+    );
 }
 
 #[test]
@@ -890,9 +907,11 @@ fn checks_unary_bool_and_numeric_rules() {
     let errors = checker
         .check(&[func])
         .expect_err("expected numeric mismatch");
-    assert!(errors
-        .iter()
-        .any(|error| matches!(error, TypeError::TypeMismatch { .. })));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::TypeMismatch { .. }))
+    );
 }
 
 #[test]
@@ -1176,7 +1195,13 @@ fn reports_unsupported_assignment_targets() {
     let errors = checker
         .check(&[point_struct, func])
         .expect_err("nested/index assignment targets should fail");
-    assert!(errors.iter().filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. })).count() >= 2);
+    assert!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. }))
+            .count()
+            >= 2
+    );
 }
 
 #[test]
@@ -1214,10 +1239,11 @@ fn reports_non_constant_top_level_const_initializers() {
     let errors = checker
         .check(&[const_from_literal, const_from_call, const_from_const])
         .expect_err("non-constant const initializer should fail");
-    assert!(errors.iter().any(|error| matches!(
-        error,
-        TypeError::InvalidConstInitializer { .. }
-    )));
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::InvalidConstInitializer { .. }))
+    );
 }
 
 #[test]
@@ -1257,8 +1283,75 @@ fn reports_value_returns_inside_intent_and_flow() {
         .check(&[intent, flow])
         .expect_err("value returns inside intent/flow should fail");
 
-    assert!(errors.iter().filter(|error| matches!(
-        error,
-        TypeError::ReturnTypeMismatch { .. }
-    )).count() >= 2);
+    assert!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::ReturnTypeMismatch { .. }))
+            .count()
+            >= 2
+    );
+}
+
+#[test]
+fn rejects_assignments_to_non_mutable_bindings() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let global_const = Decl::Const(ConstDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        type_ann: ast.named_type(syms.i32_),
+        value: ast.int(1),
+    });
+    let helper = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.bar,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![ret])
+        },
+    });
+
+    let assign_const = {
+        let target = ast.ident(syms.value);
+        let value = ast.int(2);
+        let assign = ast.assign(target, value);
+        expr_stmt(&mut ast, assign)
+    };
+    let assign_func = {
+        let target = ast.ident(syms.bar);
+        let value = ast.int(3);
+        let assign = ast.assign(target, value);
+        expr_stmt(&mut ast, assign)
+    };
+    let main = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: {
+            let zero = ast.int(0);
+            let ret = return_stmt(&mut ast, Some(zero));
+            ast.block(vec![assign_const, assign_func, ret])
+        },
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[global_const, helper, main])
+        .expect_err("assigning to const/function bindings should fail");
+
+    assert!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. }))
+            .count()
+            >= 2
+    );
 }

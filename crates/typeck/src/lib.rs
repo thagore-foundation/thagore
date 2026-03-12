@@ -17,8 +17,8 @@ pub mod types;
 pub use crate::check::TypeChecker;
 pub use crate::error::TypeError;
 pub use crate::generics::{
-    check_constraint, mangle_type_args, GenericFunctionTemplate, GenericParamSpec,
-    MonomorphInstance, MonomorphRequest, MonomorphResult, MonomorphWorkList, TemplateType,
+    GenericFunctionTemplate, GenericParamSpec, MonomorphInstance, MonomorphRequest,
+    MonomorphResult, MonomorphWorkList, TemplateType, check_constraint, mangle_type_args,
 };
 pub use crate::infer::{InferenceSolver, TypeConstraint};
 pub use crate::module_check::check_module;

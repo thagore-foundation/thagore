@@ -158,7 +158,10 @@ pub fn check_constraint(arena: &TypeArena, ty: TypeId, constraint: ConstraintKin
             arena.kind(ty),
             TypeKind::I32 | TypeKind::I64 | TypeKind::F64 | TypeKind::Bool | TypeKind::Str
         ),
-        ConstraintKind::Numeric => matches!(arena.kind(ty), TypeKind::I32 | TypeKind::I64 | TypeKind::F64),
+        ConstraintKind::Numeric => matches!(
+            arena.kind(ty),
+            TypeKind::I32 | TypeKind::I64 | TypeKind::F64
+        ),
     }
 }
 

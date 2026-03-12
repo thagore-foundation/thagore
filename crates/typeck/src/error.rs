@@ -155,7 +155,10 @@ impl fmt::Display for TypeError {
                 write!(f, "invalid assignment target at {span}")
             }
             Self::InvalidConstInitializer { span } => {
-                write!(f, "top-level const initializer must be compile-time constant at {span}")
+                write!(
+                    f,
+                    "top-level const initializer must be compile-time constant at {span}"
+                )
             }
             Self::TypeMismatch {
                 expected,
