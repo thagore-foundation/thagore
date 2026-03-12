@@ -53,6 +53,7 @@ pub struct TypeChecker {
     monomorphs: MonomorphWorkList,
     monomorph_instances: Vec<MonomorphInstance>,
     current_return_types: Vec<TypeId>,
+    current_value_return_allowed: Vec<bool>,
     current_impl_targets: Vec<TypeId>,
     current_loop_depth: usize,
     synthetic_symbol_cursor: u32,
@@ -83,6 +84,7 @@ impl TypeChecker {
             monomorphs: MonomorphWorkList::new(),
             monomorph_instances: Vec::new(),
             current_return_types: Vec::new(),
+            current_value_return_allowed: Vec::new(),
             current_impl_targets: Vec::new(),
             current_loop_depth: 0,
             synthetic_symbol_cursor: 1_000_000,
@@ -152,6 +154,7 @@ impl TypeChecker {
         self.monomorphs.clear();
         self.monomorph_instances.clear();
         self.current_return_types.clear();
+        self.current_value_return_allowed.clear();
         self.current_impl_targets.clear();
         self.current_loop_depth = 0;
         self.synthetic_symbol_cursor = 1_000_000;
@@ -633,6 +636,7 @@ impl TypeChecker {
         let saved_scopes = self.scopes.clone();
         let saved_infer = self.infer.clone();
         let saved_return_types = self.current_return_types.clone();
+        let saved_return_values = self.current_value_return_allowed.clone();
         let saved_impl_targets = self.current_impl_targets.clone();
         let baseline_errors = self.errors.len();
 
@@ -640,6 +644,7 @@ impl TypeChecker {
         self.scopes = saved_scopes.clone();
         self.infer.clear();
         self.current_return_types.clear();
+        self.current_value_return_allowed.clear();
         self.current_impl_targets.clear();
 
         self.table.insert(decl.id, result.type_id);
@@ -654,8 +659,10 @@ impl TypeChecker {
             self.table.insert(param.ty.id(), *ty);
         }
         self.current_return_types.push(signature.return_type);
+        self.current_value_return_allowed.push(true);
         self.visit_block(decl.body);
         self.current_return_types.pop();
+        self.current_value_return_allowed.pop();
         self.scopes.pop_scope();
         self.finalize_table_inferences();
 
@@ -664,6 +671,7 @@ impl TypeChecker {
         self.scopes = saved_scopes;
         self.infer = saved_infer;
         self.current_return_types = saved_return_types;
+        self.current_value_return_allowed = saved_return_values;
         self.current_impl_targets = saved_impl_targets;
 
         if self.errors.len() == baseline_errors {
@@ -1030,12 +1038,15 @@ impl<'ast> Visitor<'ast> for TypeChecker {
                 self.assignable_symbols.insert(param.name, ());
             }
             self.current_return_types.push(signature.return_type);
+            self.current_value_return_allowed.push(true);
         } else {
             self.current_return_types.push(self.types.unknown());
+            self.current_value_return_allowed.push(true);
         }
 
         self.visit_block(decl.body);
         self.current_return_types.pop();
+        self.current_value_return_allowed.pop();
         self.scopes.pop_scope();
         self.assignable_symbols.pop_scope();
     }
@@ -1119,11 +1130,13 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         self.scopes.push_scope();
         self.assignable_symbols.push_scope();
         self.current_return_types.push(self.types.unit());
+        self.current_value_return_allowed.push(false);
         for constraint in decl.constraints {
             self.check_expr(*constraint);
         }
         self.visit_block(decl.body);
         self.current_return_types.pop();
+        self.current_value_return_allowed.pop();
         self.scopes.pop_scope();
         self.assignable_symbols.pop_scope();
         self.table.insert(decl.id, self.types.unit());
@@ -1133,6 +1146,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         self.scopes.push_scope();
         self.assignable_symbols.push_scope();
         self.current_return_types.push(self.types.unit());
+        self.current_value_return_allowed.push(false);
         for stage in decl.stages {
             self.visit_flow_stage(stage);
         }
@@ -1140,6 +1154,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             self.visit_block(compensation);
         }
         self.current_return_types.pop();
+        self.current_value_return_allowed.pop();
         self.scopes.pop_scope();
         self.assignable_symbols.pop_scope();
         self.table.insert(decl.id, self.types.unit());
@@ -1180,6 +1195,30 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     }
 
     fn visit_return_stmt(&mut self, stmt: &'ast ReturnStmt<'ast>) {
+        if self.current_return_types.is_empty() {
+            self.errors.push(TypeError::InvalidControlFlow {
+                message: "return can only be used inside a function, intent, or flow",
+                span: stmt.span,
+            });
+            self.table.insert(stmt.id, self.types.unknown());
+            return;
+        }
+
+        if stmt.value.is_some()
+            && !self
+                .current_value_return_allowed
+                .last()
+                .copied()
+                .unwrap_or(false)
+        {
+            self.errors.push(TypeError::InvalidControlFlow {
+                message: "return with a value is only allowed inside functions",
+                span: stmt.span,
+            });
+            self.table.insert(stmt.id, self.types.unit());
+            return;
+        }
+
         let expected = self.current_return_type();
         let found = stmt
             .value

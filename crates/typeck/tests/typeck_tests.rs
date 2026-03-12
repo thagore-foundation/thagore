@@ -1286,7 +1286,11 @@ fn reports_value_returns_inside_intent_and_flow() {
     assert!(
         errors
             .iter()
-            .filter(|error| matches!(error, TypeError::ReturnTypeMismatch { .. }))
+            .filter(|error| matches!(
+                error,
+                TypeError::InvalidControlFlow { message, .. }
+                    if *message == "return with a value is only allowed inside functions"
+            ))
             .count()
             >= 2
     );
