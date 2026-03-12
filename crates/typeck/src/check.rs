@@ -1476,6 +1476,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     }
 
     fn visit_index_expr(&mut self, expr: &'ast IndexExpr<'ast>) {
+        let baseline_errors = self.errors.len();
         let object = self.check_expr(expr.object);
         let index = self.check_expr(expr.index);
         self.unify(self.types.i32(), index, expr.index.span());
@@ -1484,10 +1485,12 @@ impl<'ast> Visitor<'ast> for TypeChecker {
             TypeKind::Array(element) => *element,
             TypeKind::Unknown => self.types.unknown(),
             _ => {
-                self.errors.push(TypeError::NotIndexable {
-                    found: object_resolved,
-                    span: expr.object.span(),
-                });
+                if self.errors.len() == baseline_errors {
+                    self.errors.push(TypeError::NotIndexable {
+                        found: object_resolved,
+                        span: expr.object.span(),
+                    });
+                }
                 self.types.unknown()
             }
         };
@@ -1514,9 +1517,10 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     }
 
     fn visit_assign_expr(&mut self, expr: &'ast AssignExpr<'ast>) {
+        let baseline_errors = self.errors.len();
         let target = self.check_expr(expr.target);
         let value = self.check_expr(expr.value);
-        if !self.is_supported_assignment_target(expr.target) {
+        if !self.is_supported_assignment_target(expr.target) && self.errors.len() == baseline_errors {
             self.errors
                 .push(TypeError::InvalidAssignmentTarget { span: expr.span });
         }

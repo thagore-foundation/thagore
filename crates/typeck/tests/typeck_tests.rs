@@ -1198,9 +1198,19 @@ fn reports_unsupported_assignment_targets() {
     assert!(
         errors
             .iter()
+            .any(|error| matches!(error, TypeError::NotIndexable { .. }))
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|error| matches!(error, TypeError::NotFieldAccessible { .. }))
+    );
+    assert_eq!(
+        errors
+            .iter()
             .filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. }))
-            .count()
-            >= 2
+            .count(),
+        0
     );
 }
 
@@ -1687,6 +1697,96 @@ fn reports_unknown_member_calls_without_cascade_not_callable() {
         errors
             .iter()
             .filter(|error| matches!(error, TypeError::NotCallable { .. }))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn reports_unknown_index_targets_without_cascade_not_indexable() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let bad_index = {
+        let missing = ast.ident(syms.value);
+        let zero = ast.int(0);
+        ast.index(missing, zero)
+    };
+    let body = {
+        let stmt = expr_stmt(&mut ast, bad_index);
+        let zero = ast.int(0);
+        let ret = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt, ret])
+    };
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker.check(&[func]).expect_err("bad index should fail");
+
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::UnknownIdentifier { name, .. } if *name == syms.value))
+            .count(),
+        1
+    );
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::NotIndexable { .. }))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn reports_unknown_assignment_targets_without_cascade_invalid_assignment() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let bad_assign = {
+        let target = ast.ident(syms.value);
+        let one = ast.int(1);
+        ast.assign(target, one)
+    };
+    let body = {
+        let stmt = expr_stmt(&mut ast, bad_assign);
+        let zero = ast.int(0);
+        let ret = return_stmt(&mut ast, Some(zero));
+        ast.block(vec![stmt, ret])
+    };
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[func])
+        .expect_err("unknown assignment target should fail");
+
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::UnknownIdentifier { name, .. } if *name == syms.value))
+            .count(),
+        1
+    );
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. }))
             .count(),
         0
     );
