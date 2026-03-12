@@ -1401,6 +1401,9 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     fn visit_assign_expr(&mut self, expr: &'ast AssignExpr<'ast>) {
         let target = self.check_expr(expr.target);
         let value = self.check_expr(expr.value);
+        if !self.is_supported_assignment_target(expr.target) {
+            self.errors.push(TypeError::InvalidAssignmentTarget { span: expr.span });
+        }
         let result = self.unify(target, value, expr.span);
         let resolved = self.resolved_type(result);
         self.table.insert(expr.id, resolved);
@@ -1435,5 +1438,15 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         let infer = self.types.fresh_infer();
         self.infer.sync_with_arena(&self.types);
         self.table.insert(ty.id, infer);
+    }
+}
+
+impl TypeChecker {
+    fn is_supported_assignment_target<'ast>(&self, target: ExprRef<'ast>) -> bool {
+        match target {
+            Expr::Ident(_) => true,
+            Expr::FieldAccess(field) => matches!(field.object, Expr::Ident(_)),
+            _ => false,
+        }
     }
 }

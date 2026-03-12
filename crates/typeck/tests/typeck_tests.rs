@@ -1122,3 +1122,59 @@ fn reports_break_and_continue_outside_loops() {
         TypeError::InvalidControlFlow { message, .. } if *message == "continue can only be used inside a loop"
     )));
 }
+
+#[test]
+fn reports_unsupported_assignment_targets() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let point_ty = ast.named_type(syms.point);
+    let point_struct = Decl::Struct(StructDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.point,
+        fields: leak_slice(vec![FieldDef {
+            id: ast.id(),
+            span: span(),
+            name: syms.x,
+            ty: ast.named_type(syms.i32_),
+        }]),
+    });
+
+    let nested_target = {
+        let point = ast.ident(syms.point);
+        let inner = ast.field(point, syms.x);
+        ast.field(inner, syms.x)
+    };
+    let nested_value = ast.int(1);
+    let nested_assign_expr = ast.assign(nested_target, nested_value);
+    let assign_nested = expr_stmt(&mut ast, nested_assign_expr);
+    let index_target = {
+        let point = ast.ident(syms.point);
+        let zero = ast.int(0);
+        ast.index(point, zero)
+    };
+    let index_value = ast.int(2);
+    let index_assign_expr = ast.assign(index_target, index_value);
+    let assign_index = expr_stmt(&mut ast, index_assign_expr);
+    let body = ast.block(vec![assign_nested, assign_index]);
+    let func = Decl::Func(FuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        params: leak_slice(vec![Param {
+            id: ast.id(),
+            span: span(),
+            name: syms.point,
+            ty: point_ty,
+        }]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[point_struct, func])
+        .expect_err("nested/index assignment targets should fail");
+    assert!(errors.iter().filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. })).count() >= 2);
+}

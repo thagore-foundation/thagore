@@ -2142,6 +2142,12 @@ pub(crate) fn convert_type_error(
             (*message).to_string(),
             Some(*span),
         ),
+        TypeError::InvalidAssignmentTarget { span } => CompilerDiagnostic::new(
+            "E004",
+            "invalid assignment target",
+            "only variables and direct struct fields can be assigned to".to_string(),
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,

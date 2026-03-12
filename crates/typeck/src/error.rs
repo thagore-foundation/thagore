@@ -27,6 +27,11 @@ pub enum TypeError {
         /// Source location of the invalid statement.
         span: Span,
     },
+    /// Assignment target is syntactically valid but not supported end to end.
+    InvalidAssignmentTarget {
+        /// Source location of the invalid assignment target.
+        span: Span,
+    },
     /// Two types were required to be equal but were not.
     TypeMismatch {
         /// Expected type.
@@ -116,6 +121,7 @@ impl TypeError {
         match self {
             Self::UnsupportedFeature { span, .. }
             | Self::InvalidControlFlow { span, .. }
+            | Self::InvalidAssignmentTarget { span }
             | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
@@ -138,6 +144,9 @@ impl fmt::Display for TypeError {
             }
             Self::InvalidControlFlow { message, span } => {
                 write!(f, "{message} at {span}")
+            }
+            Self::InvalidAssignmentTarget { span } => {
+                write!(f, "invalid assignment target at {span}")
             }
             Self::TypeMismatch {
                 expected,
