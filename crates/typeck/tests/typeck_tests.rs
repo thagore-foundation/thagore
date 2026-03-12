@@ -1219,3 +1219,46 @@ fn reports_non_constant_top_level_const_initializers() {
         TypeError::InvalidConstInitializer { .. }
     )));
 }
+
+#[test]
+fn reports_value_returns_inside_intent_and_flow() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+    let intent_value = ast.int(1);
+    let intent_return = return_stmt(&mut ast, Some(intent_value));
+    let intent_body = ast.block(vec![intent_return]);
+
+    let intent = Decl::Intent(thagore_ast::IntentDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.optimize,
+        constraints: leak_slice(vec![]),
+        body: intent_body,
+    });
+
+    let flow_value = ast.int(2);
+    let flow_return = return_stmt(&mut ast, Some(flow_value));
+    let flow_body = ast.block(vec![flow_return]);
+    let flow = Decl::Flow(FlowDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.bar,
+        stages: leak_slice(vec![FlowStage {
+            id: ast.id(),
+            span: span(),
+            name: syms.stage,
+            body: flow_body,
+        }]),
+        compensation: None,
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[intent, flow])
+        .expect_err("value returns inside intent/flow should fail");
+
+    assert!(errors.iter().filter(|error| matches!(
+        error,
+        TypeError::ReturnTypeMismatch { .. }
+    )).count() >= 2);
+}

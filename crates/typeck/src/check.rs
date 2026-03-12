@@ -1082,7 +1082,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
     fn visit_intent_decl(&mut self, decl: &'ast IntentDecl<'ast>) {
         self.scopes.push_scope();
-        self.current_return_types.push(self.types.unknown());
+        self.current_return_types.push(self.types.unit());
         for constraint in decl.constraints {
             self.check_expr(*constraint);
         }
@@ -1094,7 +1094,7 @@ impl<'ast> Visitor<'ast> for TypeChecker {
 
     fn visit_flow_decl(&mut self, decl: &'ast FlowDecl<'ast>) {
         self.scopes.push_scope();
-        self.current_return_types.push(self.types.unknown());
+        self.current_return_types.push(self.types.unit());
         for stage in decl.stages {
             self.visit_flow_stage(stage);
         }
