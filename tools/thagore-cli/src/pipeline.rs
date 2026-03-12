@@ -2148,6 +2148,12 @@ pub(crate) fn convert_type_error(
             "only variables and direct struct fields can be assigned to".to_string(),
             Some(*span),
         ),
+        TypeError::InvalidConstInitializer { span } => CompilerDiagnostic::new(
+            "E005",
+            "invalid const initializer",
+            "top-level const initializers must be compile-time constant expressions".to_string(),
+            Some(*span),
+        ),
         TypeError::TypeMismatch {
             expected,
             found,

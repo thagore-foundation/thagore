@@ -48,6 +48,7 @@ pub struct TypeChecker {
     struct_types: StructTypes,
     method_types: MethodTypes,
     generic_functions: ScopeMap<thagore_ast::InternedStr, GenericFunctionTemplate>,
+    const_symbols: ScopeMap<thagore_ast::InternedStr, ()>,
     monomorphs: MonomorphWorkList,
     monomorph_instances: Vec<MonomorphInstance>,
     current_return_types: Vec<TypeId>,
@@ -76,6 +77,7 @@ impl TypeChecker {
             struct_types: ScopeMap::with_hasher(FnvBuildHasher::default()),
             method_types: ScopeMap::with_hasher(FnvBuildHasher::default()),
             generic_functions: ScopeMap::with_hasher(FnvBuildHasher::default()),
+            const_symbols: ScopeMap::with_hasher(FnvBuildHasher::default()),
             monomorphs: MonomorphWorkList::new(),
             monomorph_instances: Vec::new(),
             current_return_types: Vec::new(),
@@ -143,6 +145,7 @@ impl TypeChecker {
         self.struct_types.clear();
         self.method_types.clear();
         self.generic_functions.clear();
+        self.const_symbols.clear();
         self.monomorphs.clear();
         self.monomorph_instances.clear();
         self.current_return_types.clear();
@@ -1018,10 +1021,15 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     fn visit_const_decl(&mut self, decl: &'ast ConstDecl<'ast>) {
         let declared = self.resolve_type_expr(decl.type_ann);
         let inferred = self.check_expr(decl.value);
+        if !self.is_compile_time_const_expr(decl.value) {
+            self.errors
+                .push(TypeError::InvalidConstInitializer { span: decl.value.span() });
+        }
         let result = self.unify(declared, inferred, decl.span);
         let resolved = self.resolved_type(result);
         self.table.insert(decl.id, resolved);
         self.scopes.insert(decl.name, resolved);
+        self.const_symbols.insert(decl.name, ());
     }
 
     fn visit_struct_decl(&mut self, decl: &'ast StructDecl<'ast>) {
@@ -1446,6 +1454,19 @@ impl TypeChecker {
         match target {
             Expr::Ident(_) => true,
             Expr::FieldAccess(field) => matches!(field.object, Expr::Ident(_)),
+            _ => false,
+        }
+    }
+
+    fn is_compile_time_const_expr<'ast>(&self, expr: ExprRef<'ast>) -> bool {
+        match expr {
+            Expr::Literal(_) => true,
+            Expr::Ident(ident) => self.const_symbols.get(&ident.name).is_some(),
+            Expr::Unary(unary) => self.is_compile_time_const_expr(unary.operand),
+            Expr::Binary(binary) => {
+                self.is_compile_time_const_expr(binary.left)
+                    && self.is_compile_time_const_expr(binary.right)
+            }
             _ => false,
         }
     }

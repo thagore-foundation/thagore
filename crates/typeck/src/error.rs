@@ -32,6 +32,11 @@ pub enum TypeError {
         /// Source location of the invalid assignment target.
         span: Span,
     },
+    /// Top-level constant initializer is not a compile-time constant expression.
+    InvalidConstInitializer {
+        /// Source location of the invalid initializer.
+        span: Span,
+    },
     /// Two types were required to be equal but were not.
     TypeMismatch {
         /// Expected type.
@@ -122,6 +127,7 @@ impl TypeError {
             Self::UnsupportedFeature { span, .. }
             | Self::InvalidControlFlow { span, .. }
             | Self::InvalidAssignmentTarget { span }
+            | Self::InvalidConstInitializer { span }
             | Self::TypeMismatch { span, .. }
             | Self::UnknownIdentifier { span, .. }
             | Self::UnknownField { span, .. }
@@ -147,6 +153,9 @@ impl fmt::Display for TypeError {
             }
             Self::InvalidAssignmentTarget { span } => {
                 write!(f, "invalid assignment target at {span}")
+            }
+            Self::InvalidConstInitializer { span } => {
+                write!(f, "top-level const initializer must be compile-time constant at {span}")
             }
             Self::TypeMismatch {
                 expected,

@@ -1178,3 +1178,44 @@ fn reports_unsupported_assignment_targets() {
         .expect_err("nested/index assignment targets should fail");
     assert!(errors.iter().filter(|error| matches!(error, TypeError::InvalidAssignmentTarget { .. })).count() >= 2);
 }
+
+#[test]
+fn reports_non_constant_top_level_const_initializers() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let const_from_literal = Decl::Const(ConstDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.x,
+        type_ann: ast.named_type(syms.i32_),
+        value: ast.int(1),
+    });
+    let non_const_value = {
+        let callee = ast.ident(syms.foo);
+        ast.call(callee, vec![])
+    };
+    let const_from_call = Decl::Const(ConstDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.value,
+        type_ann: ast.named_type(syms.i32_),
+        value: non_const_value,
+    });
+    let const_from_const = Decl::Const(ConstDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.y,
+        type_ann: ast.named_type(syms.i32_),
+        value: ast.ident(syms.x),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[const_from_literal, const_from_call, const_from_const])
+        .expect_err("non-constant const initializer should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::InvalidConstInitializer { .. }
+    )));
+}
