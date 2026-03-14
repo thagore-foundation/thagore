@@ -1173,7 +1173,7 @@ fn check_reports_generic_impl_blocks_as_unsupported_without_lowering_escape() {
     let source = dir.path().join("generic_impl.tg");
     fs::write(
         &source,
-        "struct Box:\n  value: i32\n\nimpl<T> Box:\n  func get(self: Box) -> i32:\n    return self.value\n\nfunc main() -> i32:\n  return 0\n",
+        "struct Box<T>:\n  value: T\n\nimpl Box<T>:\n  func get(self) -> T:\n    return self.value\n\nfunc main() -> i32:\n  return 0\n",
     )
     .expect("write source");
 
