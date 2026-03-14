@@ -173,6 +173,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
 
@@ -180,6 +182,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
 
