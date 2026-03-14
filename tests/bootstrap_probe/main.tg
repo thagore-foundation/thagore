@@ -2,13 +2,13 @@ import std.string as string
 import std.fs as fs
 import std.time as time
 
-pub func report(message: string) -> string:
+pub func report(message: str) -> str:
   let now = time.now_ms()
-  let prefix = string.concat("[", string.from_int(now))
-  let stamped = string.concat(prefix, "] ")
-  return string.concat(stamped, message)
+  if (now >= 0):
+    return string.concat("[time-ready] ", message)
+  return message
 
-pub func scan_dir(path: string) -> string:
+pub func scan_dir(path: str) -> str:
   let entries = fs.read_dir(path)
   let out = ""
   for entry in entries:
