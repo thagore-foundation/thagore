@@ -31,11 +31,19 @@ jobs:
             shell: bash
             probe_bin: bootstrap-probe
             thagc_bin: target/release/thagc
+            check_limit_secs: 30
+            build_limit_secs: 45
+            run_limit_secs: 15
+            run_limit_peak_kb: 524288
           - runner: windows-latest
             os_name: windows-x64
             shell: pwsh
             probe_bin: bootstrap-probe.exe
             thagc_bin: target/release/thagc.exe
+            check_limit_secs: 45
+            build_limit_secs: 60
+            run_limit_secs: 20
+            run_limit_peak_mb: 768
 
     steps:
       - uses: actions/checkout@v4
@@ -200,12 +208,12 @@ jobs:
           THAGC="${{ matrix.thagc_bin }}"
           FIRST="bootstrap-dist/${{ matrix.probe_bin }}"
           SECOND="bootstrap-dist/${{ matrix.probe_bin }}.second"
-          "$THAGC" check tests/bootstrap_probe/main.tg
-          "$THAGC" build tests/bootstrap_probe/main.tg -o "$FIRST"
+          /usr/bin/time -f "%e %M" -o bootstrap-dist/check.metrics "$THAGC" check tests/bootstrap_probe/main.tg
+          /usr/bin/time -f "%e %M" -o bootstrap-dist/build-first.metrics "$THAGC" build tests/bootstrap_probe/main.tg -o "$FIRST"
           rm -f tests/bootstrap_probe/probe-result.txt
-          THAGORE_BOOTSTRAP_PROBE=ok "./$FIRST"
+          /usr/bin/time -f "%e %M" -o bootstrap-dist/run-first.metrics env THAGORE_BOOTSTRAP_PROBE=ok "./$FIRST"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-first.txt
-          "$THAGC" build tests/bootstrap_probe/main.tg -o "$SECOND"
+          /usr/bin/time -f "%e %M" -o bootstrap-dist/build-second.metrics "$THAGC" build tests/bootstrap_probe/main.tg -o "$SECOND"
           rm -f tests/bootstrap_probe/probe-result.txt
           THAGORE_BOOTSTRAP_PROBE=ok "./$SECOND"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-second.txt
@@ -221,30 +229,78 @@ jobs:
           if first != second:
               raise SystemExit("bootstrap probe output differs between rebuilds")
           PY
+          python - <<'PY'
+          from pathlib import Path
+          limits = {
+              "check.metrics": ("check", float("${{ matrix.check_limit_secs }}"), None),
+              "build-first.metrics": ("first build", float("${{ matrix.build_limit_secs }}"), None),
+              "run-first.metrics": ("first run", float("${{ matrix.run_limit_secs }}"), int("${{ matrix.run_limit_peak_kb }}")),
+          }
+          for filename, (label, limit_secs, limit_peak_kb) in limits.items():
+              raw = Path("bootstrap-dist", filename).read_text().strip().split()
+              elapsed = float(raw[0])
+              peak_kb = int(raw[1])
+              if elapsed > limit_secs:
+                  raise SystemExit(f"{label} exceeded time limit: {elapsed:.2f}s > {limit_secs:.2f}s")
+              if limit_peak_kb is not None and peak_kb > limit_peak_kb:
+                  raise SystemExit(f"{label} exceeded memory limit: {peak_kb}KB > {limit_peak_kb}KB")
+          PY
 
       - name: Run bootstrap probe on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          function Invoke-TimedThagc {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][int]$LimitSeconds,
+              [Parameter(Mandatory = $true)][string]$FilePath,
+              [Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments
+            )
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            & $FilePath @Arguments
+            $exitCode = $LASTEXITCODE
+            $sw.Stop()
+            if ($exitCode -ne 0) { throw "$Label failed" }
+            if ($sw.Elapsed.TotalSeconds -gt $LimitSeconds) {
+              throw "$Label exceeded time limit: $($sw.Elapsed.TotalSeconds)s > $LimitSeconds s"
+            }
+          }
+
+          function Invoke-TimedProcess {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][int]$LimitSeconds,
+              [Parameter(Mandatory = $true)][int]$LimitPeakMb,
+              [Parameter(Mandatory = $true)][string]$FilePath
+            )
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $proc = Start-Process -FilePath $FilePath -NoNewWindow -Wait -PassThru
+            $sw.Stop()
+            if ($proc.ExitCode -ne 0) { throw "$Label failed" }
+            if ($sw.Elapsed.TotalSeconds -gt $LimitSeconds) {
+              throw "$Label exceeded time limit: $($sw.Elapsed.TotalSeconds)s > $LimitSeconds s"
+            }
+            $peakMb = [math]::Ceiling($proc.PeakWorkingSet64 / 1MB)
+            if ($peakMb -gt $LimitPeakMb) {
+              throw "$Label exceeded peak working set limit: $peakMb MiB > $LimitPeakMb MiB"
+            }
+          }
+
           New-Item -ItemType Directory -Force -Path 'bootstrap-dist' | Out-Null
           $thagc = '${{ matrix.thagc_bin }}'
           $first = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}'
           $second = Join-Path 'bootstrap-dist' 'bootstrap-probe-second.exe'
-          & $thagc check 'tests/bootstrap_probe/main.tg'
-          if ($LASTEXITCODE -ne 0) { throw "thagc check failed" }
-          & $thagc build 'tests/bootstrap_probe/main.tg' -o $first
-          if ($LASTEXITCODE -ne 0) { throw "first build failed" }
+          Invoke-TimedThagc -Label 'thagc check' -LimitSeconds ${{ matrix.check_limit_secs }} -FilePath $thagc check 'tests/bootstrap_probe/main.tg'
+          Invoke-TimedThagc -Label 'first build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc build 'tests/bootstrap_probe/main.tg' -o $first
           Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
           $env:THAGORE_BOOTSTRAP_PROBE = 'ok'
-          & $first
-          if ($LASTEXITCODE -ne 0) { throw "first probe run failed" }
+          Invoke-TimedProcess -Label 'first probe run' -LimitSeconds ${{ matrix.run_limit_secs }} -LimitPeakMb ${{ matrix.run_limit_peak_mb }} -FilePath $first
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-first.txt' -Force
-          & $thagc build 'tests/bootstrap_probe/main.tg' -o $second
-          if ($LASTEXITCODE -ne 0) { throw "second build failed" }
+          Invoke-TimedThagc -Label 'second build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc build 'tests/bootstrap_probe/main.tg' -o $second
           Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
-          & $second
-          if ($LASTEXITCODE -ne 0) { throw "second probe run failed" }
+          Invoke-TimedProcess -Label 'second probe run' -LimitSeconds ${{ matrix.run_limit_secs }} -LimitPeakMb ${{ matrix.run_limit_peak_mb }} -FilePath $second
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-second.txt' -Force
           $expected = (Get-Content 'tests/bootstrap_probe/expected.txt' -Raw).TrimEnd("`r", "`n")
           $firstOut = (Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw).TrimEnd("`r", "`n")

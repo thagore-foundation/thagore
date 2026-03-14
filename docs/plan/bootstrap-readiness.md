@@ -270,13 +270,13 @@ Use this table as the live checklist.
 
 | Area | Status | Blocking bootstrap | Notes |
 | --- | --- | --- | --- |
-| bootstrap probe | in progress | yes | probe exists under `tests/bootstrap_probe/`, CI gate runs on Linux x64 and Windows x64 with golden-output checks |
+| bootstrap probe | in progress | yes | probe exists under `tests/bootstrap_probe/`, imports multiple local modules, and gates deterministic output on Linux x64 and Windows x64 |
 | language surface closure | in progress | yes | several fail-fast fixes already landed |
 | lowering/codegen closure | in progress | yes | audit still incomplete |
-| stdlib bootstrap audit | in progress | yes | `fs`, `process`, `time`, `string`, `io` parity work is underway |
-| determinism/state safety | partial | yes | repeated-build discipline not formalized |
-| performance safety floor | partial | yes | hard limits not yet enforced |
-| bootstrap CI workflow | in progress | yes | workflow now gates interpreter parity, native stdlib audits, double-build probe runs, and golden output checks |
+| stdlib bootstrap audit | in progress | yes | `string`, `time`, `fs`, `path`, `process`, and `array` now have bootstrap-gate coverage; deeper edge-case closure is still needed |
+| determinism/state safety | in progress | yes | repeated-build discipline and golden output checks are in CI on Windows x64 and Linux x64 |
+| performance safety floor | in progress | yes | bootstrap CI now enforces probe check/build/run time limits and a memory ceiling for the first native run on both required lanes |
+| bootstrap CI workflow | in progress | yes | workflow now gates interpreter parity, native stdlib audits, double-build probe runs, golden output checks, and basic performance limits |
 
 ## 10. Practical Rule
 
