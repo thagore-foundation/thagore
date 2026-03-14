@@ -13,9 +13,9 @@ pub func main() -> i32:
   let file = fs.path_join(root, "tests/bootstrap_probe/probe-result.txt")
   let payload = report(string.concat("bootstrap probe running in ", root))
   print(payload)
-  if (!fs.write(file, payload)):
+  if (fs.write(file, payload) == false):
     return 1
-  if (!fs.exists(file)):
+  if (fs.exists(file) == false):
     return 2
   let stored = fs.read(file)
   if (stored != payload):
