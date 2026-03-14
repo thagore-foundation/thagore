@@ -256,7 +256,7 @@ jobs:
               [Parameter(Mandatory = $true)][string]$Label,
               [Parameter(Mandatory = $true)][int]$LimitSeconds,
               [Parameter(Mandatory = $true)][string]$FilePath,
-              [Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments
+              [Parameter(Mandatory = $true)][string[]]$Arguments
             )
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             & $FilePath @Arguments
@@ -292,13 +292,13 @@ jobs:
           $thagc = '${{ matrix.thagc_bin }}'
           $first = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}'
           $second = Join-Path 'bootstrap-dist' 'bootstrap-probe-second.exe'
-          Invoke-TimedThagc -Label 'thagc check' -LimitSeconds ${{ matrix.check_limit_secs }} -FilePath $thagc check 'tests/bootstrap_probe/main.tg'
-          Invoke-TimedThagc -Label 'first build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc build 'tests/bootstrap_probe/main.tg' -o $first
+          Invoke-TimedThagc -Label 'thagc check' -LimitSeconds ${{ matrix.check_limit_secs }} -FilePath $thagc -Arguments @('check', 'tests/bootstrap_probe/main.tg')
+          Invoke-TimedThagc -Label 'first build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc -Arguments @('build', 'tests/bootstrap_probe/main.tg', '-o', $first)
           Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
           $env:THAGORE_BOOTSTRAP_PROBE = 'ok'
           Invoke-TimedProcess -Label 'first probe run' -LimitSeconds ${{ matrix.run_limit_secs }} -LimitPeakMb ${{ matrix.run_limit_peak_mb }} -FilePath $first
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-first.txt' -Force
-          Invoke-TimedThagc -Label 'second build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc build 'tests/bootstrap_probe/main.tg' -o $second
+          Invoke-TimedThagc -Label 'second build' -LimitSeconds ${{ matrix.build_limit_secs }} -FilePath $thagc -Arguments @('build', 'tests/bootstrap_probe/main.tg', '-o', $second)
           Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
           Invoke-TimedProcess -Label 'second probe run' -LimitSeconds ${{ matrix.run_limit_secs }} -LimitPeakMb ${{ matrix.run_limit_peak_mb }} -FilePath $second
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-second.txt' -Force
