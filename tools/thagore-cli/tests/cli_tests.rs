@@ -1087,6 +1087,66 @@ fn check_reports_invalid_const_initializer_without_lowering_escape() {
 }
 
 #[test]
+fn check_reports_non_struct_field_access_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("bad_field.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  let value: i32 = 1\n  return value.x\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("value has no fields"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_non_indexable_values_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("bad_index.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  let value: i32 = 1\n  return value[0]\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("value is not indexable"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_non_callable_values_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("bad_call.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  let value: i32 = 1\n  return value()\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("value is not callable"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);

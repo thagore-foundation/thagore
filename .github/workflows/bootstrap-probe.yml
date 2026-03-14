@@ -190,6 +190,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_struct_field_access_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_indexable_values_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_callable_values_without_lowering_escape -- --nocapture
 
       - name: Run native stdlib bootstrap audit on Windows
         if: runner.os == 'Windows'
@@ -204,6 +207,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_struct_field_access_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_indexable_values_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_callable_values_without_lowering_escape -- --nocapture
 
       - name: Run bootstrap probe on Linux
         if: runner.os == 'Linux'
