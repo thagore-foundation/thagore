@@ -1,0 +1,34 @@
+import std.string as string
+import std.fs as fs
+import std.time as time
+import std.process as process
+
+pub func report(message: string) -> string:
+  let now = time.now_ms()
+  return string.concat(string.concat("[", string.from_int(now)), "] ".concat(message))
+
+pub func scan_dir(path: string) -> string:
+  let entries = fs.read_dir(path)
+  let mut out = ""
+  for entry in entries:
+    let line = string.concat("entry: ", entry.name)
+    let with_path = fs.path_join(entry.path, ".bootstrap")
+    let touched =
+      if fs.exists(with_path):
+        " (tracked)"
+      else:
+        ""
+    out = string.concat(out, string.concat(line, string.concat(" ", touched)))
+    out = string.concat(out, "\n")
+  out
+
+pub func main() -> i32:
+  let root = fs.getcwd()
+  let header = report(string.concat("bootstrap probe running in ", root))
+  print(header)
+  let listing = scan_dir(root)
+  print(listing)
+  let file = fs.path_join(root, "tests/bootstrap_probe/probe-result.txt")
+  fs.write(file, listing)
+  print(report("probe finished"))
+  return 0
