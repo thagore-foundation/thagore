@@ -1276,20 +1276,21 @@ char *thag_str_array_get(void *parts, int64_t index) {
     return handle->data[index];
 }
 
-int32_t thag_rt_array_len_str(void *parts) {
-    int64_t len = thag_str_array_len(parts);
-    if (len < 0) {
+int32_t thag_rt_array_len_str(thag_array_str parts) {
+    if (parts.len < 0) {
         return 0;
     }
-    if (len > INT32_MAX) {
+    if (parts.len > INT32_MAX) {
         return INT32_MAX;
     }
-    return (int32_t) len;
+    return (int32_t) parts.len;
 }
 
-char *thag_rt_array_get_str(void *parts, int32_t index) {
-    char *value = thag_str_array_get(parts, index);
-    return value == NULL ? thag_strdup_cstr("") : value;
+char *thag_rt_array_get_str(thag_array_str parts, int32_t index) {
+    if (index < 0 || parts.data == NULL || index >= parts.len) {
+        return thag_strdup_cstr("");
+    }
+    return parts.data[index] == NULL ? thag_strdup_cstr("") : parts.data[index];
 }
 
 void *thag_map_new(void) {
