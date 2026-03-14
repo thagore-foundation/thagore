@@ -3,16 +3,15 @@
 This minimal project exercises the features that must stay solid before
 bootstrap is declared ready:
 
-- `std.fs`: directory scanning, existence checks, path joining, file writing
-- `std.string`: concatenation, formatting via `from_int`
-- `std.time`: reproducible timestamp stamping
-- `std.process`: not invoked directly but the probe is sized to be part of a larger tool
+- `std.fs`: file writing, file reading, existence checks, path joining, file sizing
+- `std.string`: concatenation for deterministic probe payloads
+- `std.time`: runtime clock availability without relying on integer formatting
 
 Steps:
 
 1. `thagc build tests/bootstrap_probe/main.tg -o probe`
 2. `thagc run tests/bootstrap_probe/main.tg`
-3. Ensure `tests/bootstrap_probe/probe-result.txt` contains the directory scan
+3. Ensure `tests/bootstrap_probe/probe-result.txt` contains the written probe payload
 
 The CI bootstrap workflow will:
 
