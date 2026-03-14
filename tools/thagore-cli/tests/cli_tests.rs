@@ -1147,6 +1147,108 @@ fn check_reports_non_callable_values_without_lowering_escape() {
 }
 
 #[test]
+fn check_reports_generic_structs_as_unsupported_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("generic_struct.tg");
+    fs::write(
+        &source,
+        "struct Box<T>:\n  value: T\n\nfunc main() -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported language feature"), "{stderr}");
+    assert!(stderr.contains("generic structs"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_generic_impl_blocks_as_unsupported_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("generic_impl.tg");
+    fs::write(
+        &source,
+        "struct Box:\n  value: i32\n\nimpl<T> Box:\n  func get(self: Box) -> i32:\n    return self.value\n\nfunc main() -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported language feature"), "{stderr}");
+    assert!(stderr.contains("generic impl blocks"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_invalid_impl_target_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("invalid_impl_target.tg");
+    fs::write(
+        &source,
+        "impl Missing:\n  func get(self: Missing) -> i32:\n    return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid impl target"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_invalid_impl_receiver_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("invalid_impl_receiver.tg");
+    fs::write(
+        &source,
+        "struct Point:\n  x: i32\n\nimpl Point:\n  func bad(self: i32) -> i32:\n    return self\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid method receiver"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_rejects_method_values_outside_calls_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("method_value.tg");
+    fs::write(
+        &source,
+        "struct Point:\n  x: i32\n\nimpl Point:\n  func get_x(self: Point) -> i32:\n    return self.x\n\nfunc main() -> i32:\n  let point = Point(x=1)\n  let method = point.get_x\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("value has no fields") || stderr.contains("method"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
 fn all_positive_fixtures_pass_check() {
     for fixture in CHECK_FIXTURES {
         let fixture_path = repo_path(fixture);
