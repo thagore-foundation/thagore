@@ -1,15 +1,13 @@
 # module: stdlib/path
-# description: Path helpers backed by the bundled Thagore runtime.
+# description: Path helpers layered on top of std.fs.
 
-extern func thag_fs_getcwd() -> str
-extern func thag_fs_path_join(left: str, right: str) -> str
-extern func thag_fs_is_dir(path: str) -> i32
+import std.fs as fs
 
 func getcwd() -> str:
-  return thag_fs_getcwd()
+  return fs.getcwd()
 
 func path_join(left: str, right: str) -> str:
-  return thag_fs_path_join(left, right)
+  return fs.path_join(left, right)
 
 func is_dir(path: str) -> bool:
-  return thag_fs_is_dir(path) != 0
+  return fs.is_dir(path)
