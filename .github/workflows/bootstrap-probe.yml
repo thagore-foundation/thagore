@@ -159,6 +159,30 @@ jobs:
         shell: pwsh
         run: cargo build --release -p thagore-cli --bin thagc
 
+      - name: Run interpreter bootstrap audit on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo test -p thagore-interpreter -- --nocapture
+
+      - name: Run interpreter bootstrap audit on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo test -p thagore-interpreter -- --nocapture
+
+      - name: Run native stdlib bootstrap audit on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+
+      - name: Run native stdlib bootstrap audit on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+
       - name: Run bootstrap probe on Linux
         if: runner.os == 'Linux'
         shell: bash
