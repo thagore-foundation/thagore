@@ -1061,7 +1061,7 @@ fn check_reports_top_level_let_without_lowering_escape() {
         .expect("run thagc check");
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("unsupported feature"), "{stderr}");
+    assert!(stderr.contains("unsupported language feature"), "{stderr}");
     assert!(stderr.contains("top-level let declarations"), "{stderr}");
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
 }
