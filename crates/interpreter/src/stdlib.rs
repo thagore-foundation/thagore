@@ -1366,6 +1366,18 @@ mod tests {
     }
 
     #[test]
+    fn process_module_exports_expected_helpers() {
+        let registry = StdlibRegistry::new();
+        let exports = registry.module_exports("process").expect("process exports");
+        assert!(exports.iter().any(|name| name == "run"));
+        assert!(exports.iter().any(|name| name == "capture"));
+        assert!(exports.iter().any(|name| name == "argv"));
+        assert!(exports.iter().any(|name| name == "argc"));
+        assert!(exports.iter().any(|name| name == "env"));
+        assert!(exports.iter().any(|name| name == "exit"));
+    }
+
+    #[test]
     fn fs_handlers_round_trip_files() {
         let registry = StdlibRegistry::new();
         let mut interpreter = Interpreter::new(SymbolTable::default());
@@ -1432,5 +1444,42 @@ mod tests {
         assert!(matches!(dir_values, Value::Vec(values) if values.contains(&Value::Str(String::from("probe.txt")))));
 
         fs::remove_dir_all(dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn process_handlers_cover_env_and_capture() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let capture = registry.handler("capture").expect("capture handler");
+        let env_handler = registry.handler("env").expect("env handler");
+        let run = registry.handler("run").expect("run handler");
+
+        // SAFETY: unit test process-local environment mutation.
+        unsafe {
+            std::env::set_var("THAGORE_STD_PROCESS_PROBE", "ok");
+        }
+
+        assert_eq!(
+            env_handler(
+                &mut interpreter,
+                vec![Value::Str(String::from("THAGORE_STD_PROCESS_PROBE"))],
+            )
+            .expect("env result"),
+            Value::Str(String::from("ok"))
+        );
+
+        let captured = capture(
+            &mut interpreter,
+            vec![Value::Str(String::from("echo bootstrap"))],
+        )
+        .expect("capture result");
+        assert!(matches!(captured, Value::Str(text) if text.contains("bootstrap")));
+
+        let status = run(
+            &mut interpreter,
+            vec![Value::Str(String::from("echo bootstrap"))],
+        )
+        .expect("run result");
+        assert!(matches!(status, Value::I32(code) if code == 0));
     }
 }

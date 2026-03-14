@@ -711,6 +711,40 @@ fn build_and_run_std_fs_module() {
 }
 
 #[test]
+fn build_and_run_std_process_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("process_stdlib");
+    fs::write(
+        &source,
+        "import std.process as process\nimport std.string as string\n\nfunc main() -> i32:\n  let env_value = process.env(\"THAGORE_STD_PROCESS_PROBE\")\n  let captured = string.trim(process.capture(\"echo bootstrap\"))\n  let argc = process.argc()\n  let argv0 = process.argv(0)\n  if (env_value == \"ok\" and captured == \"bootstrap\" and argc >= 0 and string.len(argv0) >= 0):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary)
+        .env("THAGORE_STD_PROCESS_PROBE", "ok")
+        .status()
+        .expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn build_and_run_std_math_module() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");

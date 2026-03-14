@@ -15,6 +15,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   probe:
     name: Bootstrap probe ${{ matrix.os_name }}
