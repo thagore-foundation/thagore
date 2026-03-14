@@ -46,7 +46,7 @@ jobs:
             run_limit_peak_mb: 768
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -343,7 +343,7 @@ jobs:
             throw 'bootstrap probe output differs between rebuilds'
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: bootstrap-probe-${{ matrix.os_name }}
           path: bootstrap-dist/*
