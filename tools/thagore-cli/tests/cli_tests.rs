@@ -1214,7 +1214,7 @@ fn check_reports_invalid_impl_receiver_without_lowering_escape() {
     let source = dir.path().join("invalid_impl_receiver.tg");
     fs::write(
         &source,
-        "struct Point:\n  x: i32\n\nimpl Point:\n  func bad(self: i32) -> i32:\n    return self\n",
+        "struct Point:\n  x: i32\n\nimpl Point:\n  func bad() -> i32:\n    return 0\n",
     )
     .expect("write source");
 
@@ -1224,12 +1224,7 @@ fn check_reports_invalid_impl_receiver_without_lowering_escape() {
         .expect("run thagc check");
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("invalid method receiver")
-            || stderr.contains("type mismatch")
-            || stderr.contains("return type mismatch"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("invalid impl method receiver"), "{stderr}");
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
 }
 
@@ -1250,6 +1245,67 @@ fn check_rejects_method_values_outside_calls_without_lowering_escape() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("value has no fields") || stderr.contains("method"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_unknown_types_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("unknown_type.tg");
+    fs::write(
+        &source,
+        "func main(value: Missing) -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown type"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_invalid_control_flow_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("invalid_control_flow.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  break\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid control flow"), "{stderr}");
+    assert!(stderr.contains("break can only be used inside a loop"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_invalid_assignment_targets_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("invalid_assignment_target.tg");
+    fs::write(
+        &source,
+        "const LIMIT: i32 = 1\n\nfunc main() -> i32:\n  LIMIT = 2\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid assignment target"), "{stderr}");
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
 }
 
