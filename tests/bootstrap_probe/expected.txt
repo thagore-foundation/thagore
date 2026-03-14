@@ -1,4 +1,1 @@
-BOOTSTRAP PROBE
-tokens=3
-chars=14
-joined=alpha|beta|gamma
+BOOTSTRAP PROBE\ntokens=3\nchars=14\njoined=alpha|beta|gamma
