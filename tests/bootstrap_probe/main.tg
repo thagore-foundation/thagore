@@ -15,7 +15,7 @@ pub func scan_dir(path: string) -> string:
     let line = string.concat("entry: ", entry)
     let touched_path = fs.path_join(fs.path_join(path, entry), ".bootstrap")
     let touched = ""
-    if fs.exists(touched_path):
+    if (fs.exists(touched_path)):
       touched = " (tracked)"
     out = string.concat(out, string.concat(line, touched))
     out = string.concat(out, "\n")
