@@ -184,7 +184,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'bootstrap-dist' | Out-Null
           $thagc = '${{ matrix.thagc_bin }}'
           $first = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}'
-          $second = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}.second.exe'
+          $second = Join-Path 'bootstrap-dist' 'bootstrap-probe-second.exe'
           & $thagc check 'tests/bootstrap_probe/main.tg'
           if ($LASTEXITCODE -ne 0) { throw "thagc check failed" }
           & $thagc build 'tests/bootstrap_probe/main.tg' -o $first
