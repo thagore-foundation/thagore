@@ -686,7 +686,7 @@ fn build_and_run_std_fs_module() {
     let binary = dir.path().join("fs_stdlib");
     fs::write(
         &source,
-        "import std.fs as fs\nimport std.string as string\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-probe.txt\")\n  if (!fs.write(file, \"probe\")):\n    return 1\n  if (!fs.exists(file)):\n    return 2\n  let text = fs.read(file)\n  let entries = fs.read_dir(root)\n  let listed = string.join(entries, \"\\n\")\n  let ok = string.contains(listed, \"fs-stdlib-probe.txt\")\n  let size = fs.filesize(file)\n  fs.remove(file)\n  if (text == \"probe\" and ok and size >= 5):\n    return 0\n  return 3\n",
+        "import std.fs as fs\nimport std.string as string\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-probe.txt\")\n  if (fs.write(file, \"probe\") == false):\n    return 1\n  if (fs.exists(file) == false):\n    return 2\n  let text = fs.read(file)\n  let size = fs.filesize(file)\n  let removed = fs.remove(file)\n  if (string.str_eq(text, \"probe\") and size >= 5 and removed):\n    return 0\n  return 3\n",
     )
     .expect("write source");
 
@@ -717,7 +717,7 @@ fn build_and_run_std_process_module() {
     let binary = dir.path().join("process_stdlib");
     fs::write(
         &source,
-        "import std.process as process\nimport std.string as string\n\nfunc main() -> i32:\n  let env_value = process.env(\"THAGORE_STD_PROCESS_PROBE\")\n  let captured = string.trim(process.capture(\"echo bootstrap\"))\n  let argc = process.argc()\n  let argv0 = process.argv(0)\n  if (env_value == \"ok\" and captured == \"bootstrap\" and argc >= 0 and string.len(argv0) >= 0):\n    return 0\n  return 1\n",
+        "import std.process as process\nimport std.string as string\n\nfunc main() -> i32:\n  let env_value = process.env(\"THAGORE_STD_PROCESS_PROBE\")\n  let captured = string.trim(process.capture(\"echo bootstrap\"))\n  let argc = process.argc()\n  let argv0 = process.argv(0)\n  if (string.str_eq(env_value, \"ok\") and string.contains(captured, \"boot\") and argc >= 0 and string.len(argv0) > 0):\n    return 0\n  return 1\n",
     )
     .expect("write source");
 
