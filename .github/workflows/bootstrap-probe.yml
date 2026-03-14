@@ -181,23 +181,29 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          cargo test -p thagore-cli build_and_run_std_io_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_array_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+          cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
 
       - name: Run native stdlib bootstrap audit on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cargo test -p thagore-cli build_and_run_std_io_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_array_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+          cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
 
       - name: Run bootstrap probe on Linux
         if: runner.os == 'Linux'

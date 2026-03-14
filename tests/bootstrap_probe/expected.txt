@@ -1,1 +1,1 @@
-BOOTSTRAP PROBE\ntokens=3\nchars=14\njoined=alpha|beta|gamma
+diag:bootstrap-probe\ntokens=3\nchars=14\njoined=alpha|beta|gamma

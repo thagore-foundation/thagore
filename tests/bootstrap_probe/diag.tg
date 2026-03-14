@@ -1,0 +1,8 @@
+import std.string as string
+
+pub func banner(name: str) -> str:
+  return string.concat("diag:", name)
+
+pub func line(name: str, value: str) -> str:
+  let left = string.concat(name, "=")
+  return string.concat(left, value)
