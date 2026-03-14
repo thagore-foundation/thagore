@@ -1,21 +1,30 @@
 # Bootstrap Probe
 
-This minimal project exercises the features that must stay solid before
-bootstrap is declared ready:
+This project now exercises a broader bootstrap slice instead of a single-file
+smoke test.
 
-- `std.fs`: file writing, file reading, existence checks, path joining, file sizing
-- `std.string`: concatenation for deterministic probe payloads
-- `std.time`: runtime clock availability without relying on integer formatting
+Surface covered:
+
+- local module imports via `from . import ...`
+- `std.string`: split, join, concat, len, integer formatting, equality
+- `std.fs`: write, read, file sizing
+- `std.path`: cwd, path join, directory detection
+- `std.process`: environment lookup and argv access
+- `std.time`: monotonic time sanity checks
+- arrays and `for` traversal through `string.split(...)`
 
 Steps:
 
 1. `thagc build tests/bootstrap_probe/main.tg -o probe`
-2. `thagc run tests/bootstrap_probe/main.tg`
-3. Ensure `tests/bootstrap_probe/probe-result.txt` contains the written probe payload
+2. Set `THAGORE_BOOTSTRAP_PROBE=ok`
+3. `thagc run tests/bootstrap_probe/main.tg`
+4. Ensure `tests/bootstrap_probe/probe-result.txt` matches `tests/bootstrap_probe/expected.txt`
 
 The CI bootstrap workflow will:
 
 - build the Thagore toolchain (`thagc`)
-- use it to compile this probe
-- run the probe
-- rebuild the probe with the produced binary (double build)
+- run interpreter parity audits
+- run native stdlib audits for `string`, `time`, `fs`, `path`, and `process`
+- compile the probe twice with the built toolchain
+- run both probe binaries
+- compare both outputs against `tests/bootstrap_probe/expected.txt`

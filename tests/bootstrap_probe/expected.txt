@@ -1,0 +1,4 @@
+BOOTSTRAP PROBE
+tokens=3
+chars=14
+joined=alpha|beta|gamma

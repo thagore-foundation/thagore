@@ -270,13 +270,13 @@ Use this table as the live checklist.
 
 | Area | Status | Blocking bootstrap | Notes |
 | --- | --- | --- | --- |
-| bootstrap probe | partial | yes | probe exists under `tests/bootstrap_probe/`, needs CI enforcement and broader coverage |
+| bootstrap probe | in progress | yes | probe exists under `tests/bootstrap_probe/`, CI gate runs on Linux x64 and Windows x64 with golden-output checks |
 | language surface closure | in progress | yes | several fail-fast fixes already landed |
 | lowering/codegen closure | in progress | yes | audit still incomplete |
 | stdlib bootstrap audit | in progress | yes | `fs`, `process`, `time`, `string`, `io` parity work is underway |
 | determinism/state safety | partial | yes | repeated-build discipline not formalized |
 | performance safety floor | partial | yes | hard limits not yet enforced |
-| bootstrap CI workflow | partial | yes | workflow exists, still needs to prove the stricter rehearsal criteria |
+| bootstrap CI workflow | in progress | yes | workflow now gates interpreter parity, native stdlib audits, double-build probe runs, and golden output checks |
 
 ## 10. Practical Rule
 

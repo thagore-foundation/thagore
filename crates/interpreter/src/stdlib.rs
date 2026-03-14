@@ -179,6 +179,7 @@ impl StdlibRegistry {
                 "filesize",
             ],
         );
+        registry.register_module("path", &["getcwd", "path_join", "is_dir"]);
         registry.register_module(
             "process",
             &[
@@ -1375,6 +1376,15 @@ mod tests {
         assert!(exports.iter().any(|name| name == "argc"));
         assert!(exports.iter().any(|name| name == "env"));
         assert!(exports.iter().any(|name| name == "exit"));
+    }
+
+    #[test]
+    fn path_module_exports_expected_helpers() {
+        let registry = StdlibRegistry::new();
+        let exports = registry.module_exports("path").expect("path exports");
+        assert!(exports.iter().any(|name| name == "getcwd"));
+        assert!(exports.iter().any(|name| name == "path_join"));
+        assert!(exports.iter().any(|name| name == "is_dir"));
     }
 
     #[test]

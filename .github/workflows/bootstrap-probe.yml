@@ -176,6 +176,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
 
       - name: Run native stdlib bootstrap audit on Windows
@@ -185,6 +186,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
 
       - name: Run bootstrap probe on Linux
@@ -199,12 +201,14 @@ jobs:
           "$THAGC" check tests/bootstrap_probe/main.tg
           "$THAGC" build tests/bootstrap_probe/main.tg -o "$FIRST"
           rm -f tests/bootstrap_probe/probe-result.txt
-          "./$FIRST"
+          THAGORE_BOOTSTRAP_PROBE=ok "./$FIRST"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-first.txt
           "$THAGC" build tests/bootstrap_probe/main.tg -o "$SECOND"
           rm -f tests/bootstrap_probe/probe-result.txt
-          "./$SECOND"
+          THAGORE_BOOTSTRAP_PROBE=ok "./$SECOND"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-second.txt
+          cmp tests/bootstrap_probe/expected.txt bootstrap-dist/probe-result-first.txt
+          cmp tests/bootstrap_probe/expected.txt bootstrap-dist/probe-result-second.txt
           cmp bootstrap-dist/probe-result-first.txt bootstrap-dist/probe-result-second.txt
 
       - name: Run bootstrap probe on Windows
@@ -221,6 +225,7 @@ jobs:
           & $thagc build 'tests/bootstrap_probe/main.tg' -o $first
           if ($LASTEXITCODE -ne 0) { throw "first build failed" }
           Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
+          $env:THAGORE_BOOTSTRAP_PROBE = 'ok'
           & $first
           if ($LASTEXITCODE -ne 0) { throw "first probe run failed" }
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-first.txt' -Force
@@ -230,6 +235,12 @@ jobs:
           & $second
           if ($LASTEXITCODE -ne 0) { throw "second probe run failed" }
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-second.txt' -Force
+          if ((Get-Content 'tests/bootstrap_probe/expected.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw)) {
+            throw 'bootstrap probe first output differs from expected'
+          }
+          if ((Get-Content 'tests/bootstrap_probe/expected.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw)) {
+            throw 'bootstrap probe second output differs from expected'
+          }
           if ((Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw)) {
             throw 'bootstrap probe output differs between rebuilds'
           }

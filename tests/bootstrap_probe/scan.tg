@@ -1,0 +1,19 @@
+import std.string as string
+
+pub func token_count(csv: str) -> i32:
+  let count: i32 = 0
+  let parts = string.split(csv, ",")
+  for part in parts:
+    count = count + 1
+  return count
+
+pub func total_chars(csv: str) -> i32:
+  let total: i32 = 0
+  let parts = string.split(csv, ",")
+  for part in parts:
+    total = total + string.len(part)
+  return total
+
+pub func normalized(csv: str) -> str:
+  let parts = string.split(csv, ",")
+  return string.join(parts, "|")

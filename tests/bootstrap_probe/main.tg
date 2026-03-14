@@ -1,23 +1,31 @@
-import std.string as string
+from . import report
 import std.fs as fs
+import std.path as path
+import std.process as process
+import std.string as string
 import std.time as time
 
-pub func report(message: str) -> str:
-  let now = time.now_ms()
-  if (now >= 0):
-    return string.concat("[time-ready] ", message)
-  return message
-
 pub func main() -> i32:
-  let root = fs.getcwd()
-  let file = fs.path_join(root, "tests/bootstrap_probe/probe-result.txt")
-  let payload = report(string.concat("bootstrap probe running in ", root))
-  print(payload)
-  fs.write(file, payload)
+  let started = time.now_ms()
+  let root = path.getcwd()
+  if (path.is_dir(root) == false):
+    return 1
+  if (string.str_eq(process.env("THAGORE_BOOTSTRAP_PROBE"), "ok") == false):
+    return 2
+  if (string.len(process.argv(0)) <= 0):
+    return 3
+  let file = path.path_join(root, "tests/bootstrap_probe/probe-result.txt")
+  let payload = report.build_report("alpha,beta,gamma")
+  if (fs.write(file, payload) == false):
+    return 4
   let size = fs.filesize(file)
   if (size <= 0):
-    return 1
+    return 5
   let stored = fs.read(file)
-  print(stored)
-  print(report("probe finished"))
+  if (string.str_eq(stored, payload) == false):
+    return 6
+  let elapsed = time.now_ms() - started
+  if (elapsed < 0):
+    return 7
+  println(stored)
   return 0
