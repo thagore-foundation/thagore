@@ -207,9 +207,18 @@ jobs:
           rm -f tests/bootstrap_probe/probe-result.txt
           THAGORE_BOOTSTRAP_PROBE=ok "./$SECOND"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-second.txt
-          cmp tests/bootstrap_probe/expected.txt bootstrap-dist/probe-result-first.txt
-          cmp tests/bootstrap_probe/expected.txt bootstrap-dist/probe-result-second.txt
-          cmp bootstrap-dist/probe-result-first.txt bootstrap-dist/probe-result-second.txt
+          python - <<'PY'
+          from pathlib import Path
+          expected = Path("tests/bootstrap_probe/expected.txt").read_text().rstrip("\r\n")
+          first = Path("bootstrap-dist/probe-result-first.txt").read_text().rstrip("\r\n")
+          second = Path("bootstrap-dist/probe-result-second.txt").read_text().rstrip("\r\n")
+          if expected != first:
+              raise SystemExit("bootstrap probe first output differs from expected")
+          if expected != second:
+              raise SystemExit("bootstrap probe second output differs from expected")
+          if first != second:
+              raise SystemExit("bootstrap probe output differs between rebuilds")
+          PY
 
       - name: Run bootstrap probe on Windows
         if: runner.os == 'Windows'
@@ -235,13 +244,16 @@ jobs:
           & $second
           if ($LASTEXITCODE -ne 0) { throw "second probe run failed" }
           Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-second.txt' -Force
-          if ((Get-Content 'tests/bootstrap_probe/expected.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw)) {
+          $expected = (Get-Content 'tests/bootstrap_probe/expected.txt' -Raw).TrimEnd("`r", "`n")
+          $firstOut = (Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw).TrimEnd("`r", "`n")
+          $secondOut = (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw).TrimEnd("`r", "`n")
+          if ($expected -ne $firstOut) {
             throw 'bootstrap probe first output differs from expected'
           }
-          if ((Get-Content 'tests/bootstrap_probe/expected.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw)) {
+          if ($expected -ne $secondOut) {
             throw 'bootstrap probe second output differs from expected'
           }
-          if ((Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw)) {
+          if ($firstOut -ne $secondOut) {
             throw 'bootstrap probe output differs between rebuilds'
           }
 
