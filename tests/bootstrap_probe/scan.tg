@@ -1,9 +1,11 @@
-import std.array as array
 import std.string as string
 
 pub func token_count(csv: str) -> i32:
+  let count: i32 = 0
   let parts = string.split(csv, ",")
-  return array.len(parts)
+  for part in parts:
+    count = count + 1
+  return count
 
 pub func total_chars(csv: str) -> i32:
   let total: i32 = 0
@@ -14,7 +16,4 @@ pub func total_chars(csv: str) -> i32:
 
 pub func normalized(csv: str) -> str:
   let parts = string.split(csv, ",")
-  let head = array.get(parts, 0)
-  if (string.str_eq(head, "alpha") == false):
-    return "invalid"
   return string.join(parts, "|")
