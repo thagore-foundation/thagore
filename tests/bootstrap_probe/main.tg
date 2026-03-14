@@ -1,26 +1,23 @@
 import std.string as string
 import std.fs as fs
 import std.time as time
-import std.process as process
 
 pub func report(message: string) -> string:
   let now = time.now_ms()
-  return string.concat(string.concat("[", string.from_int(now)), "] ".concat(message))
+  let prefix = string.concat("[", string.from_int(now))
+  let stamped = string.concat(prefix, "] ")
+  return string.concat(stamped, message)
 
 pub func scan_dir(path: string) -> string:
   let entries = fs.read_dir(path)
-  let mut out = ""
+  let out = ""
   for entry in entries:
-    let line = string.concat("entry: ", entry.name)
-    let with_path = fs.path_join(entry.path, ".bootstrap")
-    let touched =
-      if fs.exists(with_path):
-        " (tracked)"
-      else:
-        ""
-    out = string.concat(out, string.concat(line, string.concat(" ", touched)))
+    let line = string.concat("entry: ", entry)
+    let touched_path = fs.path_join(fs.path_join(path, entry), ".bootstrap")
+    let touched = if fs.exists(touched_path): " (tracked)" else: ""
+    out = string.concat(out, string.concat(line, touched))
     out = string.concat(out, "\n")
-  out
+  return out
 
 pub func main() -> i32:
   let root = fs.getcwd()

@@ -1,6 +1,10 @@
 //! Interpreter-side standard library implemented in pure Rust.
 
 use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -87,6 +91,22 @@ impl StdlibRegistry {
         registry.register("read_all", builtin_read_all);
         registry.register("read_ints", builtin_read_ints);
         registry.register("read_i64s", builtin_read_i64s);
+        registry.register("read", builtin_fs_read);
+        registry.register("write", builtin_fs_write);
+        registry.register("exists", builtin_fs_exists);
+        registry.register("mkdir", builtin_fs_mkdir);
+        registry.register("read_dir", builtin_fs_read_dir);
+        registry.register("remove", builtin_fs_remove);
+        registry.register("getcwd", builtin_fs_getcwd);
+        registry.register("path_join", builtin_fs_path_join);
+        registry.register("is_dir", builtin_fs_is_dir);
+        registry.register("filesize", builtin_fs_filesize);
+        registry.register("run", builtin_process_run);
+        registry.register("capture", builtin_process_capture);
+        registry.register("argv", builtin_process_argv);
+        registry.register("argc", builtin_process_argc);
+        registry.register("env", builtin_process_env);
+        registry.register("exit", builtin_process_exit);
 
         registry.register_module(
             "math",
@@ -144,6 +164,32 @@ impl StdlibRegistry {
             ],
         );
         registry.register_module("time", &["now_ms", "sleep_ms"]);
+        registry.register_module(
+            "fs",
+            &[
+                "read",
+                "write",
+                "exists",
+                "mkdir",
+                "read_dir",
+                "remove",
+                "getcwd",
+                "path_join",
+                "is_dir",
+                "filesize",
+            ],
+        );
+        registry.register_module(
+            "process",
+            &[
+                "run",
+                "capture",
+                "argv",
+                "argc",
+                "env",
+                "exit",
+            ],
+        );
 
         registry
     }
@@ -884,10 +930,182 @@ fn builtin_read_i64s(
     Ok(Value::Vec(values))
 }
 
+fn shell_command(command: &str) -> Command {
+    if cfg!(windows) {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", command]);
+        cmd
+    } else {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-lc", command]);
+        cmd
+    }
+}
+
+fn builtin_fs_read(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "read")?;
+    let path = expect_string(&args[0], "read")?;
+    let content =
+        fs::read_to_string(&path).map_err(|error| RuntimeError::message(format!("read failed: {error}")))?;
+    Ok(Value::Str(content))
+}
+
+fn builtin_fs_write(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 2, "write")?;
+    let path = expect_string(&args[0], "write")?;
+    let content = expect_string(&args[1], "write")?;
+    fs::write(&path, content).map_err(|error| RuntimeError::message(format!("write failed: {error}")))?;
+    Ok(Value::Bool(true))
+}
+
+fn builtin_fs_exists(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "exists")?;
+    let path = expect_string(&args[0], "exists")?;
+    Ok(Value::Bool(PathBuf::from(path).exists()))
+}
+
+fn builtin_fs_mkdir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "mkdir")?;
+    let path = expect_string(&args[0], "mkdir")?;
+    fs::create_dir_all(&path).map_err(|error| RuntimeError::message(format!("mkdir failed: {error}")))?;
+    Ok(Value::Bool(true))
+}
+
+fn builtin_fs_read_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "read_dir")?;
+    let path = expect_string(&args[0], "read_dir")?;
+    let entries =
+        fs::read_dir(&path).map_err(|error| RuntimeError::message(format!("read_dir failed: {error}")))?;
+    let mut values = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| RuntimeError::message(format!("read_dir failed: {error}")))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name != "." && name != ".." {
+            values.push(Value::Str(name));
+        }
+    }
+    Ok(Value::Vec(values))
+}
+
+fn builtin_fs_remove(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "remove")?;
+    let path = expect_string(&args[0], "remove")?;
+    let meta =
+        fs::metadata(&path).map_err(|error| RuntimeError::message(format!("remove failed: {error}")))?;
+    if meta.is_dir() {
+        fs::remove_dir_all(&path)
+            .map_err(|error| RuntimeError::message(format!("remove failed: {error}")))?;
+    } else {
+        fs::remove_file(&path).map_err(|error| RuntimeError::message(format!("remove failed: {error}")))?;
+    }
+    Ok(Value::Bool(true))
+}
+
+fn builtin_fs_getcwd(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 0, "getcwd")?;
+    let cwd = env::current_dir()
+        .map_err(|error| RuntimeError::message(format!("getcwd failed: {error}")))?;
+    Ok(Value::Str(cwd.to_string_lossy().to_string()))
+}
+
+fn builtin_fs_path_join(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 2, "path_join")?;
+    let left = expect_string(&args[0], "path_join")?;
+    let right = expect_string(&args[1], "path_join")?;
+    let mut path = PathBuf::from(left);
+    path.push(right);
+    Ok(Value::Str(path.to_string_lossy().replace('\\', "/")))
+}
+
+fn builtin_fs_is_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "is_dir")?;
+    let path = expect_string(&args[0], "is_dir")?;
+    Ok(Value::Bool(
+        fs::metadata(&path).map(|meta| meta.is_dir()).unwrap_or(false),
+    ))
+}
+
+fn builtin_fs_filesize(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "filesize")?;
+    let path = expect_string(&args[0], "filesize")?;
+    let size = fs::metadata(&path)
+        .map_err(|error| RuntimeError::message(format!("filesize failed: {error}")))?
+        .len();
+    let size = i64::try_from(size).map_err(|_| RuntimeError::message("filesize overflowed i64 range"))?;
+    Ok(Value::I64(size))
+}
+
+fn builtin_process_run(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "run")?;
+    let command = expect_string(&args[0], "run")?;
+    let status = shell_command(&command)
+        .status()
+        .map_err(|error| RuntimeError::message(format!("run failed: {error}")))?;
+    Ok(Value::I32(status.code().unwrap_or(1)))
+}
+
+fn builtin_process_capture(
+    _: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "capture")?;
+    let command = expect_string(&args[0], "capture")?;
+    let output = shell_command(&command)
+        .output()
+        .map_err(|error| RuntimeError::message(format!("capture failed: {error}")))?;
+    Ok(Value::Str(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+    ))
+}
+
+fn builtin_process_argv(
+    _interpreter: &mut Interpreter<'_>,
+    args: Vec<Value>,
+) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "argv")?;
+    let index = expect_i32(&args[0], "argv")?;
+    let argv = env::args().collect::<Vec<_>>();
+    let Some(value) = argv.get(index.max(0) as usize) else {
+        return Ok(Value::Str(String::new()));
+    };
+    Ok(Value::Str(value.clone()))
+}
+
+fn builtin_process_argc(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 0, "argc")?;
+    Ok(Value::I32(env::args().count() as i32))
+}
+
+fn builtin_process_env(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "env")?;
+    let name = expect_string(&args[0], "env")?;
+    Ok(Value::Str(env::var(name).unwrap_or_default()))
+}
+
+fn builtin_process_exit(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "exit")?;
+    let code = expect_i32(&args[0], "exit")?;
+    Err(RuntimeError::message(format!(
+        "exit({code}) is not supported in interpreter mode"
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::StdlibRegistry;
     use crate::{Interpreter, RuntimeError, SymbolTable, Value};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
 
     #[test]
     fn from_int_accepts_i32_values() {
@@ -1135,5 +1353,84 @@ mod tests {
 
         assert!(end >= start);
         assert!(end - start >= 10);
+    }
+
+    #[test]
+    fn fs_module_exports_expected_helpers() {
+        let registry = StdlibRegistry::new();
+        let exports = registry.module_exports("fs").expect("fs exports");
+        assert!(exports.iter().any(|name| name == "read"));
+        assert!(exports.iter().any(|name| name == "write"));
+        assert!(exports.iter().any(|name| name == "read_dir"));
+        assert!(exports.iter().any(|name| name == "path_join"));
+    }
+
+    #[test]
+    fn fs_handlers_round_trip_files() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let write = registry.handler("write").expect("write handler");
+        let read = registry.handler("read").expect("read handler");
+        let exists = registry.handler("exists").expect("exists handler");
+        let getcwd = registry.handler("getcwd").expect("getcwd handler");
+        let path_join = registry.handler("path_join").expect("path_join handler");
+        let read_dir = registry.handler("read_dir").expect("read_dir handler");
+        let filesize = registry.handler("filesize").expect("filesize handler");
+
+        let dir = unique_temp_dir("thagore-stdlib-fs");
+        let file = dir.join("probe.txt");
+        write(
+            &mut interpreter,
+            vec![
+                Value::Str(file.to_string_lossy().to_string()),
+                Value::Str(String::from("probe")),
+            ],
+        )
+        .expect("write result");
+
+        assert_eq!(
+            exists(
+                &mut interpreter,
+                vec![Value::Str(file.to_string_lossy().to_string())],
+            )
+            .expect("exists result"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            read(
+                &mut interpreter,
+                vec![Value::Str(file.to_string_lossy().to_string())],
+            )
+            .expect("read result"),
+            Value::Str(String::from("probe"))
+        );
+        match filesize(
+            &mut interpreter,
+            vec![Value::Str(file.to_string_lossy().to_string())],
+        )
+        .expect("filesize result")
+        {
+            Value::I64(size) => assert!(size >= 5),
+            other => panic!("unexpected filesize value: {other:?}"),
+        }
+        let cwd = getcwd(&mut interpreter, Vec::new()).expect("getcwd result");
+        assert!(matches!(cwd, Value::Str(_)));
+        let joined = path_join(
+            &mut interpreter,
+            vec![
+                Value::Str(dir.to_string_lossy().to_string()),
+                Value::Str(String::from("probe.txt")),
+            ],
+        )
+        .expect("path_join result");
+        assert_eq!(joined, Value::Str(file.to_string_lossy().replace('\\', "/")));
+        let dir_values = read_dir(
+            &mut interpreter,
+            vec![Value::Str(dir.to_string_lossy().to_string())],
+        )
+        .expect("read_dir result");
+        assert!(matches!(dir_values, Value::Vec(values) if values.contains(&Value::Str(String::from("probe.txt")))));
+
+        fs::remove_dir_all(dir).expect("cleanup dir");
     }
 }

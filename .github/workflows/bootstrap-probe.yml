@@ -1,0 +1,203 @@
+name: Bootstrap Probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bootstrap-probe.yml"
+      - "tests/bootstrap_probe/**"
+      - "stdlib/**"
+      - "crates/**"
+      - "tools/thagore-cli/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Bootstrap probe ${{ matrix.os_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux-x64
+            shell: bash
+            probe_bin: bootstrap-probe
+            thagc_bin: target/release/thagc
+          - runner: windows-latest
+            os_name: windows-x64
+            shell: pwsh
+            probe_bin: bootstrap-probe.exe
+            thagc_bin: target/release/thagc.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC toolchain
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
+          }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $llvmLib = Join-Path $llvmRoot 'lib'
+          $llvmInclude = Join-Path $llvmRoot 'include'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-bootstrap.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '',
+              '        if (args.Contains("--version"))',
+              '        {',
+              '            Console.WriteLine("14.0.6");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--prefix"))',
+              '        {',
+              '            Console.WriteLine(root);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libdir"))',
+              '        {',
+              '            Console.WriteLine(lib);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--includedir"))',
+              '        {',
+              '            Console.WriteLine(include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--build-mode"))',
+              '        {',
+              '            Console.WriteLine("Release");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--cflags"))',
+              '        {',
+              '            Console.WriteLine("-I" + include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build host thagc
+        shell: ${{ matrix.shell }}
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Run bootstrap probe on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap-dist
+          THAGC="${{ matrix.thagc_bin }}"
+          FIRST="bootstrap-dist/${{ matrix.probe_bin }}"
+          SECOND="bootstrap-dist/${{ matrix.probe_bin }}.second"
+          "$THAGC" check tests/bootstrap_probe/main.tg
+          "$THAGC" build tests/bootstrap_probe/main.tg -o "$FIRST"
+          rm -f tests/bootstrap_probe/probe-result.txt
+          "./$FIRST"
+          cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-first.txt
+          "$THAGC" build tests/bootstrap_probe/main.tg -o "$SECOND"
+          rm -f tests/bootstrap_probe/probe-result.txt
+          "./$SECOND"
+          cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-second.txt
+          cmp bootstrap-dist/probe-result-first.txt bootstrap-dist/probe-result-second.txt
+
+      - name: Run bootstrap probe on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'bootstrap-dist' | Out-Null
+          $thagc = '${{ matrix.thagc_bin }}'
+          $first = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}'
+          $second = Join-Path 'bootstrap-dist' '${{ matrix.probe_bin }}.second.exe'
+          & $thagc check 'tests/bootstrap_probe/main.tg'
+          if ($LASTEXITCODE -ne 0) { throw "thagc check failed" }
+          & $thagc build 'tests/bootstrap_probe/main.tg' -o $first
+          if ($LASTEXITCODE -ne 0) { throw "first build failed" }
+          Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
+          & $first
+          if ($LASTEXITCODE -ne 0) { throw "first probe run failed" }
+          Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-first.txt' -Force
+          & $thagc build 'tests/bootstrap_probe/main.tg' -o $second
+          if ($LASTEXITCODE -ne 0) { throw "second build failed" }
+          Remove-Item 'tests/bootstrap_probe/probe-result.txt' -ErrorAction SilentlyContinue
+          & $second
+          if ($LASTEXITCODE -ne 0) { throw "second probe run failed" }
+          Copy-Item 'tests/bootstrap_probe/probe-result.txt' 'bootstrap-dist/probe-result-second.txt' -Force
+          if ((Get-Content 'bootstrap-dist/probe-result-first.txt' -Raw) -ne (Get-Content 'bootstrap-dist/probe-result-second.txt' -Raw)) {
+            throw 'bootstrap probe output differs between rebuilds'
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-probe-${{ matrix.os_name }}
+          path: bootstrap-dist/*

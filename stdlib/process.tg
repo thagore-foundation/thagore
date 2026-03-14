@@ -1,0 +1,27 @@
+# module: stdlib/process
+# description: Process helpers backed by the bundled Thagore runtime.
+
+extern func thag_process_run(cmd: str) -> i32
+extern func thag_process_capture(cmd: str) -> str
+extern func thag_process_argv(index: i32) -> str
+extern func thag_process_argc() -> i32
+extern func thag_process_env(name: str) -> str
+extern func thag_process_exit(code: i32) -> void
+
+func run(cmd: str) -> i32:
+  return thag_process_run(cmd)
+
+func capture(cmd: str) -> str:
+  return thag_process_capture(cmd)
+
+func argv(index: i32) -> str:
+  return thag_process_argv(index)
+
+func argc() -> i32:
+  return thag_process_argc()
+
+func env(name: str) -> str:
+  return thag_process_env(name)
+
+func exit(code: i32):
+  thag_process_exit(code)

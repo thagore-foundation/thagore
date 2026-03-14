@@ -680,6 +680,37 @@ fn build_and_run_std_time_module() {
 }
 
 #[test]
+fn build_and_run_std_fs_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("fs_stdlib");
+    fs::write(
+        &source,
+        "import std.fs as fs\nimport std.string as string\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-probe.txt\")\n  if (!fs.write(file, \"probe\")):\n    return 1\n  if (!fs.exists(file)):\n    return 2\n  let text = fs.read(file)\n  let entries = fs.read_dir(root)\n  let listed = string.join(entries, \"\\n\")\n  let ok = string.contains(listed, \"fs-stdlib-probe.txt\")\n  let size = fs.filesize(file)\n  fs.remove(file)\n  if (text == \"probe\" and ok and size >= 5):\n    return 0\n  return 3\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn build_and_run_std_math_module() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");

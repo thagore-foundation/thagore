@@ -1,0 +1,43 @@
+# module: stdlib/fs
+# description: Filesystem helpers backed by the bundled Thagore runtime.
+
+extern func thag_fs_read(path: str) -> str
+extern func thag_fs_write(path: str, content: str) -> i32
+extern func thag_fs_exists(path: str) -> i32
+extern func thag_fs_mkdir(path: str) -> i32
+extern func thag_fs_readdir(path: str) -> Array[str]
+extern func thag_fs_remove(path: str) -> i32
+extern func thag_fs_getcwd() -> str
+extern func thag_fs_path_join(left: str, right: str) -> str
+extern func thag_fs_is_dir(path: str) -> i32
+extern func thag_fs_filesize(path: str) -> i64
+
+func read(path: str) -> str:
+  return thag_fs_read(path)
+
+func write(path: str, content: str) -> bool:
+  return thag_fs_write(path, content) != 0
+
+func exists(path: str) -> bool:
+  return thag_fs_exists(path) != 0
+
+func mkdir(path: str) -> bool:
+  return thag_fs_mkdir(path) != 0
+
+func read_dir(path: str) -> Array[str]:
+  return thag_fs_readdir(path)
+
+func remove(path: str) -> bool:
+  return thag_fs_remove(path) != 0
+
+func getcwd() -> str:
+  return thag_fs_getcwd()
+
+func path_join(left: str, right: str) -> str:
+  return thag_fs_path_join(left, right)
+
+func is_dir(path: str) -> bool:
+  return thag_fs_is_dir(path) != 0
+
+func filesize(path: str) -> i64:
+  return thag_fs_filesize(path)
