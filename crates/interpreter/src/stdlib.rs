@@ -65,6 +65,8 @@ impl StdlibRegistry {
         registry.register("split", builtin_split);
         registry.register("join", builtin_join);
         registry.register("is_empty", builtin_is_empty);
+        registry.register("array_len_str", builtin_array_len_str);
+        registry.register("array_get_str", builtin_array_get_str);
         registry.register("abs", builtin_abs);
         registry.register("min", builtin_min);
         registry.register("max", builtin_max);
@@ -145,6 +147,7 @@ impl StdlibRegistry {
                 "join",
             ],
         );
+        registry.register_module("array", &["len", "get"]);
         registry.register_module(
             "io",
             &[
@@ -681,6 +684,43 @@ fn builtin_is_empty(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, 
         Value::Vec(values) => Ok(Value::Bool(values.is_empty())),
         other => Err(RuntimeError::message(format!(
             "is_empty expected str or vec, found {}",
+            other.type_name()
+        ))),
+    }
+}
+
+fn builtin_array_len_str(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 1, "array.len")?;
+    match &args[0] {
+        Value::Vec(values) => Ok(Value::I32(values.len() as i32)),
+        other => Err(RuntimeError::message(format!(
+            "array.len expects Array[str], found {}",
+            other.type_name()
+        ))),
+    }
+}
+
+fn builtin_array_get_str(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    expect_arity(&args, 2, "array.get")?;
+    let index = expect_i32(&args[1], "array.get")?;
+    match &args[0] {
+        Value::Vec(values) => {
+            if index < 0 {
+                return Ok(Value::Str(String::new()));
+            }
+            Ok(match values.get(index as usize) {
+                Some(Value::Str(value)) => Value::Str(value.clone()),
+                Some(other) => {
+                    return Err(RuntimeError::message(format!(
+                        "array.get expects Array[str], found element {}",
+                        other.type_name()
+                    )))
+                }
+                None => Value::Str(String::new()),
+            })
+        }
+        other => Err(RuntimeError::message(format!(
+            "array.get expects Array[str], found {}",
             other.type_name()
         ))),
     }
@@ -1385,6 +1425,14 @@ mod tests {
         assert!(exports.iter().any(|name| name == "getcwd"));
         assert!(exports.iter().any(|name| name == "path_join"));
         assert!(exports.iter().any(|name| name == "is_dir"));
+    }
+
+    #[test]
+    fn array_module_exports_expected_helpers() {
+        let registry = StdlibRegistry::new();
+        let exports = registry.module_exports("array").expect("array exports");
+        assert!(exports.iter().any(|name| name == "len"));
+        assert!(exports.iter().any(|name| name == "get"));
     }
 
     #[test]

@@ -1276,6 +1276,22 @@ char *thag_str_array_get(void *parts, int64_t index) {
     return handle->data[index];
 }
 
+int32_t thag_rt_array_len_str(void *parts) {
+    int64_t len = thag_str_array_len(parts);
+    if (len < 0) {
+        return 0;
+    }
+    if (len > INT32_MAX) {
+        return INT32_MAX;
+    }
+    return (int32_t) len;
+}
+
+char *thag_rt_array_get_str(void *parts, int32_t index) {
+    char *value = thag_str_array_get(parts, index);
+    return value == NULL ? thag_strdup_cstr("") : value;
+}
+
 void *thag_map_new(void) {
     return thag_new_map();
 }

@@ -1,0 +1,11 @@
+# module: stdlib/array
+# description: Minimal array helpers for bootstrap-safe string arrays.
+
+extern func thag_rt_array_len_str(values: Array[str]) -> i32
+extern func thag_rt_array_get_str(values: Array[str], index: i32) -> str
+
+func len(values: Array[str]) -> i32:
+  return thag_rt_array_len_str(values)
+
+func get(values: Array[str], index: i32) -> str:
+  return thag_rt_array_get_str(values, index)

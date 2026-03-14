@@ -175,6 +175,7 @@ jobs:
         run: |
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_array_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
@@ -185,6 +186,7 @@ jobs:
         run: |
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_array_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
