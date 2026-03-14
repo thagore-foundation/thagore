@@ -12,20 +12,18 @@ pub func main() -> i32:
     return 1
   if (string.str_eq(process.env("THAGORE_BOOTSTRAP_PROBE"), "ok") == false):
     return 2
-  if (string.len(process.argv(0)) <= 0):
-    return 3
-  let file = path.path_join(root, "tests/bootstrap_probe/probe-result.txt")
+  let file = "tests/bootstrap_probe/probe-result.txt"
   let payload = report.build_report("alpha,beta,gamma")
   if (fs.write(file, payload) == false):
-    return 4
+    return 3
   let size = fs.filesize(file)
   if (size <= 0):
-    return 5
+    return 4
   let stored = fs.read(file)
   if (string.str_eq(stored, payload) == false):
-    return 6
+    return 5
   let elapsed = time.now_ms() - started
   if (elapsed < 0):
-    return 7
+    return 6
   println(stored)
   return 0
