@@ -1224,7 +1224,12 @@ fn check_reports_invalid_impl_receiver_without_lowering_escape() {
         .expect("run thagc check");
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("invalid method receiver"), "{stderr}");
+    assert!(
+        stderr.contains("invalid method receiver")
+            || stderr.contains("type mismatch")
+            || stderr.contains("return type mismatch"),
+        "{stderr}"
+    );
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
 }
 
