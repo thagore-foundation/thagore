@@ -63,9 +63,9 @@ def main() -> int:
 
     repo_root = Path(__file__).resolve().parents[2]
     thagc = Path(args.thagc)
-    probe = Path(args.probe)
-    expected = Path(args.expected)
-    result_file = Path(args.result)
+    probe = Path(args.probe).resolve()
+    expected = Path(args.expected).resolve()
+    result_file = Path(args.result).resolve()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
