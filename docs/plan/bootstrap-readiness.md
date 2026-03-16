@@ -271,8 +271,8 @@ Use this table as the live checklist.
 | Area | Status | Blocking bootstrap | Notes |
 | --- | --- | --- | --- |
 | bootstrap probe | in progress | yes | probe exists under `tests/bootstrap_probe/`, imports multiple local modules, formats diagnostic-like report lines, and gates deterministic output on Linux x64 and Windows x64 |
-| language surface closure | in progress | yes | several fail-fast fixes already landed |
-| lowering/codegen closure | in progress | yes | audit still incomplete |
+| language surface closure | in progress | yes | bootstrap CI now gates fail-fast diagnostics for top-level lets, invalid const initializers, unknown identifiers, unknown fields, non-bool conditions, invalid control flow, invalid assignment targets, invalid impl targets/receivers, generic struct/impl bans, argument-count mismatches, and inferred return mismatches |
+| lowering/codegen closure | in progress | yes | required-surface misuse is increasingly blocked before IR, but a full audit of remaining backend-only lowering failures is still incomplete |
 | stdlib bootstrap audit | in progress | yes | `io`, `string`, `time`, `fs`, `path`, `process`, and `array` now have bootstrap-gate coverage; deeper edge-case closure is still needed |
 | determinism/state safety | in progress | yes | repeated-build discipline and golden output checks are in CI on Windows x64 and Linux x64 |
 | performance safety floor | in progress | yes | bootstrap CI now enforces probe check/build/run time limits and a memory ceiling for the first native run on both required lanes |
