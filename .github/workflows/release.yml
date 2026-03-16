@@ -14,6 +14,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-hosted:
     name: ${{ matrix.target }}
@@ -76,9 +79,9 @@ jobs:
 
       - name: Set up MSVC toolchain
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: ${{ matrix.msvc_arch }}
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch '${{ matrix.msvc_arch }}'
 
       - name: Install Windows LLVM 14 official installer
         if: runner.os == 'Windows' && matrix.llvm_mode == 'official'
@@ -417,7 +420,7 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
 

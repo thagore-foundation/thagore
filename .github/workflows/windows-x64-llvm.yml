@@ -18,9 +18,9 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Set up MSVC toolchain
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
 
       - name: Build LLVM 14 from source
         shell: pwsh

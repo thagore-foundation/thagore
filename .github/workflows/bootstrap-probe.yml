@@ -61,9 +61,9 @@ jobs:
 
       - name: Set up MSVC toolchain
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
 
       - name: Install Windows LLVM 14 prebuilt
         if: runner.os == 'Windows'

@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-hosted:
     name: Nightly hosted ${{ matrix.target }}
@@ -282,7 +285,7 @@ jobs:
           TAG="nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
           echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
 
