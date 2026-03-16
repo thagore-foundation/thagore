@@ -1335,7 +1335,7 @@ fn check_reports_unknown_fields_without_lowering_escape() {
     let source = dir.path().join("unknown_field.tg");
     fs::write(
         &source,
-        "struct Point:\n  x: i32\n\nfunc main() -> i32:\n  let point = Point(x=1)\n  return point.y\n",
+        "struct Point:\n  x: i32\n\nfunc read(point: Point) -> i32:\n  return point.y\n\nfunc main() -> i32:\n  return 0\n",
     )
     .expect("write source");
 
