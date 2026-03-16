@@ -189,6 +189,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_non_struct_field_access_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_non_indexable_values_without_lowering_escape -- --nocapture
@@ -218,6 +219,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_non_struct_field_access_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_non_indexable_values_without_lowering_escape -- --nocapture
