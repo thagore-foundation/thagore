@@ -35,6 +35,23 @@ def write_log(path: Path, title: str, result: subprocess.CompletedProcess[str]) 
     )
 
 
+def ensure_success(label: str, result: subprocess.CompletedProcess[str]) -> None:
+    if result.returncode == 0:
+        return
+    raise SystemExit(
+        "\n".join(
+            [
+                f"{label} failed",
+                f"exit: {result.returncode}",
+                "--- stdout ---",
+                result.stdout,
+                "--- stderr ---",
+                result.stderr,
+            ]
+        )
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--thagc", required=True)
@@ -57,18 +74,15 @@ def main() -> int:
 
     version = run([str(thagc), "--version"])
     write_log(out_dir / "version.log", "thagc --version", version)
-    if version.returncode != 0:
-        raise SystemExit("installed thagc did not report version successfully")
+    ensure_success("installed thagc did not report version successfully", version)
 
     check = run([str(thagc), "check", str(probe)])
     write_log(out_dir / "check.log", "thagc check", check)
-    if check.returncode != 0:
-        raise SystemExit("bootstrap probe check failed")
+    ensure_success("bootstrap probe check", check)
 
     build_first = run([str(thagc), "build", str(probe), "-o", str(first)])
     write_log(out_dir / "build-first.log", "first build", build_first)
-    if build_first.returncode != 0:
-        raise SystemExit("first bootstrap probe build failed")
+    ensure_success("first bootstrap probe build", build_first)
 
     if result_file.exists():
         result_file.unlink()
@@ -76,21 +90,18 @@ def main() -> int:
     env["THAGORE_BOOTSTRAP_PROBE"] = "ok"
     first_run = run([str(first)], env=env)
     write_log(out_dir / "run-first.log", "first run", first_run)
-    if first_run.returncode != 0:
-        raise SystemExit("first bootstrap probe run failed")
+    ensure_success("first bootstrap probe run", first_run)
     shutil.copyfile(result_file, out_dir / "probe-result-first.txt")
 
     build_second = run([str(thagc), "build", str(probe), "-o", str(second)])
     write_log(out_dir / "build-second.log", "second build", build_second)
-    if build_second.returncode != 0:
-        raise SystemExit("second bootstrap probe build failed")
+    ensure_success("second bootstrap probe build", build_second)
 
     if result_file.exists():
         result_file.unlink()
     second_run = run([str(second)], env=env)
     write_log(out_dir / "run-second.log", "second run", second_run)
-    if second_run.returncode != 0:
-        raise SystemExit("second bootstrap probe run failed")
+    ensure_success("second bootstrap probe run", second_run)
     shutil.copyfile(result_file, out_dir / "probe-result-second.txt")
 
     expected_text = expected.read_text(encoding="utf-8").rstrip("\r\n")

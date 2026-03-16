@@ -78,7 +78,8 @@ jobs:
             --result 'tests/bootstrap_probe/probe-result.txt' `
             --out-dir 'bootstrap-rehearsal'
 
-      - uses: actions/upload-artifact@v6
+      - if: always()
+        uses: actions/upload-artifact@v6
         with:
           name: bootstrap-rehearsal-${{ matrix.os_name }}
           path: bootstrap-rehearsal/*
