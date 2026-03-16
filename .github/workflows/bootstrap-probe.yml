@@ -200,6 +200,10 @@ jobs:
           cargo test -p thagore-cli check_reports_unknown_types_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_control_flow_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_assignment_targets_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_unknown_identifiers_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_unknown_fields_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_bool_conditions_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_argument_count_mismatches_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_rejects_method_values_outside_calls_without_lowering_escape -- --nocapture
 
       - name: Run native stdlib bootstrap audit on Windows
@@ -225,6 +229,10 @@ jobs:
           cargo test -p thagore-cli check_reports_unknown_types_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_control_flow_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_assignment_targets_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_unknown_identifiers_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_unknown_fields_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_non_bool_conditions_without_lowering_escape -- --nocapture
+          cargo test -p thagore-cli check_reports_argument_count_mismatches_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_rejects_method_values_outside_calls_without_lowering_escape -- --nocapture
 
       - name: Run bootstrap probe on Linux
