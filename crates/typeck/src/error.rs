@@ -138,20 +138,9 @@ pub enum TypeError {
         /// Source location where inference failed.
         span: Span,
     },
-    /// Sentinel error used to prevent cascades after an earlier failure.
-    Unknown {
-        /// Source location associated with the recovered failure.
-        span: Span,
-    },
 }
 
 impl TypeError {
-    /// Creates a sentinel recovery error.
-    #[must_use]
-    pub const fn unknown(span: Span) -> Self {
-        Self::Unknown { span }
-    }
-
     /// Returns the source span associated with the diagnostic.
     #[must_use]
     pub const fn span(&self) -> Span {
@@ -172,8 +161,7 @@ impl TypeError {
             | Self::ArgumentCountMismatch { span, .. }
             | Self::ReturnTypeMismatch { span, .. }
             | Self::ConditionNotBool { span, .. }
-            | Self::InferenceFailure { span }
-            | Self::Unknown { span } => *span,
+            | Self::InferenceFailure { span } => *span,
         }
     }
 }
@@ -269,9 +257,6 @@ impl fmt::Display for TypeError {
             }
             Self::InferenceFailure { span } => {
                 write!(f, "type inference failed at {span}")
-            }
-            Self::Unknown { span } => {
-                write!(f, "type checking failed after an earlier error at {span}")
             }
         }
     }

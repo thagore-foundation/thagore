@@ -2300,12 +2300,6 @@ pub(crate) fn convert_type_error(
             "the compiler could not infer a concrete type".to_string(),
             Some(*span),
         ),
-        TypeError::Unknown { span } => CompilerDiagnostic::new(
-            "E999",
-            "type checking failed",
-            error.to_string(),
-            Some(*span),
-        ),
     }
 }
 
