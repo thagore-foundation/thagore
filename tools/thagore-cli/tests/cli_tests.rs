@@ -123,6 +123,24 @@ fn repo_path(relative: &str) -> String {
         .to_string()
 }
 
+fn assert_build_fails_before_ir_or_codegen(source: &Path, output: &Path) {
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            output.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert_eq!(build.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&build.stderr);
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+    assert!(!stderr.contains("during IR lowering"), "{stderr}");
+    assert!(!stderr.contains("code generation failed"), "{stderr}");
+    assert!(!stderr.contains("during codegen"), "{stderr}");
+}
+
 #[test]
 fn parses_build_arguments() {
     let cli = Cli::try_parse_from([
@@ -1387,6 +1405,52 @@ fn check_reports_argument_count_mismatches_without_lowering_escape() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("argument count mismatch"), "{stderr}");
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn build_required_surface_failures_do_not_escape_to_ir_or_codegen() {
+    let dir = TempDir::new().expect("temp dir");
+    let cases = [
+        (
+            "top_level_let",
+            "let value = 1\n\nfunc main() -> i32:\n  return value\n",
+        ),
+        (
+            "invalid_const_initializer",
+            "func helper() -> i32:\n  return 1\n\nconst LIMIT: i32 = helper()\n\nfunc main() -> i32:\n  return LIMIT\n",
+        ),
+        (
+            "unknown_identifier",
+            "func main() -> i32:\n  return missing_value\n",
+        ),
+        (
+            "unknown_field",
+            "struct Point:\n  x: i32\n\nfunc read(point: Point) -> i32:\n  return point.y\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "non_bool_condition",
+            "func main() -> i32:\n  if (1):\n    return 1\n  return 0\n",
+        ),
+        (
+            "argument_count_mismatch",
+            "func add(left: i32, right: i32) -> i32:\n  return left + right\n\nfunc main() -> i32:\n  return add(1)\n",
+        ),
+        (
+            "generic_struct",
+            "struct Box<T>:\n  value: T\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "generic_impl",
+            "struct Box<T>:\n  value: T\n\nimpl Box<T>:\n  func get(self) -> T:\n    return self.value\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+    ];
+
+    for (index, (name, source_text)) in cases.iter().enumerate() {
+        let source = dir.path().join(format!("{index}_{name}.tg"));
+        let output = dir.path().join(format!("{index}_{name}"));
+        fs::write(&source, source_text).expect("write source");
+        assert_build_fails_before_ir_or_codegen(&source, &output);
+    }
 }
 
 #[test]
