@@ -27,14 +27,8 @@ jobs:
         include:
           - runner: ubuntu-latest
             os_name: linux-x64
-            installer: sh
-            prefix: ${{ runner.temp }}/thagore-install
-            thagc: ${{ runner.temp }}/thagore-install/bin/thagc
           - runner: windows-latest
             os_name: windows-x64
-            installer: pwsh
-            prefix: ${{ runner.temp }}\thagore-install
-            thagc: ${{ runner.temp }}\thagore-install\bin\thagc.exe
 
     steps:
       - uses: actions/checkout@v5
@@ -44,25 +38,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PREFIX="$RUNNER_TEMP/thagore-install"
           curl -fsSL https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.sh -o "$RUNNER_TEMP/thagup.sh"
-          sh "$RUNNER_TEMP/thagup.sh" --prefix "${{ matrix.prefix }}" --with-drago --force
+          sh "$RUNNER_TEMP/thagup.sh" --prefix "$PREFIX" --with-drago --force
 
       - name: Install latest public Thagore on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP 'thagore-install'
           $installer = Join-Path $env:RUNNER_TEMP 'thagup.ps1'
           Invoke-WebRequest -Uri 'https://github.com/thagore-foundation/thagore/releases/latest/download/thagup.ps1' -OutFile $installer
-          & powershell -NoProfile -ExecutionPolicy Bypass -File $installer -Prefix '${{ matrix.prefix }}' -WithDrago -Force
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $installer -Prefix $prefix -WithDrago -Force
 
       - name: Rehearse bootstrap probe on Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
+          PREFIX="$RUNNER_TEMP/thagore-install"
           python3 tooling/bootstrap/rehearse_probe.py \
-            --thagc "${{ matrix.thagc }}" \
+            --thagc "$PREFIX/bin/thagc" \
             --probe tests/bootstrap_probe/main.tg \
             --expected tests/bootstrap_probe/expected.txt \
             --result tests/bootstrap_probe/probe-result.txt \
@@ -73,8 +70,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP 'thagore-install'
           python tooling/bootstrap/rehearse_probe.py `
-            --thagc '${{ matrix.thagc }}' `
+            --thagc (Join-Path $prefix 'bin\thagc.exe') `
             --probe 'tests/bootstrap_probe/main.tg' `
             --expected 'tests/bootstrap_probe/expected.txt' `
             --result 'tests/bootstrap_probe/probe-result.txt' `
