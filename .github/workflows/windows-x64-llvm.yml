@@ -15,7 +15,7 @@ jobs:
       LLVM_RELEASE_TAG: llvm-prebuilt-14.0.6
       LLVM_ARCHIVE: llvm-14.0.6-x86_64-pc-windows-msvc.zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up MSVC toolchain
         uses: ilammy/msvc-dev-cmd@v1

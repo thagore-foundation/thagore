@@ -41,7 +41,7 @@ jobs:
             archive: tar.gz
             use_cross: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -207,7 +207,7 @@ jobs:
             --installer-dir "tooling/release" \
             --out-dir "dist"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: nightly-${{ matrix.target }}
           path: dist/*
@@ -232,7 +232,7 @@ jobs:
             target: aarch64-linux-android
             archive: tar.gz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -262,7 +262,7 @@ jobs:
             --installer-dir "tooling/release" \
             --out-dir "dist"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: nightly-${{ matrix.target }}
           path: dist/*
@@ -275,7 +275,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       DRAGO_VERSION: "1.0.7"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve nightly tag
         run: |
