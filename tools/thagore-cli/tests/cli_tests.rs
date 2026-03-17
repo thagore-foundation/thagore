@@ -766,7 +766,7 @@ fn build_and_run_std_path_module() {
     let binary = dir.path().join("path_stdlib");
     fs::write(
         &source,
-        "import std.path as path\nimport std.string as string\n\nfunc main() -> i32:\n  let root = path.getcwd()\n  let joined = path.path_join(root, \"path-stdlib-probe.txt\")\n  if (path.is_dir(root) and string.contains(joined, \"path-stdlib-probe.txt\")):\n    return 0\n  return 1\n",
+        "import std.path as path\nimport std.string as string\n\nfunc main() -> i32:\n  let root = path.getcwd()\n  let joined = path.join(root, \"path-stdlib-probe.txt\")\n  if (path.is_dir(root) and string.contains(joined, \"path-stdlib-probe.txt\")):\n    return 0\n  return 1\n",
     )
     .expect("write source");
 
