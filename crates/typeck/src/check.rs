@@ -1045,11 +1045,11 @@ impl<'ast> Visitor<'ast> for TypeChecker {
         }
 
         self.visit_block(decl.body);
-        self.current_return_types.pop();
-        self.current_value_return_allowed.pop();
-        self.scopes.pop_scope();
-        self.assignable_symbols.pop_scope();
-    }
+            self.current_return_types.pop();
+            self.current_value_return_allowed.pop();
+            self.scopes.pop_scope();
+            self.assignable_symbols.pop_scope();
+        }
 
     fn visit_let_decl(&mut self, decl: &'ast LetDecl<'ast>) {
         let declared = decl.ty.map(|ty| self.resolve_type_expr(ty));
@@ -1058,8 +1058,10 @@ impl<'ast> Visitor<'ast> for TypeChecker {
     }
 
     fn visit_generic_func_decl(&mut self, decl: &'ast GenericFuncDecl<'ast>) {
-        let template = self.extract_generic_function_template(decl);
-        self.generic_functions.insert(decl.name, template);
+        self.errors.push(TypeError::UnsupportedFeature {
+            feature: "generic functions",
+            span: decl.span,
+        });
         self.table.insert(decl.id, self.types.unit());
     }
 

@@ -1,15 +1,19 @@
+from . import analyze
 from . import diag
 from . import scan
 import std.string as string
 
-pub func build_report(csv: str) -> str:
+pub func build_report(csv: str, root: str) -> str:
   let line1 = diag.banner("bootstrap-probe")
   let line2 = diag.line("tokens", string.from_int(scan.token_count(csv)))
   let line3 = diag.line("chars", string.from_int(scan.total_chars(csv)))
   let line4 = diag.line("joined", scan.normalized(csv))
+  let line5 = diag.line("readme", analyze.summary(root))
   let out1 = string.concat(line1, "\n")
   let out2 = string.concat(out1, line2)
   let out3 = string.concat(out2, "\n")
   let out4 = string.concat(out3, line3)
   let out5 = string.concat(out4, "\n")
-  return string.concat(out5, line4)
+  let out6 = string.concat(out5, line4)
+  let out7 = string.concat(out6, "\n")
+  return string.concat(out7, line5)

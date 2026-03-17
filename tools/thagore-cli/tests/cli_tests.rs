@@ -1207,6 +1207,27 @@ fn check_reports_generic_impl_blocks_as_unsupported_without_lowering_escape() {
 }
 
 #[test]
+fn check_reports_generic_functions_as_unsupported_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("generic_func.tg");
+    fs::write(
+        &source,
+        "func id<T>(value: T) -> T:\n  return value\n\nfunc main() -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unsupported language feature"), "{stderr}");
+    assert!(stderr.contains("generic functions"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
 fn check_reports_invalid_impl_target_without_lowering_escape() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("invalid_impl_target.tg");

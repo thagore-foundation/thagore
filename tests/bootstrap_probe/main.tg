@@ -13,7 +13,7 @@ pub func main() -> i32:
   if (string.str_eq(process.env("THAGORE_BOOTSTRAP_PROBE"), "ok") == false):
     return 2
   let file = "tests/bootstrap_probe/probe-result.txt"
-  let payload = report.build_report("alpha,beta,gamma")
+  let payload = report.build_report("alpha,beta,gamma", root)
   if (fs.write(file, payload) == false):
     return 3
   let size = fs.filesize(file)

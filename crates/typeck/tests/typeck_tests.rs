@@ -1081,6 +1081,39 @@ fn reports_generic_struct_and_impl_as_unsupported() {
 }
 
 #[test]
+fn reports_generic_functions_as_unsupported() {
+    let syms = symbols();
+    let mut ast = AstFactory::new();
+
+    let type_param = TypeParam {
+        id: ast.id(),
+        span: span(),
+        name: syms.t,
+        constraint: None,
+    };
+
+    let generic_func = Decl::GenericFunc(GenericFuncDecl {
+        id: ast.id(),
+        span: span(),
+        name: syms.foo,
+        type_params: leak_slice(vec![type_param]),
+        params: leak_slice(vec![]),
+        return_type: Some(ast.named_type(syms.i32_)),
+        body: ast.block(vec![return_stmt(&mut ast, Some(ast.int(0)))]),
+    });
+
+    let mut checker = checker_with_symbols();
+    let errors = checker
+        .check(&[generic_func])
+        .expect_err("generic functions should not type check");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsupportedFeature { feature, .. } if *feature == "generic functions"
+    )));
+}
+
+#[test]
 fn reports_top_level_let_as_unsupported() {
     let syms = symbols();
     let mut ast = AstFactory::new();

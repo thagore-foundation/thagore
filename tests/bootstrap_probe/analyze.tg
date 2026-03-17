@@ -1,0 +1,24 @@
+import std.fs as fs
+import std.path as path
+import std.string as string
+
+pub func summary(root: str) -> str:
+  let readme_path = path.join(root, "README.md")
+  let content = fs.read(readme_path)
+  if (string.len(content) == 0):
+    return "readme:missing"
+
+  let lines = string.split(content, "\n")
+  let line_count: i32 = 0
+  let word_count: i32 = 0
+
+  for line in lines:
+    line_count = line_count + 1
+    let words = string.split(line, " ")
+    for w in words:
+      if (string.len(w) > 0):
+        word_count = word_count + 1
+
+  let parts = string.concat("readme:lines=", string.from_int(line_count))
+  let sep = string.concat(parts, ",words=")
+  return string.concat(sep, string.from_int(word_count))
