@@ -6,7 +6,7 @@ import std.fs as fs
 func getcwd() -> str:
   return fs.getcwd()
 
-func path_join(left: str, right: str) -> str:
+func join(left: str, right: str) -> str:
   return fs.path_join(left, right)
 
 func is_dir(path: str) -> bool:
