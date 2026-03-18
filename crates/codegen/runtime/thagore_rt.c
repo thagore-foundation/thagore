@@ -1115,6 +1115,24 @@ int64_t thag_rt_now_ms(void) {
     return thag_now_ms();
 }
 
+int64_t thag_rt_monotonic_ms(void) {
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    if (!QueryPerformanceFrequency(&freq) || !QueryPerformanceCounter(&counter)) {
+        return thag_now_ms(); // fallback
+    }
+    return (int64_t) ((counter.QuadPart * 1000LL) / freq.QuadPart);
+#else
+    struct timespec now;
+#ifdef CLOCK_MONOTONIC_RAW
+    clock_gettime(CLOCK_MONOTONIC_RAW, &now);
+#else
+    clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
+    return (int64_t) now.tv_sec * 1000LL + (int64_t) now.tv_nsec / 1000000LL;
+#endif
+}
+
 void thag_rt_sleep_ms(int64_t millis) {
     thag_sleep_ms(millis);
 }

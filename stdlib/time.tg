@@ -3,10 +3,15 @@
 
 extern func thag_rt_now_ms() -> i64
 extern func thag_rt_sleep_ms(ms: i64) -> void
+extern func thag_rt_monotonic_ms() -> i64
 
 # now_ms: Returns the current runtime clock in milliseconds.
 func now_ms() -> i64:
   return thag_rt_now_ms()
+
+# monotonic_ms: Returns a monotonic clock in milliseconds (not subject to wallclock jumps).
+func monotonic_ms() -> i64:
+  return thag_rt_monotonic_ms()
 
 # sleep_ms: Suspends the current thread for at least the requested duration.
 func sleep_ms(ms: i64):
