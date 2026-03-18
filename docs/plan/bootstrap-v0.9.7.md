@@ -25,8 +25,8 @@ Goal: ship a self-hosting, resource‑efficient toolchain that can recompile its
 - Week 2: perf optimizations, time API, bootstrap probe v2, self-host pipeline.
 - Week 3: installer polish, docs/playground refresh, rehearsal + tag `v0.9.7-rc`, final release.
 
-## Owners (fill in)
-- Compiler/TS: _________________
-- Runtime/Stdlib: _______________
-- Installer/CI: _________________
-- Docs/Web/Playground: __________
+## Owners
+- Compiler/TS: ducknogit (lead), support: typecheck team
+- Runtime/Stdlib: ngocuyensie (lead), support: stdlib maintainers
+- Installer/CI: release-engineering crew (owner: ops-bot + ducknogit)
+- Docs/Web/Playground: docs-team (lead: content-maintainer), support: frontend-volunteers
