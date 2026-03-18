@@ -128,8 +128,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
+          $env:THAGORE_BOOTSTRAP_PROBE = 'ok'
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          & $thagc run tests/bootstrap_probe/main.tg | Out-Null
+          & $thagc run tests/bootstrap_probe/main.tg
+          if ($LASTEXITCODE -ne 0) { throw "thagc run returned $LASTEXITCODE" }
           $sw.Stop()
           "elapsed_ms=$($sw.ElapsedMilliseconds)" | Out-File -FilePath bootstrap-selfhost\probe\run.metrics -Encoding ascii
 
