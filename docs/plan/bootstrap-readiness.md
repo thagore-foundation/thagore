@@ -268,15 +268,22 @@ But it must still remain `indev` until the rehearsal criteria are actually met.
 
 Use this table as the live checklist.
 
-| Area | Status | Blocking bootstrap | Notes |
-| --- | --- | --- | --- |
-| bootstrap probe | in progress | yes | probe exists under `tests/bootstrap_probe/`, imports multiple local modules, formats diagnostic-like report lines, gates deterministic output on Linux x64 and Windows x64, and now passes a public-toolchain rehearsal fed by `releases/latest` on both required lanes |
-| language surface closure | in progress | yes | bootstrap CI now gates fail-fast diagnostics for top-level lets, invalid const initializers, unknown identifiers, unknown fields, non-bool conditions, invalid control flow, invalid assignment targets, invalid impl targets/receivers, generic struct/impl bans, argument-count mismatches, inferred return mismatches, and method-value misuse |
-| lowering/codegen closure | in progress | yes | bootstrap CI now asserts required-surface `build` failures do not escape into IR/codegen; remaining `LoweringError::Unknown` / `CodegenError::Unknown` paths are recovery sentinels after an earlier diagnostic, but backend-only classification still needs to be finished exhaustively |
-| stdlib bootstrap audit | in progress | yes | `io`, `string`, `time`, `fs`, `path`, `process`, and `array` now have bootstrap-gate coverage; deeper edge-case closure is still needed |
-| determinism/state safety | in progress | yes | repeated-build discipline and golden output checks are in CI on Windows x64 and Linux x64 |
-| performance safety floor | in progress | yes | bootstrap CI now enforces probe check/build/run time limits and a memory ceiling for the first native run on both required lanes |
-| bootstrap CI workflow | in progress | yes | internal bootstrap gate now covers interpreter parity, native stdlib audits, double-build probe runs, golden output checks, and basic performance limits; public-toolchain rehearsal now installs `releases/latest` and reruns the same probe successfully on Windows x64 and Linux x64 |
+| Area | Status | Blocking bootstrap | Owner | Notes |
+| --- | --- | --- | --- | --- |
+| bootstrap probe | in progress | yes | ducknogit | probe exists under `tests/bootstrap_probe/`, imports multiple local modules, formats diagnostic-like report lines, gates deterministic output on Linux x64 and Windows x64, and now passes a public-toolchain rehearsal fed by `releases/latest` on both required lanes |
+| language surface closure | in progress | yes | core-lang | bootstrap CI now gates fail-fast diagnostics for top-level lets, invalid const initializers, unknown identifiers, unknown fields, non-bool conditions, invalid control flow, invalid assignment targets, invalid impl targets/receivers, generic struct/impl bans, argument-count mismatches, inferred return mismatches, and method-value misuse |
+| lowering/codegen closure | in progress | yes | core-lang | bootstrap CI now asserts required-surface `build` failures do not escape into IR/codegen; remaining `LoweringError::Unknown` / `CodegenError::Unknown` paths are recovery sentinels after an earlier diagnostic, but backend-only classification still needs to be finished exhaustively |
+| stdlib bootstrap audit | in progress | yes | stdlib | `io`, `string`, `time`, `fs`, `path`, `process`, and `array` now have bootstrap-gate coverage; deeper edge-case closure is still needed |
+| determinism/state safety | in progress | yes | infra | repeated-build discipline and golden output checks are in CI on Windows x64 and Linux x64 |
+| performance safety floor | in progress | yes | perf | bootstrap CI now enforces probe check/build/run time limits and a memory ceiling for the first native run on both required lanes |
+| bootstrap CI workflow | in progress | yes | infra | internal bootstrap gate now covers interpreter parity, native stdlib audits, double-build probe runs, golden output checks, and basic performance limits; public-toolchain rehearsal now installs `releases/latest` and reruns the same probe successfully on Windows x64 and Linux x64 |
+
+### Next 48h actions (to push readiness toward 100%)
+
+- core-lang: finish classification of remaining `LoweringError::Unknown` and move any type-checkable cases forward; add regression tests.
+- stdlib: add parity/edge tests for `std.time` (monotonic + wall-clock) and `std.fs` error cases on Windows.
+- perf: capture RAM and timing envelopes for `bootstrap_probe` on both lanes; set CI thresholds from observed p95.
+- infra: add MSVC detection/logging to Windows bootstrap job so selfhost failures point directly to missing toolchains.
 
 ## 10. Practical Rule
 
