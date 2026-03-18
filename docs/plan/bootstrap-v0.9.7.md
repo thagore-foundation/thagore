@@ -20,6 +20,11 @@ Goal: ship a self-hosting, resource‑efficient toolchain that can recompile its
 - Interpreter benchmarks: target ≥20% speedup vs v0.9.6 baseline on fib(35) + tight loop; document results.
 - Installer success rate: end-to-end on clean Windows VM + macOS + Ubuntu.
 
+### Baseline (2026-03-18, run 23238315779)
+- Linux selfhost build: 34.65s, peak ~560 MB (`host-build.metrics`).
+- Linux probe run: 0.53s, peak ~63 MB.
+- Windows probe run: ~0.74s (`run.metrics`); build metrics not yet captured.
+
 ## Timeline (suggested)
 - Week 1: parser/type hardening, stdlib parity, baseline benchmarks.
 - Week 2: perf optimizations, time API, bootstrap probe v2, self-host pipeline.
