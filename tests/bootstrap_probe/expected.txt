@@ -1,1 +1,1 @@
-diag:bootstrap-probe\ntokens=3\nchars=14\njoined=alpha|beta|gamma\nreadme=readme:lines=193,words=653
+diag:bootstrap-probe\ntokens=3\nchars=14\njoined=alpha|beta|gamma\nreadme=readme:lines=1,words=548
