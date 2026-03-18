@@ -46,6 +46,12 @@ jobs:
           /usr/bin/time -f "%e %M" -o bootstrap-selfhost/host-build.metrics \
             cargo build --release -p thagore-cli
 
+      - name: Hash host thagc
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum target/release/thagc > bootstrap-selfhost/thagc.sha256
+
       - name: Rehearse probe with host thagc
         shell: bash
         run: |
@@ -109,7 +115,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           mkdir bootstrap-selfhost | Out-Null
-          cargo build --release -p thagore-cli
+          $elapsed = Measure-Command { cargo build --release -p thagore-cli }
+          "elapsed_ms=$($elapsed.TotalMilliseconds)" | Out-File -FilePath bootstrap-selfhost\host-build.metrics -Encoding ascii
+
+      - name: Hash host thagc
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
+          $hash = Get-FileHash -Algorithm SHA256 -Path $thagc
+          "$($hash.Hash)  thagc.exe" | Out-File -FilePath bootstrap-selfhost\thagc.sha256 -Encoding ascii
 
       - name: Rehearse probe with host thagc
         shell: pwsh
