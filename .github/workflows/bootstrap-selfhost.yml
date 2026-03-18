@@ -59,8 +59,8 @@ jobs:
           cp target/release/thagc bootstrap-selfhost/thagc.first
           cargo build --release -p thagore-cli
           cp target/release/thagc bootstrap-selfhost/thagc.second
-          sha256sum bootstrap-selfhost/thagc.first > bootstrap-selfhost/thagc.first.sha256
-          sha256sum bootstrap-selfhost/thagc.second > bootstrap-selfhost/thagc.second.sha256
+          sha256sum bootstrap-selfhost/thagc.first | awk '{print $1}' > bootstrap-selfhost/thagc.first.sha256
+          sha256sum bootstrap-selfhost/thagc.second | awk '{print $1}' > bootstrap-selfhost/thagc.second.sha256
           diff bootstrap-selfhost/thagc.first.sha256 bootstrap-selfhost/thagc.second.sha256
 
       - name: Rehearse probe with host thagc
@@ -149,8 +149,8 @@ jobs:
           Copy-Item "target\release\thagc.exe" $second
           $h1 = (Get-FileHash -Algorithm SHA256 -Path $first).Hash
           $h2 = (Get-FileHash -Algorithm SHA256 -Path $second).Hash
-          "$h1  thagc.first.exe" | Out-File -FilePath bootstrap-selfhost\thagc.first.sha256 -Encoding ascii
-          "$h2  thagc.second.exe" | Out-File -FilePath bootstrap-selfhost\thagc.second.sha256 -Encoding ascii
+          "$h1" | Out-File -FilePath bootstrap-selfhost\thagc.first.sha256 -Encoding ascii
+          "$h2" | Out-File -FilePath bootstrap-selfhost\thagc.second.sha256 -Encoding ascii
           if ($h1 -ne $h2) { throw "thagc build not deterministic between runs" }
 
       - name: Rehearse probe with host thagc
