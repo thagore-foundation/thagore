@@ -71,3 +71,70 @@ jobs:
         with:
           name: bootstrap-selfhost-linux
           path: bootstrap-selfhost/*
+
+  windows-selfhost:
+    name: Windows selfhost probe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Set up MSVC toolchain
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) { Remove-Item -Recurse -Force $extractRoot }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          echo "LLVM_SYS_140_PREFIX=$llvmRoot" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=$llvmRoot\bin\llvm-config.exe" >> $env:GITHUB_ENV
+          echo "THAGORE_LLVM_ROOT=$llvmRoot" >> $env:GITHUB_ENV
+
+      - name: Build host thagc (release)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          mkdir bootstrap-selfhost | Out-Null
+          cargo build --release -p thagore-cli
+
+      - name: Rehearse probe with host thagc
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
+          python tooling/bootstrap/rehearse_probe.py `
+            --thagc $thagc `
+            --probe "tests/bootstrap_probe/main.tg" `
+            --expected "tests/bootstrap_probe/expected.txt" `
+            --result "tests/bootstrap_probe/probe-result.txt" `
+            --out-dir "bootstrap-selfhost\probe"
+
+      - name: Record simple timing (placeholder)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          & $thagc run tests/bootstrap_probe/main.tg | Out-Null
+          $sw.Stop()
+          "elapsed_ms=$($sw.ElapsedMilliseconds)" | Out-File -FilePath bootstrap-selfhost\probe\run.metrics -Encoding ascii
+
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-selfhost-windows
+          path: bootstrap-selfhost/*
