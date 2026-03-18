@@ -1,0 +1,73 @@
+name: Bootstrap Selfhost Bench
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bootstrap-selfhost.yml"
+      - "tests/bootstrap_probe/**"
+      - "tooling/bootstrap/**"
+      - "stdlib/**"
+      - "crates/**"
+      - "tools/thagore-cli/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * *"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  linux-selfhost:
+    name: Linux selfhost probe + bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM 14
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Build host thagc (release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap-selfhost
+          /usr/bin/time -f "%e %M" -o bootstrap-selfhost/host-build.metrics \
+            cargo build --release -p thagore-cli
+
+      - name: Rehearse probe with host thagc
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="$(pwd)/target/release"
+          python3 tooling/bootstrap/rehearse_probe.py \
+            --thagc "$PREFIX/thagc" \
+            --probe tests/bootstrap_probe/main.tg \
+            --expected tests/bootstrap_probe/expected.txt \
+            --result tests/bootstrap_probe/probe-result.txt \
+            --out-dir bootstrap-selfhost/probe
+
+      - name: Benchmark thagc run (placeholder)
+        shell: bash
+        run: |
+          set -euo pipefail
+          THAGORE_BOOTSTRAP_PROBE=ok /usr/bin/time -f "%e %M" \
+            -o bootstrap-selfhost/probe-run.metrics \
+            target/release/thagc run tests/bootstrap_probe/main.tg
+
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-selfhost-linux
+          path: bootstrap-selfhost/*
