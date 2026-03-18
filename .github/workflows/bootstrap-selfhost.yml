@@ -52,6 +52,17 @@ jobs:
           set -euo pipefail
           sha256sum target/release/thagc > bootstrap-selfhost/thagc.sha256
 
+      - name: Rebuild to verify determinism
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp target/release/thagc bootstrap-selfhost/thagc.first
+          cargo build --release -p thagore-cli
+          cp target/release/thagc bootstrap-selfhost/thagc.second
+          sha256sum bootstrap-selfhost/thagc.first > bootstrap-selfhost/thagc.first.sha256
+          sha256sum bootstrap-selfhost/thagc.second > bootstrap-selfhost/thagc.second.sha256
+          diff bootstrap-selfhost/thagc.first.sha256 bootstrap-selfhost/thagc.second.sha256
+
       - name: Rehearse probe with host thagc
         shell: bash
         run: |
@@ -125,6 +136,22 @@ jobs:
           $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
           $hash = Get-FileHash -Algorithm SHA256 -Path $thagc
           "$($hash.Hash)  thagc.exe" | Out-File -FilePath bootstrap-selfhost\thagc.sha256 -Encoding ascii
+
+      - name: Rebuild to verify determinism
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $first = Join-Path (Get-Location) "bootstrap-selfhost\thagc.first.exe"
+          $second = Join-Path (Get-Location) "bootstrap-selfhost\thagc.second.exe"
+          Copy-Item "target\release\thagc.exe" $first
+          $elapsed2 = Measure-Command { cargo build --release -p thagore-cli }
+          "elapsed_ms=$($elapsed2.TotalMilliseconds)" | Out-File -FilePath bootstrap-selfhost\host-build-second.metrics -Encoding ascii
+          Copy-Item "target\release\thagc.exe" $second
+          $h1 = (Get-FileHash -Algorithm SHA256 -Path $first).Hash
+          $h2 = (Get-FileHash -Algorithm SHA256 -Path $second).Hash
+          "$h1  thagc.first.exe" | Out-File -FilePath bootstrap-selfhost\thagc.first.sha256 -Encoding ascii
+          "$h2  thagc.second.exe" | Out-File -FilePath bootstrap-selfhost\thagc.second.sha256 -Encoding ascii
+          if ($h1 -ne $h2) { throw "thagc build not deterministic between runs" }
 
       - name: Rehearse probe with host thagc
         shell: pwsh
