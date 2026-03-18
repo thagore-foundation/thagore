@@ -8,6 +8,9 @@ pub func summary(root: str) -> str:
   if (string.len(content) == 0):
     return "readme:missing"
 
+  let content = string.replace(content, "\r\n", "\n")
+  let content = string.replace(content, "\r", "\n")
+
   let lines = string.split(content, "\n")
   let line_count: i32 = 0
   let word_count: i32 = 0
