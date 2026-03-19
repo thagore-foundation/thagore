@@ -20,6 +20,9 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  LINUX_SELFHOST_PROBE_RUN_LIMIT_SECS: 15
+  LINUX_SELFHOST_PROBE_RUN_LIMIT_PEAK_KB: 524288
+  WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS: 20000
 
 jobs:
   linux-selfhost:
@@ -75,13 +78,16 @@ jobs:
             --result tests/bootstrap_probe/probe-result.txt \
             --out-dir bootstrap-selfhost/probe
 
-      - name: Benchmark thagc run (placeholder)
+      - name: Benchmark thagc run
         shell: bash
         run: |
           set -euo pipefail
           THAGORE_BOOTSTRAP_PROBE=ok /usr/bin/time -f "%e %M" \
             -o bootstrap-selfhost/probe-run.metrics \
             target/release/thagc run tests/bootstrap_probe/main.tg
+          read -r elapsed peak_kb < bootstrap-selfhost/probe-run.metrics
+          awk -v elapsed="$elapsed" -v limit="${LINUX_SELFHOST_PROBE_RUN_LIMIT_SECS}" 'BEGIN { exit !(elapsed <= limit) }'
+          awk -v peak_kb="$peak_kb" -v limit="${LINUX_SELFHOST_PROBE_RUN_LIMIT_PEAK_KB}" 'BEGIN { exit !(peak_kb <= limit) }'
 
       - if: always()
         uses: actions/upload-artifact@v6
@@ -194,17 +200,27 @@ jobs:
             --result "tests/bootstrap_probe/probe-result.txt" `
             --out-dir "bootstrap-selfhost\probe"
 
-      - name: Record simple timing (placeholder)
+      - name: Benchmark thagc run
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $thagc = Join-Path (Get-Location) "target\release\thagc.exe"
           $env:THAGORE_BOOTSTRAP_PROBE = 'ok'
-          $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          & $thagc run tests/bootstrap_probe/main.tg
-          if ($LASTEXITCODE -ne 0) { throw "thagc run returned $LASTEXITCODE" }
-          $sw.Stop()
-          "elapsed_ms=$($sw.ElapsedMilliseconds)" | Out-File -FilePath bootstrap-selfhost\probe\run.metrics -Encoding ascii
+          $process = Start-Process -FilePath $thagc `
+            -ArgumentList @('run', 'tests/bootstrap_probe/main.tg') `
+            -NoNewWindow `
+            -PassThru
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "thagc run returned $($process.ExitCode)" }
+          $elapsed = [int64]$process.ExitTime.Subtract($process.StartTime).TotalMilliseconds
+          $workingSetMb = [math]::Round(($process.PeakWorkingSet64 / 1MB), 2)
+          @(
+            "elapsed_ms=$elapsed"
+            "peak_working_set_mb=$workingSetMb"
+          ) | Out-File -FilePath bootstrap-selfhost\probe\run.metrics -Encoding ascii
+          if ($elapsed -gt [int64]$env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS) {
+            throw "bootstrap probe run exceeded time limit: ${elapsed}ms > $env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS ms"
+          }
 
       - if: always()
         uses: actions/upload-artifact@v6
