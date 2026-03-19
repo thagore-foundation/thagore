@@ -190,7 +190,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_missing_path_behavior -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_path_empty_left_join -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
@@ -224,7 +226,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_missing_path_behavior -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_path_empty_left_join -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture

@@ -1591,12 +1591,32 @@ mod tests {
     }
 
     #[test]
+    fn path_join_handles_empty_left_like_native_runtime() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let path_join = registry.handler("path_join").expect("path_join handler");
+
+        assert_eq!(
+            path_join(
+                &mut interpreter,
+                vec![
+                    Value::Str(String::new()),
+                    Value::Str(String::from("leaf.txt")),
+                ],
+            )
+            .expect("path_join result"),
+            Value::Str(String::from("leaf.txt"))
+        );
+    }
+
+    #[test]
     fn process_handlers_cover_env_and_capture() {
         let registry = StdlibRegistry::new();
         let mut interpreter = Interpreter::new(SymbolTable::default());
         let capture = registry.handler("capture").expect("capture handler");
         let env_handler = registry.handler("env").expect("env handler");
         let run = registry.handler("run").expect("run handler");
+        let argv = registry.handler("argv").expect("argv handler");
 
         // SAFETY: unit test process-local environment mutation.
         unsafe {
@@ -1610,6 +1630,14 @@ mod tests {
             )
             .expect("env result"),
             Value::Str(String::from("ok"))
+        );
+        assert_eq!(
+            env_handler(
+                &mut interpreter,
+                vec![Value::Str(String::from("THAGORE_STD_PROCESS_PROBE_MISSING"))],
+            )
+            .expect("env missing result"),
+            Value::Str(String::new())
         );
 
         let captured = capture(
@@ -1625,5 +1653,9 @@ mod tests {
         )
         .expect("run result");
         assert!(matches!(status, Value::I32(code) if code == 0));
+        assert_eq!(
+            argv(&mut interpreter, vec![Value::I32(999)]).expect("argv missing result"),
+            Value::Str(String::new())
+        );
     }
 }
