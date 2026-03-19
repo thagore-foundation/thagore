@@ -104,6 +104,35 @@ jobs:
         run: |
           .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
 
+      - name: Diagnose MSVC toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path bootstrap-selfhost | Out-Null
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe was not found at $vswhere"
+          }
+          $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($installationPath)) {
+            throw 'Could not resolve a Visual Studio installation with VC tools.'
+          }
+          $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+          $link = Get-Command link.exe -ErrorAction SilentlyContinue
+          if ($null -eq $cl) {
+            throw 'cl.exe is not available after setup_msvc_env.ps1'
+          }
+          if ($null -eq $link) {
+            throw 'link.exe is not available after setup_msvc_env.ps1'
+          }
+          "vs_installation=$installationPath" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          "vc_tools=$env:VCToolsInstallDir" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          "windows_sdk=$env:WindowsSdkDir" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          "windows_sdk_version=$env:WindowsSDKVersion" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          "cl_path=$($cl.Source)" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          "link_path=$($link.Source)" | Out-File -FilePath bootstrap-selfhost\msvc-env.txt -Encoding ascii -Append
+          Get-Content bootstrap-selfhost\msvc-env.txt
+
       - name: Install Windows LLVM 14 prebuilt
         shell: pwsh
         run: |
