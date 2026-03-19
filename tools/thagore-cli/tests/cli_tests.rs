@@ -764,9 +764,13 @@ fn build_and_run_std_fs_missing_path_behavior() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");
     let binary = dir.path().join("fs_missing_stdlib");
+    let missing = dir.path().join("fs-stdlib-missing.txt");
+    let missing = missing.to_string_lossy().replace('\\', "/");
     fs::write(
         &source,
-        "import std.fs as fs\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-missing.txt\")\n  if (fs.exists(file)):\n    return 1\n  if (fs.remove(file)):\n    return 2\n  if (fs.filesize(file) != 0):\n    return 3\n  return 0\n",
+        format!(
+            "import std.fs as fs\n\nfunc main() -> i32:\n  let file = \"{missing}\"\n  if (fs.exists(file)):\n    return 1\n  if (fs.remove(file)):\n    return 2\n  if (fs.filesize(file) != 0):\n    return 3\n  return 0\n"
+        ),
     )
     .expect("write source");
 
