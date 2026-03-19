@@ -5,8 +5,9 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::value::Value;
 use crate::{Interpreter, RuntimeError};
@@ -84,6 +85,7 @@ impl StdlibRegistry {
         registry.register("is_even", builtin_is_even);
         registry.register("is_odd", builtin_is_odd);
         registry.register("now_ms", builtin_now_ms);
+        registry.register("monotonic_ms", builtin_monotonic_ms);
         registry.register("sleep_ms", builtin_sleep_ms);
         registry.register("read_line", builtin_read_line);
         registry.register("read_int", builtin_read_int);
@@ -166,7 +168,7 @@ impl StdlibRegistry {
                 "read_i64s",
             ],
         );
-        registry.register_module("time", &["now_ms", "sleep_ms"]);
+        registry.register_module("time", &["now_ms", "monotonic_ms", "sleep_ms"]);
         registry.register_module(
             "fs",
             &[
@@ -876,6 +878,17 @@ fn builtin_now_ms(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, Ru
     Ok(Value::I64(millis))
 }
 
+fn builtin_monotonic_ms(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
+    static MONOTONIC_EPOCH: OnceLock<Instant> = OnceLock::new();
+
+    expect_arity(&args, 0, "monotonic_ms")?;
+    let started = MONOTONIC_EPOCH.get_or_init(Instant::now);
+    let millis = started.elapsed().as_millis();
+    let millis = i64::try_from(millis)
+        .map_err(|_| RuntimeError::message("monotonic_ms overflowed i64 range"))?;
+    Ok(Value::I64(millis))
+}
+
 fn builtin_sleep_ms(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "sleep_ms")?;
     let millis = expect_i64(&args[0], "sleep_ms")?;
@@ -1031,8 +1044,10 @@ fn builtin_fs_read_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Valu
 fn builtin_fs_remove(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "remove")?;
     let path = expect_string(&args[0], "remove")?;
-    let meta =
-        fs::metadata(&path).map_err(|error| RuntimeError::message(format!("remove failed: {error}")))?;
+    let meta = match fs::metadata(&path) {
+        Ok(meta) => meta,
+        Err(_) => return Ok(Value::Bool(false)),
+    };
     if meta.is_dir() {
         fs::remove_dir_all(&path)
             .map_err(|error| RuntimeError::message(format!("remove failed: {error}")))?;
@@ -1069,9 +1084,10 @@ fn builtin_fs_is_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value,
 fn builtin_fs_filesize(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "filesize")?;
     let path = expect_string(&args[0], "filesize")?;
-    let size = fs::metadata(&path)
-        .map_err(|error| RuntimeError::message(format!("filesize failed: {error}")))?
-        .len();
+    let size = match fs::metadata(&path) {
+        Ok(meta) => meta.len(),
+        Err(_) => 0,
+    };
     let size = i64::try_from(size).map_err(|_| RuntimeError::message("filesize overflowed i64 range"))?;
     Ok(Value::I64(size))
 }
@@ -1369,6 +1385,7 @@ mod tests {
         let registry = StdlibRegistry::new();
         let exports = registry.module_exports("time").expect("time exports");
         assert!(exports.iter().any(|name| name == "now_ms"));
+        assert!(exports.iter().any(|name| name == "monotonic_ms"));
         assert!(exports.iter().any(|name| name == "sleep_ms"));
     }
 
@@ -1377,11 +1394,14 @@ mod tests {
         let registry = StdlibRegistry::new();
         let mut interpreter = Interpreter::new(SymbolTable::default());
         let now_ms = registry.handler("now_ms").expect("now_ms handler");
+        let monotonic_ms = registry.handler("monotonic_ms").expect("monotonic_ms handler");
         let sleep_ms = registry.handler("sleep_ms").expect("sleep_ms handler");
 
         let start = now_ms(&mut interpreter, Vec::new()).expect("start");
+        let monotonic_start = monotonic_ms(&mut interpreter, Vec::new()).expect("monotonic start");
         sleep_ms(&mut interpreter, vec![Value::I64(20)]).expect("sleep");
         let end = now_ms(&mut interpreter, Vec::new()).expect("end");
+        let monotonic_end = monotonic_ms(&mut interpreter, Vec::new()).expect("monotonic end");
 
         let start = match start {
             Value::I64(value) => value,
@@ -1391,9 +1411,19 @@ mod tests {
             Value::I64(value) => value,
             other => panic!("unexpected now_ms value: {other:?}"),
         };
+        let monotonic_start = match monotonic_start {
+            Value::I64(value) => value,
+            other => panic!("unexpected monotonic_ms value: {other:?}"),
+        };
+        let monotonic_end = match monotonic_end {
+            Value::I64(value) => value,
+            other => panic!("unexpected monotonic_ms value: {other:?}"),
+        };
 
         assert!(end >= start);
         assert!(end - start >= 10);
+        assert!(monotonic_end >= monotonic_start);
+        assert!(monotonic_end - monotonic_start >= 10);
     }
 
     #[test]
@@ -1502,6 +1532,43 @@ mod tests {
         assert!(matches!(dir_values, Value::Vec(values) if values.contains(&Value::Str(String::from("probe.txt")))));
 
         fs::remove_dir_all(dir).expect("cleanup dir");
+    }
+
+    #[test]
+    fn fs_handlers_match_native_missing_path_behavior() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let exists = registry.handler("exists").expect("exists handler");
+        let remove = registry.handler("remove").expect("remove handler");
+        let filesize = registry.handler("filesize").expect("filesize handler");
+        let missing = unique_temp_dir("thagore-stdlib-fs-missing").join("missing.txt");
+
+        assert_eq!(
+            exists(
+                &mut interpreter,
+                vec![Value::Str(missing.to_string_lossy().to_string())],
+            )
+            .expect("exists result"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            remove(
+                &mut interpreter,
+                vec![Value::Str(missing.to_string_lossy().to_string())],
+            )
+            .expect("remove result"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            filesize(
+                &mut interpreter,
+                vec![Value::Str(missing.to_string_lossy().to_string())],
+            )
+            .expect("filesize result"),
+            Value::I64(0)
+        );
+
+        fs::remove_dir_all(missing.parent().expect("missing parent")).expect("cleanup dir");
     }
 
     #[test]

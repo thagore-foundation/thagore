@@ -698,6 +698,37 @@ fn build_and_run_std_time_module() {
 }
 
 #[test]
+fn build_and_run_std_time_monotonic_module() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("time_monotonic_stdlib");
+    fs::write(
+        &source,
+        "import std.time as time\n\nfunc main() -> i32:\n  let start = time.monotonic_ms()\n  time.sleep_ms(25)\n  let end = time.monotonic_ms()\n  if (end >= start and (end - start) >= 10):\n    return 0\n  return 1\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn build_and_run_std_fs_module() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");
@@ -705,6 +736,37 @@ fn build_and_run_std_fs_module() {
     fs::write(
         &source,
         "import std.fs as fs\nimport std.string as string\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-probe.txt\")\n  if (fs.write(file, \"probe\") == false):\n    return 1\n  if (fs.exists(file) == false):\n    return 2\n  let text = fs.read(file)\n  let size = fs.filesize(file)\n  let removed = fs.remove(file)\n  if (string.str_eq(text, \"probe\") and size >= 5 and removed):\n    return 0\n  return 3\n",
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
+fn build_and_run_std_fs_missing_path_behavior() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("fs_missing_stdlib");
+    fs::write(
+        &source,
+        "import std.fs as fs\n\nfunc main() -> i32:\n  let root = fs.getcwd()\n  let file = fs.path_join(root, \"fs-stdlib-missing.txt\")\n  if (fs.exists(file)):\n    return 1\n  if (fs.remove(file)):\n    return 2\n  if (fs.filesize(file) != 0):\n    return 3\n  return 0\n",
     )
     .expect("write source");
 
