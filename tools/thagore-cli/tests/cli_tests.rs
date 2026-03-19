@@ -807,7 +807,7 @@ fn build_and_run_std_fs_read_dir_is_sorted() {
     fs::write(
         &source,
         format!(
-            "import std.fs as fs\nimport std.array as array\nimport std.string as string\n\nfunc main() -> i32:\n  let root = \"{probe_dir}\"\n  if (fs.mkdir(root) == false):\n    return 1\n  if (fs.write(fs.path_join(root, \"c.txt\"), \"c\") == false):\n    return 2\n  if (fs.write(fs.path_join(root, \"a.txt\"), \"a\") == false):\n    return 3\n  if (fs.write(fs.path_join(root, \"b.txt\"), \"b\") == false):\n    return 4\n  let items = fs.read_dir(root)\n  if (array.len(items) != 3):\n    return 5\n  if (string.str_eq(array.get(items, 0), \"a.txt\") and string.str_eq(array.get(items, 1), \"b.txt\") and string.str_eq(array.get(items, 2), \"c.txt\")):\n    return 0\n  return 6\n"
+            "import std.fs as fs\nimport std.string as string\n\nfunc main() -> i32:\n  let root = \"{probe_dir}\"\n  if (fs.mkdir(root) == false):\n    return 1\n  if (fs.write(fs.path_join(root, \"c.txt\"), \"c\") == false):\n    return 2\n  if (fs.write(fs.path_join(root, \"a.txt\"), \"a\") == false):\n    return 3\n  if (fs.write(fs.path_join(root, \"b.txt\"), \"b\") == false):\n    return 4\n  let items = fs.read_dir(root)\n  let joined = string.join(items, \",\")\n  if (string.contains(joined, \"a.txt,b.txt,c.txt\")):\n    return 0\n  return 5\n"
         ),
     )
     .expect("write source");
