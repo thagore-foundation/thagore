@@ -23,6 +23,7 @@ env:
   LINUX_SELFHOST_PROBE_RUN_LIMIT_SECS: 15
   LINUX_SELFHOST_PROBE_RUN_LIMIT_PEAK_KB: 524288
   WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS: 20000
+  WINDOWS_SELFHOST_PROBE_RUN_LIMIT_PEAK_MB: 768
 
 jobs:
   linux-selfhost:
@@ -220,6 +221,9 @@ jobs:
           ) | Out-File -FilePath bootstrap-selfhost\probe\run.metrics -Encoding ascii
           if ($elapsed -gt [int64]$env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS) {
             throw "bootstrap probe run exceeded time limit: ${elapsed}ms > $env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_MS ms"
+          }
+          if ($workingSetMb -gt [double]$env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_PEAK_MB) {
+            throw "bootstrap probe run exceeded memory limit: ${workingSetMb}MB > $env:WINDOWS_SELFHOST_PROBE_RUN_LIMIT_PEAK_MB MB"
           }
 
       - if: always()
