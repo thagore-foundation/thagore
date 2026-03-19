@@ -448,7 +448,7 @@ static int thag_remove_path_impl(const char *path) {
         return -1;
     }
     if (lstat(path, &st) != 0) {
-        return 0;
+        return -1;
     }
     if (S_ISDIR(st.st_mode)) {
         DIR *dir = opendir(path);
