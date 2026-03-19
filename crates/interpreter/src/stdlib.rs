@@ -1184,6 +1184,25 @@ mod tests {
     }
 
     #[test]
+    fn print_handlers_cover_stdout_and_stderr_primitives() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let print_handler = registry.handler("print").expect("print handler");
+        let println_handler = registry.handler("println").expect("println handler");
+        let eprint_handler = registry.handler("eprint").expect("eprint handler");
+        let eprintln_handler = registry.handler("eprintln").expect("eprintln handler");
+
+        print_handler(&mut interpreter, vec![Value::I32(7)]).expect("print result");
+        println_handler(&mut interpreter, vec![Value::Bool(true)]).expect("println result");
+        eprint_handler(&mut interpreter, vec![Value::F64(1.5)]).expect("eprint result");
+        eprintln_handler(&mut interpreter, vec![Value::Str(String::from("warn"))])
+            .expect("eprintln result");
+
+        assert_eq!(interpreter.stdout(), "7true\n");
+        assert_eq!(interpreter.stderr(), "1.5warn\n");
+    }
+
+    #[test]
     fn to_bool_matches_runtime_surface() {
         let registry = StdlibRegistry::new();
         let mut interpreter = Interpreter::new(SymbolTable::default());

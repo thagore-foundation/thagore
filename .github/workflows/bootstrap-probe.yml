@@ -182,6 +182,7 @@ jobs:
         shell: bash
         run: |
           cargo test -p thagore-cli build_and_run_std_io_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_io_streams_and_primitives -- --nocapture
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_monotonic_module -- --nocapture
@@ -215,6 +216,7 @@ jobs:
         shell: pwsh
         run: |
           cargo test -p thagore-cli build_and_run_std_io_module -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_io_streams_and_primitives -- --nocapture
           cargo test -p thagore-cli build_and_run_std_string_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_time_monotonic_module -- --nocapture
