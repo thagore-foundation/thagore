@@ -154,7 +154,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          mkdir bootstrap-selfhost | Out-Null
+          New-Item -ItemType Directory -Force -Path bootstrap-selfhost | Out-Null
           $elapsed = Measure-Command { cargo build --release -p thagore-cli }
           "elapsed_ms=$($elapsed.TotalMilliseconds)" | Out-File -FilePath bootstrap-selfhost\host-build.metrics -Encoding ascii
 
