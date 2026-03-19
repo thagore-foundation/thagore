@@ -1407,10 +1407,11 @@ int32_t thag_fs_mkdir(const char *path) {
     return 1;
 }
 
-void *thag_fs_readdir(const char *path) {
+thag_array_str thag_fs_readdir(const char *path) {
     DIR *dir = opendir(path == NULL ? "" : path);
     if (dir == NULL) {
-        return NULL;
+        thag_array_str empty = {0, NULL};
+        return empty;
     }
     thag_str_array_handle *items = thag_new_string_array();
     struct dirent *entry = readdir(dir);
@@ -1422,7 +1423,7 @@ void *thag_fs_readdir(const char *path) {
     }
     closedir(dir);
     thag_str_array_sort(items);
-    return items;
+    return thag_string_array_view(items);
 }
 
 int32_t thag_fs_remove(const char *path) {
