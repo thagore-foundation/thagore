@@ -1503,12 +1503,24 @@ fn build_required_surface_failures_do_not_escape_to_ir_or_codegen() {
             "func helper() -> i32:\n  return 1\n\nconst LIMIT: i32 = helper()\n\nfunc main() -> i32:\n  return LIMIT\n",
         ),
         (
+            "non_indexable_value",
+            "func main() -> i32:\n  let value: i32 = 1\n  return value[0]\n",
+        ),
+        (
+            "non_callable_value",
+            "func main() -> i32:\n  let value: i32 = 1\n  return value()\n",
+        ),
+        (
             "unknown_identifier",
             "func main() -> i32:\n  return missing_value\n",
         ),
         (
             "unknown_field",
             "struct Point:\n  x: i32\n\nfunc read(point: Point) -> i32:\n  return point.y\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "unknown_type",
+            "func main(value: Missing) -> i32:\n  return 0\n",
         ),
         (
             "non_bool_condition",
@@ -1519,12 +1531,36 @@ fn build_required_surface_failures_do_not_escape_to_ir_or_codegen() {
             "func add(left: i32, right: i32) -> i32:\n  return left + right\n\nfunc main() -> i32:\n  return add(1)\n",
         ),
         (
+            "invalid_control_flow",
+            "func main() -> i32:\n  break\n  return 0\n",
+        ),
+        (
+            "invalid_assignment_target",
+            "const LIMIT: i32 = 1\n\nfunc main() -> i32:\n  LIMIT = 2\n  return 0\n",
+        ),
+        (
             "generic_struct",
             "struct Box<T>:\n  value: T\n\nfunc main() -> i32:\n  return 0\n",
         ),
         (
             "generic_impl",
             "struct Box<T>:\n  value: T\n\nimpl Box<T>:\n  func get(self) -> T:\n    return self.value\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "generic_function",
+            "func id<T>(value: T) -> T:\n  return value\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "invalid_impl_target",
+            "impl Missing:\n  func get(self: Missing) -> i32:\n    return 0\n",
+        ),
+        (
+            "invalid_impl_receiver",
+            "struct Point:\n  x: i32\n\nimpl Point:\n  func bad() -> i32:\n    return 0\n",
+        ),
+        (
+            "method_value_outside_call",
+            "struct Point:\n  x: i32\n\nimpl Point:\n  func get_x(self: Point) -> i32:\n    return self.x\n\nfunc main() -> i32:\n  let point = Point(x=1)\n  let method = point.get_x\n  return 0\n",
         ),
     ];
 
