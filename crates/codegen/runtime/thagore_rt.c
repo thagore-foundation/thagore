@@ -1421,6 +1421,7 @@ void *thag_fs_readdir(const char *path) {
         entry = readdir(dir);
     }
     closedir(dir);
+    thag_str_array_sort(items);
     return items;
 }
 

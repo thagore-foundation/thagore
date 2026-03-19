@@ -1038,6 +1038,10 @@ fn builtin_fs_read_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Valu
             values.push(Value::Str(name));
         }
     }
+    values.sort_by(|left, right| match (left, right) {
+        (Value::Str(lhs), Value::Str(rhs)) => lhs.cmp(rhs),
+        _ => std::cmp::Ordering::Equal,
+    });
     Ok(Value::Vec(values))
 }
 
@@ -1588,6 +1592,43 @@ mod tests {
         );
 
         fs::remove_dir_all(missing.parent().expect("missing parent")).expect("cleanup dir");
+    }
+
+    #[test]
+    fn fs_read_dir_returns_deterministic_lexical_order() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let write = registry.handler("write").expect("write handler");
+        let read_dir = registry.handler("read_dir").expect("read_dir handler");
+
+        let dir = unique_temp_dir("thagore-stdlib-fs-order");
+        for name in ["c.txt", "a.txt", "b.txt"] {
+            let file = dir.join(name);
+            write(
+                &mut interpreter,
+                vec![
+                    Value::Str(file.to_string_lossy().to_string()),
+                    Value::Str(String::from("probe")),
+                ],
+            )
+            .expect("write result");
+        }
+
+        let dir_values = read_dir(
+            &mut interpreter,
+            vec![Value::Str(dir.to_string_lossy().to_string())],
+        )
+        .expect("read_dir result");
+        assert_eq!(
+            dir_values,
+            Value::Vec(vec![
+                Value::Str(String::from("a.txt")),
+                Value::Str(String::from("b.txt")),
+                Value::Str(String::from("c.txt")),
+            ])
+        );
+
+        fs::remove_dir_all(dir).expect("cleanup dir");
     }
 
     #[test]
