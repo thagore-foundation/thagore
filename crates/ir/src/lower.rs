@@ -945,7 +945,6 @@ impl<'a, 'b> FunctionLowerer<'a, 'b> {
     }
 
     fn emit_unreachable(&mut self, span: Span) {
-        self.errors.push(LoweringError::unknown(span));
         if !self.current_block_terminated() {
             self.set_terminator(Terminator::Unreachable, span);
         }

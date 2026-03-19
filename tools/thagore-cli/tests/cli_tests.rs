@@ -137,6 +137,7 @@ fn assert_build_fails_before_ir_or_codegen(source: &Path, output: &Path) {
     let stderr = String::from_utf8_lossy(&build.stderr);
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
     assert!(!stderr.contains("during IR lowering"), "{stderr}");
+    assert!(!stderr.contains("after an earlier error"), "{stderr}");
     assert!(!stderr.contains("code generation failed"), "{stderr}");
     assert!(!stderr.contains("during codegen"), "{stderr}");
 }
