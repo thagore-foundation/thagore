@@ -138,6 +138,8 @@ fn assert_build_fails_before_ir_or_codegen(source: &Path, output: &Path) {
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
     assert!(!stderr.contains("during IR lowering"), "{stderr}");
     assert!(!stderr.contains("after an earlier error"), "{stderr}");
+    assert!(!stderr.contains("missing type for AST node"), "{stderr}");
+    assert!(!stderr.contains("invalid IR lowering state"), "{stderr}");
     assert!(!stderr.contains("code generation failed"), "{stderr}");
     assert!(!stderr.contains("during codegen"), "{stderr}");
 }
