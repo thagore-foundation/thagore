@@ -14,7 +14,7 @@ pub func main() -> i32:
   let source = fs.read(path)
   if (string.len(source) == 0):
     return 1
-  let normalized = string.replace(source, "\r\n", "\n")
-  let normalized = string.replace(normalized, "\r", "\n")
+  let normalized_crlf = string.replace(source, "\r\n", "\n")
+  let normalized = string.replace(normalized_crlf, "\r", "\n")
   println(lexer.scan(normalized))
   return 0
