@@ -4,7 +4,7 @@ import std.string as string
 func append_line(out: str, line: str) -> str:
   if (string.len(out) == 0):
     return line
-  return string.concat(string.concat(out, "\n"), line)
+  return string.concat(string.concat(out, " | "), line)
 
 func format_token(kind: str, text: str, line: i32, column: i32) -> str:
   let open = string.concat(kind, "(")

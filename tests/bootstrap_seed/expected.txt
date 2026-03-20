@@ -1,15 +1,1 @@
-kw(func)@1:1
-ident(main)@1:6
-punct(()@1:10
-punct())@1:11
-punct(->)@1:13
-ident(i32)@1:16
-punct(:)@1:19
-kw(let)@1:21
-ident(answer)@1:25
-punct(:)@1:31
-ident(i32)@1:33
-punct(=)@1:37
-int(42)@1:39
-kw(return)@1:42
-ident(answer)@1:49
+kw(func)@1:1 | ident(main)@1:6 | punct(()@1:10 | punct())@1:11 | punct(->)@1:13 | ident(i32)@1:16 | punct(:)@1:19 | kw(let)@1:21 | ident(answer)@1:25 | punct(:)@1:31 | ident(i32)@1:33 | punct(=)@1:37 | int(42)@1:39 | kw(return)@1:42 | ident(answer)@1:49
