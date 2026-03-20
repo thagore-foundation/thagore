@@ -30,7 +30,7 @@ pub func analyze(summary: str, symbols: str) -> str:
   let return_ident = summary_field(summary, "return_ident")
   let local_binding = summary_field(summary, "first_local")
   let local_sep = string.find(local_binding, ":")
-  let has_local = string.len(local_binding) > 0
+  let has_local = local_sep > 0
   let missing_local_type = string.contains(local_binding, ":=")
   let missing_local_value = string.ends_with(local_binding, "=")
 
