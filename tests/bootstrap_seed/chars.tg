@@ -3,37 +3,19 @@ import std.string as string
 pub func is_space(ch: str) -> bool:
   return string.str_eq(ch, " ") or string.str_eq(ch, "\t") or string.str_eq(ch, "\n")
 
+func is_lower_letter(ch: str) -> bool:
+  return string.str_eq(ch, "a") or string.str_eq(ch, "b") or string.str_eq(ch, "c") or string.str_eq(ch, "d") or string.str_eq(ch, "e") or string.str_eq(ch, "f") or string.str_eq(ch, "g") or string.str_eq(ch, "h") or string.str_eq(ch, "i") or string.str_eq(ch, "j") or string.str_eq(ch, "k") or string.str_eq(ch, "l") or string.str_eq(ch, "m") or string.str_eq(ch, "n") or string.str_eq(ch, "o") or string.str_eq(ch, "p") or string.str_eq(ch, "q") or string.str_eq(ch, "r") or string.str_eq(ch, "s") or string.str_eq(ch, "t") or string.str_eq(ch, "u") or string.str_eq(ch, "v") or string.str_eq(ch, "w") or string.str_eq(ch, "x") or string.str_eq(ch, "y") or string.str_eq(ch, "z")
+
+func is_upper_letter(ch: str) -> bool:
+  return string.str_eq(ch, "A") or string.str_eq(ch, "B") or string.str_eq(ch, "C") or string.str_eq(ch, "D") or string.str_eq(ch, "E") or string.str_eq(ch, "F") or string.str_eq(ch, "G") or string.str_eq(ch, "H") or string.str_eq(ch, "I") or string.str_eq(ch, "J") or string.str_eq(ch, "K") or string.str_eq(ch, "L") or string.str_eq(ch, "M") or string.str_eq(ch, "N") or string.str_eq(ch, "O") or string.str_eq(ch, "P") or string.str_eq(ch, "Q") or string.str_eq(ch, "R") or string.str_eq(ch, "S") or string.str_eq(ch, "T") or string.str_eq(ch, "U") or string.str_eq(ch, "V") or string.str_eq(ch, "W") or string.str_eq(ch, "X") or string.str_eq(ch, "Y") or string.str_eq(ch, "Z")
+
 pub func is_letter(ch: str) -> bool:
   if (string.len(ch) == 0):
     return false
-  return (
-    string.str_eq(ch, "a") or string.str_eq(ch, "b") or string.str_eq(ch, "c") or
-    string.str_eq(ch, "d") or string.str_eq(ch, "e") or string.str_eq(ch, "f") or
-    string.str_eq(ch, "g") or string.str_eq(ch, "h") or string.str_eq(ch, "i") or
-    string.str_eq(ch, "j") or string.str_eq(ch, "k") or string.str_eq(ch, "l") or
-    string.str_eq(ch, "m") or string.str_eq(ch, "n") or string.str_eq(ch, "o") or
-    string.str_eq(ch, "p") or string.str_eq(ch, "q") or string.str_eq(ch, "r") or
-    string.str_eq(ch, "s") or string.str_eq(ch, "t") or string.str_eq(ch, "u") or
-    string.str_eq(ch, "v") or string.str_eq(ch, "w") or string.str_eq(ch, "x") or
-    string.str_eq(ch, "y") or string.str_eq(ch, "z") or string.str_eq(ch, "_") or
-    string.str_eq(ch, "A") or string.str_eq(ch, "B") or string.str_eq(ch, "C") or
-    string.str_eq(ch, "D") or string.str_eq(ch, "E") or string.str_eq(ch, "F") or
-    string.str_eq(ch, "G") or string.str_eq(ch, "H") or string.str_eq(ch, "I") or
-    string.str_eq(ch, "J") or string.str_eq(ch, "K") or string.str_eq(ch, "L") or
-    string.str_eq(ch, "M") or string.str_eq(ch, "N") or string.str_eq(ch, "O") or
-    string.str_eq(ch, "P") or string.str_eq(ch, "Q") or string.str_eq(ch, "R") or
-    string.str_eq(ch, "S") or string.str_eq(ch, "T") or string.str_eq(ch, "U") or
-    string.str_eq(ch, "V") or string.str_eq(ch, "W") or string.str_eq(ch, "X") or
-    string.str_eq(ch, "Y") or string.str_eq(ch, "Z")
-  )
+  return is_lower_letter(ch) or is_upper_letter(ch) or string.str_eq(ch, "_")
 
 pub func is_digit(ch: str) -> bool:
-  return (
-    string.str_eq(ch, "0") or string.str_eq(ch, "1") or string.str_eq(ch, "2") or
-    string.str_eq(ch, "3") or string.str_eq(ch, "4") or string.str_eq(ch, "5") or
-    string.str_eq(ch, "6") or string.str_eq(ch, "7") or string.str_eq(ch, "8") or
-    string.str_eq(ch, "9")
-  )
+  return string.str_eq(ch, "0") or string.str_eq(ch, "1") or string.str_eq(ch, "2") or string.str_eq(ch, "3") or string.str_eq(ch, "4") or string.str_eq(ch, "5") or string.str_eq(ch, "6") or string.str_eq(ch, "7") or string.str_eq(ch, "8") or string.str_eq(ch, "9")
 
 pub func is_ident_continue(ch: str) -> bool:
   return is_letter(ch) or is_digit(ch)
