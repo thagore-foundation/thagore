@@ -8,8 +8,33 @@ func append_item(out: str, item: str) -> str:
     return item
   return string.concat(out, string.concat(" | ", item))
 
+func is_module_char(ch: str) -> bool:
+  return chars.is_ident_continue(ch) or string.str_eq(ch, ".")
+
 func matches_import_at(source: str, index: i32) -> bool:
   return string.str_eq(string.char_at(source, index), "i") and string.str_eq(string.char_at(source, index + 1), "m") and string.str_eq(string.char_at(source, index + 2), "p") and string.str_eq(string.char_at(source, index + 3), "o") and string.str_eq(string.char_at(source, index + 4), "r") and string.str_eq(string.char_at(source, index + 5), "t") and chars.is_space(string.char_at(source, index + 6))
+
+func matches_from_at(source: str, index: i32) -> bool:
+  return string.str_eq(string.char_at(source, index), "f") and string.str_eq(string.char_at(source, index + 1), "r") and string.str_eq(string.char_at(source, index + 2), "o") and string.str_eq(string.char_at(source, index + 3), "m") and chars.is_space(string.char_at(source, index + 4))
+
+func read_module_name(source: str, index: i32) -> str:
+  let name = ""
+  while (is_module_char(string.char_at(source, index))):
+    name = string.concat(name, string.char_at(source, index))
+    index = index + 1
+  return name
+
+func module_to_path(module_name: str) -> str:
+  let slashed = string.replace(module_name, ".", "/")
+  return string.concat(slashed, ".tg")
+
+func resolve_module(base_dir: str, module_file: str, resolved: str, missing: str) -> str:
+  let module_path = path.join(base_dir, module_file)
+  if (fs.exists(module_path)):
+    let with_resolved = append_item(resolved, module_file)
+    return string.concat(with_resolved, string.concat(";missing=", missing))
+  let with_missing = append_item(missing, module_file)
+  return string.concat(resolved, string.concat(";missing=", with_missing))
 
 pub func resolve(base_dir: str, source: str) -> str:
   let index: i32 = 0
@@ -22,21 +47,67 @@ pub func resolve(base_dir: str, source: str) -> str:
       while (chars.is_space(string.char_at(source, index))):
         index = index + 1
 
-      let module_name = ""
-      while (chars.is_ident_continue(string.char_at(source, index))):
-        module_name = string.concat(module_name, string.char_at(source, index))
-        index = index + 1
+      let module_name = read_module_name(source, index)
+      index = index + string.len(module_name)
 
       if (string.len(module_name) > 0):
-        let module_file = string.concat(module_name, ".tg")
-        let module_path = path.join(base_dir, module_file)
-        if (fs.exists(module_path)):
-          resolved = append_item(resolved, module_file)
-        else:
-          missing = append_item(missing, module_file)
+        let module_file = module_to_path(module_name)
+        let state = resolve_module(base_dir, module_file, resolved, missing)
+        resolved = summary_value(state, "resolved")
+        missing = summary_value(state, "missing")
+      continue
+
+    if (matches_from_at(source, index)):
+      index = index + 5
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+
+      let from_name = read_module_name(source, index)
+      index = index + string.len(from_name)
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+
+      if (matches_import_at(source, index) == false):
+        continue
+
+      index = index + 7
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+
+      let import_name = read_module_name(source, index)
+      index = index + string.len(import_name)
+
+      let combined = ""
+      if (string.str_eq(from_name, ".")):
+        combined = import_name
+      else if (string.len(from_name) > 0 and string.len(import_name) > 0):
+        combined = string.concat(string.concat(from_name, "."), import_name)
+      else:
+        combined = import_name
+
+      if (string.len(combined) > 0):
+        let module_file = module_to_path(combined)
+        let state = resolve_module(base_dir, module_file, resolved, missing)
+        resolved = summary_value(state, "resolved")
+        missing = summary_value(state, "missing")
       continue
 
     index = index + 1
 
   let with_resolved = string.concat("resolved=", resolved)
   return string.concat(with_resolved, string.concat(";missing=", missing))
+
+func summary_value(summary: str, key: str) -> str:
+  let marker = string.concat(key, "=")
+  let start = string.find(summary, marker)
+  if (start < 0):
+    return ""
+  let out = ""
+  let index: i32 = start + string.len(marker)
+  while (index < string.len(summary)):
+    let ch = string.char_at(summary, index)
+    if (string.str_eq(ch, ";")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out

@@ -1,0 +1,1 @@
+import pkg.util from . import dep from pkg import helper func main() -> i32: let answer: i32 = 42 return answer

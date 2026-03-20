@@ -15,7 +15,7 @@ func format_token(kind: str, text: str, line: i32, column: i32) -> str:
   return string.concat(with_sep, string.from_int(column))
 
 func is_keyword(text: str) -> bool:
-  return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return") or string.str_eq(text, "import")
+  return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return") or string.str_eq(text, "import") or string.str_eq(text, "from")
 
 pub func scan(source: str) -> str:
   return scan_line(source, 1, "")
@@ -69,7 +69,7 @@ func scan_line(source: str, line: i32, out: str) -> str:
       column = column + 2
       continue
 
-    if (string.str_eq(ch, "(") or string.str_eq(ch, ")") or string.str_eq(ch, ":") or string.str_eq(ch, "=")):
+    if (string.str_eq(ch, "(") or string.str_eq(ch, ")") or string.str_eq(ch, ":") or string.str_eq(ch, "=") or string.str_eq(ch, ".")):
       out = append_line(out, format_token("punct", ch, line, column))
       index = index + 1
       column = column + 1

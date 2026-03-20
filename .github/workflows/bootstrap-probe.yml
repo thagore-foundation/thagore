@@ -204,6 +204,8 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_return_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_duplicate_local_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
@@ -250,6 +252,8 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_return_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_duplicate_local_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture

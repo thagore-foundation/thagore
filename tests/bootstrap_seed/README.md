@@ -11,7 +11,7 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 - summarizes a function signature and first local binding from the token stream
 - collects a tiny symbol table for functions and locals
 - emits diagnostics-lite for missing function/return structure
-- resolves flat `import <name>` modules from the working directory
+- resolves flat and dotted imports, plus simple `from ... import ...`, from the working directory
 - checks simple semantic issues like unknown return identifiers and duplicate locals
 - tracks line/column positions
 - emits a deterministic token report
