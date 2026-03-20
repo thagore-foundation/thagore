@@ -1,0 +1,42 @@
+from . import chars
+import std.fs as fs
+import std.path as path
+import std.string as string
+
+func append_item(out: str, item: str) -> str:
+  if (string.len(out) == 0):
+    return item
+  return string.concat(out, string.concat(" | ", item))
+
+func matches_import_at(source: str, index: i32) -> bool:
+  return string.str_eq(string.char_at(source, index), "i") and string.str_eq(string.char_at(source, index + 1), "m") and string.str_eq(string.char_at(source, index + 2), "p") and string.str_eq(string.char_at(source, index + 3), "o") and string.str_eq(string.char_at(source, index + 4), "r") and string.str_eq(string.char_at(source, index + 5), "t") and chars.is_space(string.char_at(source, index + 6))
+
+pub func resolve(base_dir: str, source: str) -> str:
+  let index: i32 = 0
+  let resolved = ""
+  let missing = ""
+
+  while (index < string.len(source)):
+    if (matches_import_at(source, index)):
+      index = index + 7
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+
+      let module_name = ""
+      while (chars.is_ident_continue(string.char_at(source, index))):
+        module_name = string.concat(module_name, string.char_at(source, index))
+        index = index + 1
+
+      if (string.len(module_name) > 0):
+        let module_file = string.concat(module_name, ".tg")
+        let module_path = path.join(base_dir, module_file)
+        if (fs.exists(module_path)):
+          resolved = append_item(resolved, module_file)
+        else:
+          missing = append_item(missing, module_file)
+      continue
+
+    index = index + 1
+
+  let with_resolved = string.concat("resolved=", resolved)
+  return string.concat(with_resolved, string.concat(";missing=", missing))

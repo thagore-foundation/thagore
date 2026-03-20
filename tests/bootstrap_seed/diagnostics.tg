@@ -46,3 +46,12 @@ pub func analyze(summary: str, symbols: str) -> str:
   if (string.len(issues) == 0):
     return "ok"
   return issues
+
+pub func analyze_with_imports(summary: str, symbols: str, imports: str) -> str:
+  let issues = analyze(summary, symbols)
+  let missing_imports = summary_field(imports, "missing")
+  if (string.len(missing_imports) == 0):
+    return issues
+  if (string.str_eq(issues, "ok")):
+    return "missing import"
+  return append_issue(issues, "missing import")
