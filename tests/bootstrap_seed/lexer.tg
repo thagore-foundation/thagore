@@ -18,19 +18,22 @@ func is_keyword(text: str) -> bool:
   return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return")
 
 pub func scan(source: str) -> str:
+  let lines = string.split(source, "\n")
   let out = ""
-  let index: i32 = 0
   let line: i32 = 1
+
+  for current in lines:
+    out = scan_line(current, line, out)
+    line = line + 1
+
+  return out
+
+func scan_line(source: str, line: i32, out: str) -> str:
+  let index: i32 = 0
   let column: i32 = 1
 
   while (index < string.len(source)):
     let ch = string.char_at(source, index)
-
-    if (string.str_eq(ch, "\n")):
-      line = line + 1
-      column = 1
-      index = index + 1
-      continue
 
     if (chars.is_space(ch)):
       column = column + 1
