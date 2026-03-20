@@ -80,10 +80,11 @@ pub func resolve(base_dir: str, source: str) -> str:
       let combined = ""
       if (string.str_eq(from_name, ".")):
         combined = import_name
-      else if (string.len(from_name) > 0 and string.len(import_name) > 0):
-        combined = string.concat(string.concat(from_name, "."), import_name)
       else:
-        combined = import_name
+        if (string.len(from_name) > 0 and string.len(import_name) > 0):
+          combined = string.concat(string.concat(from_name, "."), import_name)
+        else:
+          combined = import_name
 
       if (string.len(combined) > 0):
         let module_file = module_to_path(combined)
