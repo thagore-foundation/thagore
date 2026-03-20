@@ -32,9 +32,11 @@ func resolve_module(base_dir: str, module_file: str, resolved: str, missing: str
   let module_path = path.join(base_dir, module_file)
   if (fs.exists(module_path)):
     let with_resolved = append_item(resolved, module_file)
-    return string.concat(with_resolved, string.concat(";missing=", missing))
+    let left = string.concat("resolved=", with_resolved)
+    return string.concat(left, string.concat(";missing=", missing))
   let with_missing = append_item(missing, module_file)
-  return string.concat(resolved, string.concat(";missing=", with_missing))
+  let left = string.concat("resolved=", resolved)
+  return string.concat(left, string.concat(";missing=", with_missing))
 
 pub func resolve(base_dir: str, source: str) -> str:
   let index: i32 = 0
