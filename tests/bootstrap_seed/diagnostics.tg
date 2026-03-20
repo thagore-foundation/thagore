@@ -55,3 +55,53 @@ pub func analyze_with_imports(summary: str, symbols: str, imports: str) -> str:
   if (string.str_eq(issues, "ok")):
     return "missing import"
   return append_issue(issues, "missing import")
+
+func count_symbol_kind(symbols: str, target_kind: str, target_name: str) -> i32:
+  let items = string.split(symbols, " | ")
+  let count: i32 = 0
+  for item in items:
+    if (string.len(item) == 0):
+      continue
+    let name_sep = string.find(item, ":")
+    if (name_sep < 0):
+      continue
+    let name = ""
+    let index: i32 = 0
+    while (index < name_sep):
+      name = string.concat(name, string.char_at(item, index))
+      index = index + 1
+    let kind = ""
+    index = name_sep + 1
+    while (index < string.len(item)):
+      kind = string.concat(kind, string.char_at(item, index))
+      index = index + 1
+    if (string.str_eq(name, target_name) and string.str_eq(kind, target_kind)):
+      count = count + 1
+  return count
+
+pub func analyze_semantics(summary: str, symbols: str, imports: str) -> str:
+  let issues = analyze_with_imports(summary, symbols, imports)
+  let local_binding = summary_field(summary, "first_local")
+  let local_sep = string.find(local_binding, ":")
+  let local_name = ""
+  let return_ident = summary_field(summary, "return_ident")
+
+  if (local_sep > 0):
+    let index: i32 = 0
+    while (index < local_sep):
+      local_name = string.concat(local_name, string.char_at(local_binding, index))
+      index = index + 1
+
+  if (string.len(return_ident) > 0 and string.len(local_name) > 0 and string.str_eq(return_ident, local_name) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "unknown return ident"
+    else:
+      issues = append_issue(issues, "unknown return ident")
+
+  if (string.len(local_name) > 0 and count_symbol_kind(symbols, "local", local_name) > 1):
+    if (string.str_eq(issues, "ok")):
+      issues = "duplicate local"
+    else:
+      issues = append_issue(issues, "duplicate local")
+
+  return issues

@@ -29,6 +29,6 @@ pub func main() -> i32:
   let with_summary = string.concat(left, string.concat(" || summary=", summary))
   let with_symbols = string.concat(with_summary, string.concat(" || symbols=", table))
   let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
-  let issues = diagnostics.analyze_with_imports(summary, table, imports)
+  let issues = diagnostics.analyze_semantics(summary, table, imports)
   println(string.concat(with_imports, string.concat(" || diagnostics=", issues)))
   return 0
