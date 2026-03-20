@@ -18,15 +18,7 @@ func is_keyword(text: str) -> bool:
   return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return")
 
 pub func scan(source: str) -> str:
-  let lines = string.split(source, "\n")
-  let out = ""
-  let line: i32 = 1
-
-  for current in lines:
-    out = scan_line(current, line, out)
-    line = line + 1
-
-  return out
+  return scan_line(source, 1, "")
 
 func scan_line(source: str, line: i32, out: str) -> str:
   let index: i32 = 0
