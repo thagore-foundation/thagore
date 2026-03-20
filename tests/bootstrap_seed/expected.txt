@@ -1,0 +1,15 @@
+kw(func)@1:1
+ident(main)@1:6
+punct(()@1:10
+punct())@1:11
+punct(->)@1:13
+ident(i32)@1:16
+punct(:)@1:19
+kw(let)@2:3
+ident(answer)@2:7
+punct(:)@2:13
+ident(i32)@2:15
+punct(=)@2:19
+int(42)@2:21
+kw(return)@3:3
+ident(answer)@3:10
