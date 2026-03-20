@@ -1,0 +1,40 @@
+import std.string as string
+
+func append_issue(out: str, issue: str) -> str:
+  if (string.len(out) == 0):
+    return issue
+  return string.concat(out, string.concat(" | ", issue))
+
+func summary_field(summary: str, key: str) -> str:
+  let marker = string.concat(key, "=")
+  let start = string.find(summary, marker)
+  if (start < 0):
+    return ""
+  let value_start = start + string.len(marker)
+  let out = ""
+  let index: i32 = value_start
+  while (index < string.len(summary)):
+    let ch = string.char_at(summary, index)
+    if (string.str_eq(ch, ";")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out
+
+pub func analyze(summary: str, symbols: str) -> str:
+  let issues = ""
+  let func_name = summary_field(summary, "func")
+  let return_ident = summary_field(summary, "return_ident")
+
+  if (string.len(func_name) == 0):
+    issues = append_issue(issues, "missing func")
+
+  if (string.len(return_ident) == 0):
+    issues = append_issue(issues, "missing return")
+
+  if (string.len(symbols) == 0):
+    issues = append_issue(issues, "missing symbols")
+
+  if (string.len(issues) == 0):
+    return "ok"
+  return issues

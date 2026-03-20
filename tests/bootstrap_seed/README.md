@@ -10,6 +10,7 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 - scans identifiers, numbers, and a small punctuation surface
 - summarizes a function signature and first local binding from the token stream
 - collects a tiny symbol table for functions and locals
+- emits diagnostics-lite for missing function/return structure
 - tracks line/column positions
 - emits a deterministic token report
 

@@ -1,6 +1,7 @@
 from . import lexer
 from . import parser
 from . import symbols
+from . import diagnostics
 import std.fs as fs
 import std.process as process
 import std.string as string
@@ -23,5 +24,7 @@ pub func main() -> i32:
   let table = symbols.collect(report)
   let left = string.concat("tokens=", report)
   let with_summary = string.concat(left, string.concat(" || summary=", summary))
-  println(string.concat(with_summary, string.concat(" || symbols=", table)))
+  let with_symbols = string.concat(with_summary, string.concat(" || symbols=", table))
+  let issues = diagnostics.analyze(summary, table)
+  println(string.concat(with_symbols, string.concat(" || diagnostics=", issues)))
   return 0
