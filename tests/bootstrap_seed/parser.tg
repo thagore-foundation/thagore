@@ -44,10 +44,10 @@ pub func summary(report: str) -> str:
     let kind = token_kind(current)
     let text = token_text(current)
 
-    if (string.str_eq(kind, "kw") and string.str_eq(text, "func") and (index + 4) < token_count):
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "func") and (index + 5) < token_count):
       func_name = token_text(array.get(tokens, index + 1))
-      return_type = token_text(array.get(tokens, index + 4))
-      index = index + 5
+      return_type = token_text(array.get(tokens, index + 5))
+      index = index + 6
       continue
 
     if (string.str_eq(kind, "kw") and string.str_eq(text, "let") and (index + 5) < token_count):
