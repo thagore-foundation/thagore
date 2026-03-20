@@ -1,0 +1,1 @@
+func helper_impl() -> i32: return 3
