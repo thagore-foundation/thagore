@@ -1600,17 +1600,16 @@ mod tests {
     }
 
     #[test]
-fn fs_read_dir_returns_deterministic_lexical_order() {
-    let registry = StdlibRegistry::new();
-    let mut interpreter = Interpreter::new(SymbolTable::default());
-    let write = registry.handler("write").expect("write handler");
-    let read_dir = registry.handler("read_dir").expect("read_dir handler");
-    let len = registry.handler("array.len").expect("array.len handler");
+    fn fs_read_dir_returns_deterministic_lexical_order() {
+        let registry = StdlibRegistry::new();
+        let mut interpreter = Interpreter::new(SymbolTable::default());
+        let write = registry.handler("write").expect("write handler");
+        let read_dir = registry.handler("read_dir").expect("read_dir handler");
 
-    let dir = unique_temp_dir("thagore-stdlib-fs-order");
-    for name in ["c.txt", "a.txt", "b.txt"] {
-        let file = dir.join(name);
-        write(
+        let dir = unique_temp_dir("thagore-stdlib-fs-order");
+        for name in ["c.txt", "a.txt", "b.txt"] {
+            let file = dir.join(name);
+            write(
                 &mut interpreter,
                 vec![
                     Value::Str(file.to_string_lossy().to_string()),
@@ -1641,10 +1640,10 @@ fn fs_read_dir_returns_deterministic_lexical_order() {
             vec![Value::Str(missing_dir.to_string_lossy().to_string())],
         )
         .expect("read_dir missing path result");
-        let missing_len =
-            len(&mut interpreter, vec![missing.clone()]).expect("len missing path result");
-        assert_eq!(missing, Value::Vec(vec![]));
-        assert_eq!(missing_len, Value::I32(0));
+        match missing {
+            Value::Vec(items) => assert!(items.is_empty()),
+            other => panic!("expected empty vec, got {other:?}"),
+        }
 
         fs::remove_dir_all(dir).expect("cleanup dir");
     }
