@@ -1032,7 +1032,7 @@ fn builtin_fs_read_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Valu
         Ok(iter) => iter,
         Err(_) => {
             // Match native runtime behavior: missing/unreadable path returns empty list.
-            return Ok(Value::Array(vec![]));
+            return Ok(Value::Vec(vec![]));
         }
     };
     let mut values = Vec::new();
