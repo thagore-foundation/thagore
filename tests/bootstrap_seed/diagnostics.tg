@@ -25,12 +25,20 @@ pub func analyze(summary: str, symbols: str) -> str:
   let issues = ""
   let func_name = summary_field(summary, "func")
   let return_ident = summary_field(summary, "return_ident")
+  let local_binding = summary_field(summary, "first_local")
+  let local_sep = string.find(local_binding, ":")
+  let has_local = string.len(local_binding) > 0
+  let missing_local_type = string.contains(local_binding, ":=")
+  let missing_local_value = string.ends_with(local_binding, "=")
 
   if (string.len(func_name) == 0):
     issues = append_issue(issues, "missing func")
 
   if (string.len(return_ident) == 0):
     issues = append_issue(issues, "missing return")
+
+  if (has_local and (local_sep < 0 or missing_local_type or missing_local_value)):
+    issues = append_issue(issues, "malformed let")
 
   if (string.len(symbols) == 0):
     issues = append_issue(issues, "missing symbols")

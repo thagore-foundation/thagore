@@ -198,6 +198,8 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_return_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_func_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_malformed_let_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture
@@ -238,6 +240,8 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_return_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_missing_func_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_malformed_let_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli check_reports_top_level_let_without_lowering_escape -- --nocapture
           cargo test -p thagore-cli check_reports_inconsistent_inferred_return_types -- --nocapture
           cargo test -p thagore-cli check_reports_invalid_const_initializer_without_lowering_escape -- --nocapture

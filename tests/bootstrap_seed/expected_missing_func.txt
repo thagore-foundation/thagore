@@ -1,0 +1,1 @@
+tokens=kw(let)@1:1 | ident(answer)@1:5 | punct(:)@1:11 | ident(i32)@1:13 | punct(=)@1:17 | int(42)@1:19 | kw(return)@1:22 | ident(answer)@1:29 || summary=func=;return=;locals=1;first_local=answer:i32=42;return_ident=answer || symbols=answer:local || diagnostics=missing func | missing return

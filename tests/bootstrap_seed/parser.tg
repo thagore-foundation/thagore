@@ -58,6 +58,14 @@ pub func summary(report: str) -> str:
       index = index + 6
       continue
 
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "let") and (index + 1) < token_count):
+      local_name = token_text(array.get(tokens, index + 1))
+      local_type = ""
+      local_value = ""
+      local_count = local_count + 1
+      index = index + 2
+      continue
+
     if (string.str_eq(kind, "kw") and string.str_eq(text, "return") and (index + 1) < token_count):
       return_ident = token_text(array.get(tokens, index + 1))
       index = index + 2
