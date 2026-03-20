@@ -8,6 +8,7 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 - reads a `.tg` source file from argv
 - normalizes line endings
 - scans identifiers, numbers, and a small punctuation surface
+- summarizes a function signature and first local binding from the token stream
 - tracks line/column positions
 - emits a deterministic token report
 

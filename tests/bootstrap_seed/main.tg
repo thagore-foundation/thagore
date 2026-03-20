@@ -1,4 +1,5 @@
 from . import lexer
+from . import parser
 import std.fs as fs
 import std.process as process
 import std.string as string
@@ -16,5 +17,8 @@ pub func main() -> i32:
     return 1
   let normalized_crlf = string.replace(source, "\r\n", "\n")
   let normalized = string.replace(normalized_crlf, "\r", "\n")
-  println(lexer.scan(normalized))
+  let report = lexer.scan(normalized)
+  let summary = parser.summary(report)
+  let left = string.concat("tokens=", report)
+  println(string.concat(left, string.concat(" || summary=", summary)))
   return 0
