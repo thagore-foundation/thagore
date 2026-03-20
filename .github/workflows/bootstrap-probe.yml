@@ -190,6 +190,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_missing_path_behavior -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_read_dir_is_sorted -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_fs_read_dir_missing_path_returns_empty -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_empty_left_join -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture
@@ -227,6 +228,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_fs_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_missing_path_behavior -- --nocapture
           cargo test -p thagore-cli build_and_run_std_fs_read_dir_is_sorted -- --nocapture
+          cargo test -p thagore-cli build_and_run_std_fs_read_dir_missing_path_returns_empty -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_module -- --nocapture
           cargo test -p thagore-cli build_and_run_std_path_empty_left_join -- --nocapture
           cargo test -p thagore-cli build_and_run_std_process_module -- --nocapture

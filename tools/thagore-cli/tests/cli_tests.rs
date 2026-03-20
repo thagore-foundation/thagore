@@ -833,6 +833,41 @@ fn build_and_run_std_fs_read_dir_is_sorted() {
 }
 
 #[test]
+fn build_and_run_std_fs_read_dir_missing_path_returns_empty() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("main.tg");
+    let binary = dir.path().join("fs_read_dir_missing");
+    let missing_dir = dir.path().join("missing-folder");
+    let missing_dir = missing_dir.to_string_lossy().replace('\\', "/");
+    fs::write(
+        &source,
+        format!(
+            "import std.fs as fs\nimport std.array as array\n\nfunc main() -> i32:\n  let root = \"{missing_dir}\"\n  let items = fs.read_dir(root)\n  if (array.len(items) == 0):\n    return 0\n  return 1\n"
+        ),
+    )
+    .expect("write source");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let status = Command::new(&binary).status().expect("run built binary");
+    assert_eq!(status.code(), Some(0));
+}
+
+#[test]
 fn build_and_run_std_array_module() {
     let dir = TempDir::new().expect("temp dir");
     let source = dir.path().join("main.tg");

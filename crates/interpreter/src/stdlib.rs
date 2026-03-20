@@ -1028,8 +1028,13 @@ fn builtin_fs_mkdir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, 
 fn builtin_fs_read_dir(_: &mut Interpreter<'_>, args: Vec<Value>) -> Result<Value, RuntimeError> {
     expect_arity(&args, 1, "read_dir")?;
     let path = expect_string(&args[0], "read_dir")?;
-    let entries =
-        fs::read_dir(&path).map_err(|error| RuntimeError::message(format!("read_dir failed: {error}")))?;
+    let entries = match fs::read_dir(&path) {
+        Ok(iter) => iter,
+        Err(_) => {
+            // Match native runtime behavior: missing/unreadable path returns empty list.
+            return Ok(Value::Array(vec![]));
+        }
+    };
     let mut values = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|error| RuntimeError::message(format!("read_dir failed: {error}")))?;
@@ -1595,16 +1600,17 @@ mod tests {
     }
 
     #[test]
-    fn fs_read_dir_returns_deterministic_lexical_order() {
-        let registry = StdlibRegistry::new();
-        let mut interpreter = Interpreter::new(SymbolTable::default());
-        let write = registry.handler("write").expect("write handler");
-        let read_dir = registry.handler("read_dir").expect("read_dir handler");
+fn fs_read_dir_returns_deterministic_lexical_order() {
+    let registry = StdlibRegistry::new();
+    let mut interpreter = Interpreter::new(SymbolTable::default());
+    let write = registry.handler("write").expect("write handler");
+    let read_dir = registry.handler("read_dir").expect("read_dir handler");
+    let len = registry.handler("array.len").expect("array.len handler");
 
-        let dir = unique_temp_dir("thagore-stdlib-fs-order");
-        for name in ["c.txt", "a.txt", "b.txt"] {
-            let file = dir.join(name);
-            write(
+    let dir = unique_temp_dir("thagore-stdlib-fs-order");
+    for name in ["c.txt", "a.txt", "b.txt"] {
+        let file = dir.join(name);
+        write(
                 &mut interpreter,
                 vec![
                     Value::Str(file.to_string_lossy().to_string()),
@@ -1627,6 +1633,18 @@ mod tests {
                 Value::Str(String::from("c.txt")),
             ])
         );
+
+        // Missing path should match native runtime: empty array, not error.
+        let missing_dir = dir.join("does-not-exist");
+        let missing = read_dir(
+            &mut interpreter,
+            vec![Value::Str(missing_dir.to_string_lossy().to_string())],
+        )
+        .expect("read_dir missing path result");
+        let missing_len =
+            len(&mut interpreter, vec![missing.clone()]).expect("len missing path result");
+        assert_eq!(missing, Value::Vec(vec![]));
+        assert_eq!(missing_len, Value::I32(0));
 
         fs::remove_dir_all(dir).expect("cleanup dir");
     }
