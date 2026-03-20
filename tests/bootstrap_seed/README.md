@@ -9,6 +9,7 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 - normalizes line endings
 - scans identifiers, numbers, and a small punctuation surface
 - summarizes a function signature and first local binding from the token stream
+- collects a tiny symbol table for functions and locals
 - tracks line/column positions
 - emits a deterministic token report
 
