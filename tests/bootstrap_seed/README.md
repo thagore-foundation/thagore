@@ -12,7 +12,7 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 - collects a tiny symbol table for functions and locals
 - emits diagnostics-lite for missing function/return structure
 - resolves flat and dotted imports, plus simple `from ... import ...`, from the working directory
-- checks simple semantic issues like unknown return identifiers, duplicate locals, duplicate funcs, and invalid imported symbols
+- checks simple semantic issues like missing `main`, unknown callees, unknown return identifiers, duplicate locals, duplicate funcs, and invalid imported symbols
 - tracks line/column positions
 - emits a deterministic token report
 

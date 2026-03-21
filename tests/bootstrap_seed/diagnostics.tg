@@ -1,7 +1,34 @@
 from . import chars
+import std.array as array
 import std.fs as fs
 import std.path as path
 import std.string as string
+
+func token_kind(token: str) -> str:
+  let out = ""
+  let index: i32 = 0
+  while (index < string.len(token)):
+    let ch = string.char_at(token, index)
+    if (string.str_eq(ch, "(")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out
+
+func token_text(token: str) -> str:
+  let start = string.find(token, "(")
+  if (start < 0):
+    return ""
+  let out = ""
+  let index: i32 = start + 1
+  while (index < string.len(token)):
+    let ch = string.char_at(token, index)
+    let next = string.char_at(token, index + 1)
+    if (string.str_eq(ch, ")") and string.str_eq(next, "@")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out
 
 func append_issue(out: str, issue: str) -> str:
   if (string.len(out) == 0):
@@ -106,6 +133,36 @@ func module_defines_func(module_source: str, func_name: str) -> bool:
   let pattern = string.concat("func ", string.concat(func_name, "("))
   return string.contains(module_source, pattern)
 
+func source_imports_symbol(source: str, target_name: str) -> bool:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (matches_from_at(source, index) == false):
+      index = index + 1
+      continue
+
+    index = index + 5
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let from_name = read_module_name(source, index)
+    index = index + string.len(from_name)
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    if (matches_import_at(source, index) == false):
+      continue
+
+    index = index + 7
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let import_name = read_module_name(source, index)
+    index = index + string.len(import_name)
+
+    if (string.str_eq(import_name, target_name)):
+      return true
+  return false
+
 func analyze_imported_symbols(base_dir: str, source: str) -> str:
   let issues = ""
   let index: i32 = 0
@@ -159,13 +216,47 @@ func analyze_imported_symbols(base_dir: str, source: str) -> str:
     return "ok"
   return issues
 
-pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: str, source: str) -> str:
+func first_call_ident(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+
+  while (index < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let kind = token_kind(current)
+    let text = token_text(current)
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "func")):
+      index = index + 6
+      continue
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "let")):
+      if ((index + 5) < array.len(tokens)):
+        index = index + 6
+      else:
+        index = index + 2
+      continue
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "return")):
+      index = index + 2
+      continue
+
+    if (string.str_eq(kind, "ident") and (index + 1) < array.len(tokens)):
+      let next_text = token_text(array.get(tokens, index + 1))
+      if (string.str_eq(next_text, "(")):
+        return text
+
+    index = index + 1
+
+  return ""
+
+pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: str, source: str, report: str) -> str:
   let issues = analyze_with_imports(summary, symbols, imports)
   let func_name = summary_field(summary, "func")
   let local_binding = summary_field(summary, "first_local")
   let local_sep = string.find(local_binding, ":")
   let local_name = ""
   let return_ident = summary_field(summary, "return_ident")
+  let call_ident = first_call_ident(report)
 
   if (local_sep > 0):
     let index: i32 = 0
@@ -185,11 +276,23 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "duplicate local")
 
+  if (count_symbol_kind(symbols, "func", "main") == 0):
+    if (string.str_eq(issues, "ok")):
+      issues = "missing main"
+    else:
+      issues = append_issue(issues, "missing main")
+
   if (string.len(func_name) > 0 and count_symbol_kind(symbols, "func", func_name) > 1):
     if (string.str_eq(issues, "ok")):
       issues = "duplicate func"
     else:
       issues = append_issue(issues, "duplicate func")
+
+  if (string.len(call_ident) > 0 and count_symbol_kind(symbols, "func", call_ident) == 0 and source_imports_symbol(source, call_ident) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "unknown callee"
+    else:
+      issues = append_issue(issues, "unknown callee")
 
   let import_issues = analyze_imported_symbols(base_dir, source)
   if (string.str_eq(import_issues, "ok")):

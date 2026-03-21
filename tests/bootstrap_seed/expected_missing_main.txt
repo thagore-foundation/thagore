@@ -1,0 +1,1 @@
+tokens=kw(func)@1:1 | ident(helper)@1:6 | punct(()@1:12 | punct())@1:13 | punct(->)@1:15 | ident(i32)@1:18 | punct(:)@1:21 | kw(return)@1:25 | int(1)@1:32 || summary=func=helper;return=i32;locals=0;first_local=:=;return_ident=1 || symbols=helper:func || imports=resolved=;missing= || diagnostics=missing main

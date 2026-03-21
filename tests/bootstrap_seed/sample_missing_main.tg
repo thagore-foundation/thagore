@@ -1,0 +1,2 @@
+func helper() -> i32:
+  return 1
