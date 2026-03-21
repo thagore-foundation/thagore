@@ -419,6 +419,13 @@ Owner:
 
 - `core-lang`
 
+Current status:
+
+- extraction has started under `bootstrap/selfhost/frontend/`
+- seed modules are now mirrored there as the initial reusable frontend slice
+- the next implementation step is switching the seed harness to depend on that
+  path instead of owning duplicate copies
+
 ### Milestone B: Differential frontend pass
 
 Make the Thagore frontend slice and Rust frontend slice run on the same narrow

@@ -18,3 +18,10 @@ but it is more compiler-like than the generic `bootstrap_probe`:
 
 The point is not to replace `thagc` yet. The point is to prove that a
 frontend-style helper can live in Thagore itself and stay under CI.
+
+The reusable extraction target now starts under:
+
+- `bootstrap/selfhost/frontend/`
+
+`tests/bootstrap_seed/` remains the harness and regression corpus until the
+self-host frontend slice fully switches over to those reusable modules.

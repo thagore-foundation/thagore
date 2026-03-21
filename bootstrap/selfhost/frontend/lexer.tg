@@ -1,0 +1,81 @@
+from . import chars
+import std.string as string
+
+func append_line(out: str, line: str) -> str:
+  if (string.len(out) == 0):
+    return line
+  return string.concat(string.concat(out, " | "), line)
+
+func format_token(kind: str, text: str, line: i32, column: i32) -> str:
+  let open = string.concat(kind, "(")
+  let left = string.concat(open, text)
+  let right = string.concat(left, ")@")
+  let line_part = string.concat(right, string.from_int(line))
+  let with_sep = string.concat(line_part, ":")
+  return string.concat(with_sep, string.from_int(column))
+
+func is_keyword(text: str) -> bool:
+  return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return") or string.str_eq(text, "import") or string.str_eq(text, "from") or string.str_eq(text, "if") or string.str_eq(text, "while")
+
+pub func scan(source: str) -> str:
+  return scan_line(source, 1, "")
+
+func scan_line(source: str, line: i32, out: str) -> str:
+  let index: i32 = 0
+  let column: i32 = 1
+
+  while (index < string.len(source)):
+    let ch = string.char_at(source, index)
+
+    if (chars.is_space(ch)):
+      column = column + 1
+      index = index + 1
+      continue
+
+    if (chars.is_letter(ch)):
+      let start_line: i32 = line
+      let start_column: i32 = column
+      let text = ""
+      while (index < string.len(source)):
+        let next = string.char_at(source, index)
+        if (chars.is_ident_continue(next) == false):
+          break
+        text = string.concat(text, next)
+        index = index + 1
+        column = column + 1
+      if (is_keyword(text)):
+        out = append_line(out, format_token("kw", text, start_line, start_column))
+      else:
+        out = append_line(out, format_token("ident", text, start_line, start_column))
+      continue
+
+    if (chars.is_digit(ch)):
+      let start_line: i32 = line
+      let start_column: i32 = column
+      let text = ""
+      while (index < string.len(source)):
+        let next = string.char_at(source, index)
+        if (chars.is_digit(next) == false):
+          break
+        text = string.concat(text, next)
+        index = index + 1
+        column = column + 1
+      out = append_line(out, format_token("int", text, start_line, start_column))
+      continue
+
+    if (string.str_eq(ch, "-") and string.str_eq(string.char_at(source, index + 1), ">")):
+      out = append_line(out, format_token("punct", "->", line, column))
+      index = index + 2
+      column = column + 2
+      continue
+
+    if (string.str_eq(ch, "(") or string.str_eq(ch, ")") or string.str_eq(ch, ":") or string.str_eq(ch, "=") or string.str_eq(ch, ".")):
+      out = append_line(out, format_token("punct", ch, line, column))
+      index = index + 1
+      column = column + 1
+      continue
+
+    index = index + 1
+    column = column + 1
+
+  return out
