@@ -300,6 +300,120 @@ func source_imports_name(source: str, target_name: str) -> bool:
       return true
   return false
 
+func source_has_duplicate_import_aliases(source: str) -> bool:
+  let aliases = ""
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (matches_import_at(source, index) == false):
+      index = index + 1
+      continue
+
+    index = index + 7
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let module_name = read_module_name(source, index)
+    index = index + string.len(module_name)
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    if (string.str_eq(string.char_at(source, index), "a") == false or string.str_eq(string.char_at(source, index + 1), "s") == false or chars.is_space(string.char_at(source, index + 2)) == false):
+      continue
+
+    index = index + 3
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let alias_name = read_module_name(source, index)
+    index = index + string.len(alias_name)
+    if (string.len(alias_name) == 0):
+      continue
+
+    let count: i32 = 0
+    let items = string.split(aliases, " | ")
+    let inner: i32 = 0
+    while (inner < array.len(items)):
+      if (string.str_eq(array.get(items, inner), alias_name)):
+        count = count + 1
+      inner = inner + 1
+    if (count > 0):
+      return true
+    aliases = append_issue(aliases, alias_name)
+  return false
+
+func source_has_local_shadowing_import_alias(symbols: str, source: str) -> bool:
+  let items = string.split(symbols, " | ")
+  let index: i32 = 0
+  while (index < array.len(items)):
+    let item = array.get(items, index)
+    let name_sep = string.find(item, ":")
+    if (name_sep < 0):
+      index = index + 1
+      continue
+    let name = ""
+    let cursor: i32 = 0
+    while (cursor < name_sep):
+      name = string.concat(name, string.char_at(item, cursor))
+      cursor = cursor + 1
+    let kind = ""
+    let kind_cursor: i32 = name_sep + 1
+    while (kind_cursor < string.len(item)):
+      kind = string.concat(kind, string.char_at(item, kind_cursor))
+      kind_cursor = kind_cursor + 1
+    if (string.str_eq(kind, "local") and source_imports_alias(source, name)):
+      return true
+    index = index + 1
+  return false
+
+func source_imports_alias(source: str, target_name: str) -> bool:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (matches_import_at(source, index) == false):
+      index = index + 1
+      continue
+
+    index = index + 7
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let module_name = read_module_name(source, index)
+    index = index + string.len(module_name)
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    if (string.str_eq(string.char_at(source, index), "a") == false or string.str_eq(string.char_at(source, index + 1), "s") == false or chars.is_space(string.char_at(source, index + 2)) == false):
+      continue
+
+    index = index + 3
+    while (chars.is_space(string.char_at(source, index))):
+      index = index + 1
+
+    let alias_name = read_module_name(source, index)
+    index = index + string.len(alias_name)
+    if (string.str_eq(alias_name, target_name)):
+      return true
+  return false
+
+func source_has_func_shadowing_import_alias(source: str) -> bool:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (string.str_eq(string.char_at(source, index), "f") == false):
+      index = index + 1
+      continue
+
+    if (string.str_eq(string.char_at(source, index + 1), "u") and string.str_eq(string.char_at(source, index + 2), "n") and string.str_eq(string.char_at(source, index + 3), "c") and chars.is_space(string.char_at(source, index + 4))):
+      index = index + 5
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let func_name = read_module_name(source, index)
+      index = index + string.len(func_name)
+      if (string.len(func_name) > 0 and string.str_eq(func_name, "main") == false and source_imports_alias(source, func_name)):
+        return true
+      continue
+
+    index = index + 1
+  return false
+
 func source_has_func_shadowing_import(source: str) -> bool:
   let index: i32 = 0
   while (index < string.len(source)):
@@ -540,6 +654,12 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "duplicate import")
 
+  if (source_has_duplicate_import_aliases(source)):
+    if (string.str_eq(issues, "ok")):
+      issues = "duplicate import alias"
+    else:
+      issues = append_issue(issues, "duplicate import alias")
+
   if (has_duplicate_from_import_symbols(source)):
     if (string.str_eq(issues, "ok")):
       issues = "duplicate imported symbol"
@@ -557,6 +677,18 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       issues = "func shadows import"
     else:
       issues = append_issue(issues, "func shadows import")
+
+  if (source_has_local_shadowing_import_alias(symbols, source)):
+    if (string.str_eq(issues, "ok")):
+      issues = "local shadows import alias"
+    else:
+      issues = append_issue(issues, "local shadows import alias")
+
+  if (source_has_func_shadowing_import_alias(source)):
+    if (string.str_eq(issues, "ok")):
+      issues = "func shadows import alias"
+    else:
+      issues = append_issue(issues, "func shadows import alias")
 
   if (string.len(call_ident) > 0 and count_symbol_kind(symbols, "func", call_ident) == 0 and source_imports_symbol(source, call_ident) == false):
     if (string.str_eq(issues, "ok")):

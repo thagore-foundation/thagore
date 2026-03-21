@@ -1,0 +1,1 @@
+import pkg.util as tool func main() -> i32: let tool: i32 = 1 return tool
