@@ -1,2 +1,2 @@
-func helper() -> i32: return 1
 42
+func helper() -> i32: return 1

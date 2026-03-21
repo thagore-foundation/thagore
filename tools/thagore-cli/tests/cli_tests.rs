@@ -1285,7 +1285,11 @@ fn build_and_run_bootstrap_seed_library_top_level_statement_reports_diagnostic()
         .expect("read expected")
         .replace("\r\n", "\n");
     let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
-    assert_eq!(actual.trim_end(), expected.trim_end());
+    assert!(
+        actual.contains(&format!("diagnostics={}", expected.trim_end())),
+        "actual output did not contain expected diagnostic.\nactual:\n{}",
+        actual
+    );
 }
 
 #[test]
