@@ -1,0 +1,1 @@
+from pkg import helper func main() -> i32: let helper: i32 = 42 return helper
