@@ -253,6 +253,26 @@ func source_imports_name(source: str, target_name: str) -> bool:
       return true
   return false
 
+func source_has_func_shadowing_import(source: str) -> bool:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (string.str_eq(string.char_at(source, index), "f") == false):
+      index = index + 1
+      continue
+
+    if (string.str_eq(string.char_at(source, index + 1), "u") and string.str_eq(string.char_at(source, index + 2), "n") and string.str_eq(string.char_at(source, index + 3), "c") and chars.is_space(string.char_at(source, index + 4))):
+      index = index + 5
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let func_name = read_module_name(source, index)
+      index = index + string.len(func_name)
+      if (string.len(func_name) > 0 and string.str_eq(func_name, "main") == false and source_imports_name(source, func_name)):
+        return true
+      continue
+
+    index = index + 1
+  return false
+
 func analyze_imported_symbols(base_dir: str, source: str) -> str:
   let issues = ""
   let index: i32 = 0
@@ -398,7 +418,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "local shadows import")
 
-  if (string.len(func_name) > 0 and string.str_eq(func_name, "main") == false and source_imports_name(source, func_name)):
+  if (source_has_func_shadowing_import(source)):
     if (string.str_eq(issues, "ok")):
       issues = "func shadows import"
     else:
