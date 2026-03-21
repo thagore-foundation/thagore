@@ -109,6 +109,26 @@ func count_symbol_kind(symbols: str, target_kind: str, target_name: str) -> i32:
       count = count + 1
   return count
 
+func has_duplicate_items(items_text: str) -> bool:
+  let items = string.split(items_text, " | ")
+  let index: i32 = 0
+  while (index < array.len(items)):
+    let current = array.get(items, index)
+    if (string.len(current) == 0):
+      index = index + 1
+      continue
+    let seen: i32 = 0
+    let inner: i32 = 0
+    while (inner < array.len(items)):
+      let candidate = array.get(items, inner)
+      if (string.str_eq(current, candidate)):
+        seen = seen + 1
+      inner = inner + 1
+    if (seen > 1):
+      return true
+    index = index + 1
+  return false
+
 func is_module_char(ch: str) -> bool:
   return chars.is_ident_continue(ch) or string.str_eq(ch, ".")
 
@@ -257,6 +277,8 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let local_name = ""
   let return_ident = summary_field(summary, "return_ident")
   let call_ident = first_call_ident(report)
+  let resolved_imports = summary_field(imports, "resolved")
+  let missing_imports = summary_field(imports, "missing")
 
   if (local_sep > 0):
     let index: i32 = 0
@@ -287,6 +309,12 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       issues = "duplicate func"
     else:
       issues = append_issue(issues, "duplicate func")
+
+  if (has_duplicate_items(resolved_imports) or has_duplicate_items(missing_imports)):
+    if (string.str_eq(issues, "ok")):
+      issues = "duplicate import"
+    else:
+      issues = append_issue(issues, "duplicate import")
 
   if (string.len(call_ident) > 0 and count_symbol_kind(symbols, "func", call_ident) == 0 and source_imports_symbol(source, call_ident) == false):
     if (string.str_eq(issues, "ok")):
