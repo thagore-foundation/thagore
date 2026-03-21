@@ -359,6 +359,65 @@ func first_call_ident(report: str) -> str:
 
   return ""
 
+func first_call_arg_count(report: str) -> i32:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+
+  while (index < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let kind = token_kind(current)
+    let text = token_text(current)
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "func")):
+      index = index + 6
+      continue
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "let")):
+      if ((index + 5) < array.len(tokens)):
+        index = index + 6
+      else:
+        index = index + 2
+      continue
+
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "return")):
+      index = index + 2
+      continue
+
+    if (string.str_eq(kind, "ident") and (index + 2) < array.len(tokens)):
+      let open = token_text(array.get(tokens, index + 1))
+      if (string.str_eq(open, "(") == false):
+        index = index + 1
+        continue
+
+      let next = token_text(array.get(tokens, index + 2))
+      if (string.str_eq(next, ")")):
+        return 0
+      return 1
+
+    index = index + 1
+
+  return -1
+
+func source_declares_func_name(source: str, target_name: str) -> bool:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (string.str_eq(string.char_at(source, index), "f") == false):
+      index = index + 1
+      continue
+
+    if (string.str_eq(string.char_at(source, index + 1), "u") and string.str_eq(string.char_at(source, index + 2), "n") and string.str_eq(string.char_at(source, index + 3), "c") and chars.is_space(string.char_at(source, index + 4))):
+      index = index + 5
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let func_name = read_module_name(source, index)
+      index = index + string.len(func_name)
+      if (string.str_eq(func_name, target_name)):
+        return true
+      continue
+
+    index = index + 1
+  return false
+
 pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: str, source: str, report: str) -> str:
   let issues = analyze_with_imports(summary, symbols, imports)
   let func_name = summary_field(summary, "func")
@@ -367,6 +426,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let local_name = ""
   let return_ident = summary_field(summary, "return_ident")
   let call_ident = first_call_ident(report)
+  let call_arg_count = first_call_arg_count(report)
   let resolved_imports = summary_field(imports, "resolved")
   let missing_imports = summary_field(imports, "missing")
 
@@ -429,6 +489,12 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       issues = "unknown callee"
     else:
       issues = append_issue(issues, "unknown callee")
+
+  if (string.len(call_ident) > 0 and call_arg_count > 0 and (source_declares_func_name(source, call_ident) or source_imports_name(source, call_ident))):
+    if (string.str_eq(issues, "ok")):
+      issues = "call arity mismatch"
+    else:
+      issues = append_issue(issues, "call arity mismatch")
 
   let import_issues = analyze_imported_symbols(base_dir, source)
   if (string.str_eq(import_issues, "ok")):
