@@ -674,10 +674,13 @@ func first_assignment_target(report: str) -> str:
     let current = array.get(tokens, index)
     let next = array.get(tokens, index + 1)
     if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=")):
-      let prev_text = ""
-      if (index > 0):
-        prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
+      let is_let_init = false
+      if (index > 2):
+        let prev = array.get(tokens, index - 1)
+        let prev2 = array.get(tokens, index - 2)
+        let prev3 = array.get(tokens, index - 3)
+        is_let_init = string.str_eq(token_text(prev), ":") and string.str_eq(token_kind(prev2), "ident") and string.str_eq(token_kind(prev3), "kw") and string.str_eq(token_text(prev3), "let")
+      if (is_let_init == false):
         return token_text(current)
     index = index + 1
   return ""
@@ -690,10 +693,13 @@ func first_assignment_value(report: str) -> str:
     let next = array.get(tokens, index + 1)
     let value = array.get(tokens, index + 2)
     if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=")):
-      let prev_text = ""
-      if (index > 0):
-        prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
+      let is_let_init = false
+      if (index > 2):
+        let prev = array.get(tokens, index - 1)
+        let prev2 = array.get(tokens, index - 2)
+        let prev3 = array.get(tokens, index - 3)
+        is_let_init = string.str_eq(token_text(prev), ":") and string.str_eq(token_kind(prev2), "ident") and string.str_eq(token_kind(prev3), "kw") and string.str_eq(token_text(prev3), "let")
+      if (is_let_init == false):
         return token_text(value)
     index = index + 1
   return ""
@@ -707,10 +713,13 @@ func first_assignment_call_ident(report: str) -> str:
     let value = array.get(tokens, index + 2)
     let open = array.get(tokens, index + 3)
     if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=") and string.str_eq(token_kind(value), "ident") and string.str_eq(token_text(open), "(")):
-      let prev_text = ""
-      if (index > 0):
-        prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
+      let is_let_init = false
+      if (index > 2):
+        let prev = array.get(tokens, index - 1)
+        let prev2 = array.get(tokens, index - 2)
+        let prev3 = array.get(tokens, index - 3)
+        is_let_init = string.str_eq(token_text(prev), ":") and string.str_eq(token_kind(prev2), "ident") and string.str_eq(token_kind(prev3), "kw") and string.str_eq(token_text(prev3), "let")
+      if (is_let_init == false):
         return token_text(value)
     index = index + 1
   return ""
