@@ -146,6 +146,16 @@ func is_decimal_text(text: str) -> bool:
     index = index + 1
   return true
 
+func is_bool_literal(text: str) -> bool:
+  return string.str_eq(text, "true") or string.str_eq(text, "false")
+
+func literal_type_name(text: str) -> str:
+  if (is_decimal_text(text)):
+    return "i32"
+  if (is_bool_literal(text)):
+    return "bool"
+  return ""
+
 func has_duplicate_items(items_text: str) -> bool:
   let items = string.split(items_text, " | ")
   let index: i32 = 0
@@ -473,7 +483,16 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       local_name = string.concat(local_name, string.char_at(local_binding, index))
       index = index + 1
 
-  if (string.len(return_ident) > 0 and is_decimal_text(return_ident) == false and symbols_have_kind(symbols, "local", return_ident) == false and symbols_have_kind(symbols, "func", return_ident) == false and source_imports_symbol(source, return_ident) == false):
+  let return_type = summary_field(summary, "return")
+  let return_literal_type = literal_type_name(return_ident)
+
+  if (string.len(return_literal_type) > 0 and string.len(return_type) > 0 and string.str_eq(return_literal_type, return_type) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "return type mismatch"
+    else:
+      issues = append_issue(issues, "return type mismatch")
+
+  if (string.len(return_ident) > 0 and string.len(return_literal_type) == 0 and symbols_have_kind(symbols, "local", return_ident) == false and symbols_have_kind(symbols, "func", return_ident) == false and source_imports_symbol(source, return_ident) == false):
     if (string.str_eq(issues, "ok")):
       issues = "unknown return ident"
     else:
