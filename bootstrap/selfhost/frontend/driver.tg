@@ -3,6 +3,7 @@ from . import parser
 from . import symbols
 from . import diagnostics
 from . import resolver
+from . import module_kind
 import std.fs as fs
 import std.string as string
 
@@ -10,7 +11,35 @@ pub func normalize_source(source: str) -> str:
   let normalized_crlf = string.replace(source, "\r\n", "\n")
   return string.replace(normalized_crlf, "\r", "\n")
 
-pub func analyze_source(cwd: str, source: str) -> str:
+func append_issue(out: str, issue: str) -> str:
+  if (string.len(issue) == 0):
+    return out
+  if (string.str_eq(out, "ok") or string.len(out) == 0):
+    return issue
+  return string.concat(out, string.concat(" | ", issue))
+
+func filter_executable_only_issues(issues: str, current_kind: str) -> str:
+  if (string.str_eq(current_kind, module_kind.library_module()) == false):
+    return issues
+  if (string.str_eq(issues, "ok")):
+    return "ok"
+  let parts = string.split(issues, " | ")
+  let kept = ""
+  for part in parts:
+    if (string.str_eq(part, "missing func") or string.str_eq(part, "missing return") or string.str_eq(part, "missing main") or string.str_eq(part, "missing symbols")):
+      continue
+    kept = append_issue(kept, part)
+  if (string.len(kept) == 0):
+    return "ok"
+  return kept
+
+pub func executable_root_kind() -> str:
+  return module_kind.executable_root()
+
+pub func library_module_kind() -> str:
+  return module_kind.library_module()
+
+pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)
   let report = lexer.scan(normalized)
   let summary = parser.summary(report)
@@ -20,11 +49,21 @@ pub func analyze_source(cwd: str, source: str) -> str:
   let with_summary = string.concat(left, string.concat(" || summary=", summary))
   let with_symbols = string.concat(with_summary, string.concat(" || symbols=", table))
   let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
-  let issues = diagnostics.analyze_semantics(summary, table, imports, cwd, normalized, report)
+  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, normalized, report)
+  let issues = filter_executable_only_issues(semantic_issues, current_kind)
+  let kind_issue = module_kind.validate_top_level(current_kind, normalized)
+  if (string.len(kind_issue) > 0):
+    issues = append_issue(issues, kind_issue)
   return string.concat(with_imports, string.concat(" || diagnostics=", issues))
 
+pub func analyze_source(cwd: str, source: str) -> str:
+  return analyze_source_with_kind(cwd, source, executable_root_kind())
+
 pub func analyze_path(cwd: str, path: str) -> str:
+  return analyze_path_with_kind(cwd, path, executable_root_kind())
+
+pub func analyze_path_with_kind(cwd: str, path: str, current_kind: str) -> str:
   let source = fs.read(path)
   if (string.len(source) == 0):
     return ""
-  return analyze_source(cwd, source)
+  return analyze_source_with_kind(cwd, source, current_kind)

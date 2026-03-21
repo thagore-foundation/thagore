@@ -425,8 +425,10 @@ Current status:
 - seed modules are now mirrored there as the initial reusable frontend slice
 - the bootstrap-seed CLI harness now builds from
   `bootstrap/selfhost/frontend/main.tg`
+- executable-root vs library-module mode now exists in the selfhost frontend
+  path and is gated with positive and negative bootstrap-seed coverage
 - the next implementation step is removing duplicate logic ownership from the
-  remaining seed-only files
+  remaining seed-only files and then starting implicit `main` desugar
 
 ### Milestone B: Differential frontend pass
 

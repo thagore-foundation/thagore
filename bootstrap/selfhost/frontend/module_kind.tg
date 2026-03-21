@@ -1,0 +1,24 @@
+import std.string as string
+
+pub func executable_root() -> str:
+  return "executable-root"
+
+pub func library_module() -> str:
+  return "library-module"
+
+func line_starts_with(line: str, prefix: str) -> bool:
+  let trimmed = string.trim(line)
+  return string.starts_with(trimmed, prefix)
+
+pub func validate_top_level(module_kind: str, source: str) -> str:
+  if (string.str_eq(module_kind, library_module()) == false):
+    return ""
+  let lines = string.split(source, "\n")
+  for line in lines:
+    let trimmed = string.trim(line)
+    if (string.len(trimmed) == 0):
+      continue
+    if (line_starts_with(trimmed, "import ") or line_starts_with(trimmed, "from ") or line_starts_with(trimmed, "func ")):
+      continue
+    return "library module has top-level statements"
+  return ""

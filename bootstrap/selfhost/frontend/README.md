@@ -27,6 +27,7 @@ Current scope:
 - symbol collection
 - import resolution
 - diagnostics-lite and semantic-lite used by the bootstrap seed
+- module-kind-aware analysis for executable roots vs library modules
 
 Boundary:
 
@@ -37,5 +38,5 @@ Boundary:
 Near-term next steps:
 
 1. switch seed harness to import these modules instead of owning duplicate logic
-2. add module-kind detection for executable root vs library module
-3. add desugared-output support for top-layer sugar
+2. add desugared-output support for top-layer sugar
+3. start implicit `main` desugar on executable-root mode only

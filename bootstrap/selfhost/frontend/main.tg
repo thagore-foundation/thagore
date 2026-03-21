@@ -9,11 +9,18 @@ func input_path() -> str:
     return arg
   return "tests/bootstrap_seed/sample.tg"
 
+func input_kind() -> str:
+  let arg = process.argv(2)
+  if (string.str_eq(arg, "library")):
+    return driver.library_module_kind()
+  return driver.executable_root_kind()
+
 pub func main() -> i32:
   let path = input_path()
   let source = fs.read(path)
   if (string.len(source) == 0):
     return 1
   let cwd = fs.getcwd()
-  println(driver.analyze_source(cwd, source))
+  let kind = input_kind()
+  println(driver.analyze_source_with_kind(cwd, source, kind))
   return 0
