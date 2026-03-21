@@ -398,6 +398,12 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "local shadows import")
 
+  if (string.len(func_name) > 0 and string.str_eq(func_name, "main") == false and source_imports_name(source, func_name)):
+    if (string.str_eq(issues, "ok")):
+      issues = "func shadows import"
+    else:
+      issues = append_issue(issues, "func shadows import")
+
   if (string.len(call_ident) > 0 and count_symbol_kind(symbols, "func", call_ident) == 0 and source_imports_symbol(source, call_ident) == false):
     if (string.str_eq(issues, "ok")):
       issues = "unknown callee"
