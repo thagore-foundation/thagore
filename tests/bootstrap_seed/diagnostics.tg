@@ -136,6 +136,16 @@ func any_local_shadows_import(symbols: str, source: str) -> bool:
     index = index + 1
   return false
 
+func is_decimal_text(text: str) -> bool:
+  if (string.len(text) == 0):
+    return false
+  let index: i32 = 0
+  while (index < string.len(text)):
+    if (chars.is_digit(string.char_at(text, index)) == false):
+      return false
+    index = index + 1
+  return true
+
 func has_duplicate_items(items_text: str) -> bool:
   let items = string.split(items_text, " | ")
   let index: i32 = 0
@@ -463,7 +473,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       local_name = string.concat(local_name, string.char_at(local_binding, index))
       index = index + 1
 
-  if (string.len(return_ident) > 0 and symbols_have_kind(symbols, "local", return_ident) == false):
+  if (string.len(return_ident) > 0 and is_decimal_text(return_ident) == false and symbols_have_kind(symbols, "local", return_ident) == false):
     if (string.str_eq(issues, "ok")):
       issues = "unknown return ident"
     else:
