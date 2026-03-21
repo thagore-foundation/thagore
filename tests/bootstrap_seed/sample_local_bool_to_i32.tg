@@ -1,0 +1,1 @@
+func main() -> i32: let flag: i32 = true return 0

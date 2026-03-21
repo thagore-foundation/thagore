@@ -470,7 +470,10 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let func_name = summary_field(summary, "func")
   let local_binding = summary_field(summary, "first_local")
   let local_sep = string.find(local_binding, ":")
+  let local_eq = string.find(local_binding, "=")
   let local_name = ""
+  let local_type_name = ""
+  let local_value = ""
   let return_ident = summary_field(summary, "return_ident")
   let call_ident = first_call_ident(report)
   let call_arg_count = first_call_arg_count(report)
@@ -482,9 +485,24 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     while (index < local_sep):
       local_name = string.concat(local_name, string.char_at(local_binding, index))
       index = index + 1
+    index = local_sep + 1
+    while (index < local_eq):
+      local_type_name = string.concat(local_type_name, string.char_at(local_binding, index))
+      index = index + 1
+    index = local_eq + 1
+    while (index < string.len(local_binding)):
+      local_value = string.concat(local_value, string.char_at(local_binding, index))
+      index = index + 1
 
   let return_type = summary_field(summary, "return")
   let return_literal_type = literal_type_name(return_ident)
+  let local_literal_type = literal_type_name(local_value)
+
+  if (string.len(local_literal_type) > 0 and string.len(local_type_name) > 0 and string.str_eq(local_literal_type, local_type_name) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "local type mismatch"
+    else:
+      issues = append_issue(issues, "local type mismatch")
 
   if (string.len(return_literal_type) > 0 and string.len(return_type) > 0 and string.str_eq(return_literal_type, return_type) == false):
     if (string.str_eq(issues, "ok")):
