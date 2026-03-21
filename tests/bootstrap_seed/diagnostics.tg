@@ -609,6 +609,64 @@ func source_declares_func_name(source: str, target_name: str) -> bool:
     index = index + 1
   return false
 
+func source_declared_func_return_type(source: str, target_name: str) -> str:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (string.str_eq(string.char_at(source, index), "f") == false):
+      index = index + 1
+      continue
+
+    if (string.str_eq(string.char_at(source, index + 1), "u") and string.str_eq(string.char_at(source, index + 2), "n") and string.str_eq(string.char_at(source, index + 3), "c") and chars.is_space(string.char_at(source, index + 4))):
+      index = index + 5
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let func_name = read_module_name(source, index)
+      index = index + string.len(func_name)
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      while (string.str_eq(string.char_at(source, index), "(") == false and index < string.len(source)):
+        index = index + 1
+      while (string.str_eq(string.char_at(source, index), "-") == false and index < string.len(source)):
+        index = index + 1
+      if (string.str_eq(string.char_at(source, index), "-") and string.str_eq(string.char_at(source, index + 1), ">")):
+        index = index + 2
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let return_type = read_module_name(source, index)
+      index = index + string.len(return_type)
+      if (string.str_eq(func_name, target_name)):
+        return return_type
+      continue
+
+    index = index + 1
+  return ""
+
+func first_return_call_ident(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+  while (index + 2 < array.len(tokens)):
+    let current = array.get(tokens, index)
+    if (string.str_eq(token_kind(current), "kw") and string.str_eq(token_text(current), "return")):
+      let callee = array.get(tokens, index + 1)
+      let open = array.get(tokens, index + 2)
+      if (string.str_eq(token_kind(callee), "ident") and string.str_eq(token_text(open), "(")):
+        return token_text(callee)
+    index = index + 1
+  return ""
+
+func first_local_call_ident(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+  while (index + 6 < array.len(tokens)):
+    let current = array.get(tokens, index)
+    if (string.str_eq(token_kind(current), "kw") and string.str_eq(token_text(current), "let")):
+      let value = array.get(tokens, index + 5)
+      let open = array.get(tokens, index + 6)
+      if (string.str_eq(token_kind(value), "ident") and string.str_eq(token_text(open), "(")):
+        return token_text(value)
+    index = index + 1
+  return ""
+
 pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: str, source: str, report: str) -> str:
   let issues = analyze_with_imports(summary, symbols, imports)
   let func_name = summary_field(summary, "func")
@@ -621,6 +679,8 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let return_ident = summary_field(summary, "return_ident")
   let call_ident = first_call_ident(report)
   let call_arg_count = first_call_arg_count(report)
+  let return_call_ident = first_return_call_ident(report)
+  let local_call_ident = first_local_call_ident(report)
   let resolved_imports = summary_field(imports, "resolved")
   let missing_imports = summary_field(imports, "missing")
 
@@ -641,6 +701,8 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let return_type = summary_field(summary, "return")
   let return_literal_type = literal_type_name(return_ident)
   let local_literal_type = literal_type_name(local_value)
+  let return_call_type = source_declared_func_return_type(source, return_call_ident)
+  let local_call_type = source_declared_func_return_type(source, local_call_ident)
 
   if (string.len(local_literal_type) > 0 and string.len(local_type_name) > 0 and string.str_eq(local_literal_type, local_type_name) == false):
     if (string.str_eq(issues, "ok")):
@@ -648,11 +710,23 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "local type mismatch")
 
+  if (string.len(local_call_ident) > 0 and string.len(local_call_type) > 0 and string.len(local_type_name) > 0 and string.str_eq(local_call_type, local_type_name) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "local call result type mismatch"
+    else:
+      issues = append_issue(issues, "local call result type mismatch")
+
   if (string.len(return_literal_type) > 0 and string.len(return_type) > 0 and string.str_eq(return_literal_type, return_type) == false):
     if (string.str_eq(issues, "ok")):
       issues = "return type mismatch"
     else:
       issues = append_issue(issues, "return type mismatch")
+
+  if (string.len(return_call_ident) > 0 and string.len(return_call_type) > 0 and string.len(return_type) > 0 and string.str_eq(return_call_type, return_type) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "return call result type mismatch"
+    else:
+      issues = append_issue(issues, "return call result type mismatch")
 
   if (string.len(return_ident) > 0 and string.len(return_literal_type) == 0 and symbols_have_kind(symbols, "local", return_ident) == false and symbols_have_kind(symbols, "func", return_ident) == false and source_imports_symbol(source, return_ident) == false):
     if (string.str_eq(issues, "ok")):
