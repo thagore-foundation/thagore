@@ -296,3 +296,20 @@ If any required feature is:
 then bootstrap readiness is not met.
 
 This plan treats that as a hard stop, not a warning.
+
+## 11. Handoff To Self-Host
+
+Bootstrap-readiness work is no longer the blocking document for the next line.
+The next active plan is:
+
+- `docs/plan/selfhost-bootstrap.md`
+
+That plan starts from the current state:
+
+- bootstrap probe green on Windows x64 and Linux x64
+- selfhost rehearsal workflow green
+- bootstrap frontend seed closed for the current seed scope
+
+The next engineering move is not more seed expansion. It is extracting the seed
+into reusable compiler modules and starting `stage0 -> stage1 -> stage2`
+self-host work under the self-host plan.
