@@ -1,2 +1,2 @@
-import std.string as string
+func helper() -> i32: return 1
 42
