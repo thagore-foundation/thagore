@@ -220,6 +220,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_duplicate_import_alias_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_local_shadows_import_alias_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_func_shadows_import_alias_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_import_alias_usage_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_imported_symbol_reports_diagnostic -- --nocapture
@@ -285,6 +286,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_duplicate_import_alias_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_local_shadows_import_alias_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_func_shadows_import_alias_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_import_alias_usage_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_unknown_imported_symbol_reports_diagnostic -- --nocapture

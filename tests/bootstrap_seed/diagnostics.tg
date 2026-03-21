@@ -414,6 +414,36 @@ func source_has_func_shadowing_import_alias(source: str) -> bool:
     index = index + 1
   return false
 
+func source_has_unknown_import_alias_usage(report: str, symbols: str, source: str) -> bool:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+
+  while (index < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let kind = token_kind(current)
+    let text = token_text(current)
+
+    if (string.str_eq(kind, "kw") and (string.str_eq(text, "import") or string.str_eq(text, "from"))):
+      index = index + 1
+      while (index < array.len(tokens)):
+        let next_kind = token_kind(array.get(tokens, index))
+        let next_text = token_text(array.get(tokens, index))
+        if (string.str_eq(next_kind, "kw") and (string.str_eq(next_text, "func") or string.str_eq(next_text, "let") or string.str_eq(next_text, "return") or string.str_eq(next_text, "import") or string.str_eq(next_text, "from"))):
+          break
+        index = index + 1
+      continue
+
+    if (string.str_eq(kind, "ident") and (index + 2) < array.len(tokens)):
+      let dot = token_text(array.get(tokens, index + 1))
+      let member_kind = token_kind(array.get(tokens, index + 2))
+      if (string.str_eq(dot, ".") and string.str_eq(member_kind, "ident")):
+        if (source_imports_alias(source, text) == false and symbols_have_kind(symbols, "local", text) == false and symbols_have_kind(symbols, "func", text) == false):
+          return true
+
+    index = index + 1
+
+  return false
+
 func source_has_func_shadowing_import(source: str) -> bool:
   let index: i32 = 0
   while (index < string.len(source)):
@@ -689,6 +719,12 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       issues = "func shadows import alias"
     else:
       issues = append_issue(issues, "func shadows import alias")
+
+  if (source_has_unknown_import_alias_usage(report, symbols, source)):
+    if (string.str_eq(issues, "ok")):
+      issues = "unknown import alias usage"
+    else:
+      issues = append_issue(issues, "unknown import alias usage")
 
   if (string.len(call_ident) > 0 and count_symbol_kind(symbols, "func", call_ident) == 0 and source_imports_symbol(source, call_ident) == false):
     if (string.str_eq(issues, "ok")):
