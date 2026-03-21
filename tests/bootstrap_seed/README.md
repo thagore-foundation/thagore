@@ -25,3 +25,7 @@ The reusable extraction target now starts under:
 
 `tests/bootstrap_seed/` remains the harness and regression corpus until the
 self-host frontend slice fully switches over to those reusable modules.
+
+The executable used by the bootstrap-seed CLI tests now builds from:
+
+- `bootstrap/selfhost/frontend/main.tg`

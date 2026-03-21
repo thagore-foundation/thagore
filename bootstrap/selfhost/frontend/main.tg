@@ -1,0 +1,19 @@
+from . import driver
+import std.fs as fs
+import std.process as process
+import std.string as string
+
+func input_path() -> str:
+  let arg = process.argv(1)
+  if (string.len(arg) > 0):
+    return arg
+  return "tests/bootstrap_seed/sample.tg"
+
+pub func main() -> i32:
+  let path = input_path()
+  let source = fs.read(path)
+  if (string.len(source) == 0):
+    return 1
+  let cwd = fs.getcwd()
+  println(driver.analyze_source(cwd, source))
+  return 0

@@ -423,8 +423,10 @@ Current status:
 
 - extraction has started under `bootstrap/selfhost/frontend/`
 - seed modules are now mirrored there as the initial reusable frontend slice
-- the next implementation step is switching the seed harness to depend on that
-  path instead of owning duplicate copies
+- the bootstrap-seed CLI harness now builds from
+  `bootstrap/selfhost/frontend/main.tg`
+- the next implementation step is removing duplicate logic ownership from the
+  remaining seed-only files
 
 ### Milestone B: Differential frontend pass
 

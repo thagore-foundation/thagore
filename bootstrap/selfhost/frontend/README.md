@@ -18,6 +18,7 @@ Current contents:
 - `resolver.tg`
 - `diagnostics.tg`
 - `driver.tg`
+- `main.tg`
 
 Current scope:
 
