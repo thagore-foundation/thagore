@@ -109,6 +109,33 @@ func count_symbol_kind(symbols: str, target_kind: str, target_name: str) -> i32:
       count = count + 1
   return count
 
+func symbols_have_kind(symbols: str, target_kind: str, target_name: str) -> bool:
+  return count_symbol_kind(symbols, target_kind, target_name) > 0
+
+func any_local_shadows_import(symbols: str, source: str) -> bool:
+  let items = string.split(symbols, " | ")
+  let index: i32 = 0
+  while (index < array.len(items)):
+    let item = array.get(items, index)
+    let name_sep = string.find(item, ":")
+    if (name_sep < 0):
+      index = index + 1
+      continue
+    let name = ""
+    let cursor: i32 = 0
+    while (cursor < name_sep):
+      name = string.concat(name, string.char_at(item, cursor))
+      cursor = cursor + 1
+    let kind = ""
+    let kind_cursor: i32 = name_sep + 1
+    while (kind_cursor < string.len(item)):
+      kind = string.concat(kind, string.char_at(item, kind_cursor))
+      kind_cursor = kind_cursor + 1
+    if (string.str_eq(kind, "local") and source_imports_name(source, name)):
+      return true
+    index = index + 1
+  return false
+
 func has_duplicate_items(items_text: str) -> bool:
   let items = string.split(items_text, " | ")
   let index: i32 = 0
@@ -436,7 +463,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       local_name = string.concat(local_name, string.char_at(local_binding, index))
       index = index + 1
 
-  if (string.len(return_ident) > 0 and string.len(local_name) > 0 and string.str_eq(return_ident, local_name) == false):
+  if (string.len(return_ident) > 0 and symbols_have_kind(symbols, "local", return_ident) == false):
     if (string.str_eq(issues, "ok")):
       issues = "unknown return ident"
     else:
@@ -472,7 +499,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
     else:
       issues = append_issue(issues, "duplicate imported symbol")
 
-  if (string.len(local_name) > 0 and source_imports_name(source, local_name)):
+  if (any_local_shadows_import(symbols, source)):
     if (string.str_eq(issues, "ok")):
       issues = "local shadows import"
     else:

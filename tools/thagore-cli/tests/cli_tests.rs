@@ -1715,6 +1715,45 @@ fn build_and_run_bootstrap_seed_local_shadows_import_reports_diagnostic() {
 }
 
 #[test]
+fn build_and_run_bootstrap_seed_second_local_shadows_import_reports_diagnostic() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture_root = repo_root.join("tests/bootstrap_seed/modules_import_shadow_second_local");
+    let source = repo_root.join("tests/bootstrap_seed/main.tg");
+    let expected_path = fixture_root.join("expected.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&fixture_root)
+        .arg("main.tg")
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
 fn build_and_run_bootstrap_seed_func_shadows_import_reports_diagnostic() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-seed");
