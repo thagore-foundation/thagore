@@ -15,7 +15,7 @@ func format_token(kind: str, text: str, line: i32, column: i32) -> str:
   return string.concat(with_sep, string.from_int(column))
 
 func is_keyword(text: str) -> bool:
-  return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return") or string.str_eq(text, "import") or string.str_eq(text, "from")
+  return string.str_eq(text, "func") or string.str_eq(text, "let") or string.str_eq(text, "return") or string.str_eq(text, "import") or string.str_eq(text, "from") or string.str_eq(text, "if") or string.str_eq(text, "while")
 
 pub func scan(source: str) -> str:
   return scan_line(source, 1, "")

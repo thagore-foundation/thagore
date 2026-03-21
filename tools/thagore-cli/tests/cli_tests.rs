@@ -2225,6 +2225,166 @@ fn build_and_run_bootstrap_seed_local_call_bool_to_i32_reports_diagnostic() {
 }
 
 #[test]
+fn build_and_run_bootstrap_seed_assignment_to_unknown_local_reports_diagnostic() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("tests/bootstrap_seed/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_assignment_to_unknown_local.tg");
+    let expected_path =
+        repo_root.join("tests/bootstrap_seed/expected_assignment_to_unknown_local.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .arg(sample.to_str().expect("utf8"))
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
+fn build_and_run_bootstrap_seed_assignment_bool_to_i32_reports_diagnostic() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("tests/bootstrap_seed/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_assignment_bool_to_i32.tg");
+    let expected_path =
+        repo_root.join("tests/bootstrap_seed/expected_assignment_bool_to_i32.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .arg(sample.to_str().expect("utf8"))
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
+fn build_and_run_bootstrap_seed_condition_int_literal_reports_diagnostic() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("tests/bootstrap_seed/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_condition_int_literal.tg");
+    let expected_path =
+        repo_root.join("tests/bootstrap_seed/expected_condition_int_literal.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .arg(sample.to_str().expect("utf8"))
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
+fn build_and_run_bootstrap_seed_condition_call_i32_reports_diagnostic() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("tests/bootstrap_seed/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_condition_call_i32.tg");
+    let expected_path =
+        repo_root.join("tests/bootstrap_seed/expected_condition_call_i32.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .arg(sample.to_str().expect("utf8"))
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
 fn build_and_run_bootstrap_seed_dotted_module_resolver() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-seed");

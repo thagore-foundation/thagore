@@ -667,6 +667,145 @@ func first_local_call_ident(report: str) -> str:
     index = index + 1
   return ""
 
+func first_assignment_target(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+  while (index + 1 < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let next = array.get(tokens, index + 1)
+    if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=")):
+      let prev_text = ""
+      if (index > 0):
+        prev_text = token_text(array.get(tokens, index - 1))
+      if (string.str_eq(prev_text, "let") == false):
+        return token_text(current)
+    index = index + 1
+  return ""
+
+func first_assignment_value(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+  while (index + 2 < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let next = array.get(tokens, index + 1)
+    let value = array.get(tokens, index + 2)
+    if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=")):
+      let prev_text = ""
+      if (index > 0):
+        prev_text = token_text(array.get(tokens, index - 1))
+      if (string.str_eq(prev_text, "let") == false):
+        return token_text(value)
+    index = index + 1
+  return ""
+
+func first_assignment_call_ident(report: str) -> str:
+  let tokens = string.split(report, " | ")
+  let index: i32 = 0
+  while (index + 3 < array.len(tokens)):
+    let current = array.get(tokens, index)
+    let next = array.get(tokens, index + 1)
+    let value = array.get(tokens, index + 2)
+    let open = array.get(tokens, index + 3)
+    if (string.str_eq(token_kind(current), "ident") and string.str_eq(token_text(next), "=") and string.str_eq(token_kind(value), "ident") and string.str_eq(token_text(open), "(")):
+      let prev_text = ""
+      if (index > 0):
+        prev_text = token_text(array.get(tokens, index - 1))
+      if (string.str_eq(prev_text, "let") == false):
+        return token_text(value)
+    index = index + 1
+  return ""
+
+func condition_expr_type(source: str) -> str:
+  let expr = first_condition_expr(source)
+  if (string.len(expr) == 0):
+    return ""
+  let literal = literal_type_name(expr)
+  if (string.len(literal) > 0):
+    return literal
+  let open = string.find(expr, "(")
+  if (open > 0):
+    let callee = ""
+    let index: i32 = 0
+    while (index < open):
+      callee = string.concat(callee, string.char_at(expr, index))
+      index = index + 1
+    return source_declared_func_return_type(source, callee)
+  return source_local_declared_type(source, expr)
+
+func source_local_declared_type(source: str, target_name: str) -> str:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    if (string.str_eq(string.char_at(source, index), "l") == false):
+      index = index + 1
+      continue
+    if (string.str_eq(string.char_at(source, index + 1), "e") and string.str_eq(string.char_at(source, index + 2), "t") and chars.is_space(string.char_at(source, index + 3))):
+      index = index + 4
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let local_name = read_module_name(source, index)
+      index = index + string.len(local_name)
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      if (string.str_eq(string.char_at(source, index), ":")):
+        index = index + 1
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      let local_type = read_module_name(source, index)
+      index = index + string.len(local_type)
+      if (string.str_eq(local_name, target_name)):
+        return local_type
+      continue
+    index = index + 1
+  return ""
+
+func source_reassignment_value(source: str, target_name: str) -> str:
+  let index: i32 = 0
+  while (index < string.len(source)):
+    let name = read_module_name(source, index)
+    if (string.str_eq(name, target_name)):
+      index = index + string.len(name)
+      while (chars.is_space(string.char_at(source, index))):
+        index = index + 1
+      if (string.str_eq(string.char_at(source, index), "=")):
+        index = index + 1
+        while (chars.is_space(string.char_at(source, index))):
+          index = index + 1
+        let value = ""
+        while (index < string.len(source)):
+          let ch = string.char_at(source, index)
+          if (chars.is_space(ch)):
+            return value
+          value = string.concat(value, ch)
+          index = index + 1
+        return value
+      continue
+    index = index + 1
+  return ""
+
+func first_condition_expr(source: str) -> str:
+  let if_marker = "if ("
+  let while_marker = "while ("
+  let start_if = string.find(source, if_marker)
+  let start_while = string.find(source, while_marker)
+  let start = -1
+  if (start_if >= 0 and (start_while < 0 or start_if < start_while)):
+    start = start_if + string.len(if_marker)
+  else:
+    if (start_while >= 0):
+      start = start_while + string.len(while_marker)
+  if (start < 0):
+    return ""
+  let expr = ""
+  let index: i32 = start
+  while (index < string.len(source)):
+    let ch = string.char_at(source, index)
+    if (string.str_eq(ch, ")")):
+      return expr
+    if (chars.is_space(ch) == false):
+      expr = string.concat(expr, ch)
+    index = index + 1
+  return expr
+
 pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: str, source: str, report: str) -> str:
   let issues = analyze_with_imports(summary, symbols, imports)
   let func_name = summary_field(summary, "func")
@@ -681,6 +820,9 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let call_arg_count = first_call_arg_count(report)
   let return_call_ident = first_return_call_ident(report)
   let local_call_ident = first_local_call_ident(report)
+  let assignment_target = first_assignment_target(report)
+  let assignment_value = first_assignment_value(report)
+  let assignment_call_ident = first_assignment_call_ident(report)
   let resolved_imports = summary_field(imports, "resolved")
   let missing_imports = summary_field(imports, "missing")
 
@@ -703,6 +845,10 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   let local_literal_type = literal_type_name(local_value)
   let return_call_type = source_declared_func_return_type(source, return_call_ident)
   let local_call_type = source_declared_func_return_type(source, local_call_ident)
+  let assignment_target_type = source_local_declared_type(source, assignment_target)
+  let assignment_literal_type = literal_type_name(assignment_value)
+  let assignment_call_type = source_declared_func_return_type(source, assignment_call_ident)
+  let cond_type = condition_expr_type(source)
 
   if (string.len(local_literal_type) > 0 and string.len(local_type_name) > 0 and string.str_eq(local_literal_type, local_type_name) == false):
     if (string.str_eq(issues, "ok")):
@@ -727,6 +873,30 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       issues = "return call result type mismatch"
     else:
       issues = append_issue(issues, "return call result type mismatch")
+
+  if (string.len(assignment_target) > 0 and string.len(assignment_target_type) == 0):
+    if (string.str_eq(issues, "ok")):
+      issues = "assignment to unknown local"
+    else:
+      issues = append_issue(issues, "assignment to unknown local")
+
+  if (string.len(assignment_target_type) > 0 and string.len(assignment_literal_type) > 0 and string.str_eq(assignment_target_type, assignment_literal_type) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "assignment type mismatch"
+    else:
+      issues = append_issue(issues, "assignment type mismatch")
+
+  if (string.len(assignment_target_type) > 0 and string.len(assignment_call_ident) > 0 and string.len(assignment_call_type) > 0 and string.str_eq(assignment_target_type, assignment_call_type) == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "assignment call result type mismatch"
+    else:
+      issues = append_issue(issues, "assignment call result type mismatch")
+
+  if (string.len(cond_type) > 0 and string.str_eq(cond_type, "bool") == false):
+    if (string.str_eq(issues, "ok")):
+      issues = "condition type mismatch"
+    else:
+      issues = append_issue(issues, "condition type mismatch")
 
   if (string.len(return_ident) > 0 and string.len(return_literal_type) == 0 and symbols_have_kind(symbols, "local", return_ident) == false and symbols_have_kind(symbols, "func", return_ident) == false and source_imports_symbol(source, return_ident) == false):
     if (string.str_eq(issues, "ok")):
