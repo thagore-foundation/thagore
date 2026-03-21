@@ -677,7 +677,7 @@ func first_assignment_target(report: str) -> str:
       let prev_text = ""
       if (index > 0):
         prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false):
+      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
         return token_text(current)
     index = index + 1
   return ""
@@ -693,7 +693,7 @@ func first_assignment_value(report: str) -> str:
       let prev_text = ""
       if (index > 0):
         prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false):
+      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
         return token_text(value)
     index = index + 1
   return ""
@@ -710,7 +710,7 @@ func first_assignment_call_ident(report: str) -> str:
       let prev_text = ""
       if (index > 0):
         prev_text = token_text(array.get(tokens, index - 1))
-      if (string.str_eq(prev_text, "let") == false):
+      if (string.str_eq(prev_text, "let") == false and string.str_eq(prev_text, ":") == false):
         return token_text(value)
     index = index + 1
   return ""
