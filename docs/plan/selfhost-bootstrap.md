@@ -64,6 +64,147 @@ Reason:
 - once frontend is stable, later stages can reuse it to author more compiler
   code in Thagore
 
+## 4.1 High-level bootstrap authoring surface
+
+The topmost bootstrap authoring layer may use a narrower, more ergonomic
+surface than the stable self-host core, but only under strict constraints.
+
+This is not permission to loosen the language globally.
+
+Rules:
+
+- the sugar exists only for the highest bootstrap authoring layer
+- the lower self-host layer must keep the explicit core syntax
+- all sugar must desugar into the current stable core before normal type
+  checking, lowering, and codegen
+- runtime semantics, entrypoint semantics, and type semantics must remain those
+  of the core language, not a Python-like dynamic mode
+
+That gives two stacked layers:
+
+- `bootstrap authoring surface`: highest layer, optimized for writing compiler
+  code faster
+- `self-host core surface`: lower layer, explicit and stable, used as the real
+  compiler contract
+
+The lower layer remains the source of truth for correctness, determinism, and
+performance work.
+
+## 4.2 Allowed top-layer sugar
+
+Only the following two shortcuts are approved for the first self-host line.
+
+### A. Implicit executable entrypoint
+
+Executable bootstrap files may omit an explicit `main`.
+
+Example authoring form:
+
+```tg
+print("bootstrap")
+compile_next_stage()
+```
+
+Desugared core form:
+
+```tg
+func main() -> i32:
+  print("bootstrap")
+  compile_next_stage()
+  return 0
+```
+
+Constraints:
+
+- applies only to executable bootstrap entry files
+- does not apply to library modules
+- if a file already declares `func main`, no wrapper is synthesized
+- top-level `break`, `continue`, and `return` remain illegal
+- top-level declarations such as `func`, `struct`, `const`, and `import` must
+  preserve their current meaning
+
+Risk controls:
+
+- require a dedicated desugar pass test for executable-vs-library mode
+- add a diagnostic when the compiler cannot decide whether a unit is a library
+  module or an executable entry file
+- never synthesize `main` in imported modules
+
+### B. Omitted return type with static inference
+
+Functions in the highest bootstrap authoring layer may omit `-> T` only when
+the compiler can infer a single static return type without ambiguity.
+
+Example authoring form:
+
+```tg
+func token_count():
+  return 4
+```
+
+Desugared core form:
+
+```tg
+func token_count() -> i32:
+  return 4
+```
+
+Constraints:
+
+- this is static inference, not dynamic typing
+- all `return` sites in the function must agree on one type
+- if any branch disagrees, inference fails early
+- if no return value exists, desugar only to an explicitly defined core rule
+  such as `-> i32` plus synthesized `return 0`, or reject the form until such a
+  rule is formalized
+- public/stable lower-layer compiler code should keep explicit return types
+
+Risk controls:
+
+- reject ambiguous inference instead of guessing
+- reject mixed-type returns
+- reject functions whose control flow leaves the inferred result unclear
+- compare inferred signatures against golden normalized output in CI
+
+## 4.3 Explicitly forbidden sugar for now
+
+Do not add any of the following during the first self-host line:
+
+- block syntax changes
+- implicit assignment declarations
+- implicit receiver or impl rules
+- Python-style dynamic returns
+- context-sensitive parsing that changes meaning outside the bootstrap top layer
+
+Reason:
+
+- these areas threaten parser stability, diagnostics quality, and bootstrap
+  determinism
+
+## 4.4 Implementation model
+
+The implementation order for this sugar is fixed.
+
+1. parse the authoring surface into a distinct high-level AST mode
+2. run a desugar pass that emits the stable self-host core form
+3. run the normal frontend/typecheck pipeline on the desugared result
+4. keep normalized desugared output available for golden tests
+
+Do not let later compiler phases know whether the source started in sugared or
+core form.
+
+## 4.5 Exit criteria for top-layer sugar
+
+The top-layer sugar is acceptable only when all of the following are true:
+
+- every sugared form has a deterministic desugared core form
+- Linux x64 and Windows x64 produce identical normalized desugared output
+- executable files without `main` and library files without `main` are
+  distinguished correctly
+- return type inference never falls through to lowering/codegen as an internal
+  failure
+- the lower self-host core layer remains fully supported without the sugar
+
 ## 5. Immediate Milestones
 
 ### Milestone A: Seed to frontend library
