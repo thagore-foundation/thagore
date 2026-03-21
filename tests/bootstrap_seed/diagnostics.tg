@@ -473,7 +473,7 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
       local_name = string.concat(local_name, string.char_at(local_binding, index))
       index = index + 1
 
-  if (string.len(return_ident) > 0 and is_decimal_text(return_ident) == false and symbols_have_kind(symbols, "local", return_ident) == false):
+  if (string.len(return_ident) > 0 and is_decimal_text(return_ident) == false and symbols_have_kind(symbols, "local", return_ident) == false and symbols_have_kind(symbols, "func", return_ident) == false and source_imports_symbol(source, return_ident) == false):
     if (string.str_eq(issues, "ok")):
       issues = "unknown return ident"
     else:
