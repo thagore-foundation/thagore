@@ -205,6 +205,194 @@ The top-layer sugar is acceptable only when all of the following are true:
   failure
 - the lower self-host core layer remains fully supported without the sugar
 
+## 4.6 Technical implementation plan for top-layer sugar
+
+The next bootstrap step must implement the sugar in a narrow and testable way.
+This section is the execution plan, not just the language note.
+
+### Track 1: Module kind detection
+
+Goal:
+
+- distinguish executable bootstrap entry files from library modules before
+  implicit `main` synthesis is considered
+
+Required rule:
+
+- only files explicitly loaded as executable roots may use implicit `main`
+- imported modules are always library modules
+
+Implementation:
+
+1. add a frontend flag or parse context:
+   - `ExecutableRoot`
+   - `LibraryModule`
+2. thread that context from the driver into the high-level bootstrap parser
+3. reject any imported module that relies on top-level executable synthesis
+
+Acceptance:
+
+- executable root without `main` desugars successfully
+- library module without `main` does not synthesize one
+- imported file with top-level executable statements fails early and clearly
+
+Risk controls:
+
+- no filename-based guessing alone
+- module kind must come from driver intent, not heuristic parsing
+
+### Track 2: Implicit `main` desugar pass
+
+Goal:
+
+- convert top-level executable statements into an explicit core `main`
+
+Transform:
+
+- gather top-level executable statements in an `ExecutableRoot`
+- wrap them as:
+
+```tg
+func main() -> i32:
+  ...
+  return 0
+```
+
+Constraints:
+
+- preserve top-level declarations (`import`, `func`, `struct`, `const`)
+- preserve statement order
+- reject illegal top-level control flow:
+  - `return`
+  - `break`
+  - `continue`
+- if explicit `main` exists, disable synthesis
+- if both synthesized and explicit entrypoint logic would conflict, fail early
+
+Tests required:
+
+- executable file with only statements
+- executable file with imports + declarations + statements
+- executable file with explicit `main`
+- imported module with top-level statements
+- top-level illegal control-flow cases
+
+Acceptance:
+
+- normalized desugared output is stable on Linux x64 and Windows x64
+- later compiler phases see only explicit core `main`
+
+### Track 3: Return type inference for top layer only
+
+Goal:
+
+- permit omitted return annotations in the highest bootstrap authoring layer
+  while keeping static typing intact
+
+Allowed first scope:
+
+- literal returns
+- identifier returns where the identifier type is already known
+- simple direct call returns where callee return type is already known
+
+Not in first scope:
+
+- complex branch joins
+- recursive inference cycles
+- polymorphic/generalized inference
+- inference from backend effects
+
+Algorithm:
+
+1. collect all explicit `return` statements in a function
+2. classify each return expression into a known static type if possible
+3. if all collected returns agree on one type, synthesize `-> T`
+4. if any return is unknown or conflicting, emit a frontend diagnostic
+5. if the function has no return and no explicit annotation, reject for now
+   unless a separate explicit rule is approved later
+
+Acceptance:
+
+- inferred type appears in normalized desugared output
+- conflicts fail during frontend analysis
+- no omitted return type case falls through as an internal compiler error
+
+Risk controls:
+
+- do not silently default to `i32`
+- do not infer across ambiguous control-flow joins yet
+- do not let codegen decide inferred types
+
+### Track 4: Desugared-output observability
+
+Goal:
+
+- make sugared and core forms comparable in CI
+
+Implementation:
+
+- add a normalized desugared dump mode for bootstrap/self-host fixtures
+- golden-test the desugared form, not just final behavior
+
+Acceptance:
+
+- CI can compare:
+  - source authoring form
+  - desugared core form
+  - observable runtime output
+
+Reason:
+
+- this is the main defense against hidden semantic drift in bootstrap syntax
+
+### Track 5: Layer boundary enforcement
+
+Goal:
+
+- prevent top-layer sugar from leaking into the lower self-host core
+
+Implementation:
+
+- mark self-host source roots as one of:
+  - `bootstrap-authoring`
+  - `selfhost-core`
+- enable sugar only for the first class
+- add negative tests showing the same omitted forms are rejected in
+  `selfhost-core`
+
+Acceptance:
+
+- sugar is unavailable outside the designated bootstrap-authoring roots
+- core compiler code remains explicit and stable
+
+## 4.7 Order of execution before active bootstrap
+
+The order below is mandatory.
+
+1. extract reusable frontend modules from `tests/bootstrap_seed/` into
+   `bootstrap/selfhost/frontend/`
+2. add module kind detection
+3. add implicit `main` desugar with golden desugared output tests
+4. add narrow return type inference with conflict tests
+5. add layer-boundary enforcement tests
+6. add differential frontend corpus between Rust frontend and Thagore frontend
+7. only then start `stage0 -> stage1 -> stage2`
+
+Do not start the rebuild chain before steps 1 through 6 are green.
+
+## 4.8 Definition of "ready to begin active bootstrap"
+
+Active bootstrap may begin only when all of the following are true:
+
+- `bootstrap/selfhost/frontend/` exists and is reused by fixtures
+- top-layer sugar is implemented through a dedicated desugar pass
+- desugared output is golden-tested on Linux x64 and Windows x64
+- `selfhost-core` rejects top-layer-only sugar
+- differential frontend tests are green against the Rust-hosted reference
+
+At that point, the next step is no longer planning. It is the first real
+`stage0 -> stage1 -> stage2` compiler slice.
+
 ## 5. Immediate Milestones
 
 ### Milestone A: Seed to frontend library
