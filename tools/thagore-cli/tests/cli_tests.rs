@@ -1245,6 +1245,25 @@ fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_frontend_scan_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/scan.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn canonicalize_selfhost_frontend(stdout: &str) -> String {
     let marker = " || diagnostics=";
     let diagnostics = stdout
@@ -1435,6 +1454,97 @@ fn dump_selfhost_frontend_parse_reports_match_goldens() {
             "unexpected parse-stage output for {fixture}"
         );
     }
+}
+
+#[test]
+fn dump_selfhost_frontend_scan_reports_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-scan");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_scan_binary(&repo_root, &binary);
+
+    let cases = [
+        (
+            "tests/selfhost_frontend/ok_helper_call.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_ok_helper_call.txt",
+        ),
+        (
+            "tests/bootstrap_seed/sample_library_import_only.tg",
+            "library",
+            "tests/bootstrap_seed/expected_scan_library_import_only.txt",
+        ),
+    ];
+
+    for (fixture, kind, expected) in cases {
+        let sample = repo_root.join(fixture);
+        let expected_path = repo_root.join(expected);
+
+        let output = Command::new(&binary)
+            .current_dir(&repo_root)
+            .args([sample.to_str().expect("utf8"), kind])
+            .output()
+            .unwrap_or_else(|error| panic!("run scan stage for {fixture}: {error}"));
+        assert_eq!(output.status.code(), Some(0), "scan stage failed for {fixture}");
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected scan-stage output for {fixture}"
+        );
+    }
+}
+
+#[test]
+fn build_selfhost_frontend_stage_chain() {
+    let dir = TempDir::new().expect("temp dir");
+    let scan_binary = dir.path().join("bootstrap-selfhost-scan");
+    let parse_binary = dir.path().join("bootstrap-selfhost-parse");
+    let check_binary = dir.path().join("bootstrap-selfhost-check");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let sample = repo_root.join("tests/selfhost_frontend/ok_helper_call.tg");
+
+    build_selfhost_frontend_scan_binary(&repo_root, &scan_binary);
+    build_selfhost_frontend_parse_binary(&repo_root, &parse_binary);
+    build_selfhost_frontend_binary(&repo_root, &check_binary);
+
+    let scan = Command::new(&scan_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run scan stage");
+    assert_eq!(scan.status.code(), Some(0));
+    let scan_stdout = String::from_utf8_lossy(&scan.stdout).replace("\r\n", "\n");
+    assert!(scan_stdout.starts_with("tokens="), "unexpected scan output: {scan_stdout}");
+
+    let parse = Command::new(&parse_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run parse stage");
+    assert_eq!(parse.status.code(), Some(0));
+    let parse_stdout = String::from_utf8_lossy(&parse.stdout).replace("\r\n", "\n");
+    assert!(
+        parse_stdout.starts_with(scan_stdout.trim_end()),
+        "parse output does not extend scan output\nscan:\n{scan_stdout}\nparse:\n{parse_stdout}"
+    );
+
+    let check = Command::new(&check_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run check stage");
+    assert_eq!(check.status.code(), Some(0));
+    let check_stdout = String::from_utf8_lossy(&check.stdout).replace("\r\n", "\n");
+    assert!(
+        check_stdout.starts_with(parse_stdout.trim_end()),
+        "check output does not extend parse output\nparse:\n{parse_stdout}\ncheck:\n{check_stdout}"
+    );
+    assert!(check_stdout.contains(" || diagnostics=ok"), "unexpected check output: {check_stdout}");
 }
 
 #[test]

@@ -551,6 +551,9 @@ Current status on `indev-rewrite`:
   harness-oriented `main.tg`
 - `bootstrap/selfhost/frontend/parse.tg` now serves as the first dedicated
   pre-check stage entry, and bootstrap probe gates its output independently
+- `bootstrap/selfhost/frontend/scan.tg` now serves as the token-only stage
+  entry, and bootstrap probe gates a small `stage0 -> scan -> parse -> check`
+  chain so stage wiring can regress independently of the broader harness
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

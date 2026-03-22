@@ -19,6 +19,7 @@ Current contents:
 - `diagnostics.tg`
 - `driver.tg`
 - `report.tg`
+- `scan.tg`
 - `parse.tg`
 - `main.tg`
 
@@ -46,6 +47,8 @@ Current scope:
   stays focused on pipeline orchestration
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
   symbol/import output
+- `scan.tg` is the first dedicated token-only stage entry and anchors the
+  `stage0 -> scan -> parse -> check` chain gated in CI
 
 Boundary:
 
