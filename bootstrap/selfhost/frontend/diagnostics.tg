@@ -537,10 +537,6 @@ func first_call_ident(report: str) -> str:
         index = index + 2
       continue
 
-    if (string.str_eq(kind, "kw") and string.str_eq(text, "return")):
-      index = index + 2
-      continue
-
     if (string.str_eq(kind, "ident") and (index + 1) < array.len(tokens)):
       let next_text = token_text(array.get(tokens, index + 1))
       if (string.str_eq(next_text, "(")):
@@ -568,10 +564,6 @@ func first_call_arg_count(report: str) -> i32:
         index = index + 6
       else:
         index = index + 2
-      continue
-
-    if (string.str_eq(kind, "kw") and string.str_eq(text, "return")):
-      index = index + 2
       continue
 
     if (string.str_eq(kind, "ident") and (index + 2) < array.len(tokens)):
@@ -999,3 +991,4 @@ pub func analyze_semantics(summary: str, symbols: str, imports: str, base_dir: s
   return append_issue(issues, import_issues)
 
   return issues
+

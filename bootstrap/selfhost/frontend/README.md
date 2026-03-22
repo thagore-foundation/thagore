@@ -32,7 +32,8 @@ Current scope:
 - narrow static return-type inference for single-line funcs without `->`
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
-- first narrow differential corpus against the Rust-hosted frontend
+- first narrow differential corpus against the Rust-hosted frontend, including
+  call-arity drift checks
 
 Boundary:
 
@@ -42,6 +43,6 @@ Boundary:
 
 Near-term next steps:
 
-1. switch seed harness to import these modules instead of owning duplicate logic
-2. add desugared-output observability for synthesized executable roots and inferred signatures
+1. widen the differential corpus beyond narrow diagnostic labels
+2. add normalized frontend output parity beyond desugared source dumps
 3. widen return-type inference beyond literal-only cases when diagnostics remain fail-fast
