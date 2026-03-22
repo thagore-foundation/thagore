@@ -15,6 +15,12 @@ func input_kind() -> str:
     return driver.library_module_kind()
   return driver.executable_root_kind()
 
+func output_mode() -> str:
+  let arg = process.argv(3)
+  if (string.str_eq(arg, "dump-desugared")):
+    return arg
+  return "analyze"
+
 pub func main() -> i32:
   let path = input_path()
   let source = fs.read(path)
@@ -22,5 +28,9 @@ pub func main() -> i32:
     return 1
   let cwd = fs.getcwd()
   let kind = input_kind()
+  let mode = output_mode()
+  if (string.str_eq(mode, "dump-desugared")):
+    println(driver.desugar_source_with_kind(source, kind))
+    return 0
   println(driver.analyze_source_with_kind(cwd, source, kind))
   return 0

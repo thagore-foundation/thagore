@@ -42,7 +42,7 @@ pub func library_module_kind() -> str:
 
 pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)
-  let desugared = desugar.implicit_main(current_kind, normalized)
+  let desugared = desugar_source_with_kind(source, current_kind)
   let report = lexer.scan(desugared)
   let summary = parser.summary(report)
   let table = symbols.collect(report)
@@ -63,6 +63,10 @@ pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> s
   if (string.len(infer_issue) > 0):
     issues = append_issue(issues, infer_issue)
   return string.concat(with_imports, string.concat(" || diagnostics=", issues))
+
+pub func desugar_source_with_kind(source: str, current_kind: str) -> str:
+  let normalized = normalize_source(source)
+  return desugar.implicit_main(current_kind, normalized)
 
 pub func analyze_source(cwd: str, source: str) -> str:
   return analyze_source_with_kind(cwd, source, executable_root_kind())

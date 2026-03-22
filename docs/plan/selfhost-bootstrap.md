@@ -533,3 +533,12 @@ Self-host bootstrap has officially started only when:
 - CI runs a differential corpus against it
 
 That is the line between "planning/bootstrap-ready" and "active self-host".
+
+Current status on `indev-rewrite`:
+
+- `bootstrap/selfhost/frontend/` is now the canonical seed frontend slice
+- bootstrap probe already gates normalized desugared output for:
+  - implicit `main`
+  - inferred top-layer literal return types
+- the next concrete step is the first differential corpus between the Rust
+  frontend surface and the Thagore-authored frontend slice

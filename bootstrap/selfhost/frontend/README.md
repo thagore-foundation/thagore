@@ -31,6 +31,7 @@ Current scope:
 - implicit `main` synthesis for executable roots with top-level statements
 - narrow static return-type inference for single-line funcs without `->`
 - primitive/simple-call assignment diagnostics and non-bool condition checks
+- desugared dump mode for golden-testing synthesized core form
 
 Boundary:
 
