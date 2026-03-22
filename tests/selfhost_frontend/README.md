@@ -16,6 +16,8 @@ Scope:
 - local binding errors are normalized into `type mismatch`
 - return-from-call errors are normalized into `return type mismatch`
 - selected fixtures also have golden `dump-report` outputs for richer parity
+- bootstrap-seed fixtures now also gate `dump-report` for module-kind-sensitive
+  cases (`library` vs synthesized executable root)
 
 Current categories:
 

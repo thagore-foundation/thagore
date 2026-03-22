@@ -33,6 +33,8 @@ Current scope:
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
 - report dump mode for golden-testing normalized frontend summaries
+- bootstrap-seed report goldens now cover both library-mode and synthesized
+  executable-root paths
 - first narrow differential corpus against the Rust-hosted frontend, including
   call-arity, assignment/local/return type drift, assignment/local/return
   call-result drift, assignment-target drift, and call-site identifier drift

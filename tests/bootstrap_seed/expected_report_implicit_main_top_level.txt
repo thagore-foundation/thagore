@@ -1,0 +1,1 @@
+summary=func=main;return=i32;locals=1;first_local=answer:i32=1;return_ident=0 || symbols=main:func | answer:local || imports=resolved=;missing= || diagnostics=ok

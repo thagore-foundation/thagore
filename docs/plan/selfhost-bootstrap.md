@@ -544,6 +544,8 @@ Current status on `indev-rewrite`:
   `tests/selfhost_frontend/` against the Rust-hosted `thagc check` surface
 - bootstrap probe now also gates selected selfhost `dump-report` goldens so the
   differential track is not limited to coarse diagnostic labels
+- bootstrap probe also gates module-kind-sensitive `dump-report` goldens for
+  `library` vs synthesized executable-root analysis paths
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

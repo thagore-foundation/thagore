@@ -1542,6 +1542,69 @@ fn dump_bootstrap_seed_infer_return_i32() {
 }
 
 #[test]
+fn dump_bootstrap_seed_reports_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let cases = [
+        (
+            "tests/bootstrap_seed/sample_library_import_only.tg",
+            "library",
+            "tests/bootstrap_seed/expected_report_library_import_only.txt",
+        ),
+        (
+            "tests/bootstrap_seed/sample_implicit_main_top_level.tg",
+            "exe",
+            "tests/bootstrap_seed/expected_report_implicit_main_top_level.txt",
+        ),
+    ];
+
+    for (fixture, kind, expected) in cases {
+        let sample = repo_root.join(fixture);
+        let expected_path = repo_root.join(expected);
+
+        let output = Command::new(&binary)
+            .current_dir(&repo_root)
+            .args([
+                sample.to_str().expect("utf8"),
+                kind,
+                "dump-report",
+            ])
+            .output()
+            .unwrap_or_else(|error| panic!("run dump-report for {fixture}: {error}"));
+        assert_eq!(output.status.code(), Some(0), "dump-report failed for {fixture}");
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected report dump for {fixture}"
+        );
+    }
+}
+
+#[test]
 fn build_and_run_bootstrap_seed_infer_return_unknown_reports_diagnostic() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-seed");
