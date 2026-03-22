@@ -543,7 +543,7 @@ Current status on `indev-rewrite`:
 - bootstrap probe now also gates a first narrow differential corpus under
   `tests/selfhost_frontend/` against the Rust-hosted `thagc check` surface
 - the initial differential gate now includes call-arity mismatch parity in
-  addition to ok / unknown identifier / assignment type / condition type /
-  return type categories
+  addition to ok / unknown identifier / assignment-target / assignment type /
+  condition type / return type categories
 - the next concrete step is widening that corpus beyond diagnostic categories
   into richer normalized frontend output parity

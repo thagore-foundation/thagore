@@ -10,6 +10,7 @@ Scope:
 - small core-syntax files only
 - no top-layer sugar
 - compare normalized frontend categories, not full AST parity yet
+- assignment-target errors are normalized into `unknown identifier`
 
 Current categories:
 

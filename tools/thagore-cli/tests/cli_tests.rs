@@ -1235,7 +1235,9 @@ fn canonicalize_selfhost_frontend(stdout: &str) -> String {
         .unwrap_or("");
     match diagnostics {
         "ok" => "ok".to_string(),
-        "unknown return ident" | "unknown callee" => "unknown identifier".to_string(),
+        "unknown return ident" | "unknown callee" | "assignment to unknown local" => {
+            "unknown identifier".to_string()
+        }
         "call arity mismatch" => "call arity mismatch".to_string(),
         "assignment type mismatch" | "assignment call result type mismatch" => {
             "type mismatch".to_string()
@@ -1279,6 +1281,10 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
         ("tests/selfhost_frontend/ok_basic.tg", "ok"),
         ("tests/selfhost_frontend/ok_helper_call.tg", "ok"),
         ("tests/selfhost_frontend/err_unknown_identifier.tg", "unknown identifier"),
+        (
+            "tests/selfhost_frontend/err_assignment_unknown_local.tg",
+            "unknown identifier",
+        ),
         ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
         ("tests/selfhost_frontend/err_assignment_type.tg", "type mismatch"),
         ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
