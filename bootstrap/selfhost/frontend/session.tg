@@ -1,0 +1,39 @@
+from . import module_kind
+from . import desugar
+import std.fs as fs
+import std.process as process
+import std.string as string
+
+pub func input_path() -> str:
+  let arg = process.argv(1)
+  if (string.len(arg) > 0):
+    return arg
+  return "tests/bootstrap_seed/sample.tg"
+
+pub func input_kind() -> str:
+  let arg = process.argv(2)
+  if (string.str_eq(arg, "library")):
+    return module_kind.library_module()
+  return module_kind.executable_root()
+
+pub func output_mode(default_mode: str, first_mode: str, second_mode: str) -> str:
+  let arg = process.argv(3)
+  if (string.str_eq(arg, first_mode)):
+    return arg
+  if (string.len(second_mode) > 0 and string.str_eq(arg, second_mode)):
+    return arg
+  return default_mode
+
+pub func read_source(path: str) -> str:
+  return fs.read(path)
+
+pub func cwd() -> str:
+  return fs.getcwd()
+
+pub func normalize_source(source: str) -> str:
+  let normalized_crlf = string.replace(source, "\r\n", "\n")
+  return string.replace(normalized_crlf, "\r", "\n")
+
+pub func desugared_source(source: str, kind: str) -> str:
+  let normalized = normalize_source(source)
+  return desugar.implicit_main(kind, normalized)

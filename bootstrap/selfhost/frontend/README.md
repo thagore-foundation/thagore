@@ -19,6 +19,7 @@ Current contents:
 - `diagnostics.tg`
 - `driver.tg`
 - `report.tg`
+- `session.tg`
 - `scan.tg`
 - `parse.tg`
 - `main.tg`
@@ -45,6 +46,9 @@ Current scope:
   semantic/report execution; `main.tg` remains the broader harness entry
 - `report.tg` now owns deterministic frontend output assembly so `driver.tg`
   stays focused on pipeline orchestration
+- `session.tg` now owns shared CLI/stage session plumbing so `scan.tg`,
+  `parse.tg`, `check.tg`, and `main.tg` stop duplicating argument and source
+  setup
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
   symbol/import output
 - `scan.tg` is the first dedicated token-only stage entry and anchors the

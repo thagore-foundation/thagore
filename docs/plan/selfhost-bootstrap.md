@@ -556,6 +556,9 @@ Current status on `indev-rewrite`:
   chain so stage wiring can regress independently of the broader harness
 - that stage-chain gate now covers both success and failing fixtures so
   downstream diagnostics cannot silently drift while the happy path stays green
+- shared CLI/stage setup is now centralized in
+  `bootstrap/selfhost/frontend/session.tg`, reducing duplication before the
+  first real stage replacement work
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
