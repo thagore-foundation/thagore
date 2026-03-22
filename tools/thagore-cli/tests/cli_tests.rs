@@ -1287,6 +1287,10 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
         ),
         ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
         ("tests/selfhost_frontend/err_assignment_type.tg", "type mismatch"),
+        (
+            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
+            "type mismatch",
+        ),
         ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
         ("tests/selfhost_frontend/err_return_type.tg", "return type mismatch"),
     ];
