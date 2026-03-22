@@ -1207,6 +1207,102 @@ fn build_and_run_bootstrap_seed_frontend() {
     assert_eq!(actual.trim_end(), expected.trim_end());
 }
 
+fn build_selfhost_frontend_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
+fn canonicalize_selfhost_frontend(stdout: &str) -> String {
+    let marker = " || diagnostics=";
+    let diagnostics = stdout
+        .split(marker)
+        .nth(1)
+        .map(str::trim)
+        .unwrap_or("");
+    match diagnostics {
+        "ok" => "ok".to_string(),
+        "unknown return ident" | "unknown callee" => "unknown identifier".to_string(),
+        "call arity mismatch" => "call arity mismatch".to_string(),
+        "condition type mismatch" => "condition type mismatch".to_string(),
+        "return type mismatch" => "return type mismatch".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn canonicalize_rust_frontend(stderr: &str, status_code: Option<i32>) -> String {
+    if status_code == Some(0) {
+        return "ok".to_string();
+    }
+    if stderr.contains("argument count mismatch") {
+        return "call arity mismatch".to_string();
+    }
+    if stderr.contains("condition must be bool") {
+        return "condition type mismatch".to_string();
+    }
+    if stderr.contains("return type mismatch") {
+        return "return type mismatch".to_string();
+    }
+    if stderr.contains("unknown identifier") {
+        return "unknown identifier".to_string();
+    }
+    stderr.trim().to_string()
+}
+
+#[test]
+fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-frontend");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_binary(&repo_root, &binary);
+
+    let cases = [
+        ("tests/selfhost_frontend/ok_basic.tg", "ok"),
+        ("tests/selfhost_frontend/ok_helper_call.tg", "ok"),
+        ("tests/selfhost_frontend/err_unknown_identifier.tg", "unknown identifier"),
+        ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
+        ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
+        ("tests/selfhost_frontend/err_return_type.tg", "return type mismatch"),
+    ];
+
+    for (fixture, expected) in cases {
+        let sample = repo_root.join(fixture);
+
+        let selfhost = Command::new(&binary)
+            .current_dir(&repo_root)
+            .arg(sample.to_str().expect("utf8"))
+            .output()
+            .unwrap_or_else(|error| panic!("run selfhost frontend for {fixture}: {error}"));
+        assert_eq!(selfhost.status.code(), Some(0), "selfhost failed for {fixture}");
+        let selfhost_stdout = String::from_utf8_lossy(&selfhost.stdout).replace("\r\n", "\n");
+        let selfhost_label = canonicalize_selfhost_frontend(&selfhost_stdout);
+
+        let rust = Command::new(env!("CARGO_BIN_EXE_thagc"))
+            .args(["check", sample.to_str().expect("utf8")])
+            .output()
+            .unwrap_or_else(|error| panic!("run rust frontend for {fixture}: {error}"));
+        let rust_stderr = String::from_utf8_lossy(&rust.stderr).replace("\r\n", "\n");
+        let rust_label = canonicalize_rust_frontend(&rust_stderr, rust.status.code());
+
+        assert_eq!(selfhost_label, expected, "unexpected selfhost label for {fixture}\nstdout:\n{selfhost_stdout}");
+        assert_eq!(rust_label, expected, "unexpected rust label for {fixture}\nstderr:\n{rust_stderr}");
+        assert_eq!(selfhost_label, rust_label, "frontend drift for {fixture}");
+    }
+}
+
 #[test]
 fn build_and_run_bootstrap_seed_implicit_main_top_level() {
     let dir = TempDir::new().expect("temp dir");

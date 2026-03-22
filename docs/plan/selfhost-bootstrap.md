@@ -540,5 +540,7 @@ Current status on `indev-rewrite`:
 - bootstrap probe already gates normalized desugared output for:
   - implicit `main`
   - inferred top-layer literal return types
-- the next concrete step is the first differential corpus between the Rust
-  frontend surface and the Thagore-authored frontend slice
+- bootstrap probe now also gates a first narrow differential corpus under
+  `tests/selfhost_frontend/` against the Rust-hosted `thagc check` surface
+- the next concrete step is widening that corpus beyond diagnostic categories
+  into richer normalized frontend output parity

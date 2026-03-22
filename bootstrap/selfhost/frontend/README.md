@@ -32,6 +32,7 @@ Current scope:
 - narrow static return-type inference for single-line funcs without `->`
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
+- first narrow differential corpus against the Rust-hosted frontend
 
 Boundary:
 
