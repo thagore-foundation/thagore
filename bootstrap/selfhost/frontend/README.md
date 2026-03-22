@@ -18,6 +18,7 @@ Current contents:
 - `resolver.tg`
 - `diagnostics.tg`
 - `driver.tg`
+- `pipeline.tg`
 - `report.tg`
 - `session.tg`
 - `scan.tg`
@@ -49,6 +50,8 @@ Current scope:
 - `session.tg` now owns shared CLI/stage session plumbing so `scan.tg`,
   `parse.tg`, `check.tg`, and `main.tg` stop duplicating argument and source
   setup
+- `pipeline.tg` now owns stage execution so `scan.tg`, `parse.tg`, and
+  `check.tg` are thin entrypoints around stable selfhost pipeline calls
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
   symbol/import output
 - `scan.tg` is the first dedicated token-only stage entry and anchors the

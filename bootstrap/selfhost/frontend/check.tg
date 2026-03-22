@@ -1,4 +1,4 @@
-from . import driver
+from . import pipeline
 from . import session
 import std.string as string
 
@@ -11,7 +11,7 @@ pub func main() -> i32:
   let kind = session.input_kind()
   let mode = session.output_mode("check", "dump-report", "")
   if (string.str_eq(mode, "dump-report")):
-    println(driver.report_source_with_kind(cwd, source, kind))
+    println(pipeline.normalized_report(cwd, source, kind))
     return 0
-  println(driver.analyze_source_with_kind(cwd, source, kind))
+  println(pipeline.full_report(cwd, source, kind))
   return 0

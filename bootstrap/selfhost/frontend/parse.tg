@@ -1,8 +1,4 @@
-from . import lexer
-from . import parser
-from . import symbols
-from . import resolver
-from . import report
+from . import pipeline
 from . import session
 import std.string as string
 
@@ -13,10 +9,5 @@ pub func main() -> i32:
     return 1
   let cwd = session.cwd()
   let kind = session.input_kind()
-  let desugared = session.desugared_source(source, kind)
-  let token_report = lexer.scan(desugared)
-  let summary = parser.summary(token_report)
-  let table = symbols.collect(token_report)
-  let imports = resolver.resolve(cwd, desugared)
-  println(report.full_report(token_report, summary, table, imports, "ok"))
+  println(pipeline.parse_report(cwd, source, kind))
   return 0

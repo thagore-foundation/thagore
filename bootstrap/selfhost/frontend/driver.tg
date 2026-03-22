@@ -1,89 +1,20 @@
-from . import lexer
-from . import parser
-from . import symbols
-from . import diagnostics
-from . import report
-from . import resolver
-from . import module_kind
-from . import desugar
+from . import pipeline
 import std.fs as fs
-import std.string as string
-
-pub func normalize_source(source: str) -> str:
-  let normalized_crlf = string.replace(source, "\r\n", "\n")
-  return string.replace(normalized_crlf, "\r", "\n")
-
-func append_issue(out: str, issue: str) -> str:
-  if (string.len(issue) == 0):
-    return out
-  if (string.str_eq(out, "ok") or string.len(out) == 0):
-    return issue
-  return string.concat(out, string.concat(" | ", issue))
-
-func filter_executable_only_issues(issues: str, current_kind: str) -> str:
-  if (string.str_eq(current_kind, module_kind.library_module()) == false):
-    return issues
-  if (string.str_eq(issues, "ok")):
-    return "ok"
-  let parts = string.split(issues, " | ")
-  let kept = ""
-  for part in parts:
-    if (string.str_eq(part, "missing func") or string.str_eq(part, "missing return") or string.str_eq(part, "missing main") or string.str_eq(part, "missing symbols")):
-      continue
-    kept = append_issue(kept, part)
-  if (string.len(kept) == 0):
-    return "ok"
-  return kept
 
 pub func executable_root_kind() -> str:
-  return module_kind.executable_root()
+  return pipeline.executable_root_kind()
 
 pub func library_module_kind() -> str:
-  return module_kind.library_module()
+  return pipeline.library_module_kind()
 
 pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
-  let normalized = normalize_source(source)
-  let desugared = desugar_source_with_kind(source, current_kind)
-  let report = lexer.scan(desugared)
-  let summary = parser.summary(report)
-  let table = symbols.collect(report)
-  let imports = resolver.resolve(cwd, desugared)
-  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, report)
-  let issues = filter_executable_only_issues(semantic_issues, current_kind)
-  let kind_issue = module_kind.validate_top_level(current_kind, normalized)
-  if (string.len(kind_issue) > 0):
-    issues = append_issue(issues, kind_issue)
-  let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
-  if (string.len(desugar_issue) > 0):
-    issues = append_issue(issues, desugar_issue)
-  let infer_issue = desugar.infer_return_type_issue(normalized)
-  if (string.len(infer_issue) > 0):
-    issues = append_issue(issues, infer_issue)
-  return report.full_report(report, summary, table, imports, issues)
+  return pipeline.full_report(cwd, source, current_kind)
 
 pub func report_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
-  let normalized = normalize_source(source)
-  let desugared = desugar_source_with_kind(source, current_kind)
-  let report = lexer.scan(desugared)
-  let summary = parser.summary(report)
-  let table = symbols.collect(report)
-  let imports = resolver.resolve(cwd, desugared)
-  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, report)
-  let issues = filter_executable_only_issues(semantic_issues, current_kind)
-  let kind_issue = module_kind.validate_top_level(current_kind, normalized)
-  if (string.len(kind_issue) > 0):
-    issues = append_issue(issues, kind_issue)
-  let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
-  if (string.len(desugar_issue) > 0):
-    issues = append_issue(issues, desugar_issue)
-  let infer_issue = desugar.infer_return_type_issue(normalized)
-  if (string.len(infer_issue) > 0):
-    issues = append_issue(issues, infer_issue)
-  return report.normalized_report(summary, table, imports, issues)
+  return pipeline.normalized_report(cwd, source, current_kind)
 
 pub func desugar_source_with_kind(source: str, current_kind: str) -> str:
-  let normalized = normalize_source(source)
-  return desugar.implicit_main(current_kind, normalized)
+  return pipeline.desugared_source(source, current_kind)
 
 pub func analyze_source(cwd: str, source: str) -> str:
   return analyze_source_with_kind(cwd, source, executable_root_kind())

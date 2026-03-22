@@ -559,6 +559,9 @@ Current status on `indev-rewrite`:
 - shared CLI/stage setup is now centralized in
   `bootstrap/selfhost/frontend/session.tg`, reducing duplication before the
   first real stage replacement work
+- shared stage execution is now centralized in
+  `bootstrap/selfhost/frontend/pipeline.tg`, so `scan.tg`, `parse.tg`, and
+  `check.tg` are thin entrypoints over the same selfhost pipeline core
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

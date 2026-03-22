@@ -1,4 +1,5 @@
 from . import lexer
+from . import pipeline
 from . import session
 import std.string as string
 
@@ -8,6 +9,5 @@ pub func main() -> i32:
   if (string.len(source) == 0):
     return 1
   let kind = session.input_kind()
-  let desugared = session.desugared_source(source, kind)
-  println(string.concat("tokens=", lexer.scan(desugared)))
+  println(pipeline.scan_report(source, kind))
   return 0
