@@ -19,6 +19,8 @@ func output_mode() -> str:
   let arg = process.argv(3)
   if (string.str_eq(arg, "dump-desugared")):
     return arg
+  if (string.str_eq(arg, "dump-report")):
+    return arg
   return "analyze"
 
 pub func main() -> i32:
@@ -31,6 +33,9 @@ pub func main() -> i32:
   let mode = output_mode()
   if (string.str_eq(mode, "dump-desugared")):
     println(driver.desugar_source_with_kind(source, kind))
+    return 0
+  if (string.str_eq(mode, "dump-report")):
+    println(driver.report_source_with_kind(cwd, source, kind))
     return 0
   println(driver.analyze_source_with_kind(cwd, source, kind))
   return 0

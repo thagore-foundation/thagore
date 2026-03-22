@@ -64,6 +64,29 @@ pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> s
     issues = append_issue(issues, infer_issue)
   return string.concat(with_imports, string.concat(" || diagnostics=", issues))
 
+pub func report_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
+  let normalized = normalize_source(source)
+  let desugared = desugar_source_with_kind(source, current_kind)
+  let report = lexer.scan(desugared)
+  let summary = parser.summary(report)
+  let table = symbols.collect(report)
+  let imports = resolver.resolve(cwd, desugared)
+  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, report)
+  let issues = filter_executable_only_issues(semantic_issues, current_kind)
+  let kind_issue = module_kind.validate_top_level(current_kind, normalized)
+  if (string.len(kind_issue) > 0):
+    issues = append_issue(issues, kind_issue)
+  let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
+  if (string.len(desugar_issue) > 0):
+    issues = append_issue(issues, desugar_issue)
+  let infer_issue = desugar.infer_return_type_issue(normalized)
+  if (string.len(infer_issue) > 0):
+    issues = append_issue(issues, infer_issue)
+  let left = string.concat("summary=", summary)
+  let with_symbols = string.concat(left, string.concat(" || symbols=", table))
+  let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
+  return string.concat(with_imports, string.concat(" || diagnostics=", issues))
+
 pub func desugar_source_with_kind(source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)
   return desugar.implicit_main(current_kind, normalized)

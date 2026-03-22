@@ -198,6 +198,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_reports_match_goldens -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_implicit_main_top_level -- --nocapture
           cargo test -p thagore-cli dump_bootstrap_seed_implicit_main_top_level -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_infer_return_i32 -- --nocapture
@@ -280,6 +281,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_std_process_missing_env_and_argv_gap -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_reports_match_goldens -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_implicit_main_top_level -- --nocapture
           cargo test -p thagore-cli dump_bootstrap_seed_implicit_main_top_level -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_infer_return_i32 -- --nocapture

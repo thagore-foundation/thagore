@@ -542,6 +542,8 @@ Current status on `indev-rewrite`:
   - inferred top-layer literal return types
 - bootstrap probe now also gates a first narrow differential corpus under
   `tests/selfhost_frontend/` against the Rust-hosted `thagc check` surface
+- bootstrap probe now also gates selected selfhost `dump-report` goldens so the
+  differential track is not limited to coarse diagnostic labels
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

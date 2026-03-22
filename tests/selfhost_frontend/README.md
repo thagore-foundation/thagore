@@ -15,6 +15,7 @@ Scope:
 - assignment-from-call errors are normalized into `type mismatch`
 - local binding errors are normalized into `type mismatch`
 - return-from-call errors are normalized into `return type mismatch`
+- selected fixtures also have golden `dump-report` outputs for richer parity
 
 Current categories:
 

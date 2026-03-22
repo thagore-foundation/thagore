@@ -1331,6 +1331,51 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
 }
 
 #[test]
+fn dump_selfhost_frontend_reports_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-frontend");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_binary(&repo_root, &binary);
+
+    let cases = [
+        (
+            "tests/selfhost_frontend/ok_helper_call.tg",
+            "tests/selfhost_frontend/expected_report_ok_helper_call.txt",
+        ),
+        (
+            "tests/selfhost_frontend/err_unknown_callee.tg",
+            "tests/selfhost_frontend/expected_report_err_unknown_callee.txt",
+        ),
+        (
+            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
+            "tests/selfhost_frontend/expected_report_err_assignment_call_result_type.txt",
+        ),
+    ];
+
+    for (fixture, expected) in cases {
+        let sample = repo_root.join(fixture);
+        let expected_path = repo_root.join(expected);
+
+        let output = Command::new(&binary)
+            .current_dir(&repo_root)
+            .args([sample.to_str().expect("utf8"), "exe", "dump-report"])
+            .output()
+            .unwrap_or_else(|error| panic!("run dump-report for {fixture}: {error}"));
+        assert_eq!(output.status.code(), Some(0), "dump-report failed for {fixture}");
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected report dump for {fixture}"
+        );
+    }
+}
+
+#[test]
 fn build_and_run_bootstrap_seed_implicit_main_top_level() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-seed");

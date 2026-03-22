@@ -1,0 +1,1 @@
+summary=func=main;return=i32;locals=0;first_local=:=;return_ident=missing_call || symbols=main:func || imports=resolved=;missing= || diagnostics=unknown return ident | unknown callee
