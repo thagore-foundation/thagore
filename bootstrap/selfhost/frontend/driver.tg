@@ -4,6 +4,7 @@ from . import symbols
 from . import diagnostics
 from . import resolver
 from . import module_kind
+from . import desugar
 import std.fs as fs
 import std.string as string
 
@@ -41,19 +42,23 @@ pub func library_module_kind() -> str:
 
 pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)
-  let report = lexer.scan(normalized)
+  let desugared = desugar.implicit_main(current_kind, normalized)
+  let report = lexer.scan(desugared)
   let summary = parser.summary(report)
   let table = symbols.collect(report)
-  let imports = resolver.resolve(cwd, normalized)
+  let imports = resolver.resolve(cwd, desugared)
   let left = string.concat("tokens=", report)
   let with_summary = string.concat(left, string.concat(" || summary=", summary))
   let with_symbols = string.concat(with_summary, string.concat(" || symbols=", table))
   let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
-  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, normalized, report)
+  let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, report)
   let issues = filter_executable_only_issues(semantic_issues, current_kind)
   let kind_issue = module_kind.validate_top_level(current_kind, normalized)
   if (string.len(kind_issue) > 0):
     issues = append_issue(issues, kind_issue)
+  let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
+  if (string.len(desugar_issue) > 0):
+    issues = append_issue(issues, desugar_issue)
   return string.concat(with_imports, string.concat(" || diagnostics=", issues))
 
 pub func analyze_source(cwd: str, source: str) -> str:

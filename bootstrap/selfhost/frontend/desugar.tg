@@ -1,0 +1,49 @@
+from . import module_kind
+import std.string as string
+
+func append_space(out: str, value: str) -> str:
+  if (string.len(value) == 0):
+    return out
+  if (string.len(out) == 0):
+    return value
+  return string.concat(out, string.concat(" ", value))
+
+func is_decl_line(trimmed: str) -> bool:
+  return string.starts_with(trimmed, "import ") or string.starts_with(trimmed, "from ") or string.starts_with(trimmed, "func ")
+
+func is_control_flow_line(trimmed: str) -> bool:
+  return string.starts_with(trimmed, "return ") or string.str_eq(trimmed, "return") or string.starts_with(trimmed, "break") or string.starts_with(trimmed, "continue")
+
+pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
+  if (string.str_eq(current_kind, module_kind.executable_root()) == false):
+    return ""
+  let lines = string.split(source, "\n")
+  for line in lines:
+    let trimmed = string.trim(line)
+    if (string.len(trimmed) == 0 or is_decl_line(trimmed)):
+      continue
+    if (is_control_flow_line(trimmed)):
+      return "top-level control flow is not allowed"
+  return ""
+
+pub func implicit_main(current_kind: str, source: str) -> str:
+  if (string.str_eq(current_kind, module_kind.executable_root()) == false):
+    return source
+  if (string.contains(source, "func main(")):
+    return source
+  let lines = string.split(source, "\n")
+  let prefix = ""
+  let body = ""
+  for line in lines:
+    let trimmed = string.trim(line)
+    if (string.len(trimmed) == 0):
+      continue
+    if (is_decl_line(trimmed)):
+      prefix = append_space(prefix, trimmed)
+    else:
+      body = append_space(body, trimmed)
+  if (string.len(body) == 0):
+    return source
+  let synthesized = string.concat("func main() -> i32: ", body)
+  let with_return = string.concat(synthesized, " return 0")
+  return append_space(prefix, with_return)

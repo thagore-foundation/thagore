@@ -28,6 +28,7 @@ Current scope:
 - import resolution
 - diagnostics-lite and semantic-lite used by the bootstrap seed
 - module-kind-aware analysis for executable roots vs library modules
+- implicit `main` synthesis for executable roots with top-level statements
 
 Boundary:
 
@@ -38,5 +39,5 @@ Boundary:
 Near-term next steps:
 
 1. switch seed harness to import these modules instead of owning duplicate logic
-2. add desugared-output support for top-layer sugar
-3. start implicit `main` desugar on executable-root mode only
+2. add desugared-output observability for synthesized executable roots
+3. add top-layer return-type inference on top of the executable-root desugar
