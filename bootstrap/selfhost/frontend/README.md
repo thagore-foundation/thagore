@@ -18,6 +18,7 @@ Current contents:
 - `resolver.tg`
 - `diagnostics.tg`
 - `driver.tg`
+- `report.tg`
 - `main.tg`
 
 Current scope:
@@ -40,6 +41,8 @@ Current scope:
   call-result drift, assignment-target drift, and call-site identifier drift
 - `check.tg` is now the canonical selfhost frontend stage entry for
   semantic/report execution; `main.tg` remains the broader harness entry
+- `report.tg` now owns deterministic frontend output assembly so `driver.tg`
+  stays focused on pipeline orchestration
 
 Boundary:
 

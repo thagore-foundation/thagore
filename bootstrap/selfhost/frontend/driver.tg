@@ -2,6 +2,7 @@ from . import lexer
 from . import parser
 from . import symbols
 from . import diagnostics
+from . import report
 from . import resolver
 from . import module_kind
 from . import desugar
@@ -47,10 +48,6 @@ pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> s
   let summary = parser.summary(report)
   let table = symbols.collect(report)
   let imports = resolver.resolve(cwd, desugared)
-  let left = string.concat("tokens=", report)
-  let with_summary = string.concat(left, string.concat(" || summary=", summary))
-  let with_symbols = string.concat(with_summary, string.concat(" || symbols=", table))
-  let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
   let semantic_issues = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, report)
   let issues = filter_executable_only_issues(semantic_issues, current_kind)
   let kind_issue = module_kind.validate_top_level(current_kind, normalized)
@@ -62,7 +59,7 @@ pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> s
   let infer_issue = desugar.infer_return_type_issue(normalized)
   if (string.len(infer_issue) > 0):
     issues = append_issue(issues, infer_issue)
-  return string.concat(with_imports, string.concat(" || diagnostics=", issues))
+  return report.full_report(report, summary, table, imports, issues)
 
 pub func report_source_with_kind(cwd: str, source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)
@@ -82,10 +79,7 @@ pub func report_source_with_kind(cwd: str, source: str, current_kind: str) -> st
   let infer_issue = desugar.infer_return_type_issue(normalized)
   if (string.len(infer_issue) > 0):
     issues = append_issue(issues, infer_issue)
-  let left = string.concat("summary=", summary)
-  let with_symbols = string.concat(left, string.concat(" || symbols=", table))
-  let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
-  return string.concat(with_imports, string.concat(" || diagnostics=", issues))
+  return report.normalized_report(summary, table, imports, issues)
 
 pub func desugar_source_with_kind(source: str, current_kind: str) -> str:
   let normalized = normalize_source(source)

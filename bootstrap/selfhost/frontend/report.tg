@@ -1,0 +1,14 @@
+import std.string as string
+
+pub func full_report(report: str, summary: str, symbols: str, imports: str, diagnostics: str) -> str:
+  let left = string.concat("tokens=", report)
+  let with_summary = string.concat(left, string.concat(" || summary=", summary))
+  let with_symbols = string.concat(with_summary, string.concat(" || symbols=", symbols))
+  let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
+  return string.concat(with_imports, string.concat(" || diagnostics=", diagnostics))
+
+pub func normalized_report(summary: str, symbols: str, imports: str, diagnostics: str) -> str:
+  let left = string.concat("summary=", summary)
+  let with_symbols = string.concat(left, string.concat(" || symbols=", symbols))
+  let with_imports = string.concat(with_symbols, string.concat(" || imports=", imports))
+  return string.concat(with_imports, string.concat(" || diagnostics=", diagnostics))
