@@ -19,6 +19,7 @@ Current contents:
 - `diagnostics.tg`
 - `driver.tg`
 - `report.tg`
+- `parse.tg`
 - `main.tg`
 
 Current scope:
@@ -43,6 +44,8 @@ Current scope:
   semantic/report execution; `main.tg` remains the broader harness entry
 - `report.tg` now owns deterministic frontend output assembly so `driver.tg`
   stays focused on pipeline orchestration
+- `parse.tg` is the first dedicated pre-check stage entry for token/summary/
+  symbol/import output
 
 Boundary:
 

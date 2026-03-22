@@ -1,0 +1,42 @@
+from . import lexer
+from . import parser
+from . import symbols
+from . import resolver
+from . import module_kind
+from . import desugar
+from . import report
+import std.fs as fs
+import std.process as process
+import std.string as string
+
+func input_path() -> str:
+  let arg = process.argv(1)
+  if (string.len(arg) > 0):
+    return arg
+  return "tests/bootstrap_seed/sample.tg"
+
+func input_kind() -> str:
+  let arg = process.argv(2)
+  if (string.str_eq(arg, "library")):
+    return module_kind.library_module()
+  return module_kind.executable_root()
+
+func normalize_source(source: str) -> str:
+  let normalized_crlf = string.replace(source, "\r\n", "\n")
+  return string.replace(normalized_crlf, "\r", "\n")
+
+pub func main() -> i32:
+  let path = input_path()
+  let source = fs.read(path)
+  if (string.len(source) == 0):
+    return 1
+  let cwd = fs.getcwd()
+  let kind = input_kind()
+  let normalized = normalize_source(source)
+  let desugared = desugar.implicit_main(kind, normalized)
+  let token_report = lexer.scan(desugared)
+  let summary = parser.summary(token_report)
+  let table = symbols.collect(token_report)
+  let imports = resolver.resolve(cwd, desugared)
+  println(report.full_report(token_report, summary, table, imports, "ok"))
+  return 0

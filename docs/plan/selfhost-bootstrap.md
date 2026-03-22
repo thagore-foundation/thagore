@@ -549,6 +549,8 @@ Current status on `indev-rewrite`:
 - `bootstrap/selfhost/frontend/check.tg` now serves as the canonical stage entry
   for selfhost semantic/report execution, reducing reliance on the broader
   harness-oriented `main.tg`
+- `bootstrap/selfhost/frontend/parse.tg` now serves as the first dedicated
+  pre-check stage entry, and bootstrap probe gates its output independently
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

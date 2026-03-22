@@ -1226,6 +1226,25 @@ fn build_selfhost_frontend_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/parse.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn canonicalize_selfhost_frontend(stdout: &str) -> String {
     let marker = " || diagnostics=";
     let diagnostics = stdout
@@ -1371,6 +1390,49 @@ fn dump_selfhost_frontend_reports_match_goldens() {
             actual.trim_end(),
             expected.trim_end(),
             "unexpected report dump for {fixture}"
+        );
+    }
+}
+
+#[test]
+fn dump_selfhost_frontend_parse_reports_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-parse");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_parse_binary(&repo_root, &binary);
+
+    let cases = [
+        (
+            "tests/selfhost_frontend/ok_helper_call.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_ok_helper_call.txt",
+        ),
+        (
+            "tests/bootstrap_seed/sample_library_import_only.tg",
+            "library",
+            "tests/bootstrap_seed/expected_parse_library_import_only.txt",
+        ),
+    ];
+
+    for (fixture, kind, expected) in cases {
+        let sample = repo_root.join(fixture);
+        let expected_path = repo_root.join(expected);
+
+        let output = Command::new(&binary)
+            .current_dir(&repo_root)
+            .args([sample.to_str().expect("utf8"), kind])
+            .output()
+            .unwrap_or_else(|error| panic!("run parse stage for {fixture}: {error}"));
+        assert_eq!(output.status.code(), Some(0), "parse stage failed for {fixture}");
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected parse-stage output for {fixture}"
         );
     }
 }
