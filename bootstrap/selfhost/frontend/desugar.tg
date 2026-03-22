@@ -27,6 +27,47 @@ func slice(text: str, start: i32, end: i32) -> str:
     index = index + 1
   return out
 
+func starts_with_at(text: str, start: i32, needle: str) -> bool:
+  if (start < 0 or start + string.len(needle) > string.len(text)):
+    return false
+  let offset: i32 = 0
+  while (offset < string.len(needle)):
+    if (string.str_eq(string.char_at(text, start + offset), string.char_at(needle, offset)) == false):
+      return false
+    offset = offset + 1
+  return true
+
+func find_next_func(source: str, start: i32) -> i32:
+  let index: i32 = start
+  while (index < string.len(source)):
+    if (starts_with_at(source, index, "func ")):
+      return index
+    index = index + 1
+  return -1
+
+func find_colon(text: str) -> i32:
+  let index: i32 = 0
+  while (index < string.len(text)):
+    if (string.str_eq(string.char_at(text, index), ":")):
+      return index
+    index = index + 1
+  return -1
+
+func contains_arrow_before_colon(text: str, colon: i32) -> bool:
+  if (colon < 0):
+    return false
+  let index: i32 = 0
+  while (index + 1 < colon):
+    if (string.str_eq(string.char_at(text, index), "-") and string.str_eq(string.char_at(text, index + 1), ">")):
+      return true
+    index = index + 1
+  return false
+
+func choose_end(next_func: i32, source_len: i32) -> i32:
+  if (next_func < 0):
+    return source_len
+  return next_func
+
 func infer_return_literal_type(body: str) -> str:
   let trimmed = string.trim(body)
   if (string.starts_with(trimmed, "return ") == false):
@@ -51,37 +92,51 @@ func infer_return_line(line: str) -> str:
   let trimmed = string.trim(line)
   if (string.starts_with(trimmed, "func ") == false):
     return line
-  if (string.contains(trimmed, "->")):
-    return line
-  let colon = string.find(trimmed, ":")
+  let colon = find_colon(trimmed)
   if (colon < 0):
+    return line
+  if (contains_arrow_before_colon(trimmed, colon)):
     return line
   let header = slice(trimmed, 0, colon)
   let body = slice(trimmed, colon + 1, string.len(trimmed))
   let inferred = infer_return_literal_type(body)
   if (string.len(inferred) == 0):
     return line
-  let with_arrow = string.concat(header, string.concat(" -> ", inferred))
-  return string.concat(with_arrow, string.concat(":", body))
+  let with_arrow = string.concat(string.trim(header), string.concat(" -> ", inferred))
+  return string.concat(with_arrow, string.concat(": ", string.trim(body)))
 
 pub func infer_return_types(source: str) -> str:
-  let lines = string.split(source, "\n")
   let out = ""
-  for line in lines:
-    out = append_line(out, infer_return_line(line))
+  let index: i32 = 0
+  while (index < string.len(source)):
+    let func_start = find_next_func(source, index)
+    if (func_start < 0):
+      let tail = string.trim(slice(source, index, string.len(source)))
+      return append_space(out, tail)
+    let prefix = string.trim(slice(source, index, func_start))
+    out = append_space(out, prefix)
+    let next_func = find_next_func(source, func_start + 5)
+    let func_end = choose_end(next_func, string.len(source))
+    let chunk = string.trim(slice(source, func_start, func_end))
+    out = append_space(out, infer_return_line(chunk))
+    index = func_end
   return out
 
 pub func infer_return_type_issue(source: str) -> str:
-  let lines = string.split(source, "\n")
-  for line in lines:
-    let trimmed = string.trim(line)
-    if (string.starts_with(trimmed, "func ") and string.contains(trimmed, "->") == false):
-      let colon = string.find(trimmed, ":")
-      if (colon < 0):
-        continue
-      let body = slice(trimmed, colon + 1, string.len(trimmed))
+  let index: i32 = 0
+  while (index < string.len(source)):
+    let func_start = find_next_func(source, index)
+    if (func_start < 0):
+      return ""
+    let next_func = find_next_func(source, func_start + 5)
+    let func_end = choose_end(next_func, string.len(source))
+    let chunk = string.trim(slice(source, func_start, func_end))
+    let colon = find_colon(chunk)
+    if (colon >= 0 and contains_arrow_before_colon(chunk, colon) == false):
+      let body = slice(chunk, colon + 1, string.len(chunk))
       if (string.len(infer_return_literal_type(body)) == 0):
         return "cannot infer return type"
+    index = func_end
   return ""
 
 pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
