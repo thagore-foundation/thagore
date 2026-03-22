@@ -546,6 +546,9 @@ Current status on `indev-rewrite`:
   differential track is not limited to coarse diagnostic labels
 - bootstrap probe also gates module-kind-sensitive `dump-report` goldens for
   `library` vs synthesized executable-root analysis paths
+- `bootstrap/selfhost/frontend/check.tg` now serves as the canonical stage entry
+  for selfhost semantic/report execution, reducing reliance on the broader
+  harness-oriented `main.tg`
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

@@ -1208,7 +1208,7 @@ fn build_and_run_bootstrap_seed_frontend() {
 }
 
 fn build_selfhost_frontend_binary(repo_root: &Path, binary: &Path) {
-    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+    let source = repo_root.join("bootstrap/selfhost/frontend/check.tg");
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
             "build",

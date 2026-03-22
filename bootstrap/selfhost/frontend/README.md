@@ -38,6 +38,8 @@ Current scope:
 - first narrow differential corpus against the Rust-hosted frontend, including
   call-arity, assignment/local/return type drift, assignment/local/return
   call-result drift, assignment-target drift, and call-site identifier drift
+- `check.tg` is now the canonical selfhost frontend stage entry for
+  semantic/report execution; `main.tg` remains the broader harness entry
 
 Boundary:
 
