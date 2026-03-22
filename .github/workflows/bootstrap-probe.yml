@@ -230,7 +230,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_local_call_bool_to_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_to_unknown_local_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_bool_to_i32_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_call_bool_to_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_int_literal_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_local_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_call_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
@@ -307,7 +309,9 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_local_call_bool_to_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_to_unknown_local_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_bool_to_i32_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_assignment_call_bool_to_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_int_literal_reports_diagnostic -- --nocapture
+          cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_local_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_condition_call_i32_reports_diagnostic -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_module_resolver -- --nocapture
           cargo test -p thagore-cli build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic -- --nocapture
