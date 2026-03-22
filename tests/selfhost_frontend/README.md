@@ -13,6 +13,8 @@ Scope:
 - assignment-target errors are normalized into `unknown identifier`
 - unknown callee errors are normalized into `unknown identifier`
 - assignment-from-call errors are normalized into `type mismatch`
+- local binding errors are normalized into `type mismatch`
+- return-from-call errors are normalized into `return type mismatch`
 
 Current categories:
 

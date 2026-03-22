@@ -1,0 +1,6 @@
+func helper() -> bool:
+  return true
+
+func main() -> i32:
+  let answer: i32 = helper()
+  return 0

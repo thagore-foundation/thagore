@@ -1,0 +1,5 @@
+func helper() -> bool:
+  return true
+
+func main() -> i32:
+  return helper()

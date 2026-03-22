@@ -1,0 +1,3 @@
+func main() -> i32:
+  let answer: i32 = true
+  return 0
