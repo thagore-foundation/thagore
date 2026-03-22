@@ -29,6 +29,7 @@ Current scope:
 - diagnostics-lite and semantic-lite used by the bootstrap seed
 - module-kind-aware analysis for executable roots vs library modules
 - implicit `main` synthesis for executable roots with top-level statements
+- narrow static return-type inference for single-line funcs without `->`
 
 Boundary:
 
@@ -39,5 +40,5 @@ Boundary:
 Near-term next steps:
 
 1. switch seed harness to import these modules instead of owning duplicate logic
-2. add desugared-output observability for synthesized executable roots
-3. add top-layer return-type inference on top of the executable-root desugar
+2. add desugared-output observability for synthesized executable roots and inferred signatures
+3. widen return-type inference beyond literal-only cases when diagnostics remain fail-fast

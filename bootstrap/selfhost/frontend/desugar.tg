@@ -14,6 +14,76 @@ func is_decl_line(trimmed: str) -> bool:
 func is_control_flow_line(trimmed: str) -> bool:
   return string.starts_with(trimmed, "return ") or string.str_eq(trimmed, "return") or string.starts_with(trimmed, "break") or string.starts_with(trimmed, "continue")
 
+func append_line(out: str, line: str) -> str:
+  if (string.len(out) == 0):
+    return line
+  return string.concat(out, string.concat("\n", line))
+
+func slice(text: str, start: i32, end: i32) -> str:
+  let out = ""
+  let index: i32 = start
+  while (index < end):
+    out = string.concat(out, string.char_at(text, index))
+    index = index + 1
+  return out
+
+func infer_return_literal_type(body: str) -> str:
+  let trimmed = string.trim(body)
+  if (string.starts_with(trimmed, "return ") == false):
+    return ""
+  let expr = string.trim(slice(trimmed, 7, string.len(trimmed)))
+  if (string.str_eq(expr, "true") or string.str_eq(expr, "false")):
+    return "bool"
+  if (string.len(expr) > 0 and string.str_eq(string.char_at(expr, 0), "\"")):
+    return "str"
+  let digits = "0123456789"
+  let index: i32 = 0
+  while (index < string.len(expr)):
+    let ch = string.char_at(expr, index)
+    if (string.contains(digits, ch) == false):
+      return ""
+    index = index + 1
+  if (string.len(expr) > 0):
+    return "i32"
+  return ""
+
+func infer_return_line(line: str) -> str:
+  let trimmed = string.trim(line)
+  if (string.starts_with(trimmed, "func ") == false):
+    return line
+  if (string.contains(trimmed, "->")):
+    return line
+  let colon = string.find(trimmed, ":")
+  if (colon < 0):
+    return line
+  let header = slice(trimmed, 0, colon)
+  let body = slice(trimmed, colon + 1, string.len(trimmed))
+  let inferred = infer_return_literal_type(body)
+  if (string.len(inferred) == 0):
+    return line
+  let with_arrow = string.concat(header, string.concat(" -> ", inferred))
+  return string.concat(with_arrow, string.concat(":", body))
+
+pub func infer_return_types(source: str) -> str:
+  let lines = string.split(source, "\n")
+  let out = ""
+  for line in lines:
+    out = append_line(out, infer_return_line(line))
+  return out
+
+pub func infer_return_type_issue(source: str) -> str:
+  let lines = string.split(source, "\n")
+  for line in lines:
+    let trimmed = string.trim(line)
+    if (string.starts_with(trimmed, "func ") and string.contains(trimmed, "->") == false):
+      let colon = string.find(trimmed, ":")
+      if (colon < 0):
+        continue
+      let body = slice(trimmed, colon + 1, string.len(trimmed))
+      if (string.len(infer_return_literal_type(body)) == 0):
+        return "cannot infer return type"
+  return ""
+
 pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
   if (string.str_eq(current_kind, module_kind.executable_root()) == false):
     return ""
@@ -28,9 +98,9 @@ pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
 
 pub func implicit_main(current_kind: str, source: str) -> str:
   if (string.str_eq(current_kind, module_kind.executable_root()) == false):
-    return source
+    return infer_return_types(source)
   if (string.contains(source, "func main(")):
-    return source
+    return infer_return_types(source)
   let lines = string.split(source, "\n")
   let prefix = ""
   let body = ""
@@ -46,4 +116,4 @@ pub func implicit_main(current_kind: str, source: str) -> str:
     return source
   let synthesized = string.concat("func main() -> i32: ", body)
   let with_return = string.concat(synthesized, " return 0")
-  return append_space(prefix, with_return)
+  return infer_return_types(append_space(prefix, with_return))

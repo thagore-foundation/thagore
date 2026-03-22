@@ -59,6 +59,9 @@ pub func analyze_source_with_kind(cwd: str, source: str, current_kind: str) -> s
   let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
   if (string.len(desugar_issue) > 0):
     issues = append_issue(issues, desugar_issue)
+  let infer_issue = desugar.infer_return_type_issue(normalized)
+  if (string.len(infer_issue) > 0):
+    issues = append_issue(issues, infer_issue)
   return string.concat(with_imports, string.concat(" || diagnostics=", issues))
 
 pub func analyze_source(cwd: str, source: str) -> str:

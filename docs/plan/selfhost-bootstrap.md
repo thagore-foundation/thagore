@@ -429,8 +429,11 @@ Current status:
   path and is gated with positive and negative bootstrap-seed coverage
 - executable-root analysis now starts synthesizing an implicit `main` for
   top-level statement files in the selfhost frontend path
+- narrow top-layer return-type inference now exists for single-line literal
+  returns without `->`, including a fail-fast diagnostic when inference is not
+  provable
 - the next implementation step is removing duplicate logic ownership from the
-  remaining seed-only files and then adding top-layer return-type inference
+  remaining seed-only files and then exposing normalized desugared output
 
 ### Milestone B: Differential frontend pass
 
