@@ -11,6 +11,7 @@ Scope:
 - no top-layer sugar
 - compare normalized frontend categories, not full AST parity yet
 - assignment-target errors are normalized into `unknown identifier`
+- unknown callee errors are normalized into `unknown identifier`
 - assignment-from-call errors are normalized into `type mismatch`
 
 Current categories:

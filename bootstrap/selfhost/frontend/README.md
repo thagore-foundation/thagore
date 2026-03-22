@@ -33,8 +33,8 @@ Current scope:
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
 - first narrow differential corpus against the Rust-hosted frontend, including
-  call-arity, assignment-type, assignment-call-result, and assignment-target
-  drift checks
+  call-arity, assignment-type, assignment-call-result, assignment-target, and
+  call-site identifier drift checks
 
 Boundary:
 
