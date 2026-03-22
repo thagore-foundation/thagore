@@ -554,6 +554,8 @@ Current status on `indev-rewrite`:
 - `bootstrap/selfhost/frontend/scan.tg` now serves as the token-only stage
   entry, and bootstrap probe gates a small `stage0 -> scan -> parse -> check`
   chain so stage wiring can regress independently of the broader harness
+- that stage-chain gate now covers both success and failing fixtures so
+  downstream diagnostics cannot silently drift while the happy path stays green
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

@@ -1308,6 +1308,10 @@ fn canonicalize_rust_frontend(stderr: &str, status_code: Option<i32>) -> String 
     stderr.trim().to_string()
 }
 
+fn frontend_report_prefix(stdout: &str) -> &str {
+    stdout.split(" || diagnostics=").next().unwrap_or(stdout)
+}
+
 #[test]
 fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
     let dir = TempDir::new().expect("temp dir");
@@ -1529,7 +1533,7 @@ fn build_selfhost_frontend_stage_chain() {
     assert_eq!(parse.status.code(), Some(0));
     let parse_stdout = String::from_utf8_lossy(&parse.stdout).replace("\r\n", "\n");
     assert!(
-        parse_stdout.starts_with(scan_stdout.trim_end()),
+        frontend_report_prefix(parse_stdout.trim_end()).starts_with(scan_stdout.trim_end()),
         "parse output does not extend scan output\nscan:\n{scan_stdout}\nparse:\n{parse_stdout}"
     );
 
@@ -1541,10 +1545,67 @@ fn build_selfhost_frontend_stage_chain() {
     assert_eq!(check.status.code(), Some(0));
     let check_stdout = String::from_utf8_lossy(&check.stdout).replace("\r\n", "\n");
     assert!(
-        check_stdout.starts_with(parse_stdout.trim_end()),
+        frontend_report_prefix(check_stdout.trim_end())
+            .starts_with(frontend_report_prefix(parse_stdout.trim_end())),
         "check output does not extend parse output\nparse:\n{parse_stdout}\ncheck:\n{check_stdout}"
     );
     assert!(check_stdout.contains(" || diagnostics=ok"), "unexpected check output: {check_stdout}");
+}
+
+#[test]
+fn build_selfhost_frontend_stage_chain_error() {
+    let dir = TempDir::new().expect("temp dir");
+    let scan_binary = dir.path().join("bootstrap-selfhost-scan");
+    let parse_binary = dir.path().join("bootstrap-selfhost-parse");
+    let check_binary = dir.path().join("bootstrap-selfhost-check");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let sample = repo_root.join("tests/selfhost_frontend/err_assignment_call_result_type.tg");
+
+    build_selfhost_frontend_scan_binary(&repo_root, &scan_binary);
+    build_selfhost_frontend_parse_binary(&repo_root, &parse_binary);
+    build_selfhost_frontend_binary(&repo_root, &check_binary);
+
+    let scan = Command::new(&scan_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run scan stage");
+    assert_eq!(scan.status.code(), Some(0));
+    let scan_stdout = String::from_utf8_lossy(&scan.stdout).replace("\r\n", "\n");
+    assert!(scan_stdout.starts_with("tokens="), "unexpected scan output: {scan_stdout}");
+
+    let parse = Command::new(&parse_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run parse stage");
+    assert_eq!(parse.status.code(), Some(0));
+    let parse_stdout = String::from_utf8_lossy(&parse.stdout).replace("\r\n", "\n");
+    assert!(
+        frontend_report_prefix(parse_stdout.trim_end()).starts_with(scan_stdout.trim_end()),
+        "parse output does not extend scan output\nscan:\n{scan_stdout}\nparse:\n{parse_stdout}"
+    );
+    assert!(
+        parse_stdout.contains(" || diagnostics=ok"),
+        "unexpected parse output: {parse_stdout}"
+    );
+
+    let check = Command::new(&check_binary)
+        .current_dir(&repo_root)
+        .args([sample.to_str().expect("utf8"), "exe"])
+        .output()
+        .expect("run check stage");
+    assert_eq!(check.status.code(), Some(0));
+    let check_stdout = String::from_utf8_lossy(&check.stdout).replace("\r\n", "\n");
+    assert!(
+        frontend_report_prefix(check_stdout.trim_end())
+            .starts_with(frontend_report_prefix(parse_stdout.trim_end())),
+        "check output does not extend parse output\nparse:\n{parse_stdout}\ncheck:\n{check_stdout}"
+    );
+    assert!(
+        check_stdout.contains(" || diagnostics=assignment call result type mismatch"),
+        "unexpected check output: {check_stdout}"
+    );
 }
 
 #[test]

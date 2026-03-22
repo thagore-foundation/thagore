@@ -49,6 +49,8 @@ Current scope:
   symbol/import output
 - `scan.tg` is the first dedicated token-only stage entry and anchors the
   `stage0 -> scan -> parse -> check` chain gated in CI
+- CI now gates that chain on both `ok` and failing fixtures so stage
+  composition does not only look correct on the happy path
 
 Boundary:
 
