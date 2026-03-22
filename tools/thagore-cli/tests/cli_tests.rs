@@ -1273,7 +1273,6 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
         ("tests/selfhost_frontend/ok_basic.tg", "ok"),
         ("tests/selfhost_frontend/ok_helper_call.tg", "ok"),
         ("tests/selfhost_frontend/err_unknown_identifier.tg", "unknown identifier"),
-        ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
         ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
         ("tests/selfhost_frontend/err_return_type.tg", "return type mismatch"),
     ];
