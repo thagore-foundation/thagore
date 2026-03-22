@@ -1237,6 +1237,9 @@ fn canonicalize_selfhost_frontend(stdout: &str) -> String {
         "ok" => "ok".to_string(),
         "unknown return ident" | "unknown callee" => "unknown identifier".to_string(),
         "call arity mismatch" => "call arity mismatch".to_string(),
+        "assignment type mismatch" | "assignment call result type mismatch" => {
+            "type mismatch".to_string()
+        }
         "condition type mismatch" => "condition type mismatch".to_string(),
         "return type mismatch" => "return type mismatch".to_string(),
         other => other.to_string(),
@@ -1256,6 +1259,9 @@ fn canonicalize_rust_frontend(stderr: &str, status_code: Option<i32>) -> String 
     if stderr.contains("return type mismatch") {
         return "return type mismatch".to_string();
     }
+    if stderr.contains("type mismatch") {
+        return "type mismatch".to_string();
+    }
     if stderr.contains("unknown identifier") {
         return "unknown identifier".to_string();
     }
@@ -1274,6 +1280,7 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
         ("tests/selfhost_frontend/ok_helper_call.tg", "ok"),
         ("tests/selfhost_frontend/err_unknown_identifier.tg", "unknown identifier"),
         ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
+        ("tests/selfhost_frontend/err_assignment_type.tg", "type mismatch"),
         ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
         ("tests/selfhost_frontend/err_return_type.tg", "return type mismatch"),
     ];

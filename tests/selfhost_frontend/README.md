@@ -15,6 +15,7 @@ Current categories:
 
 - `ok`
 - `call arity mismatch`
+- `type mismatch`
 - `unknown identifier`
 - `condition type mismatch`
 - `return type mismatch`

@@ -1,0 +1,4 @@
+func main() -> i32:
+  let answer: i32 = 1
+  answer = true
+  return 0
