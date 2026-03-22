@@ -45,10 +45,16 @@ func find_next_func(source: str, start: i32) -> i32:
     index = index + 1
   return -1
 
-func find_colon(text: str) -> i32:
+func find_body_colon(text: str) -> i32:
   let index: i32 = 0
+  let depth: i32 = 0
   while (index < string.len(text)):
-    if (string.str_eq(string.char_at(text, index), ":")):
+    let ch = string.char_at(text, index)
+    if (string.str_eq(ch, "(")):
+      depth = depth + 1
+    if (string.str_eq(ch, ")") and depth > 0):
+      depth = depth - 1
+    if (depth == 0 and string.str_eq(ch, ":")):
       return index
     index = index + 1
   return -1
@@ -92,7 +98,7 @@ func infer_return_line(line: str) -> str:
   let trimmed = string.trim(line)
   if (string.starts_with(trimmed, "func ") == false):
     return line
-  let colon = find_colon(trimmed)
+  let colon = find_body_colon(trimmed)
   if (colon < 0):
     return line
   if (contains_arrow_before_colon(trimmed, colon)):
@@ -131,7 +137,7 @@ pub func infer_return_type_issue(source: str) -> str:
     let next_func = find_next_func(source, func_start + 5)
     let func_end = choose_end(next_func, string.len(source))
     let chunk = string.trim(slice(source, func_start, func_end))
-    let colon = find_colon(chunk)
+    let colon = find_body_colon(chunk)
     if (colon >= 0 and contains_arrow_before_colon(chunk, colon) == false):
       let body = slice(chunk, colon + 1, string.len(chunk))
       if (string.len(infer_return_literal_type(body)) == 0):
