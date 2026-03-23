@@ -181,7 +181,25 @@ jobs:
             --repo-root "$PWD" \
             --scan-bin "$PWD/selfhost-stage-bin/scan" \
             --parse-bin "$PWD/selfhost-stage-bin/parse" \
-            --check-bin "$PWD/selfhost-stage-bin/check"
+            --check-bin "$PWD/selfhost-stage-bin/check" \
+            --report-out "$PWD/selfhost-stage-bin/report-first.txt"
+
+      - name: Rebuild selfhost frontend stages twice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p selfhost-stage-bin-second
+          target/release/thagc build bootstrap/selfhost/frontend/scan.tg -o selfhost-stage-bin-second/scan
+          target/release/thagc build bootstrap/selfhost/frontend/parse.tg -o selfhost-stage-bin-second/parse
+          target/release/thagc build bootstrap/selfhost/frontend/check.tg -o selfhost-stage-bin-second/check
+          python3 tooling/ci/selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --scan-bin "$PWD/selfhost-stage-bin-second/scan" \
+            --parse-bin "$PWD/selfhost-stage-bin-second/parse" \
+            --check-bin "$PWD/selfhost-stage-bin-second/check" \
+            --report-out "$PWD/selfhost-stage-bin-second/report-second.txt"
+          diff -u selfhost-stage-bin/report-first.txt selfhost-stage-bin-second/report-second.txt
 
       - name: Run selfhost frontend stage lane on Windows
         if: runner.os == 'Windows'
@@ -207,7 +225,35 @@ jobs:
             --repo-root $PWD `
             --scan-bin $PWD/selfhost-stage-bin/scan.exe `
             --parse-bin $PWD/selfhost-stage-bin/parse.exe `
-            --check-bin $PWD/selfhost-stage-bin/check.exe
+            --check-bin $PWD/selfhost-stage-bin/check.exe `
+            --report-out $PWD/selfhost-stage-bin/report-first.txt
+
+      - name: Rebuild selfhost frontend stages twice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path selfhost-stage-bin-second | Out-Null
+          target/release/thagc.exe build bootstrap/selfhost/frontend/scan.tg -o selfhost-stage-bin-second/scan.exe
+          target/release/thagc.exe build bootstrap/selfhost/frontend/parse.tg -o selfhost-stage-bin-second/parse.exe
+          target/release/thagc.exe build bootstrap/selfhost/frontend/check.tg -o selfhost-stage-bin-second/check.exe
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --scan-bin $PWD/selfhost-stage-bin-second/scan.exe `
+            --parse-bin $PWD/selfhost-stage-bin-second/parse.exe `
+            --check-bin $PWD/selfhost-stage-bin-second/check.exe `
+            --report-out $PWD/selfhost-stage-bin-second/report-second.txt
+          if ((Get-Content selfhost-stage-bin/report-first.txt -Raw) -ne (Get-Content selfhost-stage-bin-second/report-second.txt -Raw)) {
+            throw 'selfhost frontend stage reports differ between rebuilds'
+          }
+
+      - name: Upload selfhost frontend stage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selfhost-frontend-stage-${{ matrix.os_name }}
+          path: |
+            selfhost-stage-bin/report-first.txt
+            selfhost-stage-bin-second/report-second.txt
 
   probe:
     name: Bootstrap probe ${{ matrix.os_name }}

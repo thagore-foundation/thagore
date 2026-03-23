@@ -78,6 +78,9 @@ Current scope:
 - that lane now also rebuilds `scan.tg`, `parse.tg`, and `check.tg` directly
   with host `thagc` and validates them through a standalone CI runner script,
   so the gate no longer depends only on Rust test harness code
+- the lane now rebuilds those stages twice and compares emitted corpus reports,
+  giving a first deterministic `stage0 -> selfhost stage -> rebuilt stage`
+  style confidence check for the frontend slice
 
 Boundary:
 

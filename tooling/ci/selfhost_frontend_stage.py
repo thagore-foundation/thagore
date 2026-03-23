@@ -69,12 +69,14 @@ def main() -> int:
     parser.add_argument("--scan-bin", required=True)
     parser.add_argument("--parse-bin", required=True)
     parser.add_argument("--check-bin", required=True)
+    parser.add_argument("--report-out", default="")
     args = parser.parse_args()
 
     repo_root = pathlib.Path(args.repo_root).resolve()
     scan_bin = pathlib.Path(args.scan_bin).resolve()
     parse_bin = pathlib.Path(args.parse_bin).resolve()
     check_bin = pathlib.Path(args.check_bin).resolve()
+    report_lines: list[str] = []
 
     diff_manifest = load_manifest(repo_root / "tests/selfhost_frontend/differential_corpus.txt", 2)
     for fixture, expected in diff_manifest:
@@ -83,6 +85,7 @@ def main() -> int:
             raise SystemExit(
                 f"selfhost differential drift for {fixture}: expected {expected!r}, got {actual!r}"
             )
+        report_lines.append(f"diff|{fixture}|{actual}")
 
     stage_manifest = load_manifest(repo_root / "tests/selfhost_frontend/stage_chain_corpus.txt", 3)
     for fixture, kind, expected_diag in stage_manifest:
@@ -107,6 +110,15 @@ def main() -> int:
             raise SystemExit(
                 f"check diagnostics drift for {fixture}: expected {expected_fragment!r}\n{check_out}"
             )
+        report_lines.append(f"scan|{fixture}|{scan_out}")
+        report_lines.append(f"parse|{fixture}|{parse_out}")
+        report_lines.append(f"check|{fixture}|{check_out}")
+
+    if args.report_out:
+        pathlib.Path(args.report_out).write_text(
+            "\n".join(report_lines) + "\n",
+            encoding="utf-8",
+        )
 
     print("selfhost frontend stage lane ok")
     return 0

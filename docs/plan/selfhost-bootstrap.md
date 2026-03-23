@@ -582,6 +582,10 @@ Current status on `indev-rewrite`:
   `check.tg` directly with host `thagc` and validates them via
   `tooling/ci/selfhost_frontend_stage.py`, which is the first real
   `stage0 -> selfhost stage corpus` gate rather than only a Rust test wrapper
+- that lane now also performs a second rebuild and diffs the emitted corpus
+  reports, which is the first deterministic
+  `stage0 -> selfhost stage -> rebuilt stage` confidence check on the frontend
+  slice
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
