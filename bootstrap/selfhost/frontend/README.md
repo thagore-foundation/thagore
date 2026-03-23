@@ -130,6 +130,9 @@ Current scope:
   toward treating these stages as replacement targets rather than ad hoc tests
 - the standalone CI runner now validates those richer golden corpora directly,
   so stage-lane confidence no longer depends only on Rust-side test harness
+- `docs/plan/selfhost-replacement-target.md` now names `parse.tg` as Target 02,
+  which is the next stage-level boundary after the current `check_file(...)`
+  replacement trial
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

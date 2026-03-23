@@ -1,4 +1,6 @@
-# Selfhost Replacement Target 01
+# Selfhost Replacement Targets
+
+## Target 01
 
 Target:
 
@@ -45,7 +47,49 @@ Exit criteria for Target 01:
 - failures in Target 01 are treated as replacement regressions, not just seed
   regressions
 
-Next target after 01:
+## Target 02
 
-- move from contract verification to experimental routing of this narrow surface
-  through selfhost frontend execution in a dedicated trial path
+Target:
+
+- Selfhost-side entry: `bootstrap/selfhost/frontend/parse.tg`
+- CI/runtime surface:
+  - `tooling/ci/selfhost_frontend_stage.py`
+  - `tests/selfhost_frontend/parse_corpus.txt`
+  - `tests/selfhost_frontend/stage_chain_corpus.txt`
+- Scope: the parse-stage contract for token/summary/symbol/import output before
+  semantic diagnostics
+
+Why this target:
+
+- it sits directly under Target 01 and is already exercised on every selfhost
+  frontend lane
+- it is narrower than full `check.tg`, so regressions are easier to localize
+- it has no dependence on final diagnostic composition, making it a cleaner
+  replacement boundary
+
+Replacement rule:
+
+- `parse.tg` becomes the first stage-level replacement candidate, not just a
+  helper beneath `check.tg`
+- every fixture in `tests/selfhost_frontend/parse_corpus.txt` must remain green
+  in:
+  - Rust test harness golden checks
+  - standalone selfhost stage runner checks
+  - first-pass vs second-pass rebuilt stage reports
+- every fixture in `tests/selfhost_frontend/stage_chain_corpus.txt` must show
+  that `parse.tg` still extends `scan.tg` correctly before `check.tg` adds
+  final diagnostics
+
+Exit criteria for Target 02:
+
+- parse-stage goldens stop changing during normal Target 01 work
+- stage-runner failures can identify parse drift without depending on
+  check-stage diagnostics
+- parse output is stable enough to be treated as a reusable contract surface for
+  later stage replacement
+
+Next target after 02:
+
+- promote `scan.tg` + `parse.tg` together into a stricter replacement lane, or
+- define a dedicated session/driver boundary above them once Target 02 stops
+  moving

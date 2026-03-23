@@ -26,6 +26,9 @@ Scope:
   the golden-locked fixture sets for the richer selfhost frontend stages
 - the standalone CI runner consumes those manifests too, so they are shared
   contracts across Rust tests and selfhost-first validation lanes
+- `parse_corpus.txt` now also anchors Target 02 in
+  `docs/plan/selfhost-replacement-target.md`, so parse-stage work stops being
+  only a support detail under Target 01
 - `differential_corpus.txt` now carries explicit module-kind alongside
   expected labels, so library fixtures are checked as library fixtures instead
   of being implicitly treated as executable roots

@@ -581,6 +581,9 @@ Current status on `indev-rewrite`:
 - the concrete Rust-side target for that contract is now documented in
   `docs/plan/selfhost-replacement-target.md` as Target 01:
   `check_file(...) -> check_all() -> check_module(...)`
+- the next staged replacement boundary is now documented there as Target 02:
+  `bootstrap/selfhost/frontend/parse.tg` backed by `parse_corpus.txt` and the
+  standalone stage runner
 - the dedicated selfhost frontend lane now rebuilds `scan.tg`, `parse.tg`, and
   `check.tg` directly with host `thagc` and validates them via
   `tooling/ci/selfhost_frontend_stage.py`, which is the first real
