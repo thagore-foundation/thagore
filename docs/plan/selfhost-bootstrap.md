@@ -624,6 +624,8 @@ Current status on `indev-rewrite`:
 - the narrow replacement contract now also includes import-alias success in
   both module kinds; duplicate-alias parity is deferred until the Rust side
   exposes alias-specific diagnostics instead of only generic unresolved paths
+- normalized report goldens now also cover module-surface fixtures, so Target
+  01 locks import behavior at report level instead of only label level
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

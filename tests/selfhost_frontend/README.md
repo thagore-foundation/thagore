@@ -38,6 +38,8 @@ Scope:
 - the contract now also includes import-alias success fixtures in both module
   kinds, extending module-surface confidence without jumping into alias-error
   parity that the Rust side does not expose yet
+- selected module-surface fixtures now also have normalized report goldens, so
+  module behavior is locked at a richer level than category labels alone
 
 Current categories:
 

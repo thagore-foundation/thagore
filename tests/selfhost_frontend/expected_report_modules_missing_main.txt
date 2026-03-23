@@ -1,0 +1,1 @@
+summary=func=main;return=i32;locals=0;first_local=:=;return_ident=0 || symbols=main:func || imports=resolved=;missing=pkg/ghost.tg || diagnostics=missing import

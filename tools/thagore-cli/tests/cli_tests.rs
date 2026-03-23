@@ -1424,6 +1424,22 @@ fn dump_selfhost_frontend_reports_match_goldens() {
             "tests/selfhost_frontend/err_assignment_call_result_type.tg",
             "tests/selfhost_frontend/expected_report_err_assignment_call_result_type.txt",
         ),
+        (
+            "tests/selfhost_frontend/modules_ok_main.tg",
+            "tests/selfhost_frontend/expected_report_modules_ok_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_missing_main.tg",
+            "tests/selfhost_frontend/expected_report_modules_missing_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
+            "tests/selfhost_frontend/expected_report_modules_unknown_imported_symbol.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_alias_ok_main.tg",
+            "tests/selfhost_frontend/expected_report_modules_alias_ok_main.txt",
+        ),
     ];
 
     for (fixture, expected) in cases {

@@ -116,6 +116,9 @@ Current scope:
 - the replacement contract now also includes import-alias success fixtures in
   both executable and library mode, widening module-surface coverage without
   assuming Rust-side alias-specific diagnostics that do not exist yet
+- normalized selfhost report goldens now also cover module-surface fixtures
+  (plain import success, missing import, unresolved imported symbol, alias
+  success), so module behavior is not guarded only by coarse labels
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review
