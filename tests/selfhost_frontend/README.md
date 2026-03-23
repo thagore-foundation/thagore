@@ -22,6 +22,9 @@ Scope:
   replacement surface
 - `stage_chain_corpus.txt` is now the contract for the reusable
   `scan -> parse -> check` stage lane
+- the contract now includes an explicit library-mode success fixture
+  (`ok_library_module.tg`) so replacement confidence is not limited to
+  executable-root files
 
 Current categories:
 

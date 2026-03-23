@@ -607,6 +607,8 @@ Current status on `indev-rewrite`:
 - the replacement workflow now preserves the session-routed transcript beside
   the external validator summary, so CI can diff both the replacement verdict
   and the real Rust-path observability output across rebuilds
+- the narrow replacement contract now includes an explicit library-mode success
+  fixture, widening Target 01 slightly beyond executable-root-only coverage
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving
