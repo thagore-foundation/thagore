@@ -598,6 +598,10 @@ Current status on `indev-rewrite`:
 - that replacement trial now runs a second rebuild pass and diffs the emitted
   host/selfhost summaries, pushing Target 01 from single-pass trial status
   toward deterministic replacement status
+- the replacement workflow now injects the selfhost binary back through
+  `tools/thagore-cli/src/session.rs` using `THAGORE_SELFHOST_REPLACEMENT_BIN`,
+  so Target 01 is no longer only checked externally; the Rust-side trial path
+  itself is exercised in CI
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

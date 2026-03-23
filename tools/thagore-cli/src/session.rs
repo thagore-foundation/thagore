@@ -1,8 +1,10 @@
 //! Session-based per-module compilation for the Thagore CLI.
 
 use std::collections::{BTreeMap, HashMap};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use bumpalo::Bump;
 use sha2::{Digest, Sha256};
@@ -54,13 +56,15 @@ pub(crate) fn check_file(
 
     let options = SessionOptions::for_check(include_dirs, defines, features);
     let mut session = CompilationSession::new(path, options)?;
-    match session.check_all() {
+    let result = match session.check_all() {
         Ok(()) => Ok(()),
         Err(failure) if should_fallback_to_legacy(&failure) => {
             legacy_check_file(path, include_dirs, defines, features)
         }
         Err(failure) => Err(failure),
-    }
+    };
+    verify_selfhost_replacement_trial(path, &result)?;
+    result
 }
 
 /// Runs the session pipeline for `thagc build`.
@@ -1308,6 +1312,146 @@ fn session_fallback_failure(message: impl Into<String>, source: &str) -> Pipelin
         )],
         source: source.to_string(),
         timings: TimingReport::new(),
+    }
+}
+
+fn verify_selfhost_replacement_trial(
+    path: &Path,
+    host_result: &Result<(), PipelineFailure>,
+) -> Result<(), PipelineFailure> {
+    let Some(selfhost_bin) = env::var_os("THAGORE_SELFHOST_REPLACEMENT_BIN") else {
+        return Ok(());
+    };
+
+    let manifest = env::var("THAGORE_SELFHOST_REPLACEMENT_MANIFEST")
+        .unwrap_or_else(|_| "tests/selfhost_frontend/differential_corpus.txt".to_string());
+    let expected = match expected_replacement_label(path, Path::new(&manifest)) {
+        Ok(value) => value,
+        Err(None) => return Ok(()),
+        Err(Some(message)) => {
+            let source = fs::read_to_string(path).unwrap_or_default();
+            return Err(selfhost_trial_failure(source, message));
+        }
+    };
+
+    let selfhost_output = Command::new(selfhost_bin)
+        .arg(path)
+        .output()
+        .map_err(|error| {
+            let source = fs::read_to_string(path).unwrap_or_default();
+            selfhost_trial_failure(source, format!("failed to execute selfhost replacement binary: {error}"))
+        })?;
+
+    if !selfhost_output.status.success() {
+        let stdout = String::from_utf8_lossy(&selfhost_output.stdout);
+        let stderr = String::from_utf8_lossy(&selfhost_output.stderr);
+        let source = fs::read_to_string(path).unwrap_or_default();
+        return Err(selfhost_trial_failure(
+            source,
+            format!("selfhost replacement binary failed\nstdout:\n{stdout}\nstderr:\n{stderr}"),
+        ));
+    }
+
+    let selfhost_stdout = String::from_utf8_lossy(&selfhost_output.stdout).replace("\r\n", "\n");
+    let selfhost_label = canonicalize_selfhost_trial_label(&selfhost_stdout);
+    let host_label = canonicalize_host_trial_label(host_result);
+
+    if host_label != expected || selfhost_label != expected || host_label != selfhost_label {
+        let source = fs::read_to_string(path).unwrap_or_default();
+        return Err(selfhost_trial_failure(
+            source,
+            format!(
+                "selfhost replacement trial drift: expected={expected} host={host_label} selfhost={selfhost_label}"
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn expected_replacement_label(path: &Path, manifest: &Path) -> Result<String, Option<String>> {
+    let raw = fs::read_to_string(manifest)
+        .map_err(|error| Some(format!("failed to read replacement manifest {}: {error}", manifest.display())))?;
+    let normalized_path = path.to_string_lossy().replace('\\', "/");
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some((fixture, expected)) = trimmed.split_once('|') else {
+            return Err(Some(format!("invalid replacement manifest row: {trimmed}")));
+        };
+        let fixture_normalized = fixture.trim().replace('\\', "/");
+        if normalized_path.ends_with(&fixture_normalized) {
+            return Ok(expected.trim().to_string());
+        }
+    }
+    Err(None)
+}
+
+fn canonicalize_selfhost_trial_label(stdout: &str) -> String {
+    let diagnostics = stdout
+        .split(" || diagnostics=")
+        .nth(1)
+        .map(str::trim)
+        .unwrap_or("");
+    match diagnostics {
+        "ok" => "ok".to_string(),
+        "unknown return ident" | "unknown callee" | "assignment to unknown local" => {
+            "unknown identifier".to_string()
+        }
+        "call arity mismatch" => "call arity mismatch".to_string(),
+        "assignment type mismatch" | "assignment call result type mismatch" | "local type mismatch" => {
+            "type mismatch".to_string()
+        }
+        "condition type mismatch" => "condition type mismatch".to_string(),
+        "return type mismatch" => "return type mismatch".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn canonicalize_host_trial_label(host_result: &Result<(), PipelineFailure>) -> String {
+    match host_result {
+        Ok(()) => "ok".to_string(),
+        Err(failure) => {
+            let rendered = failure
+                .diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    format!("{}: {}", diagnostic.title, diagnostic.message).to_lowercase()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if rendered.contains("argument count mismatch") {
+                return "call arity mismatch".to_string();
+            }
+            if rendered.contains("condition must be bool") {
+                return "condition type mismatch".to_string();
+            }
+            if rendered.contains("return type mismatch") {
+                return "return type mismatch".to_string();
+            }
+            if rendered.contains("type mismatch") {
+                return "type mismatch".to_string();
+            }
+            if rendered.contains("unknown identifier") {
+                return "unknown identifier".to_string();
+            }
+            rendered
+        }
+    }
+}
+
+fn selfhost_trial_failure(source: String, message: impl Into<String>) -> PipelineFailure {
+    PipelineFailure {
+        diagnostics: vec![CompilerDiagnostic::new(
+            "CLI910",
+            "selfhost replacement trial failed",
+            message.into(),
+            None,
+        )],
+        source,
+        timings: TimingReport::default(),
     }
 }
 

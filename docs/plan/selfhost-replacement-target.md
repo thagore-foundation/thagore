@@ -22,6 +22,10 @@ Replacement rule:
   - host/selfhost differential labels
   - `scan -> parse -> check` stage-chain corpus
   - first-pass vs second-pass rebuilt stage reports
+- the experimental routing hook lives in `tools/thagore-cli/src/session.rs`
+  behind `THAGORE_SELFHOST_REPLACEMENT_BIN`, so Target 01 can be exercised
+  through the real Rust `check_file(...)` path without claiming production
+  replacement yet
 
 Exit criteria for Target 01:
 

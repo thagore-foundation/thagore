@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import subprocess
 import sys
@@ -30,7 +31,16 @@ def run_selfhost(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str) ->
     return completed.returncode, completed.stdout.replace("\r\n", "\n"), completed.stderr.replace("\r\n", "\n")
 
 
-def run_host(thagc: pathlib.Path, repo_root: pathlib.Path, fixture: str) -> tuple[int, str]:
+def run_host(
+    thagc: pathlib.Path,
+    repo_root: pathlib.Path,
+    fixture: str,
+    selfhost_bin: pathlib.Path,
+    manifest: pathlib.Path,
+) -> tuple[int, str]:
+    env = dict(os.environ)
+    env["THAGORE_SELFHOST_REPLACEMENT_BIN"] = str(selfhost_bin.resolve())
+    env["THAGORE_SELFHOST_REPLACEMENT_MANIFEST"] = str(manifest.resolve())
     completed = subprocess.run(
         [str(thagc), "check", str(repo_root / fixture)],
         cwd=repo_root,
@@ -38,6 +48,7 @@ def run_host(thagc: pathlib.Path, repo_root: pathlib.Path, fixture: str) -> tupl
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=env,
     )
     return completed.returncode, completed.stderr.replace("\r\n", "\n")
 
@@ -88,7 +99,8 @@ def main() -> int:
     repo_root = pathlib.Path(args.repo_root).resolve()
     host_thagc = pathlib.Path(args.host_thagc).resolve()
     selfhost_check = pathlib.Path(args.selfhost_check).resolve()
-    rows = load_manifest(repo_root / args.manifest)
+    manifest = (repo_root / args.manifest).resolve()
+    rows = load_manifest(manifest)
     report_lines: list[str] = []
 
     for fixture, expected in rows:
@@ -97,7 +109,7 @@ def main() -> int:
             raise SystemExit(
                 f"selfhost check failed for {fixture}\nstdout:\n{selfhost_stdout}\nstderr:\n{selfhost_stderr}"
             )
-        host_code, host_stderr = run_host(host_thagc, repo_root, fixture)
+        host_code, host_stderr = run_host(host_thagc, repo_root, fixture, selfhost_check, manifest)
         selfhost_label = canonicalize_selfhost(selfhost_stdout)
         host_label = canonicalize_host(host_stderr, host_code)
         if selfhost_label != expected:
