@@ -592,6 +592,9 @@ Current status on `indev-rewrite`:
 - `.github/workflows/selfhost-frontend-stage.yml` now provides a dedicated
   first-class workflow for that slice, reducing dependence on the broader
   bootstrap probe workflow and making the replacement target visible on its own
+- `.github/workflows/selfhost-frontend-replacement.yml` now treats Target 01 as
+  a first-class replacement trial by comparing selfhost `check.tg` directly
+  against host `thagc check` on the contract manifest
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving
