@@ -18,6 +18,10 @@ Scope:
 - selected fixtures also have golden `dump-report` outputs for richer parity
 - bootstrap-seed fixtures now also gate `dump-report` for module-kind-sensitive
   cases (`library` vs synthesized executable root)
+- `differential_corpus.txt` is now the contract for the narrow `thagc check`
+  replacement surface
+- `stage_chain_corpus.txt` is now the contract for the reusable
+  `scan -> parse -> check` stage lane
 
 Current categories:
 

@@ -1,0 +1,3 @@
+tests/selfhost_frontend/ok_helper_call.tg|exe|ok
+tests/selfhost_frontend/err_assignment_call_result_type.tg|exe|assignment call result type mismatch
+tests/bootstrap_seed/sample_library_import_only.tg|library|ok

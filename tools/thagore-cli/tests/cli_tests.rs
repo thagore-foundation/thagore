@@ -1325,42 +1325,27 @@ fn run_stage_binary(binary: &Path, repo_root: &Path, fixture: &str, kind: &str) 
     )
 }
 
+fn load_corpus_manifest(repo_root: &Path, manifest: &str) -> Vec<Vec<String>> {
+    fs::read_to_string(repo_root.join(manifest))
+        .unwrap_or_else(|error| panic!("read corpus manifest {manifest}: {error}"))
+        .replace("\r\n", "\n")
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split('|').map(|part| part.trim().to_string()).collect())
+        .collect()
+}
+
 #[test]
 fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-selfhost-frontend");
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_binary(&repo_root, &binary);
+    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/differential_corpus.txt");
 
-    let cases = [
-        ("tests/selfhost_frontend/ok_basic.tg", "ok"),
-        ("tests/selfhost_frontend/ok_helper_call.tg", "ok"),
-        ("tests/selfhost_frontend/err_unknown_identifier.tg", "unknown identifier"),
-        ("tests/selfhost_frontend/err_unknown_callee.tg", "unknown identifier"),
-        (
-            "tests/selfhost_frontend/err_assignment_unknown_local.tg",
-            "unknown identifier",
-        ),
-        ("tests/selfhost_frontend/err_call_arity.tg", "call arity mismatch"),
-        ("tests/selfhost_frontend/err_assignment_type.tg", "type mismatch"),
-        (
-            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
-            "type mismatch",
-        ),
-        ("tests/selfhost_frontend/err_local_type.tg", "type mismatch"),
-        (
-            "tests/selfhost_frontend/err_local_call_result_type.tg",
-            "type mismatch",
-        ),
-        ("tests/selfhost_frontend/err_condition_type.tg", "condition type mismatch"),
-        ("tests/selfhost_frontend/err_return_type.tg", "return type mismatch"),
-        (
-            "tests/selfhost_frontend/err_return_call_result_type.tg",
-            "return type mismatch",
-        ),
-    ];
-
-    for (fixture, expected) in cases {
+    for case in cases {
+        let fixture = &case[0];
+        let expected = &case[1];
         let sample = repo_root.join(fixture);
 
         let selfhost = Command::new(&binary)
@@ -1643,25 +1628,12 @@ fn build_selfhost_frontend_stage_chain_corpus() {
     build_selfhost_frontend_parse_binary(&repo_root, &parse_binary);
     build_selfhost_frontend_binary(&repo_root, &check_binary);
 
-    let cases = [
-        (
-            "tests/selfhost_frontend/ok_helper_call.tg",
-            "exe",
-            Some(" || diagnostics=ok"),
-        ),
-        (
-            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
-            "exe",
-            Some(" || diagnostics=assignment call result type mismatch"),
-        ),
-        (
-            "tests/bootstrap_seed/sample_library_import_only.tg",
-            "library",
-            Some(" || diagnostics=ok"),
-        ),
-    ];
+    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/stage_chain_corpus.txt");
 
-    for (fixture, kind, expected_diag) in cases {
+    for case in cases {
+        let fixture = &case[0];
+        let kind = &case[1];
+        let expected_diag = &case[2];
         let (scan_stdout, scan_status) = run_stage_binary(&scan_binary, &repo_root, fixture, kind);
         assert_eq!(scan_status, Some(0), "scan failed for {fixture}");
         assert!(
@@ -1687,12 +1659,11 @@ fn build_selfhost_frontend_stage_chain_corpus() {
                 .starts_with(frontend_report_prefix(parse_stdout.trim_end())),
             "check output does not extend parse output for {fixture}\nparse:\n{parse_stdout}\ncheck:\n{check_stdout}"
         );
-        if let Some(diag) = expected_diag {
-            assert!(
-                check_stdout.contains(diag),
-                "unexpected check diagnostics for {fixture}: {check_stdout}"
-            );
-        }
+        let diag = format!(" || diagnostics={expected_diag}");
+        assert!(
+            check_stdout.contains(&diag),
+            "unexpected check diagnostics for {fixture}: {check_stdout}"
+        );
     }
 }
 

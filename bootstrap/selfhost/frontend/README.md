@@ -71,6 +71,10 @@ Current scope:
 - bootstrap CI now gives selfhost frontend stages their own dedicated lane,
   separate from the broader stdlib/bootstrap probe lane, so stage regressions
   are visible as first-class failures
+- replacement-target contracts now live in
+  `tests/selfhost_frontend/differential_corpus.txt` and
+  `tests/selfhost_frontend/stage_chain_corpus.txt` instead of being buried
+  inside Rust test code
 
 Boundary:
 

@@ -575,6 +575,9 @@ Current status on `indev-rewrite`:
 - bootstrap CI now has a dedicated selfhost frontend stage lane, so stage
   corpus regressions are isolated from the larger stdlib/bootstrap audit job
   and can become a real replacement gate
+- the first replacement target contract now lives in manifest files under
+  `tests/selfhost_frontend/`, so corpus scope can expand without hardcoding the
+  target surface inside Rust test logic
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
