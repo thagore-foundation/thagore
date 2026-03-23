@@ -17,6 +17,7 @@ Current contents:
 - `symbols.tg`
 - `resolver.tg`
 - `diagnostics.tg`
+- `semantics.tg`
 - `driver.tg`
 - `pipeline.tg`
 - `report.tg`
@@ -52,6 +53,8 @@ Current scope:
   setup
 - `pipeline.tg` now owns stage execution so `scan.tg`, `parse.tg`, and
   `check.tg` are thin entrypoints around stable selfhost pipeline calls
+- `semantics.tg` now owns diagnostic composition/filtering so `pipeline.tg`
+  stays focused on stage execution rather than policy decisions
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
   symbol/import output
 - `scan.tg` is the first dedicated token-only stage entry and anchors the
