@@ -110,6 +110,9 @@ Current scope:
 - the narrow replacement contract now also includes an unresolved-imported-symbol
   fixture, extending Target 01 into imported-symbol semantics rather than only
   module-file existence
+- both missing-import and unresolved-imported-symbol coverage now run in
+  library mode as well, so Target 01 exercises module-surface failures across
+  both module kinds
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

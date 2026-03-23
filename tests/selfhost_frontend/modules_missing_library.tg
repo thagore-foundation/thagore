@@ -1,0 +1,3 @@
+from pkg import ghost
+func use_helper() -> i32:
+  return 0

@@ -25,8 +25,10 @@ Replacement rule:
   - explicit executable-root and library-mode success coverage
   - explicit import-resolution success coverage in both executable and library
     mode
-  - explicit missing-import failure coverage on executable-root files
-  - explicit unresolved-imported-symbol coverage on executable-root files
+  - explicit missing-import failure coverage in both executable and library
+    mode
+  - explicit unresolved-imported-symbol coverage in both executable and
+    library mode
 - the experimental routing hook lives in `tools/thagore-cli/src/session.rs`
   behind hidden `thagc check` flags (`--selfhost-replacement-bin`,
   `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`,

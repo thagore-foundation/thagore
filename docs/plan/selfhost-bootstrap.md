@@ -618,6 +618,9 @@ Current status on `indev-rewrite`:
 - the narrow replacement contract now also includes unresolved-imported-symbol
   coverage, extending Target 01 into imported-symbol semantics instead of only
   file-level module resolution
+- those module-surface failure categories now also run in library mode, so
+  Target 01 spans executable and library behavior on both import success and
+  import failure
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

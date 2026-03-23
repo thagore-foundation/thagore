@@ -32,6 +32,9 @@ Scope:
   surface parity covers both success and failure paths
 - the contract now includes an unresolved-imported-symbol executable fixture,
   so import semantics go beyond pure module existence checks
+- those module-surface failure categories now also run in library mode, so
+  Target 01 checks both executable and library module behavior instead of only
+  executable failures
 
 Current categories:
 
