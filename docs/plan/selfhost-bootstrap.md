@@ -630,6 +630,9 @@ Current status on `indev-rewrite`:
   early-stage protection on imports instead of relying only on final reports
 - report/parse/scan goldens are now manifest-driven, which turns those richer
   stage checks into explicit contracts instead of hard-coded case lists
+- the standalone selfhost stage runner now validates those richer manifests
+  directly, which moves more of Target 01 confidence out of Rust test code and
+  into first-class selfhost CI tooling
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

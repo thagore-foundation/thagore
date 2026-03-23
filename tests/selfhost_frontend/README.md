@@ -24,6 +24,8 @@ Scope:
   `scan -> parse -> check` stage lane
 - `report_corpus.txt`, `parse_corpus.txt`, and `scan_corpus.txt` now define
   the golden-locked fixture sets for the richer selfhost frontend stages
+- the standalone CI runner consumes those manifests too, so they are shared
+  contracts across Rust tests and selfhost-first validation lanes
 - `differential_corpus.txt` now carries explicit module-kind alongside
   expected labels, so library fixtures are checked as library fixtures instead
   of being implicitly treated as executable roots

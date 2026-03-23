@@ -79,6 +79,23 @@ def report_prefix(stdout: str) -> str:
     return stdout.split(" || diagnostics=", 1)[0]
 
 
+def verify_golden_manifest(
+    repo_root: pathlib.Path,
+    binary: pathlib.Path,
+    manifest_path: pathlib.Path,
+    report_lines: list[str],
+) -> None:
+    rows = load_manifest(manifest_path, 3)
+    for fixture, kind, expected_path in rows:
+        actual = run(binary, repo_root, fixture, kind)
+        expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+        if actual != expected:
+            raise SystemExit(
+                f"{binary.name} golden drift for {fixture}\nexpected:\n{expected}\nactual:\n{actual}"
+            )
+        report_lines.append(f"golden|{binary.name}|{fixture}|kind={kind}|ok")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required=True)
@@ -96,9 +113,9 @@ def main() -> int:
     host_thagc = pathlib.Path(args.host_thagc).resolve() if args.host_thagc else None
     report_lines: list[str] = []
 
-    diff_manifest = load_manifest(repo_root / "tests/selfhost_frontend/differential_corpus.txt", 2)
-    for fixture, expected in diff_manifest:
-        selfhost_actual = canonicalize_selfhost(run(check_bin, repo_root, fixture))
+    diff_manifest = load_manifest(repo_root / "tests/selfhost_frontend/differential_corpus.txt", 3)
+    for fixture, kind, expected in diff_manifest:
+        selfhost_actual = canonicalize_selfhost(run(check_bin, repo_root, fixture, kind))
         if selfhost_actual != expected:
             raise SystemExit(
                 f"selfhost differential drift for {fixture}: expected {expected!r}, got {selfhost_actual!r}"
@@ -124,9 +141,9 @@ def main() -> int:
                 raise SystemExit(
                     f"host/selfhost drift for {fixture}: host={host_actual!r} selfhost={selfhost_actual!r}"
                 )
-            report_lines.append(f"diff|{fixture}|selfhost={selfhost_actual}|host={host_actual}")
+            report_lines.append(f"diff|{fixture}|kind={kind}|selfhost={selfhost_actual}|host={host_actual}")
         else:
-            report_lines.append(f"diff|{fixture}|selfhost={selfhost_actual}")
+            report_lines.append(f"diff|{fixture}|kind={kind}|selfhost={selfhost_actual}")
 
     stage_manifest = load_manifest(repo_root / "tests/selfhost_frontend/stage_chain_corpus.txt", 3)
     for fixture, kind, expected_diag in stage_manifest:
@@ -154,6 +171,25 @@ def main() -> int:
         report_lines.append(f"scan|{fixture}|{scan_out}")
         report_lines.append(f"parse|{fixture}|{parse_out}")
         report_lines.append(f"check|{fixture}|{check_out}")
+
+    verify_golden_manifest(
+        repo_root,
+        check_bin,
+        repo_root / "tests/selfhost_frontend/report_corpus.txt",
+        report_lines,
+    )
+    verify_golden_manifest(
+        repo_root,
+        parse_bin,
+        repo_root / "tests/selfhost_frontend/parse_corpus.txt",
+        report_lines,
+    )
+    verify_golden_manifest(
+        repo_root,
+        scan_bin,
+        repo_root / "tests/selfhost_frontend/scan_corpus.txt",
+        report_lines,
+    )
 
     if args.report_out:
         pathlib.Path(args.report_out).write_text(

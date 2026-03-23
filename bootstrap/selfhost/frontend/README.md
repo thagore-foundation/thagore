@@ -128,6 +128,8 @@ Current scope:
 - report/parse/scan goldens are now contract-driven through dedicated corpus
   manifests under `tests/selfhost_frontend/`, which is the first small step
   toward treating these stages as replacement targets rather than ad hoc tests
+- the standalone CI runner now validates those richer golden corpora directly,
+  so stage-lane confidence no longer depends only on Rust-side test harness
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review
