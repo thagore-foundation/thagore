@@ -1,0 +1,1 @@
+tokens=kw(from)@1:1 | ident(pkg)@1:6 | kw(import)@1:10 | ident(helper)@1:17 | kw(func)@2:1 | ident(main)@2:6 | punct(()@2:10 | punct())@2:11 | punct(->)@2:13 | ident(i32)@2:16 | punct(:)@2:19 | kw(return)@3:3 | ident(helper)@3:10 | punct(()@3:16 | punct())@3:17

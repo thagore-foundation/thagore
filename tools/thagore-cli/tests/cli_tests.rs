@@ -1488,6 +1488,26 @@ fn dump_selfhost_frontend_parse_reports_match_goldens() {
             "library",
             "tests/bootstrap_seed/expected_parse_library_import_only.txt",
         ),
+        (
+            "tests/selfhost_frontend/modules_ok_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_modules_ok_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_missing_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_modules_missing_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_modules_unknown_imported_symbol.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_alias_ok_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_modules_alias_ok_main.txt",
+        ),
     ];
 
     for (fixture, kind, expected) in cases {
@@ -1535,6 +1555,26 @@ fn dump_selfhost_frontend_scan_reports_match_goldens() {
             "tests/bootstrap_seed/sample_library_import_only.tg",
             "library",
             "tests/bootstrap_seed/expected_scan_library_import_only.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_ok_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_modules_ok_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_missing_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_modules_missing_main.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_modules_unknown_imported_symbol.txt",
+        ),
+        (
+            "tests/selfhost_frontend/modules_alias_ok_main.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_modules_alias_ok_main.txt",
         ),
     ];
 

@@ -626,6 +626,8 @@ Current status on `indev-rewrite`:
   exposes alias-specific diagnostics instead of only generic unresolved paths
 - normalized report goldens now also cover module-surface fixtures, so Target
   01 locks import behavior at report level instead of only label level
+- scan/parse goldens now also cover module-surface fixtures, so Target 01 has
+  early-stage protection on imports instead of relying only on final reports
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

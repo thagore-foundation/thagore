@@ -119,6 +119,9 @@ Current scope:
 - normalized selfhost report goldens now also cover module-surface fixtures
   (plain import success, missing import, unresolved imported symbol, alias
   success), so module behavior is not guarded only by coarse labels
+- scan/parse goldens now also cover those module-surface fixtures, so import
+  drift in early selfhost stages is caught before it collapses into
+  check-stage-only behavior
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

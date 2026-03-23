@@ -40,6 +40,8 @@ Scope:
   parity that the Rust side does not expose yet
 - selected module-surface fixtures now also have normalized report goldens, so
   module behavior is locked at a richer level than category labels alone
+- selected module-surface fixtures now also have scan/parse goldens, so token
+  and pre-check drift on imports is caught before it reaches `check.tg`
 
 Current categories:
 
