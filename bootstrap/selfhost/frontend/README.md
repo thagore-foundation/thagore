@@ -87,6 +87,9 @@ Current scope:
 - `.github/workflows/selfhost-frontend-replacement.yml` now treats Target 01 as
   an explicit replacement trial against host `thagc check`, not just a
   stage-quality smoke gate
+- that replacement workflow now runs two rebuild passes and diffs the
+  host-vs-selfhost summaries, so Target 01 is checked for deterministic
+  replacement behavior instead of single-pass agreement only
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

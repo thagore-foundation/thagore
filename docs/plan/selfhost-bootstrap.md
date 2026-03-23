@@ -595,6 +595,9 @@ Current status on `indev-rewrite`:
 - `.github/workflows/selfhost-frontend-replacement.yml` now treats Target 01 as
   a first-class replacement trial by comparing selfhost `check.tg` directly
   against host `thagc check` on the contract manifest
+- that replacement trial now runs a second rebuild pass and diffs the emitted
+  host/selfhost summaries, pushing Target 01 from single-pass trial status
+  toward deterministic replacement status
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

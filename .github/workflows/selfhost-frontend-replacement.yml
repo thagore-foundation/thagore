@@ -131,6 +131,15 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --out-dir "$PWD/selfhost-replacement-bin"
 
+      - name: Build selfhost replacement target second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --out-dir "$PWD/selfhost-replacement-bin-second"
+
       - name: Build selfhost replacement target on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -139,6 +148,15 @@ jobs:
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --out-dir $PWD/selfhost-replacement-bin
+
+      - name: Build selfhost replacement target second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --out-dir $PWD/selfhost-replacement-bin-second
 
       - name: Validate replacement target on Linux
         if: runner.os == 'Linux'
@@ -150,6 +168,17 @@ jobs:
             --selfhost-check "$PWD/selfhost-replacement-bin/check${{ matrix.exe_suffix }}" \
             --summary-out "$PWD/selfhost-replacement-bin/replacement-summary.txt"
 
+      - name: Validate replacement target second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_replacement.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --selfhost-check "$PWD/selfhost-replacement-bin-second/check${{ matrix.exe_suffix }}" \
+            --summary-out "$PWD/selfhost-replacement-bin-second/replacement-summary.txt"
+          diff -u selfhost-replacement-bin/replacement-summary.txt selfhost-replacement-bin-second/replacement-summary.txt
+
       - name: Validate replacement target on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -159,6 +188,19 @@ jobs:
             --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --selfhost-check $PWD/selfhost-replacement-bin/check${{ matrix.exe_suffix }} `
             --summary-out $PWD/selfhost-replacement-bin/replacement-summary.txt
+
+      - name: Validate replacement target second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_replacement.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --selfhost-check $PWD/selfhost-replacement-bin-second/check${{ matrix.exe_suffix }} `
+            --summary-out $PWD/selfhost-replacement-bin-second/replacement-summary.txt
+          if ((Get-Content selfhost-replacement-bin/replacement-summary.txt -Raw) -ne (Get-Content selfhost-replacement-bin-second/replacement-summary.txt -Raw)) {
+            throw 'selfhost replacement summaries differ between rebuilds'
+          }
 
       - name: Summarize replacement target on Linux
         if: runner.os == 'Linux' && always()
@@ -182,6 +224,11 @@ jobs:
           ```text
           $(Get-Content selfhost-replacement-bin/replacement-summary.txt -Raw)
           ```
+
+          ### Second pass
+          ```text
+          $(Get-Content selfhost-replacement-bin-second/replacement-summary.txt -Raw)
+          ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Upload replacement summary
@@ -189,4 +236,6 @@ jobs:
         if: always()
         with:
           name: selfhost-frontend-replacement-${{ matrix.os_name }}
-          path: selfhost-replacement-bin/replacement-summary.txt
+          path: |
+            selfhost-replacement-bin/replacement-summary.txt
+            selfhost-replacement-bin-second/replacement-summary.txt
