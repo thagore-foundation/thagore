@@ -612,6 +612,9 @@ Current status on `indev-rewrite`:
 - the narrow replacement contract now also includes import-resolution success
   fixtures in both executable and library mode, extending Target 01 into a
   small but real module-surface slice
+- the narrow replacement contract now also includes an executable missing-import
+  fixture, so Target 01 now checks one real module-resolution failure path in
+  addition to import success
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

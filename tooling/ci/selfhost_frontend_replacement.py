@@ -83,6 +83,8 @@ def canonicalize_host(stderr: str, code: int) -> str:
         return "ok"
     if "argument count mismatch" in stderr:
         return "call arity mismatch"
+    if "module resolution failed" in stderr:
+        return "missing import"
     if "condition must be bool" in stderr:
         return "condition type mismatch"
     if "return type mismatch" in stderr:

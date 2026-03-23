@@ -104,6 +104,9 @@ Current scope:
 - the narrow replacement contract now also includes import-resolution success
   fixtures in both executable and library mode, widening confidence on module
   surface without jumping yet to import-error parity
+- the narrow replacement contract now also includes an executable missing-import
+  fixture, so Target 01 exercises a real module-surface failure and not only
+  import success
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

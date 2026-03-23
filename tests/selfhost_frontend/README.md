@@ -28,6 +28,8 @@ Scope:
 - the contract now also includes import-resolution success fixtures in both
   executable and library mode, so Target 01 is no longer limited to local-only
   files
+- the contract now includes a missing-import executable fixture, so module
+  surface parity covers both success and failure paths
 
 Current categories:
 
@@ -35,5 +37,6 @@ Current categories:
 - `call arity mismatch`
 - `type mismatch`
 - `unknown identifier`
+- `missing import`
 - `condition type mismatch`
 - `return type mismatch`
