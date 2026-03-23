@@ -25,6 +25,7 @@ Replacement rule:
   - explicit executable-root and library-mode success coverage
   - explicit import-resolution success coverage in both executable and library
     mode
+  - explicit import-alias success coverage in both executable and library mode
   - explicit missing-import failure coverage in both executable and library
     mode
   - explicit unresolved-imported-symbol coverage in both executable and

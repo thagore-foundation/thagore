@@ -621,6 +621,9 @@ Current status on `indev-rewrite`:
 - those module-surface failure categories now also run in library mode, so
   Target 01 spans executable and library behavior on both import success and
   import failure
+- the narrow replacement contract now also includes import-alias success in
+  both module kinds; duplicate-alias parity is deferred until the Rust side
+  exposes alias-specific diagnostics instead of only generic unresolved paths
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

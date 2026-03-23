@@ -35,6 +35,9 @@ Scope:
 - those module-surface failure categories now also run in library mode, so
   Target 01 checks both executable and library module behavior instead of only
   executable failures
+- the contract now also includes import-alias success fixtures in both module
+  kinds, extending module-surface confidence without jumping into alias-error
+  parity that the Rust side does not expose yet
 
 Current categories:
 

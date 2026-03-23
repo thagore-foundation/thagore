@@ -113,6 +113,9 @@ Current scope:
 - both missing-import and unresolved-imported-symbol coverage now run in
   library mode as well, so Target 01 exercises module-surface failures across
   both module kinds
+- the replacement contract now also includes import-alias success fixtures in
+  both executable and library mode, widening module-surface coverage without
+  assuming Rust-side alias-specific diagnostics that do not exist yet
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review
