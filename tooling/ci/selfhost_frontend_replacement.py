@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import subprocess
 import sys
@@ -38,17 +37,22 @@ def run_host(
     selfhost_bin: pathlib.Path,
     manifest: pathlib.Path,
 ) -> tuple[int, str]:
-    env = dict(os.environ)
-    env["THAGORE_SELFHOST_REPLACEMENT_BIN"] = str(selfhost_bin.resolve())
-    env["THAGORE_SELFHOST_REPLACEMENT_MANIFEST"] = str(manifest.resolve())
     completed = subprocess.run(
-        [str(thagc), "check", str(repo_root / fixture)],
+        [
+            str(thagc),
+            "check",
+            str(repo_root / fixture),
+            "--selfhost-replacement-bin",
+            str(selfhost_bin.resolve()),
+            "--selfhost-replacement-manifest",
+            str(manifest.resolve()),
+            "--selfhost-replacement-strict",
+        ],
         cwd=repo_root,
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
-        env=env,
     )
     return completed.returncode, completed.stderr.replace("\r\n", "\n")
 

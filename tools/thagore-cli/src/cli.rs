@@ -138,6 +138,15 @@ pub struct CheckArgs {
     /// Force the legacy flat-merge module loader for debugging.
     #[arg(long = "legacy-flatten")]
     pub legacy_flatten: bool,
+    /// Hidden trial hook for the first selfhost replacement target.
+    #[arg(long = "selfhost-replacement-bin", hide = true)]
+    pub selfhost_replacement_bin: Option<PathBuf>,
+    /// Hidden contract manifest used by the selfhost replacement trial.
+    #[arg(long = "selfhost-replacement-manifest", hide = true)]
+    pub selfhost_replacement_manifest: Option<PathBuf>,
+    /// Hidden switch that forces replacement-trial mismatches to stay hard-fail.
+    #[arg(long = "selfhost-replacement-strict", hide = true)]
+    pub selfhost_replacement_strict: bool,
 }
 
 /// Command-line arguments for `thagore run`.

@@ -91,7 +91,9 @@ Current scope:
   host-vs-selfhost summaries, so Target 01 is checked for deterministic
   replacement behavior instead of single-pass agreement only
 - the replacement trial now routes through `tools/thagore-cli/src/session.rs`
-  via `THAGORE_SELFHOST_REPLACEMENT_BIN`, so the Rust `check_file(...)` surface
+  via hidden `thagc check` flags (`--selfhost-replacement-bin`,
+  `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`), with the
+  older environment hook kept as fallback; the Rust `check_file(...)` surface
   itself participates in the comparison instead of only an external helper
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract

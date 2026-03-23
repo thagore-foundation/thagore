@@ -25,7 +25,7 @@ use crate::error::ErrorReporter;
 use crate::ice::with_ice_handler;
 use crate::pipeline::build_options_for_run;
 use crate::run::{execute_binary, RunWorkspace};
-use crate::session::{build_file, check_file};
+use crate::session::{build_file, check_file, SelfhostReplacementTrial};
 
 const SUCCESS_EXIT_CODE: i32 = 0;
 const COMPILE_ERROR_EXIT_CODE: i32 = 1;
@@ -58,6 +58,11 @@ fn real_main() -> i32 {
             &args.defines,
             &args.features,
             args.legacy_flatten,
+            SelfhostReplacementTrial::from_cli(
+                args.selfhost_replacement_bin.clone(),
+                args.selfhost_replacement_manifest.clone(),
+                args.selfhost_replacement_strict,
+            ),
         ),
         Some(Command::Run(args)) => handle_run(&args),
         Some(Command::SelfUpdate(args)) => handle_self_update(&args),
@@ -106,8 +111,16 @@ fn handle_check(
     defines: &[String],
     features: &[String],
     legacy_flatten: bool,
+    selfhost_trial: Option<SelfhostReplacementTrial>,
 ) -> i32 {
-    match check_file(path, include_dirs, defines, features, legacy_flatten) {
+    match check_file(
+        path,
+        include_dirs,
+        defines,
+        features,
+        legacy_flatten,
+        selfhost_trial.as_ref(),
+    ) {
         Ok(_) => {
             if json {
                 let _ = writeln!(io::stdout(), "[]");

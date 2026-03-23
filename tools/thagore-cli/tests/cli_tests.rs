@@ -194,6 +194,34 @@ fn parses_build_arguments() {
 }
 
 #[test]
+fn parses_hidden_selfhost_replacement_check_arguments() {
+    let cli = Cli::try_parse_from([
+        "thagc",
+        "check",
+        "tests/fixtures/hello.tg",
+        "--selfhost-replacement-bin",
+        "out/selfhost-check",
+        "--selfhost-replacement-manifest",
+        "tests/selfhost_frontend/differential_corpus.txt",
+        "--selfhost-replacement-strict",
+    ])
+    .expect("parse cli");
+
+    let Some(CliCommand::Check(check)) = cli.command else {
+        panic!("expected check command");
+    };
+    assert_eq!(
+        check.selfhost_replacement_bin.as_deref(),
+        Some(Path::new("out/selfhost-check"))
+    );
+    assert_eq!(
+        check.selfhost_replacement_manifest.as_deref(),
+        Some(Path::new("tests/selfhost_frontend/differential_corpus.txt"))
+    );
+    assert!(check.selfhost_replacement_strict);
+}
+
+#[test]
 fn formats_text_diagnostics() {
     let mut buffer = Buffer::no_color();
     let diagnostics = vec![CompilerDiagnostic::new(

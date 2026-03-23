@@ -42,6 +42,33 @@ use crate::timer::TimingReport;
 const SESSION_FALLBACK_CODE: &str = "CLI900";
 const MODULE_CACHE_VERSION: &str = "session-v2";
 
+#[derive(Debug, Clone)]
+pub(crate) struct SelfhostReplacementTrial {
+    selfhost_bin: PathBuf,
+    manifest: PathBuf,
+    strict: bool,
+}
+
+impl SelfhostReplacementTrial {
+    pub(crate) fn from_cli(
+        selfhost_bin: Option<PathBuf>,
+        manifest: Option<PathBuf>,
+        strict: bool,
+    ) -> Option<Self> {
+        let selfhost_bin = selfhost_bin.or_else(|| env::var_os("THAGORE_SELFHOST_REPLACEMENT_BIN").map(PathBuf::from))?;
+        let manifest = manifest.unwrap_or_else(|| {
+            env::var_os("THAGORE_SELFHOST_REPLACEMENT_MANIFEST")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("tests/selfhost_frontend/differential_corpus.txt"))
+        });
+        Some(Self {
+            selfhost_bin,
+            manifest,
+            strict: strict || env::var_os("THAGORE_SELFHOST_REPLACEMENT_STRICT").is_some(),
+        })
+    }
+}
+
 /// Runs the session pipeline for `thagc check`.
 pub(crate) fn check_file(
     path: &Path,
@@ -49,6 +76,7 @@ pub(crate) fn check_file(
     defines: &[String],
     features: &[String],
     legacy_flatten: bool,
+    selfhost_trial: Option<&SelfhostReplacementTrial>,
 ) -> Result<(), PipelineFailure> {
     if legacy_flatten || entry_uses_relative_imports(path) {
         return legacy_check_file(path, include_dirs, defines, features);
@@ -63,7 +91,7 @@ pub(crate) fn check_file(
         }
         Err(failure) => Err(failure),
     };
-    verify_selfhost_replacement_trial(path, &result)?;
+    verify_selfhost_replacement_trial(path, &result, selfhost_trial)?;
     result
 }
 
@@ -1318,14 +1346,12 @@ fn session_fallback_failure(message: impl Into<String>, source: &str) -> Pipelin
 fn verify_selfhost_replacement_trial(
     path: &Path,
     host_result: &Result<(), PipelineFailure>,
+    config: Option<&SelfhostReplacementTrial>,
 ) -> Result<(), PipelineFailure> {
-    let Some(selfhost_bin) = env::var_os("THAGORE_SELFHOST_REPLACEMENT_BIN") else {
+    let Some(config) = config else {
         return Ok(());
     };
-
-    let manifest = env::var("THAGORE_SELFHOST_REPLACEMENT_MANIFEST")
-        .unwrap_or_else(|_| "tests/selfhost_frontend/differential_corpus.txt".to_string());
-    let expected = match expected_replacement_label(path, Path::new(&manifest)) {
+    let expected = match expected_replacement_label(path, &config.manifest) {
         Ok(value) => value,
         Err(None) => return Ok(()),
         Err(Some(message)) => {
@@ -1334,7 +1360,7 @@ fn verify_selfhost_replacement_trial(
         }
     };
 
-    let selfhost_output = Command::new(selfhost_bin)
+    let selfhost_output = Command::new(&config.selfhost_bin)
         .arg(path)
         .output()
         .map_err(|error| {
@@ -1358,12 +1384,13 @@ fn verify_selfhost_replacement_trial(
 
     if host_label != expected || selfhost_label != expected || host_label != selfhost_label {
         let source = fs::read_to_string(path).unwrap_or_default();
-        return Err(selfhost_trial_failure(
-            source,
-            format!(
-                "selfhost replacement trial drift: expected={expected} host={host_label} selfhost={selfhost_label}"
-            ),
-        ));
+        let message = format!(
+            "selfhost replacement trial drift: expected={expected} host={host_label} selfhost={selfhost_label}"
+        );
+        if config.strict {
+            return Err(selfhost_trial_failure(source, message));
+        }
+        eprintln!("{message}");
     }
 
     Ok(())
