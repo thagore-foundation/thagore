@@ -101,6 +101,9 @@ Current scope:
   visible directly in CI artifacts and job summaries
 - the narrow replacement contract now includes an explicit library-mode success
   fixture, so Target 01 no longer measures only executable-root files
+- the narrow replacement contract now also includes import-resolution success
+  fixtures in both executable and library mode, widening confidence on module
+  surface without jumping yet to import-error parity
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

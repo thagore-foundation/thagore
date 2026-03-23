@@ -25,6 +25,9 @@ Scope:
 - the contract now includes an explicit library-mode success fixture
   (`ok_library_module.tg`) so replacement confidence is not limited to
   executable-root files
+- the contract now also includes import-resolution success fixtures in both
+  executable and library mode, so Target 01 is no longer limited to local-only
+  files
 
 Current categories:
 

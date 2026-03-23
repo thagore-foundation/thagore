@@ -1,3 +1,5 @@
 tests/selfhost_frontend/ok_helper_call.tg|exe|ok
+tests/selfhost_frontend/modules_ok_main.tg|exe|ok
 tests/selfhost_frontend/err_assignment_call_result_type.tg|exe|assignment call result type mismatch
 tests/selfhost_frontend/ok_library_module.tg|library|ok
+tests/selfhost_frontend/modules_ok_library.tg|library|ok

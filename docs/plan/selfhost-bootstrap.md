@@ -609,6 +609,9 @@ Current status on `indev-rewrite`:
   and the real Rust-path observability output across rebuilds
 - the narrow replacement contract now includes an explicit library-mode success
   fixture, widening Target 01 slightly beyond executable-root-only coverage
+- the narrow replacement contract now also includes import-resolution success
+  fixtures in both executable and library mode, extending Target 01 into a
+  small but real module-surface slice
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

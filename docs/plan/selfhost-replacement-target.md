@@ -23,6 +23,8 @@ Replacement rule:
   - `scan -> parse -> check` stage-chain corpus
   - first-pass vs second-pass rebuilt stage reports
   - explicit executable-root and library-mode success coverage
+  - explicit import-resolution success coverage in both executable and library
+    mode
 - the experimental routing hook lives in `tools/thagore-cli/src/session.rs`
   behind hidden `thagc check` flags (`--selfhost-replacement-bin`,
   `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`,
