@@ -578,6 +578,9 @@ Current status on `indev-rewrite`:
 - the first replacement target contract now lives in manifest files under
   `tests/selfhost_frontend/`, so corpus scope can expand without hardcoding the
   target surface inside Rust test logic
+- the concrete Rust-side target for that contract is now documented in
+  `docs/plan/selfhost-replacement-target.md` as Target 01:
+  `check_file(...) -> check_all() -> check_module(...)`
 - the dedicated selfhost frontend lane now rebuilds `scan.tg`, `parse.tg`, and
   `check.tg` directly with host `thagc` and validates them via
   `tooling/ci/selfhost_frontend_stage.py`, which is the first real
