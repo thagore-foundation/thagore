@@ -81,6 +81,9 @@ Current scope:
 - the lane now rebuilds those stages twice and compares emitted corpus reports,
   giving a first deterministic `stage0 -> selfhost stage -> rebuilt stage`
   style confidence check for the frontend slice
+- `.github/workflows/selfhost-frontend-stage.yml` is now the dedicated
+  first-class workflow for this slice instead of relying only on the broader
+  bootstrap probe workflow
 
 Boundary:
 

@@ -59,6 +59,22 @@ def canonicalize_selfhost(stdout: str) -> str:
     return diagnostics
 
 
+def canonicalize_host_check(stderr: str, status_code: int) -> str:
+    if status_code == 0:
+        return "ok"
+    if "argument count mismatch" in stderr:
+        return "call arity mismatch"
+    if "condition must be bool" in stderr:
+        return "condition type mismatch"
+    if "return type mismatch" in stderr:
+        return "return type mismatch"
+    if "type mismatch" in stderr:
+        return "type mismatch"
+    if "unknown identifier" in stderr:
+        return "unknown identifier"
+    return stderr.strip()
+
+
 def report_prefix(stdout: str) -> str:
     return stdout.split(" || diagnostics=", 1)[0]
 
@@ -70,22 +86,47 @@ def main() -> int:
     parser.add_argument("--parse-bin", required=True)
     parser.add_argument("--check-bin", required=True)
     parser.add_argument("--report-out", default="")
+    parser.add_argument("--host-thagc", default="")
     args = parser.parse_args()
 
     repo_root = pathlib.Path(args.repo_root).resolve()
     scan_bin = pathlib.Path(args.scan_bin).resolve()
     parse_bin = pathlib.Path(args.parse_bin).resolve()
     check_bin = pathlib.Path(args.check_bin).resolve()
+    host_thagc = pathlib.Path(args.host_thagc).resolve() if args.host_thagc else None
     report_lines: list[str] = []
 
     diff_manifest = load_manifest(repo_root / "tests/selfhost_frontend/differential_corpus.txt", 2)
     for fixture, expected in diff_manifest:
-        actual = canonicalize_selfhost(run(check_bin, repo_root, fixture))
-        if actual != expected:
+        selfhost_actual = canonicalize_selfhost(run(check_bin, repo_root, fixture))
+        if selfhost_actual != expected:
             raise SystemExit(
-                f"selfhost differential drift for {fixture}: expected {expected!r}, got {actual!r}"
+                f"selfhost differential drift for {fixture}: expected {expected!r}, got {selfhost_actual!r}"
             )
-        report_lines.append(f"diff|{fixture}|{actual}")
+        if host_thagc is not None:
+            completed = subprocess.run(
+                [str(host_thagc), "check", str(repo_root / fixture)],
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            host_actual = canonicalize_host_check(
+                completed.stderr.replace("\r\n", "\n"),
+                completed.returncode,
+            )
+            if host_actual != expected:
+                raise SystemExit(
+                    f"host check drift for {fixture}: expected {expected!r}, got {host_actual!r}"
+                )
+            if host_actual != selfhost_actual:
+                raise SystemExit(
+                    f"host/selfhost drift for {fixture}: host={host_actual!r} selfhost={selfhost_actual!r}"
+                )
+            report_lines.append(f"diff|{fixture}|selfhost={selfhost_actual}|host={host_actual}")
+        else:
+            report_lines.append(f"diff|{fixture}|selfhost={selfhost_actual}")
 
     stage_manifest = load_manifest(repo_root / "tests/selfhost_frontend/stage_chain_corpus.txt", 3)
     for fixture, kind, expected_diag in stage_manifest:

@@ -586,6 +586,9 @@ Current status on `indev-rewrite`:
   reports, which is the first deterministic
   `stage0 -> selfhost stage -> rebuilt stage` confidence check on the frontend
   slice
+- `.github/workflows/selfhost-frontend-stage.yml` now provides a dedicated
+  first-class workflow for that slice, reducing dependence on the broader
+  bootstrap probe workflow and making the replacement target visible on its own
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
