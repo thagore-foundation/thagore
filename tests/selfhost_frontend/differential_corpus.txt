@@ -4,6 +4,7 @@ tests/selfhost_frontend/ok_library_module.tg|ok
 tests/selfhost_frontend/modules_ok_main.tg|ok
 tests/selfhost_frontend/modules_ok_library.tg|ok
 tests/selfhost_frontend/modules_missing_main.tg|missing import
+tests/selfhost_frontend/modules_unknown_imported_symbol.tg|unknown imported symbol
 tests/selfhost_frontend/err_unknown_identifier.tg|unknown identifier
 tests/selfhost_frontend/err_unknown_callee.tg|unknown identifier
 tests/selfhost_frontend/err_assignment_unknown_local.tg|unknown identifier

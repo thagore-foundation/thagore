@@ -107,6 +107,9 @@ Current scope:
 - the narrow replacement contract now also includes an executable missing-import
   fixture, so Target 01 exercises a real module-surface failure and not only
   import success
+- the narrow replacement contract now also includes an unresolved-imported-symbol
+  fixture, extending Target 01 into imported-symbol semantics rather than only
+  module-file existence
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

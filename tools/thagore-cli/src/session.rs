@@ -1505,6 +1505,9 @@ fn canonicalize_host_trial_label(host_result: &Result<(), PipelineFailure>) -> S
             if rendered.contains("module resolution failed") {
                 return "missing import".to_string();
             }
+            if rendered.contains("unresolved imported symbol") {
+                return "unknown imported symbol".to_string();
+            }
             if rendered.contains("condition must be bool") {
                 return "condition type mismatch".to_string();
             }

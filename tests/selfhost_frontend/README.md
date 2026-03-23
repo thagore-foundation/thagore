@@ -30,6 +30,8 @@ Scope:
   files
 - the contract now includes a missing-import executable fixture, so module
   surface parity covers both success and failure paths
+- the contract now includes an unresolved-imported-symbol executable fixture,
+  so import semantics go beyond pure module existence checks
 
 Current categories:
 
@@ -38,5 +40,6 @@ Current categories:
 - `type mismatch`
 - `unknown identifier`
 - `missing import`
+- `unknown imported symbol`
 - `condition type mismatch`
 - `return type mismatch`
