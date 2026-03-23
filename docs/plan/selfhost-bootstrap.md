@@ -572,6 +572,9 @@ Current status on `indev-rewrite`:
   corpus across executable success, executable failure, and library-mode
   fixtures, which is the first reusable stage-chain gate rather than a one-off
   smoke path
+- bootstrap CI now has a dedicated selfhost frontend stage lane, so stage
+  corpus regressions are isolated from the larger stdlib/bootstrap audit job
+  and can become a real replacement gate
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

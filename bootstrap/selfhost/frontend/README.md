@@ -68,6 +68,9 @@ Current scope:
   executable failure, and library-mode inputs, which is the first stage wiring
   gate that looks like a reusable replacement target instead of a single smoke
   test
+- bootstrap CI now gives selfhost frontend stages their own dedicated lane,
+  separate from the broader stdlib/bootstrap probe lane, so stage regressions
+  are visible as first-class failures
 
 Boundary:
 

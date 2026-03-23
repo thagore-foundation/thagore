@@ -6,8 +6,10 @@ on:
       - main
     paths:
       - ".github/workflows/bootstrap-probe.yml"
+      - "bootstrap/selfhost/frontend/**"
       - "tests/bootstrap_probe/**"
       - "tests/bootstrap_seed/**"
+      - "tests/selfhost_frontend/**"
       - "stdlib/**"
       - "crates/**"
       - "tools/thagore-cli/**"
@@ -20,6 +22,164 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  selfhost_frontend_stage:
+    name: Selfhost frontend stage ${{ matrix.os_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux-x64
+          - runner: windows-latest
+            os_name: windows-x64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
+          }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $llvmLib = Join-Path $llvmRoot 'lib'
+          $llvmInclude = Join-Path $llvmRoot 'include'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-bootstrap.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '',
+              '        if (args.Contains("--version"))',
+              '        {',
+              '            Console.WriteLine("14.0.6");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--prefix"))',
+              '        {',
+              '            Console.WriteLine(root);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libdir"))',
+              '        {',
+              '            Console.WriteLine(lib);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--includedir"))',
+              '        {',
+              '            Console.WriteLine(include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--build-mode"))',
+              '        {',
+              '            Console.WriteLine("Release");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--cflags"))',
+              '        {',
+              '            Console.WriteLine("-I" + include);',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs"))',
+              '        {',
+              '            Console.WriteLine("");',
+              '            return 0;',
+              '        }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build host thagc on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build host thagc on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Run selfhost frontend stage lane on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cargo test -p thagore-cli bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_scan_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_parse_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain_error -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain_corpus -- --nocapture
+
+      - name: Run selfhost frontend stage lane on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test -p thagore-cli bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_scan_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli dump_selfhost_frontend_parse_reports_match_goldens -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain_error -- --nocapture
+          cargo test -p thagore-cli build_selfhost_frontend_stage_chain_corpus -- --nocapture
+
   probe:
     name: Bootstrap probe ${{ matrix.os_name }}
     runs-on: ${{ matrix.runner }}
