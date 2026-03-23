@@ -22,6 +22,8 @@ Scope:
   replacement surface
 - `stage_chain_corpus.txt` is now the contract for the reusable
   `scan -> parse -> check` stage lane
+- `report_corpus.txt`, `parse_corpus.txt`, and `scan_corpus.txt` now define
+  the golden-locked fixture sets for the richer selfhost frontend stages
 - `differential_corpus.txt` now carries explicit module-kind alongside
   expected labels, so library fixtures are checked as library fixtures instead
   of being implicitly treated as executable roots

@@ -125,6 +125,9 @@ Current scope:
 - scan/parse goldens now also cover those module-surface fixtures, so import
   drift in early selfhost stages is caught before it collapses into
   check-stage-only behavior
+- report/parse/scan goldens are now contract-driven through dedicated corpus
+  manifests under `tests/selfhost_frontend/`, which is the first small step
+  toward treating these stages as replacement targets rather than ad hoc tests
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

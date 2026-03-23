@@ -1415,44 +1415,17 @@ fn dump_selfhost_frontend_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_binary(&repo_root, &binary);
 
-    let cases = [
-        (
-            "tests/selfhost_frontend/ok_helper_call.tg",
-            "tests/selfhost_frontend/expected_report_ok_helper_call.txt",
-        ),
-        (
-            "tests/selfhost_frontend/err_unknown_callee.tg",
-            "tests/selfhost_frontend/expected_report_err_unknown_callee.txt",
-        ),
-        (
-            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
-            "tests/selfhost_frontend/expected_report_err_assignment_call_result_type.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_ok_main.tg",
-            "tests/selfhost_frontend/expected_report_modules_ok_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_missing_main.tg",
-            "tests/selfhost_frontend/expected_report_modules_missing_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
-            "tests/selfhost_frontend/expected_report_modules_unknown_imported_symbol.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_alias_ok_main.tg",
-            "tests/selfhost_frontend/expected_report_modules_alias_ok_main.txt",
-        ),
-    ];
+    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/report_corpus.txt");
 
-    for (fixture, expected) in cases {
+    for case in cases {
+        let fixture = &case[0];
+        let kind = &case[1];
+        let expected_path = repo_root.join(&case[2]);
         let sample = repo_root.join(fixture);
-        let expected_path = repo_root.join(expected);
 
         let output = Command::new(&binary)
             .current_dir(&repo_root)
-            .args([sample.to_str().expect("utf8"), "exe", "dump-report"])
+            .args([sample.to_str().expect("utf8"), kind, "dump-report"])
             .output()
             .unwrap_or_else(|error| panic!("run dump-report for {fixture}: {error}"));
         assert_eq!(output.status.code(), Some(0), "dump-report failed for {fixture}");
@@ -1476,47 +1449,13 @@ fn dump_selfhost_frontend_parse_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_parse_binary(&repo_root, &binary);
 
-    let cases = [
-        (
-            "tests/selfhost_frontend/ok_helper_call.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_ok_helper_call.txt",
-        ),
-        (
-            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_err_assignment_call_result_type.txt",
-        ),
-        (
-            "tests/bootstrap_seed/sample_library_import_only.tg",
-            "library",
-            "tests/bootstrap_seed/expected_parse_library_import_only.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_ok_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_modules_ok_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_missing_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_modules_missing_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_modules_unknown_imported_symbol.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_alias_ok_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_parse_modules_alias_ok_main.txt",
-        ),
-    ];
+    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/parse_corpus.txt");
 
-    for (fixture, kind, expected) in cases {
+    for case in cases {
+        let fixture = &case[0];
+        let kind = &case[1];
+        let expected_path = repo_root.join(&case[2]);
         let sample = repo_root.join(fixture);
-        let expected_path = repo_root.join(expected);
 
         let output = Command::new(&binary)
             .current_dir(&repo_root)
@@ -1544,47 +1483,13 @@ fn dump_selfhost_frontend_scan_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_scan_binary(&repo_root, &binary);
 
-    let cases = [
-        (
-            "tests/selfhost_frontend/ok_helper_call.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_ok_helper_call.txt",
-        ),
-        (
-            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_err_assignment_call_result_type.txt",
-        ),
-        (
-            "tests/bootstrap_seed/sample_library_import_only.tg",
-            "library",
-            "tests/bootstrap_seed/expected_scan_library_import_only.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_ok_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_modules_ok_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_missing_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_modules_missing_main.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_unknown_imported_symbol.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_modules_unknown_imported_symbol.txt",
-        ),
-        (
-            "tests/selfhost_frontend/modules_alias_ok_main.tg",
-            "exe",
-            "tests/selfhost_frontend/expected_scan_modules_alias_ok_main.txt",
-        ),
-    ];
+    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/scan_corpus.txt");
 
-    for (fixture, kind, expected) in cases {
+    for case in cases {
+        let fixture = &case[0];
+        let kind = &case[1];
+        let expected_path = repo_root.join(&case[2]);
         let sample = repo_root.join(fixture);
-        let expected_path = repo_root.join(expected);
 
         let output = Command::new(&binary)
             .current_dir(&repo_root)
