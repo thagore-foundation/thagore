@@ -578,6 +578,10 @@ Current status on `indev-rewrite`:
 - the first replacement target contract now lives in manifest files under
   `tests/selfhost_frontend/`, so corpus scope can expand without hardcoding the
   target surface inside Rust test logic
+- the dedicated selfhost frontend lane now rebuilds `scan.tg`, `parse.tg`, and
+  `check.tg` directly with host `thagc` and validates them via
+  `tooling/ci/selfhost_frontend_stage.py`, which is the first real
+  `stage0 -> selfhost stage corpus` gate rather than only a Rust test wrapper
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

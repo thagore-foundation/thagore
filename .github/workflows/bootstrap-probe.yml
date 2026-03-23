@@ -168,6 +168,21 @@ jobs:
           cargo test -p thagore-cli build_selfhost_frontend_stage_chain_error -- --nocapture
           cargo test -p thagore-cli build_selfhost_frontend_stage_chain_corpus -- --nocapture
 
+      - name: Rebuild selfhost frontend stages on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p selfhost-stage-bin
+          target/release/thagc build bootstrap/selfhost/frontend/scan.tg -o selfhost-stage-bin/scan
+          target/release/thagc build bootstrap/selfhost/frontend/parse.tg -o selfhost-stage-bin/parse
+          target/release/thagc build bootstrap/selfhost/frontend/check.tg -o selfhost-stage-bin/check
+          python3 tooling/ci/selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --scan-bin "$PWD/selfhost-stage-bin/scan" \
+            --parse-bin "$PWD/selfhost-stage-bin/parse" \
+            --check-bin "$PWD/selfhost-stage-bin/check"
+
       - name: Run selfhost frontend stage lane on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -179,6 +194,20 @@ jobs:
           cargo test -p thagore-cli build_selfhost_frontend_stage_chain -- --nocapture
           cargo test -p thagore-cli build_selfhost_frontend_stage_chain_error -- --nocapture
           cargo test -p thagore-cli build_selfhost_frontend_stage_chain_corpus -- --nocapture
+
+      - name: Rebuild selfhost frontend stages on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path selfhost-stage-bin | Out-Null
+          target/release/thagc.exe build bootstrap/selfhost/frontend/scan.tg -o selfhost-stage-bin/scan.exe
+          target/release/thagc.exe build bootstrap/selfhost/frontend/parse.tg -o selfhost-stage-bin/parse.exe
+          target/release/thagc.exe build bootstrap/selfhost/frontend/check.tg -o selfhost-stage-bin/check.exe
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --scan-bin $PWD/selfhost-stage-bin/scan.exe `
+            --parse-bin $PWD/selfhost-stage-bin/parse.exe `
+            --check-bin $PWD/selfhost-stage-bin/check.exe
 
   probe:
     name: Bootstrap probe ${{ matrix.os_name }}

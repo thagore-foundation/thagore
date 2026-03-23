@@ -75,6 +75,9 @@ Current scope:
   `tests/selfhost_frontend/differential_corpus.txt` and
   `tests/selfhost_frontend/stage_chain_corpus.txt` instead of being buried
   inside Rust test code
+- that lane now also rebuilds `scan.tg`, `parse.tg`, and `check.tg` directly
+  with host `thagc` and validates them through a standalone CI runner script,
+  so the gate no longer depends only on Rust test harness code
 
 Boundary:
 
