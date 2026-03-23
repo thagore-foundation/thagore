@@ -84,6 +84,9 @@ Current scope:
 - `.github/workflows/selfhost-frontend-stage.yml` is now the dedicated
   first-class workflow for this slice instead of relying only on the broader
   bootstrap probe workflow
+- that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
+  and publishes both stage reports into the job summary for faster contract
+  review
 
 Boundary:
 

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - indev-rewrite
     paths:
       - ".github/workflows/bootstrap-probe.yml"
       - "bootstrap/selfhost/frontend/**"
@@ -17,6 +18,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: bootstrap-probe-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

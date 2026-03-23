@@ -589,6 +589,9 @@ Current status on `indev-rewrite`:
 - `.github/workflows/selfhost-frontend-stage.yml` now provides a dedicated
   first-class workflow for that slice, reducing dependence on the broader
   bootstrap probe workflow and making the replacement target visible on its own
+- both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
+  and expose selfhost stage reports directly in job summaries, which shortens
+  the inspect-fix loop while the replacement target is still moving
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
