@@ -203,6 +203,8 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
         "out/selfhost-check",
         "--selfhost-replacement-manifest",
         "tests/selfhost_frontend/differential_corpus.txt",
+        "--selfhost-replacement-kind",
+        "library",
         "--selfhost-replacement-strict",
         "--selfhost-replacement-report-out",
         "out/replacement-route.txt",
@@ -220,6 +222,7 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
         check.selfhost_replacement_manifest.as_deref(),
         Some(Path::new("tests/selfhost_frontend/differential_corpus.txt"))
     );
+    assert_eq!(check.selfhost_replacement_kind.as_deref(), Some("library"));
     assert!(check.selfhost_replacement_strict);
     assert_eq!(
         check.selfhost_replacement_report_out.as_deref(),
@@ -1379,12 +1382,13 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
 
     for case in cases {
         let fixture = &case[0];
-        let expected = &case[1];
+        let kind = if case.len() >= 3 { &case[1] } else { "exe" };
+        let expected = if case.len() >= 3 { &case[2] } else { &case[1] };
         let sample = repo_root.join(fixture);
 
         let selfhost = Command::new(&binary)
             .current_dir(&repo_root)
-            .arg(sample.to_str().expect("utf8"))
+            .args([sample.to_str().expect("utf8"), kind])
             .output()
             .unwrap_or_else(|error| panic!("run selfhost frontend for {fixture}: {error}"));
         assert_eq!(selfhost.status.code(), Some(0), "selfhost failed for {fixture}");

@@ -7,20 +7,27 @@ import subprocess
 import sys
 
 
-def load_manifest(path: pathlib.Path) -> list[tuple[str, str]]:
-    rows: list[tuple[str, str]] = []
+def load_manifest(path: pathlib.Path) -> list[tuple[str, str, str]]:
+    rows: list[tuple[str, str, str]] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line:
             continue
-        fixture, expected = [part.strip() for part in line.split("|", 1)]
-        rows.append((fixture, expected))
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) == 2:
+            fixture, expected = parts
+            kind = "exe"
+        elif len(parts) == 3:
+            fixture, kind, expected = parts
+        else:
+            raise SystemExit(f"invalid differential manifest row: {line}")
+        rows.append((fixture, kind, expected))
     return rows
 
 
-def run_selfhost(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str) -> tuple[int, str, str]:
+def run_selfhost(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str, kind: str) -> tuple[int, str, str]:
     completed = subprocess.run(
-        [str(binary), str(repo_root / fixture)],
+        [str(binary), str(repo_root / fixture), kind],
         cwd=repo_root,
         check=False,
         capture_output=True,
@@ -34,6 +41,7 @@ def run_host(
     thagc: pathlib.Path,
     repo_root: pathlib.Path,
     fixture: str,
+    kind: str,
     selfhost_bin: pathlib.Path,
     manifest: pathlib.Path,
     report_out: pathlib.Path,
@@ -47,6 +55,8 @@ def run_host(
             str(selfhost_bin.resolve()),
             "--selfhost-replacement-manifest",
             str(manifest.resolve()),
+            "--selfhost-replacement-kind",
+            kind,
             "--selfhost-replacement-strict",
             "--selfhost-replacement-report-out",
             str(report_out.resolve()),
@@ -117,13 +127,13 @@ def main() -> int:
     rows = load_manifest(manifest)
     report_lines: list[str] = []
 
-    for fixture, expected in rows:
-        selfhost_code, selfhost_stdout, selfhost_stderr = run_selfhost(selfhost_check, repo_root, fixture)
+    for fixture, kind, expected in rows:
+        selfhost_code, selfhost_stdout, selfhost_stderr = run_selfhost(selfhost_check, repo_root, fixture, kind)
         if selfhost_code != 0:
             raise SystemExit(
                 f"selfhost check failed for {fixture}\nstdout:\n{selfhost_stdout}\nstderr:\n{selfhost_stderr}"
             )
-        host_code, host_stderr = run_host(host_thagc, repo_root, fixture, selfhost_check, manifest, route_report)
+        host_code, host_stderr = run_host(host_thagc, repo_root, fixture, kind, selfhost_check, manifest, route_report)
         selfhost_label = canonicalize_selfhost(selfhost_stdout)
         host_label = canonicalize_host(host_stderr, host_code)
         if selfhost_label != expected:
@@ -138,7 +148,9 @@ def main() -> int:
             raise SystemExit(
                 f"host/selfhost replacement mismatch for {fixture}: host={host_label!r} selfhost={selfhost_label!r}"
             )
-        report_lines.append(f"{fixture}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status=ok")
+        report_lines.append(
+            f"{fixture}|kind={kind}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status=ok"
+        )
 
     payload = "\n".join(report_lines) + "\n"
     route_payload = route_report.read_text(encoding="utf-8") if route_report.exists() else ""

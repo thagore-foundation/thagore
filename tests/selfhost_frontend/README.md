@@ -22,6 +22,9 @@ Scope:
   replacement surface
 - `stage_chain_corpus.txt` is now the contract for the reusable
   `scan -> parse -> check` stage lane
+- `differential_corpus.txt` now carries explicit module-kind alongside
+  expected labels, so library fixtures are checked as library fixtures instead
+  of being implicitly treated as executable roots
 - the contract now includes an explicit library-mode success fixture
   (`ok_library_module.tg`) so replacement confidence is not limited to
   executable-root files

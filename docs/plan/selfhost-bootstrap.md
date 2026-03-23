@@ -631,6 +631,9 @@ Current status on `indev-rewrite`:
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving
+- the differential contract now carries explicit module-kind, so library
+  fixtures are validated through the real Rust session path as library inputs
+  instead of silently inheriting executable defaults
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

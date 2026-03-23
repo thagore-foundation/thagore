@@ -47,6 +47,7 @@ const MODULE_CACHE_VERSION: &str = "session-v2";
 pub(crate) struct SelfhostReplacementTrial {
     selfhost_bin: PathBuf,
     manifest: PathBuf,
+    kind: Option<String>,
     strict: bool,
     report_out: Option<PathBuf>,
 }
@@ -55,6 +56,7 @@ impl SelfhostReplacementTrial {
     pub(crate) fn from_cli(
         selfhost_bin: Option<PathBuf>,
         manifest: Option<PathBuf>,
+        kind: Option<String>,
         strict: bool,
         report_out: Option<PathBuf>,
     ) -> Option<Self> {
@@ -67,6 +69,7 @@ impl SelfhostReplacementTrial {
         Some(Self {
             selfhost_bin,
             manifest,
+            kind: kind.or_else(|| env::var("THAGORE_SELFHOST_REPLACEMENT_KIND").ok()),
             strict: strict || env::var_os("THAGORE_SELFHOST_REPLACEMENT_STRICT").is_some(),
             report_out: report_out.or_else(|| env::var_os("THAGORE_SELFHOST_REPLACEMENT_REPORT_OUT").map(PathBuf::from)),
         })
@@ -1355,7 +1358,7 @@ fn verify_selfhost_replacement_trial(
     let Some(config) = config else {
         return Ok(());
     };
-    let expected = match expected_replacement_label(path, &config.manifest) {
+    let contract = match expected_replacement_contract(path, &config.manifest) {
         Ok(value) => value,
         Err(None) => return Ok(()),
         Err(Some(message)) => {
@@ -1363,9 +1366,11 @@ fn verify_selfhost_replacement_trial(
             return Err(selfhost_trial_failure(source, message));
         }
     };
+    let runtime_kind = config.kind.as_deref().unwrap_or(contract.kind.as_str());
 
     let selfhost_output = Command::new(&config.selfhost_bin)
         .arg(path)
+        .arg(runtime_kind)
         .output()
         .map_err(|error| {
             let source = fs::read_to_string(path).unwrap_or_default();
@@ -1386,7 +1391,10 @@ fn verify_selfhost_replacement_trial(
     let selfhost_label = canonicalize_selfhost_trial_label(&selfhost_stdout);
     let host_label = canonicalize_host_trial_label(host_result);
     let normalized_fixture = path.to_string_lossy().replace('\\', "/");
-    let trial_status = if host_label == expected && selfhost_label == expected && host_label == selfhost_label {
+    let trial_status = if host_label == contract.expected
+        && selfhost_label == contract.expected
+        && host_label == selfhost_label
+    {
         "ok"
     } else {
         "drift"
@@ -1394,16 +1402,18 @@ fn verify_selfhost_replacement_trial(
     write_selfhost_trial_report(
         config,
         &normalized_fixture,
-        &expected,
+        runtime_kind,
+        &contract.expected,
         &host_label,
         &selfhost_label,
         trial_status,
     )?;
 
-    if host_label != expected || selfhost_label != expected || host_label != selfhost_label {
+    if host_label != contract.expected || selfhost_label != contract.expected || host_label != selfhost_label {
         let source = fs::read_to_string(path).unwrap_or_default();
         let message = format!(
-            "selfhost replacement trial drift: expected={expected} host={host_label} selfhost={selfhost_label}"
+            "selfhost replacement trial drift: expected={} host={host_label} selfhost={selfhost_label}",
+            contract.expected
         );
         if config.strict {
             return Err(selfhost_trial_failure(source, message));
@@ -1417,6 +1427,7 @@ fn verify_selfhost_replacement_trial(
 fn write_selfhost_trial_report(
     config: &SelfhostReplacementTrial,
     fixture: &str,
+    kind: &str,
     expected: &str,
     host_label: &str,
     selfhost_label: &str,
@@ -1426,7 +1437,7 @@ fn write_selfhost_trial_report(
         return Ok(());
     };
     let line = format!(
-        "{fixture}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status={status}\n"
+        "{fixture}|kind={kind}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status={status}\n"
     );
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -1446,7 +1457,12 @@ fn write_selfhost_trial_report(
     })
 }
 
-fn expected_replacement_label(path: &Path, manifest: &Path) -> Result<String, Option<String>> {
+struct SelfhostReplacementContract {
+    kind: String,
+    expected: String,
+}
+
+fn expected_replacement_contract(path: &Path, manifest: &Path) -> Result<SelfhostReplacementContract, Option<String>> {
     let raw = fs::read_to_string(manifest)
         .map_err(|error| Some(format!("failed to read replacement manifest {}: {error}", manifest.display())))?;
     let normalized_path = path.to_string_lossy().replace('\\', "/");
@@ -1455,12 +1471,21 @@ fn expected_replacement_label(path: &Path, manifest: &Path) -> Result<String, Op
         if trimmed.is_empty() {
             continue;
         }
-        let Some((fixture, expected)) = trimmed.split_once('|') else {
-            return Err(Some(format!("invalid replacement manifest row: {trimmed}")));
+        let parts = trimmed
+            .split('|')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        let (fixture, kind, expected) = match parts.as_slice() {
+            [fixture, expected] => (*fixture, "exe", *expected),
+            [fixture, kind, expected] => (*fixture, *kind, *expected),
+            _ => return Err(Some(format!("invalid replacement manifest row: {trimmed}"))),
         };
-        let fixture_normalized = fixture.trim().replace('\\', "/");
+        let fixture_normalized = fixture.replace('\\', "/");
         if normalized_path.ends_with(&fixture_normalized) {
-            return Ok(expected.trim().to_string());
+            return Ok(SelfhostReplacementContract {
+                kind: kind.to_string(),
+                expected: expected.to_string(),
+            });
         }
     }
     Err(None)

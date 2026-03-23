@@ -61,6 +61,7 @@ fn real_main() -> i32 {
             SelfhostReplacementTrial::from_cli(
                 args.selfhost_replacement_bin.clone(),
                 args.selfhost_replacement_manifest.clone(),
+                args.selfhost_replacement_kind.clone(),
                 args.selfhost_replacement_strict,
                 args.selfhost_replacement_report_out.clone(),
             ),

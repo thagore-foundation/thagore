@@ -144,6 +144,9 @@ pub struct CheckArgs {
     /// Hidden contract manifest used by the selfhost replacement trial.
     #[arg(long = "selfhost-replacement-manifest", hide = true)]
     pub selfhost_replacement_manifest: Option<PathBuf>,
+    /// Hidden module-kind override used when the replacement manifest carries library fixtures.
+    #[arg(long = "selfhost-replacement-kind", hide = true)]
+    pub selfhost_replacement_kind: Option<String>,
     /// Hidden switch that forces replacement-trial mismatches to stay hard-fail.
     #[arg(long = "selfhost-replacement-strict", hide = true)]
     pub selfhost_replacement_strict: bool,
