@@ -565,6 +565,9 @@ Current status on `indev-rewrite`:
 - diagnostic composition/filtering is now centralized in
   `bootstrap/selfhost/frontend/semantics.tg`, narrowing `pipeline.tg` toward
   pure stage execution before the first real stage replacement
+- `scan.tg` and `parse.tg` now have golden coverage on failing fixtures as
+  well, so stage differential confidence is no longer limited to happy-path
+  token/summary output
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local

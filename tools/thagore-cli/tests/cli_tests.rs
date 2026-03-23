@@ -1431,6 +1431,11 @@ fn dump_selfhost_frontend_parse_reports_match_goldens() {
             "tests/selfhost_frontend/expected_parse_ok_helper_call.txt",
         ),
         (
+            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_parse_err_assignment_call_result_type.txt",
+        ),
+        (
             "tests/bootstrap_seed/sample_library_import_only.tg",
             "library",
             "tests/bootstrap_seed/expected_parse_library_import_only.txt",
@@ -1472,6 +1477,11 @@ fn dump_selfhost_frontend_scan_reports_match_goldens() {
             "tests/selfhost_frontend/ok_helper_call.tg",
             "exe",
             "tests/selfhost_frontend/expected_scan_ok_helper_call.txt",
+        ),
+        (
+            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
+            "exe",
+            "tests/selfhost_frontend/expected_scan_err_assignment_call_result_type.txt",
         ),
         (
             "tests/bootstrap_seed/sample_library_import_only.tg",

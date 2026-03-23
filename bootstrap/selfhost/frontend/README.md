@@ -61,6 +61,9 @@ Current scope:
   `stage0 -> scan -> parse -> check` chain gated in CI
 - CI now gates that chain on both `ok` and failing fixtures so stage
   composition does not only look correct on the happy path
+- `scan.tg` and `parse.tg` now both have golden coverage on failing fixtures,
+  so pre-check stage output can drift independently from `check.tg` and still
+  get caught
 
 Boundary:
 
