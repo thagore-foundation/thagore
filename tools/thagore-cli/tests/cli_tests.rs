@@ -1312,6 +1312,19 @@ fn frontend_report_prefix(stdout: &str) -> &str {
     stdout.split(" || diagnostics=").next().unwrap_or(stdout)
 }
 
+fn run_stage_binary(binary: &Path, repo_root: &Path, fixture: &str, kind: &str) -> (String, Option<i32>) {
+    let sample = repo_root.join(fixture);
+    let output = Command::new(binary)
+        .current_dir(repo_root)
+        .args([sample.to_str().expect("utf8"), kind])
+        .output()
+        .unwrap_or_else(|error| panic!("run stage for {fixture}: {error}"));
+    (
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        output.status.code(),
+    )
+}
+
 #[test]
 fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
     let dir = TempDir::new().expect("temp dir");
@@ -1616,6 +1629,71 @@ fn build_selfhost_frontend_stage_chain_error() {
         check_stdout.contains(" || diagnostics=assignment call result type mismatch"),
         "unexpected check output: {check_stdout}"
     );
+}
+
+#[test]
+fn build_selfhost_frontend_stage_chain_corpus() {
+    let dir = TempDir::new().expect("temp dir");
+    let scan_binary = dir.path().join("bootstrap-selfhost-scan");
+    let parse_binary = dir.path().join("bootstrap-selfhost-parse");
+    let check_binary = dir.path().join("bootstrap-selfhost-check");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    build_selfhost_frontend_scan_binary(&repo_root, &scan_binary);
+    build_selfhost_frontend_parse_binary(&repo_root, &parse_binary);
+    build_selfhost_frontend_binary(&repo_root, &check_binary);
+
+    let cases = [
+        (
+            "tests/selfhost_frontend/ok_helper_call.tg",
+            "exe",
+            Some(" || diagnostics=ok"),
+        ),
+        (
+            "tests/selfhost_frontend/err_assignment_call_result_type.tg",
+            "exe",
+            Some(" || diagnostics=assignment call result type mismatch"),
+        ),
+        (
+            "tests/bootstrap_seed/sample_library_import_only.tg",
+            "library",
+            Some(" || diagnostics=ok"),
+        ),
+    ];
+
+    for (fixture, kind, expected_diag) in cases {
+        let (scan_stdout, scan_status) = run_stage_binary(&scan_binary, &repo_root, fixture, kind);
+        assert_eq!(scan_status, Some(0), "scan failed for {fixture}");
+        assert!(
+            scan_stdout.starts_with("tokens="),
+            "unexpected scan output for {fixture}: {scan_stdout}"
+        );
+
+        let (parse_stdout, parse_status) = run_stage_binary(&parse_binary, &repo_root, fixture, kind);
+        assert_eq!(parse_status, Some(0), "parse failed for {fixture}");
+        assert!(
+            frontend_report_prefix(parse_stdout.trim_end()).starts_with(scan_stdout.trim_end()),
+            "parse output does not extend scan output for {fixture}\nscan:\n{scan_stdout}\nparse:\n{parse_stdout}"
+        );
+        assert!(
+            parse_stdout.contains(" || diagnostics=ok"),
+            "unexpected parse output for {fixture}: {parse_stdout}"
+        );
+
+        let (check_stdout, check_status) = run_stage_binary(&check_binary, &repo_root, fixture, kind);
+        assert_eq!(check_status, Some(0), "check failed for {fixture}");
+        assert!(
+            frontend_report_prefix(check_stdout.trim_end())
+                .starts_with(frontend_report_prefix(parse_stdout.trim_end())),
+            "check output does not extend parse output for {fixture}\nparse:\n{parse_stdout}\ncheck:\n{check_stdout}"
+        );
+        if let Some(diag) = expected_diag {
+            assert!(
+                check_stdout.contains(diag),
+                "unexpected check diagnostics for {fixture}: {check_stdout}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -64,6 +64,10 @@ Current scope:
 - `scan.tg` and `parse.tg` now both have golden coverage on failing fixtures,
   so pre-check stage output can drift independently from `check.tg` and still
   get caught
+- CI now also runs a multi-fixture stage-chain corpus across executable success,
+  executable failure, and library-mode inputs, which is the first stage wiring
+  gate that looks like a reusable replacement target instead of a single smoke
+  test
 
 Boundary:
 

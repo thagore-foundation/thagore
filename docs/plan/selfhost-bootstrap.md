@@ -568,6 +568,10 @@ Current status on `indev-rewrite`:
 - `scan.tg` and `parse.tg` now have golden coverage on failing fixtures as
   well, so stage differential confidence is no longer limited to happy-path
   token/summary output
+- bootstrap probe now also runs a multi-fixture `scan -> parse -> check`
+  corpus across executable success, executable failure, and library-mode
+  fixtures, which is the first reusable stage-chain gate rather than a one-off
+  smoke path
 - the initial differential gate now includes call-arity mismatch parity in
   addition to ok / unknown identifier (value and callee) / assignment-target /
   assignment type / local type / assignment call-result type / local
