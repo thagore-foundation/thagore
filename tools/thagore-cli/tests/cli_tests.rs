@@ -204,6 +204,8 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
         "--selfhost-replacement-manifest",
         "tests/selfhost_frontend/differential_corpus.txt",
         "--selfhost-replacement-strict",
+        "--selfhost-replacement-report-out",
+        "out/replacement-route.txt",
     ])
     .expect("parse cli");
 
@@ -219,6 +221,10 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
         Some(Path::new("tests/selfhost_frontend/differential_corpus.txt"))
     );
     assert!(check.selfhost_replacement_strict);
+    assert_eq!(
+        check.selfhost_replacement_report_out.as_deref(),
+        Some(Path::new("out/replacement-route.txt"))
+    );
 }
 
 #[test]

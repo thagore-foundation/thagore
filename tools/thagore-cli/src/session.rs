@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -47,6 +48,7 @@ pub(crate) struct SelfhostReplacementTrial {
     selfhost_bin: PathBuf,
     manifest: PathBuf,
     strict: bool,
+    report_out: Option<PathBuf>,
 }
 
 impl SelfhostReplacementTrial {
@@ -54,6 +56,7 @@ impl SelfhostReplacementTrial {
         selfhost_bin: Option<PathBuf>,
         manifest: Option<PathBuf>,
         strict: bool,
+        report_out: Option<PathBuf>,
     ) -> Option<Self> {
         let selfhost_bin = selfhost_bin.or_else(|| env::var_os("THAGORE_SELFHOST_REPLACEMENT_BIN").map(PathBuf::from))?;
         let manifest = manifest.unwrap_or_else(|| {
@@ -65,6 +68,7 @@ impl SelfhostReplacementTrial {
             selfhost_bin,
             manifest,
             strict: strict || env::var_os("THAGORE_SELFHOST_REPLACEMENT_STRICT").is_some(),
+            report_out: report_out.or_else(|| env::var_os("THAGORE_SELFHOST_REPLACEMENT_REPORT_OUT").map(PathBuf::from)),
         })
     }
 }
@@ -1381,6 +1385,20 @@ fn verify_selfhost_replacement_trial(
     let selfhost_stdout = String::from_utf8_lossy(&selfhost_output.stdout).replace("\r\n", "\n");
     let selfhost_label = canonicalize_selfhost_trial_label(&selfhost_stdout);
     let host_label = canonicalize_host_trial_label(host_result);
+    let normalized_fixture = path.to_string_lossy().replace('\\', "/");
+    let trial_status = if host_label == expected && selfhost_label == expected && host_label == selfhost_label {
+        "ok"
+    } else {
+        "drift"
+    };
+    write_selfhost_trial_report(
+        config,
+        &normalized_fixture,
+        &expected,
+        &host_label,
+        &selfhost_label,
+        trial_status,
+    )?;
 
     if host_label != expected || selfhost_label != expected || host_label != selfhost_label {
         let source = fs::read_to_string(path).unwrap_or_default();
@@ -1394,6 +1412,38 @@ fn verify_selfhost_replacement_trial(
     }
 
     Ok(())
+}
+
+fn write_selfhost_trial_report(
+    config: &SelfhostReplacementTrial,
+    fixture: &str,
+    expected: &str,
+    host_label: &str,
+    selfhost_label: &str,
+    status: &str,
+) -> Result<(), PipelineFailure> {
+    let Some(report_out) = &config.report_out else {
+        return Ok(());
+    };
+    let line = format!(
+        "{fixture}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status={status}\n"
+    );
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(report_out)
+        .map_err(|error| {
+            selfhost_trial_failure(
+                String::new(),
+                format!("failed to open replacement trial report {}: {error}", report_out.display()),
+            )
+        })?;
+    file.write_all(line.as_bytes()).map_err(|error| {
+        selfhost_trial_failure(
+            String::new(),
+            format!("failed to write replacement trial report {}: {error}", report_out.display()),
+        )
+    })
 }
 
 fn expected_replacement_label(path: &Path, manifest: &Path) -> Result<String, Option<String>> {

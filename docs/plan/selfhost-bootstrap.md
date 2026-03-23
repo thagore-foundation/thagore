@@ -601,9 +601,12 @@ Current status on `indev-rewrite`:
 - the replacement workflow now injects the selfhost binary back through
   `tools/thagore-cli/src/session.rs` using hidden `thagc check` flags
   (`--selfhost-replacement-bin`, `--selfhost-replacement-manifest`,
-  `--selfhost-replacement-strict`), with env fallback retained, so Target 01 is
-  no longer only checked externally; the Rust-side trial path itself is
-  exercised in CI
+  `--selfhost-replacement-strict`, `--selfhost-replacement-report-out`), with
+  env fallback retained, so Target 01 is no longer only checked externally; the
+  Rust-side trial path itself is exercised in CI
+- the replacement workflow now preserves the session-routed transcript beside
+  the external validator summary, so CI can diff both the replacement verdict
+  and the real Rust-path observability output across rebuilds
 - both bootstrap workflows now run on `indev-rewrite`, cancel superseded runs,
   and expose selfhost stage reports directly in job summaries, which shortens
   the inspect-fix loop while the replacement target is still moving

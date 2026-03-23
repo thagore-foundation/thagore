@@ -36,6 +36,7 @@ def run_host(
     fixture: str,
     selfhost_bin: pathlib.Path,
     manifest: pathlib.Path,
+    report_out: pathlib.Path,
 ) -> tuple[int, str]:
     completed = subprocess.run(
         [
@@ -47,6 +48,8 @@ def run_host(
             "--selfhost-replacement-manifest",
             str(manifest.resolve()),
             "--selfhost-replacement-strict",
+            "--selfhost-replacement-report-out",
+            str(report_out.resolve()),
         ],
         cwd=repo_root,
         check=False,
@@ -104,6 +107,9 @@ def main() -> int:
     host_thagc = pathlib.Path(args.host_thagc).resolve()
     selfhost_check = pathlib.Path(args.selfhost_check).resolve()
     manifest = (repo_root / args.manifest).resolve()
+    route_report = pathlib.Path(args.summary_out).with_name("replacement-session-route.txt") if args.summary_out else repo_root / "replacement-session-route.txt"
+    if route_report.exists():
+        route_report.unlink()
     rows = load_manifest(manifest)
     report_lines: list[str] = []
 
@@ -113,7 +119,7 @@ def main() -> int:
             raise SystemExit(
                 f"selfhost check failed for {fixture}\nstdout:\n{selfhost_stdout}\nstderr:\n{selfhost_stderr}"
             )
-        host_code, host_stderr = run_host(host_thagc, repo_root, fixture, selfhost_check, manifest)
+        host_code, host_stderr = run_host(host_thagc, repo_root, fixture, selfhost_check, manifest, route_report)
         selfhost_label = canonicalize_selfhost(selfhost_stdout)
         host_label = canonicalize_host(host_stderr, host_code)
         if selfhost_label != expected:
@@ -128,9 +134,15 @@ def main() -> int:
             raise SystemExit(
                 f"host/selfhost replacement mismatch for {fixture}: host={host_label!r} selfhost={selfhost_label!r}"
             )
-        report_lines.append(f"{fixture}|expected={expected}|host={host_label}|selfhost={selfhost_label}")
+        report_lines.append(f"{fixture}|expected={expected}|host={host_label}|selfhost={selfhost_label}|status=ok")
 
     payload = "\n".join(report_lines) + "\n"
+    route_payload = route_report.read_text(encoding="utf-8") if route_report.exists() else ""
+    if route_payload != payload:
+        raise SystemExit(
+            "session-routed replacement report drifted from external validator\n"
+            f"expected:\n{payload}\nactual:\n{route_payload}"
+        )
     if args.summary_out:
         pathlib.Path(args.summary_out).write_text(payload, encoding="utf-8")
     sys.stdout.write(payload)

@@ -92,9 +92,13 @@ Current scope:
   replacement behavior instead of single-pass agreement only
 - the replacement trial now routes through `tools/thagore-cli/src/session.rs`
   via hidden `thagc check` flags (`--selfhost-replacement-bin`,
-  `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`), with the
-  older environment hook kept as fallback; the Rust `check_file(...)` surface
-  itself participates in the comparison instead of only an external helper
+  `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`,
+  `--selfhost-replacement-report-out`), with the older environment hook kept as
+  fallback; the Rust `check_file(...)` surface itself participates in the
+  comparison instead of only an external helper
+- the replacement workflow now uploads both the external validator summary and
+  the session-routed transcript, so contract drift in the real Rust path is
+  visible directly in CI artifacts and job summaries
 - that workflow now runs on `indev-rewrite` as well, cancels superseded runs,
   and publishes both stage reports into the job summary for faster contract
   review

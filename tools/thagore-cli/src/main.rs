@@ -62,6 +62,7 @@ fn real_main() -> i32 {
                 args.selfhost_replacement_bin.clone(),
                 args.selfhost_replacement_manifest.clone(),
                 args.selfhost_replacement_strict,
+                args.selfhost_replacement_report_out.clone(),
             ),
         ),
         Some(Command::Run(args)) => handle_run(&args),

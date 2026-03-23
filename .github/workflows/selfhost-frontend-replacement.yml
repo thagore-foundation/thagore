@@ -212,6 +212,11 @@ jobs:
             echo '```text'
             cat selfhost-replacement-bin/replacement-summary.txt
             echo '```'
+            echo
+            echo '### Session route'
+            echo '```text'
+            cat selfhost-replacement-bin/replacement-session-route.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize replacement target on Windows
@@ -229,6 +234,14 @@ jobs:
           ```text
           $(Get-Content selfhost-replacement-bin-second/replacement-summary.txt -Raw)
           ```
+          ### Session route
+          ```text
+          $(Get-Content selfhost-replacement-bin/replacement-session-route.txt -Raw)
+          ```
+          ### Second pass session route
+          ```text
+          $(Get-Content selfhost-replacement-bin-second/replacement-session-route.txt -Raw)
+          ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Upload replacement summary
@@ -238,4 +251,6 @@ jobs:
           name: selfhost-frontend-replacement-${{ matrix.os_name }}
           path: |
             selfhost-replacement-bin/replacement-summary.txt
+            selfhost-replacement-bin/replacement-session-route.txt
             selfhost-replacement-bin-second/replacement-summary.txt
+            selfhost-replacement-bin-second/replacement-session-route.txt

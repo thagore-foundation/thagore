@@ -147,6 +147,9 @@ pub struct CheckArgs {
     /// Hidden switch that forces replacement-trial mismatches to stay hard-fail.
     #[arg(long = "selfhost-replacement-strict", hide = true)]
     pub selfhost_replacement_strict: bool,
+    /// Hidden path for writing replacement-trial transcripts from the real session path.
+    #[arg(long = "selfhost-replacement-report-out", hide = true)]
+    pub selfhost_replacement_report_out: Option<PathBuf>,
 }
 
 /// Command-line arguments for `thagore run`.

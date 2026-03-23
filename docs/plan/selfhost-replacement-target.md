@@ -24,9 +24,10 @@ Replacement rule:
   - first-pass vs second-pass rebuilt stage reports
 - the experimental routing hook lives in `tools/thagore-cli/src/session.rs`
   behind hidden `thagc check` flags (`--selfhost-replacement-bin`,
-  `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`), with env
-  fallback kept for CI plumbing, so Target 01 can be exercised through the real
-  Rust `check_file(...)` path without claiming production replacement yet
+  `--selfhost-replacement-manifest`, `--selfhost-replacement-strict`,
+  `--selfhost-replacement-report-out`), with env fallback kept for CI plumbing,
+  so Target 01 can be exercised through the real Rust `check_file(...)` path
+  without claiming production replacement yet
 
 Exit criteria for Target 01:
 
