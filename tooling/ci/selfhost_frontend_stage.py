@@ -50,7 +50,7 @@ def canonicalize_selfhost(stdout: str) -> str:
         return "unknown identifier"
     if diagnostics == "call arity mismatch":
         return "call arity mismatch"
-    if diagnostics in {"assignment type mismatch", "assignment call result type mismatch"}:
+    if diagnostics in {"assignment type mismatch", "assignment call result type mismatch", "local type mismatch", "local call result type mismatch"}:
         return "type mismatch"
     if diagnostics == "condition type mismatch":
         return "condition type mismatch"
@@ -64,6 +64,10 @@ def canonicalize_host_check(stderr: str, status_code: int) -> str:
         return "ok"
     if "argument count mismatch" in stderr:
         return "call arity mismatch"
+    if "module resolution failed" in stderr:
+        return "missing import"
+    if "unresolved imported symbol" in stderr:
+        return "unknown imported symbol"
     if "condition must be bool" in stderr:
         return "condition type mismatch"
     if "return type mismatch" in stderr:

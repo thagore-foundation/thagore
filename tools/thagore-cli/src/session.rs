@@ -1503,7 +1503,10 @@ fn canonicalize_selfhost_trial_label(stdout: &str) -> String {
             "unknown identifier".to_string()
         }
         "call arity mismatch" => "call arity mismatch".to_string(),
-        "assignment type mismatch" | "assignment call result type mismatch" | "local type mismatch" => {
+        "assignment type mismatch"
+        | "assignment call result type mismatch"
+        | "local type mismatch"
+        | "local call result type mismatch" => {
             "type mismatch".to_string()
         }
         "condition type mismatch" => "condition type mismatch".to_string(),
