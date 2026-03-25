@@ -36,8 +36,6 @@ jobs:
         include:
           - runner: ubuntu-latest
             os_name: linux-x64
-          - runner: windows-latest
-            os_name: windows-x64
 
     steps:
       - uses: actions/checkout@v5

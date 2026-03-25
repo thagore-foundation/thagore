@@ -20,7 +20,9 @@ func token_text(token: str) -> str:
   let index: i32 = start + 1
   while (index < string.len(token)):
     let ch = string.char_at(token, index)
-    let next = string.char_at(token, index + 1)
+    let next = ""
+    if ((index + 1) < string.len(token)):
+      next = string.char_at(token, index + 1)
     if (string.str_eq(ch, ")") and string.str_eq(next, "@")):
       return out
     out = string.concat(out, ch)

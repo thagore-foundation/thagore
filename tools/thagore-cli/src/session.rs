@@ -1562,7 +1562,7 @@ fn selfhost_trial_failure(source: String, message: impl Into<String>) -> Pipelin
             None,
         )],
         source,
-        timings: TimingReport::default(),
+        timings: TimingReport::new(),
     }
 }
 
