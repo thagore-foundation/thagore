@@ -1,5 +1,6 @@
 from . import pipeline
 import std.fs as fs
+import std.string as string
 
 pub func executable_root_kind() -> str:
   return pipeline.executable_root_kind()
