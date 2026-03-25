@@ -130,7 +130,8 @@ jobs:
         shell: pwsh
         run: cargo build --release -p thagore-cli --bin thagc
 
-      - name: Build selfhost frontend stages first pass
+      - name: Build selfhost frontend stages first pass on Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           python3 tooling/ci/build_selfhost_frontend_stage.py \
@@ -138,7 +139,8 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --out-dir "$PWD/selfhost-stage-bin"
 
-      - name: Validate selfhost frontend stages first pass
+      - name: Validate selfhost frontend stages first pass on Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           python3 tooling/ci/selfhost_frontend_stage.py \
@@ -149,7 +151,8 @@ jobs:
             --check-bin "$PWD/selfhost-stage-bin/check${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-stage-bin/report-first.txt"
 
-      - name: Build selfhost frontend stages second pass
+      - name: Build selfhost frontend stages second pass on Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           python3 tooling/ci/build_selfhost_frontend_stage.py \
@@ -157,7 +160,8 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --out-dir "$PWD/selfhost-stage-bin-second"
 
-      - name: Validate selfhost frontend stages second pass
+      - name: Validate selfhost frontend stages second pass on Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           python3 tooling/ci/selfhost_frontend_stage.py \
@@ -167,6 +171,48 @@ jobs:
             --parse-bin "$PWD/selfhost-stage-bin-second/parse${{ matrix.exe_suffix }}" \
             --check-bin "$PWD/selfhost-stage-bin-second/check${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-stage-bin-second/report-second.txt"
+
+      - name: Build selfhost frontend stages first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --out-dir $PWD/selfhost-stage-bin
+
+      - name: Validate selfhost frontend stages first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --scan-bin $PWD/selfhost-stage-bin/scan${{ matrix.exe_suffix }} `
+            --parse-bin $PWD/selfhost-stage-bin/parse${{ matrix.exe_suffix }} `
+            --check-bin $PWD/selfhost-stage-bin/check${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-stage-bin/report-first.txt
+
+      - name: Build selfhost frontend stages second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --out-dir $PWD/selfhost-stage-bin-second
+
+      - name: Validate selfhost frontend stages second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --scan-bin $PWD/selfhost-stage-bin-second/scan${{ matrix.exe_suffix }} `
+            --parse-bin $PWD/selfhost-stage-bin-second/parse${{ matrix.exe_suffix }} `
+            --check-bin $PWD/selfhost-stage-bin-second/check${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-stage-bin-second/report-second.txt
 
       - name: Diff stage reports on Linux
         if: runner.os == 'Linux'

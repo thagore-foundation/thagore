@@ -122,7 +122,7 @@ def main() -> int:
             )
         if host_thagc is not None:
             completed = subprocess.run(
-                [str(host_thagc), "check", str(repo_root / fixture)],
+                [str(host_thagc), "check", str(repo_root / fixture), "--selfhost-replacement-kind", kind],
                 cwd=repo_root,
                 check=False,
                 capture_output=True,
