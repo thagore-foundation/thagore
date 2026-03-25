@@ -1314,9 +1314,14 @@ fn canonicalize_selfhost_frontend(stdout: &str) -> String {
             "unknown identifier".to_string()
         }
         "call arity mismatch" => "call arity mismatch".to_string(),
-        "assignment type mismatch" | "assignment call result type mismatch" => {
+        "assignment type mismatch"
+        | "assignment call result type mismatch"
+        | "local type mismatch"
+        | "local call result type mismatch" => {
             "type mismatch".to_string()
         }
+        "missing import" => "missing import".to_string(),
+        "unknown imported symbol" => "unknown imported symbol".to_string(),
         "condition type mismatch" => "condition type mismatch".to_string(),
         "return type mismatch" => "return type mismatch".to_string(),
         other => other.to_string(),
@@ -1329,6 +1334,12 @@ fn canonicalize_rust_frontend(stderr: &str, status_code: Option<i32>) -> String 
     }
     if stderr.contains("argument count mismatch") {
         return "call arity mismatch".to_string();
+    }
+    if stderr.contains("module resolution failed") {
+        return "missing import".to_string();
+    }
+    if stderr.contains("unresolved imported symbol") {
+        return "unknown imported symbol".to_string();
     }
     if stderr.contains("condition must be bool") {
         return "condition type mismatch".to_string();
@@ -1396,7 +1407,12 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
         let selfhost_label = canonicalize_selfhost_frontend(&selfhost_stdout);
 
         let rust = Command::new(env!("CARGO_BIN_EXE_thagc"))
-            .args(["check", sample.to_str().expect("utf8")])
+            .args([
+                "check",
+                sample.to_str().expect("utf8"),
+                "--selfhost-replacement-kind",
+                kind,
+            ])
             .output()
             .unwrap_or_else(|error| panic!("run rust frontend for {fixture}: {error}"));
         let rust_stderr = String::from_utf8_lossy(&rust.stderr).replace("\r\n", "\n");
