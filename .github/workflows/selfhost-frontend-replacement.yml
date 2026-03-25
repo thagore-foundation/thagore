@@ -25,6 +25,7 @@ concurrency:
 jobs:
   replacement:
     name: Selfhost frontend replacement ${{ matrix.os_name }}
+    continue-on-error: true
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

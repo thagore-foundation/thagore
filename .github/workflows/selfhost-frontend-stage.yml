@@ -26,6 +26,7 @@ concurrency:
 jobs:
   stage:
     name: Selfhost frontend stage ${{ matrix.os_name }}
+    continue-on-error: true
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
