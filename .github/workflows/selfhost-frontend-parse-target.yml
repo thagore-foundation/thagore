@@ -130,6 +130,26 @@ jobs:
         shell: pwsh
         run: cargo build --release -p thagore-cli --bin thagc
 
+      - name: Normalize frontend fixture line endings on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          roots = [
+              Path("tests/selfhost_frontend"),
+              Path("tests/bootstrap_seed"),
+          ]
+          for root in roots:
+              for path in root.rglob("*"):
+                  if path.suffix not in {".tg", ".txt"}:
+                      continue
+                  text = path.read_text(encoding="utf-8")
+                  normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+                  if normalized != text:
+                      path.write_text(normalized, encoding="utf-8", newline="\n")
+          '@ | python -
+
       - name: Build selfhost scan/parse first pass on Linux
         if: runner.os == 'Linux'
         shell: bash
