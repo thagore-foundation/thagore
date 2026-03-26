@@ -85,6 +85,8 @@ pub struct ImportSpec {
     pub alias: Option<String>,
     /// One-based source line where the import was found.
     pub line: usize,
+    /// Whether resolving `path` may fall back to its parent module.
+    pub allow_parent_fallback: bool,
 }
 
 impl ImportSpec {
@@ -456,6 +458,7 @@ fn parse_imports(source: &str, file: &Path) -> Result<Vec<ImportSpec>, ModuleErr
                 path: path_part.to_string(),
                 alias,
                 line: line_number,
+                allow_parent_fallback: false,
             });
             continue;
         }
@@ -480,30 +483,41 @@ fn parse_imports(source: &str, file: &Path) -> Result<Vec<ImportSpec>, ModuleErr
                 });
             }
             let module_path = module_path.trim();
-            let path = if module_path == "." || module_path == ".." {
-                let symbol = import_tail
-                    .split(',')
-                    .next()
-                    .unwrap_or_default()
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or_default()
-                    .trim();
-                if symbol.is_empty() {
-                    module_path.to_string()
-                } else if module_path == "." {
-                    format!("./{symbol}")
+            let symbols = import_tail
+                .split(',')
+                .filter_map(|item| {
+                    let symbol = item
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or_default()
+                        .trim();
+                    (!symbol.is_empty()).then_some(symbol)
+                })
+                .collect::<Vec<_>>();
+            if symbols.is_empty() {
+                return Err(ModuleError::InvalidImport {
+                    file: file.to_path_buf(),
+                    line: line_number,
+                    text: line.to_string(),
+                });
+            }
+            for symbol in symbols {
+                let path = if module_path == "." || module_path == ".." {
+                    if module_path == "." {
+                        format!("./{symbol}")
+                    } else {
+                        format!("../{symbol}")
+                    }
                 } else {
-                    format!("../{symbol}")
-                }
-            } else {
-                module_path.to_string()
-            };
-            imports.push(ImportSpec {
-                path,
-                alias: None,
-                line: line_number,
-            });
+                    format!("{module_path}.{symbol}")
+                };
+                imports.push(ImportSpec {
+                    path,
+                    alias: None,
+                    line: line_number,
+                    allow_parent_fallback: module_path != "." && module_path != "..",
+                });
+            }
             continue;
         }
     }

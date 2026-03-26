@@ -1,1 +1,1 @@
-summary=func=main;return=i32;locals=0;first_local=:=;return_ident=0 || symbols=main:func || imports=resolved=pkg/tool.tg;missing= || diagnostics=unknown imported symbol
+tokens=kw(from)@1:1 | ident(pkg)@1:6 | kw(import)@1:10 | ident(tool)@1:17 | kw(func)@1:22 | ident(main)@1:27 | punct(()@1:31 | punct())@1:32 | punct(->)@1:34 | ident(i32)@1:37 | punct(:)@1:40 | kw(return)@1:44 | int(0)@1:51 || summary=func=main;return=i32;locals=0;first_local=:=;return_ident=0 || symbols=main:func || imports=resolved=pkg/tool.tg;missing= || diagnostics=unknown imported symbol

@@ -539,6 +539,7 @@ struct ResolvedModuleTarget {
     resolved_path: PathBuf,
     namespace: String,
     module_label: String,
+    requested_symbol: Option<InternedStr>,
 }
 
 #[derive(Debug, Clone)]
@@ -752,37 +753,57 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                         continue;
                     }
 
-                    for symbol in import_decl.symbols {
-                        let local_name = symbol.alias.unwrap_or(symbol.name);
-                        let symbol_name = source_symbols
-                            .get(&symbol.name)
-                            .cloned()
-                            .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
-                        if let Some(export) =
-                            exports.iter().find(|item| item.local_name == symbol_name)
-                        {
-                            bindings.direct_symbols.push(DirectImportBinding {
-                                local_name,
-                                qualified_name: intern_owned_cached(
-                                    self.parser,
-                                    &mut self.intern_cache,
-                                    &export.qualified_name,
-                                ),
-                            });
-                        } else {
+                    let requested_symbol = target.requested_symbol.unwrap_or_else(|| {
+                        import_decl
+                            .symbols
+                            .first()
+                            .map(|symbol| symbol.name)
+                            .unwrap_or_else(|| InternedStr::new(u32::MAX))
+                    });
+                    let import_symbol = import_decl
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == requested_symbol)
+                        .unwrap_or_else(|| {
                             self.diagnostics.push(
                                 CompilerDiagnostic::new(
                                     "CLI003",
                                     "unresolved imported symbol",
-                                    format!(
-                                        "module `{}` has no symbol `{}`",
-                                        target.module_label, symbol_name
-                                    ),
+                                    "resolved import target missing requested symbol",
                                     Some(import_decl.span),
-                                )
-                                .with_hint("check the exported symbol name or import the module namespace instead"),
+                                ),
                             );
-                        }
+                            &import_decl.symbols[0]
+                        });
+                    let local_name = import_symbol.alias.unwrap_or(import_symbol.name);
+                    let symbol_name = source_symbols
+                        .get(&requested_symbol)
+                        .cloned()
+                        .unwrap_or_else(|| format!("sym_{}", requested_symbol.as_u32()));
+                    if let Some(export) =
+                        exports.iter().find(|item| item.local_name == symbol_name)
+                    {
+                        bindings.direct_symbols.push(DirectImportBinding {
+                            local_name,
+                            qualified_name: intern_owned_cached(
+                                self.parser,
+                                &mut self.intern_cache,
+                                &export.qualified_name,
+                            ),
+                        });
+                    } else {
+                        self.diagnostics.push(
+                            CompilerDiagnostic::new(
+                                "CLI003",
+                                "unresolved imported symbol",
+                                format!(
+                                    "module `{}` has no symbol `{}`",
+                                    target.module_label, symbol_name
+                                ),
+                                Some(import_decl.span),
+                            )
+                            .with_hint("check the exported symbol name or import the module namespace instead"),
+                        );
                     }
                     if import_decl.include_all {
                         bindings.include_all.push(include_all_binding(
@@ -876,6 +897,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                         resolved_path,
                         namespace,
                         module_label: segment,
+                        requested_symbol: None,
                     });
                 } else {
                     self.diagnostics.push(
@@ -902,6 +924,58 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
                     .unwrap_or_else(|| format!("sym_{}", segment.as_u32()))
             })
             .collect::<Vec<_>>();
+        if import_decl.is_from {
+            let base_label = module_label_from_segments(&module_segments);
+            for symbol in import_decl.symbols {
+                let symbol_name = source_symbols
+                    .get(&symbol.name)
+                    .cloned()
+                    .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
+                let mut symbol_segments = module_segments.clone();
+                symbol_segments.push(symbol_name.clone());
+                let Some(resolved_path) = self
+                    .resolve_import_path_cached(current_path, import_decl.relative_level, &symbol_segments)
+                    .or_else(|| {
+                        self.resolve_import_path_cached(
+                            current_path,
+                            import_decl.relative_level,
+                            &module_segments,
+                        )
+                    })
+                else {
+                    self.diagnostics.push(
+                        CompilerDiagnostic::new(
+                            "CLI003",
+                            "unresolved import",
+                            format!(
+                                "could not resolve import `{}`",
+                                import_path_label(import_decl, &symbol_segments)
+                            ),
+                            Some(import_decl.span),
+                        )
+                        .with_hint("check stdlib, dependency include dirs, and project module paths"),
+                    );
+                    continue;
+                };
+
+                let normalized = normalize_path(&resolved_path);
+                let namespace = self
+                    .module_namespaces
+                    .get(&normalized)
+                    .cloned()
+                    .unwrap_or_else(|| module_namespace(&symbol_segments));
+                self.module_namespaces
+                    .entry(normalized.clone())
+                    .or_insert_with(|| namespace.clone());
+                targets.push(ResolvedModuleTarget {
+                    resolved_path: normalized,
+                    namespace,
+                    module_label: base_label.clone(),
+                    requested_symbol: Some(symbol.name),
+                });
+            }
+            return targets;
+        }
         let Some(resolved_path) = self.resolve_import_path_cached(
             current_path,
             import_decl.relative_level,
@@ -935,6 +1009,7 @@ impl<'a, 'src, 'tok, 'ast> ModuleLoader<'a, 'src, 'tok, 'ast> {
             resolved_path: normalized,
             namespace,
             module_label: module_label_from_segments(&module_segments),
+            requested_symbol: None,
         });
         targets
     }
@@ -1069,7 +1144,6 @@ pub(crate) fn project_root(entry: &Path) -> PathBuf {
     }
     normalized
         .parent()
-        .and_then(Path::parent)
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf()
 }

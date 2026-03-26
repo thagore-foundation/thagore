@@ -26,8 +26,9 @@ def load_manifest(path: pathlib.Path) -> list[tuple[str, str, str]]:
 
 
 def run_selfhost(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str, kind: str) -> tuple[int, str, str]:
+    fixture_path = (repo_root / fixture).resolve().as_posix()
     completed = subprocess.run(
-        [str(binary), str(repo_root / fixture), kind],
+        [str(binary), fixture_path, kind],
         cwd=repo_root,
         check=False,
         capture_output=True,
@@ -46,11 +47,12 @@ def run_host(
     manifest: pathlib.Path,
     report_out: pathlib.Path,
 ) -> tuple[int, str]:
+    fixture_path = (repo_root / fixture).resolve().as_posix()
     completed = subprocess.run(
         [
             str(thagc),
             "check",
-            str(repo_root / fixture),
+            fixture_path,
             "--selfhost-replacement-bin",
             str(selfhost_bin.resolve()),
             "--selfhost-replacement-manifest",
@@ -83,7 +85,7 @@ def canonicalize_selfhost(stdout: str) -> str:
         return "type mismatch"
     if diagnostics == "condition type mismatch":
         return "condition type mismatch"
-    if diagnostics == "return type mismatch":
+    if diagnostics in {"return type mismatch", "return call result type mismatch"}:
         return "return type mismatch"
     return diagnostics
 

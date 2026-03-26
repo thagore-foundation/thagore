@@ -30,6 +30,25 @@ pub func read_source(path: str) -> str:
 pub func cwd() -> str:
   return fs.getcwd()
 
+pub func source_dir(path: str) -> str:
+  let normalized = string.replace(path, "\\", "/")
+  let last_sep: i32 = -1
+  let index: i32 = 0
+  while (index < string.len(normalized)):
+    if (string.str_eq(string.char_at(normalized, index), "/")):
+      last_sep = index
+    index = index + 1
+  if (last_sep < 0):
+    return fs.getcwd()
+  let out = ""
+  let slice_index: i32 = 0
+  while (slice_index < last_sep):
+    out = string.concat(out, string.char_at(normalized, slice_index))
+    slice_index = slice_index + 1
+  if (string.len(out) == 0):
+    return fs.getcwd()
+  return out
+
 pub func normalize_source(source: str) -> str:
   let normalized_crlf = string.replace(source, "\r\n", "\n")
   return string.replace(normalized_crlf, "\r", "\n")

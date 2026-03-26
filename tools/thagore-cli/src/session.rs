@@ -90,7 +90,14 @@ pub(crate) fn check_file(
     }
 
     let options = SessionOptions::for_check(include_dirs, defines, features);
-    let mut session = CompilationSession::new(path, options)?;
+    let mut session = match CompilationSession::new(path, options) {
+        Ok(session) => session,
+        Err(failure) => {
+            let host_label = canonicalize_host_trial_failure(&failure);
+            verify_selfhost_replacement_trial_with_labels(path, &host_label, selfhost_trial)?;
+            return Err(failure);
+        }
+    };
     let result = match session.check_all() {
         Ok(()) => Ok(()),
         Err(failure) if should_fallback_to_legacy(&failure) => {
@@ -802,36 +809,51 @@ impl CompilationSession {
                         continue;
                     }
 
-                    for symbol in import_decl.symbols {
-                        let local_name = symbol.alias.unwrap_or(symbol.name);
-                        let symbol_name = source_symbols
-                            .get(&symbol.name)
-                            .cloned()
-                            .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
-                        if let Some(export) = exports.iter().find(|item| item.name == symbol_name) {
-                            bindings.direct_symbols.push(DirectImportBinding {
-                                local_name,
-                                qualified_name: intern_owned_cached(
-                                    parser,
-                                    intern_cache,
-                                    &export.qualified_name,
+                    let requested_symbol = target.requested_symbol.unwrap_or_else(|| {
+                        import_decl
+                            .symbols
+                            .first()
+                            .map(|symbol| symbol.name)
+                            .unwrap_or_else(|| InternedStr::new(u32::MAX))
+                    });
+                    let import_symbol = import_decl
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == requested_symbol)
+                        .ok_or_else(|| {
+                            module_error_failure(
+                                current_path,
+                                "resolved import target missing requested symbol",
+                            )
+                        })?;
+                    let local_name = import_symbol.alias.unwrap_or(import_symbol.name);
+                    let symbol_name = source_symbols
+                        .get(&requested_symbol)
+                        .cloned()
+                        .unwrap_or_else(|| format!("sym_{}", requested_symbol.as_u32()));
+                    if let Some(export) = exports.iter().find(|item| item.name == symbol_name) {
+                        bindings.direct_symbols.push(DirectImportBinding {
+                            local_name,
+                            qualified_name: intern_owned_cached(
+                                parser,
+                                intern_cache,
+                                &export.qualified_name,
+                            ),
+                        });
+                    } else {
+                        return Err(PipelineFailure {
+                            diagnostics: vec![CompilerDiagnostic::new(
+                                "CLI003",
+                                "unresolved imported symbol",
+                                format!(
+                                    "module `{}` has no symbol `{}`",
+                                    target.module_label, symbol_name
                                 ),
-                            });
-                        } else {
-                            return Err(PipelineFailure {
-                                diagnostics: vec![CompilerDiagnostic::new(
-                                    "CLI003",
-                                    "unresolved imported symbol",
-                                    format!(
-                                        "module `{}` has no symbol `{}`",
-                                        target.module_label, symbol_name
-                                    ),
-                                    Some(import_decl.span),
-                                )],
-                                source: fs::read_to_string(current_path).unwrap_or_default(),
-                                timings: self.timings.clone(),
-                            });
-                        }
+                                Some(import_decl.span),
+                            )],
+                            source: fs::read_to_string(current_path).unwrap_or_default(),
+                            timings: self.timings.clone(),
+                        });
                     }
                     if import_decl.include_all {
                         bindings.include_all.push(include_all_binding(
@@ -887,6 +909,7 @@ impl CompilationSession {
                     path: relative_import_string(import_decl.relative_level, &[module_name.clone()]),
                     alias: None,
                     line: 0,
+                    allow_parent_fallback: false,
                 };
                 let resolved = self.resolver.resolve(&spec, current_path).map_err(|error| {
                     PipelineFailure {
@@ -909,6 +932,7 @@ impl CompilationSession {
                     module_id,
                     module_label: self.module_label_for(module_id, &resolved.module),
                     namespace: self.module_namespace_for(module_id, &resolved.module),
+                    requested_symbol: None,
                 });
             }
             return Ok(targets);
@@ -924,6 +948,73 @@ impl CompilationSession {
                     .unwrap_or_else(|| format!("sym_{}", segment.as_u32()))
             })
             .collect::<Vec<_>>();
+        if import_decl.is_from {
+            let base_path = if import_decl.relative_level > 0 {
+                relative_import_string(import_decl.relative_level, &segments)
+            } else {
+                segments.join(".")
+            };
+            for symbol in import_decl.symbols {
+                let symbol_name = source_symbols
+                    .get(&symbol.name)
+                    .cloned()
+                    .unwrap_or_else(|| format!("sym_{}", symbol.name.as_u32()));
+                let spec = ImportSpec {
+                    path: if import_decl.relative_level > 0 {
+                        relative_import_string(
+                            import_decl.relative_level,
+                            &[segments.clone(), vec![symbol_name.clone()]].concat(),
+                        )
+                    } else {
+                        let mut symbol_segments = segments.clone();
+                        symbol_segments.push(symbol_name.clone());
+                        symbol_segments.join(".")
+                    },
+                    alias: None,
+                    line: 0,
+                    allow_parent_fallback: true,
+                };
+                let resolved = self
+                    .resolver
+                    .resolve(&spec, current_path)
+                    .or_else(|_| {
+                        self.resolver.resolve(
+                            &ImportSpec {
+                                path: base_path.clone(),
+                                alias: None,
+                                line: 0,
+                                allow_parent_fallback: false,
+                            },
+                            current_path,
+                        )
+                    })
+                    .map_err(|error| PipelineFailure {
+                        diagnostics: vec![CompilerDiagnostic::new(
+                            "CLI003",
+                            "unresolved import",
+                            error.to_string(),
+                            Some(import_decl.span),
+                        )],
+                        source: fs::read_to_string(current_path).unwrap_or_default(),
+                        timings: self.timings.clone(),
+                    })?;
+                let module_id = self
+                    .module_ids_by_path
+                    .get(&resolved.module.file_path)
+                    .copied()
+                    .ok_or_else(|| {
+                        module_error_failure(current_path, "resolved module missing from graph")
+                    })?;
+                targets.push(ResolvedTarget {
+                    module_id,
+                    module_label: self.module_label_for(module_id, &resolved.module),
+                    namespace: self.module_namespace_for(module_id, &resolved.module),
+                    requested_symbol: Some(symbol.name),
+                });
+            }
+            return Ok(targets);
+        }
+
         let spec = ImportSpec {
             path: if import_decl.relative_level > 0 {
                 relative_import_string(import_decl.relative_level, &segments)
@@ -932,6 +1023,7 @@ impl CompilationSession {
             },
             alias: import_decl.alias.and_then(|alias| source_symbols.get(&alias).cloned()),
             line: 0,
+            allow_parent_fallback: false,
         };
         let resolved = self.resolver.resolve(&spec, current_path).map_err(|error| PipelineFailure {
             diagnostics: vec![CompilerDiagnostic::new(
@@ -952,6 +1044,7 @@ impl CompilationSession {
             module_id,
             module_label: self.module_label_for(module_id, &resolved.module),
             namespace: self.module_namespace_for(module_id, &resolved.module),
+            requested_symbol: None,
         });
         Ok(targets)
     }
@@ -1067,6 +1160,7 @@ struct ResolvedTarget {
     module_id: ModuleId,
     module_label: String,
     namespace: String,
+    requested_symbol: Option<InternedStr>,
 }
 
 fn map_graph_exports(exports: &[GraphExportedSymbol]) -> Vec<ExportedSymbol> {
@@ -1355,6 +1449,15 @@ fn verify_selfhost_replacement_trial(
     host_result: &Result<(), PipelineFailure>,
     config: Option<&SelfhostReplacementTrial>,
 ) -> Result<(), PipelineFailure> {
+    let host_label = canonicalize_host_trial_label(host_result);
+    verify_selfhost_replacement_trial_with_labels(path, &host_label, config)
+}
+
+fn verify_selfhost_replacement_trial_with_labels(
+    path: &Path,
+    host_label: &str,
+    config: Option<&SelfhostReplacementTrial>,
+) -> Result<(), PipelineFailure> {
     let Some(config) = config else {
         return Ok(());
     };
@@ -1389,8 +1492,12 @@ fn verify_selfhost_replacement_trial(
 
     let selfhost_stdout = String::from_utf8_lossy(&selfhost_output.stdout).replace("\r\n", "\n");
     let selfhost_label = canonicalize_selfhost_trial_label(&selfhost_stdout);
-    let host_label = canonicalize_host_trial_label(host_result);
-    let normalized_fixture = path.to_string_lossy().replace('\\', "/");
+    let normalized_fixture = std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(cwd).ok().map(|relative| relative.to_path_buf()))
+        .unwrap_or_else(|| path.to_path_buf())
+        .to_string_lossy()
+        .replace('\\', "/");
     let trial_status = if host_label == contract.expected
         && selfhost_label == contract.expected
         && host_label == selfhost_label
@@ -1404,7 +1511,7 @@ fn verify_selfhost_replacement_trial(
         &normalized_fixture,
         runtime_kind,
         &contract.expected,
-        &host_label,
+        host_label,
         &selfhost_label,
         trial_status,
     )?;
@@ -1510,7 +1617,9 @@ fn canonicalize_selfhost_trial_label(stdout: &str) -> String {
             "type mismatch".to_string()
         }
         "condition type mismatch" => "condition type mismatch".to_string(),
-        "return type mismatch" => "return type mismatch".to_string(),
+        "return type mismatch" | "return call result type mismatch" => {
+            "return type mismatch".to_string()
+        }
         other => other.to_string(),
     }
 }
@@ -1518,39 +1627,39 @@ fn canonicalize_selfhost_trial_label(stdout: &str) -> String {
 fn canonicalize_host_trial_label(host_result: &Result<(), PipelineFailure>) -> String {
     match host_result {
         Ok(()) => "ok".to_string(),
-        Err(failure) => {
-            let rendered = failure
-                .diagnostics
-                .iter()
-                .map(|diagnostic| {
-                    format!("{}: {}", diagnostic.title, diagnostic.message).to_lowercase()
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            if rendered.contains("argument count mismatch") {
-                return "call arity mismatch".to_string();
-            }
-            if rendered.contains("module resolution failed") {
-                return "missing import".to_string();
-            }
-            if rendered.contains("unresolved imported symbol") {
-                return "unknown imported symbol".to_string();
-            }
-            if rendered.contains("condition must be bool") {
-                return "condition type mismatch".to_string();
-            }
-            if rendered.contains("return type mismatch") {
-                return "return type mismatch".to_string();
-            }
-            if rendered.contains("type mismatch") {
-                return "type mismatch".to_string();
-            }
-            if rendered.contains("unknown identifier") {
-                return "unknown identifier".to_string();
-            }
-            rendered
-        }
+        Err(failure) => canonicalize_host_trial_failure(failure),
     }
+}
+
+fn canonicalize_host_trial_failure(failure: &PipelineFailure) -> String {
+    let rendered = failure
+        .diagnostics
+        .iter()
+        .map(|diagnostic| format!("{}: {}", diagnostic.title, diagnostic.message).to_lowercase())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if rendered.contains("argument count mismatch") {
+        return "call arity mismatch".to_string();
+    }
+    if rendered.contains("module resolution failed") {
+        return "missing import".to_string();
+    }
+    if rendered.contains("unresolved imported symbol") {
+        return "unknown imported symbol".to_string();
+    }
+    if rendered.contains("condition must be bool") {
+        return "condition type mismatch".to_string();
+    }
+    if rendered.contains("return type mismatch") {
+        return "return type mismatch".to_string();
+    }
+    if rendered.contains("type mismatch") {
+        return "type mismatch".to_string();
+    }
+    if rendered.contains("unknown identifier") {
+        return "unknown identifier".to_string();
+    }
+    rendered
 }
 
 fn selfhost_trial_failure(source: String, message: impl Into<String>) -> PipelineFailure {

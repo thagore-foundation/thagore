@@ -21,7 +21,8 @@ def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
 
 
 def run(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str, kind: str = "") -> str:
-    args = [str(binary), str(repo_root / fixture)]
+    fixture_path = (repo_root / fixture).resolve().as_posix()
+    args = [str(binary), fixture_path]
     if kind:
         args.append(kind)
     completed = subprocess.run(
@@ -54,7 +55,7 @@ def canonicalize_selfhost(stdout: str) -> str:
         return "type mismatch"
     if diagnostics == "condition type mismatch":
         return "condition type mismatch"
-    if diagnostics == "return type mismatch":
+    if diagnostics in {"return type mismatch", "return call result type mismatch"}:
         return "return type mismatch"
     return diagnostics
 
@@ -126,7 +127,13 @@ def main() -> int:
             )
         if host_thagc is not None:
             completed = subprocess.run(
-                [str(host_thagc), "check", str(repo_root / fixture), "--selfhost-replacement-kind", kind],
+                [
+                    str(host_thagc),
+                    "check",
+                    (repo_root / fixture).resolve().as_posix(),
+                    "--selfhost-replacement-kind",
+                    kind,
+                ],
                 cwd=repo_root,
                 check=False,
                 capture_output=True,

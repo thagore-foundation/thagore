@@ -1,1 +1,1 @@
-summary=func=main;return=i32;locals=0;first_local=:=;return_ident=missing_call || symbols=main:func || imports=resolved=;missing= || diagnostics=unknown return ident | unknown callee
+tokens=kw(func)@1:1 | ident(main)@1:6 | punct(()@1:10 | punct())@1:11 | punct(->)@1:13 | ident(i32)@1:16 | punct(:)@1:19 | kw(return)@1:23 | ident(missing_call)@1:30 | punct(()@1:42 | punct())@1:43 || summary=func=main;return=i32;locals=0;first_local=:=;return_ident=missing_call || symbols=main:func || imports=resolved=;missing= || diagnostics=unknown callee

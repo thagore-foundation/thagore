@@ -7,7 +7,7 @@ pub func main() -> i32:
   let source = session.read_source(path)
   if (string.len(source) == 0):
     return 1
-  let cwd = session.cwd()
+  let cwd = session.source_dir(path)
   let kind = session.input_kind()
   let mode = session.output_mode("check", "dump-report", "")
   if (string.str_eq(mode, "dump-report")):

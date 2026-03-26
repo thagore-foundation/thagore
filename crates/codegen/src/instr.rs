@@ -330,13 +330,33 @@ fn emit_call<'ctx>(
         return Err(CodegenError::UnknownFunction { name, span: None });
     };
     let runtime_name = context.symbol_name(name);
-    if (runtime_name == "thag_rt_split" || runtime_name == "std__string__split")
+    if (runtime_name == "thag_rt_array_len_str"
+        || runtime_name == "std__array__len"
+        || runtime_name.ends_with("__stdlib__array__len"))
+        && first_arg_is_string_array(context, function, args)?
+    {
+        emit_string_array_len_call(context, function, value, args)?;
+        return Ok(());
+    }
+    if (runtime_name == "thag_rt_array_get_str"
+        || runtime_name == "std__array__get"
+        || runtime_name.ends_with("__stdlib__array__get"))
+        && first_arg_is_string_array(context, function, args)?
+    {
+        emit_string_array_get_call(context, function, value, args)?;
+        return Ok(());
+    }
+    if (runtime_name == "thag_rt_split"
+        || runtime_name == "std__string__split"
+        || runtime_name.ends_with("__stdlib__string__split"))
         && result_is_string_array(context, function, value)?
     {
         emit_string_split_call(context, function, value, args)?;
         return Ok(());
     }
-    if (runtime_name == "thag_rt_join" || runtime_name == "std__string__join")
+    if (runtime_name == "thag_rt_join"
+        || runtime_name == "std__string__join"
+        || runtime_name.ends_with("__stdlib__string__join"))
         && first_arg_is_string_array(context, function, args)?
     {
         emit_string_join_call(context, function, value, args)?;
@@ -485,6 +505,78 @@ fn emit_string_split_call<'ctx>(
         .map_err(builder_error)?;
     let result = build_load(context, result_ptr, "split.result.value")?;
     function.values.insert(value, result);
+    Ok(())
+}
+
+fn emit_string_array_len_call<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+    args: &[Value],
+) -> Result<(), CodegenError> {
+    let Some(array_arg) = args.first().copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+
+    let result_ty = type_of(function, value)?;
+    let array_value = lookup_value(context, function, array_arg)?.into_struct_value();
+    let len = context
+        .builder
+        .build_extract_value(array_value, 0, "array.len")
+        .map_err(builder_error)?;
+    let lowered = match context.types.kind(result_ty) {
+        TypeKind::I32 => context
+            .builder
+            .build_int_truncate(
+                len.into_int_value(),
+                context.llvm.i32_type(),
+                "array.len.i32",
+            )
+            .map_err(builder_error)?
+            .as_basic_value_enum(),
+        _ => len,
+    };
+    function.values.insert(value, lowered);
+    Ok(())
+}
+
+fn emit_string_array_get_call<'ctx>(
+    context: &mut CodegenContext<'ctx>,
+    function: &mut FunctionContext<'ctx>,
+    value: Value,
+    args: &[Value],
+) -> Result<(), CodegenError> {
+    let Some(array_arg) = args.first().copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+    let Some(index_arg) = args.get(1).copied() else {
+        return Err(CodegenError::UnknownFunction {
+            name: thagore_ast::InternedStr::new(0),
+            span: None,
+        });
+    };
+
+    let array_value = lookup_value(context, function, array_arg)?.into_struct_value();
+    let idx = lookup_value(context, function, index_arg)?.into_int_value();
+    let data_ptr = context
+        .builder
+        .build_extract_value(array_value, 1, "array.data")
+        .map_err(builder_error)?
+        .into_pointer_value();
+    let element_ptr = unsafe {
+        context
+            .builder
+            .build_gep(data_ptr, &[idx], "array.elem.gep")
+            .map_err(builder_error)?
+    };
+    let loaded = build_load(context, element_ptr, "array.elem")?;
+    function.values.insert(value, loaded);
     Ok(())
 }
 

@@ -1179,12 +1179,45 @@ char *thag_str_join(void *parts, const char *sep) {
 }
 
 void thag_str_split_into(const char *s, const char *delim, int64_t *out_len, char ***out_data) {
-    thag_array_str array = thag_rt_split(s, delim);
+    const char *src = s == NULL ? "" : s;
+    const char *delimiter = delim == NULL ? "" : delim;
+    size_t delimiter_len = strlen(delimiter);
+    int64_t result_len = 0;
+    char **result_data = NULL;
+
+    if (delimiter_len == 0) {
+        size_t len = strlen(src);
+        result_len = (int64_t) len;
+        result_data = thag_alloc(sizeof(char *) * (len == 0 ? 1 : len));
+        for (size_t i = 0; i < len; ++i) {
+            result_data[i] = thag_strdup_len(src + i, 1);
+        }
+    } else {
+        size_t count = 1;
+        const char *cursor = src;
+        while ((cursor = strstr(cursor, delimiter)) != NULL) {
+            count++;
+            cursor += delimiter_len;
+        }
+
+        result_len = (int64_t) count;
+        result_data = thag_alloc(sizeof(char *) * count);
+        cursor = src;
+        size_t index = 0;
+        const char *match = strstr(cursor, delimiter);
+        while (match != NULL) {
+            result_data[index++] = thag_strdup_len(cursor, (size_t) (match - cursor));
+            cursor = match + delimiter_len;
+            match = strstr(cursor, delimiter);
+        }
+        result_data[index] = thag_strdup_cstr(cursor);
+    }
+
     if (out_len != NULL) {
-        *out_len = array.len;
+        *out_len = result_len;
     }
     if (out_data != NULL) {
-        *out_data = array.data;
+        *out_data = result_data;
     }
 }
 

@@ -362,6 +362,7 @@ impl AnalysisHost {
                 path: import_path.clone(),
                 alias: import_decl.alias.and_then(|alias| parser.resolve_symbol(alias).map(str::to_string)),
                 line: line_index_from_offset(source, import_decl.span.start) + 1,
+                allow_parent_fallback: false,
             };
             let resolved = resolver.resolve(&import_spec, path).ok();
             let qualifier = import_decl

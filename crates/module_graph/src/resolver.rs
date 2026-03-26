@@ -87,25 +87,7 @@ impl ModuleResolver {
             return self.resolve_single_name(segments[0]);
         }
 
-        if segments.first() == Some(&"std") {
-            if let Some(module) = self.resolve_project_path(&segments) {
-                return Ok(ResolvedModule {
-                    module,
-                    label: import.path.clone(),
-                });
-            }
-            if let Some(module) =
-                self.resolve_from_root(&self.stdlib_root, &segments[1..], ModuleSource::Stdlib)
-            {
-                return Ok(ResolvedModule {
-                    module,
-                    label: import.path.clone(),
-                });
-            }
-            return Err(self.not_found_message(&import.path));
-        }
-
-        self.resolve_project_path(&segments)
+        self.resolve_non_relative_segments(&segments, import.allow_parent_fallback)
             .map(|module| ResolvedModule {
                 module,
                 label: import.path.clone(),
@@ -210,6 +192,35 @@ impl ModuleResolver {
             .or_else(|| self.resolve_from_root(&self.project_root, segments, ModuleSource::Project))
     }
 
+    fn resolve_non_relative_segments(
+        &self,
+        segments: &[&str],
+        allow_parent_fallback: bool,
+    ) -> Option<ModulePath> {
+        if segments.is_empty() {
+            return None;
+        }
+
+        if segments.first() == Some(&"std") {
+            if let Some(module) = self.resolve_project_path(segments) {
+                return Some(module);
+            }
+            if let Some(module) =
+                self.resolve_from_root(&self.stdlib_root, &segments[1..], ModuleSource::Stdlib)
+            {
+                return Some(module);
+            }
+        } else if let Some(module) = self.resolve_project_path(segments) {
+            return Some(module);
+        }
+
+        if allow_parent_fallback && segments.len() > 1 {
+            return self.resolve_non_relative_segments(&segments[..segments.len() - 1], false);
+        }
+
+        None
+    }
+
     fn resolve_from_root(
         &self,
         root: &Path,
@@ -279,7 +290,12 @@ impl ModuleResolve for ModuleResolver {
 }
 
 fn cache_key(from_file: &Path, import: &ImportSpec) -> String {
-    format!("{}::{}", from_file.display(), import.path)
+    format!(
+        "{}::{}::{}",
+        from_file.display(),
+        import.path,
+        import.allow_parent_fallback
+    )
 }
 
 fn is_relative_import(path: &str) -> bool {
