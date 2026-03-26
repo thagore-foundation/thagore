@@ -1,0 +1,1 @@
+func choose(value: i32) -> i32: return value func main() -> i32: return choose(7)

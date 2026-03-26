@@ -45,6 +45,14 @@ func find_next_func(source: str, start: i32) -> i32:
     index = index + 1
   return -1
 
+func find_char(text: str, needle: str, start: i32) -> i32:
+  let index: i32 = start
+  while (index < string.len(text)):
+    if (string.str_eq(string.char_at(text, index), needle)):
+      return index
+    index = index + 1
+  return -1
+
 func find_body_colon(text: str) -> i32:
   let index: i32 = 0
   let depth: i32 = 0
@@ -74,11 +82,89 @@ func choose_end(next_func: i32, source_len: i32) -> i32:
     return source_len
   return next_func
 
-func infer_return_literal_type(body: str) -> str:
-  let trimmed = string.trim(body)
-  if (string.starts_with(trimmed, "return ") == false):
+func function_header(chunk: str) -> str:
+  let colon = find_body_colon(chunk)
+  if (colon < 0):
+    return string.trim(chunk)
+  return string.trim(slice(chunk, 0, colon))
+
+func function_body(chunk: str) -> str:
+  let colon = find_body_colon(chunk)
+  if (colon < 0):
     return ""
-  let expr = string.trim(slice(trimmed, 7, string.len(trimmed)))
+  return slice(chunk, colon + 1, string.len(chunk))
+
+func function_name(chunk: str) -> str:
+  let header = function_header(chunk)
+  let name_start = string.find(header, "func ")
+  if (name_start < 0):
+    return ""
+  let open_paren = find_char(header, "(", name_start + 5)
+  if (open_paren < 0):
+    return ""
+  return string.trim(slice(header, name_start + 5, open_paren))
+
+func binding_key(name: str) -> str:
+  return string.concat(name, "=")
+
+func append_binding(table: str, name: str, ty: str) -> str:
+  if (string.len(name) == 0 or string.len(ty) == 0):
+    return table
+  if (string.len(lookup_binding(table, name)) > 0):
+    return table
+  let entry = string.concat(binding_key(name), ty)
+  if (string.len(table) == 0):
+    return entry
+  return string.concat(table, string.concat("\n", entry))
+
+func lookup_binding(table: str, name: str) -> str:
+  if (string.len(name) == 0 or string.len(table) == 0):
+    return ""
+  let prefix = binding_key(name)
+  let lines = string.split(table, "\n")
+  for line in lines:
+    if (string.starts_with(line, prefix)):
+      return slice(line, string.len(prefix), string.len(line))
+  return ""
+
+func add_param_bindings(table: str, chunk: str) -> str:
+  let header = function_header(chunk)
+  let open_paren = string.find(header, "(")
+  if (open_paren < 0):
+    return table
+  let close_paren = find_char(header, ")", open_paren + 1)
+  if (close_paren < 0):
+    return table
+  let params = string.trim(slice(header, open_paren + 1, close_paren))
+  if (string.len(params) == 0):
+    return table
+  let parts = string.split(params, ",")
+  for part in parts:
+    let trimmed = string.trim(part)
+    let colon = string.find(trimmed, ":")
+    if (colon < 0):
+      continue
+    let name = string.trim(slice(trimmed, 0, colon))
+    let ty = string.trim(slice(trimmed, colon + 1, string.len(trimmed)))
+    table = append_binding(table, name, ty)
+  return table
+
+func add_local_binding(table: str, line: str) -> str:
+  let trimmed = string.trim(line)
+  if (string.starts_with(trimmed, "let ") == false):
+    return table
+  let colon = string.find(trimmed, ":")
+  if (colon < 0):
+    return table
+  let name = string.trim(slice(trimmed, 4, colon))
+  let equals = string.find(trimmed, "=")
+  let type_end = string.len(trimmed)
+  if (equals >= 0):
+    type_end = equals
+  let ty = string.trim(slice(trimmed, colon + 1, type_end))
+  return append_binding(table, name, ty)
+
+func infer_literal_type(expr: str) -> str:
   if (string.str_eq(expr, "true") or string.str_eq(expr, "false")):
     return "bool"
   if (string.len(expr) > 0 and string.str_eq(string.char_at(expr, 0), "\"")):
@@ -94,24 +180,100 @@ func infer_return_literal_type(body: str) -> str:
     return "i32"
   return ""
 
-func infer_return_line(line: str) -> str:
-  let trimmed = string.trim(line)
-  if (string.starts_with(trimmed, "func ") == false):
-    return line
-  let colon = find_body_colon(trimmed)
+func infer_expr_type(expr: str, bindings: str, known_returns: str) -> str:
+  let trimmed = string.trim(expr)
+  let literal = infer_literal_type(trimmed)
+  if (string.len(literal) > 0):
+    return literal
+  let binding = lookup_binding(bindings, trimmed)
+  if (string.len(binding) > 0):
+    return binding
+  let open_paren = string.find(trimmed, "(")
+  if (open_paren < 0):
+    return ""
+  let close_paren = find_char(trimmed, ")", open_paren + 1)
+  if (close_paren != string.len(trimmed) - 1):
+    return ""
+  let callee = string.trim(slice(trimmed, 0, open_paren))
+  return lookup_binding(known_returns, callee)
+
+func collect_return_type(chunk: str, known_returns: str) -> str:
+  let bindings = add_param_bindings("", chunk)
+  let body = function_body(chunk)
+  let lines = string.split(body, "\n")
+  let return_type = ""
+  for line in lines:
+    bindings = add_local_binding(bindings, line)
+    let trimmed = string.trim(line)
+    if (string.starts_with(trimmed, "return ") == false):
+      continue
+    let expr = string.trim(slice(trimmed, 7, string.len(trimmed)))
+    let inferred = infer_expr_type(expr, bindings, known_returns)
+    if (string.len(inferred) == 0):
+      return ""
+    if (string.len(return_type) == 0):
+      return_type = inferred
+      continue
+    if (string.str_eq(return_type, inferred) == false):
+      return ""
+  return return_type
+
+func explicit_return_type(chunk: str) -> str:
+  let header = function_header(chunk)
+  let arrow = string.find(header, "->")
+  if (arrow < 0):
+    return ""
+  return string.trim(slice(header, arrow + 2, string.len(header)))
+
+func collect_known_return_types(source: str) -> str:
+  let known = ""
+  let index: i32 = 0
+  while (index < string.len(source)):
+    let func_start = find_next_func(source, index)
+    if (func_start < 0):
+      break
+    let next_func = find_next_func(source, func_start + 5)
+    let func_end = choose_end(next_func, string.len(source))
+    let chunk = string.trim(slice(source, func_start, func_end))
+    let explicit = explicit_return_type(chunk)
+    if (string.len(explicit) > 0):
+      known = append_binding(known, function_name(chunk), explicit)
+    index = func_end
+  let changed = true
+  while (changed):
+    changed = false
+    index = 0
+    while (index < string.len(source)):
+      let func_start = find_next_func(source, index)
+      if (func_start < 0):
+        break
+      let next_func = find_next_func(source, func_start + 5)
+      let func_end = choose_end(next_func, string.len(source))
+      let chunk = string.trim(slice(source, func_start, func_end))
+      let name = function_name(chunk)
+      if (string.len(lookup_binding(known, name)) == 0):
+        let inferred = collect_return_type(chunk, known)
+        if (string.len(inferred) > 0):
+          known = append_binding(known, name, inferred)
+          changed = true
+      index = func_end
+  return known
+
+func rewrite_function(chunk: str, known_returns: str) -> str:
+  let colon = find_body_colon(chunk)
   if (colon < 0):
-    return line
-  if (contains_arrow_before_colon(trimmed, colon)):
-    return line
-  let header = slice(trimmed, 0, colon)
-  let body = slice(trimmed, colon + 1, string.len(trimmed))
-  let inferred = infer_return_literal_type(body)
+    return chunk
+  if (contains_arrow_before_colon(chunk, colon)):
+    return chunk
+  let inferred = collect_return_type(chunk, known_returns)
   if (string.len(inferred) == 0):
-    return line
-  let with_arrow = string.concat(string.trim(header), string.concat(" -> ", inferred))
-  return string.concat(with_arrow, string.concat(": ", string.trim(body)))
+    return chunk
+  let header = string.trim(slice(chunk, 0, colon))
+  let body = slice(chunk, colon, string.len(chunk))
+  return string.concat(header, string.concat(" -> ", string.concat(inferred, body)))
 
 pub func infer_return_types(source: str) -> str:
+  let known_returns = collect_known_return_types(source)
   let out = ""
   let index: i32 = 0
   while (index < string.len(source)):
@@ -124,11 +286,12 @@ pub func infer_return_types(source: str) -> str:
     let next_func = find_next_func(source, func_start + 5)
     let func_end = choose_end(next_func, string.len(source))
     let chunk = string.trim(slice(source, func_start, func_end))
-    out = append_space(out, infer_return_line(chunk))
+    out = append_space(out, rewrite_function(chunk, known_returns))
     index = func_end
   return out
 
 pub func infer_return_type_issue(source: str) -> str:
+  let known_returns = collect_known_return_types(source)
   let index: i32 = 0
   while (index < string.len(source)):
     let func_start = find_next_func(source, index)
@@ -139,8 +302,7 @@ pub func infer_return_type_issue(source: str) -> str:
     let chunk = string.trim(slice(source, func_start, func_end))
     let colon = find_body_colon(chunk)
     if (colon >= 0 and contains_arrow_before_colon(chunk, colon) == false):
-      let body = slice(chunk, colon + 1, string.len(chunk))
-      if (string.len(infer_return_literal_type(body)) == 0):
+      if (string.len(collect_return_type(chunk, known_returns)) == 0):
         return "cannot infer return type"
     index = func_end
   return ""

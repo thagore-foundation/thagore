@@ -35,7 +35,9 @@ Current scope:
 - diagnostics-lite and semantic-lite used by the bootstrap seed
 - module-kind-aware analysis for executable roots vs library modules
 - implicit `main` synthesis for executable roots with top-level statements
-- narrow static return-type inference for single-line funcs without `->`
+- narrow static return-type inference for funcs without `->` when the return
+  can be proven from literals, typed identifier bindings, or direct calls to
+  known-return functions
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
 - report dump mode for golden-testing normalized frontend summaries
@@ -147,4 +149,4 @@ Near-term next steps:
 
 1. widen the differential corpus beyond narrow diagnostic labels
 2. add normalized frontend output parity beyond desugared source dumps
-3. widen return-type inference beyond literal-only cases when diagnostics remain fail-fast
+3. widen return-type inference beyond literal/identifier/direct-call cases when diagnostics remain fail-fast

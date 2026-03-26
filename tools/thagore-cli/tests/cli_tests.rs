@@ -1859,6 +1859,93 @@ fn dump_bootstrap_seed_infer_return_i32() {
 }
 
 #[test]
+fn dump_bootstrap_seed_infer_return_identifier() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_identifier.tg");
+    let expected_path =
+        repo_root.join("tests/bootstrap_seed/expected_dump_infer_return_identifier.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .args([
+            sample.to_str().expect("utf8"),
+            "exe",
+            "dump-desugared",
+        ])
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
+fn dump_bootstrap_seed_infer_return_call() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-seed");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+    let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_call.tg");
+    let expected_path = repo_root.join("tests/bootstrap_seed/expected_dump_infer_return_call.txt");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let output = Command::new(&binary)
+        .current_dir(&repo_root)
+        .args([
+            sample.to_str().expect("utf8"),
+            "exe",
+            "dump-desugared",
+        ])
+        .output()
+        .expect("run built binary");
+    assert_eq!(output.status.code(), Some(0));
+
+    let expected = fs::read_to_string(expected_path)
+        .expect("read expected")
+        .replace("\r\n", "\n");
+    let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert_eq!(actual.trim_end(), expected.trim_end());
+}
+
+#[test]
 fn dump_bootstrap_seed_reports_match_goldens() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-seed");
