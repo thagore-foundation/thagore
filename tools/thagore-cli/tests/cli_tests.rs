@@ -1331,7 +1331,9 @@ fn canonicalize_selfhost_frontend(stdout: &str) -> String {
         "missing import" => "missing import".to_string(),
         "unknown imported symbol" => "unknown imported symbol".to_string(),
         "condition type mismatch" => "condition type mismatch".to_string(),
-        "return type mismatch" => "return type mismatch".to_string(),
+        "return type mismatch" | "return call result type mismatch" => {
+            "return type mismatch".to_string()
+        }
         other => other.to_string(),
     }
 }
