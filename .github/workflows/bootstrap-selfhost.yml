@@ -4,10 +4,15 @@ on:
   push:
     branches:
       - main
+      - indev-rewrite
     paths:
       - ".github/workflows/bootstrap-selfhost.yml"
+      - "bootstrap/selfhost/**"
       - "tests/bootstrap_probe/**"
+      - "tests/bootstrap_seed/**"
+      - "tests/selfhost_frontend/**"
       - "tooling/bootstrap/**"
+      - "tooling/ci/**"
       - "stdlib/**"
       - "crates/**"
       - "tools/thagore-cli/**"
