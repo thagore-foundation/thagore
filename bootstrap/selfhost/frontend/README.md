@@ -93,8 +93,9 @@ Current scope:
   first-class workflow for this slice instead of relying only on the broader
   bootstrap probe workflow
 - `.github/workflows/selfhost-frontend-parse-target.yml` now gives Target 02
-  (`parse.tg`) its own first-class CI boundary, with first-pass vs second-pass
-  report diffs on the parse contract instead of only the broader stage lane
+  (`parse.tg`) its own first-class CI boundary on Linux x64 and Windows x64,
+  with first-pass vs second-pass report diffs on the parse contract instead of
+  only the broader stage lane
 - `.github/workflows/selfhost-frontend-replacement.yml` now treats Target 01 as
   an explicit replacement trial against host `thagc check`, not just a
   stage-quality smoke gate
