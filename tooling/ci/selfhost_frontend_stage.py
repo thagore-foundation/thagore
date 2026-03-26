@@ -20,11 +20,19 @@ def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
     return rows
 
 
-def run(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str, kind: str = "") -> str:
+def run(
+    binary: pathlib.Path,
+    repo_root: pathlib.Path,
+    fixture: str,
+    kind: str = "",
+    extra_args: list[str] | None = None,
+) -> str:
     fixture_path = (repo_root / fixture).resolve().as_posix()
     args = [str(binary), fixture_path]
     if kind:
         args.append(kind)
+    if extra_args:
+        args.extend(extra_args)
     completed = subprocess.run(
         args,
         cwd=repo_root,
@@ -89,10 +97,11 @@ def verify_golden_manifest(
     binary: pathlib.Path,
     manifest_path: pathlib.Path,
     report_lines: list[str],
+    extra_args: list[str] | None = None,
 ) -> None:
     rows = load_manifest(manifest_path, 3)
     for fixture, kind, expected_path in rows:
-        actual = run(binary, repo_root, fixture, kind)
+        actual = run(binary, repo_root, fixture, kind, extra_args=extra_args)
         expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
         if actual != expected:
             raise SystemExit(
@@ -188,6 +197,7 @@ def main() -> int:
         check_bin,
         repo_root / "tests/selfhost_frontend/report_corpus.txt",
         report_lines,
+        extra_args=["dump-report"],
     )
     verify_golden_manifest(
         repo_root,
