@@ -290,7 +290,21 @@ pub func infer_return_types(source: str) -> str:
     index = func_end
   return out
 
-pub func infer_return_type_issue(source: str) -> str:
+pub func infer_return_type_issue(current_kind: str, source: str) -> str:
+  if (module_kind.allows_top_layer_sugar(current_kind) == false):
+    let index_no_sugar: i32 = 0
+    while (index_no_sugar < string.len(source)):
+      let func_start = find_next_func(source, index_no_sugar)
+      if (func_start < 0):
+        return ""
+      let next_func = find_next_func(source, func_start + 5)
+      let func_end = choose_end(next_func, string.len(source))
+      let chunk = string.trim(slice(source, func_start, func_end))
+      let colon = find_body_colon(chunk)
+      if (colon >= 0 and contains_arrow_before_colon(chunk, colon) == false):
+        return "selfhost core requires explicit return type"
+      index_no_sugar = func_end
+    return ""
   let known_returns = collect_known_return_types(source)
   let index: i32 = 0
   while (index < string.len(source)):
@@ -308,7 +322,7 @@ pub func infer_return_type_issue(source: str) -> str:
   return ""
 
 pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
-  if (string.str_eq(current_kind, module_kind.executable_root()) == false):
+  if (module_kind.allows_top_layer_sugar(current_kind) == false):
     return ""
   let lines = string.split(source, "\n")
   for line in lines:
@@ -320,7 +334,7 @@ pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
   return ""
 
 pub func implicit_main(current_kind: str, source: str) -> str:
-  if (string.str_eq(current_kind, module_kind.executable_root()) == false):
+  if (module_kind.allows_top_layer_sugar(current_kind) == false):
     return infer_return_types(source)
   if (string.contains(source, "func main(")):
     return infer_return_types(source)

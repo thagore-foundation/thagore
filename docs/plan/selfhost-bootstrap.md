@@ -433,6 +433,9 @@ Current status:
   functions without `->` when the return can be proven from literals,
   identifier bindings with explicit static types, or direct calls whose callee
   return type is already known; ambiguous cases still fail fast
+- the bootstrap authoring boundary is now enforced in the frontend harness:
+  `core-exe` / `core-library` inputs reject implicit `main` synthesis and
+  omitted return annotations instead of silently accepting bootstrap-only sugar
 - the next implementation step is removing duplicate logic ownership from the
   remaining seed-only files and then exposing normalized desugared output
 

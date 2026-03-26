@@ -38,6 +38,9 @@ Current scope:
 - narrow static return-type inference for funcs without `->` when the return
   can be proven from literals, typed identifier bindings, or direct calls to
   known-return functions
+- bootstrap-only sugar is now blocked in `selfhost-core` mode, so implicit
+  `main` and omitted return annotations stay confined to the top authoring
+  layer
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
 - report dump mode for golden-testing normalized frontend summaries

@@ -39,7 +39,7 @@ pub func issues(cwd: str, source: str, current_kind: str, token_report: str, sum
   let desugar_issue = desugar.top_level_control_flow_issue(current_kind, normalized)
   if (string.len(desugar_issue) > 0):
     out = append_issue(out, desugar_issue)
-  let infer_issue = desugar.infer_return_type_issue(normalized)
+  let infer_issue = desugar.infer_return_type_issue(current_kind, normalized)
   if (string.len(infer_issue) > 0):
     out = append_issue(out, infer_issue)
   return out
