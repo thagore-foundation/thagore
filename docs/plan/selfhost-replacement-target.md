@@ -71,6 +71,9 @@ Replacement rule:
 
 - `parse.tg` becomes the first stage-level replacement candidate, not just a
   helper beneath `check.tg`
+- `.github/workflows/selfhost-frontend-parse-target.yml` is the dedicated CI
+  lane for this boundary, and `tooling/ci/selfhost_frontend_parse_target.py`
+  is the contract runner that owns parse-golden and stage-chain checks
 - every fixture in `tests/selfhost_frontend/parse_corpus.txt` must remain green
   in:
   - Rust test harness golden checks

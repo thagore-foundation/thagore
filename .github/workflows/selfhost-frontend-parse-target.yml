@@ -1,0 +1,109 @@
+name: Selfhost Frontend Parse Target
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/selfhost-frontend-parse-target.yml"
+      - "bootstrap/selfhost/frontend/**"
+      - "tests/selfhost_frontend/**"
+      - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_frontend_parse_target.py"
+      - "tools/thagore-cli/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-frontend-parse-target-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parse-target:
+    name: Selfhost frontend parse target linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Build host thagc
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build selfhost scan/parse first pass
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/target/release/thagc" \
+            --out-dir "$PWD/selfhost-parse-target-first"
+
+      - name: Validate parse target first pass
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_parse_target.py \
+            --repo-root "$PWD" \
+            --scan-bin "$PWD/selfhost-parse-target-first/scan" \
+            --parse-bin "$PWD/selfhost-parse-target-first/parse" \
+            --report-out "$PWD/selfhost-parse-target-first/report.txt"
+
+      - name: Build selfhost scan/parse second pass
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/target/release/thagc" \
+            --out-dir "$PWD/selfhost-parse-target-second"
+
+      - name: Validate parse target second pass
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_parse_target.py \
+            --repo-root "$PWD" \
+            --scan-bin "$PWD/selfhost-parse-target-second/scan" \
+            --parse-bin "$PWD/selfhost-parse-target-second/parse" \
+            --report-out "$PWD/selfhost-parse-target-second/report.txt"
+
+      - name: Diff parse target reports
+        shell: bash
+        run: diff -u selfhost-parse-target-first/report.txt selfhost-parse-target-second/report.txt
+
+      - name: Upload parse target reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-frontend-parse-target-linux-x64
+          path: |
+            selfhost-parse-target-first/report.txt
+            selfhost-parse-target-second/report.txt
+
+      - name: Summarize parse target reports
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Selfhost frontend parse target (linux-x64)"
+            echo
+            echo "### First pass"
+            echo '```text'
+            cat selfhost-parse-target-first/report.txt
+            echo '```'
+            echo
+            echo "### Second pass"
+            echo '```text'
+            cat selfhost-parse-target-second/report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
