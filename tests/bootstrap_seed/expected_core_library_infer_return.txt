@@ -1,0 +1,1 @@
+tokens=kw(func)@1:1 | ident(helper)@1:6 | punct(()@1:12 | punct())@1:13 | punct(:)@1:14 | kw(return)@1:16 | int(1)@1:23 || summary=func=helper;return=return;locals=0;first_local=:=;return_ident= || symbols=helper:func || imports=resolved=;missing= || diagnostics=selfhost core requires explicit return type

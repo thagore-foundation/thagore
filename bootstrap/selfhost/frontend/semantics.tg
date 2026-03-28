@@ -11,7 +11,7 @@ func append_issue(out: str, issue: str) -> str:
   return string.concat(out, string.concat(" | ", issue))
 
 func filter_executable_only_issues(issues: str, current_kind: str) -> str:
-  if (string.str_eq(current_kind, module_kind.library_module()) == false):
+  if (module_kind.is_library_kind(current_kind) == false):
     return issues
   if (string.str_eq(issues, "ok")):
     return "ok"

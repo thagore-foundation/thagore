@@ -335,7 +335,7 @@ pub func top_level_control_flow_issue(current_kind: str, source: str) -> str:
 
 pub func implicit_main(current_kind: str, source: str) -> str:
   if (module_kind.allows_top_layer_sugar(current_kind) == false):
-    return infer_return_types(source)
+    return source
   if (string.contains(source, "func main(")):
     return infer_return_types(source)
   let lines = string.split(source, "\n")

@@ -436,6 +436,9 @@ Current status:
 - the bootstrap authoring boundary is now enforced in the frontend harness:
   `core-exe` / `core-library` inputs reject implicit `main` synthesis and
   omitted return annotations instead of silently accepting bootstrap-only sugar
+- negative coverage now exists for both `core-exe` and `core-library`, so the
+  lower selfhost layer is tested against bootstrap-only return inference in
+  both executable and library contexts
 - duplicate seed-local copies of the extracted frontend modules have now been
   removed from `tests/bootstrap_seed/`, so the reusable implementation lives
   under `bootstrap/selfhost/frontend/` only

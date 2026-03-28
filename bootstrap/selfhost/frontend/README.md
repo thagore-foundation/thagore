@@ -41,6 +41,8 @@ Current scope:
 - bootstrap-only sugar is now blocked in `selfhost-core` mode, so implicit
   `main` and omitted return annotations stay confined to the top authoring
   layer
+- bootstrap-seed coverage now includes both `core-exe` and `core-library`
+  negative cases for omitted return annotations
 - primitive/simple-call assignment diagnostics and non-bool condition checks
 - desugared dump mode for golden-testing synthesized core form
 - report dump mode for golden-testing normalized frontend summaries

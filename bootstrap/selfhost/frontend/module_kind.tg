@@ -15,7 +15,7 @@ pub func selfhost_core_library_module() -> str:
 pub func allows_top_layer_sugar(module_kind: str) -> bool:
   return string.str_eq(module_kind, executable_root())
 
-func is_library_kind(module_kind: str) -> bool:
+pub func is_library_kind(module_kind: str) -> bool:
   return string.str_eq(module_kind, library_module()) or string.str_eq(module_kind, selfhost_core_library_module())
 
 func is_core_kind(module_kind: str) -> bool:
