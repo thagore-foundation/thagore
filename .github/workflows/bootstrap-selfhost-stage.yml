@@ -12,6 +12,7 @@ on:
       - "tests/selfhost_frontend/**"
       - "tests/bootstrap_seed/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_frontend_driver_target.py"
       - "tooling/ci/selfhost_frontend_stage.py"
       - "tools/thagore-cli/**"
       - "crates/**"
@@ -163,6 +164,16 @@ jobs:
             --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-stage1"
 
+      - name: Build stage1 selfhost frontend driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-driver1"
+
       - name: Validate stage1 frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -175,6 +186,15 @@ jobs:
             --check-bin "$PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-stage1/report.txt"
 
+      - name: Validate stage1 frontend driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_driver_target.py \
+            --repo-root "$PWD" \
+            --main-bin "$PWD/bootstrap-selfhost-driver1/frontend-main${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-driver1/report.txt"
+
       - name: Rebuild stage2 selfhost frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -184,6 +204,16 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-stage2"
+
+      - name: Build stage2 selfhost frontend driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-driver2"
 
       - name: Validate stage2 frontend slice on Linux
         if: runner.os == 'Linux'
@@ -197,6 +227,15 @@ jobs:
             --check-bin "$PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-stage2/report.txt"
 
+      - name: Validate stage2 frontend driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_driver_target.py \
+            --repo-root "$PWD" \
+            --main-bin "$PWD/bootstrap-selfhost-driver2/frontend-main${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-driver2/report.txt"
+
       - name: Build stage1 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -206,6 +245,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-stage1
+
+      - name: Build stage1 selfhost frontend driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-driver1
 
       - name: Validate stage1 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -219,6 +268,15 @@ jobs:
             --check-bin $PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-stage1/report.txt
 
+      - name: Validate stage1 frontend driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_driver_target.py `
+            --repo-root $PWD `
+            --main-bin $PWD/bootstrap-selfhost-driver1/frontend-main${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-driver1/report.txt
+
       - name: Rebuild stage2 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -228,6 +286,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-stage2
+
+      - name: Build stage2 selfhost frontend driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-driver2
 
       - name: Validate stage2 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -241,10 +309,24 @@ jobs:
             --check-bin $PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-stage2/report.txt
 
+      - name: Validate stage2 frontend driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_driver_target.py `
+            --repo-root $PWD `
+            --main-bin $PWD/bootstrap-selfhost-driver2/frontend-main${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-driver2/report.txt
+
       - name: Diff stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u bootstrap-selfhost-stage1/report.txt bootstrap-selfhost-stage2/report.txt
+
+      - name: Diff driver stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-driver1/report.txt bootstrap-selfhost-driver2/report.txt
 
       - name: Diff stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
@@ -252,6 +334,14 @@ jobs:
         run: |
           if ((Get-Content bootstrap-selfhost-stage1/report.txt -Raw) -ne (Get-Content bootstrap-selfhost-stage2/report.txt -Raw)) {
             throw 'bootstrap selfhost stage reports differ between stage1 and stage2'
+          }
+
+      - name: Diff driver stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-driver1/report.txt -Raw) -ne (Get-Content bootstrap-selfhost-driver2/report.txt -Raw)) {
+            throw 'bootstrap selfhost driver reports differ between stage1 and stage2'
           }
 
       - name: Upload bootstrap selfhost stage reports
@@ -262,6 +352,8 @@ jobs:
           path: |
             bootstrap-selfhost-stage1/report.txt
             bootstrap-selfhost-stage2/report.txt
+            bootstrap-selfhost-driver1/report.txt
+            bootstrap-selfhost-driver2/report.txt
 
       - name: Summarize bootstrap selfhost stage reports on Linux
         if: runner.os == 'Linux' && always()
@@ -278,6 +370,16 @@ jobs:
             echo "### Stage2"
             echo '```text'
             cat bootstrap-selfhost-stage2/report.txt
+            echo '```'
+            echo
+            echo "### Driver Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-driver1/report.txt
+            echo '```'
+            echo
+            echo "### Driver Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-driver2/report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -298,5 +400,15 @@ jobs:
           ### Stage2
           ```text
           $stage2
+          ```
+
+          ### Driver Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-driver1/report.txt) { Get-Content bootstrap-selfhost-driver1/report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Driver Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-driver2/report.txt) { Get-Content bootstrap-selfhost-driver2/report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

@@ -111,6 +111,10 @@ Current scope:
   higher executable driver boundary (`main.tg`) separately, so the top-level
   session/driver path can be hardened without coupling it to the lower stage
   slice
+- `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
+  stage slice reports and the higher driver-boundary reports across stage1 and
+  stage2, so the bootstrap rehearsal covers `main.tg` as well as
+  `scan` / `parse` / `check`
 - that replacement workflow now runs two rebuild passes and diffs the
   host-vs-selfhost summaries, so Target 01 is checked for deterministic
   replacement behavior instead of single-pass agreement only

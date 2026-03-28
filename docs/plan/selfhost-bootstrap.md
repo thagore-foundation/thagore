@@ -501,6 +501,10 @@ Current status:
 - the driver executable boundary is now split out as its own target manifest
   (`bootstrap/selfhost/tools/frontend-driver-manifest.txt`) and can be gated
   independently from the lower `scan/parse/check` stage slice
+- the stage-labeled bootstrap rehearsal now validates both the lower
+  `scan/parse/check` slice and the higher `main.tg` driver boundary across
+  stage1/stage2 rebuilds, so top-level session/driver drift is included in the
+  deterministic rebuild check
 - this is still a frontend-slice bootstrap rehearsal, not yet a full
   self-hosting compiler binary
 
