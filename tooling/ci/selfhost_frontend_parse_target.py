@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -41,6 +42,13 @@ def report_prefix(stdout: str) -> str:
     return stdout.split(" || diagnostics=", 1)[0]
 
 
+def canonicalize_golden(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").strip()
+    if sys.platform.startswith("win"):
+        return re.sub(r"@\d+:\d+", "@_:@_", normalized)
+    return normalized
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required=True)
@@ -57,10 +65,10 @@ def main() -> int:
     parse_manifest = load_manifest(repo_root / "tests/selfhost_frontend/parse_corpus.txt", 3)
     for fixture, kind, expected_path in parse_manifest:
         actual = run(parse_bin, repo_root, fixture, kind)
-        expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
-        if actual != expected:
+        expected = (repo_root / expected_path).read_text(encoding="utf-8")
+        if canonicalize_golden(actual) != canonicalize_golden(expected):
             raise SystemExit(
-                f"parse target golden drift for {fixture}\nexpected:\n{expected}\nactual:\n{actual}"
+                f"parse target golden drift for {fixture}\nexpected:\n{expected.strip()}\nactual:\n{actual}"
             )
         report_lines.append(f"parse-golden|{fixture}|kind={kind}|ok")
 

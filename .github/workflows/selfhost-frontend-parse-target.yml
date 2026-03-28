@@ -270,16 +270,18 @@ jobs:
         if: runner.os == 'Windows' && always()
         shell: pwsh
         run: |
+          $first = if (Test-Path selfhost-parse-target-first/report.txt) { Get-Content selfhost-parse-target-first/report.txt -Raw } else { '<report missing>' }
+          $second = if (Test-Path selfhost-parse-target-second/report.txt) { Get-Content selfhost-parse-target-second/report.txt -Raw } else { '<report missing>' }
           @"
           ## Selfhost frontend parse target (${{ matrix.os_name }})
 
           ### First pass
           ```text
-          $(Get-Content selfhost-parse-target-first/report.txt -Raw)
+          $first
           ```
 
           ### Second pass
           ```text
-          $(Get-Content selfhost-parse-target-second/report.txt -Raw)
+          $second
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
