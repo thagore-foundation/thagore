@@ -1271,6 +1271,25 @@ fn build_selfhost_frontend_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_frontend_main_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
     let source = repo_root.join("bootstrap/selfhost/frontend/parse.tg");
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
@@ -1391,6 +1410,84 @@ fn load_corpus_manifest(repo_root: &Path, manifest: &str) -> Vec<Vec<String>> {
         .filter(|line| !line.trim().is_empty())
         .map(|line| line.split('|').map(|part| part.trim().to_string()).collect())
         .collect()
+}
+
+fn assert_main_manifest_matches(
+    repo_root: &Path,
+    binary: &Path,
+    manifest: &str,
+    mode: Option<&str>,
+) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    for case in cases {
+        let fixture = &case[0];
+        let kind = &case[1];
+        let expected_path = repo_root.join(&case[2]);
+        let sample = repo_root.join(fixture);
+
+        let mut command = Command::new(binary);
+        command
+            .current_dir(repo_root)
+            .arg(sample.to_str().expect("utf8"))
+            .arg(kind);
+        if let Some(mode) = mode {
+            command.arg(mode);
+        }
+
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("run main target for {fixture}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "main target failed for {fixture} in mode {:?}",
+            mode
+        );
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected main target output for {fixture} in mode {:?}",
+            mode
+        );
+    }
+}
+
+#[test]
+fn selfhost_frontend_main_target_manifests_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-main");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_main_binary(&repo_root, &binary);
+
+    assert_main_manifest_matches(
+        &repo_root,
+        &binary,
+        "tests/bootstrap_seed/analyze_corpus.txt",
+        None,
+    );
+    assert_main_manifest_matches(
+        &repo_root,
+        &binary,
+        "tests/bootstrap_seed/desugar_corpus.txt",
+        Some("dump-desugared"),
+    );
+    assert_main_manifest_matches(
+        &repo_root,
+        &binary,
+        "tests/bootstrap_seed/report_corpus.txt",
+        Some("dump-report"),
+    );
+    assert_main_manifest_matches(
+        &repo_root,
+        &binary,
+        "tests/selfhost_frontend/report_corpus.txt",
+        Some("dump-report"),
+    );
 }
 
 #[test]
