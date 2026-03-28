@@ -498,6 +498,9 @@ Current status:
 - the current frontend slice membership is now declared in
   `bootstrap/selfhost/tools/frontend-stage-manifest.txt`, so CI/stage builders
   do not hardcode `scan/parse/check` in multiple places
+- the driver executable boundary is now split out as its own target manifest
+  (`bootstrap/selfhost/tools/frontend-driver-manifest.txt`) and can be gated
+  independently from the lower `scan/parse/check` stage slice
 - this is still a frontend-slice bootstrap rehearsal, not yet a full
   self-hosting compiler binary
 

@@ -107,6 +107,10 @@ Current scope:
 - `bootstrap/selfhost/tools/frontend-stage-manifest.txt` now declares the
   current stage slice membership explicitly, so builder scripts and workflows
   share one source of truth for `scan` / `parse` / `check`
+- `bootstrap/selfhost/tools/frontend-driver-manifest.txt` now declares the
+  higher executable driver boundary (`main.tg`) separately, so the top-level
+  session/driver path can be hardened without coupling it to the lower stage
+  slice
 - that replacement workflow now runs two rebuild passes and diffs the
   host-vs-selfhost summaries, so Target 01 is checked for deterministic
   replacement behavior instead of single-pass agreement only

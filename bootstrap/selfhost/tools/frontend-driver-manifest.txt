@@ -1,0 +1,2 @@
+# source path | output binary stem
+bootstrap/selfhost/frontend/main.tg|frontend-main

@@ -97,3 +97,48 @@ Next target after 02:
 - promote `scan.tg` + `parse.tg` together into a stricter replacement lane, or
 - define a dedicated session/driver boundary above them once Target 02 stops
   moving
+
+## Target 03
+
+Target:
+
+- Selfhost-side entry: `bootstrap/selfhost/frontend/main.tg`
+- CI/runtime surface:
+  - `tooling/ci/selfhost_frontend_driver_target.py`
+  - `tests/bootstrap_seed/analyze_corpus.txt`
+  - `tests/bootstrap_seed/desugar_corpus.txt`
+  - `tests/bootstrap_seed/report_corpus.txt`
+  - `tests/selfhost_frontend/report_corpus.txt`
+- Scope: top-level frontend driver/session surface for `analyze`,
+  `dump-desugared`, and `dump-report`
+
+Why this target:
+
+- it is the first reusable executable boundary above `scan.tg` / `parse.tg` /
+  `check.tg`
+- it covers the highest bootstrap-authoring surface currently used for
+  bootstrap sugar and report dumping
+- it exercises `session.tg` + `driver.tg` + `pipeline.tg` together instead of
+  only stage-local entrypoints
+
+Replacement rule:
+
+- `main.tg` is treated as the driver target for the selfhost frontend slice,
+  not only as a bootstrap-seed harness executable
+- `.github/workflows/selfhost-frontend-driver-target.yml` owns the dedicated
+  first-pass / second-pass CI lane on Linux x64 and Windows x64
+- `analyze_corpus.txt` locks top-layer sugar behavior and `selfhost-core`
+  rejection at the driver boundary
+- `desugar_corpus.txt` locks deterministic desugared output at that same
+  boundary
+- report corpora lock `dump-report` behavior for both bootstrap-seed fixtures
+  and the reusable selfhost frontend module-surface fixtures
+
+Exit criteria for Target 03:
+
+- `main.tg` first-pass and second-pass reports stay identical on Linux and
+  Windows
+- driver/session drift can be isolated without depending on lower stage
+  runners
+- bootstrap-authoring sugar and report-surface behavior are both locked
+  through the executable boundary

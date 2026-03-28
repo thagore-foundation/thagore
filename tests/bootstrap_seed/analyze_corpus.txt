@@ -1,0 +1,6 @@
+tests/bootstrap_seed/sample_implicit_main_top_level.tg|exe|tests/bootstrap_seed/expected_implicit_main_top_level.txt
+tests/bootstrap_seed/sample_infer_return_i32.tg|exe|tests/bootstrap_seed/expected_infer_return_i32.txt
+tests/bootstrap_seed/sample_infer_return_unknown.tg|exe|tests/bootstrap_seed/expected_report_infer_return_unknown.txt
+tests/bootstrap_seed/sample_core_library_infer_return.tg|core-library|tests/bootstrap_seed/expected_core_library_infer_return.txt
+tests/bootstrap_seed/sample_implicit_main_top_level.tg|core-exe|tests/bootstrap_seed/expected_core_exe_implicit_main_top_level.txt
+tests/bootstrap_seed/sample_infer_return_i32.tg|core-exe|tests/bootstrap_seed/expected_core_exe_infer_return_i32.txt
