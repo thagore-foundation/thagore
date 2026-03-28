@@ -1797,7 +1797,7 @@ fn build_and_run_bootstrap_seed_implicit_main_top_level() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_implicit_main_top_level.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_implicit_main_top_level.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_implicit_main_top_level.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -1837,7 +1837,7 @@ fn dump_bootstrap_seed_implicit_main_top_level() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_implicit_main_top_level.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_dump_implicit_main_top_level.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_implicit_main_top_level.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -1880,7 +1880,7 @@ fn build_and_run_bootstrap_seed_infer_return_i32() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_i32.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_infer_return_i32.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_infer_return_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -1919,7 +1919,7 @@ fn dump_bootstrap_seed_infer_return_i32() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_i32.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_dump_infer_return_i32.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -1963,7 +1963,7 @@ fn dump_bootstrap_seed_infer_return_identifier() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_identifier.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_dump_infer_return_identifier.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_identifier.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2006,7 +2006,7 @@ fn dump_bootstrap_seed_infer_return_call() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_call.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_dump_infer_return_call.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_call.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2069,7 +2069,7 @@ fn dump_bootstrap_seed_reports_match_goldens() {
         (
             "tests/bootstrap_seed/sample_library_import_only.tg",
             "library",
-            "tests/bootstrap_seed/expected_report_library_import_only.txt",
+            "bootstrap/selfhost/corpus/goldens/bootstrap/expected_report_library_import_only.txt",
         ),
         (
             "tests/bootstrap_seed/sample_implicit_main_top_level.tg",
@@ -2157,7 +2157,7 @@ fn build_and_run_bootstrap_seed_core_exe_rejects_implicit_main() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_implicit_main_top_level.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_core_exe_implicit_main_top_level.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_exe_implicit_main_top_level.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2197,7 +2197,7 @@ fn build_and_run_bootstrap_seed_core_exe_rejects_inferred_return_type() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_core_exe_infer_return_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_exe_infer_return_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2237,7 +2237,7 @@ fn build_and_run_bootstrap_seed_core_library_rejects_inferred_return_type() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_core_library_infer_return.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_core_library_infer_return.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_library_infer_return.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
