@@ -115,6 +115,10 @@ Current scope:
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
   `scan` / `parse` / `check`
+- that rehearsal now also diffs the session-routed replacement summary for
+  `check.tg` across stage1 and stage2, so deterministic rebuild confidence
+  includes the real Rust-path replacement hook rather than only standalone
+  stage runners
 - that replacement workflow now runs two rebuild passes and diffs the
   host-vs-selfhost summaries, so Target 01 is checked for deterministic
   replacement behavior instead of single-pass agreement only
