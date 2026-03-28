@@ -482,6 +482,16 @@ Owners:
 - `infra`
 - `core-lang`
 
+Current status:
+
+- `.github/workflows/bootstrap-selfhost-stage.yml` now exists as the dedicated
+  stage-labeled rehearsal lane for the current frontend slice
+- it builds `stage0` host `thagc`, emits a `stage1` selfhost frontend slice,
+  rebuilds a `stage2` copy, and diffs stage reports on Linux x64 and Windows
+  x64
+- this is still a frontend-slice bootstrap rehearsal, not yet a full
+  self-hosting compiler binary
+
 ## 6. Workstreams
 
 | Workstream | Goal | Owner | Exit condition |

@@ -1,0 +1,297 @@
+name: Bootstrap Selfhost Stage
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/bootstrap-selfhost-stage.yml"
+      - "bootstrap/selfhost/frontend/**"
+      - "tests/selfhost_frontend/**"
+      - "tests/bootstrap_seed/**"
+      - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_frontend_stage.py"
+      - "tools/thagore-cli/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-selfhost-stage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage:
+    name: Bootstrap selfhost stage ${{ matrix.os_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux-x64
+            thagc_bin: target/release/thagc
+            exe_suffix: ""
+          - runner: windows-latest
+            os_name: windows-x64
+            thagc_bin: target/release/thagc.exe
+            exe_suffix: ".exe"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
+          }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-bootstrap-stage.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '        if (args.Contains("--version")) { Console.WriteLine("14.0.6"); return 0; }',
+              '        if (args.Contains("--prefix")) { Console.WriteLine(root); return 0; }',
+              '        if (args.Contains("--libdir")) { Console.WriteLine(lib); return 0; }',
+              '        if (args.Contains("--includedir")) { Console.WriteLine(include); return 0; }',
+              '        if (args.Contains("--build-mode")) { Console.WriteLine("Release"); return 0; }',
+              '        if (args.Contains("--cflags")) { Console.WriteLine("-I" + include); return 0; }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs")) { Console.WriteLine(""); return 0; }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build stage0 host thagc on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build stage0 host thagc on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Normalize frontend fixture line endings on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          roots = [
+              Path("tests/selfhost_frontend"),
+              Path("tests/bootstrap_seed"),
+          ]
+          for root in roots:
+              for path in root.rglob("*"):
+                  if path.suffix not in {".tg", ".txt"}:
+                      continue
+                  text = path.read_text(encoding="utf-8")
+                  normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+                  if normalized != text:
+                      path.write_text(normalized, encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Build stage1 selfhost frontend slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --out-dir "$PWD/bootstrap-selfhost-stage1"
+
+      - name: Validate stage1 frontend slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --scan-bin "$PWD/bootstrap-selfhost-stage1/scan${{ matrix.exe_suffix }}" \
+            --parse-bin "$PWD/bootstrap-selfhost-stage1/parse${{ matrix.exe_suffix }}" \
+            --check-bin "$PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-stage1/report.txt"
+
+      - name: Rebuild stage2 selfhost frontend slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --out-dir "$PWD/bootstrap-selfhost-stage2"
+
+      - name: Validate stage2 frontend slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --scan-bin "$PWD/bootstrap-selfhost-stage2/scan${{ matrix.exe_suffix }}" \
+            --parse-bin "$PWD/bootstrap-selfhost-stage2/parse${{ matrix.exe_suffix }}" \
+            --check-bin "$PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-stage2/report.txt"
+
+      - name: Build stage1 selfhost frontend slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --out-dir $PWD/bootstrap-selfhost-stage1
+
+      - name: Validate stage1 frontend slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --scan-bin $PWD/bootstrap-selfhost-stage1/scan${{ matrix.exe_suffix }} `
+            --parse-bin $PWD/bootstrap-selfhost-stage1/parse${{ matrix.exe_suffix }} `
+            --check-bin $PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-stage1/report.txt
+
+      - name: Rebuild stage2 selfhost frontend slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --out-dir $PWD/bootstrap-selfhost-stage2
+
+      - name: Validate stage2 frontend slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --scan-bin $PWD/bootstrap-selfhost-stage2/scan${{ matrix.exe_suffix }} `
+            --parse-bin $PWD/bootstrap-selfhost-stage2/parse${{ matrix.exe_suffix }} `
+            --check-bin $PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-stage2/report.txt
+
+      - name: Diff stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-stage1/report.txt bootstrap-selfhost-stage2/report.txt
+
+      - name: Diff stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-stage1/report.txt -Raw) -ne (Get-Content bootstrap-selfhost-stage2/report.txt -Raw)) {
+            throw 'bootstrap selfhost stage reports differ between stage1 and stage2'
+          }
+
+      - name: Upload bootstrap selfhost stage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-selfhost-stage-${{ matrix.os_name }}
+          path: |
+            bootstrap-selfhost-stage1/report.txt
+            bootstrap-selfhost-stage2/report.txt
+
+      - name: Summarize bootstrap selfhost stage reports on Linux
+        if: runner.os == 'Linux' && always()
+        shell: bash
+        run: |
+          {
+            echo "## Bootstrap selfhost stage (${{ matrix.os_name }})"
+            echo
+            echo "### Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-stage1/report.txt
+            echo '```'
+            echo
+            echo "### Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-stage2/report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize bootstrap selfhost stage reports on Windows
+        if: runner.os == 'Windows' && always()
+        shell: pwsh
+        run: |
+          $stage1 = if (Test-Path bootstrap-selfhost-stage1/report.txt) { Get-Content bootstrap-selfhost-stage1/report.txt -Raw } else { '<report missing>' }
+          $stage2 = if (Test-Path bootstrap-selfhost-stage2/report.txt) { Get-Content bootstrap-selfhost-stage2/report.txt -Raw } else { '<report missing>' }
+          @"
+          ## Bootstrap selfhost stage (${{ matrix.os_name }})
+
+          ### Stage1
+          ```text
+          $stage1
+          ```
+
+          ### Stage2
+          ```text
+          $stage2
+          ```
+          "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

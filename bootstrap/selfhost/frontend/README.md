@@ -99,6 +99,9 @@ Current scope:
 - `.github/workflows/selfhost-frontend-replacement.yml` now treats Target 01 as
   an explicit replacement trial against host `thagc check`, not just a
   stage-quality smoke gate
+- `.github/workflows/bootstrap-selfhost-stage.yml` now labels the same slice as
+  `stage0 -> stage1 -> stage2` in CI, so bootstrap rehearsal can be tracked in
+  stage terms instead of only stage-runner terminology
 - that replacement workflow now runs two rebuild passes and diffs the
   host-vs-selfhost summaries, so Target 01 is checked for deterministic
   replacement behavior instead of single-pass agreement only
