@@ -29,3 +29,7 @@ self-host frontend slice fully switches over to those reusable modules.
 The executable used by the bootstrap-seed CLI tests now builds from:
 
 - `bootstrap/selfhost/frontend/main.tg`
+
+The old seed-local copies of `chars.tg`, `lexer.tg`, `parser.tg`, `symbols.tg`,
+`resolver.tg`, `diagnostics.tg`, and `main.tg` have been removed so reusable
+frontend logic lives in only one place.

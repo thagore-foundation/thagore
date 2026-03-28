@@ -436,8 +436,11 @@ Current status:
 - the bootstrap authoring boundary is now enforced in the frontend harness:
   `core-exe` / `core-library` inputs reject implicit `main` synthesis and
   omitted return annotations instead of silently accepting bootstrap-only sugar
-- the next implementation step is removing duplicate logic ownership from the
-  remaining seed-only files and then exposing normalized desugared output
+- duplicate seed-local copies of the extracted frontend modules have now been
+  removed from `tests/bootstrap_seed/`, so the reusable implementation lives
+  under `bootstrap/selfhost/frontend/` only
+- the next implementation step is widening normalized frontend parity beyond the
+  current narrow manifests and rehearsal lanes
 
 ### Milestone B: Differential frontend pass
 
