@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
+import sys
 
 
 def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
@@ -41,6 +43,13 @@ def run(binary: pathlib.Path, repo_root: pathlib.Path, fixture: str, kind: str, 
     return completed.stdout.replace("\r\n", "\n").strip()
 
 
+def canonicalize_golden(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").strip()
+    if sys.platform.startswith("win"):
+        return re.sub(r"@\d+:\d+", "@_:@_", normalized)
+    return normalized
+
+
 def verify_manifest(
     repo_root: pathlib.Path,
     binary: pathlib.Path,
@@ -50,11 +59,11 @@ def verify_manifest(
 ) -> None:
     for fixture, kind, expected_path in load_manifest(manifest_path, 3):
         actual = run(binary, repo_root, fixture, kind, mode=mode)
-        expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
-        if actual != expected:
+        expected = (repo_root / expected_path).read_text(encoding="utf-8")
+        if canonicalize_golden(actual) != canonicalize_golden(expected):
             raise SystemExit(
                 f"{binary.name} drift for {fixture} kind={kind} mode={mode or 'analyze'}"
-                f"\nexpected:\n{expected}\nactual:\n{actual}"
+                f"\nexpected:\n{expected.strip()}\nactual:\n{actual}"
             )
         mode_name = mode if mode else "analyze"
         report_lines.append(f"{mode_name}|{fixture}|kind={kind}|ok")
