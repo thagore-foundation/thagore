@@ -495,6 +495,9 @@ Current status:
 - it builds `stage0` host `thagc`, emits a `stage1` selfhost frontend slice,
   rebuilds a `stage2` copy, and diffs stage reports on Linux x64 and Windows
   x64
+- the current frontend slice membership is now declared in
+  `bootstrap/selfhost/tools/frontend-stage-manifest.txt`, so CI/stage builders
+  do not hardcode `scan/parse/check` in multiple places
 - this is still a frontend-slice bootstrap rehearsal, not yet a full
   self-hosting compiler binary
 

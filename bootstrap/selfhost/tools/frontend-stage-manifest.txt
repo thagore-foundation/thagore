@@ -1,0 +1,4 @@
+# source path | output binary stem
+bootstrap/selfhost/frontend/scan.tg|scan
+bootstrap/selfhost/frontend/parse.tg|parse
+bootstrap/selfhost/frontend/check.tg|check

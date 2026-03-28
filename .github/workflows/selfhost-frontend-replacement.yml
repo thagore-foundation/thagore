@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/selfhost-frontend-replacement.yml"
       - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/tools/**"
       - "tests/selfhost_frontend/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_frontend_replacement.py"
@@ -130,6 +131,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/selfhost-replacement-bin"
 
       - name: Build selfhost replacement target second pass on Linux
@@ -139,6 +141,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/selfhost-replacement-bin-second"
 
       - name: Build selfhost replacement target on Windows
@@ -148,6 +151,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/selfhost-replacement-bin
 
       - name: Build selfhost replacement target second pass on Windows
@@ -157,6 +161,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/selfhost-replacement-bin-second
 
       - name: Validate replacement target on Linux

@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/bootstrap-selfhost-stage.yml"
       - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/tools/**"
       - "tests/selfhost_frontend/**"
       - "tests/bootstrap_seed/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
@@ -159,6 +160,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-stage1"
 
       - name: Validate stage1 frontend slice on Linux
@@ -180,6 +182,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-stage2"
 
       - name: Validate stage2 frontend slice on Linux
@@ -201,6 +204,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-stage1
 
       - name: Validate stage1 frontend slice on Windows
@@ -222,6 +226,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-stage2
 
       - name: Validate stage2 frontend slice on Windows

@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/selfhost-frontend-parse-target.yml"
       - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/tools/**"
       - "tests/selfhost_frontend/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_frontend_parse_target.py"
@@ -157,6 +158,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/selfhost-parse-target-first"
 
       - name: Validate parse target first pass on Linux
@@ -176,6 +178,7 @@ jobs:
           python3 tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-stage-manifest.txt" \
             --out-dir "$PWD/selfhost-parse-target-second"
 
       - name: Validate parse target second pass on Linux
@@ -195,6 +198,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/selfhost-parse-target-first
 
       - name: Validate parse target first pass on Windows
@@ -214,6 +218,7 @@ jobs:
           python tooling/ci/build_selfhost_frontend_stage.py `
             --repo-root $PWD `
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-stage-manifest.txt `
             --out-dir $PWD/selfhost-parse-target-second
 
       - name: Validate parse target second pass on Windows
