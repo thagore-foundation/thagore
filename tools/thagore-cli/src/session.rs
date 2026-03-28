@@ -64,7 +64,7 @@ impl SelfhostReplacementTrial {
         let manifest = manifest.unwrap_or_else(|| {
             env::var_os("THAGORE_SELFHOST_REPLACEMENT_MANIFEST")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("tests/selfhost_frontend/differential_corpus.txt"))
+                .unwrap_or_else(|| PathBuf::from("bootstrap/selfhost/corpus/frontend-differential.txt"))
         });
         Some(Self {
             selfhost_bin,

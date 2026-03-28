@@ -79,8 +79,8 @@ Current scope:
   separate from the broader stdlib/bootstrap probe lane, so stage regressions
   are visible as first-class failures
 - replacement-target contracts now live in
-  `tests/selfhost_frontend/differential_corpus.txt` and
-  `tests/selfhost_frontend/stage_chain_corpus.txt` instead of being buried
+  `bootstrap/selfhost/corpus/frontend-differential.txt` and
+  `bootstrap/selfhost/corpus/frontend-stage-chain.txt` instead of being buried
   inside Rust test code
 - the differential contract now carries explicit module-kind, so the
   replacement workflow can validate library fixtures as library inputs through

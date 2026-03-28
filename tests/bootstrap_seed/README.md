@@ -30,6 +30,12 @@ The executable used by the bootstrap-seed CLI tests now builds from:
 
 - `bootstrap/selfhost/frontend/main.tg`
 
+The bootstrap-seed driver/output manifests now live under:
+
+- `bootstrap/selfhost/corpus/bootstrap-analyze.txt`
+- `bootstrap/selfhost/corpus/bootstrap-desugar.txt`
+- `bootstrap/selfhost/corpus/bootstrap-report.txt`
+
 The old seed-local copies of `chars.tg`, `lexer.tg`, `parser.tg`, `symbols.tg`,
 `resolver.tg`, `diagnostics.tg`, and `main.tg` have been removed so reusable
 frontend logic lives in only one place.

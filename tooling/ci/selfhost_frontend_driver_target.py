@@ -83,28 +83,28 @@ def main() -> int:
     verify_manifest(
         repo_root,
         main_bin,
-        repo_root / "tests/bootstrap_seed/analyze_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/bootstrap-analyze.txt",
         "",
         report_lines,
     )
     verify_manifest(
         repo_root,
         main_bin,
-        repo_root / "tests/bootstrap_seed/desugar_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/bootstrap-desugar.txt",
         "dump-desugared",
         report_lines,
     )
     verify_manifest(
         repo_root,
         main_bin,
-        repo_root / "tests/bootstrap_seed/report_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/bootstrap-report.txt",
         "dump-report",
         report_lines,
     )
     verify_manifest(
         repo_root,
         main_bin,
-        repo_root / "tests/selfhost_frontend/report_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/frontend-report.txt",
         "dump-report",
         report_lines,
     )

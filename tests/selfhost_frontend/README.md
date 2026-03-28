@@ -18,18 +18,22 @@ Scope:
 - selected fixtures also have golden `dump-report` outputs for richer parity
 - bootstrap-seed fixtures now also gate `dump-report` for module-kind-sensitive
   cases (`library` vs synthesized executable root)
-- `differential_corpus.txt` is now the contract for the narrow `thagc check`
-  replacement surface
-- `stage_chain_corpus.txt` is now the contract for the reusable
-  `scan -> parse -> check` stage lane
-- `report_corpus.txt`, `parse_corpus.txt`, and `scan_corpus.txt` now define
-  the golden-locked fixture sets for the richer selfhost frontend stages
+- the canonical manifest contracts now live under
+  `bootstrap/selfhost/corpus/`
+- `bootstrap/selfhost/corpus/frontend-differential.txt` is now the contract for
+  the narrow `thagc check` replacement surface
+- `bootstrap/selfhost/corpus/frontend-stage-chain.txt` is now the contract for
+  the reusable `scan -> parse -> check` stage lane
+- `bootstrap/selfhost/corpus/frontend-report.txt`,
+  `bootstrap/selfhost/corpus/frontend-parse.txt`, and
+  `bootstrap/selfhost/corpus/frontend-scan.txt` now define the golden-locked
+  fixture sets for the richer selfhost frontend stages
 - the standalone CI runner consumes those manifests too, so they are shared
   contracts across Rust tests and selfhost-first validation lanes
-- `parse_corpus.txt` now also anchors Target 02 in
+- `bootstrap/selfhost/corpus/frontend-parse.txt` now also anchors Target 02 in
   `docs/plan/selfhost-replacement-target.md`, so parse-stage work stops being
   only a support detail under Target 01
-- `differential_corpus.txt` now carries explicit module-kind alongside
+- `bootstrap/selfhost/corpus/frontend-differential.txt` now carries explicit module-kind alongside
   expected labels, so library fixtures are checked as library fixtures instead
   of being implicitly treated as executable roots
 - the contract now includes an explicit library-mode success fixture

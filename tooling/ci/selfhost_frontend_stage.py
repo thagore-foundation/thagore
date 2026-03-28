@@ -135,7 +135,7 @@ def main() -> int:
     host_thagc = pathlib.Path(args.host_thagc).resolve() if args.host_thagc else None
     report_lines: list[str] = []
 
-    diff_manifest = load_manifest(repo_root / "tests/selfhost_frontend/differential_corpus.txt", 3)
+    diff_manifest = load_manifest(repo_root / "bootstrap/selfhost/corpus/frontend-differential.txt", 3)
     for fixture, kind, expected in diff_manifest:
         selfhost_actual = canonicalize_selfhost(run(check_bin, repo_root, fixture, kind))
         if selfhost_actual != expected:
@@ -173,7 +173,7 @@ def main() -> int:
         else:
             report_lines.append(f"diff|{fixture}|kind={kind}|selfhost={selfhost_actual}")
 
-    stage_manifest = load_manifest(repo_root / "tests/selfhost_frontend/stage_chain_corpus.txt", 3)
+    stage_manifest = load_manifest(repo_root / "bootstrap/selfhost/corpus/frontend-stage-chain.txt", 3)
     for fixture, kind, expected_diag in stage_manifest:
         scan_out = run(scan_bin, repo_root, fixture, kind)
         parse_out = run(parse_bin, repo_root, fixture, kind)
@@ -203,20 +203,20 @@ def main() -> int:
     verify_golden_manifest(
         repo_root,
         check_bin,
-        repo_root / "tests/selfhost_frontend/report_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/frontend-report.txt",
         report_lines,
         extra_args=["dump-report"],
     )
     verify_golden_manifest(
         repo_root,
         parse_bin,
-        repo_root / "tests/selfhost_frontend/parse_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/frontend-parse.txt",
         report_lines,
     )
     verify_golden_manifest(
         repo_root,
         scan_bin,
-        repo_root / "tests/selfhost_frontend/scan_corpus.txt",
+        repo_root / "bootstrap/selfhost/corpus/frontend-scan.txt",
         report_lines,
     )
 

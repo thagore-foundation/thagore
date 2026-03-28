@@ -7,7 +7,7 @@ Target:
 - Rust-side entry: `tools/thagore-cli/src/session.rs`
 - Surface: `check_file(...) -> check_all() -> check_module(...)`
 - Scope: narrow `thagc check` frontend contract already represented in
-  `tests/selfhost_frontend/differential_corpus.txt`
+  `bootstrap/selfhost/corpus/frontend-differential.txt`
 
 Why this target:
 
@@ -19,7 +19,7 @@ Why this target:
 Replacement rule:
 
 - Rust remains source of truth outside the narrow manifest contract
-- for fixtures inside `tests/selfhost_frontend/differential_corpus.txt`, the
+- for fixtures inside `bootstrap/selfhost/corpus/frontend-differential.txt`, the
   selfhost frontend lane must stay green on:
   - host/selfhost differential labels
   - `scan -> parse -> check` stage-chain corpus
@@ -54,8 +54,8 @@ Target:
 - Selfhost-side entry: `bootstrap/selfhost/frontend/parse.tg`
 - CI/runtime surface:
   - `tooling/ci/selfhost_frontend_stage.py`
-  - `tests/selfhost_frontend/parse_corpus.txt`
-  - `tests/selfhost_frontend/stage_chain_corpus.txt`
+  - `bootstrap/selfhost/corpus/frontend-parse.txt`
+  - `bootstrap/selfhost/corpus/frontend-stage-chain.txt`
 - Scope: the parse-stage contract for token/summary/symbol/import output before
   semantic diagnostics
 
@@ -75,12 +75,12 @@ Replacement rule:
   lane for this boundary on Linux x64 and Windows x64, and
   `tooling/ci/selfhost_frontend_parse_target.py` is the contract runner that
   owns parse-golden and stage-chain checks
-- every fixture in `tests/selfhost_frontend/parse_corpus.txt` must remain green
+- every fixture in `bootstrap/selfhost/corpus/frontend-parse.txt` must remain green
   in:
   - Rust test harness golden checks
   - standalone selfhost stage runner checks
   - first-pass vs second-pass rebuilt stage reports
-- every fixture in `tests/selfhost_frontend/stage_chain_corpus.txt` must show
+- every fixture in `bootstrap/selfhost/corpus/frontend-stage-chain.txt` must show
   that `parse.tg` still extends `scan.tg` correctly before `check.tg` adds
   final diagnostics
 
@@ -105,10 +105,10 @@ Target:
 - Selfhost-side entry: `bootstrap/selfhost/frontend/main.tg`
 - CI/runtime surface:
   - `tooling/ci/selfhost_frontend_driver_target.py`
-  - `tests/bootstrap_seed/analyze_corpus.txt`
-  - `tests/bootstrap_seed/desugar_corpus.txt`
-  - `tests/bootstrap_seed/report_corpus.txt`
-  - `tests/selfhost_frontend/report_corpus.txt`
+  - `bootstrap/selfhost/corpus/bootstrap-analyze.txt`
+  - `bootstrap/selfhost/corpus/bootstrap-desugar.txt`
+  - `bootstrap/selfhost/corpus/bootstrap-report.txt`
+  - `bootstrap/selfhost/corpus/frontend-report.txt`
 - Scope: top-level frontend driver/session surface for `analyze`,
   `dump-desugared`, and `dump-report`
 

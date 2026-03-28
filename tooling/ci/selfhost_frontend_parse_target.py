@@ -62,7 +62,7 @@ def main() -> int:
     parse_bin = pathlib.Path(args.parse_bin).resolve()
     report_lines: list[str] = []
 
-    parse_manifest = load_manifest(repo_root / "tests/selfhost_frontend/parse_corpus.txt", 3)
+    parse_manifest = load_manifest(repo_root / "bootstrap/selfhost/corpus/frontend-parse.txt", 3)
     for fixture, kind, expected_path in parse_manifest:
         actual = run(parse_bin, repo_root, fixture, kind)
         expected = (repo_root / expected_path).read_text(encoding="utf-8")
@@ -72,7 +72,7 @@ def main() -> int:
             )
         report_lines.append(f"parse-golden|{fixture}|kind={kind}|ok")
 
-    stage_manifest = load_manifest(repo_root / "tests/selfhost_frontend/stage_chain_corpus.txt", 3)
+    stage_manifest = load_manifest(repo_root / "bootstrap/selfhost/corpus/frontend-stage-chain.txt", 3)
     for fixture, kind, expected_diag in stage_manifest:
         scan_out = run(scan_bin, repo_root, fixture, kind)
         parse_out = run(parse_bin, repo_root, fixture, kind)

@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/selfhost-frontend-replacement.yml"
       - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
       - "tests/selfhost_frontend/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"

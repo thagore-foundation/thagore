@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/selfhost-frontend-driver-target.yml"
       - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
       - "tests/bootstrap_seed/**"
       - "tests/selfhost_frontend/**"

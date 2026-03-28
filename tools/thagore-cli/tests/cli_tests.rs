@@ -202,7 +202,7 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
         "--selfhost-replacement-bin",
         "out/selfhost-check",
         "--selfhost-replacement-manifest",
-        "tests/selfhost_frontend/differential_corpus.txt",
+        "bootstrap/selfhost/corpus/frontend-differential.txt",
         "--selfhost-replacement-kind",
         "library",
         "--selfhost-replacement-strict",
@@ -220,7 +220,7 @@ fn parses_hidden_selfhost_replacement_check_arguments() {
     );
     assert_eq!(
         check.selfhost_replacement_manifest.as_deref(),
-        Some(Path::new("tests/selfhost_frontend/differential_corpus.txt"))
+        Some(Path::new("bootstrap/selfhost/corpus/frontend-differential.txt"))
     );
     assert_eq!(check.selfhost_replacement_kind.as_deref(), Some("library"));
     assert!(check.selfhost_replacement_strict);
@@ -1467,25 +1467,25 @@ fn selfhost_frontend_main_target_manifests_match_goldens() {
     assert_main_manifest_matches(
         &repo_root,
         &binary,
-        "tests/bootstrap_seed/analyze_corpus.txt",
+        "bootstrap/selfhost/corpus/bootstrap-analyze.txt",
         None,
     );
     assert_main_manifest_matches(
         &repo_root,
         &binary,
-        "tests/bootstrap_seed/desugar_corpus.txt",
+        "bootstrap/selfhost/corpus/bootstrap-desugar.txt",
         Some("dump-desugared"),
     );
     assert_main_manifest_matches(
         &repo_root,
         &binary,
-        "tests/bootstrap_seed/report_corpus.txt",
+        "bootstrap/selfhost/corpus/bootstrap-report.txt",
         Some("dump-report"),
     );
     assert_main_manifest_matches(
         &repo_root,
         &binary,
-        "tests/selfhost_frontend/report_corpus.txt",
+        "bootstrap/selfhost/corpus/frontend-report.txt",
         Some("dump-report"),
     );
 }
@@ -1496,7 +1496,7 @@ fn bootstrap_selfhost_frontend_matches_rust_frontend_on_narrow_corpus() {
     let binary = dir.path().join("bootstrap-selfhost-frontend");
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_binary(&repo_root, &binary);
-    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/differential_corpus.txt");
+    let cases = load_corpus_manifest(&repo_root, "bootstrap/selfhost/corpus/frontend-differential.txt");
 
     for case in cases {
         let fixture = &case[0];
@@ -1538,7 +1538,7 @@ fn dump_selfhost_frontend_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_binary(&repo_root, &binary);
 
-    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/report_corpus.txt");
+    let cases = load_corpus_manifest(&repo_root, "bootstrap/selfhost/corpus/frontend-report.txt");
 
     for case in cases {
         let fixture = &case[0];
@@ -1572,7 +1572,7 @@ fn dump_selfhost_frontend_parse_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_parse_binary(&repo_root, &binary);
 
-    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/parse_corpus.txt");
+    let cases = load_corpus_manifest(&repo_root, "bootstrap/selfhost/corpus/frontend-parse.txt");
 
     for case in cases {
         let fixture = &case[0];
@@ -1606,7 +1606,7 @@ fn dump_selfhost_frontend_scan_reports_match_goldens() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build_selfhost_frontend_scan_binary(&repo_root, &binary);
 
-    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/scan_corpus.txt");
+    let cases = load_corpus_manifest(&repo_root, "bootstrap/selfhost/corpus/frontend-scan.txt");
 
     for case in cases {
         let fixture = &case[0];
@@ -1750,7 +1750,7 @@ fn build_selfhost_frontend_stage_chain_corpus() {
     build_selfhost_frontend_parse_binary(&repo_root, &parse_binary);
     build_selfhost_frontend_binary(&repo_root, &check_binary);
 
-    let cases = load_corpus_manifest(&repo_root, "tests/selfhost_frontend/stage_chain_corpus.txt");
+    let cases = load_corpus_manifest(&repo_root, "bootstrap/selfhost/corpus/frontend-stage-chain.txt");
 
     for case in cases {
         let fixture = &case[0];

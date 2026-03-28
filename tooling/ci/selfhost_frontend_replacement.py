@@ -115,7 +115,7 @@ def main() -> int:
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--host-thagc", required=True)
     parser.add_argument("--selfhost-check", required=True)
-    parser.add_argument("--manifest", default="tests/selfhost_frontend/differential_corpus.txt")
+    parser.add_argument("--manifest", default="bootstrap/selfhost/corpus/frontend-differential.txt")
     parser.add_argument("--summary-out", default="")
     args = parser.parse_args()
 
