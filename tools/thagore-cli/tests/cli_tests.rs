@@ -1220,7 +1220,7 @@ fn build_and_run_bootstrap_seed_frontend() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2074,7 +2074,7 @@ fn dump_bootstrap_seed_reports_match_goldens() {
         (
             "tests/bootstrap_seed/sample_implicit_main_top_level.tg",
             "exe",
-            "tests/bootstrap_seed/expected_report_implicit_main_top_level.txt",
+            "bootstrap/selfhost/corpus/goldens/bootstrap/expected_report_implicit_main_top_level.txt",
         ),
     ];
 
@@ -2113,7 +2113,7 @@ fn build_and_run_bootstrap_seed_infer_return_unknown_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_infer_return_unknown.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_infer_return_unknown.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_infer_return_unknown.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2276,7 +2276,7 @@ fn build_and_run_bootstrap_seed_library_import_only() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_library_import_only.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_library_import_only.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_library_import_only.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2317,7 +2317,7 @@ fn build_and_run_bootstrap_seed_library_top_level_statement_reports_diagnostic()
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_library_top_level_statement.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_library_top_level_statement.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_library_top_level_statement.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2361,7 +2361,7 @@ fn build_and_run_bootstrap_seed_missing_return_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_missing_return.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_missing_return.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_missing_return.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2400,7 +2400,7 @@ fn build_and_run_bootstrap_seed_missing_func_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_missing_func.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_missing_func.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_missing_func.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2439,7 +2439,7 @@ fn build_and_run_bootstrap_seed_malformed_let_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_malformed_let.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_malformed_let.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_malformed_let.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2556,7 +2556,7 @@ fn build_and_run_bootstrap_seed_unknown_return_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_unknown_return.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_unknown_return.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_unknown_return.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2595,7 +2595,7 @@ fn build_and_run_bootstrap_seed_duplicate_local_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_duplicate_local.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_duplicate_local.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_duplicate_local.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2634,7 +2634,7 @@ fn build_and_run_bootstrap_seed_duplicate_func_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_duplicate_func.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_duplicate_func.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_duplicate_func.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2673,7 +2673,7 @@ fn build_and_run_bootstrap_seed_missing_main_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_missing_main.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_missing_main.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_missing_main.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2712,7 +2712,7 @@ fn build_and_run_bootstrap_seed_unknown_callee_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_unknown_callee.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_unknown_callee.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_unknown_callee.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2946,7 +2946,7 @@ fn build_and_run_bootstrap_seed_call_arity_mismatch_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_call_arity_mismatch.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_call_arity_mismatch.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_call_arity_mismatch.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2985,7 +2985,7 @@ fn build_and_run_bootstrap_seed_return_bool_to_i32_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_return_bool_to_i32.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_return_bool_to_i32.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_return_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3024,7 +3024,7 @@ fn build_and_run_bootstrap_seed_return_int_to_bool_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_return_int_to_bool.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_return_int_to_bool.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_return_int_to_bool.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3063,7 +3063,7 @@ fn build_and_run_bootstrap_seed_local_bool_to_i32_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_local_bool_to_i32.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_local_bool_to_i32.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_local_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3102,7 +3102,7 @@ fn build_and_run_bootstrap_seed_local_int_to_bool_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_local_int_to_bool.tg");
-    let expected_path = repo_root.join("tests/bootstrap_seed/expected_local_int_to_bool.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_local_int_to_bool.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3259,7 +3259,7 @@ fn build_and_run_bootstrap_seed_unknown_import_alias_usage_reports_diagnostic() 
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_unknown_import_alias_usage.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_unknown_import_alias_usage.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_unknown_import_alias_usage.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3299,7 +3299,7 @@ fn build_and_run_bootstrap_seed_return_call_bool_to_i32_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_return_call_bool_to_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_return_call_bool_to_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_return_call_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3339,7 +3339,7 @@ fn build_and_run_bootstrap_seed_local_call_bool_to_i32_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_local_call_bool_to_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_local_call_bool_to_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_local_call_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3379,7 +3379,7 @@ fn build_and_run_bootstrap_seed_assignment_to_unknown_local_reports_diagnostic()
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_assignment_to_unknown_local.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_assignment_to_unknown_local.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_assignment_to_unknown_local.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3419,7 +3419,7 @@ fn build_and_run_bootstrap_seed_assignment_bool_to_i32_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_assignment_bool_to_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_assignment_bool_to_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_assignment_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3459,7 +3459,7 @@ fn build_and_run_bootstrap_seed_assignment_call_bool_to_i32_reports_diagnostic()
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_assignment_call_bool_to_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_assignment_call_bool_to_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_assignment_call_bool_to_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3503,7 +3503,7 @@ fn build_and_run_bootstrap_seed_condition_int_literal_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_condition_int_literal.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_condition_int_literal.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_condition_int_literal.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3543,7 +3543,7 @@ fn build_and_run_bootstrap_seed_condition_local_i32_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_condition_local_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_condition_local_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_condition_local_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3587,7 +3587,7 @@ fn build_and_run_bootstrap_seed_condition_call_i32_reports_diagnostic() {
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
     let sample = repo_root.join("tests/bootstrap_seed/sample_condition_call_i32.tg");
     let expected_path =
-        repo_root.join("tests/bootstrap_seed/expected_condition_call_i32.txt");
+        repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/expected_condition_call_i32.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
