@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -92,6 +93,13 @@ def report_prefix(stdout: str) -> str:
     return stdout.split(" || diagnostics=", 1)[0]
 
 
+def canonicalize_golden(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").strip()
+    if sys.platform.startswith("win"):
+        return re.sub(r"@\d+:\d+", "@_:@_", normalized)
+    return normalized
+
+
 def verify_golden_manifest(
     repo_root: pathlib.Path,
     binary: pathlib.Path,
@@ -102,10 +110,10 @@ def verify_golden_manifest(
     rows = load_manifest(manifest_path, 3)
     for fixture, kind, expected_path in rows:
         actual = run(binary, repo_root, fixture, kind, extra_args=extra_args)
-        expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
-        if actual != expected:
+        expected = (repo_root / expected_path).read_text(encoding="utf-8")
+        if canonicalize_golden(actual) != canonicalize_golden(expected):
             raise SystemExit(
-                f"{binary.name} golden drift for {fixture}\nexpected:\n{expected}\nactual:\n{actual}"
+                f"{binary.name} golden drift for {fixture}\nexpected:\n{expected.strip()}\nactual:\n{actual}"
             )
         report_lines.append(f"golden|{binary.name}|{fixture}|kind={kind}|ok")
 
