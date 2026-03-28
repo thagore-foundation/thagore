@@ -129,6 +129,10 @@ Replacement rule:
   first-pass / second-pass CI lane on Linux x64 and Windows x64
 - `analyze_corpus.txt` locks top-layer sugar behavior and `selfhost-core`
   rejection at the driver boundary
+- that analyze corpus now also covers a broader set of bootstrap-seed semantic
+  diagnostics (`missing main`, `unknown callee`, `call arity`, primitive type
+  mismatches, non-bool conditions, duplicate declarations, unknown returns,
+  malformed lets) through the executable boundary
 - `desugar_corpus.txt` locks deterministic desugared output at that same
   boundary
 - report corpora lock `dump-report` behavior for both bootstrap-seed fixtures
