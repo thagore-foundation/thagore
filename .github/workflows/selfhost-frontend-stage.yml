@@ -36,6 +36,10 @@ jobs:
             os_name: linux-x64
             thagc_bin: target/release/thagc
             exe_suffix: ""
+          - runner: windows-latest
+            os_name: windows-x64
+            thagc_bin: target/release/thagc.exe
+            exe_suffix: ".exe"
 
     steps:
       - uses: actions/checkout@v5
