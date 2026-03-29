@@ -10,7 +10,6 @@ on:
       - "bootstrap/selfhost/frontend/**"
       - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
-      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_frontend_replacement.py"
       - "tools/thagore-cli/**"

@@ -10,8 +10,6 @@ on:
       - "bootstrap/selfhost/frontend/**"
       - "bootstrap/selfhost/corpus/**"
       - "tests/bootstrap_probe/**"
-      - "tests/bootstrap_seed/**"
-      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "stdlib/**"
       - "crates/**"
       - "tools/thagore-cli/**"

@@ -9,8 +9,6 @@ on:
       - ".github/workflows/bootstrap-selfhost.yml"
       - "bootstrap/selfhost/**"
       - "tests/bootstrap_probe/**"
-      - "tests/bootstrap_seed/**"
-      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "tooling/bootstrap/**"
       - "tooling/ci/**"
       - "stdlib/**"

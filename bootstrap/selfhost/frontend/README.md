@@ -1,6 +1,6 @@
 # Self-Host Frontend Slice
 
-This directory is the first extraction target from `tests/bootstrap_seed/`.
+This directory is the canonical selfhost frontend implementation owned under `bootstrap/selfhost/`.
 
 Purpose:
 

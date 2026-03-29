@@ -10,8 +10,6 @@ on:
       - "bootstrap/selfhost/frontend/**"
       - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
-      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
-      - "tests/bootstrap_seed/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_frontend_stage.py"
       - "tools/thagore-cli/**"
@@ -140,8 +138,7 @@ jobs:
           @'
           from pathlib import Path
           roots = [
-              Path("tests/selfhost_frontend"),
-              Path("tests/bootstrap_seed"),
+              Path("bootstrap/selfhost/corpus"),
           ]
           for root in roots:
               for path in root.rglob("*"):

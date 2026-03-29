@@ -369,7 +369,7 @@ Acceptance:
 
 The order below is mandatory.
 
-1. extract reusable frontend modules from `tests/bootstrap_seed/` into
+1. extract reusable frontend modules into
    `bootstrap/selfhost/frontend/`
 2. add module kind detection
 3. add implicit `main` desugar with golden desugared output tests
@@ -397,8 +397,7 @@ At that point, the next step is no longer planning. It is the first real
 
 ### Milestone A: Seed to frontend library
 
-Turn `tests/bootstrap_seed/` from fixture-oriented seed code into a reusable
-library crate/module tree.
+Keep the bootstrap seed corpus fixture-oriented while the reusable frontend implementation stays under `bootstrap/selfhost/frontend/`.
 
 Deliverables:
 
@@ -440,7 +439,7 @@ Current status:
   lower selfhost layer is tested against bootstrap-only return inference in
   both executable and library contexts
 - duplicate seed-local copies of the extracted frontend modules have now been
-  removed from `tests/bootstrap_seed/`, so the reusable implementation lives
+  removed from the legacy test area, so the reusable implementation lives
   under `bootstrap/selfhost/frontend/` only
 - the next implementation step is widening normalized frontend parity beyond the
   current narrow manifests and rehearsal lanes
@@ -530,8 +529,7 @@ Add a stable location for self-host work.
 - `bootstrap/selfhost/tools/`
 - `bootstrap/selfhost/corpus/fixtures/`
 
-Do not keep growing `tests/bootstrap_seed/` or `tests/selfhost_frontend/`
-forever. The active bootstrap corpus now lives under `bootstrap/selfhost/`.
+Do not reintroduce reusable logic, fixtures, or goldens outside `bootstrap/selfhost/**`. The active bootstrap corpus now lives under `bootstrap/selfhost/`.
 
 ## 8. CI Sequence
 
