@@ -12,6 +12,7 @@ on:
       - "bootstrap/selfhost/tools/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_compiler_driver.py"
+      - "tooling/ci/selfhost_backend_adapter_artifacts.py"
       - "tooling/ci/selfhost_bootstrap_artifact.py"
       - "tooling/ci/selfhost_frontend_replacement.py"
       - "tooling/ci/selfhost_frontend_driver_target.py"
@@ -241,11 +242,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python3 tooling/ci/selfhost_compiler_driver.py \
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
             --repo-root "$PWD" \
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
-            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/adapter-report.txt"
 
       - name: Validate stage1 bootstrap artifact on Linux
@@ -352,11 +353,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python3 tooling/ci/selfhost_compiler_driver.py \
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
             --repo-root "$PWD" \
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
-            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/adapter-report.txt"
 
       - name: Validate stage2 bootstrap artifact on Linux
@@ -463,11 +464,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python tooling/ci/selfhost_compiler_driver.py `
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
             --repo-root $PWD `
             --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
-            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
             --report-out $PWD/bootstrap-selfhost-compiler1/adapter-report.txt
 
       - name: Validate stage1 bootstrap artifact on Windows
@@ -574,11 +575,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python tooling/ci/selfhost_compiler_driver.py `
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
             --repo-root $PWD `
             --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
-            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
             --report-out $PWD/bootstrap-selfhost-compiler2/adapter-report.txt
 
       - name: Validate stage2 bootstrap artifact on Windows

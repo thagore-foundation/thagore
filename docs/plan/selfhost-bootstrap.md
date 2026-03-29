@@ -466,6 +466,11 @@ Current status:
   `bootstrap/selfhost/corpus/backend-adapter-contract.txt`, giving the
   selfhost compiler slice a stable host-backend contract instead of only an
   implicit shell-out path
+- that adapter boundary now also emits real sidecar artifacts during selfhost
+  `build` / `run`, locked under
+  `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt`, so adapter
+  routing is checked through actual artifact emission instead of preview-only
+  reports
 
 ### Milestone B: Differential frontend pass
 

@@ -12,6 +12,7 @@ on:
       - "bootstrap/selfhost/tools/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_compiler_driver.py"
+      - "tooling/ci/selfhost_backend_adapter_artifacts.py"
       - "tools/thagore-cli/**"
       - "crates/**"
   workflow_dispatch:
@@ -139,11 +140,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python3 tooling/ci/selfhost_compiler_driver.py \
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
             --repo-root "$PWD" \
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/selfhost-backend-adapter-first/selfhost-compiler${{ matrix.exe_suffix }}" \
-            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
             --report-out "$PWD/selfhost-backend-adapter-first/report.txt"
 
       - name: Build selfhost compiler second pass on Linux
@@ -160,11 +161,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          python3 tooling/ci/selfhost_compiler_driver.py \
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
             --repo-root "$PWD" \
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/selfhost-backend-adapter-second/selfhost-compiler${{ matrix.exe_suffix }}" \
-            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
             --report-out "$PWD/selfhost-backend-adapter-second/report.txt"
 
       - name: Build selfhost compiler first pass on Windows
@@ -181,11 +182,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python tooling/ci/selfhost_compiler_driver.py `
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
             --repo-root $PWD `
             --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/selfhost-backend-adapter-first/selfhost-compiler${{ matrix.exe_suffix }} `
-            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
             --report-out $PWD/selfhost-backend-adapter-first/report.txt
 
       - name: Build selfhost compiler second pass on Windows
@@ -202,11 +203,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          python tooling/ci/selfhost_compiler_driver.py `
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
             --repo-root $PWD `
             --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/selfhost-backend-adapter-second/selfhost-compiler${{ matrix.exe_suffix }} `
-            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
             --report-out $PWD/selfhost-backend-adapter-second/report.txt
 
       - name: Diff backend adapter reports on Linux

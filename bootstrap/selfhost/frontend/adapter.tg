@@ -51,3 +51,9 @@ pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
 
 pub func run_command(output_path: str, capture_file: str) -> str:
   return string.concat(output_path, string.concat(" > ", capture_file))
+
+pub func plan_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".plan.txt")
+
+pub func request_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".adapter.txt")

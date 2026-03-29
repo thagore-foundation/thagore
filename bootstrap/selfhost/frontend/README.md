@@ -70,7 +70,8 @@ Current scope:
   `plan-*` and `adapter-*` contracts for `check/build/run`
 - `adapter.tg` now owns the explicit selfhost-to-host backend adapter contract:
   phase routing, route status, artifact naming, capture naming, and host
-  command rendering for `build` / `run`
+  command rendering for `build` / `run`; actual `build` / `run` now emit
+  sidecar plan/request artifacts from that contract
 - `lower.tg` is now the first selfhost lowering slice, emitting a stable
   lowered-function summary for a narrow corpus so compiler-middle behavior
   starts getting its own contract; that contract now includes assignment
@@ -150,6 +151,9 @@ Current scope:
 - `bootstrap/selfhost/corpus/backend-adapter-contract.txt` now locks the
   explicit adapter boundary between the selfhost compiler slice and the host
   backend/codegen path
+- `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt` now locks the
+  real adapter sidecar artifacts emitted by `build` / `run`, including route
+  changes for diagnostics-ok vs diagnostics-error paths
 - `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
@@ -172,7 +176,8 @@ Current scope:
   the bootstrap loop instead of living only in a standalone workflow
 - `.github/workflows/selfhost-backend-adapter.yml` now gives the adapter
   contract its own Linux x64 and Windows x64 lane, separate from the broader
-  compiler-driver lane
+  compiler-driver lane, and that lane now validates actual sidecar artifacts
+  emitted by `build` / `run`
 - that rehearsal now also diffs rebuilt bootstrap-artifact reports across
   stage1 and stage2, so a tool built through the selfhost compiler path is
   exercised and stabilized inside the same deterministic loop

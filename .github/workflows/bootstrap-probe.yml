@@ -439,6 +439,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli selfhost_compiler_driver_contract_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_backend_adapter_contract_matches_goldens -- --nocapture
+          cargo test -p thagore-cli selfhost_backend_adapter_artifacts_match_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_bootstrap_artifact_contract_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_lowering_slice_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_frontend_main_target_manifests_match_goldens -- --nocapture
@@ -533,6 +534,7 @@ jobs:
           cargo test -p thagore-cli build_and_run_bootstrap_seed_frontend -- --nocapture
           cargo test -p thagore-cli selfhost_compiler_driver_contract_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_backend_adapter_contract_matches_goldens -- --nocapture
+          cargo test -p thagore-cli selfhost_backend_adapter_artifacts_match_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_bootstrap_artifact_contract_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_lowering_slice_matches_goldens -- --nocapture
           cargo test -p thagore-cli selfhost_frontend_main_target_manifests_match_goldens -- --nocapture

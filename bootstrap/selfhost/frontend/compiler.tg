@@ -69,6 +69,12 @@ func artifact_path() -> str:
 func capture_path(output_path: str) -> str:
   return string.concat(output_path, ".stdout.txt")
 
+func plan_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".plan.txt")
+
+func request_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".adapter.txt")
+
 func actual_command(command: str) -> str:
   if (string.str_eq(command, "plan-build") or string.str_eq(command, "adapter-build")):
     return "build"
@@ -179,6 +185,10 @@ pub func main() -> i32:
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
+    let plan = adapter.orchestration_plan("build", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), lowered)
+    let request = adapter.adapter_request("build", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
+    fs.write(plan_artifact_path(output_path), plan)
+    fs.write(request_artifact_path(output_path), request)
     let exit_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (exit_code != 0):
       return exit_code
@@ -196,6 +206,10 @@ pub func main() -> i32:
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
+    let plan = adapter.orchestration_plan("run", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), lowered)
+    let request = adapter.adapter_request("run", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
+    fs.write(plan_artifact_path(output_path), plan)
+    fs.write(request_artifact_path(output_path), request)
     let build_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (build_code != 0):
       return build_code

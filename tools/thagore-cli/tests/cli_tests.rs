@@ -1665,6 +1665,108 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
     }
 }
 
+fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_binary: &Path, manifest: &str) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    let scratch = TempDir::new().expect("backend adapter artifact scratch");
+    let stage0 = Path::new(env!("CARGO_BIN_EXE_thagc"));
+    let path_sep = if cfg!(windows) { ";" } else { ":" };
+    let inherited_path = std::env::var("PATH").unwrap_or_default();
+    let stage0_parent = stage0
+        .parent()
+        .expect("stage0 parent")
+        .to_string_lossy()
+        .into_owned();
+
+    for case in cases {
+        let label = &case[0];
+        let cwd = if case[1].is_empty() || case[1] == "." {
+            repo_root.to_path_buf()
+        } else {
+            repo_root.join(&case[1])
+        };
+        let command_name = &case[2];
+        let path_arg = resolve_compiler_driver_path(repo_root, &case[3]).expect("path arg");
+        let kind = &case[4];
+        let artifact_name = &case[5];
+        let expected_exit: i32 = case[6].parse().expect("parse expected exit");
+        let stdout_expected = repo_root.join(&case[7]);
+        let plan_expected = repo_root.join(&case[8]);
+        let adapter_expected = repo_root.join(&case[9]);
+        let artifact_path = scratch.path().join(artifact_name);
+        let plan_path = scratch.path().join(format!("{artifact_name}.plan.txt"));
+        let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
+        for path in [&artifact_path, &plan_path, &adapter_path] {
+            let _ = fs::remove_file(path);
+        }
+
+        let mut command = Command::new(compiler_binary);
+        command
+            .current_dir(&cwd)
+            .env(
+                "PATH",
+                format!("{stage0_parent}{path_sep}{inherited_path}"),
+            )
+            .env(
+                "THAGORE_STAGE0",
+                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+            )
+            .env("THAGORE_SELFHOST_TMP", scratch.path())
+            .arg(command_name)
+            .arg(path_arg);
+        if !kind.is_empty() {
+            command.arg(kind);
+        }
+        command.arg(artifact_name);
+
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("run backend adapter artifact case {label}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(expected_exit),
+            "unexpected exit code for backend adapter artifact case {label}"
+        );
+        let expected_stdout = fs::read_to_string(stdout_expected)
+            .expect("read expected stdout")
+            .replace("\r\n", "\n");
+        let actual_stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual_stdout.trim_end(),
+            expected_stdout.trim_end(),
+            "unexpected stdout for backend adapter artifact case {label}"
+        );
+        let expected_plan = fs::read_to_string(plan_expected)
+            .expect("read expected plan")
+            .replace("\r\n", "\n");
+        let actual_plan = fs::read_to_string(&plan_path)
+            .expect("read actual plan")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_plan.trim_end(),
+            expected_plan.trim_end(),
+            "unexpected plan artifact for backend adapter case {label}"
+        );
+        let expected_adapter = fs::read_to_string(adapter_expected)
+            .expect("read expected adapter")
+            .replace("\r\n", "\n");
+        let actual_adapter = fs::read_to_string(&adapter_path)
+            .expect("read actual adapter")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_adapter.trim_end(),
+            expected_adapter.trim_end(),
+            "unexpected adapter artifact for backend adapter case {label}"
+        );
+        if command_name == "build" && expected_exit == 0 {
+            assert!(
+                artifact_path.exists(),
+                "missing backend adapter build artifact for {label}: {}",
+                artifact_path.display()
+            );
+        }
+    }
+}
+
 fn assert_lowering_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
     for case in cases {
@@ -1809,6 +1911,20 @@ fn selfhost_backend_adapter_contract_matches_goldens() {
         &repo_root,
         &binary,
         "bootstrap/selfhost/corpus/backend-adapter-contract.txt",
+    );
+}
+
+#[test]
+fn selfhost_backend_adapter_artifacts_match_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-compiler");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_compiler_driver_binary(&repo_root, &binary);
+
+    assert_backend_adapter_artifact_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt",
     );
 }
 
