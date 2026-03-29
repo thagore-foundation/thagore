@@ -54,9 +54,19 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="selfhost-backend-adapter-artifacts-") as scratch_root:
         scratch_dir = pathlib.Path(scratch_root)
-        for label, cwd_raw, command, path_raw, kind, artifact_name, expected_exit, stdout_expected, plan_expected, adapter_expected in load_manifest(
-            repo_root / args.manifest, 10
-        ):
+        for (
+            label,
+            cwd_raw,
+            command,
+            path_raw,
+            kind,
+            artifact_name,
+            expected_exit,
+            stdout_expected,
+            plan_expected,
+            adapter_expected,
+            lowered_expected,
+        ) in load_manifest(repo_root / args.manifest, 11):
             cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
             env = dict(os.environ)
             env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
@@ -66,7 +76,8 @@ def main() -> int:
             artifact_path = scratch_dir / artifact_name
             plan_path = scratch_dir / f"{artifact_name}.plan.txt"
             adapter_path = scratch_dir / f"{artifact_name}.adapter.txt"
-            for path in (artifact_path, plan_path, adapter_path):
+            lowered_path = scratch_dir / f"{artifact_name}.lowered.txt"
+            for path in (artifact_path, plan_path, adapter_path, lowered_path):
                 if path.exists():
                     path.unlink()
             cmd = [str(compiler_bin), command, resolve_arg(repo_root, path_raw)]
@@ -108,6 +119,13 @@ def main() -> int:
                 raise SystemExit(
                     f"backend adapter request drift for {label}"
                     f"\nexpected:\n{expected_adapter_text}\nactual:\n{actual_adapter}"
+                )
+            actual_lowered = canonicalize(lowered_path.read_text(encoding="utf-8"))
+            expected_lowered_text = canonicalize((repo_root / lowered_expected).read_text(encoding="utf-8"))
+            if actual_lowered != expected_lowered_text:
+                raise SystemExit(
+                    f"backend adapter lowered artifact drift for {label}"
+                    f"\nexpected:\n{expected_lowered_text}\nactual:\n{actual_lowered}"
                 )
             if command == "build" and expected_code == 0 and not artifact_path.exists():
                 raise SystemExit(f"backend adapter build artifact missing for {label}")

@@ -460,7 +460,8 @@ Current status:
 - the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at
-  frontend and command-routing outputs
+  frontend and command-routing outputs; that slice now emits ordered typed
+  lowered operations rather than only aggregate summaries
 - the explicit backend/codegen adapter boundary now exists under
   `bootstrap/selfhost/frontend/adapter.tg` plus
   `bootstrap/selfhost/corpus/backend-adapter-contract.txt`, giving the
@@ -470,7 +471,7 @@ Current status:
   `build` / `run`, locked under
   `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt`, so adapter
   routing is checked through actual artifact emission instead of preview-only
-  reports
+  reports, including the lowered sidecar consumed by the backend boundary
 
 ### Milestone B: Differential frontend pass
 
@@ -542,7 +543,8 @@ Current status:
   of the deterministic loop instead of being inferred only from final artifacts
 - that rehearsal now also validates the first lowering slice
   (`bootstrap/selfhost/frontend/lower.tg`) across stage1/stage2 rebuilds, so a
-  compiler-middle summary is now part of the deterministic bootstrap loop
+  compiler-middle lowered contract is now part of the deterministic bootstrap
+  loop
 - that same rehearsal lane now also validates the session-routed replacement
   contract for `check.tg` across stage1/stage2, so Target 01 behavior is part
   of the rebuild loop instead of living only in its separate workflow

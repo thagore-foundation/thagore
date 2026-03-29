@@ -1,1 +1,1 @@
-fn=helper;ret=i32;locals=;ops=const;calls=;assigns=;control=;values=i32;term=return(const:i32) || fn=main;ret=i32;locals=;ops=call;calls=helper;assigns=;control=;values=i32;term=return(call:helper:i32)
+fn=helper;sig=()->i32;locals=[];blocks=[entry,exit];ir=[const(i32),ret(const:i32)] || fn=main;sig=()->i32;locals=[];blocks=[entry,exit];ir=[call(helper->i32),ret(call:helper->i32)]

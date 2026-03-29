@@ -9,6 +9,13 @@ func render_base(command: str, path: str, source_root: str, current_kind: str) -
   let with_root = string.concat(with_entry, string.concat(";source_root=", normalize_path(source_root)))
   return string.concat(with_root, string.concat(";kind=", current_kind))
 
+func lowering_state(lowered: str) -> str:
+  if (string.contains(lowered, "lowering-skipped")):
+    return "skipped"
+  if (string.contains(lowered, "lowering-unavailable")):
+    return "unavailable"
+  return "ready"
+
 pub func phases(command: str) -> str:
   if (string.str_eq(command, "check")):
     return "read,desugar,scan,parse,resolve,check,report"
@@ -17,6 +24,28 @@ pub func phases(command: str) -> str:
   if (string.str_eq(command, "run")):
     return "read,desugar,scan,parse,resolve,check,lower,adapter,host-build,host-run,capture"
   return "read,desugar,scan,parse,resolve,check"
+
+pub func phase_route(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "check")):
+    return "read>frontend-check>report"
+  if (string.str_eq(command, "build")):
+    if (diagnostics_ok):
+      return "read>frontend-check>lower>adapter>host-build"
+    return "read>frontend-check>diagnostic-fallback>host-build"
+  if (string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "read>frontend-check>lower>adapter>host-build>host-run"
+    return "read>frontend-check>diagnostic-fallback>host-build>host-run"
+  return "read>frontend-check"
+
+pub func emits(command: str) -> str:
+  if (string.str_eq(command, "build")):
+    return "artifact,plan,adapter,lowered"
+  if (string.str_eq(command, "run")):
+    return "stdout,plan,adapter,lowered"
+  if (string.str_eq(command, "check")):
+    return "report"
+  return "report"
 
 pub func orchestration_plan(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
   let base = render_base(command, path, source_root, current_kind)
@@ -28,8 +57,11 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
     route = "selfhost-checked"
   let with_status = string.concat(with_phases, string.concat(";diagnostics=", status))
   let with_route = string.concat(with_status, string.concat(";route=", route))
-  let with_artifact = string.concat(with_route, string.concat(";artifact=", artifact_name))
-  return string.concat(with_artifact, string.concat(";lowered=", lowered))
+  let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
+  let with_artifact = string.concat(with_phase_route, string.concat(";artifact=", artifact_name))
+  let with_emits = string.concat(with_artifact, string.concat(";emits=", emits(command)))
+  let with_lowering_state = string.concat(with_emits, string.concat(";lowering_state=", lowering_state(lowered)))
+  return string.concat(with_lowering_state, string.concat(";lowered=", lowered))
 
 pub func adapter_request(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, capture_name: str, lowered: str) -> str:
   let base = render_base(command, path, source_root, current_kind)
@@ -42,9 +74,13 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_adapter = string.concat(base, string.concat(";adapter=", adapter_name))
   let with_phases = string.concat(with_adapter, string.concat(";phases=", phases(command)))
   let with_route = string.concat(with_phases, string.concat(";route=", route))
-  let with_artifact = string.concat(with_route, string.concat(";artifact=", artifact_name))
+  let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
+  let with_artifact = string.concat(with_phase_route, string.concat(";artifact=", artifact_name))
   let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
-  return string.concat(with_capture, string.concat(";lowered=", lowered))
+  let with_emits = string.concat(with_capture, string.concat(";emits=", emits(command)))
+  let with_backend_input = string.concat(with_emits, ";backend_input=entry,artifact,capture,lowered")
+  let with_lowering_state = string.concat(with_backend_input, string.concat(";lowering_state=", lowering_state(lowered)))
+  return string.concat(with_lowering_state, string.concat(";lowered=", lowered))
 
 pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
   return string.concat(host_thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
@@ -57,3 +93,6 @@ pub func plan_artifact_name(artifact_name: str) -> str:
 
 pub func request_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".adapter.txt")
+
+pub func lowered_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".lowered.txt")

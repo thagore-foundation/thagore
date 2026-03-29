@@ -54,6 +54,13 @@ func token_value(tokens: Array[str], index: i32) -> str:
     return ""
   return token_text(current)
 
+func append_csv(items: str, value: str) -> str:
+  if (string.len(value) == 0):
+    return items
+  if (string.len(items) == 0):
+    return value
+  return string.concat(items, string.concat(",", value))
+
 func append_unique(items: str, value: str) -> str:
   if (string.len(value) == 0):
     return items
@@ -92,6 +99,9 @@ func lookup_mapping(items: str, name: str) -> str:
       return value
   return ""
 
+func wrap_list(items: str) -> str:
+  return string.concat("[", string.concat(items, "]"))
+
 func literal_type(tokens: Array[str], index: i32) -> str:
   if (token_is_kind(tokens, index, "int")):
     return "i32"
@@ -128,25 +138,28 @@ func value_type(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_
     return lookup_mapping(funcs, load)
   return hinted_type
 
-func record_rhs(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_type: str, ops: str, calls: str, values: str) -> str:
-  let out = string.concat(ops, string.concat(";", string.concat(calls, string.concat(";", values))))
+func rhs_state(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_type: str) -> str:
   let literal = literal_type(tokens, index)
   if (string.len(literal) > 0):
-    let next_ops = append_unique(ops, "const")
-    let next_values = append_unique(values, literal)
-    return string.concat(next_ops, string.concat(";", string.concat(calls, string.concat(";", next_values))))
+    return string.concat("const;", string.concat(string.concat("const(", string.concat(literal, ")")), string.concat(";", string.concat(literal, string.concat(";const:", literal)))))
   let call = call_name(tokens, index)
   if (string.len(call) > 0):
-    let next_ops = append_unique(ops, "call")
-    let next_calls = append_unique(calls, call)
-    let next_values = append_unique(values, value_type(tokens, index, locals, funcs, hinted_type))
-    return string.concat(next_ops, string.concat(";", string.concat(next_calls, string.concat(";", next_values))))
+    let result_type = value_type(tokens, index, locals, funcs, hinted_type)
+    let ir = string.concat("call(", string.concat(call, string.concat("->", string.concat(result_type, ")"))))
+    let descriptor = string.concat("call:", string.concat(call, string.concat("->", result_type)))
+    return string.concat("call;", string.concat(ir, string.concat(";", string.concat(result_type, string.concat(";", descriptor)))))
   let load = load_name(tokens, index)
   if (string.len(load) > 0):
-    let next_ops = append_unique(ops, "load")
-    let next_values = append_unique(values, value_type(tokens, index, locals, funcs, hinted_type))
-    return string.concat(next_ops, string.concat(";", string.concat(calls, string.concat(";", next_values))))
-  return out
+    let result_type = value_type(tokens, index, locals, funcs, hinted_type)
+    let ir = string.concat("load(", string.concat(load, string.concat(":", string.concat(result_type, ")"))))
+    let descriptor = string.concat("load:", string.concat(load, string.concat(":", result_type)))
+    return string.concat("load;", string.concat(ir, string.concat(";", string.concat(result_type, string.concat(";", descriptor)))))
+  let result_type = value_type(tokens, index, locals, funcs, hinted_type)
+  if (string.len(result_type) > 0):
+    let ir = string.concat("value(", string.concat(result_type, ")"))
+    let descriptor = string.concat("value:", result_type)
+    return string.concat("value;", string.concat(ir, string.concat(";", string.concat(result_type, string.concat(";", descriptor)))))
+  return "unknown;;;unknown"
 
 func split_state(state: str, part: i32) -> str:
   let parts = string.split(state, ";")
@@ -154,20 +167,17 @@ func split_state(state: str, part: i32) -> str:
     return ""
   return array.get(parts, part)
 
-func detect_return_kind(tokens: Array[str], index: i32, locals: str, funcs: str, current_return: str) -> str:
-  let next_index: i32 = index + 1
-  let literal = literal_type(tokens, next_index)
-  if (string.len(literal) > 0):
-    return string.concat("return(const:", string.concat(literal, ")"))
-  let call = call_name(tokens, next_index)
-  if (string.len(call) > 0):
-    let return_type = value_type(tokens, next_index, locals, funcs, current_return)
-    return string.concat("return(call:", string.concat(call, string.concat(":", string.concat(return_type, ")"))))
-  let load = load_name(tokens, next_index)
-  if (string.len(load) > 0):
-    let return_type = value_type(tokens, next_index, locals, funcs, current_return)
-    return string.concat("return(load:", string.concat(load, string.concat(":", string.concat(return_type, ")"))))
-  return "return"
+func rhs_ir(state: str) -> str:
+  return split_state(state, 1)
+
+func rhs_descriptor(state: str) -> str:
+  return split_state(state, 3)
+
+func append_rhs_ir(ir: str, state: str) -> str:
+  let op = rhs_ir(state)
+  if (string.len(op) == 0):
+    return ir
+  return append_csv(ir, op)
 
 func is_assignment_target(tokens: Array[str], index: i32) -> bool:
   if (token_is_kind(tokens, index, "ident") == false):
@@ -178,16 +188,12 @@ func is_assignment_target(tokens: Array[str], index: i32) -> bool:
     return false
   return true
 
-func render_function(name: str, return_type: str, locals: str, ops: str, calls: str, assigns: str, control: str, values: str, terminator: str) -> str:
+func render_function(name: str, return_type: str, locals: str, blocks: str, ir: str) -> str:
   let with_name = string.concat("fn=", name)
-  let with_return = string.concat(with_name, string.concat(";ret=", return_type))
-  let with_locals = string.concat(with_return, string.concat(";locals=", locals))
-  let with_ops = string.concat(with_locals, string.concat(";ops=", ops))
-  let with_calls = string.concat(with_ops, string.concat(";calls=", calls))
-  let with_assigns = string.concat(with_calls, string.concat(";assigns=", assigns))
-  let with_control = string.concat(with_assigns, string.concat(";control=", control))
-  let with_values = string.concat(with_control, string.concat(";values=", values))
-  return string.concat(with_values, string.concat(";term=", terminator))
+  let with_sig = string.concat(with_name, string.concat(";sig=()->", return_type))
+  let with_locals = string.concat(with_sig, string.concat(";locals=", wrap_list(locals)))
+  let with_blocks = string.concat(with_locals, string.concat(";blocks=", wrap_list(blocks)))
+  return string.concat(with_blocks, string.concat(";ir=", wrap_list(ir)))
 
 func append_function(out: str, line: str) -> str:
   if (string.len(out) == 0):
@@ -202,79 +208,69 @@ pub func lower_report(source: str) -> str:
   let current_name = ""
   let current_return = ""
   let current_locals = ""
-  let current_ops = ""
-  let current_calls = ""
-  let current_assigns = ""
-  let current_control = ""
-  let current_values = ""
-  let current_term = "return"
+  let current_blocks = ""
+  let current_ir = ""
   let index: i32 = 0
 
   while (index < count):
     if (token_matches(tokens, index, "kw", "func") and token_is_kind(tokens, index + 1, "ident") and token_is_kind(tokens, index + 5, "ident")):
       if (string.len(current_name) > 0):
-        out = append_function(out, render_function(current_name, current_return, current_locals, current_ops, current_calls, current_assigns, current_control, current_values, current_term))
+        out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_ir))
       current_name = token_value(tokens, index + 1)
       current_return = token_value(tokens, index + 5)
       func_returns = append_mapping(func_returns, current_name, current_return)
       current_locals = ""
-      current_ops = ""
-      current_calls = ""
-      current_assigns = ""
-      current_control = ""
-      current_values = ""
-      current_term = "return"
+      current_blocks = "entry"
+      current_ir = ""
       index = index + 6
       continue
     if (token_matches(tokens, index, "kw", "let")):
-      current_ops = append_unique(current_ops, "alloc")
       let local_name = token_value(tokens, index + 1)
       let local_type = token_value(tokens, index + 3)
       current_locals = append_mapping(current_locals, local_name, local_type)
+      current_ir = append_csv(current_ir, string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
       if (token_matches(tokens, index + 4, "punct", "=")):
-        let state = record_rhs(tokens, index + 5, current_locals, func_returns, local_type, current_ops, current_calls, current_values)
-        current_ops = append_unique(split_state(state, 0), "store")
-        current_calls = split_state(state, 1)
-        current_values = split_state(state, 2)
+        let rhs = rhs_state(tokens, index + 5, current_locals, func_returns, local_type)
+        current_ir = append_rhs_ir(current_ir, rhs)
+        current_ir = append_csv(current_ir, string.concat("store(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
       index = index + 1
       continue
     if (is_assignment_target(tokens, index)):
       let target = token_value(tokens, index)
       let target_type = lookup_mapping(current_locals, target)
-      current_ops = append_unique(current_ops, "assign")
-      current_assigns = append_mapping(current_assigns, target, target_type)
-      let state = record_rhs(tokens, index + 2, current_locals, func_returns, target_type, current_ops, current_calls, current_values)
-      current_ops = split_state(state, 0)
-      current_calls = split_state(state, 1)
-      current_values = split_state(state, 2)
+      let rhs = rhs_state(tokens, index + 2, current_locals, func_returns, target_type)
+      current_ir = append_rhs_ir(current_ir, rhs)
+      current_ir = append_csv(current_ir, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "if")):
-      current_control = append_unique(current_control, "if")
-      current_ops = append_unique(current_ops, "branch")
-      let cond_type = value_type(tokens, index + 2, current_locals, func_returns, "")
-      current_values = append_unique(current_values, cond_type)
+      current_blocks = append_unique(current_blocks, "then")
+      let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
+      current_ir = append_rhs_ir(current_ir, cond)
+      current_ir = append_csv(current_ir, string.concat("branch(", string.concat(rhs_descriptor(cond), ")")))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "while")):
-      current_control = append_unique(current_control, "while")
-      current_ops = append_unique(current_ops, "loop")
-      current_ops = append_unique(current_ops, "branch")
-      let cond_type = value_type(tokens, index + 2, current_locals, func_returns, "")
-      current_values = append_unique(current_values, cond_type)
+      current_blocks = append_unique(current_blocks, "loop")
+      let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
+      current_ir = append_rhs_ir(current_ir, cond)
+      current_ir = append_csv(current_ir, string.concat("loop(", string.concat(rhs_descriptor(cond), ")")))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "return")):
-      let state = record_rhs(tokens, index + 1, current_locals, func_returns, current_return, current_ops, current_calls, current_values)
-      current_ops = split_state(state, 0)
-      current_calls = split_state(state, 1)
-      current_values = split_state(state, 2)
-      current_term = detect_return_kind(tokens, index, current_locals, func_returns, current_return)
+      current_blocks = append_unique(current_blocks, "exit")
+      let rhs = rhs_state(tokens, index + 1, current_locals, func_returns, current_return)
+      current_ir = append_rhs_ir(current_ir, rhs)
+      let descriptor = rhs_descriptor(rhs)
+      if (string.len(descriptor) > 0 and string.str_eq(descriptor, "unknown") == false):
+        current_ir = append_csv(current_ir, string.concat("ret(", string.concat(descriptor, ")")))
+      if (string.len(descriptor) == 0 or string.str_eq(descriptor, "unknown")):
+        current_ir = append_csv(current_ir, "ret(void)")
       index = index + 1
       continue
     index = index + 1
   if (string.len(current_name) > 0):
-    out = append_function(out, render_function(current_name, current_return, current_locals, current_ops, current_calls, current_assigns, current_control, current_values, current_term))
+    out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_ir))
   return out
 
 pub func main() -> i32:

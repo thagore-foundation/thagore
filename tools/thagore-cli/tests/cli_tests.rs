@@ -1692,10 +1692,12 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let stdout_expected = repo_root.join(&case[7]);
         let plan_expected = repo_root.join(&case[8]);
         let adapter_expected = repo_root.join(&case[9]);
+        let lowered_expected = repo_root.join(&case[10]);
         let artifact_path = scratch.path().join(artifact_name);
         let plan_path = scratch.path().join(format!("{artifact_name}.plan.txt"));
         let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
-        for path in [&artifact_path, &plan_path, &adapter_path] {
+        let lowered_path = scratch.path().join(format!("{artifact_name}.lowered.txt"));
+        for path in [&artifact_path, &plan_path, &adapter_path, &lowered_path] {
             let _ = fs::remove_file(path);
         }
 
@@ -1756,6 +1758,17 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
             actual_adapter.trim_end(),
             expected_adapter.trim_end(),
             "unexpected adapter artifact for backend adapter case {label}"
+        );
+        let expected_lowered = fs::read_to_string(lowered_expected)
+            .expect("read expected lowered")
+            .replace("\r\n", "\n");
+        let actual_lowered = fs::read_to_string(&lowered_path)
+            .expect("read actual lowered")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_lowered.trim_end(),
+            expected_lowered.trim_end(),
+            "unexpected lowered artifact for backend adapter case {label}"
         );
         if command_name == "build" && expected_exit == 0 {
             assert!(

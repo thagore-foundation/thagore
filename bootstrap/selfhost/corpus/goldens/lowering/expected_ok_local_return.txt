@@ -1,1 +1,1 @@
-fn=main;ret=i32;locals=value:i32;ops=alloc,const,store,load;calls=;assigns=;control=;values=i32;term=return(load:value:i32)
+fn=main;sig=()->i32;locals=[value:i32];blocks=[entry,exit];ir=[alloc(value:i32),const(i32),store(value:i32<-const:i32),load(value:i32),ret(load:value:i32)]

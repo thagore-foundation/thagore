@@ -75,6 +75,9 @@ func plan_artifact_path(output_path: str) -> str:
 func request_artifact_path(output_path: str) -> str:
   return string.concat(output_path, ".adapter.txt")
 
+func lowered_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".lowered.txt")
+
 func actual_command(command: str) -> str:
   if (string.str_eq(command, "plan-build") or string.str_eq(command, "adapter-build")):
     return "build"
@@ -94,7 +97,11 @@ func source_report(path: str, current_kind: str) -> str:
   let source_root = session.source_dir(path)
   return pipeline.full_report(source_root, source, current_kind)
 
-func lowering_summary(path: str) -> str:
+func lowering_summary(path: str, diagnostics_ok: bool, require_lowering: bool) -> str:
+  if (require_lowering == false):
+    return "lowering-skipped(route=frontend-only)"
+  if (diagnostics_ok == false):
+    return "lowering-skipped(route=host-fallback)"
   let source = session.read_source(path)
   if (string.len(source) == 0):
     return ""
@@ -109,26 +116,27 @@ func orchestration_plan(command: str, path: str, current_kind: str) -> str:
   if (string.len(report) == 0):
     return ""
   let source_root = session.source_dir(path)
-  let lowered = lowering_summary(path)
+  let diagnostics_ok = has_clean_diagnostics(report)
+  let require_lowering = string.str_eq(actual, "build") or string.str_eq(actual, "run")
+  let lowered = lowering_summary(path, diagnostics_ok, require_lowering)
   let artifact = ""
   if (string.str_eq(actual, "build") or string.str_eq(actual, "run")):
     artifact = artifact_name()
-  return adapter.orchestration_plan(actual, path, source_root, current_kind, has_clean_diagnostics(report), artifact, lowered)
+  return adapter.orchestration_plan(actual, path, source_root, current_kind, diagnostics_ok, artifact, lowered)
 
 func adapter_preview(command: str, path: str, current_kind: str) -> str:
   let actual = actual_command(command)
   if (string.str_eq(actual, "build") == false and string.str_eq(actual, "run") == false):
     return ""
   let report = source_report(path, current_kind)
-  if (string.len(report) == 0 or has_clean_diagnostics(report) == false):
+  if (string.len(report) == 0):
     return ""
-  let lowered = lowering_summary(path)
-  if (string.len(lowered) == 0):
-    return ""
+  let diagnostics_ok = has_clean_diagnostics(report)
+  let lowered = lowering_summary(path, diagnostics_ok, true)
   let output_path = artifact_path()
   if (string.len(output_path) == 0):
     return ""
-  return adapter.adapter_request(actual, path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
+  return adapter.adapter_request(actual, path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
 
 func run_command(command: str, path: str, current_kind: str) -> str:
   let source = session.read_source(path)
@@ -180,15 +188,17 @@ pub func main() -> i32:
     let report = source_report(path, current_kind)
     if (string.len(report) == 0):
       return 1
-    let lowered = lowering_summary(path)
+    let diagnostics_ok = has_clean_diagnostics(report)
+    let lowered = lowering_summary(path, diagnostics_ok, true)
     let output_path = artifact_path()
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
-    let plan = adapter.orchestration_plan("build", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), lowered)
-    let request = adapter.adapter_request("build", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
+    let plan = adapter.orchestration_plan("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
+    let request = adapter.adapter_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     fs.write(plan_artifact_path(output_path), plan)
     fs.write(request_artifact_path(output_path), request)
+    fs.write(lowered_artifact_path(output_path), lowered)
     let exit_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (exit_code != 0):
       return exit_code
@@ -201,15 +211,17 @@ pub func main() -> i32:
     let report = source_report(path, current_kind)
     if (string.len(report) == 0):
       return 1
-    let lowered = lowering_summary(path)
+    let diagnostics_ok = has_clean_diagnostics(report)
+    let lowered = lowering_summary(path, diagnostics_ok, true)
     let output_path = artifact_path()
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
-    let plan = adapter.orchestration_plan("run", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), lowered)
-    let request = adapter.adapter_request("run", path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
+    let plan = adapter.orchestration_plan("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
+    let request = adapter.adapter_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     fs.write(plan_artifact_path(output_path), plan)
     fs.write(request_artifact_path(output_path), request)
+    fs.write(lowered_artifact_path(output_path), lowered)
     let build_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (build_code != 0):
       return build_code

@@ -1,1 +1,1 @@
-fn=main;ret=bool;locals=ready:bool;ops=alloc,const,store,loop,branch,assign,load;calls=;assigns=ready:bool;control=while;values=bool;term=return(load:ready:bool)
+fn=main;sig=()->bool;locals=[ready:bool];blocks=[entry,loop,exit];ir=[alloc(ready:bool),const(bool),store(ready:bool<-const:bool),load(ready:bool),loop(load:ready:bool),const(bool),assign(ready:bool<-const:bool),load(ready:bool),ret(load:ready:bool)]

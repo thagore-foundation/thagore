@@ -153,14 +153,16 @@ Current scope:
   backend/codegen path
 - `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt` now locks the
   real adapter sidecar artifacts emitted by `build` / `run`, including route
-  changes for diagnostics-ok vs diagnostics-error paths
+  changes for diagnostics-ok vs diagnostics-error paths plus the emitted
+  lowered sidecar that the backend adapter consumes
 - `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
   compares their observable output
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
-  assignment flow, and control-flow shape through `lower.tg`
+  assignment flow, control-flow shape, and typed lowered operations through
+  `lower.tg`
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
