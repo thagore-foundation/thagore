@@ -1,0 +1,3 @@
+# label|cwd|command|path|kind|extra|exit|expected
+ADAPTER_BUILD|.|adapter-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_adapter_build.txt
+ADAPTER_RUN|.|adapter-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_adapter_run.txt

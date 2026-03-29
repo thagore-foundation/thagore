@@ -169,6 +169,17 @@ jobs:
             --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-first/report.txt"
 
+      - name: Validate backend adapter first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --report-out "$PWD/selfhost-compiler-driver-first/adapter-report.txt"
+
       - name: Validate bootstrap artifact first pass on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -198,6 +209,17 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-second/report.txt"
+
+      - name: Validate backend adapter second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --report-out "$PWD/selfhost-compiler-driver-second/adapter-report.txt"
 
       - name: Validate bootstrap artifact second pass on Linux
         if: runner.os == 'Linux'
@@ -229,6 +251,17 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-first/report.txt
 
+      - name: Validate backend adapter first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --report-out $PWD/selfhost-compiler-driver-first/adapter-report.txt
+
       - name: Validate bootstrap artifact first pass on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -259,6 +292,17 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-second/report.txt
 
+      - name: Validate backend adapter second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --report-out $PWD/selfhost-compiler-driver-second/adapter-report.txt
+
       - name: Validate bootstrap artifact second pass on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -279,6 +323,11 @@ jobs:
         shell: bash
         run: diff -u selfhost-compiler-driver-first/artifact-report.txt selfhost-compiler-driver-second/artifact-report.txt
 
+      - name: Diff backend adapter reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u selfhost-compiler-driver-first/adapter-report.txt selfhost-compiler-driver-second/adapter-report.txt
+
       - name: Diff compiler driver reports on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -295,6 +344,14 @@ jobs:
             throw 'selfhost bootstrap artifact reports differ between rebuilds'
           }
 
+      - name: Diff backend adapter reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content selfhost-compiler-driver-first/adapter-report.txt -Raw) -ne (Get-Content selfhost-compiler-driver-second/adapter-report.txt -Raw)) {
+            throw 'selfhost backend adapter reports differ between rebuilds'
+          }
+
       - name: Upload compiler driver reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -302,8 +359,10 @@ jobs:
           name: selfhost-compiler-driver-${{ matrix.os_name }}
           path: |
             selfhost-compiler-driver-first/report.txt
+            selfhost-compiler-driver-first/adapter-report.txt
             selfhost-compiler-driver-first/artifact-report.txt
             selfhost-compiler-driver-second/report.txt
+            selfhost-compiler-driver-second/adapter-report.txt
             selfhost-compiler-driver-second/artifact-report.txt
 
       - name: Summarize compiler driver reports on Linux
@@ -328,9 +387,19 @@ jobs:
             cat selfhost-compiler-driver-first/artifact-report.txt
             echo '```'
             echo
+            echo "### Adapter first pass"
+            echo '```text'
+            cat selfhost-compiler-driver-first/adapter-report.txt
+            echo '```'
+            echo
             echo "### Artifact second pass"
             echo '```text'
             cat selfhost-compiler-driver-second/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Adapter second pass"
+            echo '```text'
+            cat selfhost-compiler-driver-second/adapter-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -358,8 +427,18 @@ jobs:
           $(if (Test-Path selfhost-compiler-driver-first/artifact-report.txt) { Get-Content selfhost-compiler-driver-first/artifact-report.txt -Raw } else { '<report missing>' })
           ```
 
+          ### Adapter first pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-first/adapter-report.txt) { Get-Content selfhost-compiler-driver-first/adapter-report.txt -Raw } else { '<report missing>' })
+          ```
+
           ### Artifact second pass
           ```text
           $(if (Test-Path selfhost-compiler-driver-second/artifact-report.txt) { Get-Content selfhost-compiler-driver-second/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Adapter second pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-second/adapter-report.txt) { Get-Content selfhost-compiler-driver-second/adapter-report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

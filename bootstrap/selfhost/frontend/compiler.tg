@@ -1,6 +1,8 @@
 from . import pipeline
 from . import session
 from . import module_kind
+from . import lower
+from . import adapter
 import std.fs as fs
 import std.process as process
 import std.string as string
@@ -18,7 +20,7 @@ func command_option() -> str:
   return process.argv(3)
 
 func command_kind(command: str) -> str:
-  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+  if (string.str_eq(command, "build") or string.str_eq(command, "run") or string.str_eq(command, "plan-build") or string.str_eq(command, "plan-run") or string.str_eq(command, "adapter-build") or string.str_eq(command, "adapter-run")):
     return module_kind.executable_root()
   let arg = process.argv(3)
   if (string.str_eq(arg, "library")):
@@ -67,12 +69,60 @@ func artifact_path() -> str:
 func capture_path(output_path: str) -> str:
   return string.concat(output_path, ".stdout.txt")
 
-func build_shell_command(path: str, output_path: str) -> str:
-  let thagc = host_thagc()
-  return string.concat(thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
+func actual_command(command: str) -> str:
+  if (string.str_eq(command, "plan-build") or string.str_eq(command, "adapter-build")):
+    return "build"
+  if (string.str_eq(command, "plan-run") or string.str_eq(command, "adapter-run")):
+    return "run"
+  if (string.str_eq(command, "plan-check")):
+    return "check"
+  return command
 
-func run_shell_command(output_path: str, capture_file: str) -> str:
-  return string.concat(output_path, string.concat(" > ", capture_file))
+func has_clean_diagnostics(report: str) -> bool:
+  return string.contains(report, "diagnostics=ok")
+
+func source_report(path: str, current_kind: str) -> str:
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return ""
+  let source_root = session.source_dir(path)
+  return pipeline.full_report(source_root, source, current_kind)
+
+func lowering_summary(path: str) -> str:
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return ""
+  let lowered = lower.lower_report(source)
+  if (string.len(lowered) == 0):
+    return "lowering-unavailable"
+  return lowered
+
+func orchestration_plan(command: str, path: str, current_kind: str) -> str:
+  let actual = actual_command(command)
+  let report = source_report(path, current_kind)
+  if (string.len(report) == 0):
+    return ""
+  let source_root = session.source_dir(path)
+  let lowered = lowering_summary(path)
+  let artifact = ""
+  if (string.str_eq(actual, "build") or string.str_eq(actual, "run")):
+    artifact = artifact_name()
+  return adapter.orchestration_plan(actual, path, source_root, current_kind, has_clean_diagnostics(report), artifact, lowered)
+
+func adapter_preview(command: str, path: str, current_kind: str) -> str:
+  let actual = actual_command(command)
+  if (string.str_eq(actual, "build") == false and string.str_eq(actual, "run") == false):
+    return ""
+  let report = source_report(path, current_kind)
+  if (string.len(report) == 0 or has_clean_diagnostics(report) == false):
+    return ""
+  let lowered = lowering_summary(path)
+  if (string.len(lowered) == 0):
+    return ""
+  let output_path = artifact_path()
+  if (string.len(output_path) == 0):
+    return ""
+  return adapter.adapter_request(actual, path, session.source_dir(path), current_kind, has_clean_diagnostics(report), artifact_name(), capture_path(artifact_name()), lowered)
 
 func run_command(command: str, path: str, current_kind: str) -> str:
   let source = session.read_source(path)
@@ -105,12 +155,31 @@ pub func main() -> i32:
   if (string.len(path) == 0):
     println(usage())
     return 1
+  if (string.str_eq(command, "plan-check") or string.str_eq(command, "plan-build") or string.str_eq(command, "plan-run")):
+    let current_kind = command_kind(command)
+    let plan = orchestration_plan(command, path, current_kind)
+    if (string.len(plan) == 0):
+      return 1
+    println(plan)
+    return 0
+  if (string.str_eq(command, "adapter-build") or string.str_eq(command, "adapter-run")):
+    let current_kind = command_kind(command)
+    let preview = adapter_preview(command, path, current_kind)
+    if (string.len(preview) == 0):
+      return 1
+    println(preview)
+    return 0
   if (string.str_eq(command, "build")):
+    let current_kind = command_kind(command)
+    let report = source_report(path, current_kind)
+    if (string.len(report) == 0):
+      return 1
+    let lowered = lowering_summary(path)
     let output_path = artifact_path()
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
-    let exit_code = process.run(build_shell_command(path, output_path))
+    let exit_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (exit_code != 0):
       return exit_code
     if (fs.exists(output_path) == false):
@@ -118,18 +187,23 @@ pub func main() -> i32:
     println(string.concat("built=", artifact_name()))
     return 0
   if (string.str_eq(command, "run")):
+    let current_kind = command_kind(command)
+    let report = source_report(path, current_kind)
+    if (string.len(report) == 0):
+      return 1
+    let lowered = lowering_summary(path)
     let output_path = artifact_path()
     if (string.len(output_path) == 0 or ensure_scratch_root() == false):
       println(usage())
       return 1
-    let build_code = process.run(build_shell_command(path, output_path))
+    let build_code = process.run(adapter.build_command(host_thagc(), path, output_path))
     if (build_code != 0):
       return build_code
     if (fs.exists(output_path) == false):
       return 1
     let captured = capture_path(output_path)
     fs.remove(captured)
-    let run_code = process.run(run_shell_command(output_path, captured))
+    let run_code = process.run(adapter.run_command(output_path, captured))
     let output = session.read_source(captured)
     fs.remove(captured)
     fs.remove(output_path)

@@ -1799,6 +1799,20 @@ fn selfhost_compiler_driver_contract_matches_goldens() {
 }
 
 #[test]
+fn selfhost_backend_adapter_contract_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-compiler");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_compiler_binary(&repo_root, &binary);
+
+    assert_compiler_driver_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/backend-adapter-contract.txt",
+    );
+}
+
+#[test]
 fn selfhost_bootstrap_artifact_contract_matches_goldens() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-selfhost-compiler");

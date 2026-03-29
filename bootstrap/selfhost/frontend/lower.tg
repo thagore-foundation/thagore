@@ -54,60 +54,140 @@ func token_value(tokens: Array[str], index: i32) -> str:
     return ""
   return token_text(current)
 
-func append_unique(ops: str, value: str) -> str:
+func append_unique(items: str, value: str) -> str:
   if (string.len(value) == 0):
-    return ops
-  if (string.len(ops) == 0):
+    return items
+  if (string.len(items) == 0):
     return value
-  let parts = string.split(ops, ",")
+  let parts = string.split(items, ",")
   for part in parts:
     if (string.str_eq(part, value)):
-      return ops
-  return string.concat(ops, string.concat(",", value))
+      return items
+  return string.concat(items, string.concat(",", value))
 
-func detect_return_kind(tokens: Array[str], index: i32) -> str:
-  let next_index: i32 = index + 1
-  if (token_is_kind(tokens, next_index, "int")):
-    return "return(const)"
-  if (token_is_kind(tokens, next_index, "ident")):
-    let name = token_value(tokens, next_index)
-    if (token_matches(tokens, next_index + 1, "punct", "(")):
-      return string.concat("return(call:", string.concat(name, ")"))
-    return string.concat("return(load:", string.concat(name, ")"))
-  return "return"
+func append_mapping(items: str, name: str, value: str) -> str:
+  if (string.len(name) == 0 or string.len(value) == 0):
+    return items
+  return append_unique(items, string.concat(name, string.concat(":", value)))
 
-func update_ops_for_let(tokens: Array[str], index: i32, ops: str) -> str:
-  let out = append_unique(ops, "alloc")
-  let assign_index: i32 = index + 4
-  if (token_matches(tokens, assign_index, "punct", "=") == false):
-    return out
-  let value_index: i32 = assign_index + 1
-  if (token_is_kind(tokens, value_index, "int")):
-    let with_const = append_unique(out, "const")
-    return append_unique(with_const, "store")
-  if (token_is_kind(tokens, value_index, "ident")):
-    if (token_matches(tokens, value_index + 1, "punct", "(")):
-      let with_call = append_unique(out, "call")
-      return append_unique(with_call, "store")
-    let with_load = append_unique(out, "load")
-    return append_unique(with_load, "store")
+func lookup_mapping(items: str, name: str) -> str:
+  if (string.len(items) == 0 or string.len(name) == 0):
+    return ""
+  let parts = string.split(items, ",")
+  for part in parts:
+    let sep = string.find(part, ":")
+    if (sep < 0):
+      continue
+    let key = ""
+    let value = ""
+    let index: i32 = 0
+    while (index < string.len(part)):
+      let ch = string.char_at(part, index)
+      if (index < sep):
+        key = string.concat(key, ch)
+      if (index > sep):
+        value = string.concat(value, ch)
+      index = index + 1
+    if (string.str_eq(key, name)):
+      return value
+  return ""
+
+func literal_type(tokens: Array[str], index: i32) -> str:
+  if (token_is_kind(tokens, index, "int")):
+    return "i32"
+  if (token_matches(tokens, index, "kw", "true") or token_matches(tokens, index, "kw", "false") or token_matches(tokens, index, "ident", "true") or token_matches(tokens, index, "ident", "false")):
+    return "bool"
+  return ""
+
+func call_name(tokens: Array[str], index: i32) -> str:
+  if (token_is_kind(tokens, index, "ident") and token_matches(tokens, index + 1, "punct", "(")):
+    return token_value(tokens, index)
+  return ""
+
+func load_name(tokens: Array[str], index: i32) -> str:
+  if (token_is_kind(tokens, index, "ident") and token_matches(tokens, index + 1, "punct", "(") == false):
+    return token_value(tokens, index)
+  return ""
+
+func value_type(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_type: str) -> str:
+  let literal = literal_type(tokens, index)
+  if (string.len(literal) > 0):
+    return literal
+  let call = call_name(tokens, index)
+  if (string.len(call) > 0):
+    if (string.len(hinted_type) > 0):
+      return hinted_type
+    return lookup_mapping(funcs, call)
+  let load = load_name(tokens, index)
+  if (string.len(load) > 0):
+    let local_type = lookup_mapping(locals, load)
+    if (string.len(local_type) > 0):
+      return local_type
+    if (string.len(hinted_type) > 0):
+      return hinted_type
+    return lookup_mapping(funcs, load)
+  return hinted_type
+
+func record_rhs(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_type: str, ops: str, calls: str, values: str) -> str:
+  let out = string.concat(ops, string.concat(";", string.concat(calls, string.concat(";", values))))
+  let literal = literal_type(tokens, index)
+  if (string.len(literal) > 0):
+    let next_ops = append_unique(ops, "const")
+    let next_values = append_unique(values, literal)
+    return string.concat(next_ops, string.concat(";", string.concat(calls, string.concat(";", next_values))))
+  let call = call_name(tokens, index)
+  if (string.len(call) > 0):
+    let next_ops = append_unique(ops, "call")
+    let next_calls = append_unique(calls, call)
+    let next_values = append_unique(values, value_type(tokens, index, locals, funcs, hinted_type))
+    return string.concat(next_ops, string.concat(";", string.concat(next_calls, string.concat(";", next_values))))
+  let load = load_name(tokens, index)
+  if (string.len(load) > 0):
+    let next_ops = append_unique(ops, "load")
+    let next_values = append_unique(values, value_type(tokens, index, locals, funcs, hinted_type))
+    return string.concat(next_ops, string.concat(";", string.concat(calls, string.concat(";", next_values))))
   return out
 
-func update_ops_for_return(tokens: Array[str], index: i32, ops: str) -> str:
-  let next_index: i32 = index + 1
-  if (token_is_kind(tokens, next_index, "int")):
-    return append_unique(ops, "const")
-  if (token_is_kind(tokens, next_index, "ident")):
-    if (token_matches(tokens, next_index + 1, "punct", "(")):
-      return append_unique(ops, "call")
-    return append_unique(ops, "load")
-  return ops
+func split_state(state: str, part: i32) -> str:
+  let parts = string.split(state, ";")
+  if (part < 0 or part >= array.len(parts)):
+    return ""
+  return array.get(parts, part)
 
-func render_function(name: str, return_type: str, ops: str, terminator: str) -> str:
+func detect_return_kind(tokens: Array[str], index: i32, locals: str, funcs: str, current_return: str) -> str:
+  let next_index: i32 = index + 1
+  let literal = literal_type(tokens, next_index)
+  if (string.len(literal) > 0):
+    return string.concat("return(const:", string.concat(literal, ")"))
+  let call = call_name(tokens, next_index)
+  if (string.len(call) > 0):
+    let return_type = value_type(tokens, next_index, locals, funcs, current_return)
+    return string.concat("return(call:", string.concat(call, string.concat(":", string.concat(return_type, ")"))))
+  let load = load_name(tokens, next_index)
+  if (string.len(load) > 0):
+    let return_type = value_type(tokens, next_index, locals, funcs, current_return)
+    return string.concat("return(load:", string.concat(load, string.concat(":", string.concat(return_type, ")"))))
+  return "return"
+
+func is_assignment_target(tokens: Array[str], index: i32) -> bool:
+  if (token_is_kind(tokens, index, "ident") == false):
+    return false
+  if (token_matches(tokens, index + 1, "punct", "=") == false):
+    return false
+  if (token_matches(tokens, index - 1, "punct", ":") and token_matches(tokens, index - 3, "kw", "let")):
+    return false
+  return true
+
+func render_function(name: str, return_type: str, locals: str, ops: str, calls: str, assigns: str, control: str, values: str, terminator: str) -> str:
   let with_name = string.concat("fn=", name)
   let with_return = string.concat(with_name, string.concat(";ret=", return_type))
-  let with_ops = string.concat(with_return, string.concat(";ops=", ops))
-  return string.concat(with_ops, string.concat(";term=", terminator))
+  let with_locals = string.concat(with_return, string.concat(";locals=", locals))
+  let with_ops = string.concat(with_locals, string.concat(";ops=", ops))
+  let with_calls = string.concat(with_ops, string.concat(";calls=", calls))
+  let with_assigns = string.concat(with_calls, string.concat(";assigns=", assigns))
+  let with_control = string.concat(with_assigns, string.concat(";control=", control))
+  let with_values = string.concat(with_control, string.concat(";values=", values))
+  return string.concat(with_values, string.concat(";term=", terminator))
 
 func append_function(out: str, line: str) -> str:
   if (string.len(out) == 0):
@@ -118,34 +198,83 @@ pub func lower_report(source: str) -> str:
   let tokens = string.split(lexer.scan(source), " | ")
   let count = array.len(tokens)
   let out = ""
+  let func_returns = ""
   let current_name = ""
   let current_return = ""
+  let current_locals = ""
   let current_ops = ""
+  let current_calls = ""
+  let current_assigns = ""
+  let current_control = ""
+  let current_values = ""
   let current_term = "return"
   let index: i32 = 0
 
   while (index < count):
     if (token_matches(tokens, index, "kw", "func") and token_is_kind(tokens, index + 1, "ident") and token_is_kind(tokens, index + 5, "ident")):
       if (string.len(current_name) > 0):
-        out = append_function(out, render_function(current_name, current_return, current_ops, current_term))
+        out = append_function(out, render_function(current_name, current_return, current_locals, current_ops, current_calls, current_assigns, current_control, current_values, current_term))
       current_name = token_value(tokens, index + 1)
       current_return = token_value(tokens, index + 5)
+      func_returns = append_mapping(func_returns, current_name, current_return)
+      current_locals = ""
       current_ops = ""
+      current_calls = ""
+      current_assigns = ""
+      current_control = ""
+      current_values = ""
       current_term = "return"
       index = index + 6
       continue
     if (token_matches(tokens, index, "kw", "let")):
-      current_ops = update_ops_for_let(tokens, index, current_ops)
+      current_ops = append_unique(current_ops, "alloc")
+      let local_name = token_value(tokens, index + 1)
+      let local_type = token_value(tokens, index + 3)
+      current_locals = append_mapping(current_locals, local_name, local_type)
+      if (token_matches(tokens, index + 4, "punct", "=")):
+        let state = record_rhs(tokens, index + 5, current_locals, func_returns, local_type, current_ops, current_calls, current_values)
+        current_ops = append_unique(split_state(state, 0), "store")
+        current_calls = split_state(state, 1)
+        current_values = split_state(state, 2)
+      index = index + 1
+      continue
+    if (is_assignment_target(tokens, index)):
+      let target = token_value(tokens, index)
+      let target_type = lookup_mapping(current_locals, target)
+      current_ops = append_unique(current_ops, "assign")
+      current_assigns = append_mapping(current_assigns, target, target_type)
+      let state = record_rhs(tokens, index + 2, current_locals, func_returns, target_type, current_ops, current_calls, current_values)
+      current_ops = split_state(state, 0)
+      current_calls = split_state(state, 1)
+      current_values = split_state(state, 2)
+      index = index + 1
+      continue
+    if (token_matches(tokens, index, "kw", "if")):
+      current_control = append_unique(current_control, "if")
+      current_ops = append_unique(current_ops, "branch")
+      let cond_type = value_type(tokens, index + 2, current_locals, func_returns, "")
+      current_values = append_unique(current_values, cond_type)
+      index = index + 1
+      continue
+    if (token_matches(tokens, index, "kw", "while")):
+      current_control = append_unique(current_control, "while")
+      current_ops = append_unique(current_ops, "loop")
+      current_ops = append_unique(current_ops, "branch")
+      let cond_type = value_type(tokens, index + 2, current_locals, func_returns, "")
+      current_values = append_unique(current_values, cond_type)
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "return")):
-      current_ops = update_ops_for_return(tokens, index, current_ops)
-      current_term = detect_return_kind(tokens, index)
+      let state = record_rhs(tokens, index + 1, current_locals, func_returns, current_return, current_ops, current_calls, current_values)
+      current_ops = split_state(state, 0)
+      current_calls = split_state(state, 1)
+      current_values = split_state(state, 2)
+      current_term = detect_return_kind(tokens, index, current_locals, func_returns, current_return)
       index = index + 1
       continue
     index = index + 1
   if (string.len(current_name) > 0):
-    out = append_function(out, render_function(current_name, current_return, current_ops, current_term))
+    out = append_function(out, render_function(current_name, current_return, current_locals, current_ops, current_calls, current_assigns, current_control, current_values, current_term))
   return out
 
 pub func main() -> i32:

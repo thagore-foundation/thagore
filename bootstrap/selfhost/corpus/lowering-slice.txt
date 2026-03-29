@@ -2,3 +2,5 @@
 bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_basic.txt
 bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_helper_call.txt
 bootstrap/selfhost/corpus/fixtures/lowering/ok_local_return.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_local_return.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_assignment_if_call.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_assignment_if_call.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_bool_while.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_bool_while.txt

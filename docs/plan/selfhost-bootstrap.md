@@ -461,6 +461,11 @@ Current status:
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at
   frontend and command-routing outputs
+- the explicit backend/codegen adapter boundary now exists under
+  `bootstrap/selfhost/frontend/adapter.tg` plus
+  `bootstrap/selfhost/corpus/backend-adapter-contract.txt`, giving the
+  selfhost compiler slice a stable host-backend contract instead of only an
+  implicit shell-out path
 
 ### Milestone B: Differential frontend pass
 
@@ -527,6 +532,9 @@ Current status:
   so command-surface bootstrap drift is gated in the same loop as the frontend
   stage and driver boundaries; that slice now includes host-routed `build` and
   `run` orchestration, not just analysis/report commands
+- that rehearsal now also validates the explicit backend-adapter contract
+  across stage1/stage2 rebuilds, so selfhost-to-host backend routing is part
+  of the deterministic loop instead of being inferred only from final artifacts
 - that rehearsal now also validates the first lowering slice
   (`bootstrap/selfhost/frontend/lower.tg`) across stage1/stage2 rebuilds, so a
   compiler-middle summary is now part of the deterministic bootstrap loop

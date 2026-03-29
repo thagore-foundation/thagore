@@ -26,6 +26,7 @@ Current contents:
 - `parse.tg`
 - `main.tg`
 - `compiler.tg`
+- `adapter.tg`
 - `lower.tg`
 
 Current scope:
@@ -65,10 +66,16 @@ Current scope:
 - `compiler.tg` is now the first selfhost compiler-driver slice, locking
   command dispatch for `help`, `version`, `analyze`, `check`, `report`,
   `desugar`, `scan`, `parse`, `build`, and `run` above the existing frontend
-  pipeline
+  pipeline; its hidden orchestration/adapter surfaces now also lock explicit
+  `plan-*` and `adapter-*` contracts for `check/build/run`
+- `adapter.tg` now owns the explicit selfhost-to-host backend adapter contract:
+  phase routing, route status, artifact naming, capture naming, and host
+  command rendering for `build` / `run`
 - `lower.tg` is now the first selfhost lowering slice, emitting a stable
   lowered-function summary for a narrow corpus so compiler-middle behavior
-  starts getting its own contract
+  starts getting its own contract; that contract now includes assignment
+  paths, local bindings, call lowering, control-flow shape, and typed
+  value/return flow
 - `semantics.tg` now owns diagnostic composition/filtering so `pipeline.tg`
   stays focused on stage execution rather than policy decisions
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
@@ -138,15 +145,18 @@ Current scope:
 - `bootstrap/selfhost/corpus/compiler-driver-contract.txt` now locks the
   higher compiler-driver command surface: help/version output, relative and
   absolute path routing, command dispatch, core-kind dispatch, build/run
-  orchestration through host `thagc`, invalid-command fallback, and
-  missing-source exits
+  orchestration through host `thagc`, hidden `plan-*` orchestration reports,
+  invalid-command fallback, and missing-source exits
+- `bootstrap/selfhost/corpus/backend-adapter-contract.txt` now locks the
+  explicit adapter boundary between the selfhost compiler slice and the host
+  backend/codegen path
 - `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
   compares their observable output
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
-  contract: constant returns, direct-call returns, and local-load returns
-  through `lower.tg`
+  contract: constant returns, direct-call returns, local-load returns,
+  assignment flow, and control-flow shape through `lower.tg`
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
@@ -154,9 +164,15 @@ Current scope:
 - that same rehearsal now also diffs the first compiler-driver boundary
   (`compiler.tg`) across stage1 and stage2, so command-surface drift is part
   of the bootstrap loop rather than living only in a standalone workflow
+- that same rehearsal now also diffs the explicit backend-adapter boundary
+  across stage1 and stage2, so host-backend integration drift is visible in
+  the bootstrap loop instead of being inferred indirectly from final artifacts
 - that same rehearsal now also diffs the first lowering boundary (`lower.tg`)
   across stage1 and stage2, so narrowed lowered-shape drift becomes part of
   the bootstrap loop instead of living only in a standalone workflow
+- `.github/workflows/selfhost-backend-adapter.yml` now gives the adapter
+  contract its own Linux x64 and Windows x64 lane, separate from the broader
+  compiler-driver lane
 - that rehearsal now also diffs rebuilt bootstrap-artifact reports across
   stage1 and stage2, so a tool built through the selfhost compiler path is
   exercised and stabilized inside the same deterministic loop

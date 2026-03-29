@@ -1,0 +1,8 @@
+func helper() -> i32:
+  return 1
+
+func main() -> i32:
+  let value: i32 = helper()
+  if (true):
+    value = 2
+  return value

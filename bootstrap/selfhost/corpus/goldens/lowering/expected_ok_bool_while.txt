@@ -1,0 +1,1 @@
+fn=main;ret=bool;locals=ready:bool;ops=alloc,const,store,loop,branch,assign,load;calls=;assigns=ready:bool;control=while;values=bool;term=return(load:ready:bool)

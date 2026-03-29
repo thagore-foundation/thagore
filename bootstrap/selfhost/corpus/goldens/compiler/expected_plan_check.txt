@@ -1,0 +1,1 @@
+command=check;entry=bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg;source_root=bootstrap/selfhost/corpus/fixtures/frontend;kind=executable-root;phases=read,desugar,scan,parse,resolve,check,report;diagnostics=ok;route=selfhost-checked;artifact=;lowered=fn=main;ret=i32;locals=;ops=const;calls=;assigns=;control=;values=i32;term=return(const:i32)

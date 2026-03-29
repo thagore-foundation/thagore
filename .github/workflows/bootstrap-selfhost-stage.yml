@@ -237,6 +237,17 @@ jobs:
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/report.txt"
 
+      - name: Validate stage1 backend adapter on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --report-out "$PWD/bootstrap-selfhost-compiler1/adapter-report.txt"
+
       - name: Validate stage1 bootstrap artifact on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -336,6 +347,17 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/report.txt"
+
+      - name: Validate stage2 backend adapter on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-contract.txt" \
+            --report-out "$PWD/bootstrap-selfhost-compiler2/adapter-report.txt"
 
       - name: Validate stage2 bootstrap artifact on Linux
         if: runner.os == 'Linux'
@@ -437,6 +459,17 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler1/report.txt
 
+      - name: Validate stage1 backend adapter on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --report-out $PWD/bootstrap-selfhost-compiler1/adapter-report.txt
+
       - name: Validate stage1 bootstrap artifact on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -537,6 +570,17 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler2/report.txt
 
+      - name: Validate stage2 backend adapter on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-contract.txt `
+            --report-out $PWD/bootstrap-selfhost-compiler2/adapter-report.txt
+
       - name: Validate stage2 bootstrap artifact on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -580,6 +624,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u bootstrap-selfhost-compiler1/artifact-report.txt bootstrap-selfhost-compiler2/artifact-report.txt
+
+      - name: Diff backend adapter stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-compiler1/adapter-report.txt bootstrap-selfhost-compiler2/adapter-report.txt
 
       - name: Diff lowering stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
@@ -626,6 +675,14 @@ jobs:
             throw 'bootstrap selfhost artifact reports differ between stage1 and stage2'
           }
 
+      - name: Diff backend adapter stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-compiler1/adapter-report.txt -Raw) -ne (Get-Content bootstrap-selfhost-compiler2/adapter-report.txt -Raw)) {
+            throw 'bootstrap selfhost backend adapter reports differ between stage1 and stage2'
+          }
+
       - name: Diff lowering stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -649,8 +706,10 @@ jobs:
             bootstrap-selfhost-driver1/report.txt
             bootstrap-selfhost-driver2/report.txt
             bootstrap-selfhost-compiler1/report.txt
+            bootstrap-selfhost-compiler1/adapter-report.txt
             bootstrap-selfhost-compiler1/artifact-report.txt
             bootstrap-selfhost-compiler2/report.txt
+            bootstrap-selfhost-compiler2/adapter-report.txt
             bootstrap-selfhost-compiler2/artifact-report.txt
             bootstrap-selfhost-lowering1/report.txt
             bootstrap-selfhost-lowering2/report.txt
@@ -707,9 +766,19 @@ jobs:
             cat bootstrap-selfhost-compiler1/artifact-report.txt
             echo '```'
             echo
+            echo "### Backend Adapter Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-compiler1/adapter-report.txt
+            echo '```'
+            echo
             echo "### Bootstrap Artifact Stage2"
             echo '```text'
             cat bootstrap-selfhost-compiler2/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Backend Adapter Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-compiler2/adapter-report.txt
             echo '```'
             echo
             echo "### Lowering Stage1"
@@ -777,9 +846,19 @@ jobs:
           $(if (Test-Path bootstrap-selfhost-compiler1/artifact-report.txt) { Get-Content bootstrap-selfhost-compiler1/artifact-report.txt -Raw } else { '<report missing>' })
           ```
 
+          ### Backend Adapter Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler1/adapter-report.txt) { Get-Content bootstrap-selfhost-compiler1/adapter-report.txt -Raw } else { '<report missing>' })
+          ```
+
           ### Bootstrap Artifact Stage2
           ```text
           $(if (Test-Path bootstrap-selfhost-compiler2/artifact-report.txt) { Get-Content bootstrap-selfhost-compiler2/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Backend Adapter Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler2/adapter-report.txt) { Get-Content bootstrap-selfhost-compiler2/adapter-report.txt -Raw } else { '<report missing>' })
           ```
 
           ### Lowering Stage1

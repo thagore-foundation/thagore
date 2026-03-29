@@ -1,0 +1,53 @@
+import std.string as string
+
+func normalize_path(path: str) -> str:
+  return string.replace(path, "\\", "/")
+
+func render_base(command: str, path: str, source_root: str, current_kind: str) -> str:
+  let with_command = string.concat("command=", command)
+  let with_entry = string.concat(with_command, string.concat(";entry=", normalize_path(path)))
+  let with_root = string.concat(with_entry, string.concat(";source_root=", normalize_path(source_root)))
+  return string.concat(with_root, string.concat(";kind=", current_kind))
+
+pub func phases(command: str) -> str:
+  if (string.str_eq(command, "check")):
+    return "read,desugar,scan,parse,resolve,check,report"
+  if (string.str_eq(command, "build")):
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-build"
+  if (string.str_eq(command, "run")):
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-build,host-run,capture"
+  return "read,desugar,scan,parse,resolve,check"
+
+pub func orchestration_plan(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
+  let base = render_base(command, path, source_root, current_kind)
+  let with_phases = string.concat(base, string.concat(";phases=", phases(command)))
+  let status = "error"
+  let route = "host-fallback"
+  if (diagnostics_ok):
+    status = "ok"
+    route = "selfhost-checked"
+  let with_status = string.concat(with_phases, string.concat(";diagnostics=", status))
+  let with_route = string.concat(with_status, string.concat(";route=", route))
+  let with_artifact = string.concat(with_route, string.concat(";artifact=", artifact_name))
+  return string.concat(with_artifact, string.concat(";lowered=", lowered))
+
+pub func adapter_request(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, capture_name: str, lowered: str) -> str:
+  let base = render_base(command, path, source_root, current_kind)
+  let adapter_name = "host-thagc-build"
+  let route = "host-fallback"
+  if (string.str_eq(command, "run")):
+    adapter_name = "host-thagc-build-run"
+  if (diagnostics_ok):
+    route = "selfhost-checked"
+  let with_adapter = string.concat(base, string.concat(";adapter=", adapter_name))
+  let with_phases = string.concat(with_adapter, string.concat(";phases=", phases(command)))
+  let with_route = string.concat(with_phases, string.concat(";route=", route))
+  let with_artifact = string.concat(with_route, string.concat(";artifact=", artifact_name))
+  let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
+  return string.concat(with_capture, string.concat(";lowered=", lowered))
+
+pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
+  return string.concat(host_thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
+
+pub func run_command(output_path: str, capture_file: str) -> str:
+  return string.concat(output_path, string.concat(" > ", capture_file))

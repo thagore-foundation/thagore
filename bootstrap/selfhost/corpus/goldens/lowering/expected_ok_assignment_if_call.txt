@@ -1,0 +1,1 @@
+fn=helper;ret=i32;locals=;ops=const;calls=;assigns=;control=;values=i32;term=return(const:i32) || fn=main;ret=i32;locals=value:i32;ops=alloc,call,store,branch,assign,const,load;calls=helper;assigns=value:i32;control=if;values=i32,bool;term=return(load:value:i32)
