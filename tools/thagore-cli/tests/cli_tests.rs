@@ -1407,7 +1407,10 @@ fn load_corpus_manifest(repo_root: &Path, manifest: &str) -> Vec<Vec<String>> {
         .unwrap_or_else(|error| panic!("read corpus manifest {manifest}: {error}"))
         .replace("\r\n", "\n")
         .lines()
-        .filter(|line| !line.trim().is_empty())
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with('#')
+        })
         .map(|line| line.split('|').map(|part| part.trim().to_string()).collect())
         .collect()
 }
