@@ -1,0 +1,10 @@
+# label|cwd|path|kind|mode|exit|expected
+DEFAULT_SAMPLE|.||||0|bootstrap/selfhost/corpus/goldens/bootstrap/expected.txt
+RELATIVE_MODULE_ANALYZE|bootstrap/selfhost/corpus/fixtures/frontend|modules_ok_main.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_modules_ok_main.txt
+ABSOLUTE_MODULE_ANALYZE|.|@abs:bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_modules_ok_main.txt
+ABSOLUTE_MODULE_REPORT|.|@abs:bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe|dump-report|0|bootstrap/selfhost/corpus/goldens/frontend/expected_report_modules_ok_main.txt
+INVALID_KIND_FALLS_BACK_EXE|.|bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|weird||0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_ok_basic.txt
+INVALID_MODE_FALLS_BACK_ANALYZE|.|bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe|bogus-mode|0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_ok_helper_call.txt
+CORE_EXE_REJECTS_IMPLICIT_MAIN|.|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|core-exe||0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_exe_implicit_main_top_level.txt
+CORE_LIBRARY_REJECTS_INFERRED_RETURN|.|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_core_library_infer_return.tg|core-library||0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_library_infer_return.txt
+MISSING_SOURCE_RETURNS_1|.|bootstrap/selfhost/corpus/fixtures/frontend/missing_driver_case.tg|exe||1|bootstrap/selfhost/corpus/goldens/frontend/expected_empty.txt

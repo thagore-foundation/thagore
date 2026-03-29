@@ -1412,6 +1412,71 @@ fn load_corpus_manifest(repo_root: &Path, manifest: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
+fn resolve_main_orchestration_path(repo_root: &Path, raw: &str) -> Option<String> {
+    if raw.is_empty() {
+        return None;
+    }
+    if let Some(relative) = raw.strip_prefix("@abs:") {
+        return Some(
+            repo_root
+                .join(relative)
+                .canonicalize()
+                .expect("canonicalize absolute orchestration path")
+                .to_string_lossy()
+                .replace('\\', "/"),
+        );
+    }
+    Some(raw.to_string())
+}
+
+fn assert_main_orchestration_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    for case in cases {
+        let label = &case[0];
+        let cwd = if case[1].is_empty() || case[1] == "." {
+            repo_root.to_path_buf()
+        } else {
+            repo_root.join(&case[1])
+        };
+        let path_arg = resolve_main_orchestration_path(repo_root, &case[2]);
+        let kind = &case[3];
+        let mode = &case[4];
+        let expected_exit: i32 = case[5].parse().expect("parse expected exit");
+        let expected_path = repo_root.join(&case[6]);
+
+        let mut command = Command::new(binary);
+        command.current_dir(&cwd);
+        if let Some(path_arg) = path_arg {
+            command.arg(path_arg);
+        }
+        if !kind.is_empty() {
+            command.arg(kind);
+        }
+        if !mode.is_empty() {
+            command.arg(mode);
+        }
+
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("run orchestration case {label}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(expected_exit),
+            "unexpected exit code for orchestration case {label}"
+        );
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected stdout for orchestration case {label}"
+        );
+    }
+}
+
 fn assert_main_manifest_matches(
     repo_root: &Path,
     binary: &Path,
@@ -1493,6 +1558,11 @@ fn selfhost_frontend_main_target_manifests_match_goldens() {
         &binary,
         "bootstrap/selfhost/corpus/frontend-report.txt",
         Some("dump-report"),
+    );
+    assert_main_orchestration_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/frontend-driver-orchestration.txt",
     );
 }
 
@@ -4394,4 +4464,3 @@ fn negative_fixtures_emit_diagnostics() {
         );
     }
 }
-

@@ -443,6 +443,12 @@ Current status:
   under `bootstrap/selfhost/frontend/` only
 - the next implementation step is widening normalized frontend parity beyond the
   current narrow manifests and rehearsal lanes
+- the driver boundary now also locks full `analyze` output for the
+  frontend differential corpus, widening Target 03 beyond bootstrap-seed-only
+  fixtures and report-mode-only frontend cases
+- the driver boundary now also locks orchestration behavior above raw output
+  parity: default-input fallback, relative vs absolute path routing, kind/mode
+  fallback, core-kind routing, and missing-source exit semantics
 
 ### Milestone B: Differential frontend pass
 

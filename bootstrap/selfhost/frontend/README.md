@@ -115,6 +115,10 @@ Current scope:
   output for the frontend differential corpus too, so the driver boundary is
   no longer limited to bootstrap-seed fixtures or report-mode-only frontend
   cases
+- `bootstrap/selfhost/corpus/frontend-driver-orchestration.txt` now locks the
+  session/driver orchestration surface itself: default sample fallback,
+  relative vs absolute path routing, kind/mode fallback, core-kind routing,
+  and missing-source exit behavior
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as

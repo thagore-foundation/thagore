@@ -149,6 +149,10 @@ Replacement rule:
   output for the reusable frontend differential corpus too, so the driver
   target covers richer top-level output parity instead of relying only on
   bootstrap-seed analyze fixtures and frontend report mode
+- `bootstrap/selfhost/corpus/frontend-driver-orchestration.txt` now locks the
+  CLI/session routing surface above raw output parity, so Target 03 also checks
+  default-input fallback, path routing, kind/mode fallback, and missing-source
+  exit semantics
 
 Exit criteria for Target 03:
 

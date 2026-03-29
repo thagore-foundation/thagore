@@ -50,6 +50,54 @@ def canonicalize_golden(text: str) -> str:
     return normalized
 
 
+def resolve_input_arg(repo_root: pathlib.Path, raw: str) -> str:
+    if not raw:
+        return ""
+    if raw.startswith("@abs:"):
+        return (repo_root / raw[len("@abs:"):]).resolve().as_posix()
+    return raw
+
+
+def verify_orchestration_manifest(
+    repo_root: pathlib.Path,
+    binary: pathlib.Path,
+    manifest_path: pathlib.Path,
+    report_lines: list[str],
+) -> None:
+    for label, cwd_raw, path_raw, kind, mode, expected_exit, expected_path in load_manifest(manifest_path, 7):
+        cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
+        args = [str(binary)]
+        path_arg = resolve_input_arg(repo_root, path_raw)
+        if path_arg:
+            args.append(path_arg)
+        if kind:
+            args.append(kind)
+        if mode:
+            args.append(mode)
+        completed = subprocess.run(
+            args,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        expected_code = int(expected_exit)
+        if completed.returncode != expected_code:
+            raise SystemExit(
+                f"{binary.name} orchestration drift for {label}: expected exit {expected_code}, got {completed.returncode}"
+                f"\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+            )
+        expected = (repo_root / expected_path).read_text(encoding="utf-8")
+        actual = completed.stdout.replace("\r\n", "\n").strip()
+        if canonicalize_golden(actual) != canonicalize_golden(expected):
+            raise SystemExit(
+                f"{binary.name} orchestration drift for {label}"
+                f"\nexpected:\n{expected.strip()}\nactual:\n{actual}"
+            )
+        report_lines.append(f"orchestration|{label}|exit={expected_code}|ok")
+
+
 def verify_manifest(
     repo_root: pathlib.Path,
     binary: pathlib.Path,
@@ -113,6 +161,12 @@ def main() -> int:
         main_bin,
         repo_root / "bootstrap/selfhost/corpus/frontend-report.txt",
         "dump-report",
+        report_lines,
+    )
+    verify_orchestration_manifest(
+        repo_root,
+        main_bin,
+        repo_root / "bootstrap/selfhost/corpus/frontend-driver-orchestration.txt",
         report_lines,
     )
 
