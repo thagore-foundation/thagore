@@ -1,0 +1,41 @@
+name: Frontend Selfhost Ownership
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/frontend-selfhost-ownership.yml"
+      - "bootstrap/selfhost/**"
+      - "tooling/ci/audit_frontend_selfhost_ownership.py"
+      - "tests/bootstrap_seed/**"
+      - "tests/selfhost_frontend/**"
+      - "docs/plan/selfhost-bootstrap.md"
+      - "docs/plan/bootstrap-readiness.md"
+      - "tools/thagore-cli/**"
+      - "tooling/ci/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-selfhost-ownership-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Frontend selfhost ownership audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Audit ownership
+        run: python3 tooling/ci/audit_frontend_selfhost_ownership.py
