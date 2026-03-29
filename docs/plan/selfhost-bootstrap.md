@@ -453,6 +453,10 @@ Current status:
   which wraps the frontend pipeline as a first selfhost compiler-driver
   surface and is guarded by `bootstrap/selfhost/corpus/compiler-driver-contract.txt`
   plus a dedicated `Selfhost Compiler Driver` CI workflow
+- a real bootstrap artifact gate now exists under
+  `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt`: the selfhost
+  compiler builds a rebuilt compiler artifact plus a rebuilt frontend-main tool
+  artifact, runs them, and keeps those reports stable across CI rebuilds
 
 ### Milestone B: Differential frontend pass
 

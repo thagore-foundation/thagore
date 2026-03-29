@@ -1,0 +1,3 @@
+# label|source|artifact|cwd|invoke|path|kind|mode|exit|expected
+REBUILT_COMPILER_VERSION|bootstrap/selfhost/frontend/compiler.tg|bootstrap-compiler.exe|.|version||||0|bootstrap/selfhost/corpus/goldens/compiler/expected_version.txt
+REBUILT_FRONTEND_MAIN_REPORT|bootstrap/selfhost/frontend/main.tg|bootstrap-main.exe|.|exec|bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe|dump-report|0|bootstrap/selfhost/corpus/goldens/frontend/expected_report_modules_ok_main.txt

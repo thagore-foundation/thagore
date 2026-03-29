@@ -12,6 +12,7 @@ on:
       - "bootstrap/selfhost/tools/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_compiler_driver.py"
+      - "tooling/ci/selfhost_bootstrap_artifact.py"
       - "tooling/ci/selfhost_frontend_replacement.py"
       - "tooling/ci/selfhost_frontend_driver_target.py"
       - "tooling/ci/selfhost_frontend_stage.py"
@@ -225,6 +226,16 @@ jobs:
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/report.txt"
 
+      - name: Validate stage1 bootstrap artifact on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-compiler1/artifact-report.txt"
+
       - name: Rebuild stage2 selfhost frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -295,6 +306,16 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/report.txt"
+
+      - name: Validate stage2 bootstrap artifact on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-compiler2/artifact-report.txt"
 
       - name: Build stage1 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
@@ -367,6 +388,16 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler1/report.txt
 
+      - name: Validate stage1 bootstrap artifact on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-compiler1/artifact-report.txt
+
       - name: Rebuild stage2 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -438,6 +469,16 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler2/report.txt
 
+      - name: Validate stage2 bootstrap artifact on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-compiler2/artifact-report.txt
+
       - name: Diff stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -457,6 +498,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u bootstrap-selfhost-compiler1/report.txt bootstrap-selfhost-compiler2/report.txt
+
+      - name: Diff bootstrap artifact stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-compiler1/artifact-report.txt bootstrap-selfhost-compiler2/artifact-report.txt
 
       - name: Diff stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
@@ -490,6 +536,14 @@ jobs:
             throw 'bootstrap selfhost compiler reports differ between stage1 and stage2'
           }
 
+      - name: Diff bootstrap artifact stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-compiler1/artifact-report.txt -Raw) -ne (Get-Content bootstrap-selfhost-compiler2/artifact-report.txt -Raw)) {
+            throw 'bootstrap selfhost artifact reports differ between stage1 and stage2'
+          }
+
       - name: Upload bootstrap selfhost stage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -505,7 +559,9 @@ jobs:
             bootstrap-selfhost-driver1/report.txt
             bootstrap-selfhost-driver2/report.txt
             bootstrap-selfhost-compiler1/report.txt
+            bootstrap-selfhost-compiler1/artifact-report.txt
             bootstrap-selfhost-compiler2/report.txt
+            bootstrap-selfhost-compiler2/artifact-report.txt
 
       - name: Summarize bootstrap selfhost stage reports on Linux
         if: runner.os == 'Linux' && always()
@@ -552,6 +608,16 @@ jobs:
             echo "### Compiler Stage2"
             echo '```text'
             cat bootstrap-selfhost-compiler2/report.txt
+            echo '```'
+            echo
+            echo "### Bootstrap Artifact Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-compiler1/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Bootstrap Artifact Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-compiler2/artifact-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -602,5 +668,15 @@ jobs:
           ### Compiler Stage2
           ```text
           $(if (Test-Path bootstrap-selfhost-compiler2/report.txt) { Get-Content bootstrap-selfhost-compiler2/report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Bootstrap Artifact Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler1/artifact-report.txt) { Get-Content bootstrap-selfhost-compiler1/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Bootstrap Artifact Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler2/artifact-report.txt) { Get-Content bootstrap-selfhost-compiler2/artifact-report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

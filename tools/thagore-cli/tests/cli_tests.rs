@@ -1546,6 +1546,106 @@ fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, mani
     }
 }
 
+fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary: &Path, manifest: &str) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    let scratch = TempDir::new().expect("bootstrap artifact scratch");
+    let stage0 = Path::new(env!("CARGO_BIN_EXE_thagc"));
+    let path_sep = if cfg!(windows) { ";" } else { ":" };
+    let inherited_path = std::env::var("PATH").unwrap_or_default();
+    let stage0_parent = stage0
+        .parent()
+        .expect("stage0 parent")
+        .to_string_lossy()
+        .into_owned();
+
+    for case in cases {
+        let label = &case[0];
+        let source = repo_root.join(&case[1]);
+        let artifact_name = &case[2];
+        let cwd = if case[3].is_empty() || case[3] == "." {
+            repo_root.to_path_buf()
+        } else {
+            repo_root.join(&case[3])
+        };
+        let invoke = &case[4];
+        let path_arg = resolve_compiler_driver_path(repo_root, &case[5]);
+        let kind = &case[6];
+        let mode = &case[7];
+        let expected_exit: i32 = case[8].parse().expect("parse expected exit");
+        let expected_path = repo_root.join(&case[9]);
+        let artifact_path = scratch.path().join(artifact_name);
+
+        let build_output = Command::new(compiler_binary)
+            .current_dir(repo_root)
+            .env(
+                "PATH",
+                format!("{stage0_parent}{path_sep}{inherited_path}"),
+            )
+            .env(
+                "THAGORE_STAGE0",
+                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+            )
+            .env("THAGORE_SELFHOST_TMP", scratch.path())
+            .args([
+                "build",
+                source.to_str().expect("utf8"),
+                artifact_name,
+            ])
+            .output()
+            .unwrap_or_else(|error| panic!("build bootstrap artifact {label}: {error}"));
+        assert_eq!(
+            build_output.status.code(),
+            Some(0),
+            "bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&build_output.stdout),
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        assert!(
+            artifact_path.exists(),
+            "bootstrap artifact missing for {label}: {}",
+            artifact_path.display()
+        );
+
+        let mut command = Command::new(&artifact_path);
+        command.current_dir(&cwd);
+        if invoke == "version" {
+            command.arg("version");
+        } else if invoke == "exec" {
+            if let Some(path_arg) = path_arg {
+                command.arg(path_arg);
+            }
+            if !kind.is_empty() {
+                command.arg(kind);
+            }
+            if !mode.is_empty() {
+                command.arg(mode);
+            }
+        } else {
+            panic!("unsupported bootstrap artifact invoke mode: {invoke}");
+        }
+
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(expected_exit),
+            "unexpected exit code for bootstrap artifact case {label}"
+        );
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected stdout for bootstrap artifact case {label}"
+        );
+        let _ = fs::remove_file(&artifact_path);
+    }
+}
+
 fn assert_main_orchestration_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
     for case in cases {
@@ -1650,6 +1750,20 @@ fn selfhost_compiler_driver_contract_matches_goldens() {
         &repo_root,
         &binary,
         "bootstrap/selfhost/corpus/compiler-driver-contract.txt",
+    );
+}
+
+#[test]
+fn selfhost_bootstrap_artifact_contract_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-compiler");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_compiler_driver_binary(&repo_root, &binary);
+
+    assert_bootstrap_artifact_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt",
     );
 }
 

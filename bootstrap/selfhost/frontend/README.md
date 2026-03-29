@@ -133,6 +133,10 @@ Current scope:
   absolute path routing, command dispatch, core-kind dispatch, build/run
   orchestration through host `thagc`, invalid-command fallback, and
   missing-source exits
+- `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
+  bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
+  artifact and a rebuilt frontend-main tool artifact, then CI runs both and
+  compares their observable output
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
@@ -140,6 +144,9 @@ Current scope:
 - that same rehearsal now also diffs the first compiler-driver boundary
   (`compiler.tg`) across stage1 and stage2, so command-surface drift is part
   of the bootstrap loop rather than living only in a standalone workflow
+- that rehearsal now also diffs rebuilt bootstrap-artifact reports across
+  stage1 and stage2, so a tool built through the selfhost compiler path is
+  exercised and stabilized inside the same deterministic loop
 - that rehearsal now also diffs the session-routed replacement summary for
   `check.tg` across stage1 and stage2, so deterministic rebuild confidence
   includes the real Rust-path replacement hook rather than only standalone

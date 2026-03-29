@@ -12,6 +12,7 @@ on:
       - "bootstrap/selfhost/tools/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_compiler_driver.py"
+      - "tooling/ci/selfhost_bootstrap_artifact.py"
       - "tools/thagore-cli/**"
       - "crates/**"
   workflow_dispatch:
@@ -168,6 +169,16 @@ jobs:
             --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-first/report.txt"
 
+      - name: Validate bootstrap artifact first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/selfhost-compiler-driver-first/artifact-report.txt"
+
       - name: Build selfhost compiler second pass on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -187,6 +198,16 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-second/report.txt"
+
+      - name: Validate bootstrap artifact second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/selfhost-compiler-driver-second/artifact-report.txt"
 
       - name: Build selfhost compiler first pass on Windows
         if: runner.os == 'Windows'
@@ -208,6 +229,16 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-first/report.txt
 
+      - name: Validate bootstrap artifact first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-compiler-driver-first/artifact-report.txt
+
       - name: Build selfhost compiler second pass on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -228,10 +259,25 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-second/report.txt
 
+      - name: Validate bootstrap artifact second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-compiler-driver-second/artifact-report.txt
+
       - name: Diff compiler driver reports on Linux
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u selfhost-compiler-driver-first/report.txt selfhost-compiler-driver-second/report.txt
+
+      - name: Diff bootstrap artifact reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u selfhost-compiler-driver-first/artifact-report.txt selfhost-compiler-driver-second/artifact-report.txt
 
       - name: Diff compiler driver reports on Windows
         if: runner.os == 'Windows'
@@ -241,6 +287,14 @@ jobs:
             throw 'selfhost compiler driver reports differ between rebuilds'
           }
 
+      - name: Diff bootstrap artifact reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content selfhost-compiler-driver-first/artifact-report.txt -Raw) -ne (Get-Content selfhost-compiler-driver-second/artifact-report.txt -Raw)) {
+            throw 'selfhost bootstrap artifact reports differ between rebuilds'
+          }
+
       - name: Upload compiler driver reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -248,7 +302,9 @@ jobs:
           name: selfhost-compiler-driver-${{ matrix.os_name }}
           path: |
             selfhost-compiler-driver-first/report.txt
+            selfhost-compiler-driver-first/artifact-report.txt
             selfhost-compiler-driver-second/report.txt
+            selfhost-compiler-driver-second/artifact-report.txt
 
       - name: Summarize compiler driver reports on Linux
         if: runner.os == 'Linux' && always()
@@ -265,6 +321,16 @@ jobs:
             echo "### Second pass"
             echo '```text'
             cat selfhost-compiler-driver-second/report.txt
+            echo '```'
+            echo
+            echo "### Artifact first pass"
+            echo '```text'
+            cat selfhost-compiler-driver-first/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Artifact second pass"
+            echo '```text'
+            cat selfhost-compiler-driver-second/artifact-report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -285,5 +351,15 @@ jobs:
           ### Second pass
           ```text
           $second
+          ```
+
+          ### Artifact first pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-first/artifact-report.txt) { Get-Content selfhost-compiler-driver-first/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Artifact second pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-second/artifact-report.txt) { Get-Content selfhost-compiler-driver-second/artifact-report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
