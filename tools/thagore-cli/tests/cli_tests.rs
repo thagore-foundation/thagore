@@ -2478,7 +2478,7 @@ fn build_and_run_bootstrap_seed_module_resolver() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2517,7 +2517,7 @@ fn build_and_run_bootstrap_seed_missing_module_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_missing");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_missing.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2751,7 +2751,7 @@ fn build_and_run_bootstrap_seed_duplicate_import_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_duplicate_import.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2790,7 +2790,7 @@ fn build_and_run_bootstrap_seed_duplicate_imported_symbol_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import_symbol");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_duplicate_import_symbol.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2829,7 +2829,7 @@ fn build_and_run_bootstrap_seed_local_shadows_import_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_local");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_import_shadow_local.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2868,7 +2868,7 @@ fn build_and_run_bootstrap_seed_second_local_shadows_import_reports_diagnostic()
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_second_local");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_import_shadow_second_local.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -2907,7 +2907,7 @@ fn build_and_run_bootstrap_seed_func_shadows_import_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_func");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_import_shadow_func.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3141,7 +3141,7 @@ fn build_and_run_bootstrap_seed_duplicate_import_alias_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import_alias");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_duplicate_import_alias.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3180,7 +3180,7 @@ fn build_and_run_bootstrap_seed_local_shadows_import_alias_reports_diagnostic() 
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_alias_shadow_local");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_import_alias_shadow_local.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3219,7 +3219,7 @@ fn build_and_run_bootstrap_seed_func_shadows_import_alias_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_alias_shadow_func");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_import_alias_shadow_func.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3626,7 +3626,7 @@ fn build_and_run_bootstrap_seed_dotted_module_resolver() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_dotted.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3665,7 +3665,7 @@ fn build_and_run_bootstrap_seed_dotted_missing_module_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted_missing");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_dotted_missing.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
@@ -3704,7 +3704,7 @@ fn build_and_run_bootstrap_seed_unknown_imported_symbol_reports_diagnostic() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_root = repo_root.join("bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted_symbol_missing");
     let source = repo_root.join("bootstrap/selfhost/frontend/main.tg");
-    let expected_path = fixture_root.join("expected.txt");
+    let expected_path = repo_root.join("bootstrap/selfhost/corpus/goldens/bootstrap/modules/modules_dotted_symbol_missing.txt");
 
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
         .args([
