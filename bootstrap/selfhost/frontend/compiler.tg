@@ -1,6 +1,7 @@
 from . import pipeline
 from . import session
 from . import module_kind
+import std.fs as fs
 import std.process as process
 import std.string as string
 
@@ -13,7 +14,12 @@ func command_name() -> str:
 func command_path() -> str:
   return process.argv(2)
 
-func command_kind() -> str:
+func command_option() -> str:
+  return process.argv(3)
+
+func command_kind(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return module_kind.executable_root()
   let arg = process.argv(3)
   if (string.str_eq(arg, "library")):
     return module_kind.library_module()
@@ -24,10 +30,49 @@ func command_kind() -> str:
   return module_kind.executable_root()
 
 func usage() -> str:
-  return "usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse> [path] [exe|library|core-exe|core-library]"
+  return "usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse|build|run> [path] [exe|library|core-exe|core-library|artifact]"
 
 func version() -> str:
   return "frontend-compiler bootstrap-slice"
+
+func host_thagc() -> str:
+  let configured = process.env("THAGORE_STAGE0")
+  if (string.len(configured) > 0):
+    return configured
+  return "thagc"
+
+func scratch_root() -> str:
+  let configured = process.env("THAGORE_SELFHOST_TMP")
+  if (string.len(configured) > 0):
+    return configured
+  return session.cwd()
+
+func ensure_scratch_root() -> bool:
+  let root = scratch_root()
+  if (string.len(root) == 0):
+    return false
+  if (fs.is_dir(root)):
+    return true
+  return fs.mkdir(root)
+
+func artifact_name() -> str:
+  return command_option()
+
+func artifact_path() -> str:
+  let name = artifact_name()
+  if (string.len(name) == 0):
+    return ""
+  return fs.path_join(scratch_root(), name)
+
+func capture_path(output_path: str) -> str:
+  return string.concat(output_path, ".stdout.txt")
+
+func build_shell_command(path: str, output_path: str) -> str:
+  let thagc = host_thagc()
+  return string.concat(thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
+
+func run_shell_command(output_path: str, capture_file: str) -> str:
+  return string.concat(output_path, string.concat(" > ", capture_file))
 
 func run_command(command: str, path: str, current_kind: str) -> str:
   let source = session.read_source(path)
@@ -60,7 +105,38 @@ pub func main() -> i32:
   if (string.len(path) == 0):
     println(usage())
     return 1
-  let current_kind = command_kind()
+  if (string.str_eq(command, "build")):
+    let output_path = artifact_path()
+    if (string.len(output_path) == 0 or ensure_scratch_root() == false):
+      println(usage())
+      return 1
+    let exit_code = process.run(build_shell_command(path, output_path))
+    if (exit_code != 0):
+      return exit_code
+    if (fs.exists(output_path) == false):
+      return 1
+    println(string.concat("built=", artifact_name()))
+    return 0
+  if (string.str_eq(command, "run")):
+    let output_path = artifact_path()
+    if (string.len(output_path) == 0 or ensure_scratch_root() == false):
+      println(usage())
+      return 1
+    let build_code = process.run(build_shell_command(path, output_path))
+    if (build_code != 0):
+      return build_code
+    if (fs.exists(output_path) == false):
+      return 1
+    let captured = capture_path(output_path)
+    fs.remove(captured)
+    let run_code = process.run(run_shell_command(output_path, captured))
+    let output = session.read_source(captured)
+    fs.remove(captured)
+    fs.remove(output_path)
+    if (string.len(output) > 0):
+      println(output)
+    return run_code
+  let current_kind = command_kind(command)
   let output = run_command(command, path, current_kind)
   if (string.len(output) == 0):
     if (string.str_eq(command, "analyze") or string.str_eq(command, "check") or string.str_eq(command, "report") or string.str_eq(command, "desugar") or string.str_eq(command, "scan") or string.str_eq(command, "parse")):

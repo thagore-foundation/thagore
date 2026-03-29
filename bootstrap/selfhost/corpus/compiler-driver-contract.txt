@@ -1,12 +1,14 @@
-# label|cwd|command|path|kind|exit|expected
-HELP|.|help|||0|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
-VERSION|.|version|||0|bootstrap/selfhost/corpus/goldens/compiler/expected_version.txt
-ANALYZE_RELATIVE|bootstrap/selfhost/corpus/fixtures/frontend|analyze|ok_basic.tg|exe|0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_ok_basic.txt
-CHECK_RELATIVE|bootstrap/selfhost/corpus/fixtures/frontend|check|modules_ok_main.tg|exe|0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_modules_ok_main.txt
-REPORT_ABSOLUTE|.|report|@abs:bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe|0|bootstrap/selfhost/corpus/goldens/frontend/expected_report_modules_ok_main.txt
-DESUGAR_BOOTSTRAP|.|desugar|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|exe|0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_implicit_main_top_level.txt
-SCAN_BOOTSTRAP|.|scan|bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe|0|bootstrap/selfhost/corpus/goldens/frontend/expected_scan_ok_helper_call.txt
-PARSE_BOOTSTRAP|.|parse|bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe|0|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_ok_helper_call.txt
-CORE_EXE_CHECK|.|check|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|core-exe|0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_exe_implicit_main_top_level.txt
-INVALID_COMMAND|.|bogus|||1|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
-MISSING_SOURCE|.|analyze|bootstrap/selfhost/corpus/fixtures/frontend/missing_compiler_case.tg|exe|1|bootstrap/selfhost/corpus/goldens/compiler/expected_empty.txt
+# label|cwd|command|path|kind|extra|exit|expected
+HELP|.|help||||0|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
+VERSION|.|version||||0|bootstrap/selfhost/corpus/goldens/compiler/expected_version.txt
+ANALYZE_RELATIVE|bootstrap/selfhost/corpus/fixtures/frontend|analyze|ok_basic.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_ok_basic.txt
+CHECK_RELATIVE|bootstrap/selfhost/corpus/fixtures/frontend|check|modules_ok_main.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_modules_ok_main.txt
+REPORT_ABSOLUTE|.|report|@abs:bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_report_modules_ok_main.txt
+DESUGAR_BOOTSTRAP|.|desugar|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|exe||0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_implicit_main_top_level.txt
+SCAN_BOOTSTRAP|.|scan|bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_scan_ok_helper_call.txt
+PARSE_BOOTSTRAP|.|parse|bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe||0|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_ok_helper_call.txt
+CORE_EXE_CHECK|.|check|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|core-exe||0|bootstrap/selfhost/corpus/goldens/bootstrap/expected_core_exe_implicit_main_top_level.txt
+BUILD_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|hello_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build.txt
+RUN_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|hello_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run.txt
+INVALID_COMMAND|.|bogus||||1|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
+MISSING_SOURCE|.|analyze|bootstrap/selfhost/corpus/fixtures/frontend/missing_compiler_case.tg|exe||1|bootstrap/selfhost/corpus/goldens/compiler/expected_empty.txt

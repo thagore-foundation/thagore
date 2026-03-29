@@ -221,6 +221,7 @@ jobs:
         run: |
           python3 tooling/ci/selfhost_compiler_driver.py \
             --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/report.txt"
 
@@ -291,6 +292,7 @@ jobs:
         run: |
           python3 tooling/ci/selfhost_compiler_driver.py \
             --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/report.txt"
 
@@ -361,6 +363,7 @@ jobs:
         run: |
           python tooling/ci/selfhost_compiler_driver.py `
             --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler1/report.txt
 
@@ -431,6 +434,7 @@ jobs:
         run: |
           python tooling/ci/selfhost_compiler_driver.py `
             --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler2/report.txt
 

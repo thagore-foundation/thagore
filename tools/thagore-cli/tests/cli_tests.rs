@@ -1470,6 +1470,7 @@ fn resolve_compiler_driver_path(repo_root: &Path, raw: &str) -> Option<String> {
 
 fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
+    let scratch = TempDir::new().expect("compiler driver scratch");
     for case in cases {
         let label = &case[0];
         let cwd = if case[1].is_empty() || case[1] == "." {
@@ -1480,16 +1481,39 @@ fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, mani
         let command_name = &case[2];
         let path_arg = resolve_compiler_driver_path(repo_root, &case[3]);
         let kind = &case[4];
-        let expected_exit: i32 = case[5].parse().expect("parse expected exit");
-        let expected_path = repo_root.join(&case[6]);
+        let extra = &case[5];
+        let expected_exit: i32 = case[6].parse().expect("parse expected exit");
+        let expected_path = repo_root.join(&case[7]);
 
         let mut command = Command::new(binary);
-        command.current_dir(&cwd).arg(command_name);
+        let stage0 = Path::new(env!("CARGO_BIN_EXE_thagc"));
+        let path_sep = if cfg!(windows) { ";" } else { ":" };
+        let inherited_path = std::env::var("PATH").unwrap_or_default();
+        let stage0_parent = stage0
+            .parent()
+            .expect("stage0 parent")
+            .to_string_lossy()
+            .into_owned();
+        command
+            .current_dir(&cwd)
+            .env(
+                "PATH",
+                format!("{stage0_parent}{path_sep}{inherited_path}"),
+            )
+            .env(
+                "THAGORE_STAGE0",
+                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+            )
+            .env("THAGORE_SELFHOST_TMP", scratch.path())
+            .arg(command_name);
         if let Some(path_arg) = path_arg {
             command.arg(path_arg);
         }
         if !kind.is_empty() {
             command.arg(kind);
+        }
+        if !extra.is_empty() {
+            command.arg(extra);
         }
 
         let output = command
@@ -1510,6 +1534,15 @@ fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, mani
             expected.trim_end(),
             "unexpected stdout for compiler driver case {label}"
         );
+        if command_name == "build" {
+            let artifact_path = scratch.path().join(extra);
+            assert!(
+                artifact_path.exists(),
+                "missing compiler driver build artifact for {label}: {}",
+                artifact_path.display()
+            );
+            let _ = fs::remove_file(&artifact_path);
+        }
     }
 }
 

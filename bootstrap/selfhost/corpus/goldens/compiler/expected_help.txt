@@ -1,1 +1,1 @@
-usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse> [path] [exe|library|core-exe|core-library]
+usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse|build|run> [path] [exe|library|core-exe|core-library|artifact]

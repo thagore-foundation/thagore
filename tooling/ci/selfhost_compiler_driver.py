@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 
 
 def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
@@ -41,43 +43,65 @@ def main() -> int:
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--compiler-bin", required=True)
     parser.add_argument("--manifest", default="bootstrap/selfhost/corpus/compiler-driver-contract.txt")
+    parser.add_argument("--host-thagc", default="")
     parser.add_argument("--report-out", default="")
     args = parser.parse_args()
 
     repo_root = pathlib.Path(args.repo_root).resolve()
     compiler_bin = pathlib.Path(args.compiler_bin).resolve()
     report_lines: list[str] = []
+    host_thagc = pathlib.Path(args.host_thagc).resolve() if args.host_thagc else None
 
-    for label, cwd_raw, command, path_raw, kind, expected_exit, expected_path in load_manifest(repo_root / args.manifest, 7):
-        cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
-        cmd = [str(compiler_bin), command]
-        path_arg = resolve_arg(repo_root, path_raw)
-        if path_arg:
-            cmd.append(path_arg)
-        if kind:
-            cmd.append(kind)
-        completed = subprocess.run(
-            cmd,
-            cwd=cwd,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        expected_code = int(expected_exit)
-        if completed.returncode != expected_code:
-            raise SystemExit(
-                f"compiler driver exit drift for {label}: expected {expected_code}, got {completed.returncode}"
-                f"\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+    with tempfile.TemporaryDirectory(prefix="selfhost-compiler-driver-") as scratch_root:
+        scratch_dir = pathlib.Path(scratch_root)
+        for label, cwd_raw, command, path_raw, kind, extra, expected_exit, expected_path in load_manifest(repo_root / args.manifest, 8):
+            cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
+            cmd = [str(compiler_bin), command]
+            path_arg = resolve_arg(repo_root, path_raw)
+            if path_arg:
+                cmd.append(path_arg)
+            if kind:
+                cmd.append(kind)
+            if extra:
+                cmd.append(extra)
+            env = dict(os.environ)
+            env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
+            if host_thagc is not None:
+                env["THAGORE_STAGE0"] = host_thagc.name
+                env["PATH"] = f"{host_thagc.parent}{os.pathsep}{env.get('PATH', '')}"
+            artifact_path = scratch_dir / extra if extra else None
+            if artifact_path is not None and artifact_path.exists():
+                artifact_path.unlink()
+            capture_path = pathlib.Path(f"{artifact_path}.stdout.txt") if artifact_path is not None else None
+            if capture_path is not None and capture_path.exists():
+                capture_path.unlink()
+            completed = subprocess.run(
+                cmd,
+                cwd=cwd,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
             )
-        expected = canonicalize_golden((repo_root / expected_path).read_text(encoding="utf-8"))
-        actual = canonicalize_golden(completed.stdout)
-        if actual != expected:
-            raise SystemExit(
-                f"compiler driver output drift for {label}"
-                f"\nexpected:\n{expected}\nactual:\n{actual}"
-            )
-        report_lines.append(f"{label}|exit={expected_code}|ok")
+            expected_code = int(expected_exit)
+            if completed.returncode != expected_code:
+                raise SystemExit(
+                    f"compiler driver exit drift for {label}: expected {expected_code}, got {completed.returncode}"
+                    f"\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                )
+            expected = canonicalize_golden((repo_root / expected_path).read_text(encoding="utf-8"))
+            actual = canonicalize_golden(completed.stdout)
+            if actual != expected:
+                raise SystemExit(
+                    f"compiler driver output drift for {label}"
+                    f"\nexpected:\n{expected}\nactual:\n{actual}"
+                )
+            if command == "build":
+                if artifact_path is None or not artifact_path.exists():
+                    raise SystemExit(f"compiler driver did not emit build artifact for {label}")
+                artifact_path.unlink()
+            report_lines.append(f"{label}|exit={expected_code}|ok")
 
     if args.report_out:
         pathlib.Path(args.report_out).write_text("\n".join(report_lines) + "\n", encoding="utf-8")

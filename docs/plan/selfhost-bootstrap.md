@@ -517,7 +517,8 @@ Current status:
 - that rehearsal now also validates the first compiler-driver slice
   (`bootstrap/selfhost/frontend/compiler.tg`) across stage1/stage2 rebuilds,
   so command-surface bootstrap drift is gated in the same loop as the frontend
-  stage and driver boundaries
+  stage and driver boundaries; that slice now includes host-routed `build` and
+  `run` orchestration, not just analysis/report commands
 - that same rehearsal lane now also validates the session-routed replacement
   contract for `check.tg` across stage1/stage2, so Target 01 behavior is part
   of the rebuild loop instead of living only in its separate workflow
