@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
+import sys
 
 
 def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
@@ -25,6 +27,13 @@ def resolve_arg(repo_root: pathlib.Path, raw: str) -> str:
     if raw.startswith("@abs:"):
         return (repo_root / raw[len("@abs:"):]).resolve().as_posix()
     return raw
+
+
+def canonicalize_golden(text: str) -> str:
+    normalized = text.replace("\r\n", "\n").strip()
+    if sys.platform.startswith("win"):
+        return re.sub(r"@\d+:\d+", "@_:@_", normalized)
+    return normalized
 
 
 def main() -> int:
@@ -61,8 +70,8 @@ def main() -> int:
                 f"compiler driver exit drift for {label}: expected {expected_code}, got {completed.returncode}"
                 f"\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
             )
-        expected = (repo_root / expected_path).read_text(encoding="utf-8").replace("\r\n", "\n").strip()
-        actual = completed.stdout.replace("\r\n", "\n").strip()
+        expected = canonicalize_golden((repo_root / expected_path).read_text(encoding="utf-8"))
+        actual = canonicalize_golden(completed.stdout)
         if actual != expected:
             raise SystemExit(
                 f"compiler driver output drift for {label}"
