@@ -1,0 +1,1 @@
+fn=helper;ret=i32;ops=const;term=return(const) || fn=main;ret=i32;ops=call;term=return(call:helper)

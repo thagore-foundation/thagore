@@ -16,6 +16,7 @@ on:
       - "tooling/ci/selfhost_frontend_replacement.py"
       - "tooling/ci/selfhost_frontend_driver_target.py"
       - "tooling/ci/selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_lowering_slice.py"
       - "tools/thagore-cli/**"
       - "crates/**"
   workflow_dispatch:
@@ -185,6 +186,16 @@ jobs:
             --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-compiler1"
 
+      - name: Build stage1 selfhost lowering slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-lowering-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-lowering1"
+
       - name: Validate stage1 frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -236,6 +247,15 @@ jobs:
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/artifact-report.txt"
 
+      - name: Validate stage1 lowering slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_lowering_slice.py \
+            --repo-root "$PWD" \
+            --lower-bin "$PWD/bootstrap-selfhost-lowering1/selfhost-lower${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-lowering1/report.txt"
+
       - name: Rebuild stage2 selfhost frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -265,6 +285,16 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-compiler2"
+
+      - name: Build stage2 selfhost lowering slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-lowering-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-lowering2"
 
       - name: Validate stage2 frontend slice on Linux
         if: runner.os == 'Linux'
@@ -317,6 +347,15 @@ jobs:
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/artifact-report.txt"
 
+      - name: Validate stage2 lowering slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_lowering_slice.py \
+            --repo-root "$PWD" \
+            --lower-bin "$PWD/bootstrap-selfhost-lowering2/selfhost-lower${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-lowering2/report.txt"
+
       - name: Build stage1 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -346,6 +385,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-compiler1
+
+      - name: Build stage1 selfhost lowering slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-lowering-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-lowering1
 
       - name: Validate stage1 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -398,6 +447,15 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler1/artifact-report.txt
 
+      - name: Validate stage1 lowering slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_lowering_slice.py `
+            --repo-root $PWD `
+            --lower-bin $PWD/bootstrap-selfhost-lowering1/selfhost-lower${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-lowering1/report.txt
+
       - name: Rebuild stage2 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -427,6 +485,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-compiler2
+
+      - name: Build stage2 selfhost lowering slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-lowering-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-lowering2
 
       - name: Validate stage2 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -479,6 +547,15 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler2/artifact-report.txt
 
+      - name: Validate stage2 lowering slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_lowering_slice.py `
+            --repo-root $PWD `
+            --lower-bin $PWD/bootstrap-selfhost-lowering2/selfhost-lower${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-lowering2/report.txt
+
       - name: Diff stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -503,6 +580,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u bootstrap-selfhost-compiler1/artifact-report.txt bootstrap-selfhost-compiler2/artifact-report.txt
+
+      - name: Diff lowering stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-lowering1/report.txt bootstrap-selfhost-lowering2/report.txt
 
       - name: Diff stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
@@ -544,6 +626,14 @@ jobs:
             throw 'bootstrap selfhost artifact reports differ between stage1 and stage2'
           }
 
+      - name: Diff lowering stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-lowering1/report.txt -Raw) -ne (Get-Content bootstrap-selfhost-lowering2/report.txt -Raw)) {
+            throw 'bootstrap selfhost lowering reports differ between stage1 and stage2'
+          }
+
       - name: Upload bootstrap selfhost stage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -562,6 +652,8 @@ jobs:
             bootstrap-selfhost-compiler1/artifact-report.txt
             bootstrap-selfhost-compiler2/report.txt
             bootstrap-selfhost-compiler2/artifact-report.txt
+            bootstrap-selfhost-lowering1/report.txt
+            bootstrap-selfhost-lowering2/report.txt
 
       - name: Summarize bootstrap selfhost stage reports on Linux
         if: runner.os == 'Linux' && always()
@@ -618,6 +710,16 @@ jobs:
             echo "### Bootstrap Artifact Stage2"
             echo '```text'
             cat bootstrap-selfhost-compiler2/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Lowering Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-lowering1/report.txt
+            echo '```'
+            echo
+            echo "### Lowering Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-lowering2/report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -678,5 +780,15 @@ jobs:
           ### Bootstrap Artifact Stage2
           ```text
           $(if (Test-Path bootstrap-selfhost-compiler2/artifact-report.txt) { Get-Content bootstrap-selfhost-compiler2/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Lowering Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-lowering1/report.txt) { Get-Content bootstrap-selfhost-lowering1/report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Lowering Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-lowering2/report.txt) { Get-Content bootstrap-selfhost-lowering2/report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

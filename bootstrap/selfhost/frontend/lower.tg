@@ -1,0 +1,157 @@
+from . import lexer
+from . import session
+import std.array as array
+import std.string as string
+
+func token_at(tokens: Array[str], index: i32) -> str:
+  if (index < 0 or index >= array.len(tokens)):
+    return ""
+  return array.get(tokens, index)
+
+func token_kind(token: str) -> str:
+  let out = ""
+  let index: i32 = 0
+  while (index < string.len(token)):
+    let ch = string.char_at(token, index)
+    if (string.str_eq(ch, "(")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out
+
+func token_text(token: str) -> str:
+  let start = string.find(token, "(")
+  if (start < 0):
+    return ""
+  let out = ""
+  let index: i32 = start + 1
+  while (index < string.len(token)):
+    let ch = string.char_at(token, index)
+    let next = ""
+    if ((index + 1) < string.len(token)):
+      next = string.char_at(token, index + 1)
+    if (string.str_eq(ch, ")") and string.str_eq(next, "@")):
+      return out
+    out = string.concat(out, ch)
+    index = index + 1
+  return out
+
+func token_matches(tokens: Array[str], index: i32, kind: str, text: str) -> bool:
+  let current = token_at(tokens, index)
+  if (string.len(current) == 0):
+    return false
+  return string.str_eq(token_kind(current), kind) and string.str_eq(token_text(current), text)
+
+func token_is_kind(tokens: Array[str], index: i32, kind: str) -> bool:
+  let current = token_at(tokens, index)
+  if (string.len(current) == 0):
+    return false
+  return string.str_eq(token_kind(current), kind)
+
+func token_value(tokens: Array[str], index: i32) -> str:
+  let current = token_at(tokens, index)
+  if (string.len(current) == 0):
+    return ""
+  return token_text(current)
+
+func append_unique(ops: str, value: str) -> str:
+  if (string.len(value) == 0):
+    return ops
+  if (string.len(ops) == 0):
+    return value
+  let parts = string.split(ops, ",")
+  for part in parts:
+    if (string.str_eq(part, value)):
+      return ops
+  return string.concat(ops, string.concat(",", value))
+
+func detect_return_kind(tokens: Array[str], index: i32) -> str:
+  let next_index: i32 = index + 1
+  if (token_is_kind(tokens, next_index, "int")):
+    return "return(const)"
+  if (token_is_kind(tokens, next_index, "ident")):
+    let name = token_value(tokens, next_index)
+    if (token_matches(tokens, next_index + 1, "punct", "(")):
+      return string.concat("return(call:", string.concat(name, ")"))
+    return string.concat("return(load:", string.concat(name, ")"))
+  return "return"
+
+func update_ops_for_let(tokens: Array[str], index: i32, ops: str) -> str:
+  let out = append_unique(ops, "alloc")
+  let assign_index: i32 = index + 4
+  if (token_matches(tokens, assign_index, "punct", "=") == false):
+    return out
+  let value_index: i32 = assign_index + 1
+  if (token_is_kind(tokens, value_index, "int")):
+    let with_const = append_unique(out, "const")
+    return append_unique(with_const, "store")
+  if (token_is_kind(tokens, value_index, "ident")):
+    if (token_matches(tokens, value_index + 1, "punct", "(")):
+      let with_call = append_unique(out, "call")
+      return append_unique(with_call, "store")
+    let with_load = append_unique(out, "load")
+    return append_unique(with_load, "store")
+  return out
+
+func update_ops_for_return(tokens: Array[str], index: i32, ops: str) -> str:
+  let next_index: i32 = index + 1
+  if (token_is_kind(tokens, next_index, "int")):
+    return append_unique(ops, "const")
+  if (token_is_kind(tokens, next_index, "ident")):
+    if (token_matches(tokens, next_index + 1, "punct", "(")):
+      return append_unique(ops, "call")
+    return append_unique(ops, "load")
+  return ops
+
+func render_function(name: str, return_type: str, ops: str, terminator: str) -> str:
+  let with_name = string.concat("fn=", name)
+  let with_return = string.concat(with_name, string.concat(";ret=", return_type))
+  let with_ops = string.concat(with_return, string.concat(";ops=", ops))
+  return string.concat(with_ops, string.concat(";term=", terminator))
+
+func append_function(out: str, line: str) -> str:
+  if (string.len(out) == 0):
+    return line
+  return string.concat(out, string.concat(" || ", line))
+
+pub func lower_report(source: str) -> str:
+  let tokens = string.split(lexer.scan(source), " | ")
+  let count = array.len(tokens)
+  let out = ""
+  let current_name = ""
+  let current_return = ""
+  let current_ops = ""
+  let current_term = "return"
+  let index: i32 = 0
+
+  while (index < count):
+    if (token_matches(tokens, index, "kw", "func") and token_is_kind(tokens, index + 1, "ident") and token_is_kind(tokens, index + 5, "ident")):
+      if (string.len(current_name) > 0):
+        out = append_function(out, render_function(current_name, current_return, current_ops, current_term))
+      current_name = token_value(tokens, index + 1)
+      current_return = token_value(tokens, index + 5)
+      current_ops = ""
+      current_term = "return"
+      index = index + 6
+      continue
+    if (token_matches(tokens, index, "kw", "let")):
+      current_ops = update_ops_for_let(tokens, index, current_ops)
+      index = index + 1
+      continue
+    if (token_matches(tokens, index, "kw", "return")):
+      current_ops = update_ops_for_return(tokens, index, current_ops)
+      current_term = detect_return_kind(tokens, index)
+      index = index + 1
+      continue
+    index = index + 1
+  if (string.len(current_name) > 0):
+    out = append_function(out, render_function(current_name, current_return, current_ops, current_term))
+  return out
+
+pub func main() -> i32:
+  let path = session.input_path()
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return 1
+  println(lower_report(source))
+  return 0

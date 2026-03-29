@@ -26,6 +26,7 @@ Current contents:
 - `parse.tg`
 - `main.tg`
 - `compiler.tg`
+- `lower.tg`
 
 Current scope:
 
@@ -65,6 +66,9 @@ Current scope:
   command dispatch for `help`, `version`, `analyze`, `check`, `report`,
   `desugar`, `scan`, `parse`, `build`, and `run` above the existing frontend
   pipeline
+- `lower.tg` is now the first selfhost lowering slice, emitting a stable
+  lowered-function summary for a narrow corpus so compiler-middle behavior
+  starts getting its own contract
 - `semantics.tg` now owns diagnostic composition/filtering so `pipeline.tg`
   stays focused on stage execution rather than policy decisions
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
@@ -120,6 +124,9 @@ Current scope:
   first compiler-driver executable boundary (`compiler.tg`) separately, so
   command orchestration can be hardened without coupling it to either the
   lower stage slice or the narrower `main.tg` frontend harness
+- `bootstrap/selfhost/tools/frontend-lowering-manifest.txt` now declares the
+  first lowering boundary (`lower.tg`) separately, so lowering behavior can be
+  hardened without coupling it to command routing or the stage-entry slice
 - `bootstrap/selfhost/corpus/frontend-analyze.txt` now locks full `analyze`
   output for the frontend differential corpus too, so the driver boundary is
   no longer limited to bootstrap-seed fixtures or report-mode-only frontend
@@ -137,6 +144,9 @@ Current scope:
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
   compares their observable output
+- `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
+  contract: constant returns, direct-call returns, and local-load returns
+  through `lower.tg`
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
@@ -144,6 +154,9 @@ Current scope:
 - that same rehearsal now also diffs the first compiler-driver boundary
   (`compiler.tg`) across stage1 and stage2, so command-surface drift is part
   of the bootstrap loop rather than living only in a standalone workflow
+- that same rehearsal now also diffs the first lowering boundary (`lower.tg`)
+  across stage1 and stage2, so narrowed lowered-shape drift becomes part of
+  the bootstrap loop instead of living only in a standalone workflow
 - that rehearsal now also diffs rebuilt bootstrap-artifact reports across
   stage1 and stage2, so a tool built through the selfhost compiler path is
   exercised and stabilized inside the same deterministic loop

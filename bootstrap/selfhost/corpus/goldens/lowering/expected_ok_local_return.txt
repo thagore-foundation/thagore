@@ -1,0 +1,1 @@
+fn=main;ret=i32;ops=alloc,const,store,load;term=return(load:value)

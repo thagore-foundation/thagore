@@ -1328,6 +1328,25 @@ fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_frontend_lower_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/lower.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn build_selfhost_frontend_scan_binary(repo_root: &Path, binary: &Path) {
     let source = repo_root.join("bootstrap/selfhost/frontend/scan.tg");
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
@@ -1646,6 +1665,32 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
     }
 }
 
+fn assert_lowering_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    for case in cases {
+        let fixture = &case[0];
+        let expected_path = repo_root.join(&case[1]);
+        let sample = repo_root.join(fixture);
+
+        let output = Command::new(binary)
+            .current_dir(repo_root)
+            .arg(sample.to_str().expect("utf8"))
+            .output()
+            .unwrap_or_else(|error| panic!("run lowering slice for {fixture}: {error}"));
+        assert_eq!(output.status.code(), Some(0), "lowering slice failed for {fixture}");
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected lowering slice output for {fixture}"
+        );
+    }
+}
+
 fn assert_main_orchestration_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
     for case in cases {
@@ -1764,6 +1809,20 @@ fn selfhost_bootstrap_artifact_contract_matches_goldens() {
         &repo_root,
         &binary,
         "bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt",
+    );
+}
+
+#[test]
+fn selfhost_lowering_slice_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-lower");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_lower_binary(&repo_root, &binary);
+
+    assert_lowering_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/lowering-slice.txt",
     );
 }
 

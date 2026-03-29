@@ -457,6 +457,10 @@ Current status:
   `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt`: the selfhost
   compiler builds a rebuilt compiler artifact plus a rebuilt frontend-main tool
   artifact, runs them, and keeps those reports stable across CI rebuilds
+- the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
+  and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
+  bootstrap line an initial lowered-shape contract instead of stopping at
+  frontend and command-routing outputs
 
 ### Milestone B: Differential frontend pass
 
@@ -523,6 +527,9 @@ Current status:
   so command-surface bootstrap drift is gated in the same loop as the frontend
   stage and driver boundaries; that slice now includes host-routed `build` and
   `run` orchestration, not just analysis/report commands
+- that rehearsal now also validates the first lowering slice
+  (`bootstrap/selfhost/frontend/lower.tg`) across stage1/stage2 rebuilds, so a
+  compiler-middle summary is now part of the deterministic bootstrap loop
 - that same rehearsal lane now also validates the session-routed replacement
   contract for `check.tg` across stage1/stage2, so Target 01 behavior is part
   of the rebuild loop instead of living only in its separate workflow
