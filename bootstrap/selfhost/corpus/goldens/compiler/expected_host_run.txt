@@ -1,1 +1,2 @@
 host=thagc;action=run;entry=bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg;artifact=selfhost-run.exe;capture=selfhost-run.exe.stdout.txt
+

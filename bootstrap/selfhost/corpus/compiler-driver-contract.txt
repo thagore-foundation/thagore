@@ -11,8 +11,12 @@ CORE_EXE_CHECK|.|check|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_
 PLAN_CHECK|.|plan-check|bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|exe||0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_check.txt
 PLAN_BUILD|.|plan-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build.txt
 PLAN_RUN|.|plan-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_run.txt
+PLAN_BUILD_PRINT|.|plan-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build_print.txt
+PLAN_RUN_PRINT|.|plan-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_run_print.txt
 PLAN_BUILD_FAIL|.|plan-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build_fail.txt
 BUILD_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build.txt
 RUN_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run.txt
+BUILD_PRINT_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build_print.txt
+RUN_PRINT_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run_print.txt
 INVALID_COMMAND|.|bogus||||1|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
 MISSING_SOURCE|.|analyze|bootstrap/selfhost/corpus/fixtures/frontend/missing_compiler_case.tg|exe||1|bootstrap/selfhost/corpus/goldens/compiler/expected_empty.txt

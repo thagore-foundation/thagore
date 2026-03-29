@@ -461,7 +461,8 @@ Current status:
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at
   frontend and command-routing outputs; that slice now emits ordered typed
-  lowered operations rather than only aggregate summaries
+  lowered operations plus explicit CFG edges rather than only aggregate
+  summaries
 - the explicit backend/codegen adapter boundary now exists under
   `bootstrap/selfhost/frontend/adapter.tg` plus
   `bootstrap/selfhost/corpus/backend-adapter-contract.txt`, giving the
@@ -472,7 +473,8 @@ Current status:
   `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt`, so adapter
   routing is checked through actual artifact emission instead of preview-only
   reports, including the lowered sidecar and normalized host-command sidecar
-  consumed by the backend boundary
+  consumed by the backend boundary; the artifact contract now also proves a
+  host-fallback build can still emit a runnable artifact with stable output
 
 ### Milestone B: Differential frontend pass
 

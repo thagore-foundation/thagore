@@ -1,0 +1,2 @@
+command=run;entry=bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg;source_root=bootstrap/selfhost/corpus/fixtures/compiler;kind=executable-root;phases=read,desugar,scan,parse,resolve,check,lower,adapter,host-build,host-run,capture;diagnostics=error;route=host-fallback;phase_route=read>frontend-check>diagnostic-fallback>host-build>host-run;artifact=selfhost-run-print.exe;emits=stdout,plan,adapter,lowered;lowering_state=skipped;lowered=lowering-skipped(route=host-fallback)
+

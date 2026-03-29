@@ -1,1 +1,2 @@
 host=thagc;action=build;entry=bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg;artifact=fail.exe
+

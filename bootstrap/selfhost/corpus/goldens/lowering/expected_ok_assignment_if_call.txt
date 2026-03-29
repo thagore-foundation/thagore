@@ -1,1 +1,2 @@
-fn=helper;sig=()->i32;locals=[];blocks=[entry,exit];ir=[const(i32),ret(const:i32)] || fn=main;sig=()->i32;locals=[value:i32];blocks=[entry,then,exit];ir=[alloc(value:i32),call(helper->i32),store(value:i32<-call:helper->i32),const(bool),branch(const:bool),const(i32),assign(value:i32<-const:i32),load(value:i32),ret(load:value:i32)]
+fn=helper;sig=()->i32;locals=[];blocks=[entry,exit];cfg=[entry->exit];ir=[exit:const(i32),exit:ret(const:i32)] || fn=main;sig=()->i32;locals=[value:i32];blocks=[entry,then,exit];cfg=[entry->then,then->exit];ir=[entry:alloc(value:i32),entry:call(helper->i32),entry:store(value:i32<-call:helper->i32),entry:const(bool),entry:branch(const:bool),then:const(i32),then:assign(value:i32<-const:i32),exit:load(value:i32),exit:ret(load:value:i32)]
+

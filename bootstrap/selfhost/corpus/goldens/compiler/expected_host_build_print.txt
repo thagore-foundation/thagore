@@ -1,0 +1,2 @@
+host=thagc;action=build;entry=bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg;artifact=selfhost-build-print.exe
+

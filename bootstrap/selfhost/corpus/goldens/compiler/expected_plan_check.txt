@@ -1,1 +1,2 @@
 command=check;entry=bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg;source_root=bootstrap/selfhost/corpus/fixtures/frontend;kind=executable-root;phases=read,desugar,scan,parse,resolve,check,report;diagnostics=ok;route=selfhost-checked;phase_route=read>frontend-check>report;artifact=;emits=report;lowering_state=skipped;lowered=lowering-skipped(route=frontend-only)
+

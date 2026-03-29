@@ -67,7 +67,8 @@ def main() -> int:
             adapter_expected,
             lowered_expected,
             host_expected,
-        ) in load_manifest(repo_root / args.manifest, 12):
+            artifact_stdout_expected,
+        ) in load_manifest(repo_root / args.manifest, 13):
             cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
             env = dict(os.environ)
             env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
@@ -138,6 +139,27 @@ def main() -> int:
                 )
             if command == "build" and expected_code == 0 and not artifact_path.exists():
                 raise SystemExit(f"backend adapter build artifact missing for {label}")
+            if command == "build" and expected_code == 0 and artifact_stdout_expected:
+                built = subprocess.run(
+                    [str(artifact_path)],
+                    cwd=cwd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                )
+                if built.returncode != 0:
+                    raise SystemExit(
+                        f"backend adapter built artifact failed for {label}: {built.returncode}"
+                        f"\nstdout:\n{built.stdout}\nstderr:\n{built.stderr}"
+                    )
+                actual_artifact_stdout = canonicalize(built.stdout)
+                expected_artifact_stdout = canonicalize((repo_root / artifact_stdout_expected).read_text(encoding="utf-8"))
+                if actual_artifact_stdout != expected_artifact_stdout:
+                    raise SystemExit(
+                        f"backend adapter built artifact stdout drift for {label}"
+                        f"\nexpected:\n{expected_artifact_stdout}\nactual:\n{actual_artifact_stdout}"
+                    )
             report_lines.append(f"{label}|exit={expected_code}|ok")
 
     if args.report_out:

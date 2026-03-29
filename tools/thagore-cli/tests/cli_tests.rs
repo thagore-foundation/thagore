@@ -1694,6 +1694,7 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let adapter_expected = repo_root.join(&case[9]);
         let lowered_expected = repo_root.join(&case[10]);
         let host_expected = repo_root.join(&case[11]);
+        let artifact_stdout_expected = &case[12];
         let artifact_path = scratch.path().join(artifact_name);
         let plan_path = scratch.path().join(format!("{artifact_name}.plan.txt"));
         let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
@@ -1789,6 +1790,26 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
                 "missing backend adapter build artifact for {label}: {}",
                 artifact_path.display()
             );
+            if !artifact_stdout_expected.is_empty() {
+                let built = Command::new(&artifact_path)
+                    .current_dir(&cwd)
+                    .output()
+                    .unwrap_or_else(|error| panic!("run built backend adapter artifact for {label}: {error}"));
+                assert_eq!(
+                    built.status.code(),
+                    Some(0),
+                    "unexpected built artifact exit for backend adapter case {label}"
+                );
+                let expected_artifact_stdout = fs::read_to_string(repo_root.join(artifact_stdout_expected))
+                    .expect("read expected artifact stdout")
+                    .replace("\r\n", "\n");
+                let actual_artifact_stdout = String::from_utf8_lossy(&built.stdout).replace("\r\n", "\n");
+                assert_eq!(
+                    actual_artifact_stdout.trim_end(),
+                    expected_artifact_stdout.trim_end(),
+                    "unexpected built artifact stdout for backend adapter case {label}"
+                );
+            }
         }
     }
 }
