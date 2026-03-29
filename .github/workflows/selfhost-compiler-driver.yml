@@ -1,0 +1,285 @@
+name: Selfhost Compiler Driver
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/selfhost-compiler-driver.yml"
+      - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/corpus/**"
+      - "bootstrap/selfhost/tools/**"
+      - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_compiler_driver.py"
+      - "tools/thagore-cli/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-compiler-driver-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler-driver:
+    name: Selfhost compiler driver ${{ matrix.os_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux-x64
+            thagc_bin: target/release/thagc
+            exe_suffix: ""
+          - runner: windows-latest
+            os_name: windows-x64
+            thagc_bin: target/release/thagc.exe
+            exe_suffix: ".exe"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
+          }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-compiler-driver.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '        if (args.Contains("--version")) { Console.WriteLine("14.0.6"); return 0; }',
+              '        if (args.Contains("--prefix")) { Console.WriteLine(root); return 0; }',
+              '        if (args.Contains("--libdir")) { Console.WriteLine(lib); return 0; }',
+              '        if (args.Contains("--includedir")) { Console.WriteLine(include); return 0; }',
+              '        if (args.Contains("--build-mode")) { Console.WriteLine("Release"); return 0; }',
+              '        if (args.Contains("--cflags")) { Console.WriteLine("-I" + include); return 0; }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs")) { Console.WriteLine(""); return 0; }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build host thagc on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build host thagc on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Normalize compiler corpus line endings on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          root = Path("bootstrap/selfhost/corpus")
+          for path in root.rglob("*"):
+              if path.suffix not in {".tg", ".txt"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+              if normalized != text:
+                  path.write_text(normalized, encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Build selfhost compiler first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/selfhost-compiler-driver-first"
+
+      - name: Validate selfhost compiler first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/selfhost-compiler-driver-first/report.txt"
+
+      - name: Build selfhost compiler second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/selfhost-compiler-driver-second"
+
+      - name: Validate selfhost compiler second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/selfhost-compiler-driver-second/report.txt"
+
+      - name: Build selfhost compiler first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/selfhost-compiler-driver-first
+
+      - name: Validate selfhost compiler first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-compiler-driver-first/report.txt
+
+      - name: Build selfhost compiler second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/selfhost-compiler-driver-second
+
+      - name: Validate selfhost compiler second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/selfhost-compiler-driver-second/report.txt
+
+      - name: Diff compiler driver reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u selfhost-compiler-driver-first/report.txt selfhost-compiler-driver-second/report.txt
+
+      - name: Diff compiler driver reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content selfhost-compiler-driver-first/report.txt -Raw) -ne (Get-Content selfhost-compiler-driver-second/report.txt -Raw)) {
+            throw 'selfhost compiler driver reports differ between rebuilds'
+          }
+
+      - name: Upload compiler driver reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-compiler-driver-${{ matrix.os_name }}
+          path: |
+            selfhost-compiler-driver-first/report.txt
+            selfhost-compiler-driver-second/report.txt
+
+      - name: Summarize compiler driver reports on Linux
+        if: runner.os == 'Linux' && always()
+        shell: bash
+        run: |
+          {
+            echo "## Selfhost compiler driver (${{ matrix.os_name }})"
+            echo
+            echo "### First pass"
+            echo '```text'
+            cat selfhost-compiler-driver-first/report.txt
+            echo '```'
+            echo
+            echo "### Second pass"
+            echo '```text'
+            cat selfhost-compiler-driver-second/report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize compiler driver reports on Windows
+        if: runner.os == 'Windows' && always()
+        shell: pwsh
+        run: |
+          $first = if (Test-Path selfhost-compiler-driver-first/report.txt) { Get-Content selfhost-compiler-driver-first/report.txt -Raw } else { '<report missing>' }
+          $second = if (Test-Path selfhost-compiler-driver-second/report.txt) { Get-Content selfhost-compiler-driver-second/report.txt -Raw } else { '<report missing>' }
+          @"
+          ## Selfhost compiler driver (${{ matrix.os_name }})
+
+          ### First pass
+          ```text
+          $first
+          ```
+
+          ### Second pass
+          ```text
+          $second
+          ```
+          "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

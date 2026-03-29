@@ -1,0 +1,1 @@
+bootstrap/selfhost/frontend/compiler.tg|selfhost-compiler

@@ -1,0 +1,71 @@
+from . import pipeline
+from . import session
+from . import module_kind
+import std.process as process
+import std.string as string
+
+func command_name() -> str:
+  let arg = process.argv(1)
+  if (string.len(arg) > 0):
+    return arg
+  return "help"
+
+func command_path() -> str:
+  return process.argv(2)
+
+func command_kind() -> str:
+  let arg = process.argv(3)
+  if (string.str_eq(arg, "library")):
+    return module_kind.library_module()
+  if (string.str_eq(arg, "core-exe")):
+    return module_kind.selfhost_core_executable_root()
+  if (string.str_eq(arg, "core-library")):
+    return module_kind.selfhost_core_library_module()
+  return module_kind.executable_root()
+
+func usage() -> str:
+  return "usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse> [path] [exe|library|core-exe|core-library]"
+
+func version() -> str:
+  return "frontend-compiler bootstrap-slice"
+
+func run_command(command: str, path: str, current_kind: str) -> str:
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return ""
+  let source_root = session.source_dir(path)
+  if (string.str_eq(command, "analyze")):
+    return pipeline.full_report(source_root, source, current_kind)
+  if (string.str_eq(command, "check")):
+    return pipeline.full_report(source_root, source, current_kind)
+  if (string.str_eq(command, "report")):
+    return pipeline.normalized_report(source_root, source, current_kind)
+  if (string.str_eq(command, "desugar")):
+    return pipeline.desugared_source(source, current_kind)
+  if (string.str_eq(command, "scan")):
+    return pipeline.scan_report(source, current_kind)
+  if (string.str_eq(command, "parse")):
+    return pipeline.parse_report(source_root, source, current_kind)
+  return ""
+
+pub func main() -> i32:
+  let command = command_name()
+  if (string.str_eq(command, "help")):
+    println(usage())
+    return 0
+  if (string.str_eq(command, "version")):
+    println(version())
+    return 0
+  let path = command_path()
+  if (string.len(path) == 0):
+    println(usage())
+    return 1
+  let current_kind = command_kind()
+  let output = run_command(command, path, current_kind)
+  if (string.len(output) == 0):
+    if (string.str_eq(command, "analyze") or string.str_eq(command, "check") or string.str_eq(command, "report") or string.str_eq(command, "desugar") or string.str_eq(command, "scan") or string.str_eq(command, "parse")):
+      return 1
+    println(usage())
+    return 1
+  println(output)
+  return 0

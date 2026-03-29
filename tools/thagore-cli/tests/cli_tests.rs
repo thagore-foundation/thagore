@@ -1290,6 +1290,25 @@ fn build_selfhost_frontend_main_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_compiler_driver_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/compiler.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
     let source = repo_root.join("bootstrap/selfhost/frontend/parse.tg");
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
@@ -1432,6 +1451,68 @@ fn resolve_main_orchestration_path(repo_root: &Path, raw: &str) -> Option<String
     Some(raw.to_string())
 }
 
+fn resolve_compiler_driver_path(repo_root: &Path, raw: &str) -> Option<String> {
+    if raw.is_empty() {
+        return None;
+    }
+    if let Some(relative) = raw.strip_prefix("@abs:") {
+        return Some(
+            repo_root
+                .join(relative)
+                .canonicalize()
+                .expect("canonicalize absolute compiler driver path")
+                .to_string_lossy()
+                .replace('\\', "/"),
+        );
+    }
+    Some(raw.to_string())
+}
+
+fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
+    let cases = load_corpus_manifest(repo_root, manifest);
+    for case in cases {
+        let label = &case[0];
+        let cwd = if case[1].is_empty() || case[1] == "." {
+            repo_root.to_path_buf()
+        } else {
+            repo_root.join(&case[1])
+        };
+        let command_name = &case[2];
+        let path_arg = resolve_compiler_driver_path(repo_root, &case[3]);
+        let kind = &case[4];
+        let expected_exit: i32 = case[5].parse().expect("parse expected exit");
+        let expected_path = repo_root.join(&case[6]);
+
+        let mut command = Command::new(binary);
+        command.current_dir(&cwd).arg(command_name);
+        if let Some(path_arg) = path_arg {
+            command.arg(path_arg);
+        }
+        if !kind.is_empty() {
+            command.arg(kind);
+        }
+
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("run compiler driver case {label}: {error}"));
+        assert_eq!(
+            output.status.code(),
+            Some(expected_exit),
+            "unexpected exit code for compiler driver case {label}"
+        );
+
+        let expected = fs::read_to_string(expected_path)
+            .expect("read expected")
+            .replace("\r\n", "\n");
+        let actual = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(
+            actual.trim_end(),
+            expected.trim_end(),
+            "unexpected stdout for compiler driver case {label}"
+        );
+    }
+}
+
 fn assert_main_orchestration_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
     for case in cases {
@@ -1523,6 +1604,20 @@ fn assert_main_manifest_matches(
             mode
         );
     }
+}
+
+#[test]
+fn selfhost_compiler_driver_contract_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-compiler");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_compiler_driver_binary(&repo_root, &binary);
+
+    assert_compiler_driver_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/compiler-driver-contract.txt",
+    );
 }
 
 #[test]

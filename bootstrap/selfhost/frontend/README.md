@@ -25,6 +25,7 @@ Current contents:
 - `scan.tg`
 - `parse.tg`
 - `main.tg`
+- `compiler.tg`
 
 Current scope:
 
@@ -60,6 +61,9 @@ Current scope:
   setup
 - `pipeline.tg` now owns stage execution so `scan.tg`, `parse.tg`, and
   `check.tg` are thin entrypoints around stable selfhost pipeline calls
+- `compiler.tg` is now the first selfhost compiler-driver slice, locking
+  command dispatch for `help`, `version`, `analyze`, `check`, `report`,
+  `desugar`, `scan`, and `parse` above the existing frontend pipeline
 - `semantics.tg` now owns diagnostic composition/filtering so `pipeline.tg`
   stays focused on stage execution rather than policy decisions
 - `parse.tg` is the first dedicated pre-check stage entry for token/summary/
@@ -111,6 +115,10 @@ Current scope:
   higher executable driver boundary (`main.tg`) separately, so the top-level
   session/driver path can be hardened without coupling it to the lower stage
   slice
+- `bootstrap/selfhost/tools/compiler-driver-manifest.txt` now declares the
+  first compiler-driver executable boundary (`compiler.tg`) separately, so
+  command orchestration can be hardened without coupling it to either the
+  lower stage slice or the narrower `main.tg` frontend harness
 - `bootstrap/selfhost/corpus/frontend-analyze.txt` now locks full `analyze`
   output for the frontend differential corpus too, so the driver boundary is
   no longer limited to bootstrap-seed fixtures or report-mode-only frontend
@@ -119,6 +127,10 @@ Current scope:
   session/driver orchestration surface itself: default sample fallback,
   relative vs absolute path routing, kind/mode fallback, core-kind routing,
   and missing-source exit behavior
+- `bootstrap/selfhost/corpus/compiler-driver-contract.txt` now locks the
+  higher compiler-driver command surface: help/version output, relative and
+  absolute path routing, command dispatch, core-kind dispatch, invalid-command
+  fallback, and missing-source exits
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as

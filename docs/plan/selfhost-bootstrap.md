@@ -449,6 +449,10 @@ Current status:
 - the driver boundary now also locks orchestration behavior above raw output
   parity: default-input fallback, relative vs absolute path routing, kind/mode
   fallback, core-kind routing, and missing-source exit semantics
+- the next bootstrap slice now starts at `bootstrap/selfhost/frontend/compiler.tg`,
+  which wraps the frontend pipeline as a first selfhost compiler-driver
+  surface and is guarded by `bootstrap/selfhost/corpus/compiler-driver-contract.txt`
+  plus a dedicated `Selfhost Compiler Driver` CI workflow
 
 ### Milestone B: Differential frontend pass
 
