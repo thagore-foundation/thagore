@@ -88,6 +88,18 @@ pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
 pub func run_command(output_path: str, capture_file: str) -> str:
   return string.concat(output_path, string.concat(" > ", capture_file))
 
+pub func host_command_summary(command: str, host_thagc: str, path: str, artifact_name: str, capture_name: str) -> str:
+  let binary = host_thagc
+  if (string.str_eq(binary, "thagc.exe")):
+    binary = "thagc"
+  let base = string.concat("host=", binary)
+  let with_action = string.concat(base, string.concat(";action=", command))
+  let with_entry = string.concat(with_action, string.concat(";entry=", normalize_path(path)))
+  let with_artifact = string.concat(with_entry, string.concat(";artifact=", artifact_name))
+  if (string.str_eq(command, "run")):
+    return string.concat(with_artifact, string.concat(";capture=", capture_name))
+  return with_artifact
+
 pub func plan_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".plan.txt")
 
@@ -96,3 +108,6 @@ pub func request_artifact_name(artifact_name: str) -> str:
 
 pub func lowered_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".lowered.txt")
+
+pub func host_command_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".host.txt")

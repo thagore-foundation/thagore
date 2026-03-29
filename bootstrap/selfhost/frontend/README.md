@@ -154,7 +154,8 @@ Current scope:
 - `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt` now locks the
   real adapter sidecar artifacts emitted by `build` / `run`, including route
   changes for diagnostics-ok vs diagnostics-error paths plus the emitted
-  lowered sidecar that the backend adapter consumes
+  lowered sidecar and normalized host-command sidecar that the backend adapter
+  consumes
 - `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and

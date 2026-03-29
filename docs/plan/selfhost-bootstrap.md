@@ -471,7 +471,8 @@ Current status:
   `build` / `run`, locked under
   `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt`, so adapter
   routing is checked through actual artifact emission instead of preview-only
-  reports, including the lowered sidecar consumed by the backend boundary
+  reports, including the lowered sidecar and normalized host-command sidecar
+  consumed by the backend boundary
 
 ### Milestone B: Differential frontend pass
 
