@@ -1,4 +1,4 @@
-tests/bootstrap_seed/sample_implicit_main_top_level.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_implicit_main_top_level.txt
-tests/bootstrap_seed/sample_infer_return_i32.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_i32.txt
-tests/bootstrap_seed/sample_infer_return_identifier.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_identifier.txt
-tests/bootstrap_seed/sample_infer_return_call.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_call.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_implicit_main_top_level.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_i32.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_i32.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_identifier.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_identifier.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_call.tg|exe|bootstrap/selfhost/corpus/goldens/bootstrap/expected_dump_infer_return_call.txt

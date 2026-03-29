@@ -1,1 +1,1 @@
-tests/bootstrap_seed/sample_library_import_only.tg|library|bootstrap/selfhost/corpus/goldens/bootstrap/expected_report_library_import_only.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_library_import_only.tg|library|bootstrap/selfhost/corpus/goldens/bootstrap/expected_report_library_import_only.txt

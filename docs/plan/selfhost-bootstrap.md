@@ -452,7 +452,7 @@ corpus and compare normalized output.
 
 Deliverables:
 
-- corpus under `tests/selfhost_frontend/`
+- corpus under `bootstrap/selfhost/corpus/fixtures/frontend/`
 - normalization format for tokens, AST summary, symbols, imports, diagnostics
 - differential runner in CI
 
@@ -528,10 +528,10 @@ Add a stable location for self-host work.
 - `bootstrap/selfhost/frontend/`
 - `bootstrap/selfhost/corpus/`
 - `bootstrap/selfhost/tools/`
-- `tests/selfhost_frontend/`
+- `bootstrap/selfhost/corpus/fixtures/`
 
-Do not keep growing `tests/bootstrap_seed/` forever. That path should remain
-the seed harness, while reusable code moves under `bootstrap/selfhost/`.
+Do not keep growing `tests/bootstrap_seed/` or `tests/selfhost_frontend/`
+forever. The active bootstrap corpus now lives under `bootstrap/selfhost/`.
 
 ## 8. CI Sequence
 
@@ -574,7 +574,7 @@ Current status on `indev-rewrite`:
   - implicit `main`
   - inferred top-layer literal return types
 - bootstrap probe now also gates a first narrow differential corpus under
-  `tests/selfhost_frontend/` against the Rust-hosted `thagc check` surface
+  `bootstrap/selfhost/corpus/fixtures/frontend/` against the Rust-hosted `thagc check` surface
 - bootstrap probe now also gates selected selfhost `dump-report` goldens so the
   differential track is not limited to coarse diagnostic labels
 - bootstrap probe also gates module-kind-sensitive `dump-report` goldens for
@@ -609,7 +609,7 @@ Current status on `indev-rewrite`:
   corpus regressions are isolated from the larger stdlib/bootstrap audit job
   and can become a real replacement gate
 - the first replacement target contract now lives in manifest files under
-  `tests/selfhost_frontend/`, so corpus scope can expand without hardcoding the
+  `bootstrap/selfhost/corpus/fixtures/frontend/`, so corpus scope can expand without hardcoding the
   target surface inside Rust test logic
 - the concrete Rust-side target for that contract is now documented in
   `docs/plan/selfhost-replacement-target.md` as Target 01:

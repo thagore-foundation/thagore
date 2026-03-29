@@ -1,7 +1,7 @@
-tests/selfhost_frontend/ok_helper_call.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_ok_helper_call.txt
-tests/selfhost_frontend/err_assignment_call_result_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_err_assignment_call_result_type.txt
-tests/bootstrap_seed/sample_library_import_only.tg|library|bootstrap/selfhost/corpus/goldens/bootstrap/expected_parse_library_import_only.txt
-tests/selfhost_frontend/modules_ok_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_ok_main.txt
-tests/selfhost_frontend/modules_missing_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_missing_main.txt
-tests/selfhost_frontend/modules_unknown_imported_symbol.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_unknown_imported_symbol.txt
-tests/selfhost_frontend/modules_alias_ok_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_alias_ok_main.txt
+bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_ok_helper_call.txt
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_call_result_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_err_assignment_call_result_type.txt
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_library_import_only.tg|library|bootstrap/selfhost/corpus/goldens/bootstrap/expected_parse_library_import_only.txt
+bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_ok_main.txt
+bootstrap/selfhost/corpus/fixtures/frontend/modules_missing_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_missing_main.txt
+bootstrap/selfhost/corpus/fixtures/frontend/modules_unknown_imported_symbol.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_unknown_imported_symbol.txt
+bootstrap/selfhost/corpus/fixtures/frontend/modules_alias_ok_main.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_parse_modules_alias_ok_main.txt

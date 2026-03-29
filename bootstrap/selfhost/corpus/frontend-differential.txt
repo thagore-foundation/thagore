@@ -1,22 +1,22 @@
-tests/selfhost_frontend/ok_basic.tg|exe|ok
-tests/selfhost_frontend/ok_helper_call.tg|exe|ok
-tests/selfhost_frontend/ok_library_module.tg|library|ok
-tests/selfhost_frontend/modules_ok_main.tg|exe|ok
-tests/selfhost_frontend/modules_ok_library.tg|library|ok
-tests/selfhost_frontend/modules_alias_ok_main.tg|exe|ok
-tests/selfhost_frontend/modules_alias_ok_library.tg|library|ok
-tests/selfhost_frontend/modules_missing_main.tg|exe|missing import
-tests/selfhost_frontend/modules_missing_library.tg|library|missing import
-tests/selfhost_frontend/modules_unknown_imported_symbol.tg|exe|unknown imported symbol
-tests/selfhost_frontend/modules_unknown_imported_symbol_library.tg|library|unknown imported symbol
-tests/selfhost_frontend/err_unknown_identifier.tg|exe|unknown identifier
-tests/selfhost_frontend/err_unknown_callee.tg|exe|unknown identifier
-tests/selfhost_frontend/err_assignment_unknown_local.tg|exe|unknown identifier
-tests/selfhost_frontend/err_call_arity.tg|exe|call arity mismatch
-tests/selfhost_frontend/err_assignment_type.tg|exe|type mismatch
-tests/selfhost_frontend/err_assignment_call_result_type.tg|exe|type mismatch
-tests/selfhost_frontend/err_local_type.tg|exe|type mismatch
-tests/selfhost_frontend/err_local_call_result_type.tg|exe|type mismatch
-tests/selfhost_frontend/err_condition_type.tg|exe|condition type mismatch
-tests/selfhost_frontend/err_return_type.tg|exe|return type mismatch
-tests/selfhost_frontend/err_return_call_result_type.tg|exe|return type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|exe|ok
+bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|exe|ok
+bootstrap/selfhost/corpus/fixtures/frontend/ok_library_module.tg|library|ok
+bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|exe|ok
+bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_library.tg|library|ok
+bootstrap/selfhost/corpus/fixtures/frontend/modules_alias_ok_main.tg|exe|ok
+bootstrap/selfhost/corpus/fixtures/frontend/modules_alias_ok_library.tg|library|ok
+bootstrap/selfhost/corpus/fixtures/frontend/modules_missing_main.tg|exe|missing import
+bootstrap/selfhost/corpus/fixtures/frontend/modules_missing_library.tg|library|missing import
+bootstrap/selfhost/corpus/fixtures/frontend/modules_unknown_imported_symbol.tg|exe|unknown imported symbol
+bootstrap/selfhost/corpus/fixtures/frontend/modules_unknown_imported_symbol_library.tg|library|unknown imported symbol
+bootstrap/selfhost/corpus/fixtures/frontend/err_unknown_identifier.tg|exe|unknown identifier
+bootstrap/selfhost/corpus/fixtures/frontend/err_unknown_callee.tg|exe|unknown identifier
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_unknown_local.tg|exe|unknown identifier
+bootstrap/selfhost/corpus/fixtures/frontend/err_call_arity.tg|exe|call arity mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_type.tg|exe|type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_call_result_type.tg|exe|type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_local_type.tg|exe|type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_local_call_result_type.tg|exe|type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_condition_type.tg|exe|condition type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_return_type.tg|exe|return type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_return_call_result_type.tg|exe|return type mismatch

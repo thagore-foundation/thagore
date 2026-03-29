@@ -10,7 +10,7 @@ on:
       - "bootstrap/selfhost/**"
       - "tests/bootstrap_probe/**"
       - "tests/bootstrap_seed/**"
-      - "tests/selfhost_frontend/**"
+      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "tooling/bootstrap/**"
       - "tooling/ci/**"
       - "stdlib/**"

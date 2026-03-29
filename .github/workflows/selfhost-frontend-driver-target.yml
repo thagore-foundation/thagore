@@ -11,7 +11,7 @@ on:
       - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
       - "tests/bootstrap_seed/**"
-      - "tests/selfhost_frontend/**"
+      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
       - "tooling/ci/selfhost_frontend_driver_target.py"
       - "tools/thagore-cli/**"

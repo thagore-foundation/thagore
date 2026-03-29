@@ -8,7 +8,7 @@ pub func input_path() -> str:
   let arg = process.argv(1)
   if (string.len(arg) > 0):
     return arg
-  return "tests/bootstrap_seed/sample.tg"
+  return "bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample.tg"
 
 pub func input_kind() -> str:
   let arg = process.argv(2)

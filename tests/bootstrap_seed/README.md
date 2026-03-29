@@ -23,8 +23,12 @@ The reusable extraction target now starts under:
 
 - `bootstrap/selfhost/frontend/`
 
-`tests/bootstrap_seed/` remains the harness and regression corpus until the
-self-host frontend slice fully switches over to those reusable modules.
+The canonical bootstrap-seed fixtures now live under:
+
+- `bootstrap/selfhost/corpus/fixtures/bootstrap_seed/`
+
+This directory remains only as a compatibility/documentation surface while the
+self-host frontend line finishes moving fully under `bootstrap/selfhost/`.
 
 The executable used by the bootstrap-seed CLI tests now builds from:
 

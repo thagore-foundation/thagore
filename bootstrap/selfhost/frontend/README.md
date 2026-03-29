@@ -155,7 +155,7 @@ Current scope:
   drift in early selfhost stages is caught before it collapses into
   check-stage-only behavior
 - report/parse/scan goldens are now contract-driven through dedicated corpus
-  manifests under `tests/selfhost_frontend/`, which is the first small step
+  manifests under `bootstrap/selfhost/corpus/`, which is the first small step
   toward treating these stages as replacement targets rather than ad hoc tests
 - the standalone CI runner now validates those richer golden corpora directly,
   so stage-lane confidence no longer depends only on Rust-side test harness
@@ -169,7 +169,7 @@ Current scope:
 Boundary:
 
 - this is reusable self-host bootstrap code
-- `tests/bootstrap_seed/` remains the harness and fixture corpus
+- bootstrap fixtures now live under `bootstrap/selfhost/corpus/fixtures/`
 - top-layer bootstrap sugar is not implemented here yet
 
 Near-term next steps:

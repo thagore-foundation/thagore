@@ -11,7 +11,7 @@ on:
       - "bootstrap/selfhost/corpus/**"
       - "tests/bootstrap_probe/**"
       - "tests/bootstrap_seed/**"
-      - "tests/selfhost_frontend/**"
+      - "bootstrap/selfhost/corpus/fixtures/frontend/**"
       - "stdlib/**"
       - "crates/**"
       - "tools/thagore-cli/**"

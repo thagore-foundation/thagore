@@ -1,5 +1,12 @@
 # Selfhost Frontend Differential Corpus
 
+The canonical frontend fixtures now live under:
+
+- `bootstrap/selfhost/corpus/fixtures/frontend/`
+
+This directory remains only as a compatibility/documentation surface while the
+frontend selfhost line finishes consolidating under `bootstrap/selfhost/`.
+
 This corpus is the first narrow differential gate between:
 
 - the Rust-hosted frontend surfaced through `thagc check`
