@@ -138,6 +138,9 @@ Replacement rule:
   imports, missing modules, missing imported symbols, duplicate imports,
   duplicate aliases, duplicate imported symbols, and import-shadowing cases)
   through the same driver boundary
+- those module-fixture expectations are now stored under
+  `bootstrap/selfhost/corpus/goldens/bootstrap/modules/`, so input fixtures and
+  expected driver outputs no longer share the same directory tree
 - `desugar_corpus.txt` locks deterministic desugared output at that same
   boundary
 - report corpora lock `dump-report` behavior for both bootstrap-seed fixtures
