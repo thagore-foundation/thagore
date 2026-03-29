@@ -1,0 +1,1 @@
+tokens=int(42)@1:1 | kw(func)@1:4 | ident(helper)@1:9 | punct(()@1:15 | punct())@1:16 | punct(->)@1:18 | ident(i32)@1:21 | punct(:)@1:24 | kw(return)@1:26 | int(1)@1:33 || summary=func=helper;return=i32;locals=0;first_local=:=;return_ident=1 || symbols=helper:func || imports=resolved=;missing= || diagnostics=library module has top-level statements

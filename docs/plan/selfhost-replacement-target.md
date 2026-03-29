@@ -131,8 +131,9 @@ Replacement rule:
   rejection at the driver boundary
 - that analyze corpus now also covers a broader set of bootstrap-seed semantic
   diagnostics (`missing main`, `unknown callee`, `call arity`, primitive type
-  mismatches, non-bool conditions, duplicate declarations, unknown returns,
-  malformed lets) through the executable boundary
+  mismatches, call-result type mismatches, non-bool conditions, duplicate
+  declarations, unknown returns, unknown import-alias usage, malformed lets,
+  and library top-level rejection) through the executable boundary
 - `desugar_corpus.txt` locks deterministic desugared output at that same
   boundary
 - report corpora lock `dump-report` behavior for both bootstrap-seed fixtures
