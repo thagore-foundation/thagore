@@ -1803,7 +1803,7 @@ fn selfhost_backend_adapter_contract_matches_goldens() {
     let dir = TempDir::new().expect("temp dir");
     let binary = dir.path().join("bootstrap-selfhost-compiler");
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    build_selfhost_frontend_compiler_binary(&repo_root, &binary);
+    build_selfhost_compiler_driver_binary(&repo_root, &binary);
 
     assert_compiler_driver_manifest_matches(
         &repo_root,
