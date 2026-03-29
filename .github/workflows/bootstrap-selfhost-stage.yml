@@ -11,6 +11,7 @@ on:
       - "bootstrap/selfhost/corpus/**"
       - "bootstrap/selfhost/tools/**"
       - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_compiler_driver.py"
       - "tooling/ci/selfhost_frontend_replacement.py"
       - "tooling/ci/selfhost_frontend_driver_target.py"
       - "tooling/ci/selfhost_frontend_stage.py"
@@ -173,6 +174,16 @@ jobs:
             --manifest "bootstrap/selfhost/tools/frontend-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-driver1"
 
+      - name: Build stage1 selfhost compiler driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-compiler1"
+
       - name: Validate stage1 frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -204,6 +215,15 @@ jobs:
             --selfhost-check "$PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }}" \
             --summary-out "$PWD/bootstrap-selfhost-stage1/replacement-summary.txt"
 
+      - name: Validate stage1 compiler driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-compiler1/report.txt"
+
       - name: Rebuild stage2 selfhost frontend slice on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -223,6 +243,16 @@ jobs:
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
             --manifest "bootstrap/selfhost/tools/frontend-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-driver2"
+
+      - name: Build stage2 selfhost compiler driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-compiler2"
 
       - name: Validate stage2 frontend slice on Linux
         if: runner.os == 'Linux'
@@ -255,6 +285,15 @@ jobs:
             --selfhost-check "$PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }}" \
             --summary-out "$PWD/bootstrap-selfhost-stage2/replacement-summary.txt"
 
+      - name: Validate stage2 compiler driver on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-selfhost-compiler2/report.txt"
+
       - name: Build stage1 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -274,6 +313,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/frontend-driver-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-driver1
+
+      - name: Build stage1 selfhost compiler driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-compiler1
 
       - name: Validate stage1 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -306,6 +355,15 @@ jobs:
             --selfhost-check $PWD/bootstrap-selfhost-stage1/check${{ matrix.exe_suffix }} `
             --summary-out $PWD/bootstrap-selfhost-stage1/replacement-summary.txt
 
+      - name: Validate stage1 compiler driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-compiler1/report.txt
+
       - name: Rebuild stage2 selfhost frontend slice on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -325,6 +383,16 @@ jobs:
             --thagc-bin $PWD/${{ matrix.thagc_bin }} `
             --manifest bootstrap/selfhost/tools/frontend-driver-manifest.txt `
             --out-dir $PWD/bootstrap-selfhost-driver2
+
+      - name: Build stage2 selfhost compiler driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-compiler2
 
       - name: Validate stage2 frontend slice on Windows
         if: runner.os == 'Windows'
@@ -357,6 +425,15 @@ jobs:
             --selfhost-check $PWD/bootstrap-selfhost-stage2/check${{ matrix.exe_suffix }} `
             --summary-out $PWD/bootstrap-selfhost-stage2/replacement-summary.txt
 
+      - name: Validate stage2 compiler driver on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-selfhost-compiler2/report.txt
+
       - name: Diff stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -371,6 +448,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: diff -u bootstrap-selfhost-stage1/replacement-summary.txt bootstrap-selfhost-stage2/replacement-summary.txt
+
+      - name: Diff compiler stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-compiler1/report.txt bootstrap-selfhost-compiler2/report.txt
 
       - name: Diff stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
@@ -396,6 +478,14 @@ jobs:
             throw 'bootstrap selfhost replacement summaries differ between stage1 and stage2'
           }
 
+      - name: Diff compiler stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-compiler1/report.txt -Raw) -ne (Get-Content bootstrap-selfhost-compiler2/report.txt -Raw)) {
+            throw 'bootstrap selfhost compiler reports differ between stage1 and stage2'
+          }
+
       - name: Upload bootstrap selfhost stage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -410,6 +500,8 @@ jobs:
             bootstrap-selfhost-stage2/replacement-session-route.txt
             bootstrap-selfhost-driver1/report.txt
             bootstrap-selfhost-driver2/report.txt
+            bootstrap-selfhost-compiler1/report.txt
+            bootstrap-selfhost-compiler2/report.txt
 
       - name: Summarize bootstrap selfhost stage reports on Linux
         if: runner.os == 'Linux' && always()
@@ -446,6 +538,16 @@ jobs:
             echo "### Replacement Stage2"
             echo '```text'
             cat bootstrap-selfhost-stage2/replacement-summary.txt
+            echo '```'
+            echo
+            echo "### Compiler Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-compiler1/report.txt
+            echo '```'
+            echo
+            echo "### Compiler Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-compiler2/report.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -486,5 +588,15 @@ jobs:
           ### Replacement Stage2
           ```text
           $(if (Test-Path bootstrap-selfhost-stage2/replacement-summary.txt) { Get-Content bootstrap-selfhost-stage2/replacement-summary.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Compiler Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler1/report.txt) { Get-Content bootstrap-selfhost-compiler1/report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Compiler Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler2/report.txt) { Get-Content bootstrap-selfhost-compiler2/report.txt -Raw } else { '<report missing>' })
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

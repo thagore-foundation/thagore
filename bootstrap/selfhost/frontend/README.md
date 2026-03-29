@@ -135,6 +135,9 @@ Current scope:
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
   `scan` / `parse` / `check`
+- that same rehearsal now also diffs the first compiler-driver boundary
+  (`compiler.tg`) across stage1 and stage2, so command-surface drift is part
+  of the bootstrap loop rather than living only in a standalone workflow
 - that rehearsal now also diffs the session-routed replacement summary for
   `check.tg` across stage1 and stage2, so deterministic rebuild confidence
   includes the real Rust-path replacement hook rather than only standalone
