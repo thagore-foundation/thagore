@@ -1473,6 +1473,12 @@ fn selfhost_frontend_main_target_manifests_match_goldens() {
     assert_main_manifest_matches(
         &repo_root,
         &binary,
+        "bootstrap/selfhost/corpus/frontend-analyze.txt",
+        None,
+    );
+    assert_main_manifest_matches(
+        &repo_root,
+        &binary,
         "bootstrap/selfhost/corpus/bootstrap-desugar.txt",
         Some("dump-desugared"),
     );

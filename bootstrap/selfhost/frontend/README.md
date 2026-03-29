@@ -111,6 +111,10 @@ Current scope:
   higher executable driver boundary (`main.tg`) separately, so the top-level
   session/driver path can be hardened without coupling it to the lower stage
   slice
+- `bootstrap/selfhost/corpus/frontend-analyze.txt` now locks full `analyze`
+  output for the frontend differential corpus too, so the driver boundary is
+  no longer limited to bootstrap-seed fixtures or report-mode-only frontend
+  cases
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as

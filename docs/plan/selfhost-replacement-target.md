@@ -145,6 +145,10 @@ Replacement rule:
   boundary
 - report corpora lock `dump-report` behavior for both bootstrap-seed fixtures
   and the reusable selfhost frontend module-surface fixtures
+- `bootstrap/selfhost/corpus/frontend-analyze.txt` now locks full `analyze`
+  output for the reusable frontend differential corpus too, so the driver
+  target covers richer top-level output parity instead of relying only on
+  bootstrap-seed analyze fixtures and frontend report mode
 
 Exit criteria for Target 03:
 

@@ -90,6 +90,13 @@ def main() -> int:
     verify_manifest(
         repo_root,
         main_bin,
+        repo_root / "bootstrap/selfhost/corpus/frontend-analyze.txt",
+        "",
+        report_lines,
+    )
+    verify_manifest(
+        repo_root,
+        main_bin,
         repo_root / "bootstrap/selfhost/corpus/bootstrap-desugar.txt",
         "dump-desugared",
         report_lines,

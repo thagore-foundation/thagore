@@ -1,0 +1,1 @@
+tokens=kw(func)@1:1 | ident(main)@1:6 | punct(()@1:10 | punct())@1:11 | punct(->)@1:13 | ident(bool)@1:16 | punct(:)@1:20 | kw(return)@1:24 | int(1)@1:31 || summary=func=main;return=bool;locals=0;first_local=:=;return_ident=1 || symbols=main:func || imports=resolved=;missing= || diagnostics=return type mismatch
