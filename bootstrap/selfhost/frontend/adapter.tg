@@ -49,11 +49,27 @@ pub func phase_gate(command: str, diagnostics_ok: bool) -> str:
 
 pub func artifact_contract(command: str) -> str:
   if (string.str_eq(command, "build")):
-    return "exe-artifact"
+    return "native-exe"
   if (string.str_eq(command, "run")):
-    return "exe-artifact+stdout"
+    return "native-exe+stdout"
   if (string.str_eq(command, "check")):
     return "report-only"
+  return "frontend-only"
+
+pub func handoff(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "check")):
+    return "frontend-report"
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "backend-emission"
+    return "host-fallback"
+  return "frontend-only"
+
+pub func backend_contract(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "host-emit-v1"
+  if (string.str_eq(command, "check")):
+    return "frontend-report-v1"
   return "frontend-only"
 
 pub func emits(command: str) -> str:
@@ -67,7 +83,7 @@ pub func emits(command: str) -> str:
 
 pub func emission_input(command: str) -> str:
   if (string.str_eq(command, "build") or string.str_eq(command, "run")):
-    return "entry,artifact,capture,lowered-values,lowered-statements,lowered-terminators"
+    return "entry,artifact,capture,lowered-cfg,lowered-values,lowered-statements,lowered-terminators"
   return "entry"
 
 pub func emission_output(command: str) -> str:
@@ -103,7 +119,9 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
   let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
   let with_emits = string.concat(with_artifact, string.concat(";emits=", emits(command)))
   let with_contract = string.concat(with_emits, string.concat(";artifact_contract=", artifact_contract(command)))
-  let with_lowering_state = string.concat(with_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -126,7 +144,9 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_backend_input = string.concat(with_emits, string.concat(";backend_input=", emission_input(command)))
   let with_backend_output = string.concat(with_backend_input, string.concat(";backend_output=", emission_output(command)))
   let with_contract = string.concat(with_backend_output, string.concat(";artifact_contract=", artifact_contract(command)))
-  let with_lowering_state = string.concat(with_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -144,7 +164,9 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_input = string.concat(with_capture, string.concat(";emission_input=", emission_input(command)))
   let with_output = string.concat(with_input, string.concat(";emission_output=", emission_output(command)))
   let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
-  let with_lowering_state = string.concat(with_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 

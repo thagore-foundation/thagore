@@ -1,1 +1,1 @@
-fn=main;sig=()->i32;locals=[value:i32];blocks=[entry,exit];cfg=[entry->exit];values=[entry:const(i32=1),exit:load(value:i32)];statements=[entry:alloc(value:i32),entry:init(value:i32<-const(i32=1))];terminators=[exit:return(load(value:i32))]
+fn=main;sig=()->i32;locals=[value:i32(local)];blocks=[entry(kind=entry),exit(kind=return-exit)];cfg=[entry->exit];values=[entry:value(const(i32=1)),exit:value(load(value:i32))];statements=[entry:statement(alloc(value:i32)),entry:statement(init(value:i32<-const(i32=1)))];terminators=[exit:terminator(return(load(value:i32)))]

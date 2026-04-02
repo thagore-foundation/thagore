@@ -77,6 +77,32 @@ func append_mapping(items: str, name: str, value: str) -> str:
     return items
   return append_unique(items, string.concat(name, string.concat(":", value)))
 
+func render_local(name: str, ty: str) -> str:
+  return string.concat(name, string.concat(":", string.concat(ty, "(local)")))
+
+func render_locals(items: str) -> str:
+  if (string.len(items) == 0):
+    return ""
+  let rendered = ""
+  let parts = string.split(items, ",")
+  for part in parts:
+    let sep = string.find(part, ":")
+    if (sep < 0):
+      rendered = append_csv(rendered, part)
+      continue
+    let name = ""
+    let ty = ""
+    let index: i32 = 0
+    while (index < string.len(part)):
+      let ch = string.char_at(part, index)
+      if (index < sep):
+        name = string.concat(name, ch)
+      if (index > sep):
+        ty = string.concat(ty, ch)
+      index = index + 1
+    rendered = append_csv(rendered, render_local(name, ty))
+  return rendered
+
 func lookup_mapping(items: str, name: str) -> str:
   if (string.len(items) == 0 or string.len(name) == 0):
     return ""
@@ -104,6 +130,9 @@ func wrap_list(items: str) -> str:
 
 func value_entry(block: str, value: str) -> str:
   return string.concat(block, string.concat(":", value))
+
+func block_entry(name: str, kind: str) -> str:
+  return string.concat(name, string.concat("(kind=", string.concat(kind, ")")))
 
 func literal_type(tokens: Array[str], index: i32) -> str:
   if (token_is_kind(tokens, index, "int")):
@@ -190,11 +219,26 @@ func append_scoped(items: str, block: str, item: str) -> str:
     return items
   return append_csv(items, value_entry(block, item))
 
+func append_value(values: str, block: str, item: str) -> str:
+  if (string.len(item) == 0):
+    return values
+  return append_scoped(values, block, string.concat("value(", string.concat(item, ")")))
+
+func append_statement(statements: str, block: str, item: str) -> str:
+  if (string.len(item) == 0):
+    return statements
+  return append_scoped(statements, block, string.concat("statement(", string.concat(item, ")")))
+
+func append_terminator(terminators: str, block: str, item: str) -> str:
+  if (string.len(item) == 0):
+    return terminators
+  return append_scoped(terminators, block, string.concat("terminator(", string.concat(item, ")")))
+
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
-  return append_scoped(values, block, item)
+  return append_value(values, block, item)
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
@@ -213,7 +257,7 @@ func is_assignment_target(tokens: Array[str], index: i32) -> bool:
 func render_function(name: str, return_type: str, locals: str, blocks: str, edges: str, values: str, statements: str, terminators: str) -> str:
   let with_name = string.concat("fn=", name)
   let with_sig = string.concat(with_name, string.concat(";sig=()->", return_type))
-  let with_locals = string.concat(with_sig, string.concat(";locals=", wrap_list(locals)))
+  let with_locals = string.concat(with_sig, string.concat(";locals=", wrap_list(render_locals(locals))))
   let with_blocks = string.concat(with_locals, string.concat(";blocks=", wrap_list(blocks)))
   let with_cfg = string.concat(with_blocks, string.concat(";cfg=", wrap_list(edges)))
   let with_values = string.concat(with_cfg, string.concat(";values=", wrap_list(values)))
@@ -249,7 +293,7 @@ pub func lower_report(source: str) -> str:
       current_return = token_value(tokens, index + 5)
       func_returns = append_mapping(func_returns, current_name, current_return)
       current_locals = ""
-      current_blocks = "entry"
+      current_blocks = block_entry("entry", "entry")
       current_edges = ""
       current_block = "entry"
       current_values = ""
@@ -261,11 +305,11 @@ pub func lower_report(source: str) -> str:
       let local_name = token_value(tokens, index + 1)
       let local_type = token_value(tokens, index + 3)
       current_locals = append_mapping(current_locals, local_name, local_type)
-      current_statements = append_scoped(current_statements, current_block, string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
+      current_statements = append_statement(current_statements, current_block, string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
       if (token_matches(tokens, index + 4, "punct", "=")):
         let rhs = rhs_state(tokens, index + 5, current_locals, func_returns, local_type)
         current_values = append_rhs_value(current_values, current_block, rhs)
-        current_statements = append_scoped(current_statements, current_block, string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
+        current_statements = append_statement(current_statements, current_block, string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
       index = index + 1
       continue
     if (is_assignment_target(tokens, index)):
@@ -273,44 +317,44 @@ pub func lower_report(source: str) -> str:
       let target_type = lookup_mapping(current_locals, target)
       let rhs = rhs_state(tokens, index + 2, current_locals, func_returns, target_type)
       current_values = append_rhs_value(current_values, current_block, rhs)
-      current_statements = append_scoped(current_statements, current_block, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
+      current_statements = append_statement(current_statements, current_block, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "if")):
-      current_blocks = append_unique(current_blocks, "then")
-      current_blocks = append_unique(current_blocks, "exit")
+      current_blocks = append_unique(current_blocks, block_entry("then", "branch-body"))
+      current_blocks = append_unique(current_blocks, block_entry("exit", "return-exit"))
       current_edges = append_edge(current_edges, current_block, "then")
       current_edges = append_edge(current_edges, current_block, "exit")
       let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
       current_values = append_rhs_value(current_values, current_block, cond)
-      current_terminators = append_scoped(current_terminators, current_block, string.concat("branch(cond=", string.concat(rhs_descriptor(cond), ",then=then,else=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(rhs_descriptor(cond), ",then=then,else=exit)")))
       current_block = "then"
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "while")):
-      current_blocks = append_unique(current_blocks, "loop")
-      current_blocks = append_unique(current_blocks, "exit")
+      current_blocks = append_unique(current_blocks, block_entry("loop", "loop-body"))
+      current_blocks = append_unique(current_blocks, block_entry("exit", "return-exit"))
       current_edges = append_edge(current_edges, current_block, "loop")
       current_edges = append_edge(current_edges, current_block, "exit")
       current_edges = append_edge(current_edges, "loop", "loop")
       current_edges = append_edge(current_edges, "loop", "exit")
       let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
       current_values = append_rhs_value(current_values, current_block, cond)
-      current_terminators = append_scoped(current_terminators, current_block, string.concat("loop(cond=", string.concat(rhs_descriptor(cond), ",body=loop,exit=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(rhs_descriptor(cond), ",body=loop,exit=exit)")))
       current_block = "loop"
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "return")):
-      current_blocks = append_unique(current_blocks, "exit")
+      current_blocks = append_unique(current_blocks, block_entry("exit", "return-exit"))
       current_edges = append_edge(current_edges, current_block, "exit")
       current_block = "exit"
       let rhs = rhs_state(tokens, index + 1, current_locals, func_returns, current_return)
       current_values = append_rhs_value(current_values, current_block, rhs)
       let descriptor = rhs_descriptor(rhs)
       if (string.len(descriptor) > 0 and string.str_eq(descriptor, "unknown") == false):
-        current_terminators = append_scoped(current_terminators, current_block, string.concat("return(", string.concat(descriptor, ")")))
+        current_terminators = append_terminator(current_terminators, current_block, string.concat("return(", string.concat(descriptor, ")")))
       if (string.len(descriptor) == 0 or string.str_eq(descriptor, "unknown")):
-        current_terminators = append_scoped(current_terminators, current_block, "return(void)")
+        current_terminators = append_terminator(current_terminators, current_block, "return(void)")
       index = index + 1
       continue
     index = index + 1
