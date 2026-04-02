@@ -150,20 +150,22 @@ Current scope:
   invalid-command fallback, and missing-source exits
 - `bootstrap/selfhost/corpus/backend-adapter-contract.txt` now locks the
   explicit adapter boundary between the selfhost compiler slice and the host
-  backend/codegen path
+  backend/codegen path, including hidden `emit-build` / `emit-run` previews
+  that expose the narrowed emission handoff directly
 - `bootstrap/selfhost/corpus/backend-adapter-artifacts.txt` now locks the
   real adapter sidecar artifacts emitted by `build` / `run`, including route
   changes for diagnostics-ok vs diagnostics-error paths plus the emitted
-  lowered sidecar and normalized host-command sidecar that the backend adapter
-  consumes; that contract now also proves a host-fallback build can emit a
-  runnable artifact with stable output
+  lowered sidecar, emission sidecar, and normalized host-command sidecar that
+  the backend adapter consumes; that contract now also proves a host-fallback
+  build can emit a runnable artifact with stable output
 - `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt` now locks a real
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
   compares their observable output
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
-  assignment flow, control-flow shape, and typed lowered operations through
+  assignment flow, control-flow shape, typed lowered operations, and explicit
+  split between lowered `values`, `statements`, and `terminators` through
   `lower.tg`, including explicit block-to-block CFG edges
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and

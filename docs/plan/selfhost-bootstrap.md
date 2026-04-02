@@ -57,6 +57,15 @@ The migration order is fixed unless a blocker is documented.
 5. compiler driver orchestration in Thagore
 6. backend/codegen adapters last
 
+Current active focus inside steps 4-6:
+
+- split lowering contracts into explicit `values`, `statements`, and
+  `terminators`
+- turn backend adapter previews into explicit emission contracts with stable
+  input/output sidecars
+- deepen compiler-driver routing so `check` / `build` / `run` expose phase and
+  artifact contracts instead of behaving like thin host wrappers
+
 Reason:
 
 - frontend logic is easier to differential-test

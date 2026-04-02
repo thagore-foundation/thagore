@@ -1,2 +1,1 @@
-fn=main;sig=()->bool;locals=[ready:bool];blocks=[entry,loop,exit];cfg=[entry->loop,loop->exit];ir=[entry:alloc(ready:bool),entry:const(bool),entry:store(ready:bool<-const:bool),entry:load(ready:bool),entry:loop(load:ready:bool),loop:const(bool),loop:assign(ready:bool<-const:bool),exit:load(ready:bool),exit:ret(load:ready:bool)]
-
+fn=main;sig=()->bool;locals=[ready:bool];blocks=[entry,loop,exit];cfg=[entry->loop,entry->exit,loop->loop,loop->exit];values=[entry:const(bool=true),entry:load(ready:bool),loop:const(bool=false),exit:load(ready:bool)];statements=[entry:alloc(ready:bool),entry:init(ready:bool<-const(bool=true)),loop:assign(ready:bool<-const(bool=false))];terminators=[entry:loop(cond=load(ready:bool),body=loop,exit=exit),exit:return(load(ready:bool))]

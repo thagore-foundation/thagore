@@ -1,4 +1,7 @@
 # label|cwd|command|path|kind|extra|exit|expected
 ADAPTER_BUILD|.|adapter-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_adapter_build.txt
 ADAPTER_RUN|.|adapter-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_adapter_run.txt
+EMIT_BUILD|.|emit-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_emit_build.txt
+EMIT_RUN|.|emit-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_emit_run.txt
 ADAPTER_BUILD_FAIL|.|adapter-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_adapter_build_fail.txt
+EMIT_BUILD_FAIL|.|emit-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_emit_build_fail.txt
