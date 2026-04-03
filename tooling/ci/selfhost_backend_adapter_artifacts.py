@@ -74,9 +74,10 @@ def main() -> int:
             lowered_expected,
             emit_expected,
             link_expected,
+            verify_expected,
             host_expected,
             artifact_stdout_expected,
-        ) in load_manifest(repo_root / args.manifest, 15):
+        ) in load_manifest(repo_root / args.manifest, 16):
             cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
             env = dict(os.environ)
             env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
@@ -90,8 +91,9 @@ def main() -> int:
             lowered_path = scratch_dir / f"{artifact_name}.lowered.txt"
             emit_path = scratch_dir / f"{artifact_name}.emit.txt"
             link_path = scratch_dir / f"{artifact_name}.link.txt"
+            verify_path = scratch_dir / f"{artifact_name}.verify.txt"
             host_path = scratch_dir / f"{artifact_name}.host.txt"
-            for path in (artifact_path, runtime_object_path, plan_path, adapter_path, lowered_path, emit_path, link_path, host_path):
+            for path in (artifact_path, runtime_object_path, plan_path, adapter_path, lowered_path, emit_path, link_path, verify_path, host_path):
                 if path.exists():
                     path.unlink()
             cmd = [str(compiler_bin), command, resolve_arg(repo_root, path_raw)]
@@ -154,6 +156,13 @@ def main() -> int:
                 raise SystemExit(
                     f"backend adapter link artifact drift for {label}"
                     f"\nexpected:\n{expected_link_text}\nactual:\n{actual_link}"
+                )
+            actual_verify = canonicalize(verify_path.read_text(encoding="utf-8"))
+            expected_verify_text = canonicalize((repo_root / verify_expected).read_text(encoding="utf-8"))
+            if actual_verify != expected_verify_text:
+                raise SystemExit(
+                    f"backend adapter verify artifact drift for {label}"
+                    f"\nexpected:\n{expected_verify_text}\nactual:\n{actual_verify}"
                 )
             actual_host = canonicalize(host_path.read_text(encoding="utf-8"))
             expected_host_text = canonicalize((repo_root / host_expected).read_text(encoding="utf-8"))

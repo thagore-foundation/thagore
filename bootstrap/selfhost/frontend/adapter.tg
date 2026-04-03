@@ -92,9 +92,9 @@ pub func backend_contract(command: str) -> str:
 
 pub func emits(command: str) -> str:
   if (string.str_eq(command, "build")):
-    return "artifact,plan,adapter,emit,link,lowered,host,runtime-object"
+    return "artifact,plan,adapter,emit,link,verify,lowered,host,runtime-object"
   if (string.str_eq(command, "run")):
-    return "artifact,stdout,plan,adapter,emit,link,lowered,host,runtime-object"
+    return "artifact,stdout,plan,adapter,emit,link,verify,lowered,host,runtime-object"
   if (string.str_eq(command, "check")):
     return "report"
   return "report"
@@ -130,6 +130,23 @@ pub func link_output(command: str) -> str:
     return "artifact,stdout"
   return "report"
 
+pub func verify_contract(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "artifact-smoke-v1"
+  return "frontend-only"
+
+pub func verify_input(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "artifact,runtime-object"
+  return "frontend-only"
+
+pub func verify_output(command: str) -> str:
+  if (string.str_eq(command, "build")):
+    return "artifact-smoke"
+  if (string.str_eq(command, "run")):
+    return "artifact-smoke,stdout"
+  return "report"
+
 pub func lowering_shape(lowered: str) -> str:
   if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
     return "typed-defuse-blockcfg"
@@ -162,7 +179,8 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
   let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
-  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -189,7 +207,8 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
   let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
-  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -211,7 +230,8 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
   let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
-  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -232,7 +252,30 @@ pub func link_request(command: str, path: str, source_root: str, current_kind: s
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
   let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
-  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
+  return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
+
+pub func verify_request(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
+  let base = render_base(command, path, source_root, current_kind)
+  let route = "host-fallback"
+  if (diagnostics_ok):
+    route = "selfhost-checked"
+  let with_verifier = string.concat(base, ";verifier=artifact-smoke")
+  let with_route = string.concat(with_verifier, string.concat(";route=", route))
+  let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
+  let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
+  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_input = string.concat(with_runtime_object, string.concat(";verify_input=", verify_input(command)))
+  let with_output = string.concat(with_input, string.concat(";verify_output=", verify_output(command)))
+  let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -276,3 +319,6 @@ pub func emission_artifact_name(artifact_name: str) -> str:
 
 pub func link_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".link.txt")
+
+pub func verify_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".verify.txt")
