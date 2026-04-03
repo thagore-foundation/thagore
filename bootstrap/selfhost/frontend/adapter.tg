@@ -38,9 +38,9 @@ pub func phases(command: str) -> str:
   if (string.str_eq(command, "check")):
     return "read,desugar,scan,parse,resolve,check,report"
   if (string.str_eq(command, "build")):
-    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link"
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link,verify-artifact"
   if (string.str_eq(command, "run")):
-    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link,host-run,capture"
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link,verify-artifact,host-run,capture"
   return "read,desugar,scan,parse,resolve,check"
 
 pub func phase_route(command: str, diagnostics_ok: bool) -> str:
@@ -48,19 +48,19 @@ pub func phase_route(command: str, diagnostics_ok: bool) -> str:
     return "read>frontend-check>report"
   if (string.str_eq(command, "build")):
     if (diagnostics_ok):
-      return "read>frontend-check>lower>adapter>host-emit>host-link"
-    return "read>frontend-check>diagnostic-fallback>host-emit>host-link"
+      return "read>frontend-check>lower>adapter>host-emit>host-link>verify-artifact"
+    return "read>frontend-check>diagnostic-fallback>host-emit>host-link>verify-artifact"
   if (string.str_eq(command, "run")):
     if (diagnostics_ok):
-      return "read>frontend-check>lower>adapter>host-emit>host-link>host-run"
-    return "read>frontend-check>diagnostic-fallback>host-emit>host-link>host-run"
+      return "read>frontend-check>lower>adapter>host-emit>host-link>verify-artifact>host-run"
+    return "read>frontend-check>diagnostic-fallback>host-emit>host-link>verify-artifact>host-run"
   return "read>frontend-check"
 
 pub func phase_gate(command: str, diagnostics_ok: bool) -> str:
   if (string.str_eq(command, "check")):
     return "frontend-report"
   if (diagnostics_ok):
-    return "checked-lowered"
+    return "checked-lowered-emitted"
   if (string.str_eq(command, "build") or string.str_eq(command, "run")):
     return "diagnostic-fallback"
   return "frontend-only"
@@ -92,16 +92,16 @@ pub func backend_contract(command: str) -> str:
 
 pub func emits(command: str) -> str:
   if (string.str_eq(command, "build")):
-    return "artifact,plan,adapter,emit,lowered"
+    return "artifact,plan,adapter,emit,link,lowered,host,runtime-object"
   if (string.str_eq(command, "run")):
-    return "stdout,plan,adapter,emit,lowered"
+    return "artifact,stdout,plan,adapter,emit,link,lowered,host,runtime-object"
   if (string.str_eq(command, "check")):
     return "report"
   return "report"
 
 pub func emission_input(command: str) -> str:
   if (string.str_eq(command, "build") or string.str_eq(command, "run")):
-    return "entry,artifact,capture,lowered-cfg,lowered-values,lowered-defs,lowered-uses,lowered-statements,lowered-terminators"
+    return "entry,artifact,capture,lowered-blocks,lowered-cfg,lowered-values,lowered-defs,lowered-uses,lowered-statements,lowered-terminators"
   return "entry"
 
 pub func emission_output(command: str) -> str:
@@ -118,7 +118,21 @@ pub func link_contract(command: str) -> str:
     return "host-cc-link-v1"
   return "frontend-only"
 
+pub func link_input(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "artifact,runtime-object,linker,host-emit-output"
+  return "frontend-only"
+
+pub func link_output(command: str) -> str:
+  if (string.str_eq(command, "build")):
+    return "artifact"
+  if (string.str_eq(command, "run")):
+    return "artifact,stdout"
+  return "report"
+
 pub func lowering_shape(lowered: str) -> str:
+  if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
+    return "typed-defuse-blockcfg"
   if (string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
     return "typed-defuse-cfg"
   if (string.contains(lowered, "values=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
@@ -201,6 +215,27 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
+pub func link_request(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
+  let base = render_base(command, path, source_root, current_kind)
+  let route = "host-fallback"
+  if (diagnostics_ok):
+    route = "selfhost-checked"
+  let with_linker = string.concat(base, ";linker=cc")
+  let with_route = string.concat(with_linker, string.concat(";route=", route))
+  let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
+  let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
+  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_input = string.concat(with_runtime_object, string.concat(";link_input=", link_input(command)))
+  let with_output = string.concat(with_input, string.concat(";link_output=", link_output(command)))
+  let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
+  return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
+
 pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
   return string.concat(host_thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
 
@@ -238,3 +273,6 @@ pub func host_command_artifact_name(artifact_name: str) -> str:
 
 pub func emission_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".emit.txt")
+
+pub func link_artifact_name(artifact_name: str) -> str:
+  return string.concat(artifact_name, ".link.txt")

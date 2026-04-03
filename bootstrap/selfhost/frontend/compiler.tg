@@ -84,6 +84,9 @@ func host_command_artifact_path(output_path: str) -> str:
 func emission_artifact_path(output_path: str) -> str:
   return string.concat(output_path, ".emit.txt")
 
+func link_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".link.txt")
+
 func actual_command(command: str) -> str:
   if (string.str_eq(command, "plan-build") or string.str_eq(command, "adapter-build") or string.str_eq(command, "emit-build")):
     return "build"
@@ -224,11 +227,13 @@ pub func main() -> i32:
     let plan = adapter.orchestration_plan("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let request = adapter.adapter_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let emission = adapter.emission_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
+    let link = adapter.link_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let host_command = adapter.build_command(host_thagc(), path, output_path)
     let host_summary = adapter.host_command_summary("build", host_thagc(), path, artifact_name(), "")
     fs.write(plan_artifact_path(output_path), plan)
     fs.write(request_artifact_path(output_path), request)
     fs.write(emission_artifact_path(output_path), emission)
+    fs.write(link_artifact_path(output_path), link)
     fs.write(lowered_artifact_path(output_path), lowered)
     fs.write(host_command_artifact_path(output_path), host_summary)
     let exit_code = process.run(host_command)
@@ -252,12 +257,14 @@ pub func main() -> i32:
     let plan = adapter.orchestration_plan("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let request = adapter.adapter_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let emission = adapter.emission_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
+    let link = adapter.link_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let build_command = adapter.build_command(host_thagc(), path, output_path)
     let run_command = adapter.run_command(output_path, capture_path(output_path))
     let host_summary = adapter.host_command_summary("run", host_thagc(), path, artifact_name(), capture_path(artifact_name()))
     fs.write(plan_artifact_path(output_path), plan)
     fs.write(request_artifact_path(output_path), request)
     fs.write(emission_artifact_path(output_path), emission)
+    fs.write(link_artifact_path(output_path), link)
     fs.write(lowered_artifact_path(output_path), lowered)
     fs.write(host_command_artifact_path(output_path), host_summary)
     let build_code = process.run(build_command)

@@ -131,8 +131,22 @@ func wrap_list(items: str) -> str:
 func value_entry(block: str, value: str) -> str:
   return string.concat(block, string.concat(":", value))
 
+func block_id(name: str) -> str:
+  if (string.str_eq(name, "entry")):
+    return "b0"
+  if (string.str_eq(name, "then")):
+    return "b1"
+  if (string.str_eq(name, "loop")):
+    return "b2"
+  if (string.str_eq(name, "exit")):
+    return "b3"
+  return string.concat("b_", name)
+
+func block_label(name: str) -> str:
+  return string.concat(name, string.concat("#", block_id(name)))
+
 func block_entry(name: str, kind: str) -> str:
-  return string.concat(name, string.concat("(kind=", string.concat(kind, ")")))
+  return string.concat(block_label(name), string.concat("(kind=", string.concat(kind, ")")))
 
 func literal_type(tokens: Array[str], index: i32) -> str:
   if (token_is_kind(tokens, index, "int")):
@@ -221,7 +235,7 @@ func rhs_descriptor(state: str) -> str:
 func append_scoped(items: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
     return items
-  return append_csv(items, value_entry(block, item))
+  return append_csv(items, value_entry(block_label(block), item))
 
 func append_value(values: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
@@ -259,7 +273,7 @@ func append_rhs_value(values: str, block: str, state: str) -> str:
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
     return edges
-  return append_unique(edges, string.concat(from_block, string.concat("->", to_block)))
+  return append_unique(edges, string.concat(block_label(from_block), string.concat("->", block_label(to_block))))
 
 func is_assignment_target(tokens: Array[str], index: i32) -> bool:
   if (token_is_kind(tokens, index, "ident") == false):

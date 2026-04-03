@@ -1699,8 +1699,9 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let adapter_expected = repo_root.join(&case[9]);
         let lowered_expected = repo_root.join(&case[10]);
         let emit_expected = repo_root.join(&case[11]);
-        let host_expected = repo_root.join(&case[12]);
-        let artifact_stdout_expected = &case[13];
+        let link_expected = repo_root.join(&case[12]);
+        let host_expected = repo_root.join(&case[13]);
+        let artifact_stdout_expected = &case[14];
         let artifact_path = scratch.path().join(artifact_name);
         let runtime_object_path = scratch
             .path()
@@ -1709,8 +1710,9 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
         let lowered_path = scratch.path().join(format!("{artifact_name}.lowered.txt"));
         let emit_path = scratch.path().join(format!("{artifact_name}.emit.txt"));
+        let link_path = scratch.path().join(format!("{artifact_name}.link.txt"));
         let host_path = scratch.path().join(format!("{artifact_name}.host.txt"));
-        for path in [&artifact_path, &runtime_object_path, &plan_path, &adapter_path, &lowered_path, &emit_path, &host_path] {
+        for path in [&artifact_path, &runtime_object_path, &plan_path, &adapter_path, &lowered_path, &emit_path, &link_path, &host_path] {
             let _ = fs::remove_file(path);
         }
 
@@ -1793,6 +1795,17 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
             actual_emit.trim_end(),
             expected_emit.trim_end(),
             "unexpected emission artifact for backend adapter case {label}"
+        );
+        let expected_link = fs::read_to_string(link_expected)
+            .expect("read expected link")
+            .replace("\r\n", "\n");
+        let actual_link = fs::read_to_string(&link_path)
+            .expect("read actual link")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_link.trim_end(),
+            expected_link.trim_end(),
+            "unexpected link artifact for backend adapter case {label}"
         );
         let expected_host = fs::read_to_string(host_expected)
             .expect("read expected host command")
