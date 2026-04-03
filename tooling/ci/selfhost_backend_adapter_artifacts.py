@@ -38,6 +38,12 @@ def canonicalize(text: str) -> str:
     return normalized
 
 
+def runtime_object_name(artifact_name: str) -> str:
+    if artifact_name.endswith(".exe"):
+        artifact_name = artifact_name[:-4]
+    return f"{artifact_name}.thagore_rt.o"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required=True)
@@ -77,12 +83,13 @@ def main() -> int:
                 env["THAGORE_STAGE0"] = host_thagc.name
                 env["PATH"] = f"{host_thagc.parent}{os.pathsep}{env.get('PATH', '')}"
             artifact_path = scratch_dir / artifact_name
+            runtime_object_path = scratch_dir / runtime_object_name(artifact_name)
             plan_path = scratch_dir / f"{artifact_name}.plan.txt"
             adapter_path = scratch_dir / f"{artifact_name}.adapter.txt"
             lowered_path = scratch_dir / f"{artifact_name}.lowered.txt"
             emit_path = scratch_dir / f"{artifact_name}.emit.txt"
             host_path = scratch_dir / f"{artifact_name}.host.txt"
-            for path in (artifact_path, plan_path, adapter_path, lowered_path, emit_path, host_path):
+            for path in (artifact_path, runtime_object_path, plan_path, adapter_path, lowered_path, emit_path, host_path):
                 if path.exists():
                     path.unlink()
             cmd = [str(compiler_bin), command, resolve_arg(repo_root, path_raw)]
@@ -148,6 +155,8 @@ def main() -> int:
                 )
             if command == "build" and expected_code == 0 and not artifact_path.exists():
                 raise SystemExit(f"backend adapter build artifact missing for {label}")
+            if expected_code == 0 and not runtime_object_path.exists():
+                raise SystemExit(f"backend adapter runtime object missing for {label}")
             if command == "build" and expected_code == 0 and artifact_stdout_expected:
                 built = subprocess.run(
                     [str(artifact_path)],

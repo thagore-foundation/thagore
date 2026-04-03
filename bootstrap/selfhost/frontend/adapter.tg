@@ -3,6 +3,24 @@ import std.string as string
 func normalize_path(path: str) -> str:
   return string.replace(path, "\\", "/")
 
+func strip_exe_suffix(name: str) -> str:
+  if (string.len(name) < 4):
+    return name
+  let start = string.len(name) - 4
+  let suffix = ""
+  let index: i32 = start
+  while (index < string.len(name)):
+    suffix = string.concat(suffix, string.char_at(name, index))
+    index = index + 1
+  if (string.str_eq(suffix, ".exe")):
+    let trimmed = ""
+    let inner: i32 = 0
+    while (inner < start):
+      trimmed = string.concat(trimmed, string.char_at(name, inner))
+      inner = inner + 1
+    return trimmed
+  return name
+
 func render_base(command: str, path: str, source_root: str, current_kind: str) -> str:
   let with_command = string.concat("command=", command)
   let with_entry = string.concat(with_command, string.concat(";entry=", normalize_path(path)))
@@ -49,9 +67,9 @@ pub func phase_gate(command: str, diagnostics_ok: bool) -> str:
 
 pub func artifact_contract(command: str) -> str:
   if (string.str_eq(command, "build")):
-    return "native-exe"
+    return "native-exe+rto"
   if (string.str_eq(command, "run")):
-    return "native-exe+stdout"
+    return "native-exe+rto+stdout"
   if (string.str_eq(command, "check")):
     return "report-only"
   return "frontend-only"
@@ -88,9 +106,9 @@ pub func emission_input(command: str) -> str:
 
 pub func emission_output(command: str) -> str:
   if (string.str_eq(command, "build")):
-    return "artifact"
+    return "artifact,runtime-object"
   if (string.str_eq(command, "run")):
-    return "artifact,stdout"
+    return "artifact,runtime-object,stdout"
   if (string.str_eq(command, "check")):
     return "report"
   return "report"
@@ -117,7 +135,8 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
   let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
-  let with_emits = string.concat(with_artifact, string.concat(";emits=", emits(command)))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_emits = string.concat(with_runtime_object, string.concat(";emits=", emits(command)))
   let with_contract = string.concat(with_emits, string.concat(";artifact_contract=", artifact_contract(command)))
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
@@ -140,7 +159,8 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
   let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
   let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
-  let with_emits = string.concat(with_capture, string.concat(";emits=", emits(command)))
+  let with_runtime_object = string.concat(with_capture, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_emits = string.concat(with_runtime_object, string.concat(";emits=", emits(command)))
   let with_backend_input = string.concat(with_emits, string.concat(";backend_input=", emission_input(command)))
   let with_backend_output = string.concat(with_backend_input, string.concat(";backend_output=", emission_output(command)))
   let with_contract = string.concat(with_backend_output, string.concat(";artifact_contract=", artifact_contract(command)))
@@ -161,7 +181,8 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
   let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
   let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
-  let with_input = string.concat(with_capture, string.concat(";emission_input=", emission_input(command)))
+  let with_runtime_object = string.concat(with_capture, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_input = string.concat(with_runtime_object, string.concat(";emission_input=", emission_input(command)))
   let with_output = string.concat(with_input, string.concat(";emission_output=", emission_output(command)))
   let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
@@ -176,6 +197,9 @@ pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
 pub func run_command(output_path: str, capture_file: str) -> str:
   return string.concat(output_path, string.concat(" > ", capture_file))
 
+pub func runtime_object_name(artifact_name: str) -> str:
+  return string.concat(strip_exe_suffix(artifact_name), ".thagore_rt.o")
+
 pub func host_command_summary(command: str, host_thagc: str, path: str, artifact_name: str, capture_name: str) -> str:
   let binary = host_thagc
   if (string.str_eq(binary, "thagc.exe")):
@@ -184,9 +208,10 @@ pub func host_command_summary(command: str, host_thagc: str, path: str, artifact
   let with_action = string.concat(base, string.concat(";action=", command))
   let with_entry = string.concat(with_action, string.concat(";entry=", normalize_path(path)))
   let with_artifact = string.concat(with_entry, string.concat(";artifact=", artifact_name))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   if (string.str_eq(command, "run")):
-    return string.concat(with_artifact, string.concat(";capture=", capture_name))
-  return with_artifact
+    return string.concat(with_runtime_object, string.concat(";capture=", capture_name))
+  return with_runtime_object
 
 pub func plan_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".plan.txt")

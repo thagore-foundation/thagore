@@ -1,1 +1,1 @@
-host=thagc;action=run;entry=bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg;artifact=selfhost-run-print.exe;capture=selfhost-run-print.exe.stdout.txt
+host=thagc;action=run;entry=bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg;artifact=selfhost-run-print.exe;runtime_object=selfhost-run-print.thagore_rt.o;capture=selfhost-run-print.exe.stdout.txt

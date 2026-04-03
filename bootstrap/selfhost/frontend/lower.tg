@@ -182,21 +182,25 @@ func rhs_state(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_t
   if (string.len(literal) > 0):
     let value = literal_value(tokens, index)
     let repr = string.concat("const(", string.concat(literal, string.concat("=", string.concat(value, ")"))))
-    return string.concat("const;", string.concat(repr, string.concat(";", string.concat(literal, string.concat(";", repr)))))
+    let ref = string.concat("const_", string.concat(literal, string.concat("_", value)))
+    return string.concat("const;", string.concat(repr, string.concat(";", string.concat(literal, string.concat(";", ref)))))
   let call = call_name(tokens, index)
   if (string.len(call) > 0):
     let result_type = value_type(tokens, index, locals, funcs, hinted_type)
     let repr = string.concat("call(", string.concat(call, string.concat("->", string.concat(result_type, ")"))))
-    return string.concat("call;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", repr)))))
+    let ref = string.concat("call_", string.concat(call, string.concat("_", result_type)))
+    return string.concat("call;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
   let load = load_name(tokens, index)
   if (string.len(load) > 0):
     let result_type = value_type(tokens, index, locals, funcs, hinted_type)
     let repr = string.concat("load(", string.concat(load, string.concat(":", string.concat(result_type, ")"))))
-    return string.concat("load;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", repr)))))
+    let ref = string.concat("load_", string.concat(load, string.concat("_", result_type)))
+    return string.concat("load;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
   let result_type = value_type(tokens, index, locals, funcs, hinted_type)
   if (string.len(result_type) > 0):
     let repr = string.concat("value(", string.concat(result_type, ")"))
-    return string.concat("value;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", repr)))))
+    let ref = string.concat("value_", result_type)
+    return string.concat("value;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
   return "unknown;;;unknown"
 
 func split_state(state: str, part: i32) -> str:
@@ -236,9 +240,11 @@ func append_terminator(terminators: str, block: str, item: str) -> str:
 
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
+  let ref = rhs_descriptor(state)
+  let ty = rhs_type_name(state)
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
-  return append_value(values, block, item)
+  return append_value(values, block, string.concat(string.concat(ref, string.concat(":", ty)), string.concat("=", item)))
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):

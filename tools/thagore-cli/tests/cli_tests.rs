@@ -1487,6 +1487,11 @@ fn resolve_compiler_driver_path(repo_root: &Path, raw: &str) -> Option<String> {
     Some(raw.to_string())
 }
 
+fn runtime_object_name_for_artifact(artifact_name: &str) -> String {
+    let stem = artifact_name.strip_suffix(".exe").unwrap_or(artifact_name);
+    format!("{stem}.thagore_rt.o")
+}
+
 fn assert_compiler_driver_manifest_matches(repo_root: &Path, binary: &Path, manifest: &str) {
     let cases = load_corpus_manifest(repo_root, manifest);
     let scratch = TempDir::new().expect("compiler driver scratch");
@@ -1697,12 +1702,15 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let host_expected = repo_root.join(&case[12]);
         let artifact_stdout_expected = &case[13];
         let artifact_path = scratch.path().join(artifact_name);
+        let runtime_object_path = scratch
+            .path()
+            .join(runtime_object_name_for_artifact(artifact_name));
         let plan_path = scratch.path().join(format!("{artifact_name}.plan.txt"));
         let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
         let lowered_path = scratch.path().join(format!("{artifact_name}.lowered.txt"));
         let emit_path = scratch.path().join(format!("{artifact_name}.emit.txt"));
         let host_path = scratch.path().join(format!("{artifact_name}.host.txt"));
-        for path in [&artifact_path, &plan_path, &adapter_path, &lowered_path, &emit_path, &host_path] {
+        for path in [&artifact_path, &runtime_object_path, &plan_path, &adapter_path, &lowered_path, &emit_path, &host_path] {
             let _ = fs::remove_file(path);
         }
 
@@ -1803,6 +1811,11 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
                 "missing backend adapter build artifact for {label}: {}",
                 artifact_path.display()
             );
+            assert!(
+                runtime_object_path.exists(),
+                "missing backend adapter runtime object for {label}: {}",
+                runtime_object_path.display()
+            );
             if !artifact_stdout_expected.is_empty() {
                 let built = Command::new(&artifact_path)
                     .current_dir(&cwd)
@@ -1823,6 +1836,12 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
                     "unexpected built artifact stdout for backend adapter case {label}"
                 );
             }
+        } else if expected_exit == 0 {
+            assert!(
+                runtime_object_path.exists(),
+                "missing backend adapter runtime object for {label}: {}",
+                runtime_object_path.display()
+            );
         }
     }
 }
