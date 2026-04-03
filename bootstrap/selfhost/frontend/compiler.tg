@@ -292,6 +292,7 @@ pub func main() -> i32:
       return exit_code
     if (fs.exists(output_path) == false):
       return 1
+    fs.write(verify_artifact_path(output_path), adapter.verify_completed("build", artifact_name(), false))
     println(string.concat("built=", artifact_name()))
     return 0
   if (string.str_eq(command, "run")):
@@ -329,6 +330,7 @@ pub func main() -> i32:
     fs.remove(captured)
     let run_code = process.run(adapter.run_command(output_path, captured))
     let output = session.read_source(captured)
+    fs.write(verify_artifact_path(output_path), adapter.verify_completed("run", artifact_name(), true))
     fs.remove(captured)
     fs.remove(output_path)
     if (string.len(output) > 0):

@@ -231,6 +231,9 @@ func split_state(state: str, part: i32) -> str:
 func rhs_value(state: str) -> str:
   return split_state(state, 1)
 
+func rhs_kind(state: str) -> str:
+  return split_state(state, 0)
+
 func rhs_type_name(state: str) -> str:
   return split_state(state, 2)
 
@@ -271,12 +274,13 @@ func append_use(uses: str, block: str, context: str, ref: str) -> str:
 
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
+  let kind = rhs_kind(state)
   let ref = rhs_descriptor(state)
   let ty = rhs_type_name(state)
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
   let scoped = scoped_ref(block, ref)
-  return append_value(values, block, string.concat(string.concat(scoped, string.concat(":", ty)), string.concat("=", item)))
+  return append_value(values, block, string.concat(string.concat(scoped, string.concat(":", string.concat(ty, string.concat(",class=", kind)))), string.concat(",op=", item)))
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
