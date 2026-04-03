@@ -38,9 +38,9 @@ pub func phases(command: str) -> str:
   if (string.str_eq(command, "check")):
     return "read,desugar,scan,parse,resolve,check,report"
   if (string.str_eq(command, "build")):
-    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-build"
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link"
   if (string.str_eq(command, "run")):
-    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-build,host-run,capture"
+    return "read,desugar,scan,parse,resolve,check,lower,adapter,host-emit,host-link,host-run,capture"
   return "read,desugar,scan,parse,resolve,check"
 
 pub func phase_route(command: str, diagnostics_ok: bool) -> str:
@@ -48,12 +48,12 @@ pub func phase_route(command: str, diagnostics_ok: bool) -> str:
     return "read>frontend-check>report"
   if (string.str_eq(command, "build")):
     if (diagnostics_ok):
-      return "read>frontend-check>lower>adapter>host-build"
-    return "read>frontend-check>diagnostic-fallback>host-build"
+      return "read>frontend-check>lower>adapter>host-emit>host-link"
+    return "read>frontend-check>diagnostic-fallback>host-emit>host-link"
   if (string.str_eq(command, "run")):
     if (diagnostics_ok):
-      return "read>frontend-check>lower>adapter>host-build>host-run"
-    return "read>frontend-check>diagnostic-fallback>host-build>host-run"
+      return "read>frontend-check>lower>adapter>host-emit>host-link>host-run"
+    return "read>frontend-check>diagnostic-fallback>host-emit>host-link>host-run"
   return "read>frontend-check"
 
 pub func phase_gate(command: str, diagnostics_ok: bool) -> str:
@@ -85,7 +85,7 @@ pub func handoff(command: str, diagnostics_ok: bool) -> str:
 
 pub func backend_contract(command: str) -> str:
   if (string.str_eq(command, "build") or string.str_eq(command, "run")):
-    return "host-emit-v1"
+    return "host-emit-link-v1"
   if (string.str_eq(command, "check")):
     return "frontend-report-v1"
   return "frontend-only"
@@ -101,7 +101,7 @@ pub func emits(command: str) -> str:
 
 pub func emission_input(command: str) -> str:
   if (string.str_eq(command, "build") or string.str_eq(command, "run")):
-    return "entry,artifact,capture,lowered-cfg,lowered-values,lowered-statements,lowered-terminators"
+    return "entry,artifact,capture,lowered-cfg,lowered-values,lowered-defs,lowered-uses,lowered-statements,lowered-terminators"
   return "entry"
 
 pub func emission_output(command: str) -> str:
@@ -112,6 +112,11 @@ pub func emission_output(command: str) -> str:
   if (string.str_eq(command, "check")):
     return "report"
   return "report"
+
+pub func link_contract(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "host-cc-link-v1"
+  return "frontend-only"
 
 pub func lowering_shape(lowered: str) -> str:
   if (string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
@@ -142,7 +147,8 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
   let with_contract = string.concat(with_emits, string.concat(";artifact_contract=", artifact_contract(command)))
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
-  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -168,7 +174,8 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_contract = string.concat(with_backend_output, string.concat(";artifact_contract=", artifact_contract(command)))
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
-  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -189,7 +196,8 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
   let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
   let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
-  let with_lowering_state = string.concat(with_backend_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_lowering_state = string.concat(with_link_contract, string.concat(";lowering_state=", lowering_state(lowered)))
   let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
   return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
 
@@ -211,9 +219,10 @@ pub func host_command_summary(command: str, host_thagc: str, path: str, artifact
   let with_entry = string.concat(with_action, string.concat(";entry=", normalize_path(path)))
   let with_artifact = string.concat(with_entry, string.concat(";artifact=", artifact_name))
   let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_linker = string.concat(with_runtime_object, ";linker=cc")
   if (string.str_eq(command, "run")):
-    return string.concat(with_runtime_object, string.concat(";capture=", capture_name))
-  return with_runtime_object
+    return string.concat(with_linker, string.concat(";capture=", capture_name))
+  return with_linker
 
 pub func plan_artifact_name(artifact_name: str) -> str:
   return string.concat(artifact_name, ".plan.txt")
