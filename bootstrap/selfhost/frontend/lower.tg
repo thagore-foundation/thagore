@@ -258,7 +258,8 @@ func append_statement(statements: str, block: str, item: str) -> str:
 func append_statement_kind(statements: str, block: str, kind: str, item: str) -> str:
   if (string.len(item) == 0):
     return statements
-  return append_statement(statements, block, string.concat("class=", string.concat(kind, string.concat(",op=", item))))
+  let id = string.concat(block_id(block), string.concat(".", kind))
+  return append_statement(statements, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))
 
 func append_terminator(terminators: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
@@ -268,7 +269,8 @@ func append_terminator(terminators: str, block: str, item: str) -> str:
 func append_terminator_kind(terminators: str, block: str, kind: str, item: str) -> str:
   if (string.len(item) == 0):
     return terminators
-  return append_terminator(terminators, block, string.concat("class=", string.concat(kind, string.concat(",op=", item))))
+  let id = string.concat(block_id(block), string.concat(".", kind))
+  return append_terminator(terminators, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))
 
 func append_def(defs: str, block: str, ref: str, ty: str) -> str:
   if (string.len(ref) == 0 or string.len(ty) == 0):
