@@ -145,6 +145,11 @@ func block_id(name: str) -> str:
 func block_label(name: str) -> str:
   return string.concat(name, string.concat("#", block_id(name)))
 
+func scoped_ref(block: str, ref: str) -> str:
+  if (string.len(ref) == 0 or string.str_eq(ref, "unknown")):
+    return ref
+  return string.concat(block_id(block), string.concat(".", ref))
+
 func block_entry(name: str, kind: str) -> str:
   return string.concat(block_label(name), string.concat("(kind=", string.concat(kind, ")")))
 
@@ -255,12 +260,14 @@ func append_terminator(terminators: str, block: str, item: str) -> str:
 func append_def(defs: str, block: str, ref: str, ty: str) -> str:
   if (string.len(ref) == 0 or string.len(ty) == 0):
     return defs
-  return append_scoped(defs, block, string.concat("def(", string.concat(ref, string.concat(":", string.concat(ty, ")")))))
+  let scoped = scoped_ref(block, ref)
+  return append_scoped(defs, block, string.concat("def(", string.concat(scoped, string.concat(":", string.concat(ty, ")")))))
 
 func append_use(uses: str, block: str, context: str, ref: str) -> str:
   if (string.len(ref) == 0 or string.str_eq(ref, "unknown")):
     return uses
-  return append_scoped(uses, block, string.concat("use(", string.concat(context, string.concat("<-", string.concat(ref, ")")))))
+  let scoped = scoped_ref(block, ref)
+  return append_scoped(uses, block, string.concat("use(", string.concat(context, string.concat("<-", string.concat(scoped, ")")))))
 
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
@@ -268,7 +275,8 @@ func append_rhs_value(values: str, block: str, state: str) -> str:
   let ty = rhs_type_name(state)
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
-  return append_value(values, block, string.concat(string.concat(ref, string.concat(":", ty)), string.concat("=", item)))
+  let scoped = scoped_ref(block, ref)
+  return append_value(values, block, string.concat(string.concat(scoped, string.concat(":", ty)), string.concat("=", item)))
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
@@ -344,20 +352,22 @@ pub func lower_report(source: str) -> str:
       current_statements = append_statement(current_statements, current_block, string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
       if (token_matches(tokens, index + 4, "punct", "=")):
         let rhs = rhs_state(tokens, index + 5, current_locals, func_returns, local_type)
+        let scoped = scoped_ref(current_block, rhs_descriptor(rhs))
         current_values = append_rhs_value(current_values, current_block, rhs)
         current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
         current_uses = append_use(current_uses, current_block, string.concat("init:", string.concat(local_name, string.concat(":", local_type))), rhs_descriptor(rhs))
-        current_statements = append_statement(current_statements, current_block, string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
+        current_statements = append_statement(current_statements, current_block, string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(scoped, ")")))))))
       index = index + 1
       continue
     if (is_assignment_target(tokens, index)):
       let target = token_value(tokens, index)
       let target_type = lookup_mapping(current_locals, target)
       let rhs = rhs_state(tokens, index + 2, current_locals, func_returns, target_type)
+      let scoped = scoped_ref(current_block, rhs_descriptor(rhs))
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, string.concat("assign:", string.concat(target, string.concat(":", target_type))), rhs_descriptor(rhs))
-      current_statements = append_statement(current_statements, current_block, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(rhs_descriptor(rhs), ")")))))))
+      current_statements = append_statement(current_statements, current_block, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(scoped, ")")))))))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "if")):
@@ -366,10 +376,11 @@ pub func lower_report(source: str) -> str:
       current_edges = append_edge(current_edges, current_block, "then")
       current_edges = append_edge(current_edges, current_block, "exit")
       let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
+      let scoped = scoped_ref(current_block, rhs_descriptor(cond))
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "branch", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(rhs_descriptor(cond), ",then=then,else=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(scoped, ",then=then,else=exit)")))
       current_block = "then"
       index = index + 1
       continue
@@ -381,10 +392,11 @@ pub func lower_report(source: str) -> str:
       current_edges = append_edge(current_edges, "loop", "loop")
       current_edges = append_edge(current_edges, "loop", "exit")
       let cond = rhs_state(tokens, index + 2, current_locals, func_returns, "bool")
+      let scoped = scoped_ref(current_block, rhs_descriptor(cond))
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "loop", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(rhs_descriptor(cond), ",body=loop,exit=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(scoped, ",body=loop,exit=exit)")))
       current_block = "loop"
       index = index + 1
       continue
@@ -393,10 +405,11 @@ pub func lower_report(source: str) -> str:
       current_edges = append_edge(current_edges, current_block, "exit")
       current_block = "exit"
       let rhs = rhs_state(tokens, index + 1, current_locals, func_returns, current_return)
+      let scoped = scoped_ref(current_block, rhs_descriptor(rhs))
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, "return", rhs_descriptor(rhs))
-      let descriptor = rhs_descriptor(rhs)
+      let descriptor = scoped
       if (string.len(descriptor) > 0 and string.str_eq(descriptor, "unknown") == false):
         current_terminators = append_terminator(current_terminators, current_block, string.concat("return(", string.concat(descriptor, ")")))
       if (string.len(descriptor) == 0 or string.str_eq(descriptor, "unknown")):
