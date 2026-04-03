@@ -380,7 +380,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "branch", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(scoped, ",then=then,else=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(scoped, string.concat(",then=", string.concat(block_label("then"), string.concat(",else=", string.concat(block_label("exit"), ")")))))))
       current_block = "then"
       index = index + 1
       continue
@@ -396,7 +396,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "loop", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(scoped, ",body=loop,exit=exit)")))
+      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(scoped, string.concat(",body=", string.concat(block_label("loop"), string.concat(",exit=", string.concat(block_label("exit"), ")")))))))
       current_block = "loop"
       index = index + 1
       continue
