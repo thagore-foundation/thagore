@@ -255,10 +255,20 @@ func append_statement(statements: str, block: str, item: str) -> str:
     return statements
   return append_scoped(statements, block, string.concat("statement(", string.concat(item, ")")))
 
+func append_statement_kind(statements: str, block: str, kind: str, item: str) -> str:
+  if (string.len(item) == 0):
+    return statements
+  return append_statement(statements, block, string.concat("class=", string.concat(kind, string.concat(",op=", item))))
+
 func append_terminator(terminators: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
     return terminators
   return append_scoped(terminators, block, string.concat("terminator(", string.concat(item, ")")))
+
+func append_terminator_kind(terminators: str, block: str, kind: str, item: str) -> str:
+  if (string.len(item) == 0):
+    return terminators
+  return append_terminator(terminators, block, string.concat("class=", string.concat(kind, string.concat(",op=", item))))
 
 func append_def(defs: str, block: str, ref: str, ty: str) -> str:
   if (string.len(ref) == 0 or string.len(ty) == 0):
@@ -353,14 +363,14 @@ pub func lower_report(source: str) -> str:
       let local_name = token_value(tokens, index + 1)
       let local_type = token_value(tokens, index + 3)
       current_locals = append_mapping(current_locals, local_name, local_type)
-      current_statements = append_statement(current_statements, current_block, string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
+      current_statements = append_statement_kind(current_statements, current_block, "alloc", string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
       if (token_matches(tokens, index + 4, "punct", "=")):
         let rhs = rhs_state(tokens, index + 5, current_locals, func_returns, local_type)
         let scoped = scoped_ref(current_block, rhs_descriptor(rhs))
         current_values = append_rhs_value(current_values, current_block, rhs)
         current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
         current_uses = append_use(current_uses, current_block, string.concat("init:", string.concat(local_name, string.concat(":", local_type))), rhs_descriptor(rhs))
-        current_statements = append_statement(current_statements, current_block, string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(scoped, ")")))))))
+        current_statements = append_statement_kind(current_statements, current_block, "init", string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(scoped, ")")))))))
       index = index + 1
       continue
     if (is_assignment_target(tokens, index)):
@@ -371,7 +381,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, string.concat("assign:", string.concat(target, string.concat(":", target_type))), rhs_descriptor(rhs))
-      current_statements = append_statement(current_statements, current_block, string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(scoped, ")")))))))
+      current_statements = append_statement_kind(current_statements, current_block, "assign", string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(scoped, ")")))))))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "if")):
@@ -384,7 +394,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "branch", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("branch(cond=", string.concat(scoped, string.concat(",then=", string.concat(block_label("then"), string.concat(",else=", string.concat(block_label("exit"), ")")))))))
+      current_terminators = append_terminator_kind(current_terminators, current_block, "branch", string.concat("branch(cond=", string.concat(scoped, string.concat(",then=", string.concat(block_label("then"), string.concat(",else=", string.concat(block_label("exit"), ")")))))))
       current_block = "then"
       index = index + 1
       continue
@@ -400,7 +410,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "loop", rhs_descriptor(cond))
-      current_terminators = append_terminator(current_terminators, current_block, string.concat("loop(cond=", string.concat(scoped, string.concat(",body=", string.concat(block_label("loop"), string.concat(",exit=", string.concat(block_label("exit"), ")")))))))
+      current_terminators = append_terminator_kind(current_terminators, current_block, "loop", string.concat("loop(cond=", string.concat(scoped, string.concat(",body=", string.concat(block_label("loop"), string.concat(",exit=", string.concat(block_label("exit"), ")")))))))
       current_block = "loop"
       index = index + 1
       continue
@@ -415,9 +425,9 @@ pub func lower_report(source: str) -> str:
       current_uses = append_use(current_uses, current_block, "return", rhs_descriptor(rhs))
       let descriptor = scoped
       if (string.len(descriptor) > 0 and string.str_eq(descriptor, "unknown") == false):
-        current_terminators = append_terminator(current_terminators, current_block, string.concat("return(", string.concat(descriptor, ")")))
+        current_terminators = append_terminator_kind(current_terminators, current_block, "return", string.concat("return(", string.concat(descriptor, ")")))
       if (string.len(descriptor) == 0 or string.str_eq(descriptor, "unknown")):
-        current_terminators = append_terminator(current_terminators, current_block, "return(void)")
+        current_terminators = append_terminator_kind(current_terminators, current_block, "return", "return(void)")
       index = index + 1
       continue
     index = index + 1

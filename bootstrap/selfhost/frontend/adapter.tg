@@ -285,10 +285,16 @@ pub func verify_completed(command: str, artifact_name: str, stdout_ready: bool) 
   let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_contract = string.concat(with_runtime_object, string.concat(";verify_contract=", verify_contract(command)))
   let verified = "artifact,runtime-object"
+  let result = "artifact-ready"
   if (stdout_ready):
     verified = "artifact,runtime-object,stdout"
+    result = "artifact-ready+stdout"
   let with_verified = string.concat(with_contract, string.concat(";verified=", verified))
-  return string.concat(with_verified, ";status=ok")
+  let with_result = string.concat(with_verified, string.concat(";artifact_result=", result))
+  let with_runtime = string.concat(with_result, ";runtime_object_ready=true")
+  if (stdout_ready):
+    return string.concat(with_runtime, ";stdout_ready=true;status=ok")
+  return string.concat(with_runtime, ";stdout_ready=false;status=ok")
 
 pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
   return string.concat(host_thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))

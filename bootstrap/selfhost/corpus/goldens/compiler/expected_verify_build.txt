@@ -1,1 +1,1 @@
-command=build;artifact=selfhost-build.exe;runtime_object=selfhost-build.thagore_rt.o;verify_contract=artifact-smoke-v1;verified=artifact,runtime-object;status=ok
+command=build;artifact=selfhost-build.exe;runtime_object=selfhost-build.thagore_rt.o;verify_contract=artifact-smoke-v1;verified=artifact,runtime-object;artifact_result=artifact-ready;runtime_object_ready=true;stdout_ready=false;status=ok
