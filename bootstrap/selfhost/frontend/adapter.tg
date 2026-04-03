@@ -114,6 +114,8 @@ pub func emission_output(command: str) -> str:
   return "report"
 
 pub func lowering_shape(lowered: str) -> str:
+  if (string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
+    return "typed-defuse-cfg"
   if (string.contains(lowered, "values=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
     return "typed-cfg"
   if (string.contains(lowered, "lowering-skipped")):
