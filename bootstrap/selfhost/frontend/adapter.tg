@@ -293,8 +293,9 @@ pub func verify_completed(command: str, artifact_name: str, stdout_ready: bool) 
     probe = "spawn-artifact+capture"
   let with_verified = string.concat(with_contract, string.concat(";verified=", verified))
   let with_result = string.concat(with_verified, string.concat(";artifact_result=", result))
+  let with_artifact_ready = string.concat(with_result, ";artifact_ready=true")
   let with_probe = string.concat(with_result, string.concat(";probe=", probe))
-  let with_runtime = string.concat(with_probe, ";runtime_object_ready=true")
+  let with_runtime = string.concat(with_artifact_ready, string.concat(";probe=", string.concat(probe, ";runtime_object_ready=true")))
   if (stdout_ready):
     return string.concat(with_runtime, ";stdout_ready=true;phase_complete=verify-artifact;status=ok")
   return string.concat(with_runtime, ";stdout_ready=false;phase_complete=verify-artifact;status=ok")

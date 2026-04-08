@@ -276,13 +276,13 @@ func append_def(defs: str, block: str, ref: str, ty: str) -> str:
   if (string.len(ref) == 0 or string.len(ty) == 0):
     return defs
   let scoped = scoped_ref(block, ref)
-  return append_scoped(defs, block, string.concat("def(", string.concat(scoped, string.concat(":", string.concat(ty, ")")))))
+  return append_scoped(defs, block, string.concat("def(", string.concat("id=", string.concat(scoped, string.concat(",type=", string.concat(ty, ")"))))))
 
 func append_use(uses: str, block: str, context: str, ref: str) -> str:
   if (string.len(ref) == 0 or string.str_eq(ref, "unknown")):
     return uses
   let scoped = scoped_ref(block, ref)
-  return append_scoped(uses, block, string.concat("use(", string.concat(context, string.concat("<-", string.concat(scoped, ")")))))
+  return append_scoped(uses, block, string.concat("use(", string.concat("context=", string.concat(context, string.concat(",value=", string.concat(scoped, ")"))))))
 
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
@@ -292,7 +292,7 @@ func append_rhs_value(values: str, block: str, state: str) -> str:
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
   let scoped = scoped_ref(block, ref)
-  return append_value(values, block, string.concat(string.concat(scoped, string.concat(":", string.concat(ty, string.concat(",class=", kind)))), string.concat(",op=", item)))
+  return append_value(values, block, string.concat("id=", string.concat(scoped, string.concat(",type=", string.concat(ty, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))))
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
