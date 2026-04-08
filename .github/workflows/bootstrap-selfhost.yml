@@ -40,7 +40,7 @@ jobs:
       - name: Install LLVM 14
         timeout-minutes: 15
         shell: bash
-        run: bash tooling/ci/install_linux_llvm14.sh
+        run: bash tooling/ci/install_linux_llvm14.sh llvm-14-tools libpolly-14-dev
 
       - name: Build host thagc (release)
         shell: bash
