@@ -48,12 +48,9 @@ jobs:
 
       - name: Install Linux prerequisites
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang llvm-14 llvm-14-dev llvm-14-tools libpolly-14-dev lld pkg-config
-          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+        run: bash tooling/ci/install_linux_llvm14.sh
 
       - name: Set up MSVC toolchain
         if: runner.os == 'Windows'
