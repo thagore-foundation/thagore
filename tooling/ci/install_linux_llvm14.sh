@@ -3,12 +3,18 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
+if [[ -x /usr/lib/llvm-14/bin/llvm-config && -x /usr/bin/clang ]]; then
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+  else
+    export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
+  fi
+  exit 0
+fi
+
 packages=(
   clang
-  llvm-14
   llvm-14-dev
-  llvm-14-tools
-  libpolly-14-dev
   lld
   pkg-config
 )
