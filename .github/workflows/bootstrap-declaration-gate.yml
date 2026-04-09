@@ -1,0 +1,414 @@
+name: Bootstrap Declaration Gate
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/bootstrap-declaration-gate.yml"
+      - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/corpus/**"
+      - "bootstrap/selfhost/tools/**"
+      - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/install_linux_llvm14.sh"
+      - "tooling/ci/selfhost_compiler_driver.py"
+      - "tooling/ci/selfhost_backend_adapter_artifacts.py"
+      - "tooling/ci/selfhost_bootstrap_artifact.py"
+      - "tooling/ci/selfhost_lowering_slice.py"
+      - "tooling/ci/setup_msvc_env.ps1"
+      - "tools/thagore-cli/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-declaration-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  declaration-gate:
+    name: Bootstrap declaration gate ${{ matrix.os_name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os_name: linux-x64
+            thagc_bin: target/release/thagc
+            exe_suffix: ""
+          - runner: windows-latest
+            os_name: windows-x64
+            thagc_bin: target/release/thagc.exe
+            exe_suffix: ".exe"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        shell: bash
+        run: bash tooling/ci/install_linux_llvm14.sh
+
+      - name: Set up MSVC toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install Windows LLVM 14 prebuilt
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) { Remove-Item -Recurse -Force $extractRoot }
+          Invoke-WebRequest -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-declaration-gate.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '        if (args.Contains("--version")) { Console.WriteLine("14.0.6"); return 0; }',
+              '        if (args.Contains("--prefix")) { Console.WriteLine(root); return 0; }',
+              '        if (args.Contains("--libdir")) { Console.WriteLine(lib); return 0; }',
+              '        if (args.Contains("--includedir")) { Console.WriteLine(include); return 0; }',
+              '        if (args.Contains("--build-mode")) { Console.WriteLine("Release"); return 0; }',
+              '        if (args.Contains("--cflags")) { Console.WriteLine("-I" + include); return 0; }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs")) { Console.WriteLine(""); return 0; }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build host thagc on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build host thagc on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Normalize bootstrap corpus line endings on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          root = Path("bootstrap/selfhost/corpus")
+          for path in root.rglob("*"):
+              if path.suffix not in {".tg", ".txt"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+              if normalized != text:
+                  path.write_text(normalized, encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Build declaration gate compiler on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-declaration-compiler"
+
+      - name: Build declaration gate compiler on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-declaration-compiler
+
+      - name: Build declaration gate lowering slice on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/frontend-lowering-manifest.txt" \
+            --out-dir "$PWD/bootstrap-declaration-lowering"
+
+      - name: Build declaration gate lowering slice on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/frontend-lowering-manifest.txt `
+            --out-dir $PWD/bootstrap-declaration-lowering
+
+      - name: Run declaration gate first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-compiler/report1.txt"
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/bootstrap-declaration-compiler/phase1.txt"
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
+            --report-out "$PWD/bootstrap-declaration-compiler/adapter1.txt"
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-compiler/artifact1.txt"
+          python3 tooling/ci/selfhost_lowering_slice.py \
+            --repo-root "$PWD" \
+            --lower-bin "$PWD/bootstrap-declaration-lowering/selfhost-lower${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-lowering/report1.txt"
+
+      - name: Run declaration gate second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-compiler/report2.txt"
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/bootstrap-declaration-compiler/phase2.txt"
+          python3 tooling/ci/selfhost_backend_adapter_artifacts.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/backend-adapter-artifacts.txt" \
+            --report-out "$PWD/bootstrap-declaration-compiler/adapter2.txt"
+          python3 tooling/ci/selfhost_bootstrap_artifact.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-compiler/artifact2.txt"
+          python3 tooling/ci/selfhost_lowering_slice.py \
+            --repo-root "$PWD" \
+            --lower-bin "$PWD/bootstrap-declaration-lowering/selfhost-lower${{ matrix.exe_suffix }}" \
+            --report-out "$PWD/bootstrap-declaration-lowering/report2.txt"
+
+      - name: Run declaration gate first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-compiler/report1.txt
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/bootstrap-declaration-compiler/phase1.txt
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
+            --report-out $PWD/bootstrap-declaration-compiler/adapter1.txt
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-compiler/artifact1.txt
+          python tooling/ci/selfhost_lowering_slice.py `
+            --repo-root $PWD `
+            --lower-bin $PWD/bootstrap-declaration-lowering/selfhost-lower${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-lowering/report1.txt
+
+      - name: Run declaration gate second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-compiler/report2.txt
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/bootstrap-declaration-compiler/phase2.txt
+          python tooling/ci/selfhost_backend_adapter_artifacts.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/backend-adapter-artifacts.txt `
+            --report-out $PWD/bootstrap-declaration-compiler/adapter2.txt
+          python tooling/ci/selfhost_bootstrap_artifact.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-declaration-compiler/selfhost-compiler${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-compiler/artifact2.txt
+          python tooling/ci/selfhost_lowering_slice.py `
+            --repo-root $PWD `
+            --lower-bin $PWD/bootstrap-declaration-lowering/selfhost-lower${{ matrix.exe_suffix }} `
+            --report-out $PWD/bootstrap-declaration-lowering/report2.txt
+
+      - name: Diff declaration reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          diff -u bootstrap-declaration-compiler/report1.txt bootstrap-declaration-compiler/report2.txt
+          diff -u bootstrap-declaration-compiler/phase1.txt bootstrap-declaration-compiler/phase2.txt
+          diff -u bootstrap-declaration-compiler/adapter1.txt bootstrap-declaration-compiler/adapter2.txt
+          diff -u bootstrap-declaration-compiler/artifact1.txt bootstrap-declaration-compiler/artifact2.txt
+          diff -u bootstrap-declaration-lowering/report1.txt bootstrap-declaration-lowering/report2.txt
+
+      - name: Diff declaration reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-declaration-compiler/report1.txt -Raw) -ne (Get-Content bootstrap-declaration-compiler/report2.txt -Raw)) { throw 'compiler declaration report drifted' }
+          if ((Get-Content bootstrap-declaration-compiler/phase1.txt -Raw) -ne (Get-Content bootstrap-declaration-compiler/phase2.txt -Raw)) { throw 'compiler phase declaration report drifted' }
+          if ((Get-Content bootstrap-declaration-compiler/adapter1.txt -Raw) -ne (Get-Content bootstrap-declaration-compiler/adapter2.txt -Raw)) { throw 'adapter declaration report drifted' }
+          if ((Get-Content bootstrap-declaration-compiler/artifact1.txt -Raw) -ne (Get-Content bootstrap-declaration-compiler/artifact2.txt -Raw)) { throw 'artifact declaration report drifted' }
+          if ((Get-Content bootstrap-declaration-lowering/report1.txt -Raw) -ne (Get-Content bootstrap-declaration-lowering/report2.txt -Raw)) { throw 'lowering declaration report drifted' }
+
+      - name: Upload declaration gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-declaration-gate-${{ matrix.os_name }}
+          path: |
+            bootstrap-declaration-compiler/report1.txt
+            bootstrap-declaration-compiler/report2.txt
+            bootstrap-declaration-compiler/phase1.txt
+            bootstrap-declaration-compiler/phase2.txt
+            bootstrap-declaration-compiler/adapter1.txt
+            bootstrap-declaration-compiler/adapter2.txt
+            bootstrap-declaration-compiler/artifact1.txt
+            bootstrap-declaration-compiler/artifact2.txt
+            bootstrap-declaration-lowering/report1.txt
+            bootstrap-declaration-lowering/report2.txt
+
+      - name: Summarize declaration gate on Linux
+        if: runner.os == 'Linux' && always()
+        shell: bash
+        run: |
+          {
+            echo "## Bootstrap declaration gate (${{ matrix.os_name }})"
+            echo
+            echo "### Compiler pass 1"
+            echo '```text'
+            cat bootstrap-declaration-compiler/report1.txt
+            echo '```'
+            echo
+            echo "### Compiler phase pass 1"
+            echo '```text'
+            cat bootstrap-declaration-compiler/phase1.txt
+            echo '```'
+            echo
+            echo "### Backend adapter pass 1"
+            echo '```text'
+            cat bootstrap-declaration-compiler/adapter1.txt
+            echo '```'
+            echo
+            echo "### Bootstrap artifact pass 1"
+            echo '```text'
+            cat bootstrap-declaration-compiler/artifact1.txt
+            echo '```'
+            echo
+            echo "### Lowering pass 1"
+            echo '```text'
+            cat bootstrap-declaration-lowering/report1.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize declaration gate on Windows
+        if: runner.os == 'Windows' && always()
+        shell: pwsh
+        run: |
+          @"
+          ## Bootstrap declaration gate (${{ matrix.os_name }})
+
+          ### Compiler pass 1
+          ```text
+          $(if (Test-Path bootstrap-declaration-compiler/report1.txt) { Get-Content bootstrap-declaration-compiler/report1.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Compiler phase pass 1
+          ```text
+          $(if (Test-Path bootstrap-declaration-compiler/phase1.txt) { Get-Content bootstrap-declaration-compiler/phase1.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Backend adapter pass 1
+          ```text
+          $(if (Test-Path bootstrap-declaration-compiler/adapter1.txt) { Get-Content bootstrap-declaration-compiler/adapter1.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Bootstrap artifact pass 1
+          ```text
+          $(if (Test-Path bootstrap-declaration-compiler/artifact1.txt) { Get-Content bootstrap-declaration-compiler/artifact1.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Lowering pass 1
+          ```text
+          $(if (Test-Path bootstrap-declaration-lowering/report1.txt) { Get-Content bootstrap-declaration-lowering/report1.txt -Raw } else { '<report missing>' })
+          ```
+          "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY

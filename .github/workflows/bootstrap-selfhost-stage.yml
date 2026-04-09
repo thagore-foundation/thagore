@@ -235,6 +235,17 @@ jobs:
             --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler1/report.txt"
 
+      - name: Validate stage1 compiler phase body on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/bootstrap-selfhost-compiler1/phase-report.txt"
+
       - name: Validate stage1 backend adapter on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -345,6 +356,17 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/bootstrap-selfhost-compiler2/report.txt"
+
+      - name: Validate stage2 compiler phase body on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/bootstrap-selfhost-compiler2/phase-report.txt"
 
       - name: Validate stage2 backend adapter on Linux
         if: runner.os == 'Linux'
@@ -457,6 +479,17 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler1/report.txt
 
+      - name: Validate stage1 compiler phase body on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler1/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/bootstrap-selfhost-compiler1/phase-report.txt
+
       - name: Validate stage1 backend adapter on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -568,6 +601,17 @@ jobs:
             --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/bootstrap-selfhost-compiler2/report.txt
 
+      - name: Validate stage2 compiler phase body on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/bootstrap-selfhost-compiler2/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/bootstrap-selfhost-compiler2/phase-report.txt
+
       - name: Validate stage2 backend adapter on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -618,6 +662,11 @@ jobs:
         shell: bash
         run: diff -u bootstrap-selfhost-compiler1/report.txt bootstrap-selfhost-compiler2/report.txt
 
+      - name: Diff compiler phase stage1 vs stage2 reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u bootstrap-selfhost-compiler1/phase-report.txt bootstrap-selfhost-compiler2/phase-report.txt
+
       - name: Diff bootstrap artifact stage1 vs stage2 reports on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -665,6 +714,14 @@ jobs:
             throw 'bootstrap selfhost compiler reports differ between stage1 and stage2'
           }
 
+      - name: Diff compiler phase stage1 vs stage2 reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content bootstrap-selfhost-compiler1/phase-report.txt -Raw) -ne (Get-Content bootstrap-selfhost-compiler2/phase-report.txt -Raw)) {
+            throw 'bootstrap selfhost compiler phase reports differ between stage1 and stage2'
+          }
+
       - name: Diff bootstrap artifact stage1 vs stage2 reports on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -704,9 +761,11 @@ jobs:
             bootstrap-selfhost-driver1/report.txt
             bootstrap-selfhost-driver2/report.txt
             bootstrap-selfhost-compiler1/report.txt
+            bootstrap-selfhost-compiler1/phase-report.txt
             bootstrap-selfhost-compiler1/adapter-report.txt
             bootstrap-selfhost-compiler1/artifact-report.txt
             bootstrap-selfhost-compiler2/report.txt
+            bootstrap-selfhost-compiler2/phase-report.txt
             bootstrap-selfhost-compiler2/adapter-report.txt
             bootstrap-selfhost-compiler2/artifact-report.txt
             bootstrap-selfhost-lowering1/report.txt
@@ -754,9 +813,19 @@ jobs:
             cat bootstrap-selfhost-compiler1/report.txt
             echo '```'
             echo
+            echo "### Compiler Phase Stage1"
+            echo '```text'
+            cat bootstrap-selfhost-compiler1/phase-report.txt
+            echo '```'
+            echo
             echo "### Compiler Stage2"
             echo '```text'
             cat bootstrap-selfhost-compiler2/report.txt
+            echo '```'
+            echo
+            echo "### Compiler Phase Stage2"
+            echo '```text'
+            cat bootstrap-selfhost-compiler2/phase-report.txt
             echo '```'
             echo
             echo "### Bootstrap Artifact Stage1"
@@ -834,9 +903,19 @@ jobs:
           $(if (Test-Path bootstrap-selfhost-compiler1/report.txt) { Get-Content bootstrap-selfhost-compiler1/report.txt -Raw } else { '<report missing>' })
           ```
 
+          ### Compiler Phase Stage1
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler1/phase-report.txt) { Get-Content bootstrap-selfhost-compiler1/phase-report.txt -Raw } else { '<report missing>' })
+          ```
+
           ### Compiler Stage2
           ```text
           $(if (Test-Path bootstrap-selfhost-compiler2/report.txt) { Get-Content bootstrap-selfhost-compiler2/report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Compiler Phase Stage2
+          ```text
+          $(if (Test-Path bootstrap-selfhost-compiler2/phase-report.txt) { Get-Content bootstrap-selfhost-compiler2/phase-report.txt -Raw } else { '<report missing>' })
           ```
 
           ### Bootstrap Artifact Stage1

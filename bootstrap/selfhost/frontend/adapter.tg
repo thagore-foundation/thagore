@@ -164,6 +164,61 @@ pub func lowering_shape(lowered: str) -> str:
     return "unavailable"
   return "summary"
 
+pub func frontend_body(command: str) -> str:
+  if (string.str_eq(command, "check")):
+    return "read-source,desugar,scan,parse,resolve,check,report"
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "read-source,desugar,scan,parse,resolve,check"
+  return "read-source,desugar,scan,parse,resolve"
+
+pub func lowering_body(command: str, lowered: str) -> str:
+  if (string.str_eq(command, "build") == false and string.str_eq(command, "run") == false):
+    return "skipped(frontend-only)"
+  if (string.str_eq(lowering_state(lowered), "skipped")):
+    return "skipped(diagnostic-fallback)"
+  if (string.str_eq(lowering_state(lowered), "unavailable")):
+    return "unavailable"
+  return "blocks,cfg,values,defs,uses,flows,statements,terminators"
+
+pub func adapter_body(command: str) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    return "plan,adapter,emit,link,verify"
+  if (string.str_eq(command, "check")):
+    return "report"
+  return "frontend-only"
+
+pub func backend_body(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "check")):
+    return "frontend-report"
+  if (string.str_eq(command, "build")):
+    if (diagnostics_ok):
+      return "host-emit,host-link,verify-artifact"
+    return "diagnostic-fallback,host-emit,host-link,verify-artifact"
+  if (string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "host-emit,host-link,verify-artifact,host-run,capture"
+    return "diagnostic-fallback,host-emit,host-link,verify-artifact,host-run,capture"
+  return "frontend-only"
+
+pub func phase_body(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
+  let base = render_base(command, path, source_root, current_kind)
+  let with_phases = string.concat(base, string.concat(";phases=", phases(command)))
+  let with_phase_route = string.concat(with_phases, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
+  let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
+  let with_frontend = string.concat(with_phase_gate, string.concat(";frontend_body=", frontend_body(command)))
+  let with_lowering = string.concat(with_frontend, string.concat(";lowering_body=", lowering_body(command, lowered)))
+  let with_adapter = string.concat(with_lowering, string.concat(";adapter_body=", adapter_body(command)))
+  let with_backend = string.concat(with_adapter, string.concat(";backend_body=", backend_body(command, diagnostics_ok)))
+  let with_artifact = string.concat(with_backend, string.concat(";artifact=", artifact_name))
+  let with_contract = string.concat(with_artifact, string.concat(";artifact_contract=", artifact_contract(command)))
+  let with_handoff = string.concat(with_contract, string.concat(";handoff=", handoff(command, diagnostics_ok)))
+  let with_backend_contract = string.concat(with_handoff, string.concat(";backend_contract=", backend_contract(command)))
+  let with_link_contract = string.concat(with_backend_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_verify_contract = string.concat(with_link_contract, string.concat(";verify_contract=", verify_contract(command)))
+  let with_lowering_state = string.concat(with_verify_contract, string.concat(";lowering_state=", lowering_state(lowered)))
+  let with_lowering_shape = string.concat(with_lowering_state, string.concat(";lowering_shape=", lowering_shape(lowered)))
+  return string.concat(with_lowering_shape, string.concat(";lowered=", lowered))
+
 pub func orchestration_plan(command: str, path: str, source_root: str, current_kind: str, diagnostics_ok: bool, artifact_name: str, lowered: str) -> str:
   let base = render_base(command, path, source_root, current_kind)
   let with_phases = string.concat(base, string.concat(";phases=", phases(command)))

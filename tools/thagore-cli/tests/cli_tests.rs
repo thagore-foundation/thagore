@@ -1651,7 +1651,7 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             command
                 .output()
                 .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"))
-        } else if invoke == "build-version" || invoke == "build-exec" {
+        } else if invoke == "build-version" || invoke == "build-exec" || invoke == "build-build-version" || invoke == "build-build-exec" {
             let nested_artifact = scratch.path().join(kind);
             let mut build_nested = Command::new(&artifact_path);
             build_nested.current_dir(&cwd);
@@ -1684,16 +1684,79 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                 "nested bootstrap artifact missing for {label}: {}",
                 nested_artifact.display()
             );
-            let mut nested_command = Command::new(&nested_artifact);
-            nested_command.current_dir(&cwd);
-            if invoke == "build-version" {
-                nested_command.arg("version");
-            } else if !mode.is_empty() {
-                nested_command.arg(mode);
+            let nested_args: Vec<String> = if mode.is_empty() {
+                Vec::new()
+            } else {
+                mode.split(";;")
+                    .filter(|part| !part.is_empty())
+                    .map(|part| part.to_string())
+                    .collect()
+            };
+            let nested_output = if invoke == "build-version" || invoke == "build-exec" {
+                let mut nested_command = Command::new(&nested_artifact);
+                nested_command.current_dir(&cwd);
+                if invoke == "build-version" {
+                    nested_command.arg("version");
+                } else {
+                    for arg in &nested_args {
+                        nested_command.arg(arg);
+                    }
+                }
+                nested_command
+                    .output()
+                    .unwrap_or_else(|error| panic!("run nested bootstrap artifact case {label}: {error}"))
+            } else {
+                assert!(
+                    nested_args.len() >= 2,
+                    "build-build bootstrap artifact case requires at least source and artifact name: {label}"
+                );
+                let second_source = &nested_args[0];
+                let second_artifact_name = &nested_args[1];
+                let second_artifact = scratch.path().join(second_artifact_name);
+                let mut second_build = Command::new(&nested_artifact);
+                second_build.current_dir(&cwd);
+                second_build.env(
+                    "PATH",
+                    format!("{stage0_parent}{path_sep}{inherited_path}"),
+                );
+                second_build.env(
+                    "THAGORE_STAGE0",
+                    stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+                );
+                second_build.env("THAGORE_SELFHOST_TMP", scratch.path());
+                second_build.arg("build");
+                second_build.arg(second_source);
+                second_build.arg(second_artifact_name);
+                let second_build_output = second_build
+                    .output()
+                    .unwrap_or_else(|error| panic!("build second nested bootstrap artifact {label}: {error}"));
+                assert_eq!(
+                    second_build_output.status.code(),
+                    Some(0),
+                    "second nested bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&second_build_output.stdout),
+                    String::from_utf8_lossy(&second_build_output.stderr)
+                );
+                assert!(
+                    second_artifact.exists(),
+                    "second nested bootstrap artifact missing for {label}: {}",
+                    second_artifact.display()
+                );
+                let mut second_command = Command::new(&second_artifact);
+                second_command.current_dir(&cwd);
+                if invoke == "build-build-version" {
+                    second_command.arg("version");
+                } else {
+                    for arg in nested_args.iter().skip(2) {
+                        second_command.arg(arg);
+                    }
+                }
+                let output = second_command
+                    .output()
+                    .unwrap_or_else(|error| panic!("run second nested bootstrap artifact case {label}: {error}"));
+                let _ = fs::remove_file(&second_artifact);
+                output
             }
-            let nested_output = nested_command
-                .output()
-                .unwrap_or_else(|error| panic!("run nested bootstrap artifact case {label}: {error}"));
             let _ = fs::remove_file(&nested_artifact);
             nested_output
         } else {
@@ -2050,6 +2113,20 @@ fn selfhost_compiler_driver_contract_matches_goldens() {
         &repo_root,
         &binary,
         "bootstrap/selfhost/corpus/compiler-driver-contract.txt",
+    );
+}
+
+#[test]
+fn selfhost_compiler_phase_contract_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-compiler");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_compiler_driver_binary(&repo_root, &binary);
+
+    assert_compiler_driver_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/compiler-phase-contract.txt",
     );
 }
 

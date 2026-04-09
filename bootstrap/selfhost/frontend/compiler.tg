@@ -20,7 +20,7 @@ func command_option() -> str:
   return process.argv(3)
 
 func command_kind(command: str) -> str:
-  if (string.str_eq(command, "build") or string.str_eq(command, "run") or string.str_eq(command, "plan-build") or string.str_eq(command, "plan-run") or string.str_eq(command, "adapter-build") or string.str_eq(command, "adapter-run") or string.str_eq(command, "emit-build") or string.str_eq(command, "emit-run") or string.str_eq(command, "link-build") or string.str_eq(command, "link-run") or string.str_eq(command, "verify-build") or string.str_eq(command, "verify-run")):
+  if (string.str_eq(command, "build") or string.str_eq(command, "run") or string.str_eq(command, "plan-build") or string.str_eq(command, "plan-run") or string.str_eq(command, "plan-check") or string.str_eq(command, "phase-build") or string.str_eq(command, "phase-run") or string.str_eq(command, "phase-check") or string.str_eq(command, "adapter-build") or string.str_eq(command, "adapter-run") or string.str_eq(command, "emit-build") or string.str_eq(command, "emit-run") or string.str_eq(command, "link-build") or string.str_eq(command, "link-run") or string.str_eq(command, "verify-build") or string.str_eq(command, "verify-run")):
     return module_kind.executable_root()
   let arg = process.argv(3)
   if (string.str_eq(arg, "library")):
@@ -32,7 +32,7 @@ func command_kind(command: str) -> str:
   return module_kind.executable_root()
 
 func usage() -> str:
-  return "usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse|build|run|plan-build|plan-run|adapter-build|adapter-run|emit-build|emit-run|link-build|link-run|verify-build|verify-run> [path] [exe|library|core-exe|core-library|artifact]"
+  return "usage: frontend-compiler <help|version|analyze|check|report|desugar|scan|parse|build|run|plan-check|plan-build|plan-run|phase-check|phase-build|phase-run|adapter-build|adapter-run|emit-build|emit-run|link-build|link-run|verify-build|verify-run> [path] [exe|library|core-exe|core-library|artifact]"
 
 func version() -> str:
   return "frontend-compiler bootstrap-slice"
@@ -91,6 +91,12 @@ func verify_artifact_path(output_path: str) -> str:
   return string.concat(output_path, ".verify.txt")
 
 func actual_command(command: str) -> str:
+  if (string.str_eq(command, "phase-build")):
+    return "build"
+  if (string.str_eq(command, "phase-run")):
+    return "run"
+  if (string.str_eq(command, "phase-check")):
+    return "check"
   if (string.str_eq(command, "plan-build") or string.str_eq(command, "adapter-build") or string.str_eq(command, "emit-build")):
     return "build"
   if (string.str_eq(command, "plan-run") or string.str_eq(command, "adapter-run") or string.str_eq(command, "emit-run")):
@@ -196,6 +202,16 @@ func verify_preview(command: str, path: str, current_kind: str) -> str:
     return ""
   return adapter.verify_request(actual, path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
 
+func phase_preview(command: str, path: str, current_kind: str) -> str:
+  let actual = actual_command(command)
+  let report = source_report(path, current_kind)
+  if (string.len(report) == 0):
+    return ""
+  let diagnostics_ok = has_clean_diagnostics(report)
+  let require_lowering = string.str_eq(actual, "build") or string.str_eq(actual, "run")
+  let lowered = lowering_summary(path, diagnostics_ok, require_lowering)
+  return adapter.phase_body(actual, path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
+
 func run_command(command: str, path: str, current_kind: str) -> str:
   let source = session.read_source(path)
   if (string.len(source) == 0):
@@ -233,6 +249,13 @@ pub func main() -> i32:
     if (string.len(plan) == 0):
       return 1
     println(plan)
+    return 0
+  if (string.str_eq(command, "phase-check") or string.str_eq(command, "phase-build") or string.str_eq(command, "phase-run")):
+    let current_kind = command_kind(command)
+    let phase = phase_preview(command, path, current_kind)
+    if (string.len(phase) == 0):
+      return 1
+    println(phase)
     return 0
   if (string.str_eq(command, "adapter-build") or string.str_eq(command, "adapter-run")):
     let current_kind = command_kind(command)

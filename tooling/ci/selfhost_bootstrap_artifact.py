@@ -49,6 +49,7 @@ def run_artifact(
     mode: str,
 ) -> subprocess.CompletedProcess[str]:
     cmd = [str(artifact)]
+    nested_args = [part for part in mode.split(";;") if part] if mode else []
     if invoke == "version":
         cmd.append("version")
     elif invoke == "exec":
@@ -108,9 +109,62 @@ def run_artifact(
             return built
         if not nested_artifact.exists():
             return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
-        nested_cmd = [str(nested_artifact)]
-        if mode:
-            nested_cmd.append(mode)
+        nested_cmd = [str(nested_artifact), *nested_args]
+        return subprocess.run(
+            nested_cmd,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    elif invoke == "build-build-version" or invoke == "build-build-exec":
+        nested_artifact = scratch_dir / kind
+        if nested_artifact.exists():
+            nested_artifact.unlink()
+        build_cmd = [str(artifact), "build"]
+        if path_arg:
+            build_cmd.append(path_arg)
+        build_cmd.append(kind)
+        built = subprocess.run(
+            build_cmd,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if built.returncode != 0:
+            return built
+        if not nested_artifact.exists():
+            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        if len(nested_args) < 2:
+            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing second-stage source/artifact args for {invoke}")
+        second_source = nested_args[0]
+        second_artifact_name = nested_args[1]
+        second_artifact = scratch_dir / second_artifact_name
+        if second_artifact.exists():
+            second_artifact.unlink()
+        second_build_cmd = [str(nested_artifact), "build", second_source, second_artifact_name]
+        second_built = subprocess.run(
+            second_build_cmd,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if second_built.returncode != 0:
+            return second_built
+        if not second_artifact.exists():
+            return subprocess.CompletedProcess(second_build_cmd, 1, "", f"missing second nested artifact: {second_artifact}")
+        nested_cmd = [str(second_artifact)]
+        if invoke == "build-build-version":
+            nested_cmd.append("version")
+        else:
+            nested_cmd.extend(nested_args[2:])
         return subprocess.run(
             nested_cmd,
             cwd=cwd,

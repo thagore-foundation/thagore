@@ -166,6 +166,17 @@ jobs:
             --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-first/report.txt"
 
+      - name: Validate compiler phase body first pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/selfhost-compiler-driver-first/phase-report.txt"
+
       - name: Validate backend adapter first pass on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -206,6 +217,17 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
             --report-out "$PWD/selfhost-compiler-driver-second/report.txt"
+
+      - name: Validate compiler phase body second pass on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 tooling/ci/selfhost_compiler_driver.py \
+            --repo-root "$PWD" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --compiler-bin "$PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --manifest "bootstrap/selfhost/corpus/compiler-phase-contract.txt" \
+            --report-out "$PWD/selfhost-compiler-driver-second/phase-report.txt"
 
       - name: Validate backend adapter second pass on Linux
         if: runner.os == 'Linux'
@@ -248,6 +270,17 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-first/report.txt
 
+      - name: Validate compiler phase body first pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-first/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/selfhost-compiler-driver-first/phase-report.txt
+
       - name: Validate backend adapter first pass on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -289,6 +322,17 @@ jobs:
             --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
             --report-out $PWD/selfhost-compiler-driver-second/report.txt
 
+      - name: Validate compiler phase body second pass on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/selfhost_compiler_driver.py `
+            --repo-root $PWD `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --compiler-bin $PWD/selfhost-compiler-driver-second/selfhost-compiler${{ matrix.exe_suffix }} `
+            --manifest bootstrap/selfhost/corpus/compiler-phase-contract.txt `
+            --report-out $PWD/selfhost-compiler-driver-second/phase-report.txt
+
       - name: Validate backend adapter second pass on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -315,6 +359,11 @@ jobs:
         shell: bash
         run: diff -u selfhost-compiler-driver-first/report.txt selfhost-compiler-driver-second/report.txt
 
+      - name: Diff compiler phase reports on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: diff -u selfhost-compiler-driver-first/phase-report.txt selfhost-compiler-driver-second/phase-report.txt
+
       - name: Diff bootstrap artifact reports on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -331,6 +380,14 @@ jobs:
         run: |
           if ((Get-Content selfhost-compiler-driver-first/report.txt -Raw) -ne (Get-Content selfhost-compiler-driver-second/report.txt -Raw)) {
             throw 'selfhost compiler driver reports differ between rebuilds'
+          }
+
+      - name: Diff compiler phase reports on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ((Get-Content selfhost-compiler-driver-first/phase-report.txt -Raw) -ne (Get-Content selfhost-compiler-driver-second/phase-report.txt -Raw)) {
+            throw 'selfhost compiler phase reports differ between rebuilds'
           }
 
       - name: Diff bootstrap artifact reports on Windows
@@ -356,9 +413,11 @@ jobs:
           name: selfhost-compiler-driver-${{ matrix.os_name }}
           path: |
             selfhost-compiler-driver-first/report.txt
+            selfhost-compiler-driver-first/phase-report.txt
             selfhost-compiler-driver-first/adapter-report.txt
             selfhost-compiler-driver-first/artifact-report.txt
             selfhost-compiler-driver-second/report.txt
+            selfhost-compiler-driver-second/phase-report.txt
             selfhost-compiler-driver-second/adapter-report.txt
             selfhost-compiler-driver-second/artifact-report.txt
 
@@ -384,6 +443,11 @@ jobs:
             cat selfhost-compiler-driver-first/artifact-report.txt
             echo '```'
             echo
+            echo "### Phase first pass"
+            echo '```text'
+            cat selfhost-compiler-driver-first/phase-report.txt
+            echo '```'
+            echo
             echo "### Adapter first pass"
             echo '```text'
             cat selfhost-compiler-driver-first/adapter-report.txt
@@ -392,6 +456,11 @@ jobs:
             echo "### Artifact second pass"
             echo '```text'
             cat selfhost-compiler-driver-second/artifact-report.txt
+            echo '```'
+            echo
+            echo "### Phase second pass"
+            echo '```text'
+            cat selfhost-compiler-driver-second/phase-report.txt
             echo '```'
             echo
             echo "### Adapter second pass"
@@ -424,6 +493,11 @@ jobs:
           $(if (Test-Path selfhost-compiler-driver-first/artifact-report.txt) { Get-Content selfhost-compiler-driver-first/artifact-report.txt -Raw } else { '<report missing>' })
           ```
 
+          ### Phase first pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-first/phase-report.txt) { Get-Content selfhost-compiler-driver-first/phase-report.txt -Raw } else { '<report missing>' })
+          ```
+
           ### Adapter first pass
           ```text
           $(if (Test-Path selfhost-compiler-driver-first/adapter-report.txt) { Get-Content selfhost-compiler-driver-first/adapter-report.txt -Raw } else { '<report missing>' })
@@ -432,6 +506,11 @@ jobs:
           ### Artifact second pass
           ```text
           $(if (Test-Path selfhost-compiler-driver-second/artifact-report.txt) { Get-Content selfhost-compiler-driver-second/artifact-report.txt -Raw } else { '<report missing>' })
+          ```
+
+          ### Phase second pass
+          ```text
+          $(if (Test-Path selfhost-compiler-driver-second/phase-report.txt) { Get-Content selfhost-compiler-driver-second/phase-report.txt -Raw } else { '<report missing>' })
           ```
 
           ### Adapter second pass

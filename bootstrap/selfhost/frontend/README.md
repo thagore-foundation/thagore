@@ -148,6 +148,10 @@ Current scope:
   absolute path routing, command dispatch, core-kind dispatch, build/run
   orchestration through host `thagc`, hidden `plan-*` orchestration reports,
   invalid-command fallback, and missing-source exits
+- `bootstrap/selfhost/corpus/compiler-phase-contract.txt` now locks the first
+  compiler phase-body surface separately, so `phase-check`, `phase-build`, and
+  `phase-run` expose frontend/lowering/adapter/backend body boundaries instead
+  of collapsing back into the thinner plan preview
 - `bootstrap/selfhost/corpus/backend-adapter-contract.txt` now locks the
   explicit adapter boundary between the selfhost compiler slice and the host
   backend/codegen path, including hidden `emit-build` / `emit-run` previews
@@ -162,6 +166,9 @@ Current scope:
   bootstrap artifact loop: the selfhost compiler builds a rebuilt compiler
   artifact and a rebuilt frontend-main tool artifact, then CI runs both and
   compares their observable output
+- that same artifact loop now also requires the rebuilt compiler artifact to
+  build `main.tg` and replay a report-mode output, so the artifact chain is no
+  longer limited to `compiler.tg` and `lower.tg`
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
@@ -184,6 +191,11 @@ Current scope:
   contract its own Linux x64 and Windows x64 lane, separate from the broader
   compiler-driver lane, and that lane now validates actual sidecar artifacts
   emitted by `build` / `run`
+- `.github/workflows/bootstrap-declaration-gate.yml` now reruns the compiler
+  driver, compiler phase body, backend adapter, bootstrap artifact, and
+  lowering reports twice on both Linux and Windows using the same built
+  selfhost artifacts, so bootstrap declaration is now a first-class CI gate
+  instead of a manual judgment call
 - that rehearsal now also diffs rebuilt bootstrap-artifact reports across
   stage1 and stage2, so a tool built through the selfhost compiler path is
   exercised and stabilized inside the same deterministic loop

@@ -462,10 +462,16 @@ Current status:
   which wraps the frontend pipeline as a first selfhost compiler-driver
   surface and is guarded by `bootstrap/selfhost/corpus/compiler-driver-contract.txt`
   plus a dedicated `Selfhost Compiler Driver` CI workflow
+- that compiler slice now also owns a separate phase-body contract under
+  `bootstrap/selfhost/corpus/compiler-phase-contract.txt`, so phase previews
+  are locked independently from the thinner orchestration-plan surface
 - a real bootstrap artifact gate now exists under
   `bootstrap/selfhost/corpus/bootstrap-artifact-contract.txt`: the selfhost
   compiler builds a rebuilt compiler artifact plus a rebuilt frontend-main tool
   artifact, runs them, and keeps those reports stable across CI rebuilds
+- that artifact gate now also requires the rebuilt compiler artifact to build
+  `main.tg` and replay report output, so the artifact chain is no longer
+  limited to `compiler.tg` and `lower.tg`
 - the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at
@@ -557,6 +563,10 @@ Current status:
   (`bootstrap/selfhost/frontend/lower.tg`) across stage1/stage2 rebuilds, so a
   compiler-middle lowered contract is now part of the deterministic bootstrap
   loop
+- `.github/workflows/bootstrap-declaration-gate.yml` now reruns the compiler
+  driver, compiler phase-body contract, backend adapter, bootstrap artifact,
+  and lowering reports twice on both Linux and Windows using the same built
+  selfhost artifacts, making the declaration gate itself observable in CI
 - that same rehearsal lane now also validates the session-routed replacement
   contract for `check.tg` across stage1/stage2, so Target 01 behavior is part
   of the rebuild loop instead of living only in its separate workflow
