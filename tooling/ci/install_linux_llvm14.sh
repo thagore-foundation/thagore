@@ -28,7 +28,12 @@ done
 retry_apt() {
   local attempt=1
   while true; do
-    if sudo apt-get -o DPkg::Lock::Timeout=300 -o Acquire::Retries=3 "$@"; then
+    if timeout 600s sudo apt-get \
+      -o DPkg::Lock::Timeout=300 \
+      -o Acquire::Retries=3 \
+      -o Acquire::http::Timeout=30 \
+      -o Acquire::https::Timeout=30 \
+      "$@"; then
       return 0
     fi
     if [[ $attempt -ge 3 ]]; then
