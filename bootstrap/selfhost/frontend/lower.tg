@@ -287,6 +287,12 @@ func append_use(uses: str, block: str, context: str, ref: str) -> str:
   let scoped = scoped_ref(block, ref)
   return append_scoped(uses, block, string.concat("use(", string.concat("context=", string.concat(context, string.concat(",value=", string.concat(scoped, ")"))))))
 
+func append_flow(flows: str, block: str, from_ref: str, to_context: str) -> str:
+  if (string.len(from_ref) == 0 or string.str_eq(from_ref, "unknown") or string.len(to_context) == 0):
+    return flows
+  let scoped = scoped_ref(block, from_ref)
+  return append_scoped(flows, block, string.concat("flow(", string.concat("from=", string.concat(scoped, string.concat(",to=", string.concat(to_context, ")"))))))
+
 func append_rhs_value(values: str, block: str, state: str) -> str:
   let item = rhs_value(state)
   let kind = rhs_kind(state)
@@ -341,7 +347,7 @@ func is_assignment_target(tokens: Array[str], index: i32) -> bool:
     return false
   return true
 
-func render_function(name: str, return_type: str, locals: str, blocks: str, edges: str, values: str, defs: str, uses: str, statements: str, terminators: str) -> str:
+func render_function(name: str, return_type: str, locals: str, blocks: str, edges: str, values: str, defs: str, uses: str, flows: str, statements: str, terminators: str) -> str:
   let with_name = string.concat("fn=", name)
   let with_sig = string.concat(with_name, string.concat(";sig=()->", return_type))
   let with_locals = string.concat(with_sig, string.concat(";locals=", wrap_list(render_locals(locals))))
@@ -350,7 +356,8 @@ func render_function(name: str, return_type: str, locals: str, blocks: str, edge
   let with_values = string.concat(with_cfg, string.concat(";values=", wrap_list(values)))
   let with_defs = string.concat(with_values, string.concat(";defs=", wrap_list(defs)))
   let with_uses = string.concat(with_defs, string.concat(";uses=", wrap_list(uses)))
-  let with_statements = string.concat(with_uses, string.concat(";statements=", wrap_list(statements)))
+  let with_flows = string.concat(with_uses, string.concat(";flows=", wrap_list(flows)))
+  let with_statements = string.concat(with_flows, string.concat(";statements=", wrap_list(statements)))
   return string.concat(with_statements, string.concat(";terminators=", wrap_list(terminators)))
 
 func append_function(out: str, line: str) -> str:
@@ -372,6 +379,7 @@ pub func lower_report(source: str) -> str:
   let current_values = ""
   let current_defs = ""
   let current_uses = ""
+  let current_flows = ""
   let current_statements = ""
   let current_terminators = ""
   let index: i32 = 0
@@ -379,7 +387,7 @@ pub func lower_report(source: str) -> str:
   while (index < count):
     if (token_matches(tokens, index, "kw", "func") and token_is_kind(tokens, index + 1, "ident") and token_is_kind(tokens, index + 5, "ident")):
       if (string.len(current_name) > 0):
-        out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_edges, current_values, current_defs, current_uses, current_statements, current_terminators))
+        out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_edges, current_values, current_defs, current_uses, current_flows, current_statements, current_terminators))
       current_name = token_value(tokens, index + 1)
       current_return = token_value(tokens, index + 5)
       func_returns = append_mapping(func_returns, current_name, current_return)
@@ -390,6 +398,7 @@ pub func lower_report(source: str) -> str:
       current_values = ""
       current_defs = ""
       current_uses = ""
+      current_flows = ""
       current_statements = ""
       current_terminators = ""
       index = index + 6
@@ -405,6 +414,7 @@ pub func lower_report(source: str) -> str:
         current_values = append_rhs_value(current_values, current_block, rhs)
         current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
         current_uses = append_use(current_uses, current_block, string.concat("init:", string.concat(local_name, string.concat(":", local_type))), rhs_descriptor(rhs))
+        current_flows = append_flow(current_flows, current_block, rhs_descriptor(rhs), string.concat("init:", string.concat(local_name, string.concat(":", local_type))))
         current_statements = append_statement_kind(current_statements, current_block, "init", init_statement(local_name, local_type, scoped))
       index = index + 1
       continue
@@ -416,6 +426,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, string.concat("assign:", string.concat(target, string.concat(":", target_type))), rhs_descriptor(rhs))
+      current_flows = append_flow(current_flows, current_block, rhs_descriptor(rhs), string.concat("assign:", string.concat(target, string.concat(":", target_type))))
       current_statements = append_statement_kind(current_statements, current_block, "assign", assign_statement(target, target_type, scoped))
       index = index + 1
       continue
@@ -429,6 +440,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "branch", rhs_descriptor(cond))
+      current_flows = append_flow(current_flows, current_block, rhs_descriptor(cond), "branch")
       current_terminators = append_terminator_kind(current_terminators, current_block, "branch", branch_terminator(scoped, block_label("then"), block_label("exit")))
       current_block = "then"
       index = index + 1
@@ -445,6 +457,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "loop", rhs_descriptor(cond))
+      current_flows = append_flow(current_flows, current_block, rhs_descriptor(cond), "loop")
       current_terminators = append_terminator_kind(current_terminators, current_block, "loop", loop_terminator(scoped, block_label("loop"), block_label("exit")))
       current_block = "loop"
       index = index + 1
@@ -458,13 +471,14 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, "return", rhs_descriptor(rhs))
+      current_flows = append_flow(current_flows, current_block, rhs_descriptor(rhs), "return")
       let descriptor = scoped
       current_terminators = append_terminator_kind(current_terminators, current_block, "return", return_terminator(descriptor))
       index = index + 1
       continue
     index = index + 1
   if (string.len(current_name) > 0):
-    out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_edges, current_values, current_defs, current_uses, current_statements, current_terminators))
+    out = append_function(out, render_function(current_name, current_return, current_locals, current_blocks, current_edges, current_values, current_defs, current_uses, current_flows, current_statements, current_terminators))
   return out
 
 pub func main() -> i32:

@@ -148,6 +148,8 @@ pub func verify_output(command: str) -> str:
   return "report"
 
 pub func lowering_shape(lowered: str) -> str:
+  if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "source=") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "flows=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "target=") and string.contains(lowered, "terminators=[") and string.contains(lowered, "value=")):
+    return "typed-structured-flow-blockcfg"
   if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "source=") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "target=") and string.contains(lowered, "terminators=[") and string.contains(lowered, "value=")):
     return "typed-structured-defuse-blockcfg"
   if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
