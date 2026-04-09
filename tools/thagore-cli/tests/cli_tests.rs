@@ -1756,7 +1756,7 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                     .unwrap_or_else(|error| panic!("run second nested bootstrap artifact case {label}: {error}"));
                 let _ = fs::remove_file(&second_artifact);
                 output
-            }
+            };
             let _ = fs::remove_file(&nested_artifact);
             nested_output
         } else {
