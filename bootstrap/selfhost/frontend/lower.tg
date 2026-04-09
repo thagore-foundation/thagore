@@ -202,25 +202,25 @@ func rhs_state(tokens: Array[str], index: i32, locals: str, funcs: str, hinted_t
     let value = literal_value(tokens, index)
     let repr = string.concat("const(", string.concat(literal, string.concat("=", string.concat(value, ")"))))
     let ref = string.concat("const_", string.concat(literal, string.concat("_", value)))
-    return string.concat("const;", string.concat(repr, string.concat(";", string.concat(literal, string.concat(";", ref)))))
+    return string.concat("const;", string.concat(repr, string.concat(";", string.concat(literal, string.concat(";", string.concat(ref, string.concat(";", value)))))))
   let call = call_name(tokens, index)
   if (string.len(call) > 0):
     let result_type = value_type(tokens, index, locals, funcs, hinted_type)
     let repr = string.concat("call(", string.concat(call, string.concat("->", string.concat(result_type, ")"))))
     let ref = string.concat("call_", string.concat(call, string.concat("_", result_type)))
-    return string.concat("call;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
+    return string.concat("call;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", string.concat(ref, string.concat(";", call)))))))
   let load = load_name(tokens, index)
   if (string.len(load) > 0):
     let result_type = value_type(tokens, index, locals, funcs, hinted_type)
     let repr = string.concat("load(", string.concat(load, string.concat(":", string.concat(result_type, ")"))))
     let ref = string.concat("load_", string.concat(load, string.concat("_", result_type)))
-    return string.concat("load;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
+    return string.concat("load;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", string.concat(ref, string.concat(";", load)))))))
   let result_type = value_type(tokens, index, locals, funcs, hinted_type)
   if (string.len(result_type) > 0):
     let repr = string.concat("value(", string.concat(result_type, ")"))
     let ref = string.concat("value_", result_type)
-    return string.concat("value;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", ref)))))
-  return "unknown;;;unknown"
+    return string.concat("value;", string.concat(repr, string.concat(";", string.concat(result_type, string.concat(";", string.concat(ref, string.concat(";", result_type)))))))
+  return "unknown;;;unknown;"
 
 func split_state(state: str, part: i32) -> str:
   let parts = string.split(state, ";")
@@ -239,6 +239,9 @@ func rhs_type_name(state: str) -> str:
 
 func rhs_descriptor(state: str) -> str:
   return split_state(state, 3)
+
+func rhs_source(state: str) -> str:
+  return split_state(state, 4)
 
 func append_scoped(items: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
@@ -259,7 +262,7 @@ func append_statement_kind(statements: str, block: str, kind: str, item: str) ->
   if (string.len(item) == 0):
     return statements
   let id = string.concat(block_id(block), string.concat(".", kind))
-  return append_statement(statements, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))
+  return append_statement(statements, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",", item))))))
 
 func append_terminator(terminators: str, block: str, item: str) -> str:
   if (string.len(item) == 0):
@@ -270,7 +273,7 @@ func append_terminator_kind(terminators: str, block: str, kind: str, item: str) 
   if (string.len(item) == 0):
     return terminators
   let id = string.concat(block_id(block), string.concat(".", kind))
-  return append_terminator(terminators, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))
+  return append_terminator(terminators, block, string.concat("id=", string.concat(id, string.concat(",class=", string.concat(kind, string.concat(",", item))))))
 
 func append_def(defs: str, block: str, ref: str, ty: str) -> str:
   if (string.len(ref) == 0 or string.len(ty) == 0):
@@ -289,10 +292,40 @@ func append_rhs_value(values: str, block: str, state: str) -> str:
   let kind = rhs_kind(state)
   let ref = rhs_descriptor(state)
   let ty = rhs_type_name(state)
+  let source = rhs_source(state)
   if (string.len(item) == 0 or string.str_eq(item, "unknown")):
     return values
   let scoped = scoped_ref(block, ref)
-  return append_value(values, block, string.concat("id=", string.concat(scoped, string.concat(",type=", string.concat(ty, string.concat(",class=", string.concat(kind, string.concat(",op=", item))))))))
+  return append_value(values, block, string.concat("id=", string.concat(scoped, string.concat(",type=", string.concat(ty, string.concat(",class=", string.concat(kind, string.concat(",source=", string.concat(source, string.concat(",op=", item))))))))))
+
+func alloc_statement(local_name: str, local_type: str) -> str:
+  return string.concat("target=", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat(",op=alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")"))))))))
+
+func init_statement(local_name: str, local_type: str, value_ref: str) -> str:
+  let target = string.concat(local_name, string.concat(":", local_type))
+  let op = string.concat("init(", string.concat(target, string.concat("<-", string.concat(value_ref, ")"))))
+  return string.concat("target=", string.concat(target, string.concat(",value=", string.concat(value_ref, string.concat(",op=", op)))))
+
+func assign_statement(target_name: str, target_type: str, value_ref: str) -> str:
+  let target = string.concat(target_name, string.concat(":", target_type))
+  let op = string.concat("assign(", string.concat(target, string.concat("<-", string.concat(value_ref, ")"))))
+  return string.concat("target=", string.concat(target, string.concat(",value=", string.concat(value_ref, string.concat(",op=", op)))))
+
+func branch_terminator(cond_ref: str, then_block: str, else_block: str) -> str:
+  let op = string.concat("branch(cond=", string.concat(cond_ref, string.concat(",then=", string.concat(then_block, string.concat(",else=", string.concat(else_block, ")"))))))
+  let with_else = string.concat("cond=", string.concat(cond_ref, string.concat(",then=", string.concat(then_block, string.concat(",else=", else_block)))))
+  return string.concat(with_else, string.concat(",op=", op))
+
+func loop_terminator(cond_ref: str, body_block: str, exit_block: str) -> str:
+  let op = string.concat("loop(cond=", string.concat(cond_ref, string.concat(",body=", string.concat(body_block, string.concat(",exit=", string.concat(exit_block, ")"))))))
+  let with_exit = string.concat("cond=", string.concat(cond_ref, string.concat(",body=", string.concat(body_block, string.concat(",exit=", exit_block)))))
+  return string.concat(with_exit, string.concat(",op=", op))
+
+func return_terminator(value_ref: str) -> str:
+  if (string.len(value_ref) == 0 or string.str_eq(value_ref, "unknown")):
+    return "value=void,op=return(void)"
+  let op = string.concat("return(", string.concat(value_ref, ")"))
+  return string.concat("value=", string.concat(value_ref, string.concat(",op=", op)))
 
 func append_edge(edges: str, from_block: str, to_block: str) -> str:
   if (string.len(from_block) == 0 or string.len(to_block) == 0):
@@ -365,14 +398,14 @@ pub func lower_report(source: str) -> str:
       let local_name = token_value(tokens, index + 1)
       let local_type = token_value(tokens, index + 3)
       current_locals = append_mapping(current_locals, local_name, local_type)
-      current_statements = append_statement_kind(current_statements, current_block, "alloc", string.concat("alloc(", string.concat(local_name, string.concat(":", string.concat(local_type, ")")))))
+      current_statements = append_statement_kind(current_statements, current_block, "alloc", alloc_statement(local_name, local_type))
       if (token_matches(tokens, index + 4, "punct", "=")):
         let rhs = rhs_state(tokens, index + 5, current_locals, func_returns, local_type)
         let scoped = scoped_ref(current_block, rhs_descriptor(rhs))
         current_values = append_rhs_value(current_values, current_block, rhs)
         current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
         current_uses = append_use(current_uses, current_block, string.concat("init:", string.concat(local_name, string.concat(":", local_type))), rhs_descriptor(rhs))
-        current_statements = append_statement_kind(current_statements, current_block, "init", string.concat("init(", string.concat(local_name, string.concat(":", string.concat(local_type, string.concat("<-", string.concat(scoped, ")")))))))
+        current_statements = append_statement_kind(current_statements, current_block, "init", init_statement(local_name, local_type, scoped))
       index = index + 1
       continue
     if (is_assignment_target(tokens, index)):
@@ -383,7 +416,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, rhs)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, string.concat("assign:", string.concat(target, string.concat(":", target_type))), rhs_descriptor(rhs))
-      current_statements = append_statement_kind(current_statements, current_block, "assign", string.concat("assign(", string.concat(target, string.concat(":", string.concat(target_type, string.concat("<-", string.concat(scoped, ")")))))))
+      current_statements = append_statement_kind(current_statements, current_block, "assign", assign_statement(target, target_type, scoped))
       index = index + 1
       continue
     if (token_matches(tokens, index, "kw", "if")):
@@ -396,7 +429,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "branch", rhs_descriptor(cond))
-      current_terminators = append_terminator_kind(current_terminators, current_block, "branch", string.concat("branch(cond=", string.concat(scoped, string.concat(",then=", string.concat(block_label("then"), string.concat(",else=", string.concat(block_label("exit"), ")")))))))
+      current_terminators = append_terminator_kind(current_terminators, current_block, "branch", branch_terminator(scoped, block_label("then"), block_label("exit")))
       current_block = "then"
       index = index + 1
       continue
@@ -412,7 +445,7 @@ pub func lower_report(source: str) -> str:
       current_values = append_rhs_value(current_values, current_block, cond)
       current_defs = append_def(current_defs, current_block, rhs_descriptor(cond), rhs_type_name(cond))
       current_uses = append_use(current_uses, current_block, "loop", rhs_descriptor(cond))
-      current_terminators = append_terminator_kind(current_terminators, current_block, "loop", string.concat("loop(cond=", string.concat(scoped, string.concat(",body=", string.concat(block_label("loop"), string.concat(",exit=", string.concat(block_label("exit"), ")")))))))
+      current_terminators = append_terminator_kind(current_terminators, current_block, "loop", loop_terminator(scoped, block_label("loop"), block_label("exit")))
       current_block = "loop"
       index = index + 1
       continue
@@ -426,10 +459,7 @@ pub func lower_report(source: str) -> str:
       current_defs = append_def(current_defs, current_block, rhs_descriptor(rhs), rhs_type_name(rhs))
       current_uses = append_use(current_uses, current_block, "return", rhs_descriptor(rhs))
       let descriptor = scoped
-      if (string.len(descriptor) > 0 and string.str_eq(descriptor, "unknown") == false):
-        current_terminators = append_terminator_kind(current_terminators, current_block, "return", string.concat("return(", string.concat(descriptor, ")")))
-      if (string.len(descriptor) == 0 or string.str_eq(descriptor, "unknown")):
-        current_terminators = append_terminator_kind(current_terminators, current_block, "return", "return(void)")
+      current_terminators = append_terminator_kind(current_terminators, current_block, "return", return_terminator(descriptor))
       index = index + 1
       continue
     index = index + 1

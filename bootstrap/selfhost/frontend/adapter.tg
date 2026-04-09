@@ -148,6 +148,8 @@ pub func verify_output(command: str) -> str:
   return "report"
 
 pub func lowering_shape(lowered: str) -> str:
+  if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "source=") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "target=") and string.contains(lowered, "terminators=[") and string.contains(lowered, "value=")):
+    return "typed-structured-defuse-blockcfg"
   if (string.contains(lowered, "blocks=[") and string.contains(lowered, "#b") and string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
     return "typed-defuse-blockcfg"
   if (string.contains(lowered, "values=[") and string.contains(lowered, "defs=[") and string.contains(lowered, "uses=[") and string.contains(lowered, "statements=[") and string.contains(lowered, "terminators=[")):
@@ -299,6 +301,32 @@ pub func verify_completed(command: str, artifact_name: str, stdout_ready: bool) 
   if (stdout_ready):
     return string.concat(with_runtime, ";stdout_ready=true;phase_complete=verify-artifact;status=ok")
   return string.concat(with_runtime, ";stdout_ready=false;phase_complete=verify-artifact;status=ok")
+
+pub func emission_completed(command: str, artifact_name: str, stdout_ready: bool) -> str:
+  let with_command = string.concat("command=", command)
+  let with_artifact = string.concat(with_command, string.concat(";artifact=", artifact_name))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_output = string.concat(with_runtime_object, string.concat(";emission_output=", emission_output(command)))
+  let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
+  let with_backend = string.concat(with_contract, string.concat(";backend_contract=", backend_contract(command)))
+  let with_verify = string.concat(with_backend, string.concat(";verify_contract=", verify_contract(command)))
+  let with_artifact_ready = string.concat(with_verify, ";artifact_ready=true;runtime_object_ready=true")
+  if (stdout_ready):
+    return string.concat(with_artifact_ready, ";stdout_ready=true;phase_complete=host-emit;status=ok")
+  return string.concat(with_artifact_ready, ";stdout_ready=false;phase_complete=host-emit;status=ok")
+
+pub func link_completed(command: str, artifact_name: str, stdout_ready: bool) -> str:
+  let with_command = string.concat("command=", command)
+  let with_artifact = string.concat(with_command, string.concat(";artifact=", artifact_name))
+  let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
+  let with_output = string.concat(with_runtime_object, string.concat(";link_output=", link_output(command)))
+  let with_contract = string.concat(with_output, string.concat(";artifact_contract=", artifact_contract(command)))
+  let with_link = string.concat(with_contract, string.concat(";link_contract=", link_contract(command)))
+  let with_verify = string.concat(with_link, string.concat(";verify_contract=", verify_contract(command)))
+  let with_ready = string.concat(with_verify, ";artifact_ready=true;runtime_object_ready=true;link_ready=true")
+  if (stdout_ready):
+    return string.concat(with_ready, ";stdout_ready=true;phase_complete=host-link;status=ok")
+  return string.concat(with_ready, ";stdout_ready=false;phase_complete=host-link;status=ok")
 
 pub func build_command(host_thagc: str, path: str, output_path: str) -> str:
   return string.concat(host_thagc, string.concat(" build ", string.concat(path, string.concat(" -o ", output_path))))
