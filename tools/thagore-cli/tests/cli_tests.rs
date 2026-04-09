@@ -1655,6 +1655,15 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             let nested_artifact = scratch.path().join(kind);
             let mut build_nested = Command::new(&artifact_path);
             build_nested.current_dir(&cwd);
+            build_nested.env(
+                "PATH",
+                format!("{stage0_parent}{path_sep}{inherited_path}"),
+            );
+            build_nested.env(
+                "THAGORE_STAGE0",
+                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+            );
+            build_nested.env("THAGORE_SELFHOST_TMP", scratch.path());
             build_nested.arg("build");
             if let Some(path_arg) = path_arg {
                 build_nested.arg(path_arg);
