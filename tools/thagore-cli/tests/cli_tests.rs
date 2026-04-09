@@ -1630,11 +1630,15 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             artifact_path.display()
         );
 
-        let mut command = Command::new(&artifact_path);
-        command.current_dir(&cwd);
-        if invoke == "version" {
-            command.arg("version");
+        let output = if invoke == "version" {
+            Command::new(&artifact_path)
+                .current_dir(&cwd)
+                .arg("version")
+                .output()
+                .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"))
         } else if invoke == "exec" {
+            let mut command = Command::new(&artifact_path);
+            command.current_dir(&cwd);
             if let Some(path_arg) = path_arg {
                 command.arg(path_arg);
             }
@@ -1644,13 +1648,48 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             if !mode.is_empty() {
                 command.arg(mode);
             }
+            command
+                .output()
+                .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"))
+        } else if invoke == "build-version" || invoke == "build-exec" {
+            let nested_artifact = scratch.path().join(kind);
+            let mut build_nested = Command::new(&artifact_path);
+            build_nested.current_dir(&cwd);
+            build_nested.arg("build");
+            if let Some(path_arg) = path_arg {
+                build_nested.arg(path_arg);
+            }
+            build_nested.arg(kind);
+            let nested_build_output = build_nested
+                .output()
+                .unwrap_or_else(|error| panic!("build nested bootstrap artifact {label}: {error}"));
+            assert_eq!(
+                nested_build_output.status.code(),
+                Some(0),
+                "nested bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&nested_build_output.stdout),
+                String::from_utf8_lossy(&nested_build_output.stderr)
+            );
+            assert!(
+                nested_artifact.exists(),
+                "nested bootstrap artifact missing for {label}: {}",
+                nested_artifact.display()
+            );
+            let mut nested_command = Command::new(&nested_artifact);
+            nested_command.current_dir(&cwd);
+            if invoke == "build-version" {
+                nested_command.arg("version");
+            } else if !mode.is_empty() {
+                nested_command.arg(mode);
+            }
+            let nested_output = nested_command
+                .output()
+                .unwrap_or_else(|error| panic!("run nested bootstrap artifact case {label}: {error}"));
+            let _ = fs::remove_file(&nested_artifact);
+            nested_output
         } else {
             panic!("unsupported bootstrap artifact invoke mode: {invoke}");
-        }
-
-        let output = command
-            .output()
-            .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"));
+        };
         assert_eq!(
             output.status.code(),
             Some(expected_exit),

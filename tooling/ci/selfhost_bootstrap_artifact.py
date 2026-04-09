@@ -40,6 +40,8 @@ def resolve_arg(repo_root: pathlib.Path, raw: str) -> str:
 
 def run_artifact(
     artifact: pathlib.Path,
+    scratch_dir: pathlib.Path,
+    env: dict[str, str],
     cwd: pathlib.Path,
     invoke: str,
     path_arg: str,
@@ -56,11 +58,73 @@ def run_artifact(
             cmd.append(kind)
         if mode:
             cmd.append(mode)
+    elif invoke == "build-version":
+        nested_artifact = scratch_dir / kind
+        if nested_artifact.exists():
+            nested_artifact.unlink()
+        build_cmd = [str(artifact), "build"]
+        if path_arg:
+            build_cmd.append(path_arg)
+        build_cmd.append(kind)
+        built = subprocess.run(
+            build_cmd,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if built.returncode != 0:
+            return built
+        if not nested_artifact.exists():
+            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        return subprocess.run(
+            [str(nested_artifact), "version"],
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    elif invoke == "build-exec":
+        nested_artifact = scratch_dir / kind
+        if nested_artifact.exists():
+            nested_artifact.unlink()
+        build_cmd = [str(artifact), "build"]
+        if path_arg:
+            build_cmd.append(path_arg)
+        build_cmd.append(kind)
+        built = subprocess.run(
+            build_cmd,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if built.returncode != 0:
+            return built
+        if not nested_artifact.exists():
+            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        nested_cmd = [str(nested_artifact)]
+        if mode:
+            nested_cmd.append(mode)
+        return subprocess.run(
+            nested_cmd,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
     else:
         raise SystemExit(f"unsupported bootstrap artifact invoke mode: {invoke}")
     return subprocess.run(
         cmd,
         cwd=cwd,
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -118,6 +182,8 @@ def main() -> int:
 
             completed = run_artifact(
                 artifact,
+                scratch_dir,
+                env,
                 cwd,
                 invoke,
                 resolve_arg(repo_root, path_raw),
