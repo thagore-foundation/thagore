@@ -476,6 +476,7 @@ Current status:
   `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
   compiler artifact to rebuild another compiler that can build `main.tg`,
   `check.tg`, and `lower.tg` and replay stable report/check/lowering output,
+  and then run a nested `phase-build` contract from that rebuilt compiler,
   widening the chain from single-artifact replay into a deeper nested
   compiler/tool handoff
 - the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
