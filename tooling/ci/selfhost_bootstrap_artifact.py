@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from typing import Dict, Tuple
 
 
 def load_manifest(path: pathlib.Path, columns: int) -> list[list[str]]:
@@ -38,6 +39,43 @@ def resolve_arg(repo_root: pathlib.Path, raw: str) -> str:
     return raw
 
 
+def ensure_built(
+    builder: pathlib.Path,
+    source_path: str,
+    output_name: str,
+    scratch_dir: pathlib.Path,
+    cwd: pathlib.Path,
+    env: dict[str, str],
+    build_cache: Dict[Tuple[str, str, str], pathlib.Path],
+) -> pathlib.Path:
+    key = (str(builder), source_path, output_name)
+    cached = build_cache.get(key)
+    if cached is not None and cached.exists():
+        return cached
+    output_path = scratch_dir / output_name
+    if output_path.exists():
+        output_path.unlink()
+    build_cmd = [str(builder), "build", source_path, output_name]
+    built = subprocess.run(
+        build_cmd,
+        cwd=cwd,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if built.returncode != 0:
+        raise RuntimeError(
+            f"build failed for {source_path} -> {output_name}"
+            f"\nstdout:\n{built.stdout}\nstderr:\n{built.stderr}"
+        )
+    if not output_path.exists():
+        raise RuntimeError(f"missing nested artifact: {output_path}")
+    build_cache[key] = output_path
+    return output_path
+
+
 def run_artifact(
     artifact: pathlib.Path,
     scratch_dir: pathlib.Path,
@@ -47,6 +85,7 @@ def run_artifact(
     path_arg: str,
     kind: str,
     mode: str,
+    build_cache: Dict[Tuple[str, str, str], pathlib.Path],
 ) -> subprocess.CompletedProcess[str]:
     cmd = [str(artifact)]
     nested_args = [part for part in mode.split(";;") if part] if mode else []
@@ -60,26 +99,10 @@ def run_artifact(
         if mode:
             cmd.append(mode)
     elif invoke == "build-version":
-        nested_artifact = scratch_dir / kind
-        if nested_artifact.exists():
-            nested_artifact.unlink()
-        build_cmd = [str(artifact), "build"]
-        if path_arg:
-            build_cmd.append(path_arg)
-        build_cmd.append(kind)
-        built = subprocess.run(
-            build_cmd,
-            cwd=cwd,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if built.returncode != 0:
-            return built
-        if not nested_artifact.exists():
-            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        try:
+            nested_artifact = ensure_built(artifact, path_arg, kind, scratch_dir, cwd, env, build_cache)
+        except RuntimeError as error:
+            return subprocess.CompletedProcess([str(artifact), "build", path_arg, kind], 1, "", str(error))
         return subprocess.run(
             [str(nested_artifact), "version"],
             cwd=cwd,
@@ -90,26 +113,10 @@ def run_artifact(
             encoding="utf-8",
         )
     elif invoke == "build-exec":
-        nested_artifact = scratch_dir / kind
-        if nested_artifact.exists():
-            nested_artifact.unlink()
-        build_cmd = [str(artifact), "build"]
-        if path_arg:
-            build_cmd.append(path_arg)
-        build_cmd.append(kind)
-        built = subprocess.run(
-            build_cmd,
-            cwd=cwd,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if built.returncode != 0:
-            return built
-        if not nested_artifact.exists():
-            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        try:
+            nested_artifact = ensure_built(artifact, path_arg, kind, scratch_dir, cwd, env, build_cache)
+        except RuntimeError as error:
+            return subprocess.CompletedProcess([str(artifact), "build", path_arg, kind], 1, "", str(error))
         nested_cmd = [str(nested_artifact), *nested_args]
         return subprocess.run(
             nested_cmd,
@@ -121,47 +128,22 @@ def run_artifact(
             encoding="utf-8",
         )
     elif invoke == "build-build-version" or invoke == "build-build-exec":
-        nested_artifact = scratch_dir / kind
-        if nested_artifact.exists():
-            nested_artifact.unlink()
-        build_cmd = [str(artifact), "build"]
-        if path_arg:
-            build_cmd.append(path_arg)
-        build_cmd.append(kind)
-        built = subprocess.run(
-            build_cmd,
-            cwd=cwd,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if built.returncode != 0:
-            return built
-        if not nested_artifact.exists():
-            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing nested artifact: {nested_artifact}")
+        try:
+            nested_artifact = ensure_built(artifact, path_arg, kind, scratch_dir, cwd, env, build_cache)
+        except RuntimeError as error:
+            return subprocess.CompletedProcess([str(artifact), "build", path_arg, kind], 1, "", str(error))
         if len(nested_args) < 2:
-            return subprocess.CompletedProcess(build_cmd, 1, "", f"missing second-stage source/artifact args for {invoke}")
+            return subprocess.CompletedProcess([str(nested_artifact)], 1, "", f"missing second-stage source/artifact args for {invoke}")
         second_source = nested_args[0]
         second_artifact_name = nested_args[1]
-        second_artifact = scratch_dir / second_artifact_name
-        if second_artifact.exists():
-            second_artifact.unlink()
-        second_build_cmd = [str(nested_artifact), "build", second_source, second_artifact_name]
-        second_built = subprocess.run(
-            second_build_cmd,
-            cwd=cwd,
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-        if second_built.returncode != 0:
-            return second_built
-        if not second_artifact.exists():
-            return subprocess.CompletedProcess(second_build_cmd, 1, "", f"missing second nested artifact: {second_artifact}")
+        try:
+            second_artifact = ensure_built(
+                nested_artifact, second_source, second_artifact_name, scratch_dir, cwd, env, build_cache
+            )
+        except RuntimeError as error:
+            return subprocess.CompletedProcess(
+                [str(nested_artifact), "build", second_source, second_artifact_name], 1, "", str(error)
+            )
         nested_cmd = [str(second_artifact)]
         if invoke == "build-build-version":
             nested_cmd.append("version")
@@ -206,6 +188,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="selfhost-bootstrap-artifact-") as scratch_root:
         scratch_dir = pathlib.Path(scratch_root)
         env = dict(os.environ)
+        build_cache: Dict[Tuple[str, str, str], pathlib.Path] = {}
         env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
         if host_thagc is not None:
             env["THAGORE_STAGE0"] = host_thagc.name
@@ -217,25 +200,10 @@ def main() -> int:
             source = (repo_root / source_raw).resolve()
             artifact = scratch_dir / artifact_name
             cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
-            if artifact.exists():
-                artifact.unlink()
-
-            build_completed = subprocess.run(
-                [str(compiler_bin), "build", str(source), artifact_name],
-                cwd=repo_root,
-                env=env,
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-            )
-            if build_completed.returncode != 0:
-                raise SystemExit(
-                    f"bootstrap artifact build failed for {label}"
-                    f"\nstdout:\n{build_completed.stdout}\nstderr:\n{build_completed.stderr}"
-                )
-            if not artifact.exists():
-                raise SystemExit(f"bootstrap artifact missing for {label}: {artifact}")
+            try:
+                artifact = ensure_built(compiler_bin, str(source), artifact_name, scratch_dir, repo_root, env, build_cache)
+            except RuntimeError as error:
+                raise SystemExit(f"bootstrap artifact build failed for {label}\n{error}")
 
             completed = run_artifact(
                 artifact,
@@ -246,6 +214,7 @@ def main() -> int:
                 resolve_arg(repo_root, path_raw),
                 kind,
                 mode,
+                build_cache,
             )
             expected_code = int(expected_exit)
             if completed.returncode != expected_code:
@@ -260,7 +229,6 @@ def main() -> int:
                     f"bootstrap artifact output drift for {label}"
                     f"\nexpected:\n{expected}\nactual:\n{actual}"
                 )
-            artifact.unlink()
             report_lines.append(f"{label}|exit={expected_code}|ok")
 
     if args.report_out:
