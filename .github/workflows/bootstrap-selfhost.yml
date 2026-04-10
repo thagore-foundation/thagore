@@ -38,7 +38,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM 14
-        timeout-minutes: 15
+        timeout-minutes: 30
         shell: bash
         run: bash tooling/ci/install_linux_llvm14.sh llvm-14-tools libpolly-14-dev
 
@@ -231,3 +231,4 @@ jobs:
         with:
           name: bootstrap-selfhost-windows
           path: bootstrap-selfhost/*
+

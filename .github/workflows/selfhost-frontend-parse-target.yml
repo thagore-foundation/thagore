@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Linux prerequisites
         if: runner.os == 'Linux'
-        timeout-minutes: 15
+        timeout-minutes: 30
         shell: bash
         run: bash tooling/ci/install_linux_llvm14.sh
 
@@ -286,3 +286,4 @@ jobs:
           $second
           ```
           "@ | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
