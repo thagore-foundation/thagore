@@ -172,12 +172,13 @@ Current scope:
 - that same artifact loop now also requires the rebuilt compiler artifact to
   build `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
   compiler artifact to rebuild another compiler that can build `main.tg`,
-  `check.tg`, and `lower.tg`, and then run nested `phase-build`,
-  `phase-run`, `emit-build`, `link-build`, and `verify-build` contracts from
-  that rebuilt compiler, plus nested `emit-run`, `link-run`, and `verify-run`
-  contracts, so the chain now reaches through the canonical frontend stages,
-  lowering slice, and one deeper nested compiler/tool handoff into compiler-body,
-  emission, link, and verification surfaces for both build and run flows
+  `check.tg`, and `lower.tg`, and then run nested `phase-check`,
+  `phase-build`, `phase-run`, `adapter-build`, `emit-build`, `link-build`,
+  and `verify-build` contracts from that rebuilt compiler, plus nested
+  `emit-run`, `link-run`, and `verify-run` contracts, so the chain now reaches
+  through the canonical frontend stages, lowering slice, and one deeper nested
+  compiler/tool handoff into compiler-body, adapter, emission, link, and
+  verification surfaces for both build and run flows
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
