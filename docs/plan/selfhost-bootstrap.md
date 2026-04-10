@@ -474,9 +474,10 @@ Current status:
   limited to `compiler.tg` and `lower.tg`
 - that artifact gate now also requires the rebuilt compiler artifact to build
   `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
-  compiler artifact to rebuild another compiler that can build `main.tg` and
-  `check.tg` and replay stable report/check output, widening the chain from
-  single-artifact replay into a deeper nested compiler/tool handoff
+  compiler artifact to rebuild another compiler that can build `main.tg`,
+  `check.tg`, and `lower.tg` and replay stable report/check/lowering output,
+  widening the chain from single-artifact replay into a deeper nested
+  compiler/tool handoff
 - the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at

@@ -171,10 +171,10 @@ Current scope:
   longer limited to `compiler.tg` and `lower.tg`
 - that same artifact loop now also requires the rebuilt compiler artifact to
   build `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
-  compiler artifact to rebuild another compiler that can build `main.tg` and
-  `check.tg` and replay stable report/check output, so the chain now reaches
-  through the canonical frontend stages and one deeper nested compiler/tool
-  handoff
+  compiler artifact to rebuild another compiler that can build `main.tg`,
+  `check.tg`, and `lower.tg` and replay stable report/check/lowering output, so
+  the chain now reaches through the canonical frontend stages and one deeper
+  nested compiler/tool handoff
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
