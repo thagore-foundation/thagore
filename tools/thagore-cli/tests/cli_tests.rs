@@ -1695,6 +1695,15 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             let nested_output = if invoke == "build-version" || invoke == "build-exec" {
                 let mut nested_command = Command::new(&nested_artifact);
                 nested_command.current_dir(&cwd);
+                nested_command.env(
+                    "PATH",
+                    format!("{stage0_parent}{path_sep}{inherited_path}"),
+                );
+                nested_command.env(
+                    "THAGORE_STAGE0",
+                    stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+                );
+                nested_command.env("THAGORE_SELFHOST_TMP", scratch.path());
                 if invoke == "build-version" {
                     nested_command.arg("version");
                 } else {
@@ -1744,6 +1753,15 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                 );
                 let mut second_command = Command::new(&second_artifact);
                 second_command.current_dir(&cwd);
+                second_command.env(
+                    "PATH",
+                    format!("{stage0_parent}{path_sep}{inherited_path}"),
+                );
+                second_command.env(
+                    "THAGORE_STAGE0",
+                    stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+                );
+                second_command.env("THAGORE_SELFHOST_TMP", scratch.path());
                 if invoke == "build-build-version" {
                     second_command.arg("version");
                 } else {

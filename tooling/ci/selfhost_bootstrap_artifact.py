@@ -83,6 +83,7 @@ def run_artifact(
         return subprocess.run(
             [str(nested_artifact), "version"],
             cwd=cwd,
+            env=env,
             check=False,
             capture_output=True,
             text=True,
@@ -113,6 +114,7 @@ def run_artifact(
         return subprocess.run(
             nested_cmd,
             cwd=cwd,
+            env=env,
             check=False,
             capture_output=True,
             text=True,
@@ -168,6 +170,7 @@ def run_artifact(
         return subprocess.run(
             nested_cmd,
             cwd=cwd,
+            env=env,
             check=False,
             capture_output=True,
             text=True,

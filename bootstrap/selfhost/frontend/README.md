@@ -174,12 +174,12 @@ Current scope:
   compiler artifact to rebuild another compiler that can build `main.tg`,
   `check.tg`, and `lower.tg`, and then run nested `phase-check`,
   `phase-build`, `phase-run`, `plan-build`, `adapter-build`, `adapter-run`,
-  `emit-build`, `link-build`, and `verify-build` contracts from that rebuilt
-  compiler, plus nested `emit-run`, `link-run`, and `verify-run` contracts, so
-  the chain now reaches through the canonical frontend stages, lowering slice,
-  and one deeper nested compiler/tool handoff into compiler-body, planning,
-  adapter, emission, link, and verification surfaces for both build and run
-  flows
+  full nested `build` and `run`, `emit-build`, `link-build`, and
+  `verify-build` contracts from that rebuilt compiler, plus nested `emit-run`,
+  `link-run`, and `verify-run` contracts, so the chain now reaches through the
+  canonical frontend stages, lowering slice, and one deeper nested
+  compiler/tool handoff into compiler-body, planning, adapter, full build/run,
+  emission, link, and verification surfaces for both build and run flows
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
