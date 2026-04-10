@@ -476,7 +476,7 @@ Current status:
   `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
   compiler artifact to rebuild another compiler that can build `main.tg`,
   `check.tg`, and `lower.tg` and replay stable report/check/lowering output,
-  and then run nested `phase-check`, `phase-build`, `phase-run`,
+  and then run nested `phase-check`, `plan-check`, `phase-build`, `phase-run`,
   `plan-build`, `plan-run`, `adapter-build`, `adapter-run`, full nested
   `build` and `run`, `emit-build`, `link-build`, `verify-build`, `emit-run`,
   `link-run`, and `verify-run` contracts from that rebuilt compiler, widening

@@ -173,7 +173,7 @@ Current scope:
   build `scan.tg`, `parse.tg`, and `check.tg`, and then requires the rebuilt
   compiler artifact to rebuild another compiler that can build `main.tg`,
   `check.tg`, and `lower.tg`, and then run nested `phase-check`,
-  `phase-build`, `phase-run`, `plan-build`, `plan-run`, `adapter-build`,
+  `plan-check`, `phase-build`, `phase-run`, `plan-build`, `plan-run`, `adapter-build`,
   `adapter-run`, full nested `build` and `run`, `emit-build`, `link-build`, and
   `verify-build` contracts from that rebuilt compiler, plus nested `emit-run`,
   `link-run`, and `verify-run` contracts, so the chain now reaches through the
