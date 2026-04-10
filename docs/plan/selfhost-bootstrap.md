@@ -477,9 +477,10 @@ Current status:
   compiler artifact to rebuild another compiler that can build `main.tg`,
   `check.tg`, and `lower.tg` and replay stable report/check/lowering output,
   and then run nested `phase-build`, `phase-run`, `emit-build`, `link-build`,
-  and `verify-build` contracts from that rebuilt compiler, widening the chain
-  from single-artifact replay into a deeper nested compiler/tool handoff that
-  now touches compiler-body, emission, link, and verification surfaces
+  `verify-build`, `emit-run`, `link-run`, and `verify-run` contracts from that
+  rebuilt compiler, widening the chain from single-artifact replay into a
+  deeper nested compiler/tool handoff that now touches compiler-body, emission,
+  link, and verification surfaces across both build and run paths
 - the first lowering slice now exists at `bootstrap/selfhost/frontend/lower.tg`
   and is guarded by `bootstrap/selfhost/corpus/lowering-slice.txt`, giving the
   bootstrap line an initial lowered-shape contract instead of stopping at
