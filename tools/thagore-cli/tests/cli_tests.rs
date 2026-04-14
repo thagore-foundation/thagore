@@ -7,6 +7,7 @@ mod run;
 #[path = "../src/timer.rs"]
 mod timer;
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -1581,6 +1582,56 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
         .expect("stage0 parent")
         .to_string_lossy()
         .into_owned();
+    let mut build_cache: HashMap<(String, String, String), std::path::PathBuf> = HashMap::new();
+
+    let build_artifact = |builder: &Path,
+                          source_path: &Path,
+                          output_name: &str,
+                          cwd: &Path,
+                          build_cache: &mut HashMap<(String, String, String), std::path::PathBuf>|
+     -> std::path::PathBuf {
+        let key = (
+            builder.display().to_string(),
+            source_path.display().to_string(),
+            output_name.to_string(),
+        );
+        if let Some(path) = build_cache.get(&key) {
+            assert!(path.exists(), "cached bootstrap artifact missing: {}", path.display());
+            return path.clone();
+        }
+        let artifact_path = scratch.path().join(output_name);
+        if artifact_path.exists() {
+            let _ = fs::remove_file(&artifact_path);
+        }
+        let build_output = Command::new(builder)
+            .current_dir(cwd)
+            .env(
+                "PATH",
+                format!("{stage0_parent}{path_sep}{inherited_path}"),
+            )
+            .env(
+                "THAGORE_STAGE0",
+                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+            )
+            .env("THAGORE_SELFHOST_TMP", scratch.path())
+            .args(["build", source_path.to_str().expect("utf8"), output_name])
+            .output()
+            .unwrap_or_else(|error| panic!("build bootstrap artifact {output_name}: {error}"));
+        assert_eq!(
+            build_output.status.code(),
+            Some(0),
+            "bootstrap artifact build failed for {output_name}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&build_output.stdout),
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        assert!(
+            artifact_path.exists(),
+            "bootstrap artifact missing: {}",
+            artifact_path.display()
+        );
+        build_cache.insert(key, artifact_path.clone());
+        artifact_path
+    };
 
     for case in cases {
         let label = &case[0];
@@ -1597,38 +1648,7 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
         let mode = &case[7];
         let expected_exit: i32 = case[8].parse().expect("parse expected exit");
         let expected_path = repo_root.join(&case[9]);
-        let artifact_path = scratch.path().join(artifact_name);
-
-        let build_output = Command::new(compiler_binary)
-            .current_dir(repo_root)
-            .env(
-                "PATH",
-                format!("{stage0_parent}{path_sep}{inherited_path}"),
-            )
-            .env(
-                "THAGORE_STAGE0",
-                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
-            )
-            .env("THAGORE_SELFHOST_TMP", scratch.path())
-            .args([
-                "build",
-                source.to_str().expect("utf8"),
-                artifact_name,
-            ])
-            .output()
-            .unwrap_or_else(|error| panic!("build bootstrap artifact {label}: {error}"));
-        assert_eq!(
-            build_output.status.code(),
-            Some(0),
-            "bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&build_output.stdout),
-            String::from_utf8_lossy(&build_output.stderr)
-        );
-        assert!(
-            artifact_path.exists(),
-            "bootstrap artifact missing for {label}: {}",
-            artifact_path.display()
-        );
+        let artifact_path = build_artifact(compiler_binary, &source, artifact_name, repo_root, &mut build_cache);
 
         let output = if invoke == "version" {
             Command::new(&artifact_path)
@@ -1652,38 +1672,10 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                 .output()
                 .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"))
         } else if invoke == "build-version" || invoke == "build-exec" || invoke == "build-build-version" || invoke == "build-build-exec" {
-            let nested_artifact = scratch.path().join(kind);
-            let mut build_nested = Command::new(&artifact_path);
-            build_nested.current_dir(&cwd);
-            build_nested.env(
-                "PATH",
-                format!("{stage0_parent}{path_sep}{inherited_path}"),
-            );
-            build_nested.env(
-                "THAGORE_STAGE0",
-                stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
-            );
-            build_nested.env("THAGORE_SELFHOST_TMP", scratch.path());
-            build_nested.arg("build");
-            if let Some(path_arg) = path_arg {
-                build_nested.arg(path_arg);
-            }
-            build_nested.arg(kind);
-            let nested_build_output = build_nested
-                .output()
-                .unwrap_or_else(|error| panic!("build nested bootstrap artifact {label}: {error}"));
-            assert_eq!(
-                nested_build_output.status.code(),
-                Some(0),
-                "nested bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
-                String::from_utf8_lossy(&nested_build_output.stdout),
-                String::from_utf8_lossy(&nested_build_output.stderr)
-            );
-            assert!(
-                nested_artifact.exists(),
-                "nested bootstrap artifact missing for {label}: {}",
-                nested_artifact.display()
-            );
+            let nested_source = path_arg
+                .as_ref()
+                .unwrap_or_else(|| panic!("missing nested source for bootstrap artifact case {label}"));
+            let nested_artifact = build_artifact(&artifact_path, nested_source, kind, &cwd, &mut build_cache);
             let nested_args: Vec<String> = if mode.is_empty() {
                 Vec::new()
             } else {
@@ -1719,38 +1711,10 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                     nested_args.len() >= 2,
                     "build-build bootstrap artifact case requires at least source and artifact name: {label}"
                 );
-                let second_source = &nested_args[0];
+                let second_source = cwd.join(&nested_args[0]);
                 let second_artifact_name = &nested_args[1];
-                let second_artifact = scratch.path().join(second_artifact_name);
-                let mut second_build = Command::new(&nested_artifact);
-                second_build.current_dir(&cwd);
-                second_build.env(
-                    "PATH",
-                    format!("{stage0_parent}{path_sep}{inherited_path}"),
-                );
-                second_build.env(
-                    "THAGORE_STAGE0",
-                    stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
-                );
-                second_build.env("THAGORE_SELFHOST_TMP", scratch.path());
-                second_build.arg("build");
-                second_build.arg(second_source);
-                second_build.arg(second_artifact_name);
-                let second_build_output = second_build
-                    .output()
-                    .unwrap_or_else(|error| panic!("build second nested bootstrap artifact {label}: {error}"));
-                assert_eq!(
-                    second_build_output.status.code(),
-                    Some(0),
-                    "second nested bootstrap artifact build failed for {label}\nstdout:\n{}\nstderr:\n{}",
-                    String::from_utf8_lossy(&second_build_output.stdout),
-                    String::from_utf8_lossy(&second_build_output.stderr)
-                );
-                assert!(
-                    second_artifact.exists(),
-                    "second nested bootstrap artifact missing for {label}: {}",
-                    second_artifact.display()
-                );
+                let second_artifact =
+                    build_artifact(&nested_artifact, &second_source, second_artifact_name, &cwd, &mut build_cache);
                 let mut second_command = Command::new(&second_artifact);
                 second_command.current_dir(&cwd);
                 second_command.env(
@@ -1772,10 +1736,8 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                 let output = second_command
                     .output()
                     .unwrap_or_else(|error| panic!("run second nested bootstrap artifact case {label}: {error}"));
-                let _ = fs::remove_file(&second_artifact);
                 output
             };
-            let _ = fs::remove_file(&nested_artifact);
             nested_output
         } else {
             panic!("unsupported bootstrap artifact invoke mode: {invoke}");
@@ -1795,7 +1757,6 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             expected.trim_end(),
             "unexpected stdout for bootstrap artifact case {label}"
         );
-        let _ = fs::remove_file(&artifact_path);
     }
 }
 

@@ -754,3 +754,6 @@ Current status on `indev-rewrite`:
   categories
 - the next concrete step is widening that corpus beyond diagnostic categories
   into richer normalized frontend output parity
+- publication/promotion criteria for the bootstrap line now live in
+  `docs/plan/bootstrap-publication-gate.md`, so branch, workflow, and blocker
+  requirements are tracked as a first-class gate instead of only ad-hoc status
