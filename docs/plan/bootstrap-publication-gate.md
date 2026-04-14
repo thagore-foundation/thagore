@@ -70,3 +70,22 @@ The current gate covers these selfhost surfaces:
 - the promotion commit satisfies all required workflows
 - the stability requirement is met
 - no direct bootstrap blocker remains open
+
+## Operational Audit
+
+Before promotion, run the publication audit from a maintainer machine against
+the exact `indev-rewrite` HEAD being considered.
+
+Use:
+
+- `powershell -File tooling/ci/run_bootstrap_publication_audit.ps1`
+- or `python tooling/ci/bootstrap_publication_audit.py ...` directly
+
+Why this is local-first:
+
+- GitHub Actions workflow dispatch only resolves workflow files that already
+  exist on the repository default branch
+- the promotion gate itself lives on `indev-rewrite` before promotion, so a
+  branch-local audit workflow is not a reliable control surface yet
+- the gate therefore relies on the checked-in audit script plus the existing
+  required workflows listed above
