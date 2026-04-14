@@ -1675,7 +1675,9 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             let nested_source = path_arg
                 .as_ref()
                 .unwrap_or_else(|| panic!("missing nested source for bootstrap artifact case {label}"));
-            let nested_artifact = build_artifact(&artifact_path, nested_source, kind, &cwd, &mut build_cache);
+            let nested_source_path = Path::new(nested_source);
+            let nested_artifact =
+                build_artifact(&artifact_path, nested_source_path, kind, &cwd, &mut build_cache);
             let nested_args: Vec<String> = if mode.is_empty() {
                 Vec::new()
             } else {
