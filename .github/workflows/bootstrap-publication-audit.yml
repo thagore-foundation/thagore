@@ -1,0 +1,28 @@
+name: Bootstrap Publication Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    name: Bootstrap publication audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Run publication audit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python tooling/ci/bootstrap_publication_audit.py             --repo "${{ github.repository }}"             --sha "${{ github.sha }}"             --branch "${{ github.ref_name }}"             --report-out bootstrap-publication-audit.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: bootstrap-publication-audit
+          path: bootstrap-publication-audit.txt
