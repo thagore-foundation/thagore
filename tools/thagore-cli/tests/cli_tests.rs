@@ -1787,18 +1787,22 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let artifact_name = &case[5];
         let expected_exit: i32 = case[6].parse().expect("parse expected exit");
         let stdout_expected = repo_root.join(&case[7]);
-        let plan_expected = repo_root.join(&case[8]);
-        let adapter_expected = repo_root.join(&case[9]);
-        let lowered_expected = repo_root.join(&case[10]);
-        let emit_expected = repo_root.join(&case[11]);
-        let link_expected = repo_root.join(&case[12]);
-        let verify_expected = repo_root.join(&case[13]);
-        let host_expected = repo_root.join(&case[14]);
-        let artifact_stdout_expected = &case[15];
+        let phase_expected = repo_root.join(&case[8]);
+        let frontend_expected = repo_root.join(&case[9]);
+        let plan_expected = repo_root.join(&case[10]);
+        let adapter_expected = repo_root.join(&case[11]);
+        let lowered_expected = repo_root.join(&case[12]);
+        let emit_expected = repo_root.join(&case[13]);
+        let link_expected = repo_root.join(&case[14]);
+        let verify_expected = repo_root.join(&case[15]);
+        let host_expected = repo_root.join(&case[16]);
+        let artifact_stdout_expected = &case[17];
         let artifact_path = scratch.path().join(artifact_name);
         let runtime_object_path = scratch
             .path()
             .join(runtime_object_name_for_artifact(artifact_name));
+        let phase_path = scratch.path().join(format!("{artifact_name}.phase.txt"));
+        let frontend_path = scratch.path().join(format!("{artifact_name}.frontend.txt"));
         let plan_path = scratch.path().join(format!("{artifact_name}.plan.txt"));
         let adapter_path = scratch.path().join(format!("{artifact_name}.adapter.txt"));
         let lowered_path = scratch.path().join(format!("{artifact_name}.lowered.txt"));
@@ -1806,7 +1810,19 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
         let link_path = scratch.path().join(format!("{artifact_name}.link.txt"));
         let verify_path = scratch.path().join(format!("{artifact_name}.verify.txt"));
         let host_path = scratch.path().join(format!("{artifact_name}.host.txt"));
-        for path in [&artifact_path, &runtime_object_path, &plan_path, &adapter_path, &lowered_path, &emit_path, &link_path, &verify_path, &host_path] {
+        for path in [
+            &artifact_path,
+            &runtime_object_path,
+            &phase_path,
+            &frontend_path,
+            &plan_path,
+            &adapter_path,
+            &lowered_path,
+            &emit_path,
+            &link_path,
+            &verify_path,
+            &host_path,
+        ] {
             let _ = fs::remove_file(path);
         }
 
@@ -1845,6 +1861,28 @@ fn assert_backend_adapter_artifact_manifest_matches(repo_root: &Path, compiler_b
             actual_stdout.trim_end(),
             expected_stdout.trim_end(),
             "unexpected stdout for backend adapter artifact case {label}"
+        );
+        let expected_phase = fs::read_to_string(phase_expected)
+            .expect("read expected phase")
+            .replace("\r\n", "\n");
+        let actual_phase = fs::read_to_string(&phase_path)
+            .expect("read actual phase")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_phase.trim_end(),
+            expected_phase.trim_end(),
+            "unexpected phase artifact for backend adapter case {label}"
+        );
+        let expected_frontend = fs::read_to_string(frontend_expected)
+            .expect("read expected frontend")
+            .replace("\r\n", "\n");
+        let actual_frontend = fs::read_to_string(&frontend_path)
+            .expect("read actual frontend")
+            .replace("\r\n", "\n");
+        assert_eq!(
+            actual_frontend.trim_end(),
+            expected_frontend.trim_end(),
+            "unexpected frontend artifact for backend adapter case {label}"
         );
         let expected_plan = fs::read_to_string(plan_expected)
             .expect("read expected plan")
