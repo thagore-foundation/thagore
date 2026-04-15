@@ -158,6 +158,56 @@ def run_artifact(
             text=True,
             encoding="utf-8",
         )
+    elif invoke == "build-build-sidecar":
+        try:
+            nested_artifact = ensure_built(artifact, path_arg, kind, scratch_dir, cwd, env, build_cache)
+        except RuntimeError as error:
+            return subprocess.CompletedProcess([str(artifact), "build", path_arg, kind], 1, "", str(error))
+        if len(nested_args) < 5:
+            return subprocess.CompletedProcess(
+                [str(nested_artifact)],
+                1,
+                "",
+                f"missing second-stage args for {invoke}",
+            )
+        second_source = nested_args[0]
+        second_artifact_name = nested_args[1]
+        try:
+            second_artifact = ensure_built(
+                nested_artifact, second_source, second_artifact_name, scratch_dir, cwd, env, build_cache
+            )
+        except RuntimeError as error:
+            return subprocess.CompletedProcess(
+                [str(nested_artifact), "build", second_source, second_artifact_name], 1, "", str(error)
+            )
+        command_name = nested_args[2]
+        fixture_path = nested_args[3]
+        output_artifact_name = nested_args[4]
+        sidecar_suffix = nested_args[5] if len(nested_args) > 5 else ""
+        target_sidecar = scratch_dir / f"{output_artifact_name}{sidecar_suffix}"
+        if target_sidecar.exists():
+            target_sidecar.unlink()
+        nested_cmd = [str(second_artifact), command_name, fixture_path, output_artifact_name]
+        sidecar_run = subprocess.run(
+            nested_cmd,
+            cwd=cwd,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        if sidecar_run.returncode != 0:
+            return sidecar_run
+        if not target_sidecar.exists():
+            return subprocess.CompletedProcess(
+                nested_cmd,
+                1,
+                "",
+                f"missing nested sidecar artifact: {target_sidecar}",
+            )
+        sidecar_text = target_sidecar.read_text(encoding="utf-8")
+        return subprocess.CompletedProcess(nested_cmd, 0, sidecar_text, sidecar_run.stderr)
     else:
         raise SystemExit(f"unsupported bootstrap artifact invoke mode: {invoke}")
     return subprocess.run(
