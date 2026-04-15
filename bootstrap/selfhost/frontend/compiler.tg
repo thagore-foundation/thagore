@@ -72,6 +72,12 @@ func capture_path(output_path: str) -> str:
 func plan_artifact_path(output_path: str) -> str:
   return string.concat(output_path, ".plan.txt")
 
+func phase_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".phase.txt")
+
+func frontend_artifact_path(output_path: str) -> str:
+  return string.concat(output_path, ".frontend.txt")
+
 func request_artifact_path(output_path: str) -> str:
   return string.concat(output_path, ".adapter.txt")
 
@@ -212,6 +218,25 @@ func phase_preview(command: str, path: str, current_kind: str) -> str:
   let lowered = lowering_summary(path, diagnostics_ok, require_lowering)
   return adapter.phase_body(actual, path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
 
+func write_orchestration_sidecars(output_path: str, report: str, phase: str, plan: str, request: str, lowered: str, emission: str, link: str, verify: str, host_summary: str) -> bool:
+  if (fs.write(frontend_artifact_path(output_path), report) == false):
+    return false
+  if (fs.write(phase_artifact_path(output_path), phase) == false):
+    return false
+  if (fs.write(plan_artifact_path(output_path), plan) == false):
+    return false
+  if (fs.write(request_artifact_path(output_path), request) == false):
+    return false
+  if (fs.write(emission_artifact_path(output_path), emission) == false):
+    return false
+  if (fs.write(link_artifact_path(output_path), link) == false):
+    return false
+  if (fs.write(verify_artifact_path(output_path), verify) == false):
+    return false
+  if (fs.write(lowered_artifact_path(output_path), lowered) == false):
+    return false
+  return fs.write(host_command_artifact_path(output_path), host_summary)
+
 func run_command(command: str, path: str, current_kind: str) -> str:
   let source = session.read_source(path)
   if (string.len(source) == 0):
@@ -297,19 +322,15 @@ pub func main() -> i32:
       println(usage())
       return 1
     let plan = adapter.orchestration_plan("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
+    let phase = adapter.phase_body("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let request = adapter.adapter_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let emission = adapter.emission_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let link = adapter.link_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let verify = adapter.verify_request("build", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let host_command = adapter.build_command(host_thagc(), path, output_path)
     let host_summary = adapter.host_command_summary("build", host_thagc(), path, artifact_name(), "")
-    fs.write(plan_artifact_path(output_path), plan)
-    fs.write(request_artifact_path(output_path), request)
-    fs.write(emission_artifact_path(output_path), emission)
-    fs.write(link_artifact_path(output_path), link)
-    fs.write(verify_artifact_path(output_path), verify)
-    fs.write(lowered_artifact_path(output_path), lowered)
-    fs.write(host_command_artifact_path(output_path), host_summary)
+    if (write_orchestration_sidecars(output_path, report, phase, plan, request, lowered, emission, link, verify, host_summary) == false):
+      return 1
     let exit_code = process.run(host_command)
     if (exit_code != 0):
       return exit_code
@@ -332,6 +353,7 @@ pub func main() -> i32:
       println(usage())
       return 1
     let plan = adapter.orchestration_plan("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
+    let phase = adapter.phase_body("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
     let request = adapter.adapter_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let emission = adapter.emission_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), capture_path(artifact_name()), lowered)
     let link = adapter.link_request("run", path, session.source_dir(path), current_kind, diagnostics_ok, artifact_name(), lowered)
@@ -339,13 +361,8 @@ pub func main() -> i32:
     let build_command = adapter.build_command(host_thagc(), path, output_path)
     let run_command = adapter.run_command(output_path, capture_path(output_path))
     let host_summary = adapter.host_command_summary("run", host_thagc(), path, artifact_name(), capture_path(artifact_name()))
-    fs.write(plan_artifact_path(output_path), plan)
-    fs.write(request_artifact_path(output_path), request)
-    fs.write(emission_artifact_path(output_path), emission)
-    fs.write(link_artifact_path(output_path), link)
-    fs.write(verify_artifact_path(output_path), verify)
-    fs.write(lowered_artifact_path(output_path), lowered)
-    fs.write(host_command_artifact_path(output_path), host_summary)
+    if (write_orchestration_sidecars(output_path, report, phase, plan, request, lowered, emission, link, verify, host_summary) == false):
+      return 1
     let build_code = process.run(build_command)
     if (build_code != 0):
       return build_code

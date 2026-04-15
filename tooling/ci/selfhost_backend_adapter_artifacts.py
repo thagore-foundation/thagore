@@ -69,6 +69,8 @@ def main() -> int:
             artifact_name,
             expected_exit,
             stdout_expected,
+            phase_expected,
+            frontend_expected,
             plan_expected,
             adapter_expected,
             lowered_expected,
@@ -77,7 +79,7 @@ def main() -> int:
             verify_expected,
             host_expected,
             artifact_stdout_expected,
-        ) in load_manifest(repo_root / args.manifest, 16):
+        ) in load_manifest(repo_root / args.manifest, 18):
             cwd = repo_root if not cwd_raw or cwd_raw == "." else (repo_root / cwd_raw)
             env = dict(os.environ)
             env["THAGORE_SELFHOST_TMP"] = str(scratch_dir)
@@ -86,6 +88,8 @@ def main() -> int:
                 env["PATH"] = f"{host_thagc.parent}{os.pathsep}{env.get('PATH', '')}"
             artifact_path = scratch_dir / artifact_name
             runtime_object_path = scratch_dir / runtime_object_name(artifact_name)
+            phase_path = scratch_dir / f"{artifact_name}.phase.txt"
+            frontend_path = scratch_dir / f"{artifact_name}.frontend.txt"
             plan_path = scratch_dir / f"{artifact_name}.plan.txt"
             adapter_path = scratch_dir / f"{artifact_name}.adapter.txt"
             lowered_path = scratch_dir / f"{artifact_name}.lowered.txt"
@@ -93,7 +97,7 @@ def main() -> int:
             link_path = scratch_dir / f"{artifact_name}.link.txt"
             verify_path = scratch_dir / f"{artifact_name}.verify.txt"
             host_path = scratch_dir / f"{artifact_name}.host.txt"
-            for path in (artifact_path, runtime_object_path, plan_path, adapter_path, lowered_path, emit_path, link_path, verify_path, host_path):
+            for path in (artifact_path, runtime_object_path, phase_path, frontend_path, plan_path, adapter_path, lowered_path, emit_path, link_path, verify_path, host_path):
                 if path.exists():
                     path.unlink()
             cmd = [str(compiler_bin), command, resolve_arg(repo_root, path_raw)]
@@ -121,6 +125,20 @@ def main() -> int:
                 raise SystemExit(
                     f"backend adapter stdout drift for {label}"
                     f"\nexpected:\n{expected_stdout}\nactual:\n{actual_stdout}"
+                )
+            actual_phase = canonicalize(phase_path.read_text(encoding="utf-8"))
+            expected_phase_text = canonicalize((repo_root / phase_expected).read_text(encoding="utf-8"))
+            if actual_phase != expected_phase_text:
+                raise SystemExit(
+                    f"backend adapter phase artifact drift for {label}"
+                    f"\nexpected:\n{expected_phase_text}\nactual:\n{actual_phase}"
+                )
+            actual_frontend = canonicalize(frontend_path.read_text(encoding="utf-8"))
+            expected_frontend_text = canonicalize((repo_root / frontend_expected).read_text(encoding="utf-8"))
+            if actual_frontend != expected_frontend_text:
+                raise SystemExit(
+                    f"backend adapter frontend artifact drift for {label}"
+                    f"\nexpected:\n{expected_frontend_text}\nactual:\n{actual_frontend}"
                 )
             actual_plan = canonicalize(plan_path.read_text(encoding="utf-8"))
             expected_plan_text = canonicalize((repo_root / plan_expected).read_text(encoding="utf-8"))

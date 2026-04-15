@@ -65,6 +65,42 @@ pub func phase_gate(command: str, diagnostics_ok: bool) -> str:
     return "diagnostic-fallback"
   return "frontend-only"
 
+pub func frontend_status(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "check")):
+    if (diagnostics_ok):
+      return "report-ready"
+    return "diagnostic-report"
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "checked"
+    return "diagnostic-error"
+  return "frontend-only"
+
+pub func lowering_route(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "selfhost-lowered"
+    return "diagnostic-fallback"
+  return "frontend-only"
+
+pub func adapter_route(command: str, diagnostics_ok: bool) -> str:
+  if (string.str_eq(command, "check")):
+    return "frontend-report"
+  if (string.str_eq(command, "build") or string.str_eq(command, "run")):
+    if (diagnostics_ok):
+      return "backend-emission"
+    return "host-fallback"
+  return "frontend-only"
+
+pub func execution_route(command: str) -> str:
+  if (string.str_eq(command, "check")):
+    return "report-only"
+  if (string.str_eq(command, "build")):
+    return "emit-link-verify"
+  if (string.str_eq(command, "run")):
+    return "emit-link-verify-run"
+  return "frontend-only"
+
 pub func artifact_contract(command: str) -> str:
   if (string.str_eq(command, "build")):
     return "native-exe+rto"
@@ -205,7 +241,11 @@ pub func phase_body(command: str, path: str, source_root: str, current_kind: str
   let with_phases = string.concat(base, string.concat(";phases=", phases(command)))
   let with_phase_route = string.concat(with_phases, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_frontend = string.concat(with_phase_gate, string.concat(";frontend_body=", frontend_body(command)))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_frontend = string.concat(with_execution_route, string.concat(";frontend_body=", frontend_body(command)))
   let with_lowering = string.concat(with_frontend, string.concat(";lowering_body=", lowering_body(command, lowered)))
   let with_adapter = string.concat(with_lowering, string.concat(";adapter_body=", adapter_body(command)))
   let with_backend = string.concat(with_adapter, string.concat(";backend_body=", backend_body(command, diagnostics_ok)))
@@ -231,7 +271,11 @@ pub func orchestration_plan(command: str, path: str, source_root: str, current_k
   let with_route = string.concat(with_status, string.concat(";route=", route))
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_artifact = string.concat(with_execution_route, string.concat(";artifact=", artifact_name))
   let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_emits = string.concat(with_runtime_object, string.concat(";emits=", emits(command)))
   let with_contract = string.concat(with_emits, string.concat(";artifact_contract=", artifact_contract(command)))
@@ -256,7 +300,11 @@ pub func adapter_request(command: str, path: str, source_root: str, current_kind
   let with_route = string.concat(with_phases, string.concat(";route=", route))
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_artifact = string.concat(with_execution_route, string.concat(";artifact=", artifact_name))
   let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
   let with_runtime_object = string.concat(with_capture, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_emits = string.concat(with_runtime_object, string.concat(";emits=", emits(command)))
@@ -280,7 +328,11 @@ pub func emission_request(command: str, path: str, source_root: str, current_kin
   let with_route = string.concat(with_emitter, string.concat(";route=", route))
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_artifact = string.concat(with_execution_route, string.concat(";artifact=", artifact_name))
   let with_capture = string.concat(with_artifact, string.concat(";capture=", capture_name))
   let with_runtime_object = string.concat(with_capture, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_input = string.concat(with_runtime_object, string.concat(";emission_input=", emission_input(command)))
@@ -303,7 +355,11 @@ pub func link_request(command: str, path: str, source_root: str, current_kind: s
   let with_route = string.concat(with_linker, string.concat(";route=", route))
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_artifact = string.concat(with_execution_route, string.concat(";artifact=", artifact_name))
   let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_input = string.concat(with_runtime_object, string.concat(";link_input=", link_input(command)))
   let with_output = string.concat(with_input, string.concat(";link_output=", link_output(command)))
@@ -325,7 +381,11 @@ pub func verify_request(command: str, path: str, source_root: str, current_kind:
   let with_route = string.concat(with_verifier, string.concat(";route=", route))
   let with_phase_route = string.concat(with_route, string.concat(";phase_route=", phase_route(command, diagnostics_ok)))
   let with_phase_gate = string.concat(with_phase_route, string.concat(";phase_gate=", phase_gate(command, diagnostics_ok)))
-  let with_artifact = string.concat(with_phase_gate, string.concat(";artifact=", artifact_name))
+  let with_frontend_status = string.concat(with_phase_gate, string.concat(";frontend_status=", frontend_status(command, diagnostics_ok)))
+  let with_lowering_route = string.concat(with_frontend_status, string.concat(";lowering_route=", lowering_route(command, diagnostics_ok)))
+  let with_adapter_route = string.concat(with_lowering_route, string.concat(";adapter_route=", adapter_route(command, diagnostics_ok)))
+  let with_execution_route = string.concat(with_adapter_route, string.concat(";execution_route=", execution_route(command)))
+  let with_artifact = string.concat(with_execution_route, string.concat(";artifact=", artifact_name))
   let with_runtime_object = string.concat(with_artifact, string.concat(";runtime_object=", runtime_object_name(artifact_name)))
   let with_input = string.concat(with_runtime_object, string.concat(";verify_input=", verify_input(command)))
   let with_output = string.concat(with_input, string.concat(";verify_output=", verify_output(command)))
