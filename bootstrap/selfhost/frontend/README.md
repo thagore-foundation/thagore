@@ -190,6 +190,10 @@ Current scope:
   path (`ok_build_print.tg`), so the rebuilt compiler chain locks not only the
   minimal return-only success path but also a stdout-producing build flow across
   lowered/adapter/emit/link/verify/host sidecars
+- that same stdout-producing path is now locked for nested `run` sidecars too,
+  so rebuilt-compiler execution with captured stdout is covered across lowered,
+  adapter, emit, link, verify, and host summaries instead of stopping at the
+  build-side artifact boundary
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
