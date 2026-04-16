@@ -202,6 +202,10 @@ Current scope:
   `hello_run.tg` path, so the orchestration surface is locked not only through
   nested artifact sidecars but also through the first-class driver/phase entry
   points that declaration/stage gates execute on every run
+- the rebuilt-compiler artifact chain now also replays `plan-*`, `link-*`, and
+  `verify-*` previews for `hello_run.tg`, so the nested chain exercises a real
+  line-printing path through orchestration and preview surfaces instead of
+  stopping at final `build` / `run` plus emitted sidecars
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
