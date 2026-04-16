@@ -21,6 +21,12 @@ LINK_BUILD_PRINT|.|link-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_bui
 LINK_RUN_PRINT|.|link-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_run_print.txt
 VERIFY_BUILD_PRINT|.|verify-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_build_print.txt
 VERIFY_RUN_PRINT|.|verify-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_run_print.txt
+PLAN_BUILD_HELLO|.|plan-build|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build_hello.txt
+PLAN_RUN_HELLO|.|plan-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_run_hello.txt
+LINK_BUILD_HELLO|.|link-build|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_build_hello.txt
+LINK_RUN_HELLO|.|link-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_run_hello.txt
+VERIFY_BUILD_HELLO|.|verify-build|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_build_hello.txt
+VERIFY_RUN_HELLO|.|verify-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_run_hello.txt
 PLAN_BUILD_FAIL|.|plan-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build_fail.txt
 LINK_BUILD_FAIL|.|link-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_build_fail.txt
 VERIFY_BUILD_FAIL|.|verify-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_build_fail.txt
@@ -28,5 +34,7 @@ BUILD_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_run.tg
 RUN_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run.txt
 BUILD_PRINT_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build_print.txt
 RUN_PRINT_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run_print.txt
+BUILD_HELLO_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build_hello.txt
+RUN_HELLO_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run_hello.txt
 INVALID_COMMAND|.|bogus||||1|bootstrap/selfhost/corpus/goldens/compiler/expected_help.txt
 MISSING_SOURCE|.|analyze|bootstrap/selfhost/corpus/fixtures/frontend/missing_compiler_case.tg|exe||1|bootstrap/selfhost/corpus/goldens/compiler/expected_empty.txt

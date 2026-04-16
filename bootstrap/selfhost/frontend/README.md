@@ -198,6 +198,10 @@ Current scope:
   (`hello_run.tg`) across direct adapter artifacts plus rebuilt-compiler
   `build` / `run` sidecars, so the chain covers a real line-printing program
   instead of only the silent return path and the short inline `print(...)` path
+- the direct compiler-driver and phase-body manifests now also include that
+  `hello_run.tg` path, so the orchestration surface is locked not only through
+  nested artifact sidecars but also through the first-class driver/phase entry
+  points that declaration/stage gates execute on every run
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit

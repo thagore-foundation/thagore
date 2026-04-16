@@ -4,4 +4,6 @@ PHASE_BUILD|.|phase-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_r
 PHASE_RUN|.|phase-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_run.txt
 PHASE_BUILD_PRINT|.|phase-build|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_build_print.txt
 PHASE_RUN_PRINT|.|phase-run|bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg||selfhost-run-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_run_print.txt
+PHASE_BUILD_HELLO|.|phase-build|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_build_hello.txt
+PHASE_RUN_HELLO|.|phase-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_run_hello.txt
 PHASE_BUILD_FAIL|.|phase-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_phase_build_fail.txt
