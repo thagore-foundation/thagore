@@ -206,6 +206,10 @@ Current scope:
   `verify-*` previews for `hello_run.tg`, so the nested chain exercises a real
   line-printing path through orchestration and preview surfaces instead of
   stopping at final `build` / `run` plus emitted sidecars
+- that same nested hello path now also locks `.frontend.txt`, `.phase.txt`, and
+  `.plan.txt` sidecars for both `build` and `run`, so the rebuilt-compiler loop
+  exposes the full compiler body from frontend report through orchestration
+  rather than only the lower/backend side of the pipeline
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
