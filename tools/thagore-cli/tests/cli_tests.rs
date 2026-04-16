@@ -1671,7 +1671,12 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
             command
                 .output()
                 .unwrap_or_else(|error| panic!("run bootstrap artifact case {label}: {error}"))
-        } else if invoke == "build-version" || invoke == "build-exec" || invoke == "build-build-version" || invoke == "build-build-exec" {
+        } else if invoke == "build-version"
+            || invoke == "build-exec"
+            || invoke == "build-build-version"
+            || invoke == "build-build-exec"
+            || invoke == "build-build-sidecar"
+        {
             let nested_source = path_arg
                 .as_ref()
                 .unwrap_or_else(|| panic!("missing nested source for bootstrap artifact case {label}"));
@@ -1708,7 +1713,7 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                 nested_command
                     .output()
                     .unwrap_or_else(|error| panic!("run nested bootstrap artifact case {label}: {error}"))
-            } else {
+            } else if invoke == "build-build-version" || invoke == "build-build-exec" {
                 assert!(
                     nested_args.len() >= 2,
                     "build-build bootstrap artifact case requires at least source and artifact name: {label}"
@@ -1739,6 +1744,56 @@ fn assert_bootstrap_artifact_manifest_matches(repo_root: &Path, compiler_binary:
                     .output()
                     .unwrap_or_else(|error| panic!("run second nested bootstrap artifact case {label}: {error}"));
                 output
+            } else {
+                assert!(
+                    nested_args.len() >= 5,
+                    "build-build-sidecar bootstrap artifact case requires source, artifact, command, fixture, and output artifact name: {label}"
+                );
+                let second_source = cwd.join(&nested_args[0]);
+                let second_artifact_name = &nested_args[1];
+                let second_artifact =
+                    build_artifact(&nested_artifact, &second_source, second_artifact_name, &cwd, &mut build_cache);
+                let command_name = &nested_args[2];
+                let fixture_path = &nested_args[3];
+                let output_artifact_name = &nested_args[4];
+                let sidecar_suffix = nested_args.get(5).cloned().unwrap_or_default();
+                let target_sidecar = scratch.path().join(format!("{output_artifact_name}{sidecar_suffix}"));
+                if target_sidecar.exists() {
+                    fs::remove_file(&target_sidecar)
+                        .unwrap_or_else(|error| panic!("remove stale sidecar for bootstrap artifact case {label}: {error}"));
+                }
+                let mut second_command = Command::new(&second_artifact);
+                second_command.current_dir(&cwd);
+                second_command.env(
+                    "PATH",
+                    format!("{stage0_parent}{path_sep}{inherited_path}"),
+                );
+                second_command.env(
+                    "THAGORE_STAGE0",
+                    stage0.file_name().and_then(|name| name.to_str()).expect("stage0 file name"),
+                );
+                second_command.env("THAGORE_SELFHOST_TMP", scratch.path());
+                second_command.arg(command_name);
+                second_command.arg(fixture_path);
+                second_command.arg(output_artifact_name);
+                let output = second_command
+                    .output()
+                    .unwrap_or_else(|error| panic!("run second nested sidecar bootstrap artifact case {label}: {error}"));
+                if !output.status.success() {
+                    output
+                } else {
+                    let stdout = fs::read_to_string(&target_sidecar).unwrap_or_else(|error| {
+                        panic!(
+                            "read nested sidecar bootstrap artifact case {label} from {}: {error}",
+                            target_sidecar.display()
+                        )
+                    });
+                    std::process::Output {
+                        status: output.status,
+                        stdout: stdout.into_bytes(),
+                        stderr: output.stderr,
+                    }
+                }
             };
             nested_output
         } else {
