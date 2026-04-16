@@ -1,0 +1,1 @@
+command=run;artifact=selfhost-run-hello.exe;runtime_object=selfhost-run-hello.thagore_rt.o;entry_symbol=main;verify_contract=artifact-smoke-v2;verified=artifact,runtime-object,stdout;artifact_result=artifact-ready+stdout;artifact_ready=true;probe=spawn-artifact+capture;runtime_object_ready=true;stdout_ready=true;phase_complete=verify-artifact;status=ok

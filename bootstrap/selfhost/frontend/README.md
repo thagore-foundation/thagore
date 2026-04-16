@@ -194,6 +194,10 @@ Current scope:
   so rebuilt-compiler execution with captured stdout is covered across lowered,
   adapter, emit, link, verify, and host summaries instead of stopping at the
   build-side artifact boundary
+- that nested artifact loop now also locks a third useful executable path
+  (`hello_run.tg`) across direct adapter artifacts plus rebuilt-compiler
+  `build` / `run` sidecars, so the chain covers a real line-printing program
+  instead of only the silent return path and the short inline `print(...)` path
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
