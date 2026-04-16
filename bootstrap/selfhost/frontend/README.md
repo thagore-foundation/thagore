@@ -180,6 +180,12 @@ Current scope:
   canonical frontend stages, lowering slice, and one deeper nested
   compiler/tool handoff into compiler-body, planning, adapter, full build/run,
   emission, link, and verification surfaces for both build and run flows
+- that same nested chain now also locks the rebuilt compiler's emitted
+  `.adapter.txt`, `.host.txt`, `.lowered.txt`, `.emit.txt`, `.link.txt`, and
+  `.verify.txt` sidecars across both `build` and `run`, so the useful artifact
+  chain covers not only final stdout/artifact behavior but also the
+  selfhost-visible compiler-middle and backend-boundary reports emitted during
+  nested execution
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
