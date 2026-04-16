@@ -210,6 +210,10 @@ Current scope:
   `.plan.txt` sidecars for both `build` and `run`, so the rebuilt-compiler loop
   exposes the full compiler body from frontend report through orchestration
   rather than only the lower/backend side of the pipeline
+- the explicit backend-adapter preview contract now also includes `hello_run.tg`
+  for both `adapter-*` and `emit-*`, so the host-backend handoff is locked on a
+  real line-printing executable path instead of only the silent return path and
+  diagnostic-fail fallback
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
