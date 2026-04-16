@@ -186,6 +186,10 @@ Current scope:
   chain covers not only final stdout/artifact behavior but also the
   selfhost-visible compiler-middle and backend-boundary reports emitted during
   nested execution
+- that nested sidecar coverage now also includes a second observable executable
+  path (`ok_build_print.tg`), so the rebuilt compiler chain locks not only the
+  minimal return-only success path but also a stdout-producing build flow across
+  lowered/adapter/emit/link/verify/host sidecars
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
