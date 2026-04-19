@@ -219,6 +219,10 @@ Current scope:
   assignment flow, control-flow shape, typed lowered operations, and explicit
   split between lowered `values`, `statements`, and `terminators` through
   `lower.tg`, including explicit block-to-block CFG edges
+- that lowering slice now also includes a mixed call/loop/branch/store path,
+  so the compiler-middle contract covers multiple typed locals and the way a
+  call result flows through loop control, branch control, reassignment, and
+  final return instead of treating those shapes in isolation
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as

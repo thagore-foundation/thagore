@@ -1,0 +1,11 @@
+func helper() -> i32:
+  return 1
+
+func main() -> i32:
+  let ready: bool = true
+  let value: i32 = helper()
+  while (ready):
+    ready = false
+  if (ready):
+    value = 2
+  return value
