@@ -223,6 +223,10 @@ Current scope:
   so the compiler-middle contract covers multiple typed locals and the way a
   call result flows through loop control, branch control, reassignment, and
   final return instead of treating those shapes in isolation
+- the rebuilt compiler now also builds `lower.tg` against that mixed lowering
+  fixture, so the bootstrap artifact chain checks not only the minimal
+  local-return slice but also a richer compiler-middle shape with calls, loop
+  control, branch control, and typed reassignment
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
