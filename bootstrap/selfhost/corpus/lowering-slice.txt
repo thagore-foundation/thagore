@@ -5,3 +5,4 @@ bootstrap/selfhost/corpus/fixtures/lowering/ok_local_return.tg|bootstrap/selfhos
 bootstrap/selfhost/corpus/fixtures/lowering/ok_assignment_if_call.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_assignment_if_call.txt
 bootstrap/selfhost/corpus/fixtures/lowering/ok_bool_while.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_bool_while.txt
 bootstrap/selfhost/corpus/fixtures/lowering/ok_call_loop_branch.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_call_loop_branch.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_multi_helper_chain.tg|bootstrap/selfhost/corpus/goldens/lowering/expected_ok_multi_helper_chain.txt

@@ -1,0 +1,18 @@
+func ready_check() -> bool:
+  return false
+
+func helper() -> i32:
+  return 1
+
+func bonus() -> i32:
+  return 7
+
+func main() -> i32:
+  let value: i32 = helper()
+  let active: bool = ready_check()
+  while (active):
+    value = bonus()
+    active = false
+  if (active):
+    value = helper()
+  return value

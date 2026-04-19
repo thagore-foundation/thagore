@@ -227,6 +227,14 @@ Current scope:
   fixture, so the bootstrap artifact chain checks not only the minimal
   local-return slice but also a richer compiler-middle shape with calls, loop
   control, branch control, and typed reassignment
+- that lowering slice now also includes a multi-helper call-chain path
+  (`ok_multi_helper_chain.tg`) covering a bool-returning helper used as a
+  typed-bool init, and call-result reassignment to a typed local inside both
+  loop-body and branch-body blocks, so the compiler-middle contract no longer
+  treats call results as in-block init shapes only; the rebuilt compiler chain
+  also exercises that fixture both at the direct `build-exec` step and through
+  the nested `build-build-exec` stage so call-driven store flow is locked
+  across both stage1 and stage2
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
