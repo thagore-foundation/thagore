@@ -28,8 +28,11 @@ LINK_RUN_HELLO|.|link-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.
 VERIFY_BUILD_HELLO|.|verify-build|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-build-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_build_hello.txt
 VERIFY_RUN_HELLO|.|verify-run|bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg||selfhost-run-hello.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_run_hello.txt
 PLAN_BUILD_FAIL|.|plan-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_build_fail.txt
+PLAN_RUN_FAIL|.|plan-run|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_plan_run_fail.txt
 LINK_BUILD_FAIL|.|link-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_build_fail.txt
+LINK_RUN_FAIL|.|link-run|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_link_preview_run_fail.txt
 VERIFY_BUILD_FAIL|.|verify-build|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_build_fail.txt
+VERIFY_RUN_FAIL|.|verify-run|bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg||fail.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_verify_preview_run_fail.txt
 BUILD_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_run.tg||selfhost-build.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build.txt
 RUN_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|run|ok_build_run.tg||selfhost-run.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_run.txt
 BUILD_PRINT_RELATIVE|bootstrap/selfhost/corpus/fixtures/compiler|build|ok_build_print.tg||selfhost-build-print.exe|0|bootstrap/selfhost/corpus/goldens/compiler/expected_build_print.txt

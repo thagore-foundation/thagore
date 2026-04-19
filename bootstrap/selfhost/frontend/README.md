@@ -214,6 +214,13 @@ Current scope:
   for both `adapter-*` and `emit-*`, so the host-backend handoff is locked on a
   real line-printing executable path instead of only the silent return path and
   diagnostic-fail fallback
+- the diagnostic-fallback contract is now mirrored on the run side: `plan-run`,
+  `adapter-run`, `emit-run`, `link-run`, and `verify-run` previews are locked
+  against the failing seed so the host-fallback chain proves stable run-side
+  output (extra `host-run` / `capture` phases, `execution_route=emit-link-verify-run`,
+  and `+stdout` artifact contract) symmetrically with the existing build-side
+  fail coverage, removing the prior gap where only build-side host-fallback was
+  enforced
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
