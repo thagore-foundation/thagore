@@ -1,0 +1,13 @@
+func helper() -> i32:
+  return 1
+
+func main() -> i32:
+  let value: i32 = helper()
+  let backup: i32 = value
+  let active: bool = true
+  while (active):
+    backup = value
+    active = false
+  if (active):
+    value = backup
+  return value

@@ -249,6 +249,15 @@ Current scope:
   also exercises that fixture both at the direct `build-exec` step and through
   the nested `build-build-exec` stage so call-driven store flow is locked
   across both stage1 and stage2
+- that lowering slice now also includes a cross-local data-flow path
+  (`ok_cross_local_dataflow.tg`) where an `i32` local is initialized from
+  another local's load (init-from-load), reassigned from another local's load
+  inside the loop body, and used as the source for a different local's
+  reassignment inside the branch body, so the compiler-middle contract proves
+  that load operations participate in init/assign store flow with the same
+  identity continuity as constants and call results; the rebuilt compiler chain
+  exercises this fixture at both `build-exec` and nested `build-build-exec`
+  stages so cross-local data flow is locked through the full bootstrap loop
 - `.github/workflows/bootstrap-selfhost-stage.yml` now diffs both the lower
   stage slice reports and the higher driver-boundary reports across stage1 and
   stage2, so the bootstrap rehearsal covers `main.tg` as well as
