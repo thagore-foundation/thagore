@@ -225,9 +225,9 @@ Current scope:
   so the highest-level phase-body surface is symmetric on the diagnostic-fallback
   path (extends `backend_body` with `host-run,capture` and lifts the artifact
   contract to `native-exe+rto+stdout`); the rebuilt-compiler bootstrap chain
-  now also exercises `phase-run` against the failing seed through the nested
-  `compiler-next2` build, so diagnostic-fallback symmetry runs through the
-  selfhost-built compiler too
+  now also exercises both `phase-build` and `phase-run` against the failing seed
+  through the nested `compiler-next2` build, so diagnostic-fallback symmetry
+  runs through the selfhost-built compiler on both build and run sides
 - `bootstrap/selfhost/corpus/lowering-slice.txt` now locks the first lowering
   contract: constant returns, direct-call returns, local-load returns,
   assignment flow, control-flow shape, typed lowered operations, and explicit
