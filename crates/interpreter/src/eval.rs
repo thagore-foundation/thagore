@@ -18,6 +18,7 @@ impl<'ast> Interpreter<'ast> {
             match decl {
                 Decl::Func(func) => {
                     let name = self.name(func.name)?;
+                    self.functions_by_id.insert(func.name.as_u32(), func);
                     self.functions.insert(name, func);
                 }
                 Decl::GenericFunc(_) | Decl::GenericStruct(_) | Decl::GenericImpl(_) => {
@@ -34,8 +35,8 @@ impl<'ast> Interpreter<'ast> {
                     }
                     let name = self.name(const_decl.name)?;
                     let value = self.eval_expr(const_decl.value)?;
-                    self.const_symbols.insert(name.clone());
-                    self.env.define(name, value);
+                    self.const_symbols.insert(name);
+                    self.env.define_by_id(const_decl.name.as_u32(), value);
                 }
                 Decl::Let(_) => {
                     return Err(RuntimeError::unsupported(
@@ -177,9 +178,8 @@ impl<'ast> Interpreter<'ast> {
     }
 
     fn exec_let(&mut self, decl: &'ast LetDecl<'ast>) -> Result<Value, RuntimeError> {
-        let name = self.name(decl.name)?;
         let value = self.eval_expr(decl.initializer)?;
-        self.env.define(name, value);
+        self.env.define_by_id(decl.name.as_u32(), value);
         Ok(Value::Void)
     }
 
@@ -227,10 +227,10 @@ impl<'ast> Interpreter<'ast> {
                 )))
             }
         };
-        let binding = self.name(stmt.binding)?;
+        let binding_id = stmt.binding.as_u32();
         for item in items {
             self.env.push();
-            self.env.define(binding.clone(), item);
+            self.env.define_by_id(binding_id, item);
             match self.exec_block(stmt.body)? {
                 Value::Void => {}
                 Value::Continue => {
@@ -267,11 +267,22 @@ impl<'ast> Interpreter<'ast> {
     }
 
     fn eval_ident(&mut self, expr: &'ast IdentExpr) -> Result<Value, RuntimeError> {
+        let id = expr.name.as_u32();
+        // Fast path: user variable in interned env (no allocation).
+        if let Some(value) = self.env.get_by_id(id) {
+            return Ok(value);
+        }
+        // Fast path: known user function (no allocation).
+        if self.functions_by_id.contains_key(&id) {
+            let name = self.name(expr.name)?;
+            return Ok(Value::Callable(name));
+        }
+        // Slow path: builtin in named env or stdlib callable (needs string).
         let name = self.name(expr.name)?;
         if let Some(value) = self.env.get(&name) {
             return Ok(value);
         }
-        if self.functions.contains_key(&name) || self.stdlib.has_callable(&name) {
+        if self.stdlib.has_callable(&name) {
             return Ok(Value::Callable(name));
         }
         Err(RuntimeError::message(format!("unknown identifier '{name}'")))
@@ -296,10 +307,10 @@ impl<'ast> Interpreter<'ast> {
         let value = self.eval_expr(expr.value)?;
         match expr.target {
             Expr::Ident(node) => {
-                let name = self.name(node.name)?;
-                if self.env.assign(&name, value.clone()) {
+                if self.env.assign_by_id(node.name.as_u32(), value.clone()) {
                     Ok(value)
                 } else {
+                    let name = self.name(node.name)?;
                     Err(RuntimeError::message(format!(
                         "cannot assign to undefined variable '{name}'"
                     )))
@@ -460,8 +471,7 @@ impl<'ast> Interpreter<'ast> {
 
         self.env.push();
         for (param, arg) in func.params.iter().zip(args) {
-            let param_name = self.name(param.name)?;
-            self.env.define(param_name, arg);
+            self.env.define_by_id(param.name.as_u32(), arg);
         }
         let result = match self.exec_block(func.body)? {
             Value::Return(value) => *value,

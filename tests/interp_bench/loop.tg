@@ -1,0 +1,5 @@
+func main() -> i32:
+  let i: i32 = 0
+  while (i < 100000):
+    i = i + 1
+  return i

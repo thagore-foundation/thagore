@@ -6,3 +6,8 @@ license = "MIT"
 
 [dependencies]
 thagore-ast = { path = "../ast" }
+
+[dev-dependencies]
+bumpalo = { version = "3", features = ["collections"] }
+thagore-lexer = { path = "../lexer" }
+thagore-parser = { path = "../parser" }

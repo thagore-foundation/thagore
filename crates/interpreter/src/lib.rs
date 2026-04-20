@@ -80,6 +80,8 @@ impl SymbolTable {
 pub struct Interpreter<'ast> {
     env: EnvStack,
     functions: HashMap<String, &'ast FuncDecl<'ast>>,
+    /// ID-keyed parallel index into `functions` for zero-allocation callee resolution.
+    functions_by_id: HashMap<u32, &'ast FuncDecl<'ast>>,
     const_symbols: HashSet<String>,
     struct_names: Vec<String>,
     symbols: SymbolTable,
@@ -102,6 +104,7 @@ impl<'ast> Interpreter<'ast> {
         Self {
             env: EnvStack::new(),
             functions: HashMap::new(),
+            functions_by_id: HashMap::new(),
             const_symbols: HashSet::new(),
             struct_names: Vec::new(),
             symbols,
@@ -115,6 +118,15 @@ impl<'ast> Interpreter<'ast> {
             step_count: 0,
             max_steps: 10_000_000,
             max_output_bytes: 1_048_576,
+        }
+    }
+
+    /// Creates an interpreter with a custom step limit (for benchmarks and testing).
+    #[must_use]
+    pub fn with_max_steps(symbols: SymbolTable, max_steps: usize) -> Self {
+        Self {
+            max_steps,
+            ..Self::new(symbols)
         }
     }
 
@@ -148,11 +160,15 @@ impl<'ast> Interpreter<'ast> {
         &self.stderr
     }
 
-    pub(crate) fn name(&self, symbol: InternedStr) -> Result<String, RuntimeError> {
+    /// Resolves a symbol to a `&str` slice without allocating.
+    pub(crate) fn name_ref(&self, symbol: InternedStr) -> Result<&str, RuntimeError> {
         self.symbols
             .resolve(symbol)
-            .map(ToString::to_string)
             .ok_or_else(|| RuntimeError::message(format!("unknown symbol id {}", symbol.as_u32())))
+    }
+
+    pub(crate) fn name(&self, symbol: InternedStr) -> Result<String, RuntimeError> {
+        self.name_ref(symbol).map(str::to_string)
     }
 
     pub(crate) fn tick(&mut self) -> Result<(), RuntimeError> {
@@ -270,6 +286,7 @@ impl<'ast> Interpreter<'ast> {
     fn reset_program_state(&mut self) {
         self.env = EnvStack::new();
         self.functions.clear();
+        self.functions_by_id.clear();
         self.const_symbols.clear();
         self.struct_names.clear();
         self.stdout.clear();
@@ -466,7 +483,7 @@ mod tests {
         let result = interpreter.run(&decls);
 
         assert_eq!(result, Ok(Value::Void));
-        assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+        assert_eq!(interpreter.env.get_by_id(0), Some(Value::I32(7)));
     }
 
     #[test]
@@ -499,10 +516,10 @@ mod tests {
         let mut interpreter = Interpreter::new(symbol_table(&["answer", "i32", "main"]));
 
         assert_eq!(interpreter.run(&first), Ok(Value::Void));
-        assert_eq!(interpreter.env.get("answer"), Some(Value::I32(7)));
+        assert_eq!(interpreter.env.get_by_id(0), Some(Value::I32(7)));
 
         assert_eq!(interpreter.run(&second), Ok(Value::Void));
-        assert_eq!(interpreter.env.get("answer"), None);
+        assert_eq!(interpreter.env.get_by_id(0), None);
     }
 
     #[test]

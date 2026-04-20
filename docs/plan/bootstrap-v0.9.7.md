@@ -6,7 +6,7 @@ Progress (2026-03-18):
 - ✅ Selfhost probe CI (Linux/Windows) with determinism check and hashes.
 - ✅ Time API expanded: `now_ms`, `sleep_ms`, `monotonic_ms` (runtime + stdlib).
 - ✅ Baseline timing/memory recorded (see Metrics).
-- ⏳ Parser/type hardening, stdlib parity audits, perf targets, installer polish, docs refresh.
+- ✅ All checklist items completed: parser/type hardening, stdlib parity, perf optimization, installer polish, docs refresh, release CI.
 
 ## Readiness checklist
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
@@ -14,11 +14,11 @@ Progress (2026-03-18):
 - [x] Type system hardening: conformance tests added for continue-outside-loop, value-return-in-intent/flow, method-call-on-primitive; all gated in Bootstrap Probe (Linux + Windows).
 - [x] Stdlib parity: dual-run snapshot tests added for `std.io`, `std.string`, `std.math`, `std.path` (interpreter parse+run == compiled binary stdout); gated in Bootstrap Probe on Linux + Windows.
 - [x] Time API: provide `now()`, monotonic `tick()`, `sleep(ms)`; cross-platform tests (runtime + stdlib updated).
-- [ ] Performance: profile interpreter on fib/io/loop workloads; reduce peak RAM; record before/after metrics in CI.
+- [x] Performance: profile interpreter on fib/io/loop workloads; reduce peak RAM; record before/after metrics in CI.
 - [x] Bootstrap probe v2: include self-host rebuild + output match, stricter time/RAM limits, artifact diff. (Output match, rebuild hash determinism, and self-host fixed-point hash all gated.)
 - [x] Installer/Drago: bundle drago by default, retry/rustup mirrors, MSVC detection + optional auto-install, custom install path with size estimate, purge old thagc from PATH.
 - [x] Docs/website/playground: update install links, quick-start, indev warning, wasm/playground sync with new stdlib, Windows `.exe` suffix fix.
-- [ ] Release rehearsal: nightly rehearsal job from `v0.9.7-pre`; final `release` workflow green across matrix.
+- [x] Release rehearsal: nightly rehearsal job from `v0.9.7-pre`; final `release` workflow green across matrix.
 
 ## Metrics to gate release
 - Self-host hash match across platforms.
