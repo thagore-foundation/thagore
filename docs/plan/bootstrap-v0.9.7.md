@@ -9,13 +9,13 @@ Progress (2026-03-18):
 - ⏳ Parser/type hardening, stdlib parity audits, perf targets, installer polish, docs refresh.
 
 ## Readiness checklist
-- [ ] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary.
+- [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
 - [ ] Parser/block rules: add explicit errors for indent/block detection; expand golden tests for control-flow + flow/intent constructs.
 - [ ] Type system hardening: forbid unsupported generics/beta features; add conformance tests for method calls, intent, flow resumption.
 - [ ] Stdlib parity: align interpreter vs compiled for `std.io`, `time`, `fs`, `path`, `string`; add dual-run snapshot tests.
 - [x] Time API: provide `now()`, monotonic `tick()`, `sleep(ms)`; cross-platform tests (runtime + stdlib updated).
 - [ ] Performance: profile interpreter on fib/io/loop workloads; reduce peak RAM; record before/after metrics in CI.
-- [ ] Bootstrap probe v2: include self-host rebuild + output match, stricter time/RAM limits, artifact diff.
+- [x] Bootstrap probe v2: include self-host rebuild + output match, stricter time/RAM limits, artifact diff. (Output match, rebuild hash determinism, and self-host fixed-point hash all gated.)
 - [ ] Installer/Drago: bundle drago by default, retry/rustup mirrors, MSVC detection + optional auto-install, custom install path with size estimate, purge old thagc from PATH.
 - [ ] Docs/website/playground: update install links, quick-start, indev warning, wasm/playground sync with new stdlib, Windows `.exe` suffix fix.
 - [ ] Release rehearsal: nightly rehearsal job from `v0.9.7-pre`; final `release` workflow green across matrix.
