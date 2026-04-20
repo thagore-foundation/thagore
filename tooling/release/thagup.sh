@@ -29,6 +29,7 @@ Options:
   --drago-tag <release-tag>
   --force
   --with-drago
+  --no-drago / --without-drago
   --dry-run
   -h, --help
 EOF
@@ -44,6 +45,7 @@ while [ "$#" -gt 0 ]; do
     --drago-tag) DRAGO_TAG="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --with-drago) WITH_DRAGO=1; shift ;;
+    --no-drago|--without-drago) WITH_DRAGO=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "error: unknown option: $1" >&2; usage; exit 2 ;;
@@ -117,7 +119,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 if [ -z "$TAG" ]; then
   if [ "$CHANNEL" = "nightly" ]; then
     RELEASES_JSON_PATH="${TMPDIR}/releases.json"
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases" -o "$RELEASES_JSON_PATH"
+    curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases" -o "$RELEASES_JSON_PATH"
     TAG="$(python3 - "$RELEASES_JSON_PATH" <<'PY'
 import json
 import sys
@@ -131,7 +133,7 @@ PY
 )"
   else
     RELEASE_LATEST_JSON_PATH="${TMPDIR}/release-latest.json"
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" -o "$RELEASE_LATEST_JSON_PATH"
+    curl -fsSL --retry 3 --retry-delay 2 "https://api.github.com/repos/${REPO}/releases/latest" -o "$RELEASE_LATEST_JSON_PATH"
     TAG="$(python3 - "$RELEASE_LATEST_JSON_PATH" <<'PY'
 import json
 import sys
@@ -148,7 +150,7 @@ fi
 
 MANIFEST_URL="https://github.com/${REPO}/releases/download/${TAG}/release-manifest-${TAG}.json"
 MANIFEST_PATH="${TMPDIR}/manifest.json"
-curl -fsSL "$MANIFEST_URL" -o "$MANIFEST_PATH"
+curl -fsSL --retry 3 --retry-delay 2 "$MANIFEST_URL" -o "$MANIFEST_PATH"
 
 ARTIFACT_JSON="$(python3 - "$MANIFEST_PATH" "$TARGET" "$CHANNEL" <<'PY'
 import json
@@ -177,12 +179,13 @@ PY
 ARCHIVE_URL="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["url"])' "$ARTIFACT_JSON")"
 ARCHIVE_NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["archive"])' "$ARTIFACT_JSON")"
 ARCHIVE_SHA="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["sha256"])' "$ARTIFACT_JSON")"
+ARCHIVE_SIZE="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("size", 0))' "$ARTIFACT_JSON")"
 
 echo "Resolved release:"
 echo "  repo:    ${REPO}"
 echo "  release track: ${CHANNEL}"
 if [ "${CHANNEL}" = "indev" ]; then
-  echo "  note:    in development; do not treat this toolchain as complete or frozen"
+  echo "  note:    stable release channel as of v0.9.7"
 fi
 
 resolve_drago_json() {
@@ -231,14 +234,17 @@ echo "  tag:     ${TAG}"
 echo "  target:  ${TARGET}"
 echo "  prefix:  ${PREFIX}"
 echo "  archive: ${ARCHIVE_NAME}"
-echo "  drago:   bundled"
+if [ "${ARCHIVE_SIZE:-0}" -gt 0 ] 2>/dev/null; then
+  echo "  size:    $(python3 -c "n=int('${ARCHIVE_SIZE}'); print(f'{n/(1024*1024):.1f} MiB')")"
+fi
+echo "  drago:   $([ "${WITH_DRAGO}" -eq 1 ] && echo bundled || echo skipped)"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
 ARCHIVE_PATH="${TMPDIR}/${ARCHIVE_NAME}"
-curl -fsSL "$ARCHIVE_URL" -o "$ARCHIVE_PATH"
+curl -fsSL --retry 3 --retry-delay 2 "$ARCHIVE_URL" -o "$ARCHIVE_PATH"
 
 python3 - "$ARCHIVE_PATH" "$ARCHIVE_SHA" "$PREFIX" <<'PY'
 import hashlib
@@ -298,7 +304,7 @@ if [ "$WITH_DRAGO" -eq 1 ]; then
     DRAGO_RELEASE_TAG="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["tag"])' "$DRAGO_JSON")"
     DRAGO_SOURCE_URL="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["source_archive_url"])' "$DRAGO_JSON")"
     DRAGO_ARCHIVE="${TMPDIR}/drago-source.tar.gz"
-    curl -fsSL "$DRAGO_SOURCE_URL" -o "$DRAGO_ARCHIVE"
+    curl -fsSL --retry 3 --retry-delay 2 "$DRAGO_SOURCE_URL" -o "$DRAGO_ARCHIVE"
     DRAGO_SOURCE_ROOT="$(python3 - "$DRAGO_ARCHIVE" "$TMPDIR" <<'PY'
 import sys
 import tarfile
@@ -325,4 +331,16 @@ PY
     "$THAGC_BIN" build "${DRAGO_SOURCE_ROOT}/src/main.tg" -o "$DRAGO_BIN"
     echo "Installed drago from ${DRAGO_REPO}@${DRAGO_RELEASE_TAG}"
   fi
+fi
+
+INSTALLED_THAGC="${PREFIX}/bin/thagc"
+OLD_THAGC="$(command -v thagc 2>/dev/null || true)"
+if [ -n "$OLD_THAGC" ]; then
+  case "$(cd "$(dirname "$OLD_THAGC")" && pwd)/thagc" in
+    "$(cd "$(dirname "$INSTALLED_THAGC")" && pwd)/thagc") ;;
+    *)
+      echo "warning: found an existing thagc at ${OLD_THAGC} that is not the one just installed at ${INSTALLED_THAGC}" >&2
+      echo "         Remove it or reorder PATH to avoid version conflicts." >&2
+      ;;
+  esac
 fi

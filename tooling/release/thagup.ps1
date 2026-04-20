@@ -429,7 +429,7 @@ try {
   Write-Host "  repo:            $repo"
   Write-Host "  release track:   $Channel"
   if ($Channel -eq "indev") {
-    Write-Host "  note:            in development; do not treat this toolchain as complete or frozen"
+    Write-Host "  note:            stable release channel as of v0.9.7"
   }
   Write-Host "  tag:             $Tag"
   Write-Host "  target:          $Target"
