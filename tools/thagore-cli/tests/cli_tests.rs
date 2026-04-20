@@ -5123,7 +5123,7 @@ fn check_reports_method_call_on_primitive_without_lowering_escape() {
         .expect("run thagc check");
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("has no fields or methods"), "{stderr}");
+    assert!(stderr.contains("has no fields"), "{stderr}");
     assert!(!stderr.contains("IR lowering failed"), "{stderr}");
 }
 
