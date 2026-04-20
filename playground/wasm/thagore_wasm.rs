@@ -185,6 +185,9 @@ fn builtin_extern_decls<'ast>(
         ("read_all", &[], "str"),
         ("read_ints", &[("n", "i32")], "Array<i32>"),
         ("read_i64s", &[("n", "i32")], "Array<i64>"),
+        ("now_ms", &[], "i64"),
+        ("monotonic_ms", &[], "i64"),
+        ("sleep_ms", &[("ms", "i64")], "void"),
     ];
 
     let mut next_node_cursor = 1_500_000_u32;

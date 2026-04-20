@@ -20,6 +20,7 @@ import std.time as time
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `now_ms` | `func now_ms() -> i64` | Current time in milliseconds since epoch |
+| `monotonic_ms` | `func monotonic_ms() -> i64` | Monotonic clock in milliseconds (not subject to wallclock jumps) |
 | `sleep_ms` | `func sleep_ms(ms: i64)` | Pause the current thread for at least `ms` milliseconds |
 
 ## Example
@@ -69,4 +70,5 @@ func main() -> i32:
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `now_ms` | `func now_ms() -> i64` | milliseconds since epoch |
+| `monotonic_ms` | `func monotonic_ms() -> i64` | monotonic clock milliseconds, unaffected by wallclock changes |
 | `sleep_ms` | `func sleep_ms(ms: i64)` | sleep for at least `ms` milliseconds |

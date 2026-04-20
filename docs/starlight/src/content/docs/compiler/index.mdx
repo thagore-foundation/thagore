@@ -7,7 +7,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 # Compiler Overview
 
-The current Thagore compiler is a hosted implementation. It is not yet a true self-hosted compiler, and the repository is still being hardened before a serious bootstrap stage can be claimed.
+The Thagore compiler is written in Rust and targets self-hosting. As of v0.9.7, the compiler can rebuild itself (`thagc` compiled by `thagc`) with a verified fixed-point hash on Linux and Windows. macOS self-hosting is gated in CI and pending a macOS runner lane.
 
 ## Compiler Pipeline
 
