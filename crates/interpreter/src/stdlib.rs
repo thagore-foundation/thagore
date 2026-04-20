@@ -19,6 +19,9 @@ type BuiltinHandler = fn(&mut Interpreter<'_>, Vec<Value>) -> Result<Value, Runt
 pub struct StdlibRegistry {
     handlers: HashMap<String, BuiltinHandler>,
     modules: HashMap<String, Vec<String>>,
+    /// Per-module symbol→handler overrides for cases where the symbol name differs from the
+    /// registered handler name (e.g. `path.join` → handler `path_join`).
+    module_overrides: HashMap<String, HashMap<String, String>>,
 }
 
 impl Default for StdlibRegistry {
@@ -34,6 +37,7 @@ impl StdlibRegistry {
         let mut registry = Self {
             handlers: HashMap::new(),
             modules: HashMap::new(),
+            module_overrides: HashMap::new(),
         };
 
         registry.register("print", builtin_print);
@@ -184,7 +188,12 @@ impl StdlibRegistry {
                 "filesize",
             ],
         );
-        registry.register_module("path", &["getcwd", "path_join", "is_dir"]);
+        registry.register_module("path", &["getcwd", "path_join", "is_dir", "join"]);
+        registry
+            .module_overrides
+            .entry("path".to_string())
+            .or_default()
+            .insert("join".to_string(), "path_join".to_string());
         registry.register_module(
             "process",
             &[
@@ -219,8 +228,16 @@ impl StdlibRegistry {
     }
 
     /// Resolves a module-qualified builtin symbol like `math.sqrt`.
+    ///
+    /// Returns the handler name to dispatch, which may differ from the symbol name when an
+    /// override is registered (e.g. `path.join` → handler `path_join`).
     #[must_use]
     pub fn resolve_module_symbol(&self, module: &str, symbol: &str) -> Option<String> {
+        if let Some(overrides) = self.module_overrides.get(module) {
+            if let Some(handler) = overrides.get(symbol) {
+                return Some(handler.clone());
+            }
+        }
         let exports = self.module_exports(module)?;
         exports
             .iter()

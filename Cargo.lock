@@ -1157,7 +1157,10 @@ dependencies = [
 name = "thagore-interpreter"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
  "thagore-ast",
+ "thagore-lexer",
+ "thagore-parser",
 ]
 
 [[package]]

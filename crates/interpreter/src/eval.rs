@@ -134,9 +134,12 @@ impl<'ast> Interpreter<'ast> {
             }
         } else if decl.include_all {
             if let Some(exports) = self.stdlib.module_exports(&module_key) {
-                for symbol in exports {
-                    self.env
-                        .define(symbol.clone(), Value::Callable(symbol.clone()));
+                for symbol in exports.to_vec() {
+                    if let Some(handler) =
+                        self.stdlib.resolve_module_symbol(&module_key, &symbol)
+                    {
+                        self.env.define(symbol, Value::Callable(handler));
+                    }
                 }
             }
         } else {
