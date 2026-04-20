@@ -412,6 +412,16 @@ jobs:
         shell: pwsh
         run: cargo test -p thagore-interpreter -- --nocapture
 
+      - name: Stdlib dual-run parity (interpreter == compiled) on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: cargo test -p thagore-cli -- parity_ --nocapture
+
+      - name: Stdlib dual-run parity (interpreter == compiled) on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo test -p thagore-cli -- parity_ --nocapture
+
       - name: Run native stdlib bootstrap audit on Linux
         if: runner.os == 'Linux'
         shell: bash

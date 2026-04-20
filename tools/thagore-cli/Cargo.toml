@@ -34,3 +34,6 @@ thagore-lexer = { path = "../../crates/lexer" }
 thagore-module-graph = { path = "../../crates/module_graph" }
 thagore-parser = { path = "../../crates/parser" }
 thagore-typeck = { path = "../../crates/typeck" }
+
+[dev-dependencies]
+thagore-interpreter = { path = "../../crates/interpreter" }

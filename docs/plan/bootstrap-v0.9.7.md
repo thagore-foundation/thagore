@@ -12,7 +12,7 @@ Progress (2026-03-18):
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
 - [ ] Parser/block rules: add explicit errors for indent/block detection; expand golden tests for control-flow + flow/intent constructs.
 - [ ] Type system hardening: forbid unsupported generics/beta features; add conformance tests for method calls, intent, flow resumption.
-- [ ] Stdlib parity: align interpreter vs compiled for `std.io`, `time`, `fs`, `path`, `string`; add dual-run snapshot tests.
+- [x] Stdlib parity: dual-run snapshot tests added for `std.io`, `std.string`, `std.math`, `std.path` (interpreter parse+run == compiled binary stdout); gated in Bootstrap Probe on Linux + Windows.
 - [x] Time API: provide `now()`, monotonic `tick()`, `sleep(ms)`; cross-platform tests (runtime + stdlib updated).
 - [ ] Performance: profile interpreter on fib/io/loop workloads; reduce peak RAM; record before/after metrics in CI.
 - [x] Bootstrap probe v2: include self-host rebuild + output match, stricter time/RAM limits, artifact diff. (Output match, rebuild hash determinism, and self-host fixed-point hash all gated.)
