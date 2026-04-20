@@ -49,7 +49,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             None
         };
         self.expect_block_colon();
-        let body = self.parse_block();
+        let body = self.parse_block_for(Expectation::FuncBody);
 
         FuncDecl {
             id: self.new_node_id(),
@@ -72,7 +72,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
             None
         };
         self.expect_block_colon();
-        let body = self.parse_block();
+        let body = self.parse_block_for(Expectation::FuncBody);
         let span = self.span_of(func_token).join(body.span);
         let id = self.new_node_id();
 
@@ -161,7 +161,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.expect_block_colon();
 
         let start = self.span_of(struct_token);
-        let entered_block = self.enter_indented_section();
+        let entered_block = self.enter_indented_section_for(Expectation::StructBody);
 
         let mut fields = self.bump_vec();
         let mut end = start;
@@ -226,7 +226,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         self.expect_block_colon();
 
         let start = self.span_of(impl_token);
-        let entered_block = self.enter_indented_section();
+        let entered_block = self.enter_indented_section_for(Expectation::ImplBody);
 
         let mut methods = self.bump_vec();
         let mut end = start;
@@ -432,7 +432,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let name = self.parse_identifier_symbol(Expectation::Identifier);
         self.expect_block_colon();
 
-        let entered_block = self.enter_indented_section();
+        let entered_block = self.enter_indented_section_for(Expectation::IntentBody);
 
         let mut constraints = self.bump_vec();
         let mut body = None;
@@ -496,7 +496,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let name = self.parse_identifier_symbol(Expectation::Identifier);
         self.expect_block_colon();
 
-        let entered_block = self.enter_indented_section();
+        let entered_block = self.enter_indented_section_for(Expectation::FlowBody);
 
         let mut stages = self.bump_vec();
         let mut compensation = None;

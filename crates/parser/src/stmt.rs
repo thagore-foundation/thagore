@@ -39,8 +39,12 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
     }
 
     pub(crate) fn parse_block(&mut self) -> thagore_ast::BlockRef<'ast> {
+        self.parse_block_for(Expectation::Block)
+    }
+
+    pub(crate) fn parse_block_for(&mut self, expectation: Expectation) -> thagore_ast::BlockRef<'ast> {
         let block_start = self.current_span();
-        if !self.enter_indented_section() {
+        if !self.enter_indented_section_for(expectation) {
             let id = self.new_node_id();
             return self.alloc_block(Block {
                 id,
@@ -87,11 +91,11 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let if_token = self.advance();
         let condition = self.parse_condition_expr();
         self.expect_block_colon();
-        let then_block = self.parse_block();
+        let then_block = self.parse_block_for(Expectation::IfBody);
 
         let else_block = if self.match_kind(TokenKind::Else).is_some() {
             self.expect_block_colon();
-            Some(self.parse_block())
+            Some(self.parse_block_for(Expectation::ElseBody))
         } else {
             None
         };
@@ -112,7 +116,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         let while_token = self.advance();
         let condition = self.parse_condition_expr();
         self.expect_block_colon();
-        let body = self.parse_block();
+        let body = self.parse_block_for(Expectation::WhileBody);
         WhileStmt {
             id: self.new_node_id(),
             span: self.span_of(while_token).join(body.span),
@@ -133,7 +137,7 @@ impl<'src, 'tok, 'ast> Parser<'src, 'tok, 'ast> {
         }
         let iterator = self.parse_expr(0);
         self.expect_block_colon();
-        let body = self.parse_block();
+        let body = self.parse_block_for(Expectation::ForBody);
         ForStmt {
             id: self.new_node_id(),
             span: self.span_of(for_token).join(body.span),

@@ -1119,6 +1119,7 @@ dependencies = [
  "termcolor",
  "thagore-ast",
  "thagore-codegen",
+ "thagore-interpreter",
  "thagore-ir",
  "thagore-lexer",
  "thagore-module-graph",

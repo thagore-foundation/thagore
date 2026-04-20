@@ -183,6 +183,42 @@ impl ErrorKind {
                 ..
             } => "expected import path segment",
             Self::UnexpectedToken {
+                expected: Expectation::FuncBody,
+                ..
+            } => "expected function body",
+            Self::UnexpectedToken {
+                expected: Expectation::StructBody,
+                ..
+            } => "expected struct body",
+            Self::UnexpectedToken {
+                expected: Expectation::ImplBody,
+                ..
+            } => "expected impl body",
+            Self::UnexpectedToken {
+                expected: Expectation::IntentBody,
+                ..
+            } => "expected intent body",
+            Self::UnexpectedToken {
+                expected: Expectation::FlowBody,
+                ..
+            } => "expected flow body",
+            Self::UnexpectedToken {
+                expected: Expectation::IfBody,
+                ..
+            } => "expected block body after 'if' condition",
+            Self::UnexpectedToken {
+                expected: Expectation::ElseBody,
+                ..
+            } => "expected block body for 'else' branch",
+            Self::UnexpectedToken {
+                expected: Expectation::WhileBody,
+                ..
+            } => "expected block body after 'while' condition",
+            Self::UnexpectedToken {
+                expected: Expectation::ForBody,
+                ..
+            } => "expected block body for 'for' loop",
+            Self::UnexpectedToken {
                 expected: Expectation::Token(_),
                 ..
             } => "unexpected token",
@@ -240,6 +276,24 @@ pub enum Expectation {
     FlowStage,
     /// A path segment in an import declaration was expected.
     ImportPathSegment,
+    /// A function body block was expected.
+    FuncBody,
+    /// A struct body block was expected.
+    StructBody,
+    /// An impl body block was expected.
+    ImplBody,
+    /// An intent body block was expected.
+    IntentBody,
+    /// A flow body block was expected.
+    FlowBody,
+    /// A block body for an if branch was expected.
+    IfBody,
+    /// A block body for an else branch was expected.
+    ElseBody,
+    /// A block body for a while loop was expected.
+    WhileBody,
+    /// A block body for a for loop was expected.
+    ForBody,
 }
 
 impl fmt::Display for Expectation {
@@ -256,6 +310,15 @@ impl fmt::Display for Expectation {
             Self::Field => f.write_str("field definition"),
             Self::FlowStage => f.write_str("flow stage"),
             Self::ImportPathSegment => f.write_str("import path segment"),
+            Self::FuncBody => f.write_str("function body"),
+            Self::StructBody => f.write_str("struct body"),
+            Self::ImplBody => f.write_str("impl body"),
+            Self::IntentBody => f.write_str("intent body"),
+            Self::FlowBody => f.write_str("flow body"),
+            Self::IfBody => f.write_str("if branch body"),
+            Self::ElseBody => f.write_str("else branch body"),
+            Self::WhileBody => f.write_str("while loop body"),
+            Self::ForBody => f.write_str("for loop body"),
         }
     }
 }

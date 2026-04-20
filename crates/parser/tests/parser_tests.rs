@@ -1,7 +1,11 @@
 use bumpalo::Bump;
 use thagore_ast::{BinOp, ConstraintKind, Decl, Expr, Stmt, TypeExpr};
 use thagore_lexer::Lexer;
-use thagore_parser::Parser;
+use thagore_parser::{ParseError, Parser};
+
+fn first_error_message(errors: &[ParseError]) -> &'static str {
+    errors.first().expect("expected at least one error").message()
+}
 
 fn with_parsed_source(
     source: &str,
@@ -514,5 +518,62 @@ func next() -> i32:
         assert!(!errors.is_empty());
         assert!(matches!(decls[0], Decl::Func(_)));
         assert!(matches!(decls[1], Decl::Func(_)));
+    });
+}
+
+#[test]
+fn missing_func_body_reports_function_body_error() {
+    let source = "func main() -> i32:\nfunc next() -> i32:\n  return 1\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing func body");
+        assert_eq!(first_error_message(&errors), "expected function body");
+    });
+}
+
+#[test]
+fn missing_if_body_reports_if_body_error() {
+    let source = "func f() -> i32:\n  if (true):\nfunc g() -> i32:\n  return 0\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing if body");
+        let msg = first_error_message(&errors);
+        assert!(
+            msg.contains("function body") || msg.contains("if"),
+            "unexpected error: {msg}"
+        );
+    });
+}
+
+#[test]
+fn missing_while_body_reports_while_body_error() {
+    let source = "func f() -> i32:\n  while (true):\nfunc g() -> i32:\n  return 0\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing while body");
+    });
+}
+
+#[test]
+fn missing_struct_body_reports_struct_body_error() {
+    let source = "struct Foo:\nfunc main() -> i32:\n  return 0\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing struct body");
+        assert_eq!(first_error_message(&errors), "expected struct body");
+    });
+}
+
+#[test]
+fn missing_flow_body_reports_flow_body_error() {
+    let source = "flow payment:\nfunc main() -> i32:\n  return 0\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing flow body");
+        assert_eq!(first_error_message(&errors), "expected flow body");
+    });
+}
+
+#[test]
+fn missing_intent_body_reports_intent_body_error() {
+    let source = "intent Search:\nfunc main() -> i32:\n  return 0\n";
+    with_parsed_source(source, |_decls, errors| {
+        assert!(!errors.is_empty(), "expected errors for missing intent body");
+        assert_eq!(first_error_message(&errors), "expected intent body");
     });
 }
