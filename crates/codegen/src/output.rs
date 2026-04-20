@@ -1,10 +1,9 @@
 //! Output artifact emission for the Thagore LLVM backend.
 
 use std::env;
-use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use inkwell::module::Module;
 use inkwell::targets::{FileType, TargetMachine};
@@ -180,34 +179,40 @@ pub fn link_objects(objects: &[PathBuf], binary: &Path) -> Result<(), CodegenErr
 }
 
 fn compile_runtime_object(binary: &Path) -> Result<PathBuf, CodegenError> {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    let runtime_source = env::temp_dir().join(format!(
-        "thagore_rt_{}_{}.c",
-        std::process::id(),
-        nonce
-    ));
     let runtime_object = binary.with_extension("thagore_rt.o");
-    fs::write(&runtime_source, EMBEDDED_RUNTIME_SOURCE).map_err(|error| CodegenError::LinkFailed {
-        linker: "cc".into(),
-        message: error.to_string(),
-    })?;
     let compiler = c_compiler();
-    let output = Command::new(&compiler)
+    let mut command = Command::new(&compiler);
+    command
         .arg("-c")
         .arg("-O2")
-        .arg(command_path(&runtime_source))
+        .arg("-x")
+        .arg("c")
+        .arg("-")
         .arg("-o")
         .arg(command_path(&runtime_object))
-        .output()
-        .map_err(|error| CodegenError::LinkFailed {
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|error| CodegenError::LinkFailed {
+        linker: compiler.clone(),
+        message: error.to_string(),
+    })?;
+    {
+        let stdin = child.stdin.as_mut().ok_or_else(|| CodegenError::LinkFailed {
             linker: compiler.clone(),
-            message: error.to_string(),
+            message: "failed to capture C compiler stdin".into(),
         })?;
-
-    let _ = fs::remove_file(&runtime_source);
+        stdin
+            .write_all(EMBEDDED_RUNTIME_SOURCE.as_bytes())
+            .map_err(|error| CodegenError::LinkFailed {
+                linker: compiler.clone(),
+                message: error.to_string(),
+            })?;
+    }
+    let output = child.wait_with_output().map_err(|error| CodegenError::LinkFailed {
+        linker: compiler.clone(),
+        message: error.to_string(),
+    })?;
 
     if output.status.success() {
         Ok(runtime_object)
