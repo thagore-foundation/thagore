@@ -623,6 +623,7 @@ jobs:
           THAGORE_BOOTSTRAP_PROBE=ok "./$SECOND"
           cp tests/bootstrap_probe/probe-result.txt bootstrap-dist/probe-result-second.txt
           python - <<'PY'
+          import hashlib
           from pathlib import Path
           expected = Path("tests/bootstrap_probe/expected.txt").read_text().rstrip("\r\n")
           first = Path("bootstrap-dist/probe-result-first.txt").read_text().rstrip("\r\n")
@@ -633,6 +634,11 @@ jobs:
               raise SystemExit("bootstrap probe second output differs from expected")
           if first != second:
               raise SystemExit("bootstrap probe output differs between rebuilds")
+          first_hash = hashlib.sha256(Path("bootstrap-dist/bootstrap-probe").read_bytes()).hexdigest()
+          second_hash = hashlib.sha256(Path("bootstrap-dist/bootstrap-probe.second").read_bytes()).hexdigest()
+          Path("bootstrap-dist/probe-binary.sha256").write_text(f"first={first_hash}\nsecond={second_hash}\n", encoding="utf-8")
+          if first_hash != second_hash:
+              raise SystemExit(f"bootstrap probe binary hash differs between rebuilds: {first_hash} != {second_hash}")
           PY
           python - <<'PY'
           from pathlib import Path
@@ -718,6 +724,12 @@ jobs:
           }
           if ($firstOut -ne $secondOut) {
             throw 'bootstrap probe output differs between rebuilds'
+          }
+          $firstHash = (Get-FileHash -Algorithm SHA256 -Path $first).Hash.ToLower()
+          $secondHash = (Get-FileHash -Algorithm SHA256 -Path $second).Hash.ToLower()
+          "first=$firstHash`nsecond=$secondHash`n" | Out-File -FilePath 'bootstrap-dist/probe-binary.sha256' -Encoding utf8
+          if ($firstHash -ne $secondHash) {
+            throw "bootstrap probe binary hash differs between rebuilds: $firstHash != $secondHash"
           }
 
       - uses: actions/upload-artifact@v6

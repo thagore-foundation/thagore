@@ -264,6 +264,11 @@ fn try_link(
         }
         Linker::SystemCc => "cc",
     };
+    if cfg!(windows) {
+        command.arg("-Wl,/Brepro");
+    } else {
+        command.arg("-Wl,--build-id=none");
+    }
 
     let output = command.output().map_err(|error| CodegenError::LinkFailed {
         linker: linker_name.into(),
