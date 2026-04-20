@@ -11,7 +11,7 @@ Progress (2026-03-18):
 ## Readiness checklist
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
 - [x] Parser/block rules: contextual block error messages added (FuncBody, StructBody, ImplBody, IntentBody, FlowBody, IfBody, ElseBody, WhileBody, ForBody); 6 parser conformance tests added and passing.
-- [ ] Type system hardening: forbid unsupported generics/beta features; add conformance tests for method calls, intent, flow resumption.
+- [x] Type system hardening: conformance tests added for continue-outside-loop, value-return-in-intent/flow, method-call-on-primitive; all gated in Bootstrap Probe (Linux + Windows).
 - [x] Stdlib parity: dual-run snapshot tests added for `std.io`, `std.string`, `std.math`, `std.path` (interpreter parse+run == compiled binary stdout); gated in Bootstrap Probe on Linux + Windows.
 - [x] Time API: provide `now()`, monotonic `tick()`, `sleep(ms)`; cross-platform tests (runtime + stdlib updated).
 - [ ] Performance: profile interpreter on fib/io/loop workloads; reduce peak RAM; record before/after metrics in CI.

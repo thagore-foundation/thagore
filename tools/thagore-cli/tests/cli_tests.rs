@@ -5051,6 +5051,83 @@ fn check_reports_argument_count_mismatches_without_lowering_escape() {
 }
 
 #[test]
+fn check_reports_continue_outside_loop_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("continue_outside_loop.tg");
+    fs::write(&source, "func main() -> i32:\n  continue\n  return 0\n").expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid control flow"), "{stderr}");
+    assert!(stderr.contains("continue can only be used inside a loop"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_value_return_in_intent_body_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("value_return_in_intent.tg");
+    fs::write(
+        &source,
+        "intent Opt:\n  body:\n    return 42\n\nfunc main() -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("return with a value is only allowed inside functions"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_value_return_in_flow_stage_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("value_return_in_flow.tg");
+    fs::write(
+        &source,
+        "flow payment:\n  stage acquire:\n    return 42\n\nfunc main() -> i32:\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("return with a value is only allowed inside functions"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
+fn check_reports_method_call_on_primitive_without_lowering_escape() {
+    let dir = TempDir::new().expect("temp dir");
+    let source = dir.path().join("method_on_primitive.tg");
+    fs::write(
+        &source,
+        "func main() -> i32:\n  let value: i32 = 5\n  let ignored = value.upper()\n  return 0\n",
+    )
+    .expect("write source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args(["check", source.to_str().expect("utf8")])
+        .output()
+        .expect("run thagc check");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("has no fields or methods"), "{stderr}");
+    assert!(!stderr.contains("IR lowering failed"), "{stderr}");
+}
+
+#[test]
 fn build_required_surface_failures_do_not_escape_to_ir_or_codegen() {
     let dir = TempDir::new().expect("temp dir");
     let cases = [
@@ -5121,6 +5198,22 @@ fn build_required_surface_failures_do_not_escape_to_ir_or_codegen() {
         (
             "method_value_outside_call",
             "struct Point:\n  x: i32\n\nimpl Point:\n  func get_x(self: Point) -> i32:\n    return self.x\n\nfunc main() -> i32:\n  let point = Point(x=1)\n  let method = point.get_x\n  return 0\n",
+        ),
+        (
+            "continue_outside_loop",
+            "func main() -> i32:\n  continue\n  return 0\n",
+        ),
+        (
+            "value_return_in_intent",
+            "intent Opt:\n  body:\n    return 42\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "value_return_in_flow_stage",
+            "flow payment:\n  stage acquire:\n    return 42\n\nfunc main() -> i32:\n  return 0\n",
+        ),
+        (
+            "method_call_on_primitive",
+            "func main() -> i32:\n  let value: i32 = 5\n  let ignored = value.upper()\n  return 0\n",
         ),
     ];
 
