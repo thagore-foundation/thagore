@@ -732,8 +732,59 @@ jobs:
             throw "bootstrap probe binary hash differs between rebuilds: $firstHash != $secondHash"
           }
 
+      - name: Self-host fixed-point hash match on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          THAGC=${{ matrix.thagc_bin }}
+          mkdir -p selfhost-fixedpoint
+          $THAGC build bootstrap/selfhost/frontend/compiler.tg -o selfhost-fixedpoint/compiler-host.exe
+          pushd selfhost-fixedpoint >/dev/null
+          PATH="$GITHUB_WORKSPACE/target/release:$PATH" THAGORE_STAGE0=thagc \
+            ./compiler-host.exe build "$GITHUB_WORKSPACE/bootstrap/selfhost/frontend/compiler.tg" compiler-selfhost.exe
+          popd >/dev/null
+          HOST_HASH=$(sha256sum selfhost-fixedpoint/compiler-host.exe | awk '{print $1}')
+          SELF_HASH=$(sha256sum selfhost-fixedpoint/compiler-selfhost.exe | awk '{print $1}')
+          printf "host=%s\nselfhost=%s\n" "$HOST_HASH" "$SELF_HASH" > selfhost-fixedpoint/fixedpoint.sha256
+          if [ "$HOST_HASH" != "$SELF_HASH" ]; then
+            echo "self-hosting hash match FAILED: host=$HOST_HASH selfhost=$SELF_HASH"
+            exit 1
+          fi
+          echo "self-hosting hash match OK: $HOST_HASH"
+
+      - name: Self-host fixed-point hash match on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thagc = '${{ matrix.thagc_bin }}'
+          New-Item -ItemType Directory -Force -Path 'selfhost-fixedpoint' | Out-Null
+          & $thagc build bootstrap/selfhost/frontend/compiler.tg -o selfhost-fixedpoint/compiler-host.exe
+          if ($LASTEXITCODE -ne 0) { throw 'host build of compiler.tg failed' }
+          $hostBinFull = (Resolve-Path 'target/release/thagc.exe').Path
+          $hostBinDir = Split-Path $hostBinFull -Parent
+          $env:PATH = "$hostBinDir;$env:PATH"
+          $env:THAGORE_STAGE0 = 'thagc.exe'
+          Push-Location 'selfhost-fixedpoint'
+          try {
+            & ./compiler-host.exe build "$env:GITHUB_WORKSPACE/bootstrap/selfhost/frontend/compiler.tg" compiler-selfhost.exe
+            if ($LASTEXITCODE -ne 0) { throw 'selfhost build of compiler.tg failed' }
+          } finally {
+            Pop-Location
+          }
+          $hostHash = (Get-FileHash -Algorithm SHA256 -Path 'selfhost-fixedpoint/compiler-host.exe').Hash.ToLower()
+          $selfHash = (Get-FileHash -Algorithm SHA256 -Path 'selfhost-fixedpoint/compiler-selfhost.exe').Hash.ToLower()
+          "host=$hostHash`nselfhost=$selfHash`n" | Out-File -FilePath 'selfhost-fixedpoint/fixedpoint.sha256' -Encoding utf8
+          if ($hostHash -ne $selfHash) {
+            throw "self-hosting hash match FAILED: host=$hostHash selfhost=$selfHash"
+          }
+          Write-Host "self-hosting hash match OK: $hostHash"
+
       - uses: actions/upload-artifact@v6
         with:
           name: bootstrap-probe-${{ matrix.os_name }}
-          path: bootstrap-dist/*
+          path: |
+            bootstrap-dist/*
+            selfhost-fixedpoint/fixedpoint.sha256
 
