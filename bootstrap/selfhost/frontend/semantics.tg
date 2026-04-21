@@ -1,7 +1,9 @@
 from . import diagnostics
+from . import typeck
 from . import module_kind
 from . import desugar
 import std.string as string
+import std.array as array
 
 func append_issue(out: str, issue: str) -> str:
   if (string.len(issue) == 0):
@@ -9,6 +11,21 @@ func append_issue(out: str, issue: str) -> str:
   if (string.str_eq(out, "ok") or string.len(out) == 0):
     return issue
   return string.concat(out, string.concat(" | ", issue))
+
+func merge_typeck(existing: str, typeck_out: str) -> str:
+  if (string.str_eq(typeck_out, "ok") or string.len(typeck_out) == 0):
+    return existing
+  if (string.str_eq(existing, "ok") or string.len(existing) == 0):
+    return typeck_out
+  let items = string.split(typeck_out, " | ")
+  let result = existing
+  let i: i32 = 0
+  while (i < array.len(items)):
+    let item = array.get(items, i)
+    if (string.len(item) > 0 and string.contains(result, item) == false):
+      result = append_issue(result, item)
+    i = i + 1
+  return result
 
 func filter_executable_only_issues(issues: str, current_kind: str) -> str:
   if (module_kind.is_library_kind(current_kind) == false):
@@ -32,7 +49,9 @@ func normalize_source(source: str) -> str:
 pub func issues(cwd: str, source: str, current_kind: str, token_report: str, summary: str, table: str, imports: str, desugared: str) -> str:
   let normalized = normalize_source(source)
   let semantic = diagnostics.analyze_semantics(summary, table, imports, cwd, desugared, token_report)
-  let out = filter_executable_only_issues(semantic, current_kind)
+  let tc = typeck.check(token_report)
+  let merged = merge_typeck(semantic, tc)
+  let out = filter_executable_only_issues(merged, current_kind)
   let kind_issue = module_kind.validate_top_level(current_kind, normalized)
   if (string.len(kind_issue) > 0):
     out = append_issue(out, kind_issue)

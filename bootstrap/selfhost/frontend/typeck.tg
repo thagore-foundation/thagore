@@ -1,0 +1,321 @@
+from . import chars
+import std.string as string
+import std.array as array
+
+# Token-stream type checker for the selfhost frontend.
+# Walks the " | "-separated token report produced by lexer.scan and checks
+# type constraints across ALL functions, not just the first occurrence.
+
+# ---------------------------------------------------------------------------
+# Token helpers
+# ---------------------------------------------------------------------------
+
+func tk_kind(token: str) -> str:
+  let out = ""
+  let i: i32 = 0
+  while (i < string.len(token)):
+    let ch = string.char_at(token, i)
+    if (string.str_eq(ch, "(")):
+      return out
+    out = string.concat(out, ch)
+    i = i + 1
+  return out
+
+func tk_text(token: str) -> str:
+  let start = string.find(token, "(")
+  if (start < 0):
+    return ""
+  let out = ""
+  let i: i32 = start + 1
+  while (i < string.len(token)):
+    let ch = string.char_at(token, i)
+    let nxt = ""
+    if ((i + 1) < string.len(token)):
+      nxt = string.char_at(token, i + 1)
+    if (string.str_eq(ch, ")") and string.str_eq(nxt, "@")):
+      return out
+    out = string.concat(out, ch)
+    i = i + 1
+  return out
+
+func tget(tokens: Array[str], i: i32) -> str:
+  if (i < 0):
+    return ""
+  if (i >= array.len(tokens)):
+    return ""
+  return array.get(tokens, i)
+
+func tkind(tokens: Array[str], i: i32) -> str:
+  return tk_kind(tget(tokens, i))
+
+func ttext(tokens: Array[str], i: i32) -> str:
+  return tk_text(tget(tokens, i))
+
+# ---------------------------------------------------------------------------
+# Type map: "name:type | name2:type2 | ..."
+# ---------------------------------------------------------------------------
+
+func tmap_add(tmap: str, name: str, typ: str) -> str:
+  if (string.len(name) == 0):
+    return tmap
+  let entry = string.concat(name, string.concat(":", typ))
+  if (string.len(tmap) == 0):
+    return entry
+  return string.concat(tmap, string.concat(" | ", entry))
+
+func tmap_get(tmap: str, name: str) -> str:
+  if (string.len(tmap) == 0 or string.len(name) == 0):
+    return ""
+  let needle = string.concat(name, ":")
+  let items = string.split(tmap, " | ")
+  let i: i32 = 0
+  while (i < array.len(items)):
+    let item = array.get(items, i)
+    if (string.starts_with(item, needle)):
+      let typ = ""
+      let j: i32 = string.len(needle)
+      while (j < string.len(item)):
+        typ = string.concat(typ, string.char_at(item, j))
+        j = j + 1
+      return typ
+    i = i + 1
+  return ""
+
+# ---------------------------------------------------------------------------
+# Issue accumulator
+# ---------------------------------------------------------------------------
+
+func add_issue(issues: str, issue: str) -> str:
+  if (string.len(issue) == 0):
+    return issues
+  if (string.len(issues) == 0):
+    return issue
+  return string.concat(issues, string.concat(" | ", issue))
+
+# ---------------------------------------------------------------------------
+# Function signature collection
+# collect_sigs returns "name:rettype | ..." for every func in the token stream.
+# ---------------------------------------------------------------------------
+
+func collect_sigs(tokens: Array[str]) -> str:
+  let sigs = ""
+  let i: i32 = 0
+  while (i < array.len(tokens)):
+    if (string.str_eq(tkind(tokens, i), "kw") and string.str_eq(ttext(tokens, i), "func")):
+      let name = ttext(tokens, i + 1)
+      let j: i32 = i + 2
+      let depth: i32 = 0
+      while (j < array.len(tokens)):
+        if (string.str_eq(ttext(tokens, j), "(")):
+          depth = depth + 1
+        if (string.str_eq(ttext(tokens, j), ")")):
+          depth = depth - 1
+          if (depth == 0):
+            break
+        j = j + 1
+      let rettype = ""
+      if (string.str_eq(ttext(tokens, j + 1), "->")):
+        if (string.str_eq(tkind(tokens, j + 2), "ident")):
+          rettype = ttext(tokens, j + 2)
+      sigs = tmap_add(sigs, name, rettype)
+      i = j + 3
+      continue
+    i = i + 1
+  return sigs
+
+# ---------------------------------------------------------------------------
+# Parameter collection for a single function
+# collect_params returns "name:type | ..." for parameters of the function
+# whose kw(func) token is at func_idx.
+# ---------------------------------------------------------------------------
+
+func collect_params(tokens: Array[str], func_idx: i32) -> str:
+  let params = ""
+  let open_i = func_idx + 2
+  if (string.str_eq(ttext(tokens, open_i), "(") == false):
+    return ""
+  let i: i32 = open_i + 1
+  while (i < array.len(tokens)):
+    let kind = tkind(tokens, i)
+    let text = ttext(tokens, i)
+    if (string.str_eq(kind, "punct") and string.str_eq(text, ")")):
+      return params
+    if (string.str_eq(kind, "ident") and string.str_eq(ttext(tokens, i + 1), ":") and string.str_eq(tkind(tokens, i + 2), "ident")):
+      let param_name = text
+      let param_type = ttext(tokens, i + 2)
+      params = tmap_add(params, param_name, param_type)
+      i = i + 3
+      continue
+    i = i + 1
+  return params
+
+# ---------------------------------------------------------------------------
+# Function body boundaries
+# ---------------------------------------------------------------------------
+
+func find_body_start(tokens: Array[str], func_idx: i32) -> i32:
+  let j: i32 = func_idx + 2
+  let depth: i32 = 0
+  while (j < array.len(tokens)):
+    if (string.str_eq(ttext(tokens, j), "(")):
+      depth = depth + 1
+    if (string.str_eq(ttext(tokens, j), ")")):
+      depth = depth - 1
+      if (depth == 0):
+        j = j + 1
+        break
+    j = j + 1
+  while (j < array.len(tokens)):
+    if (string.str_eq(tkind(tokens, j), "punct") and string.str_eq(ttext(tokens, j), ":")):
+      return j + 1
+    j = j + 1
+  return array.len(tokens)
+
+func find_body_end(tokens: Array[str], body_start: i32) -> i32:
+  let j: i32 = body_start
+  while (j < array.len(tokens)):
+    if (string.str_eq(tkind(tokens, j), "kw") and string.str_eq(ttext(tokens, j), "func")):
+      return j
+    j = j + 1
+  return array.len(tokens)
+
+# ---------------------------------------------------------------------------
+# Expression type inference
+# Returns the type of the expression whose first token is at index i.
+# "unknown" means the type could not be determined.
+# ---------------------------------------------------------------------------
+
+func expr_type(tokens: Array[str], i: i32, locals: str, sigs: str) -> str:
+  let kind = tkind(tokens, i)
+  let text = ttext(tokens, i)
+
+  if (string.str_eq(kind, "int")):
+    return "i32"
+
+  if (string.str_eq(kind, "ident")):
+    if (string.str_eq(text, "true") or string.str_eq(text, "false")):
+      return "bool"
+    if (string.str_eq(ttext(tokens, i + 1), ".") and string.str_eq(tkind(tokens, i + 2), "ident") and string.str_eq(ttext(tokens, i + 3), "(")):
+      return "unknown"
+    if (string.str_eq(ttext(tokens, i + 1), "(")):
+      return tmap_get(sigs, text)
+    let local_t = tmap_get(locals, text)
+    if (string.len(local_t) > 0):
+      return local_t
+    return "unknown"
+
+  return "unknown"
+
+# ---------------------------------------------------------------------------
+# Function body type checker
+# check_body walks every statement in [body_start, body_end) and reports
+# type issues. locals_init contains parameter bindings; let bindings are
+# accumulated as the body is walked.
+# ---------------------------------------------------------------------------
+
+func check_body(tokens: Array[str], body_start: i32, body_end: i32, ret_type: str, locals_init: str, sigs: str) -> str:
+  let issues = ""
+  let locals = locals_init
+  let i: i32 = body_start
+
+  while (i < body_end):
+    let kind = tkind(tokens, i)
+    let text = ttext(tokens, i)
+
+    # let name : type = expr
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "let")):
+      if (string.str_eq(tkind(tokens, i + 1), "ident") and string.str_eq(ttext(tokens, i + 2), ":") and string.str_eq(tkind(tokens, i + 3), "ident")):
+        let var_name = ttext(tokens, i + 1)
+        let declared_t = ttext(tokens, i + 3)
+        if (string.str_eq(ttext(tokens, i + 4), "=")):
+          let val_t = expr_type(tokens, i + 5, locals, sigs)
+          if (string.len(val_t) > 0 and string.str_eq(val_t, "unknown") == false and string.str_eq(val_t, declared_t) == false):
+            if (string.str_eq(ttext(tokens, i + 6), "(")):
+              issues = add_issue(issues, "local call result type mismatch")
+            else:
+              issues = add_issue(issues, "local type mismatch")
+        locals = tmap_add(locals, var_name, declared_t)
+        i = i + 5
+      else:
+        i = i + 2
+      continue
+
+    # return expr
+    if (string.str_eq(kind, "kw") and string.str_eq(text, "return")):
+      let val_t = expr_type(tokens, i + 1, locals, sigs)
+      if (string.len(val_t) > 0 and string.str_eq(val_t, "unknown") == false and string.len(ret_type) > 0 and string.str_eq(val_t, ret_type) == false):
+        if (string.str_eq(ttext(tokens, i + 2), "(")):
+          issues = add_issue(issues, "return call result type mismatch")
+        else:
+          issues = add_issue(issues, "return type mismatch")
+      i = i + 2
+      continue
+
+    # if/while condition type check
+    if (string.str_eq(kind, "kw") and (string.str_eq(text, "if") or string.str_eq(text, "while"))):
+      if (string.str_eq(ttext(tokens, i + 1), "(")):
+        let cond_t = expr_type(tokens, i + 2, locals, sigs)
+        if (string.len(cond_t) > 0 and string.str_eq(cond_t, "unknown") == false and string.str_eq(cond_t, "bool") == false):
+          issues = add_issue(issues, "condition type mismatch")
+      i = i + 1
+      continue
+
+    # assignment: ident = expr
+    # Distinguish from let init (prev tokens: kw(let) ident(:) ident_type =)
+    # and from == comparison (next-next token is also =)
+    if (string.str_eq(kind, "ident") and string.str_eq(ttext(tokens, i + 1), "=")):
+      let is_eq_eq = string.str_eq(ttext(tokens, i + 2), "=")
+      let is_let_init = false
+      if (i >= 3):
+        let p3_kind = tkind(tokens, i - 3)
+        let p3_text = ttext(tokens, i - 3)
+        let p2_kind = tkind(tokens, i - 2)
+        let p1_text = ttext(tokens, i - 1)
+        is_let_init = string.str_eq(p3_kind, "kw") and string.str_eq(p3_text, "let") and string.str_eq(p2_kind, "ident") and string.str_eq(p1_text, ":")
+      if (is_eq_eq == false and is_let_init == false):
+        let var_t = tmap_get(locals, text)
+        if (string.len(var_t) > 0):
+          let val_t = expr_type(tokens, i + 2, locals, sigs)
+          if (string.len(val_t) > 0 and string.str_eq(val_t, "unknown") == false and string.str_eq(val_t, var_t) == false):
+            if (string.str_eq(ttext(tokens, i + 3), "(")):
+              issues = add_issue(issues, "assignment call result type mismatch")
+            else:
+              issues = add_issue(issues, "assignment type mismatch")
+        else:
+          if (string.len(tmap_get(sigs, text)) == 0):
+            issues = add_issue(issues, "assignment to unknown local")
+      i = i + 1
+      continue
+
+    i = i + 1
+
+  return issues
+
+# ---------------------------------------------------------------------------
+# Main entry: run type checker over entire token report
+# ---------------------------------------------------------------------------
+
+pub func check(report: str) -> str:
+  if (string.len(report) == 0):
+    return "ok"
+  let tokens = string.split(report, " | ")
+  let sigs = collect_sigs(tokens)
+  let issues = ""
+  let i: i32 = 0
+
+  while (i < array.len(tokens)):
+    if (string.str_eq(tkind(tokens, i), "kw") and string.str_eq(ttext(tokens, i), "func")):
+      let func_name = ttext(tokens, i + 1)
+      let params = collect_params(tokens, i)
+      let ret_t = tmap_get(sigs, func_name)
+      let body_start = find_body_start(tokens, i)
+      let body_end = find_body_end(tokens, body_start)
+      let func_issues = check_body(tokens, body_start, body_end, ret_t, params, sigs)
+      issues = add_issue(issues, func_issues)
+      i = body_end
+      continue
+    i = i + 1
+
+  if (string.len(issues) == 0):
+    return "ok"
+  return issues
