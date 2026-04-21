@@ -1,0 +1,7 @@
+func add(a: i32, b: i32) -> i32:
+  let result: i32 = a
+  return result
+
+func main() -> i32:
+  let x: i32 = add(1, 2)
+  return x

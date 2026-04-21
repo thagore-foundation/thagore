@@ -1329,6 +1329,25 @@ fn build_selfhost_frontend_parse_binary(repo_root: &Path, binary: &Path) {
     );
 }
 
+fn build_selfhost_frontend_irval_binary(repo_root: &Path, binary: &Path) {
+    let source = repo_root.join("bootstrap/selfhost/frontend/irval.tg");
+    let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
+        .args([
+            "build",
+            source.to_str().expect("utf8"),
+            "-o",
+            binary.to_str().expect("utf8"),
+        ])
+        .output()
+        .expect("run thagc build");
+    assert!(
+        build.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
+
 fn build_selfhost_frontend_lower_binary(repo_root: &Path, binary: &Path) {
     let source = repo_root.join("bootstrap/selfhost/frontend/lower.tg");
     let build = Command::new(env!("CARGO_BIN_EXE_thagc"))
@@ -2257,6 +2276,20 @@ fn selfhost_lowering_slice_matches_goldens() {
         &repo_root,
         &binary,
         "bootstrap/selfhost/corpus/lowering-slice.txt",
+    );
+}
+
+#[test]
+fn selfhost_irval_matches_goldens() {
+    let dir = TempDir::new().expect("temp dir");
+    let binary = dir.path().join("bootstrap-selfhost-irval");
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    build_selfhost_frontend_irval_binary(&repo_root, &binary);
+
+    assert_lowering_manifest_matches(
+        &repo_root,
+        &binary,
+        "bootstrap/selfhost/corpus/lowering-validate.txt",
     );
 }
 

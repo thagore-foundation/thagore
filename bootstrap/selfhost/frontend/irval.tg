@@ -1,0 +1,152 @@
+from . import lower
+from . import session
+import std.string as string
+import std.array as array
+
+# ---------------------------------------------------------------------------
+# IR Validator for typed-middle-ir-v1
+# Validates structural and SSA def-use invariants in lower.tg output.
+# Functions are separated by " || "; each function is ";" separated fields.
+# ---------------------------------------------------------------------------
+
+func add_issue(issues: str, issue: str) -> str:
+  if (string.len(issue) == 0):
+    return issues
+  if (string.len(issues) == 0):
+    return issue
+  return string.concat(issues, string.concat(" | ", issue))
+
+# Extract content of field "name=[...]" by splitting on ";" and finding the field.
+# Returns empty string if field not found or is not an array field.
+func extract_field(func_ir: str, name: str) -> str:
+  let fields = string.split(func_ir, ";")
+  let needle = string.concat(name, "=[")
+  let i: i32 = 0
+  while (i < array.len(fields)):
+    let field = array.get(fields, i)
+    if (string.starts_with(field, needle)):
+      let start = string.len(needle)
+      let content = ""
+      let j: i32 = start
+      while (j < string.len(field)):
+        let ch = string.char_at(field, j)
+        if (string.str_eq(ch, "]")):
+          return content
+        content = string.concat(content, ch)
+        j = j + 1
+      return content
+    i = i + 1
+  return ""
+
+# ---------------------------------------------------------------------------
+# Def-use check: every value=<id>) in uses has id=<id>, in defs.
+# Split uses by "value=" to enumerate each referenced value id.
+# ---------------------------------------------------------------------------
+
+func check_def_use(uses_section: str, defs_section: str) -> str:
+  if (string.len(uses_section) == 0):
+    return ""
+  let issues = ""
+  let parts = string.split(uses_section, "value=")
+  let i: i32 = 1
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    let id = ""
+    let j: i32 = 0
+    while (j < string.len(part)):
+      let ch = string.char_at(part, j)
+      if (string.str_eq(ch, ")")):
+        break
+      id = string.concat(id, ch)
+      j = j + 1
+    if (string.len(id) > 0):
+      let needle = string.concat("id=", string.concat(id, ","))
+      if (string.contains(defs_section, needle) == false):
+        issues = add_issue(issues, "undefined use")
+    i = i + 1
+  return issues
+
+# ---------------------------------------------------------------------------
+# CFG check: every block label referenced in cfg edges appears in blocks.
+# Edges are comma-separated; each edge is "from_label->to_label".
+# ---------------------------------------------------------------------------
+
+func check_cfg_blocks(cfg_section: str, blocks_section: str) -> str:
+  if (string.len(cfg_section) == 0):
+    return ""
+  let issues = ""
+  let edges = string.split(cfg_section, ",")
+  let i: i32 = 0
+  while (i < array.len(edges)):
+    let edge = array.get(edges, i)
+    let halves = string.split(edge, "->")
+    let j: i32 = 0
+    while (j < array.len(halves)):
+      let label = array.get(halves, j)
+      if (string.len(label) > 0):
+        let entry_marker = string.concat(label, "(")
+        if (string.contains(blocks_section, entry_marker) == false):
+          issues = add_issue(issues, "cfg block not in blocks")
+      j = j + 1
+    i = i + 1
+  return issues
+
+# ---------------------------------------------------------------------------
+# Validate a single function's IR
+# ---------------------------------------------------------------------------
+
+func validate_func(func_ir: str) -> str:
+  if (string.len(func_ir) == 0):
+    return ""
+  let blocks = extract_field(func_ir, "blocks")
+  let cfg = extract_field(func_ir, "cfg")
+  let uses = extract_field(func_ir, "uses")
+  let defs = extract_field(func_ir, "defs")
+  let terminators = extract_field(func_ir, "terminators")
+  let issues = ""
+
+  if (string.contains(blocks, "kind=entry") == false):
+    issues = add_issue(issues, "missing entry block")
+  if (string.contains(blocks, "kind=return-exit") == false):
+    issues = add_issue(issues, "missing exit block")
+  if (string.len(terminators) == 0):
+    issues = add_issue(issues, "missing terminator")
+
+  let du_issues = check_def_use(uses, defs)
+  issues = add_issue(issues, du_issues)
+
+  let cfg_issues = check_cfg_blocks(cfg, blocks)
+  issues = add_issue(issues, cfg_issues)
+
+  return issues
+
+# ---------------------------------------------------------------------------
+# Validate all functions in the lowered IR report.
+# Returns "ok" when all invariants hold, otherwise " | "-joined issue list.
+# ---------------------------------------------------------------------------
+
+pub func validate(lowered: str) -> str:
+  if (string.len(lowered) == 0):
+    return "ok"
+  if (string.contains(lowered, "lowering-skipped") or string.contains(lowered, "lowering-unavailable")):
+    return "ok"
+  let funcs = string.split(lowered, " || ")
+  let issues = ""
+  let i: i32 = 0
+  while (i < array.len(funcs)):
+    let func_ir = array.get(funcs, i)
+    let func_issues = validate_func(func_ir)
+    issues = add_issue(issues, func_issues)
+    i = i + 1
+  if (string.len(issues) == 0):
+    return "ok"
+  return issues
+
+pub func main() -> i32:
+  let path = session.input_path()
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return 1
+  let lowered = lower.lower_report(source)
+  println(validate(lowered))
+  return 0
