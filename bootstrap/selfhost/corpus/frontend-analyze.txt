@@ -20,3 +20,6 @@ bootstrap/selfhost/corpus/fixtures/frontend/err_local_call_result_type.tg|exe|bo
 bootstrap/selfhost/corpus/fixtures/frontend/err_condition_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_err_condition_type.txt
 bootstrap/selfhost/corpus/fixtures/frontend/err_return_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_err_return_type.txt
 bootstrap/selfhost/corpus/fixtures/frontend/err_return_call_result_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_err_return_call_result_type.txt
+bootstrap/selfhost/corpus/fixtures/frontend/ok_multi_func_types.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_ok_multi_func_types.txt
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_local_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_err_second_local_type.txt
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_func_return_type.tg|exe|bootstrap/selfhost/corpus/goldens/frontend/expected_analyze_err_second_func_return_type.txt

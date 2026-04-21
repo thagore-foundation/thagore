@@ -20,3 +20,6 @@ bootstrap/selfhost/corpus/fixtures/frontend/err_local_call_result_type.tg|exe|ty
 bootstrap/selfhost/corpus/fixtures/frontend/err_condition_type.tg|exe|condition type mismatch
 bootstrap/selfhost/corpus/fixtures/frontend/err_return_type.tg|exe|return type mismatch
 bootstrap/selfhost/corpus/fixtures/frontend/err_return_call_result_type.tg|exe|return type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/ok_multi_func_types.tg|exe|ok
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_local_type.tg|exe|type mismatch
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_func_return_type.tg|exe|return type mismatch

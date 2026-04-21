@@ -1,0 +1,8 @@
+func ok_func() -> i32:
+  return 0
+
+func bad_func() -> bool:
+  return 1
+
+func main() -> i32:
+  return 0

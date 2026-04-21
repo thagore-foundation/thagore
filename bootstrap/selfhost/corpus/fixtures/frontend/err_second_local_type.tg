@@ -1,0 +1,4 @@
+func main() -> i32:
+  let first: i32 = 1
+  let second: i32 = true
+  return 0
