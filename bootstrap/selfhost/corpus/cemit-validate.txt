@@ -1,0 +1,10 @@
+# fixture|expected
+bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_basic.txt
+bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_helper_call.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_local_return.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_local_return.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_assignment_if_call.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_assignment_if_call.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_bool_while.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_bool_while.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_call_loop_branch.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_call_loop_branch.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_multi_helper_chain.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_multi_helper_chain.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_cross_local_dataflow.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_cross_local_dataflow.txt
+bootstrap/selfhost/corpus/fixtures/lowering/ok_param_use.tg|bootstrap/selfhost/corpus/goldens/cemit/expected_cemit_ok_param_use.txt

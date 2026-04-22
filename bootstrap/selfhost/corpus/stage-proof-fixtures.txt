@@ -1,0 +1,132 @@
+# fixture|command|artifact?
+# Wide bootstrap proof manifest. Each row asserts
+# stage2(command, fixture[, artifact]) == stage3(command, fixture[, artifact]).
+# Coverage: every selfhost frontend source + corpus fixture under analyze,
+# plus build+run for runnable compiler/ fixtures (release-gate item 2).
+
+# === Selfhost frontend sources (the compiler itself) ===
+bootstrap/selfhost/frontend/adapter.tg|analyze
+bootstrap/selfhost/frontend/c_emit.tg|analyze
+bootstrap/selfhost/frontend/chars.tg|analyze
+bootstrap/selfhost/frontend/check.tg|analyze
+bootstrap/selfhost/frontend/compiler.tg|analyze
+bootstrap/selfhost/frontend/desugar.tg|analyze
+bootstrap/selfhost/frontend/diagnostics.tg|analyze
+bootstrap/selfhost/frontend/driver.tg|analyze
+bootstrap/selfhost/frontend/irval.tg|analyze
+bootstrap/selfhost/frontend/lexer.tg|analyze
+bootstrap/selfhost/frontend/link.tg|analyze
+bootstrap/selfhost/frontend/lower.tg|analyze
+bootstrap/selfhost/frontend/main.tg|analyze
+bootstrap/selfhost/frontend/module_kind.tg|analyze
+bootstrap/selfhost/frontend/parse.tg|analyze
+bootstrap/selfhost/frontend/parser.tg|analyze
+bootstrap/selfhost/frontend/pipeline.tg|analyze
+bootstrap/selfhost/frontend/report.tg|analyze
+bootstrap/selfhost/frontend/resolver.tg|analyze
+bootstrap/selfhost/frontend/scan.tg|analyze
+bootstrap/selfhost/frontend/semantics.tg|analyze
+bootstrap/selfhost/frontend/session.tg|analyze
+bootstrap/selfhost/frontend/symbols.tg|analyze
+bootstrap/selfhost/frontend/typeck.tg|analyze
+
+# === Frontend differential corpus ===
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_call_result_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_assignment_unknown_local.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_call_arity.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_condition_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_local_call_result_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_local_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_return_call_result_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_return_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_func_return_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_second_local_type.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_unknown_callee.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/err_unknown_identifier.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_alias_ok_library.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_alias_ok_main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_missing_library.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_missing_main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_library.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_ok_main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_unknown_imported_symbol.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/modules_unknown_imported_symbol_library.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/ok_library_module.tg|analyze
+bootstrap/selfhost/corpus/fixtures/frontend/ok_multi_func_types.tg|analyze
+
+# === Lowering corpus ===
+bootstrap/selfhost/corpus/fixtures/lowering/ok_assignment_if_call.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_bool_while.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_call_loop_branch.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_cross_local_dataflow.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_local_return.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_multi_helper_chain.tg|analyze
+bootstrap/selfhost/corpus/fixtures/lowering/ok_param_use.tg|analyze
+
+# === Compiler executable corpus ===
+bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg|analyze
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg|analyze
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg|analyze
+
+# === Bootstrap seed corpus (top-level samples) ===
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_assignment_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_assignment_call_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_assignment_to_unknown_local.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_call_arity_mismatch.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_condition_call_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_condition_int_literal.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_condition_local_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_core_library_infer_return.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_duplicate_func.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_duplicate_local.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_implicit_main_top_level.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_call.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_identifier.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_infer_return_unknown.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_library_import_only.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_library_top_level_statement.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_local_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_local_call_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_local_int_to_bool.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_malformed_let.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_func.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_missing_return.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_return_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_return_call_bool_to_i32.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_return_int_to_bool.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_unknown_callee.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_unknown_import_alias_usage.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/sample_unknown_return.tg|analyze
+
+# === Bootstrap seed module fixtures (entry main.tg per package) ===
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted_missing/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_dotted_symbol_missing/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import_alias/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_duplicate_import_symbol/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_alias_shadow_func/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_alias_shadow_local/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_func/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_local/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_import_shadow_second_local/main.tg|analyze
+bootstrap/selfhost/corpus/fixtures/bootstrap_seed/modules_missing/main.tg|analyze
+
+# === Build + Run coverage (release-gate item 2: not only analyze) ===
+# These compile a tiny program through the full pipeline (frontend ->
+# lower -> c_emit -> link via host thagc) and execute the resulting exe.
+# Both stage2 and stage3 must produce identical build output AND identical
+# program stdout for each row.
+bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg|build|hello_run.exe
+bootstrap/selfhost/corpus/fixtures/compiler/hello_run.tg|run|hello_run.exe
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg|build|ok_build_print.exe
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_print.tg|run|ok_build_print.exe
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg|build|ok_build_run.exe
+bootstrap/selfhost/corpus/fixtures/compiler/ok_build_run.tg|run|ok_build_run.exe

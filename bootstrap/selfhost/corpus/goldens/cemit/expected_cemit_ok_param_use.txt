@@ -1,0 +1,16 @@
+#include <stdint.h>
+
+int32_t add(int32_t a, int32_t b);
+
+int32_t add(int32_t a, int32_t b) {
+  int32_t result;
+  result = a;
+  return result;
+}
+
+int main(void) {
+  int32_t x;
+  x = add();
+  return (int)x;
+}
+

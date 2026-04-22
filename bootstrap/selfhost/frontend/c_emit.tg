@@ -1,0 +1,449 @@
+from . import lower
+from . import session
+import std.string as string
+import std.array as array
+
+# ---------------------------------------------------------------------------
+# C emitter for typed-middle-ir-v1 (lower.tg output).
+# Handles: const/load/call values; alloc/init/assign stmts;
+# return/branch/loop terminators. Call args are always () — IR limitation.
+# Newline placeholder @@NL@@ is replaced with a real newline in main().
+# ---------------------------------------------------------------------------
+
+# Extract content of "name=[...]" field from semicolon-separated func_ir.
+func extract_field(func_ir: str, name: str) -> str:
+  let fields = string.split(func_ir, ";")
+  let needle = string.concat(name, "=[")
+  let i: i32 = 0
+  while (i < array.len(fields)):
+    let field = array.get(fields, i)
+    if (string.starts_with(field, needle)):
+      let content_start = string.len(needle)
+      let field_len = string.len(field)
+      let out = ""
+      let j: i32 = content_start
+      while (j < field_len):
+        let ch = string.char_at(field, j)
+        if (string.str_eq(ch, "]")):
+          return out
+        out = string.concat(out, ch)
+        j = j + 1
+      return out
+    i = i + 1
+  return ""
+
+# Extract value of "key=value" from content (reads until "," or end of string).
+func extract_kv(content: str, key: str) -> str:
+  let needle = string.concat(key, "=")
+  let pos = string.find(content, needle)
+  if (pos < 0):
+    return ""
+  let start: i32 = pos + string.len(needle)
+  let out = ""
+  let i: i32 = start
+  while (i < string.len(content)):
+    let ch = string.char_at(content, i)
+    if (string.str_eq(ch, ",")):
+      return out
+    out = string.concat(out, ch)
+    i = i + 1
+  return out
+
+# " | "-separated tmap: each entry is "key:value".
+func tmap_add(m: str, k: str, v: str) -> str:
+  if (string.len(k) == 0):
+    return m
+  let entry = string.concat(k, string.concat(":", v))
+  if (string.len(m) == 0):
+    return entry
+  return string.concat(m, string.concat(" | ", entry))
+
+func tmap_get(m: str, k: str) -> str:
+  if (string.len(m) == 0 or string.len(k) == 0):
+    return ""
+  let needle = string.concat(k, ":")
+  let parts = string.split(m, " | ")
+  let i: i32 = 0
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    if (string.starts_with(part, needle)):
+      let start = string.len(needle)
+      let out = ""
+      let j: i32 = start
+      while (j < string.len(part)):
+        out = string.concat(out, string.char_at(part, j))
+        j = j + 1
+      return out
+    i = i + 1
+  return ""
+
+# Map IR type name to C type.
+func c_type(ir_type: str) -> str:
+  if (string.str_eq(ir_type, "i32")):
+    return "int32_t"
+  if (string.str_eq(ir_type, "bool")):
+    return "int8_t"
+  return "int32_t"
+
+# Build C expression for a value given its IR class and source.
+func c_expr_for(cls: str, source: str) -> str:
+  if (string.str_eq(cls, "const")):
+    if (string.str_eq(source, "true")):
+      return "1"
+    if (string.str_eq(source, "false")):
+      return "0"
+    return source
+  if (string.str_eq(cls, "load")):
+    return source
+  if (string.str_eq(cls, "call")):
+    return string.concat(source, "()")
+  if (string.str_eq(cls, "param")):
+    return source
+  return source
+
+# Build vmap (value id -> C expression) from the values_section.
+# Split by ":value(", then for each part split by ",op=" to get pre-op fields.
+func build_vmap(values_section: str) -> str:
+  if (string.len(values_section) == 0):
+    return ""
+  let vmap = ""
+  let parts = string.split(values_section, ":value(")
+  let i: i32 = 1
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    let op_sep = string.find(part, ",op=")
+    let pre_op = ""
+    if (op_sep >= 0):
+      let k: i32 = 0
+      while (k < op_sep):
+        pre_op = string.concat(pre_op, string.char_at(part, k))
+        k = k + 1
+    else:
+      pre_op = part
+    let id = extract_kv(pre_op, "id")
+    let cls = extract_kv(pre_op, "class")
+    let source = extract_kv(pre_op, "source")
+    if (string.len(id) > 0):
+      let expr = c_expr_for(cls, source)
+      vmap = tmap_add(vmap, id, expr)
+    i = i + 1
+  return vmap
+
+func vexpr(vmap: str, id: str) -> str:
+  let result = tmap_get(vmap, id)
+  if (string.len(result) == 0):
+    return id
+  return result
+
+# Emit C parameter list from params_section ("name:type(param),..." format).
+func emit_params(params_section: str) -> str:
+  if (string.len(params_section) == 0):
+    return "void"
+  let out = ""
+  let parts = string.split(params_section, ",")
+  let i: i32 = 0
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    let paren = string.find(part, "(")
+    let base = ""
+    if (paren >= 0):
+      let k: i32 = 0
+      while (k < paren):
+        base = string.concat(base, string.char_at(part, k))
+        k = k + 1
+    else:
+      base = part
+    let colon = string.find(base, ":")
+    if (colon >= 0):
+      let name = ""
+      let kn: i32 = 0
+      while (kn < colon):
+        name = string.concat(name, string.char_at(base, kn))
+        kn = kn + 1
+      let ty = ""
+      let kt: i32 = colon + 1
+      while (kt < string.len(base)):
+        ty = string.concat(ty, string.char_at(base, kt))
+        kt = kt + 1
+      let decl = string.concat(c_type(ty), string.concat(" ", name))
+      if (string.len(out) == 0):
+        out = decl
+      else:
+        out = string.concat(out, string.concat(", ", decl))
+    i = i + 1
+  if (string.len(out) == 0):
+    return "void"
+  return out
+
+# Check if name appears as a param in params_section.
+func is_param(params_section: str, name: str) -> bool:
+  if (string.len(params_section) == 0):
+    return false
+  let needle = string.concat(name, ":")
+  let parts = string.split(params_section, ",")
+  let i: i32 = 0
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    if (string.starts_with(part, needle)):
+      return true
+    i = i + 1
+  return false
+
+# Emit local variable declarations, skipping params.
+func emit_locals_decls(locals_section: str, params_section: str) -> str:
+  if (string.len(locals_section) == 0):
+    return ""
+  let out = ""
+  let parts = string.split(locals_section, ",")
+  let i: i32 = 0
+  while (i < array.len(parts)):
+    let part = array.get(parts, i)
+    let paren = string.find(part, "(")
+    let base = ""
+    if (paren >= 0):
+      let k: i32 = 0
+      while (k < paren):
+        base = string.concat(base, string.char_at(part, k))
+        k = k + 1
+    else:
+      base = part
+    let colon = string.find(base, ":")
+    if (colon >= 0):
+      let name = ""
+      let kn: i32 = 0
+      while (kn < colon):
+        name = string.concat(name, string.char_at(base, kn))
+        kn = kn + 1
+      let ty = ""
+      let kt: i32 = colon + 1
+      while (kt < string.len(base)):
+        ty = string.concat(ty, string.char_at(base, kt))
+        kt = kt + 1
+      if (is_param(params_section, name) == false):
+        out = string.concat(out, string.concat("  ", string.concat(c_type(ty), string.concat(" ", string.concat(name, ";@@NL@@")))))
+    i = i + 1
+  return out
+
+# Get pre-op fields for the terminator of a specific block_label.
+func get_block_term_preop(terminators_section: str, block_label: str) -> str:
+  if (string.len(terminators_section) == 0):
+    return ""
+  let parts = string.split(terminators_section, ":terminator(")
+  let i: i32 = 1
+  while (i < array.len(parts)):
+    let prev = array.get(parts, i - 1)
+    if (string.ends_with(prev, block_label)):
+      let part = array.get(parts, i)
+      let op_sep = string.find(part, ",op=")
+      if (op_sep >= 0):
+        let pre_op = ""
+        let k: i32 = 0
+        while (k < op_sep):
+          pre_op = string.concat(pre_op, string.char_at(part, k))
+          k = k + 1
+        return pre_op
+      return part
+    i = i + 1
+  return ""
+
+# Emit C statements for a specific block. Skip alloc statements.
+func emit_stmts_for_block(stmts_section: str, block_label: str, vmap: str, indent: str) -> str:
+  if (string.len(stmts_section) == 0):
+    return ""
+  let out = ""
+  let parts = string.split(stmts_section, ":statement(")
+  let i: i32 = 1
+  while (i < array.len(parts)):
+    let prev = array.get(parts, i - 1)
+    if (string.ends_with(prev, block_label)):
+      let part = array.get(parts, i)
+      let op_sep = string.find(part, ",op=")
+      let pre_op = ""
+      if (op_sep >= 0):
+        let k: i32 = 0
+        while (k < op_sep):
+          pre_op = string.concat(pre_op, string.char_at(part, k))
+          k = k + 1
+      else:
+        pre_op = part
+      let cls = extract_kv(pre_op, "class")
+      if (string.str_eq(cls, "alloc")):
+        i = i + 1
+        continue
+      let target_full = extract_kv(pre_op, "target")
+      let value_ref = extract_kv(pre_op, "value")
+      let target_name = ""
+      let colon = string.find(target_full, ":")
+      if (colon >= 0):
+        let j: i32 = 0
+        while (j < colon):
+          target_name = string.concat(target_name, string.char_at(target_full, j))
+          j = j + 1
+      else:
+        target_name = target_full
+      let expr = vexpr(vmap, value_ref)
+      out = string.concat(out, string.concat(indent, string.concat(target_name, string.concat(" = ", string.concat(expr, ";@@NL@@")))))
+    i = i + 1
+  return out
+
+# Extract the function name from "fn=name;..." field.
+func extract_fn_name(func_ir: str) -> str:
+  let fields = string.split(func_ir, ";")
+  let i: i32 = 0
+  while (i < array.len(fields)):
+    let field = array.get(fields, i)
+    if (string.starts_with(field, "fn=")):
+      let name = ""
+      let j: i32 = 3
+      while (j < string.len(field)):
+        name = string.concat(name, string.char_at(field, j))
+        j = j + 1
+      return name
+    i = i + 1
+  return ""
+
+func extract_return_ctype(returns_section: str) -> str:
+  if (string.len(returns_section) == 0):
+    return "int32_t"
+  return c_type(returns_section)
+
+# Emit forward declaration for non-main functions.
+func emit_forward_decl(func_ir: str) -> str:
+  let name = extract_fn_name(func_ir)
+  if (string.len(name) == 0):
+    return ""
+  if (string.str_eq(name, "main")):
+    return ""
+  let params_section = extract_field(func_ir, "params")
+  let returns_section = extract_field(func_ir, "returns")
+  let ret = extract_return_ctype(returns_section)
+  let params = emit_params(params_section)
+  return string.concat(ret, string.concat(" ", string.concat(name, string.concat("(", string.concat(params, ");@@NL@@")))))
+
+func emit_return_line(expr: str, is_main: bool) -> str:
+  if (is_main):
+    return string.concat("  return (int)", string.concat(expr, ";@@NL@@"))
+  return string.concat("  return ", string.concat(expr, ";@@NL@@"))
+
+# Emit the body of a function using pattern-based CFG emission.
+func emit_func_body(stmts: str, terminators: str, vmap: str, is_main: bool) -> str:
+  let body = ""
+  let entry_stmts = emit_stmts_for_block(stmts, "entry#b0", vmap, "  ")
+  body = string.concat(body, entry_stmts)
+
+  let entry_preop = get_block_term_preop(terminators, "entry#b0")
+  let entry_class = extract_kv(entry_preop, "class")
+
+  if (string.str_eq(entry_class, "branch")):
+    let cond_ref = extract_kv(entry_preop, "cond")
+    let cond_expr = vexpr(vmap, cond_ref)
+    body = string.concat(body, string.concat("  if (", string.concat(cond_expr, ") {@@NL@@")))
+    let then_stmts = emit_stmts_for_block(stmts, "then#b1", vmap, "    ")
+    body = string.concat(body, then_stmts)
+    body = string.concat(body, "  }@@NL@@")
+    let exit_preop = get_block_term_preop(terminators, "exit#b3")
+    let exit_val_ref = extract_kv(exit_preop, "value")
+    let exit_expr = vexpr(vmap, exit_val_ref)
+    body = string.concat(body, emit_return_line(exit_expr, is_main))
+    return body
+
+  if (string.str_eq(entry_class, "loop")):
+    let cond_ref = extract_kv(entry_preop, "cond")
+    let cond_expr = vexpr(vmap, cond_ref)
+    body = string.concat(body, string.concat("  while (", string.concat(cond_expr, ") {@@NL@@")))
+    let loop_stmts = emit_stmts_for_block(stmts, "loop#b2", vmap, "    ")
+    body = string.concat(body, loop_stmts)
+    let loop_preop = get_block_term_preop(terminators, "loop#b2")
+    let loop_class = extract_kv(loop_preop, "class")
+    if (string.str_eq(loop_class, "branch")):
+      let inner_cond_ref = extract_kv(loop_preop, "cond")
+      let inner_cond_expr = vexpr(vmap, inner_cond_ref)
+      body = string.concat(body, string.concat("    if (", string.concat(inner_cond_expr, ") {@@NL@@")))
+      let then_stmts = emit_stmts_for_block(stmts, "then#b1", vmap, "      ")
+      body = string.concat(body, then_stmts)
+      body = string.concat(body, "    }@@NL@@")
+    body = string.concat(body, "  }@@NL@@")
+    let exit_preop = get_block_term_preop(terminators, "exit#b3")
+    let exit_val_ref = extract_kv(exit_preop, "value")
+    let exit_expr = vexpr(vmap, exit_val_ref)
+    body = string.concat(body, emit_return_line(exit_expr, is_main))
+    return body
+
+  let exit_preop = get_block_term_preop(terminators, "exit#b3")
+  let exit_val_ref = extract_kv(exit_preop, "value")
+  let exit_expr = vexpr(vmap, exit_val_ref)
+  body = string.concat(body, emit_return_line(exit_expr, is_main))
+  return body
+
+# Emit a complete function definition.
+func emit_func(func_ir: str) -> str:
+  if (string.len(func_ir) == 0):
+    return ""
+  let name = extract_fn_name(func_ir)
+  if (string.len(name) == 0):
+    return ""
+  let params_section = extract_field(func_ir, "params")
+  let returns_section = extract_field(func_ir, "returns")
+  let locals_section = extract_field(func_ir, "locals")
+  let stmts = extract_field(func_ir, "statements")
+  let terminators = extract_field(func_ir, "terminators")
+  let values_section = extract_field(func_ir, "values")
+  let vmap = build_vmap(values_section)
+  let is_main = string.str_eq(name, "main")
+  let ret = extract_return_ctype(returns_section)
+  let params = emit_params(params_section)
+  let sig = ""
+  if (is_main):
+    sig = "int main(void)"
+  else:
+    sig = string.concat(ret, string.concat(" ", string.concat(name, string.concat("(", string.concat(params, ")")))))
+  let local_decls = emit_locals_decls(locals_section, params_section)
+  let body = emit_func_body(stmts, terminators, vmap, is_main)
+  return string.concat(sig, string.concat(" {@@NL@@", string.concat(local_decls, string.concat(body, "}@@NL@@"))))
+
+# Emit complete C source for all functions in lowered IR.
+# Uses @@NL@@ as newline placeholder; caller must replace with real newline.
+pub func emit_c(lowered: str) -> str:
+  if (string.len(lowered) == 0):
+    return ""
+  if (string.contains(lowered, "lowering-skipped") or string.contains(lowered, "lowering-unavailable")):
+    return ""
+  let header = "#include <stdint.h>@@NL@@@@NL@@"
+  let funcs = string.split(lowered, " || ")
+  let fwd_decls = ""
+  let i: i32 = 0
+  while (i < array.len(funcs)):
+    let func_ir = array.get(funcs, i)
+    let fwd = emit_forward_decl(func_ir)
+    fwd_decls = string.concat(fwd_decls, fwd)
+    i = i + 1
+  let defs = ""
+  let j: i32 = 0
+  while (j < array.len(funcs)):
+    let func_ir = array.get(funcs, j)
+    let def = emit_func(func_ir)
+    if (string.len(def) > 0):
+      if (string.len(defs) > 0):
+        defs = string.concat(defs, string.concat("@@NL@@", def))
+      else:
+        defs = def
+    j = j + 1
+  if (string.len(fwd_decls) == 0):
+    return string.concat(header, defs)
+  return string.concat(header, string.concat(fwd_decls, string.concat("@@NL@@", defs)))
+
+pub func main() -> i32:
+  let path = session.input_path()
+  let source = session.read_source(path)
+  if (string.len(source) == 0):
+    return 1
+  let lowered = lower.lower_report(source)
+  let c_template = emit_c(lowered)
+  if (string.len(c_template) == 0):
+    println("")
+    return 0
+  let src_len = string.len(source)
+  let nl = string.char_at(source, src_len - 1)
+  let c_code = string.replace(c_template, "@@NL@@", nl)
+  println(c_code)
+  return 0

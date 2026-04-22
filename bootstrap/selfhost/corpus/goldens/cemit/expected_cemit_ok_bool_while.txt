@@ -1,0 +1,11 @@
+#include <stdint.h>
+
+int main(void) {
+  int8_t ready;
+  ready = 1;
+  while (ready) {
+    ready = 0;
+  }
+  return (int)ready;
+}
+

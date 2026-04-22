@@ -1258,6 +1258,20 @@ int64_t thag_str_to_int(const char *s) {
     return (int64_t) strtoll(s == NULL ? "0" : s, NULL, 10);
 }
 
+char *thag_rt_substr(const char *s, int32_t start, int32_t len) {
+    const char *src = s == NULL ? "" : s;
+    size_t src_len = strlen(src);
+    if (start < 0 || len <= 0 || (size_t) start >= src_len) {
+        return thag_strdup_cstr("");
+    }
+    size_t offset = (size_t) start;
+    size_t wanted = (size_t) len;
+    if (offset + wanted > src_len) {
+        wanted = src_len - offset;
+    }
+    return thag_strdup_len(src + offset, wanted);
+}
+
 char *thag_str_substr(const char *s, int64_t start, int64_t len) {
     const char *src = s == NULL ? "" : s;
     size_t src_len = strlen(src);

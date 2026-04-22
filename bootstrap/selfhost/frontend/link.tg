@@ -1,0 +1,43 @@
+from . import lower
+from . import session
+from . import c_emit
+import std.fs as fs
+import std.process as process
+import std.string as string
+
+func cc_command() -> str:
+  let configured = process.env("CC")
+  if (string.len(configured) > 0):
+    return configured
+  return "cc"
+
+pub func main() -> i32:
+  let source_path = process.argv(1)
+  if (string.len(source_path) == 0):
+    println("usage: link <source.tg> <output>")
+    return 1
+  let output_path = process.argv(2)
+  if (string.len(output_path) == 0):
+    println("usage: link <source.tg> <output>")
+    return 1
+  let source = session.read_source(source_path)
+  if (string.len(source) == 0):
+    return 1
+  let lowered = lower.lower_report(source)
+  let c_template = c_emit.emit_c(lowered)
+  if (string.len(c_template) == 0):
+    return 1
+  let src_len = string.len(source)
+  let nl = string.char_at(source, src_len - 1)
+  let c_code = string.replace(c_template, "@@NL@@", nl)
+  let c_path = string.concat(output_path, ".c")
+  if (fs.write(c_path, c_code) == false):
+    return 1
+  let cc = cc_command()
+  let compile_cmd = string.concat(cc, string.concat(" ", string.concat(c_path, string.concat(" -o ", output_path))))
+  let exit_code = process.run(compile_cmd)
+  fs.remove(c_path)
+  if (exit_code != 0):
+    return exit_code
+  println(string.concat("linked=", output_path))
+  return 0

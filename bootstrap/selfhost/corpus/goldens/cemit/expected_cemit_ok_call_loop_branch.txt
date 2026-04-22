@@ -1,0 +1,22 @@
+#include <stdint.h>
+
+int32_t helper(void);
+
+int32_t helper(void) {
+  return 1;
+}
+
+int main(void) {
+  int8_t ready;
+  int32_t value;
+  ready = 1;
+  value = helper();
+  while (ready) {
+    ready = 0;
+    if (ready) {
+      value = 2;
+    }
+  }
+  return (int)value;
+}
+

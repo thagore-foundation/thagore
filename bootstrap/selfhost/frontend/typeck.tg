@@ -72,12 +72,10 @@ func tmap_get(tmap: str, name: str) -> str:
   while (i < array.len(items)):
     let item = array.get(items, i)
     if (string.starts_with(item, needle)):
-      let typ = ""
-      let j: i32 = string.len(needle)
-      while (j < string.len(item)):
-        typ = string.concat(typ, string.char_at(item, j))
-        j = j + 1
-      return typ
+      let kv = string.split(item, ":")
+      if (array.len(kv) >= 2):
+        return array.get(kv, 1)
+      return ""
     i = i + 1
   return ""
 

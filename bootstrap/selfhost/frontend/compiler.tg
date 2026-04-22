@@ -3,6 +3,7 @@ from . import session
 from . import module_kind
 from . import lower
 from . import adapter
+from . import c_emit
 import std.fs as fs
 import std.process as process
 import std.string as string
@@ -42,6 +43,24 @@ func host_thagc() -> str:
   if (string.len(configured) > 0):
     return configured
   return "thagc"
+
+func cc_command() -> str:
+  let configured = process.env("CC")
+  if (string.len(configured) > 0):
+    return configured
+  return "cc"
+
+func source_uses_builtins(source: str) -> bool:
+  if (string.contains(source, "println(")):
+    return true
+  return string.contains(source, "print(")
+
+func can_use_c_backend(c_template: str, source: str) -> bool:
+  if (string.len(c_template) == 0):
+    return false
+  if (string.len(source) == 0):
+    return false
+  return source_uses_builtins(source) == false
 
 func scratch_root() -> str:
   let configured = process.env("THAGORE_SELFHOST_TMP")
@@ -331,9 +350,29 @@ pub func main() -> i32:
     let host_summary = adapter.host_command_summary("build", host_thagc(), path, artifact_name(), "")
     if (write_orchestration_sidecars(output_path, report, phase, plan, request, lowered, emission, link, verify, host_summary) == false):
       return 1
-    let exit_code = process.run(host_command)
-    if (exit_code != 0):
-      return exit_code
+    let build_source = session.read_source(path)
+    let build_exit: i32 = 0
+    if (source_uses_builtins(build_source) == false and string.len(lowered) > 0):
+      let c_template = c_emit.emit_c(lowered)
+      if (string.len(c_template) > 0):
+        let src_len = string.len(build_source)
+        let nl = string.char_at(build_source, src_len - 1)
+        let c_code = string.replace(c_template, "@@NL@@", nl)
+        let c_path = string.concat(output_path, ".c")
+        if (fs.write(c_path, c_code) == false):
+          return 1
+        let cc = cc_command()
+        let compile_cmd = string.concat(cc, string.concat(" ", string.concat(c_path, string.concat(" -o ", output_path))))
+        build_exit = process.run(compile_cmd)
+        fs.remove(c_path)
+        let rto_path = fs.path_join(scratch_root(), adapter.runtime_object_name(artifact_name()))
+        fs.write(rto_path, "c-backend")
+      else:
+        build_exit = process.run(host_command)
+    else:
+      build_exit = process.run(host_command)
+    if (build_exit != 0):
+      return build_exit
     if (fs.exists(output_path) == false):
       return 1
     fs.write(emission_artifact_path(output_path), adapter.emission_completed("build", artifact_name(), false, lowered))
@@ -363,7 +402,27 @@ pub func main() -> i32:
     let host_summary = adapter.host_command_summary("run", host_thagc(), path, artifact_name(), capture_path(artifact_name()))
     if (write_orchestration_sidecars(output_path, report, phase, plan, request, lowered, emission, link, verify, host_summary) == false):
       return 1
-    let build_code = process.run(build_command)
+    let run_source = session.read_source(path)
+    let build_code: i32 = 0
+    if (source_uses_builtins(run_source) == false and string.len(lowered) > 0):
+      let run_c_template = c_emit.emit_c(lowered)
+      if (string.len(run_c_template) > 0):
+        let run_src_len = string.len(run_source)
+        let run_nl = string.char_at(run_source, run_src_len - 1)
+        let run_c_code = string.replace(run_c_template, "@@NL@@", run_nl)
+        let run_c_path = string.concat(output_path, ".c")
+        if (fs.write(run_c_path, run_c_code) == false):
+          return 1
+        let run_cc = cc_command()
+        let run_compile_cmd = string.concat(run_cc, string.concat(" ", string.concat(run_c_path, string.concat(" -o ", output_path))))
+        build_code = process.run(run_compile_cmd)
+        fs.remove(run_c_path)
+        let run_rto_path = fs.path_join(scratch_root(), adapter.runtime_object_name(artifact_name()))
+        fs.write(run_rto_path, "c-backend")
+      else:
+        build_code = process.run(build_command)
+    else:
+      build_code = process.run(build_command)
     if (build_code != 0):
       return build_code
     if (fs.exists(output_path) == false):

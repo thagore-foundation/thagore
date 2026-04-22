@@ -94,19 +94,11 @@ func count_symbol_kind(symbols: str, target_kind: str, target_name: str) -> i32:
   for item in items:
     if (string.len(item) == 0):
       continue
-    let name_sep = string.find(item, ":")
-    if (name_sep < 0):
+    let kv = string.split(item, ":")
+    if (array.len(kv) < 2):
       continue
-    let name = ""
-    let index: i32 = 0
-    while (index < name_sep):
-      name = string.concat(name, string.char_at(item, index))
-      index = index + 1
-    let kind = ""
-    index = name_sep + 1
-    while (index < string.len(item)):
-      kind = string.concat(kind, string.char_at(item, index))
-      index = index + 1
+    let name = array.get(kv, 0)
+    let kind = array.get(kv, 1)
     if (string.str_eq(name, target_name) and string.str_eq(kind, target_kind)):
       count = count + 1
   return count
@@ -119,20 +111,12 @@ func any_local_shadows_import(symbols: str, source: str) -> bool:
   let index: i32 = 0
   while (index < array.len(items)):
     let item = array.get(items, index)
-    let name_sep = string.find(item, ":")
-    if (name_sep < 0):
+    let kv = string.split(item, ":")
+    if (array.len(kv) < 2):
       index = index + 1
       continue
-    let name = ""
-    let cursor: i32 = 0
-    while (cursor < name_sep):
-      name = string.concat(name, string.char_at(item, cursor))
-      cursor = cursor + 1
-    let kind = ""
-    let kind_cursor: i32 = name_sep + 1
-    while (kind_cursor < string.len(item)):
-      kind = string.concat(kind, string.char_at(item, kind_cursor))
-      kind_cursor = kind_cursor + 1
+    let name = array.get(kv, 0)
+    let kind = array.get(kv, 1)
     if (string.str_eq(kind, "local") and source_imports_name(source, name)):
       return true
     index = index + 1
@@ -348,20 +332,12 @@ func source_has_local_shadowing_import_alias(symbols: str, source: str) -> bool:
   let index: i32 = 0
   while (index < array.len(items)):
     let item = array.get(items, index)
-    let name_sep = string.find(item, ":")
-    if (name_sep < 0):
+    let kv = string.split(item, ":")
+    if (array.len(kv) < 2):
       index = index + 1
       continue
-    let name = ""
-    let cursor: i32 = 0
-    while (cursor < name_sep):
-      name = string.concat(name, string.char_at(item, cursor))
-      cursor = cursor + 1
-    let kind = ""
-    let kind_cursor: i32 = name_sep + 1
-    while (kind_cursor < string.len(item)):
-      kind = string.concat(kind, string.char_at(item, kind_cursor))
-      kind_cursor = kind_cursor + 1
+    let name = array.get(kv, 0)
+    let kind = array.get(kv, 1)
     if (string.str_eq(kind, "local") and source_imports_alias(source, name)):
       return true
     index = index + 1

@@ -134,19 +134,11 @@ func lookup_mapping(items: str, name: str) -> str:
     return ""
   let parts = string.split(items, ",")
   for part in parts:
-    let sep = string.find(part, ":")
-    if (sep < 0):
+    let kv = string.split(part, ":")
+    if (array.len(kv) < 2):
       continue
-    let key = ""
-    let value = ""
-    let index: i32 = 0
-    while (index < string.len(part)):
-      let ch = string.char_at(part, index)
-      if (index < sep):
-        key = string.concat(key, ch)
-      if (index > sep):
-        value = string.concat(value, ch)
-      index = index + 1
+    let key = array.get(kv, 0)
+    let value = array.get(kv, 1)
     if (string.str_eq(key, name)):
       return value
   return ""

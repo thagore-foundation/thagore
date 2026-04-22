@@ -1,0 +1,9 @@
+# fixture|expected_exit_code
+bootstrap/selfhost/corpus/fixtures/frontend/ok_basic.tg|0
+bootstrap/selfhost/corpus/fixtures/frontend/ok_helper_call.tg|1
+bootstrap/selfhost/corpus/fixtures/lowering/ok_local_return.tg|1
+bootstrap/selfhost/corpus/fixtures/lowering/ok_assignment_if_call.tg|2
+bootstrap/selfhost/corpus/fixtures/lowering/ok_bool_while.tg|0
+bootstrap/selfhost/corpus/fixtures/lowering/ok_call_loop_branch.tg|1
+bootstrap/selfhost/corpus/fixtures/lowering/ok_multi_helper_chain.tg|1
+bootstrap/selfhost/corpus/fixtures/lowering/ok_cross_local_dataflow.tg|1

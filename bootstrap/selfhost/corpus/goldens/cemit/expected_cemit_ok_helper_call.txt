@@ -1,0 +1,12 @@
+#include <stdint.h>
+
+int32_t helper(void);
+
+int32_t helper(void) {
+  return 1;
+}
+
+int main(void) {
+  return (int)helper();
+}
+
