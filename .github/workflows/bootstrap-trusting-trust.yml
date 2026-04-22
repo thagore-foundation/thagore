@@ -1,0 +1,257 @@
+name: Bootstrap Trusting-Trust Gate
+
+# Full Trusting-Trust verification of the selfhost compiler:
+#   (A) behavioral equivalence — stage2 == stage3 stdout on every fixture
+#   (B) byte-identical artifacts — SHA256(stage2) == SHA256(stage3) after PE normalization
+#   (C) same-machine determinism — rerun the entire chain, hashes must match
+#   (item 6) cross-machine determinism — two separate Linux ephemeral runners produce
+#            identical normalized stage2 SHA256 from identical sources
+#
+# Items 4, 7 of the v0.9.7 release gate (Group-2 substr opts; deferred bucket close)
+# are not yet covered — both depend on a host thagc rebuild with the new
+# `thag_rt_substr` runtime symbol, which currently requires LLVM 14 to be present
+# at build time on the maintainer's local machine.
+#
+# macOS lane is intentionally NOT included yet — the project has no macOS LLVM 14
+# install recipe. Add when one exists.
+
+on:
+  push:
+    branches:
+      - main
+      - indev-rewrite
+    paths:
+      - ".github/workflows/bootstrap-trusting-trust.yml"
+      - "bootstrap/selfhost/frontend/**"
+      - "bootstrap/selfhost/corpus/stage-proof-fixtures.txt"
+      - "bootstrap/selfhost/corpus/fixtures/**"
+      - "bootstrap/selfhost/tools/compiler-driver-manifest.txt"
+      - "tooling/ci/build_selfhost_frontend_stage.py"
+      - "tooling/ci/selfhost_stage_proof.py"
+      - "tooling/ci/pe_normalize.py"
+      - "tooling/ci/install_linux_llvm14.sh"
+      - "tools/thagore-cli/**"
+      - "crates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-trusting-trust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    name: Trusting-Trust gate (${{ matrix.lane }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Two independent Linux ephemeral runners — each is a fresh VM, so
+          # comparing their normalized stage2 SHA256 satisfies item 6
+          # (cross-machine determinism on at least one platform).
+          - lane: linux-x64-runner-a
+            runner: ubuntu-latest
+            os: linux
+            exe_suffix: ""
+            thagc_bin: target/release/thagc
+          - lane: linux-x64-runner-b
+            runner: ubuntu-latest
+            os: linux
+            exe_suffix: ""
+            thagc_bin: target/release/thagc
+          - lane: windows-x64
+            runner: windows-latest
+            os: windows
+            exe_suffix: ".exe"
+            thagc_bin: target/release/thagc.exe
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM 14 (Linux)
+        if: matrix.os == 'linux'
+        timeout-minutes: 30
+        shell: bash
+        run: bash tooling/ci/install_linux_llvm14.sh
+
+      - name: Set up MSVC toolchain (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: .\tooling\ci\setup_msvc_env.ps1 -Arch amd64
+
+      - name: Install LLVM 14 prebuilt (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'x86_64-pc-windows-msvc'
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target-prebuilt"
+          $archive = Join-Path $env:RUNNER_TEMP "llvm-14.0.6-$target.zip"
+          if (Test-Path $extractRoot) { Remove-Item -Recurse -Force $extractRoot }
+          Invoke-WebRequest `
+            -Uri "https://github.com/thagore-foundation/thagore/releases/download/llvm-prebuilt-14.0.6/llvm-14.0.6-$target.zip" `
+            -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractRoot -Force
+          $llvmRoot = Join-Path $extractRoot "llvm-14.0.6-$target"
+          $llvmBin = Join-Path $llvmRoot 'bin'
+          $configCandidate = Join-Path $llvmBin 'llvm-config.exe'
+          if (-not (Test-Path $configCandidate)) {
+            $shimSource = Join-Path $env:RUNNER_TEMP 'llvm-config-trusting-trust.cs'
+            @(
+              'using System;',
+              'using System.IO;',
+              'using System.Linq;',
+              '',
+              'internal static class Program',
+              '{',
+              '    private static int Main(string[] args)',
+              '    {',
+              '        string root = Environment.GetEnvironmentVariable("THAGORE_LLVM_ROOT") ?? "";',
+              '        string lib = Path.Combine(root, "lib");',
+              '        string include = Path.Combine(root, "include");',
+              '        if (args.Contains("--version")) { Console.WriteLine("14.0.6"); return 0; }',
+              '        if (args.Contains("--prefix")) { Console.WriteLine(root); return 0; }',
+              '        if (args.Contains("--libdir")) { Console.WriteLine(lib); return 0; }',
+              '        if (args.Contains("--includedir")) { Console.WriteLine(include); return 0; }',
+              '        if (args.Contains("--build-mode")) { Console.WriteLine("Release"); return 0; }',
+              '        if (args.Contains("--cflags")) { Console.WriteLine("-I" + include); return 0; }',
+              '        if (args.Contains("--ldflags") || args.Contains("--system-libs")) { Console.WriteLine(""); return 0; }',
+              '        if (args.Contains("--libnames") || args.Contains("--libs"))',
+              '        {',
+              '            var libs = Directory.EnumerateFiles(lib, "*.lib")',
+              '                .Select(Path.GetFileName)',
+              '                .Where(name => !string.IsNullOrWhiteSpace(name))',
+              '                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);',
+              '            Console.WriteLine(string.Join(" ", libs));',
+              '            return 0;',
+              '        }',
+              '        Console.WriteLine("");',
+              '        return 0;',
+              '    }',
+              '}'
+            ) | Set-Content -Path $shimSource -Encoding UTF8
+            & csc /nologo "/out:$configCandidate" $shimSource
+          }
+          "LLVM_SYS_140_PREFIX=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "THAGORE_LLVM_ROOT=$llvmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build host thagc
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Normalize fixture line endings (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          for path in Path("bootstrap/selfhost/corpus").rglob("*"):
+              if path.suffix not in {".tg", ".txt"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+              if normalized != text:
+                  path.write_text(normalized, encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Build stage0 selfhost compiler driver
+        shell: bash
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-compiler-stage0"
+
+      - name: Run full Trusting-Trust proof (gates A + B + C)
+        shell: bash
+        timeout-minutes: 90
+        run: |
+          python tooling/ci/selfhost_stage_proof.py \
+            --repo-root "$PWD" \
+            --stage0-bin "$PWD/bootstrap-selfhost-compiler-stage0/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --hash-out "$PWD/proof-hashes.txt" \
+            --report-out "$PWD/proof-report.txt"
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trusting-trust-${{ matrix.lane }}
+          path: |
+            proof-hashes.txt
+            proof-report.txt
+
+      - name: Append summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Trusting-Trust gate (${{ matrix.lane }})"
+            echo
+            echo '### Stage hashes (PE-normalized SHA256)'
+            echo '```text'
+            if [[ -f proof-hashes.txt ]]; then cat proof-hashes.txt; else echo '<missing>'; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  cross-machine-determinism:
+    name: Cross-machine determinism (item 6)
+    needs: proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: trusting-trust-linux-x64-runner-a
+          path: runner-a
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: trusting-trust-linux-x64-runner-b
+          path: runner-b
+
+      - name: Diff stage hashes between two Linux ephemeral runners
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== runner A hashes ==="
+          cat runner-a/proof-hashes.txt
+          echo
+          echo "=== runner B hashes ==="
+          cat runner-b/proof-hashes.txt
+          echo
+          if ! diff -u runner-a/proof-hashes.txt runner-b/proof-hashes.txt; then
+            echo
+            echo "FAIL (item 6): cross-machine determinism — Linux runner A and runner B"
+            echo "produced different normalized stage hashes for identical source."
+            echo "There is environmental leakage beyond the PE normalizer (paths,"
+            echo "locale, timestamps embedded in IR, ordering, etc.)."
+            exit 1
+          fi
+          echo "ok: cross-machine determinism — runner A and runner B agree."
+
+      - name: Append summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Cross-machine determinism (item 6)"
+            echo
+            echo '### Linux runner A'
+            echo '```text'
+            if [[ -f runner-a/proof-hashes.txt ]]; then cat runner-a/proof-hashes.txt; else echo '<missing>'; fi
+            echo '```'
+            echo
+            echo '### Linux runner B'
+            echo '```text'
+            if [[ -f runner-b/proof-hashes.txt ]]; then cat runner-b/proof-hashes.txt; else echo '<missing>'; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

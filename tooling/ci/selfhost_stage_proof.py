@@ -148,6 +148,10 @@ def main() -> int:
                         default="bootstrap/selfhost/corpus/stage-proof-fixtures.txt",
                         help="fixture|command manifest for behavioural equivalence checks")
     parser.add_argument("--report-out", default="")
+    parser.add_argument("--hash-out", default="",
+                        help="write normalized stage SHA256s as key=value pairs "
+                             "(stage1=..., stage2=..., stage3=...) for cross-machine "
+                             "hash comparison")
     parser.add_argument("--skip-rerun", action="store_true",
                         help="skip the determinism rerun check (faster, less strict)")
     args = parser.parse_args()
@@ -250,6 +254,14 @@ def main() -> int:
         payload = "\n".join(report_lines) + "\n"
         if args.report_out:
             pathlib.Path(args.report_out).write_text(payload, encoding="utf-8")
+
+        if args.hash_out:
+            hash_payload = (
+                f"stage1={stage1_a_hash}\n"
+                f"stage2={stage2_a_hash}\n"
+                f"stage3={stage3_a_hash}\n"
+            )
+            pathlib.Path(args.hash_out).write_text(hash_payload, encoding="utf-8")
 
         print()
         print("=" * 60)

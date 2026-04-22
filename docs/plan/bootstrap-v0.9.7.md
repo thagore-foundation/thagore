@@ -33,12 +33,12 @@ Progress (2026-04-22, late session — full Trusting-Trust gate locally green on
 - ✅ **Item 1 (Windows x64)**: PE normalizer (`tooling/ci/pe_normalize.py`) zeroes COFF `TimeDateStamp`, Optional `CheckSum`, and Debug/Export/Resource directory timestamps. After normalization, `stage1 == stage2 == stage3` at byte level, SHA256 `eb1220fa454e66d28f167ee6dc051765ad185f577c115290888eae54f9956d48`. Linux + macOS still pending CI lanes.
 - ✅ **Item 2**: Stage proof manifest widened to **109 rows = 103 `analyze` + 3 `build` + 3 `run`**, covering every selfhost frontend source (`bootstrap/selfhost/frontend/*.tg`), the entire `bootstrap/selfhost/corpus/fixtures/**` tree (frontend/lowering/compiler/bootstrap_seed), and runnable `compiler/` fixtures (`hello_run.tg`, `ok_build_print.tg`, `ok_build_run.tg`) under both `build` and `run`.
 - ✅ **Item 5**: `selfhost_stage_proof.py` now performs gate (C) — rebuild full stage1→stage2→stage3 chain twice and confirm identical normalized SHA256 across runs. Verified on Windows x64.
-- ⏳ **Item 3**: All-three-platform CI green in same run — needs the new normalizer + widened proof to be pushed and exercised on Linux + Windows + macOS lanes.
+- ⏳ **Item 3**: Two of three platforms wired in CI — `bootstrap-trusting-trust.yml` runs the proof on Linux x64 + Windows x64. macOS lane intentionally not added yet (no project-side LLVM 14 install recipe exists for macOS). Item 3 cannot reach 100% until a macOS lane appears.
 - ❌ **Item 4**: Group-2 memory optimizations — still blocked on LLVM 14 to rebuild host `thagc` with the new `thag_rt_substr` runtime symbols.
-- ⏳ **Item 6**: Cross-machine determinism — satisfiable via CI by running the proof on two separate Linux x64 ephemeral runners (each GitHub Actions job is a fresh VM = a different machine) and diffing the normalized stage2 SHA256. Add a matrix or two parallel jobs + a `compare-hashes` aggregator to the workflow.
+- ⏳ **Item 6**: Cross-machine determinism — `bootstrap-trusting-trust.yml` includes two independent Linux x64 jobs (`linux-x64-runner-a`, `linux-x64-runner-b`) and a `cross-machine-determinism` aggregator that diffs their normalized stage hashes. Will be GREEN once CI passes.
 - ❌ **Item 7**: Closing the deferred bucket — depends on LLVM 14 (item 4).
 
-Net effect: items 1 (Win), 2, 5 are GREEN locally; items 3 and 6 unblock once CI is wired up; only items 4 and 7 are hard-blocked by LLVM 14 availability.
+Net effect: items 1 (Win), 2, 5 GREEN locally; items 3 (Linux + Win subset), 6 wired in CI and pending the first green run; items 4 and 7 hard-blocked by LLVM 14 availability; item 3 also needs a macOS lane to reach 100%.
 
 ## Readiness checklist
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
