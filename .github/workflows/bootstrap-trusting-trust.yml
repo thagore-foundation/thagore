@@ -142,8 +142,14 @@ jobs:
           "LLVM_CONFIG_PATH=$configCandidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PATH=$llvmBin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Build host thagc
+      - name: Build host thagc (Linux)
+        if: matrix.os == 'linux'
         shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
+      - name: Build host thagc (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
         run: cargo build --release -p thagore-cli --bin thagc
 
       - name: Normalize fixture line endings (Windows)
@@ -161,7 +167,8 @@ jobs:
                   path.write_text(normalized, encoding="utf-8", newline="\n")
           '@ | python -
 
-      - name: Build stage0 selfhost compiler driver
+      - name: Build stage0 selfhost compiler driver (Linux)
+        if: matrix.os == 'linux'
         shell: bash
         run: |
           python tooling/ci/build_selfhost_frontend_stage.py \
@@ -170,7 +177,18 @@ jobs:
             --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-compiler-stage0"
 
-      - name: Run full Trusting-Trust proof (gates A + B + C)
+      - name: Build stage0 selfhost compiler driver (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          python tooling/ci/build_selfhost_frontend_stage.py `
+            --repo-root $PWD `
+            --thagc-bin $PWD/${{ matrix.thagc_bin }} `
+            --manifest bootstrap/selfhost/tools/compiler-driver-manifest.txt `
+            --out-dir $PWD/bootstrap-selfhost-compiler-stage0
+
+      - name: Run full Trusting-Trust proof (Linux)
+        if: matrix.os == 'linux'
         shell: bash
         timeout-minutes: 90
         run: |
@@ -180,6 +198,18 @@ jobs:
             --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
             --hash-out "$PWD/proof-hashes.txt" \
             --report-out "$PWD/proof-report.txt"
+
+      - name: Run full Trusting-Trust proof (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        timeout-minutes: 90
+        run: |
+          python tooling/ci/selfhost_stage_proof.py `
+            --repo-root $PWD `
+            --stage0-bin $PWD/bootstrap-selfhost-compiler-stage0/selfhost-compiler${{ matrix.exe_suffix }} `
+            --host-thagc $PWD/${{ matrix.thagc_bin }} `
+            --hash-out $PWD/proof-hashes.txt `
+            --report-out $PWD/proof-report.txt
 
       - name: Upload proof artifacts
         if: always()
