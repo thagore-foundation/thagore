@@ -57,16 +57,23 @@ def _rva_to_file_offset(
 
 
 def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
-    """Zero out non-deterministic PE fields. Returns (changed, notes)."""
+    """Zero out non-deterministic PE fields. Returns (changed, notes).
+
+    On non-PE inputs (ELF, Mach-O, anything without an MZ/PE signature) this
+    is a silent no-op — the proof's same-file hash check still works because
+    GNU ld on Linux and ld64 on macOS already produce deterministic output
+    (no embedded timestamp the way MinGW PE does). Future ELF/Mach-O
+    normalizers can extend this function as needed.
+    """
     raw = path.read_bytes()
     buf = bytearray(raw)
     notes: list[str] = []
 
     if len(buf) < 0x40 or buf[:2] != b"MZ":
-        raise ValueError(f"{path}: not a PE/MZ file")
+        return False, []
     pe_off = _u32(buf, 0x3C)
     if pe_off + 24 > len(buf) or buf[pe_off:pe_off + 4] != b"PE\x00\x00":
-        raise ValueError(f"{path}: PE signature not found at 0x{pe_off:x}")
+        return False, []
 
     coff_off = pe_off + 4
     num_sections = _u16(buf, coff_off + 2)
