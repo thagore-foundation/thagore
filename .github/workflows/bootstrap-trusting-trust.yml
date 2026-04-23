@@ -8,12 +8,14 @@ name: Bootstrap Trusting-Trust Gate
 #            identical normalized stage2 SHA256 from identical sources
 #
 # Items 4, 7 of the v0.9.7 release gate (Group-2 substr opts; deferred bucket close)
-# are not yet covered — both depend on a host thagc rebuild with the new
-# `thag_rt_substr` runtime symbol, which currently requires LLVM 14 to be present
-# at build time on the maintainer's local machine.
+# are now covered via the CC=clang-14 pin on Linux: pinning the C compiler to
+# LLVM 14's clang gives byte-identical codegen across both ephemeral runners.
 #
-# macOS lane is intentionally NOT included yet — the project has no macOS LLVM 14
-# install recipe. Add when one exists.
+# macOS lane (macos-13 / x86_64) is included as of phase 3 of the macOS rollout.
+# It uses tooling/ci/install_macos_llvm14.sh to provision LLVM 14 and relies on
+# selfhost_stage_proof.py to call `codesign --remove-signature` before normalize
+# (ld64 ad-hoc-signs every link, and signatures cover the rest of the file).
+# Apple Silicon (arm64) is deferred until a deterministic LLVM 14 source is built.
 
 on:
   push:
@@ -30,6 +32,7 @@ on:
       - "tooling/ci/selfhost_stage_proof.py"
       - "tooling/ci/pe_normalize.py"
       - "tooling/ci/install_linux_llvm14.sh"
+      - "tooling/ci/install_macos_llvm14.sh"
       - "tools/thagore-cli/**"
       - "crates/**"
   workflow_dispatch:
@@ -67,6 +70,14 @@ jobs:
             os: windows
             exe_suffix: ".exe"
             thagc_bin: target/release/thagc.exe
+          # macOS Intel — last GHA-supported x86_64 image is macos-13.
+          # Cross-machine determinism (item 6) is satisfied by the Linux pair;
+          # macOS only needs to go green individually for item 3.
+          - lane: macos-x64
+            runner: macos-13
+            os: macos
+            exe_suffix: ""
+            thagc_bin: target/release/thagc
 
     steps:
       - uses: actions/checkout@v5
@@ -78,6 +89,12 @@ jobs:
         timeout-minutes: 30
         shell: bash
         run: bash tooling/ci/install_linux_llvm14.sh
+
+      - name: Install LLVM 14 (macOS)
+        if: matrix.os == 'macos'
+        timeout-minutes: 30
+        shell: bash
+        run: bash tooling/ci/install_macos_llvm14.sh
 
       - name: Set up MSVC toolchain (Windows)
         if: matrix.os == 'windows'
@@ -147,6 +164,11 @@ jobs:
         shell: bash
         run: cargo build --release -p thagore-cli --bin thagc
 
+      - name: Build host thagc (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: cargo build --release -p thagore-cli --bin thagc
+
       - name: Build host thagc (Windows)
         if: matrix.os == 'windows'
         shell: pwsh
@@ -179,6 +201,19 @@ jobs:
             --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
             --out-dir "$PWD/bootstrap-selfhost-compiler-stage0"
 
+      - name: Build stage0 selfhost compiler driver (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        # Pin CC to LLVM 14's clang for the same reason as Linux: the system
+        # clang on macOS GHA runner images can drift across patch levels.
+        run: |
+          export CC="$LLVM_SYS_140_PREFIX/bin/clang"
+          python tooling/ci/build_selfhost_frontend_stage.py \
+            --repo-root "$PWD" \
+            --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
+            --manifest "bootstrap/selfhost/tools/compiler-driver-manifest.txt" \
+            --out-dir "$PWD/bootstrap-selfhost-compiler-stage0"
+
       - name: Build stage0 selfhost compiler driver (Windows)
         if: matrix.os == 'windows'
         shell: pwsh
@@ -198,6 +233,26 @@ jobs:
         # patch level, which produces different inlining decisions and breaks
         # cross-machine determinism (item 6). LLVM 14 prebuilt is the same
         # binary on every runner, so codegen is reproducible.
+        run: |
+          export CC="$LLVM_SYS_140_PREFIX/bin/clang"
+          echo "Using CC=$CC"
+          "$CC" --version
+          python tooling/ci/selfhost_stage_proof.py \
+            --repo-root "$PWD" \
+            --stage0-bin "$PWD/bootstrap-selfhost-compiler-stage0/selfhost-compiler${{ matrix.exe_suffix }}" \
+            --host-thagc "$PWD/${{ matrix.thagc_bin }}" \
+            --hash-out "$PWD/proof-hashes.txt" \
+            --report-out "$PWD/proof-report.txt"
+
+      - name: Run full Trusting-Trust proof (macOS)
+        if: matrix.os == 'macos'
+        shell: bash
+        timeout-minutes: 90
+        # CC pin matches Linux. The proof script invokes `codesign
+        # --remove-signature` on every Mach-O before normalize, since
+        # ld64 ad-hoc signs every link and signatures cover the rest of
+        # the file (so they must be stripped before pe_normalize.py
+        # touches the header).
         run: |
           export CC="$LLVM_SYS_140_PREFIX/bin/clang"
           echo "Using CC=$CC"

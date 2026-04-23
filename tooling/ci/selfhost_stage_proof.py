@@ -96,8 +96,28 @@ def run_fixture(
     return result.stdout.replace("\r\n", "\n").strip()
 
 
+def _strip_macos_signature(binary: pathlib.Path) -> None:
+    """Remove the ad-hoc code signature ld64 attaches on every link.
+
+    Signatures cover the rest of the file, so the signature blob and
+    the LC_CODE_SIGNATURE load command must be removed before
+    pe_normalize touches the Mach-O header. No-op if `codesign` is
+    absent (non-macOS hosts) or the binary carries no signature.
+    """
+    if sys.platform != "darwin":
+        return
+    codesign = shutil.which("codesign")
+    if not codesign:
+        return
+    subprocess.run(
+        [codesign, "--remove-signature", str(binary)],
+        check=False, capture_output=True,
+    )
+
+
 def sha256_normalized(binary: pathlib.Path) -> str:
-    """Normalize the PE in place, then return its SHA256."""
+    """Normalize the binary in place, then return its SHA256."""
+    _strip_macos_signature(binary)
     pe_normalize.normalize_pe(binary)
     return hashlib.sha256(binary.read_bytes()).hexdigest()
 
