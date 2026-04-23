@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Zero out non-deterministic PE fields so two builds of the same source
-produce byte-identical files.
+"""Zero out non-deterministic fields in PE and ELF binaries so two builds
+of the same source on different machines produce byte-identical files.
 
-Fields normalized (zeroed):
+PE (Windows) — fields zeroed:
   - COFF File Header TimeDateStamp (4 bytes)        — always non-deterministic
   - PE Optional Header CheckSum (4 bytes)           — defensive; depends on file
   - IMAGE_DEBUG_DIRECTORY entries TimeDateStamp     — defensive
@@ -13,6 +13,20 @@ The MinGW linker (`ld`) embeds a real Unix timestamp in the COFF
 TimeDateStamp on every link. `-Wl,/Brepro` is silently ignored (it is an
 MSVC linker option). This normalizer is the post-link step that makes
 self-hosting hash equality possible on Windows builds.
+
+ELF (Linux) — section contents zeroed:
+  - .comment              — gcc/clang version string (e.g. "GCC: (Ubuntu
+                            13.2.0-23ubuntu4) 13.2.0"). Differs across
+                            ephemeral runners that received slightly
+                            different toolchain patches.
+  - .note.gnu.build-id    — sha1 of the linker's input. Even a tiny diff
+                            in any input object propagates here.
+  - .note.GNU-stack       — defensive; usually empty.
+
+GNU ld on Linux does NOT embed a timestamp the way MinGW PE does, but
+the .comment / build-id sections are version-sensitive and cause cross-
+machine SHA256 mismatches even when the program text is bit-identical.
+Mach-O is not currently handled — extend when a macOS lane lands.
 
 Safe to run multiple times (idempotent — zeroing already-zero fields is
 a no-op).
@@ -56,18 +70,98 @@ def _rva_to_file_offset(
     return None
 
 
-def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
-    """Zero out non-deterministic PE fields. Returns (changed, notes).
+def _normalize_elf(buf: bytearray) -> list[str]:
+    """Zero contents of version-sensitive sections in an ELF in place.
 
-    On non-PE inputs (ELF, Mach-O, anything without an MZ/PE signature) this
-    is a silent no-op — the proof's same-file hash check still works because
-    GNU ld on Linux and ld64 on macOS already produce deterministic output
-    (no embedded timestamp the way MinGW PE does). Future ELF/Mach-O
-    normalizers can extend this function as needed.
+    Targets `.comment`, `.note.gnu.build-id`, `.note.GNU-stack`. These
+    are the standard culprits for cross-machine hash drift on Linux when
+    two ephemeral runners have slightly different toolchain patches but
+    otherwise produce identical program text.
+
+    Section header offsets/sizes are left intact; only the bytes inside
+    the section are zeroed. This keeps the ELF structurally valid and
+    runnable; the dynamic loader does not require build-id contents.
+    """
+    notes: list[str] = []
+    if len(buf) < 64:
+        return notes
+    ei_class = buf[4]      # 1=ELF32, 2=ELF64
+    ei_data = buf[5]       # 1=little, 2=big
+    endian = "<" if ei_data == 1 else ">"
+
+    if ei_class == 1:
+        e_shoff = struct.unpack_from(f"{endian}I", buf, 0x20)[0]
+        e_shentsize = struct.unpack_from(f"{endian}H", buf, 0x2E)[0]
+        e_shnum = struct.unpack_from(f"{endian}H", buf, 0x30)[0]
+        e_shstrndx = struct.unpack_from(f"{endian}H", buf, 0x32)[0]
+        sh_offset_rel = 16
+        sh_size_rel = 20
+        word_fmt = "I"
+    elif ei_class == 2:
+        e_shoff = struct.unpack_from(f"{endian}Q", buf, 0x28)[0]
+        e_shentsize = struct.unpack_from(f"{endian}H", buf, 0x3A)[0]
+        e_shnum = struct.unpack_from(f"{endian}H", buf, 0x3C)[0]
+        e_shstrndx = struct.unpack_from(f"{endian}H", buf, 0x3E)[0]
+        sh_offset_rel = 24
+        sh_size_rel = 32
+        word_fmt = "Q"
+    else:
+        return notes
+
+    if e_shoff == 0 or e_shnum == 0 or e_shstrndx >= e_shnum:
+        return notes
+
+    shstr_hdr = e_shoff + e_shstrndx * e_shentsize
+    if shstr_hdr + sh_size_rel + struct.calcsize(word_fmt) > len(buf):
+        return notes
+    shstr_off = struct.unpack_from(f"{endian}{word_fmt}", buf, shstr_hdr + sh_offset_rel)[0]
+    shstr_size = struct.unpack_from(f"{endian}{word_fmt}", buf, shstr_hdr + sh_size_rel)[0]
+    if shstr_off + shstr_size > len(buf):
+        return notes
+
+    targets = {b".comment", b".note.gnu.build-id", b".note.GNU-stack"}
+    for i in range(e_shnum):
+        hdr = e_shoff + i * e_shentsize
+        if hdr + sh_size_rel + struct.calcsize(word_fmt) > len(buf):
+            break
+        sh_name = struct.unpack_from(f"{endian}I", buf, hdr)[0]
+        if sh_name >= shstr_size:
+            continue
+        try:
+            end_idx = buf.index(0, shstr_off + sh_name, shstr_off + shstr_size)
+        except ValueError:
+            continue
+        name = bytes(buf[shstr_off + sh_name:end_idx])
+        if name not in targets:
+            continue
+        offset = struct.unpack_from(f"{endian}{word_fmt}", buf, hdr + sh_offset_rel)[0]
+        size = struct.unpack_from(f"{endian}{word_fmt}", buf, hdr + sh_size_rel)[0]
+        if size == 0 or offset + size > len(buf):
+            continue
+        if any(buf[offset:offset + size]):
+            notes.append(f"{name.decode('ascii')} ({size} bytes) -> 0")
+            for j in range(offset, offset + size):
+                buf[j] = 0
+    return notes
+
+
+def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
+    """Zero out non-deterministic fields in a PE or ELF binary in place.
+
+    Returns (changed, notes). Despite the historical name, this also
+    handles ELF (.comment, .note.gnu.build-id, .note.GNU-stack). Mach-O
+    is a no-op until a macOS lane needs it.
     """
     raw = path.read_bytes()
     buf = bytearray(raw)
     notes: list[str] = []
+
+    if len(buf) >= 4 and buf[:4] == b"\x7fELF":
+        notes = _normalize_elf(buf)
+        if not notes:
+            return False, []
+        path.write_bytes(bytes(buf))
+        return True, notes
 
     if len(buf) < 0x40 or buf[:2] != b"MZ":
         return False, []

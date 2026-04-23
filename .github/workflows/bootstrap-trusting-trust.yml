@@ -219,6 +219,9 @@ jobs:
           path: |
             proof-hashes.txt
             proof-report.txt
+            .proof-scratch/run1/s1/stage1.exe
+            .proof-scratch/run1/s2/stage2.exe
+            .proof-scratch/run1/s3/stage3.exe
 
       - name: Append summary
         if: always()
@@ -251,22 +254,44 @@ jobs:
       - name: Diff stage hashes between two Linux ephemeral runners
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           echo "=== runner A hashes ==="
           cat runner-a/proof-hashes.txt
           echo
           echo "=== runner B hashes ==="
           cat runner-b/proof-hashes.txt
           echo
-          if ! diff -u runner-a/proof-hashes.txt runner-b/proof-hashes.txt; then
-            echo
-            echo "FAIL (item 6): cross-machine determinism — Linux runner A and runner B"
-            echo "produced different normalized stage hashes for identical source."
-            echo "There is environmental leakage beyond the PE normalizer (paths,"
-            echo "locale, timestamps embedded in IR, ordering, etc.)."
-            exit 1
+          if diff -u runner-a/proof-hashes.txt runner-b/proof-hashes.txt; then
+            echo "ok: cross-machine determinism — runner A and runner B agree."
+            exit 0
           fi
-          echo "ok: cross-machine determinism — runner A and runner B agree."
+          echo
+          echo "FAIL (item 6): cross-machine determinism — Linux runner A and runner B"
+          echo "produced different normalized stage hashes for identical source."
+          echo "Diagnosing what differs between the two stage2 binaries..."
+          echo
+          for stage in stage1 stage2 stage3; do
+            a="runner-a/.proof-scratch/run1/s${stage#stage}/${stage}.exe"
+            b="runner-b/.proof-scratch/run1/s${stage#stage}/${stage}.exe"
+            if [[ ! -f "$a" || ! -f "$b" ]]; then
+              echo "  (skip $stage — artifact missing: a=$a b=$b)"
+              continue
+            fi
+            echo "--- $stage: section-by-section size diff ---"
+            diff <(readelf -S "$a" | awk 'NR>5{print $2,$6}') \
+                 <(readelf -S "$b" | awk 'NR>5{print $2,$6}') || true
+            echo "--- $stage: .comment contents (A) ---"
+            objdump -s -j .comment "$a" 2>/dev/null | tail -n +5 || echo '(no .comment)'
+            echo "--- $stage: .comment contents (B) ---"
+            objdump -s -j .comment "$b" 2>/dev/null | tail -n +5 || echo '(no .comment)'
+            echo "--- $stage: build-id (A vs B) ---"
+            file "$a" | grep -oE 'BuildID\[[^]]+\]=[0-9a-f]+' || true
+            file "$b" | grep -oE 'BuildID\[[^]]+\]=[0-9a-f]+' || true
+            echo "--- $stage: first 64 differing bytes ---"
+            cmp -l "$a" "$b" | head -64 || true
+            echo
+          done
+          exit 1
 
       - name: Append summary
         if: always()
