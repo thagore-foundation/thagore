@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Zero out non-deterministic fields in PE and ELF binaries so two builds
-of the same source on different machines produce byte-identical files.
+"""Zero out non-deterministic fields in PE, ELF, and Mach-O binaries so
+two builds of the same source on different machines produce byte-
+identical files.
 
 PE (Windows) — fields zeroed:
   - COFF File Header TimeDateStamp (4 bytes)        — always non-deterministic
@@ -26,7 +27,19 @@ ELF (Linux) — section contents zeroed:
 GNU ld on Linux does NOT embed a timestamp the way MinGW PE does, but
 the .comment / build-id sections are version-sensitive and cause cross-
 machine SHA256 mismatches even when the program text is bit-identical.
-Mach-O is not currently handled — extend when a macOS lane lands.
+
+Mach-O (macOS) — load command fields zeroed:
+  - LC_UUID payload (16 bytes)                      — random per link
+  - LC_BUILD_VERSION minos + sdk (4+4 bytes)        — SDK drift across runners
+  - LC_VERSION_MIN_* version + sdk (older toolchains)
+
+ld64 stamps a fresh UUID on every link and records the SDK + minimum OS
+version it was built against; both vary across macOS GHA runner images.
+Code-signature blobs are NOT touched here — they must be stripped via
+`codesign --remove-signature` before normalize, since signatures cover
+the rest of the file and cannot be edited in place. Fat (universal)
+binaries are intentionally not supported; the bootstrap pipeline
+produces thin slices.
 
 Safe to run multiple times (idempotent — zeroing already-zero fields is
 a no-op).
@@ -145,12 +158,100 @@ def _normalize_elf(buf: bytearray) -> list[str]:
     return notes
 
 
-def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
-    """Zero out non-deterministic fields in a PE or ELF binary in place.
+_MACHO_MAGICS = {
+    0xFEEDFACE,  # 32-bit, host order
+    0xCEFAEDFE,  # 32-bit, byte-swapped
+    0xFEEDFACF,  # 64-bit, host order
+    0xCFFAEDFE,  # 64-bit, byte-swapped
+}
 
-    Returns (changed, notes). Despite the historical name, this also
-    handles ELF (.comment, .note.gnu.build-id, .note.GNU-stack). Mach-O
-    is a no-op until a macOS lane needs it.
+
+def _normalize_macho(buf: bytearray) -> list[str]:
+    """Zero version/UUID metadata in a thin Mach-O binary in place.
+
+    Walks load commands and zeroes:
+      - LC_UUID payload (16 bytes per command)
+      - LC_BUILD_VERSION minos + sdk (4+4 bytes)
+      - LC_VERSION_MIN_MACOSX/_IPHONEOS/_TVOS/_WATCHOS version + sdk
+
+    The structure of the binary (header, load command sizes, segment
+    layout) is preserved — the binary remains loadable. Code signature
+    blobs are out of scope; strip them via `codesign --remove-signature`
+    before running this. Fat binaries are not handled.
+    """
+    notes: list[str] = []
+    if len(buf) < 28:
+        return notes
+
+    magic_le = struct.unpack_from("<I", buf, 0)[0]
+    if magic_le not in _MACHO_MAGICS:
+        return notes
+
+    is_64 = magic_le in (0xFEEDFACF, 0xCFFAEDFE)
+    host_order = magic_le in (0xFEEDFACE, 0xFEEDFACF)
+    endian = "<" if host_order else ">"
+
+    header_size = 32 if is_64 else 28
+    if len(buf) < header_size:
+        return notes
+
+    ncmds = struct.unpack_from(f"{endian}I", buf, 16)[0]
+    sizeofcmds = struct.unpack_from(f"{endian}I", buf, 20)[0]
+    if ncmds == 0 or sizeofcmds == 0:
+        return notes
+    if header_size + sizeofcmds > len(buf):
+        return notes
+
+    LC_REQ_DYLD = 0x80000000
+    LC_UUID = 0x1B
+    LC_BUILD_VERSION = 0x32
+    LC_VERSION_MINS = {0x24, 0x25, 0x2F, 0x30}  # MACOSX, IPHONEOS, TVOS, WATCHOS
+
+    pos = header_size
+    cmds_end = header_size + sizeofcmds
+    for _ in range(ncmds):
+        if pos + 8 > cmds_end:
+            break
+        cmd = struct.unpack_from(f"{endian}I", buf, pos)[0] & ~LC_REQ_DYLD
+        cmdsize = struct.unpack_from(f"{endian}I", buf, pos + 4)[0]
+        if cmdsize < 8 or pos + cmdsize > cmds_end:
+            break
+
+        if cmd == LC_UUID and cmdsize >= 24:
+            uuid_bytes = bytes(buf[pos + 8:pos + 24])
+            if any(uuid_bytes):
+                notes.append(f"LC_UUID {uuid_bytes.hex()} -> 0")
+                for j in range(pos + 8, pos + 24):
+                    buf[j] = 0
+        elif cmd == LC_BUILD_VERSION and cmdsize >= 24:
+            # cmd(4) cmdsize(4) platform(4) minos(4) sdk(4) ntools(4) ...
+            for label, off in (("minos", pos + 12), ("sdk", pos + 16)):
+                cur = struct.unpack_from(f"{endian}I", buf, off)[0]
+                if cur != 0:
+                    notes.append(f"LC_BUILD_VERSION {label} 0x{cur:08x} -> 0")
+                    struct.pack_into(f"{endian}I", buf, off, 0)
+        elif cmd in LC_VERSION_MINS and cmdsize >= 16:
+            # cmd(4) cmdsize(4) version(4) sdk(4)
+            for label, off in (("version", pos + 8), ("sdk", pos + 12)):
+                cur = struct.unpack_from(f"{endian}I", buf, off)[0]
+                if cur != 0:
+                    notes.append(
+                        f"LC_VERSION_MIN(0x{cmd:02x}) {label} 0x{cur:08x} -> 0"
+                    )
+                    struct.pack_into(f"{endian}I", buf, off, 0)
+
+        pos += cmdsize
+
+    return notes
+
+
+def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
+    """Zero out non-deterministic fields in a PE, ELF, or Mach-O binary in place.
+
+    Returns (changed, notes). Dispatches by magic bytes: ELF
+    (`\\x7fELF`), Mach-O (feedface/feedfacf and swapped variants),
+    otherwise PE (`MZ`...`PE\\0\\0`). Files matching no known format
+    are left unchanged.
     """
     raw = path.read_bytes()
     buf = bytearray(raw)
@@ -158,6 +259,13 @@ def normalize_pe(path: pathlib.Path) -> tuple[bool, list[str]]:
 
     if len(buf) >= 4 and buf[:4] == b"\x7fELF":
         notes = _normalize_elf(buf)
+        if not notes:
+            return False, []
+        path.write_bytes(bytes(buf))
+        return True, notes
+
+    if len(buf) >= 4 and struct.unpack_from("<I", buf, 0)[0] in _MACHO_MAGICS:
+        notes = _normalize_macho(buf)
         if not notes:
             return False, []
         path.write_bytes(bytes(buf))
