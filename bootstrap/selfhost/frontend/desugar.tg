@@ -20,12 +20,7 @@ func append_line(out: str, line: str) -> str:
   return string.concat(out, string.concat("\n", line))
 
 func slice(text: str, start: i32, end: i32) -> str:
-  let out = ""
-  let index: i32 = start
-  while (index < end):
-    out = string.concat(out, string.char_at(text, index))
-    index = index + 1
-  return out
+  return string.substr(text, start, end - start)
 
 func starts_with_at(text: str, start: i32, needle: str) -> bool:
   if (start < 0 or start + string.len(needle) > string.len(text)):

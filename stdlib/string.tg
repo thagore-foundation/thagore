@@ -27,6 +27,7 @@ extern func thag_rt_to_bool(value: str) -> bool
 extern func thag_rt_is_empty(value: str) -> bool
 extern func thag_rt_split(value: str, sep: str) -> Array[str]
 extern func thag_rt_join(parts: Array[str], sep: str) -> str
+extern func thag_rt_substr(value: str, start: i32, len: i32) -> str
 
 # str_eq: Returns true when both strings are equal.
 func str_eq(left: str, right: str) -> bool:
@@ -135,3 +136,8 @@ func is_empty(value: str) -> bool:
 # join: Joins an array of strings with `sep`.
 func join(parts: Array[str], sep: str) -> str:
   return thag_rt_join(parts, sep)
+
+# substr: Returns `len` bytes of `value` starting at `start`.
+# Empty when start is out of range or len <= 0; clamps when start+len exceeds length.
+func substr(value: str, start: i32, len: i32) -> str:
+  return thag_rt_substr(value, start, len)
