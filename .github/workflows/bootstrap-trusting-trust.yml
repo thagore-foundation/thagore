@@ -170,7 +170,9 @@ jobs:
       - name: Build stage0 selfhost compiler driver (Linux)
         if: matrix.os == 'linux'
         shell: bash
+        # Same CC pin as the proof step — see comment there for rationale.
         run: |
+          export CC="$LLVM_SYS_140_PREFIX/bin/clang"
           python tooling/ci/build_selfhost_frontend_stage.py \
             --repo-root "$PWD" \
             --thagc-bin "$PWD/${{ matrix.thagc_bin }}" \
@@ -191,7 +193,15 @@ jobs:
         if: matrix.os == 'linux'
         shell: bash
         timeout-minutes: 90
+        # Pin CC to LLVM 14's clang so both ephemeral runners use bit-identical
+        # codegen — system gcc on ubuntu-24.04 ephemeral images can vary by
+        # patch level, which produces different inlining decisions and breaks
+        # cross-machine determinism (item 6). LLVM 14 prebuilt is the same
+        # binary on every runner, so codegen is reproducible.
         run: |
+          export CC="$LLVM_SYS_140_PREFIX/bin/clang"
+          echo "Using CC=$CC"
+          "$CC" --version
           python tooling/ci/selfhost_stage_proof.py \
             --repo-root "$PWD" \
             --stage0-bin "$PWD/bootstrap-selfhost-compiler-stage0/selfhost-compiler${{ matrix.exe_suffix }}" \
