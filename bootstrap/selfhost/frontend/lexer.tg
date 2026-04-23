@@ -35,14 +35,14 @@ func scan_line(source: str, line: i32, out: str) -> str:
     if (chars.is_letter(ch)):
       let start_line: i32 = line
       let start_column: i32 = column
-      let start_index: i32 = index
+      let text = ""
       while (index < string.len(source)):
         let next = string.char_at(source, index)
         if (chars.is_ident_continue(next) == false):
           break
+        text = string.concat(text, next)
         index = index + 1
         column = column + 1
-      let text = string.substr(source, start_index, index - start_index)
       if (is_keyword(text)):
         out = append_line(out, format_token("kw", text, start_line, start_column))
       else:
@@ -52,14 +52,14 @@ func scan_line(source: str, line: i32, out: str) -> str:
     if (chars.is_digit(ch)):
       let start_line: i32 = line
       let start_column: i32 = column
-      let start_index: i32 = index
+      let text = ""
       while (index < string.len(source)):
         let next = string.char_at(source, index)
         if (chars.is_digit(next) == false):
           break
+        text = string.concat(text, next)
         index = index + 1
         column = column + 1
-      let text = string.substr(source, start_index, index - start_index)
       out = append_line(out, format_token("int", text, start_line, start_column))
       continue
 

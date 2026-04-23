@@ -19,11 +19,16 @@ func extract_field(func_ir: str, name: str) -> str:
     let field = array.get(fields, i)
     if (string.starts_with(field, needle)):
       let content_start = string.len(needle)
-      let suffix = string.substr(field, content_start, string.len(field) - content_start)
-      let bracket_pos = string.find(suffix, "]")
-      if (bracket_pos < 0):
-        return suffix
-      return string.substr(suffix, 0, bracket_pos)
+      let field_len = string.len(field)
+      let out = ""
+      let j: i32 = content_start
+      while (j < field_len):
+        let ch = string.char_at(field, j)
+        if (string.str_eq(ch, "]")):
+          return out
+        out = string.concat(out, ch)
+        j = j + 1
+      return out
     i = i + 1
   return ""
 
@@ -34,11 +39,15 @@ func extract_kv(content: str, key: str) -> str:
   if (pos < 0):
     return ""
   let start: i32 = pos + string.len(needle)
-  let suffix = string.substr(content, start, string.len(content) - start)
-  let comma_pos = string.find(suffix, ",")
-  if (comma_pos < 0):
-    return suffix
-  return string.substr(suffix, 0, comma_pos)
+  let out = ""
+  let i: i32 = start
+  while (i < string.len(content)):
+    let ch = string.char_at(content, i)
+    if (string.str_eq(ch, ",")):
+      return out
+    out = string.concat(out, ch)
+    i = i + 1
+  return out
 
 # " | "-separated tmap: each entry is "key:value".
 func tmap_add(m: str, k: str, v: str) -> str:
