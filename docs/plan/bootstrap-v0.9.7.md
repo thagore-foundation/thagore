@@ -48,6 +48,11 @@ Progress (2026-04-23 — full Trusting-Trust gate GREEN on CI, both Linux epheme
 
 Net effect: 5 of 7 release-gate items GREEN on CI (1, 2, 3 partial, 5, 6). Remaining: macOS lane for item 3, and items 4 + 7 (LLVM 14 dependency).
 
+Progress (2026-04-23 — attempted Group-2 substr opts source-only; reverted):
+- ❌ Source-only application of Group-2 substr fast paths (commit `3e8285d0`) was REVERTED in commit `09d2f54d`. Behavioral gates A/B/C all stayed green per-machine on CI (run `24827552818`), but **cross-machine determinism (item 6) failed**: ephemeral runner-a produced a 172,304-byte stage2 (SHA256 `e9b3050a...`), runner-b produced a 172,384-byte stage2 (SHA256 `9de005a4...`).
+- Root cause confirmed via diff: gcc on the two ubuntu-24.04 ephemeral runners makes different inlining/codegen decisions for three unrelated functions (`diagnostics__matches_from_at` +16 B, `resolver__matches_from_at` +16 B, `lower__lower_report` +48 B = 80 B total file delta). The smaller selfhost binary footprint produced by the substr opt happens to push gcc heuristics across a threshold that's evaluated differently on the two runners. The previous bigger binary on commit `b14a6341` (173,584 B, hash `2e158ab2...`) was below all the relevant thresholds on both runners.
+- Implication: **item 4 cannot be applied safely from selfhost source alone.** A correct application requires a host `thagc` rebuild that pins the C compiler invocation to deterministic flags (or links via LLVM 14 directly, bypassing system gcc). Both options need LLVM 14 on the maintainer's local machine. Status of item 4 remains hard-blocked on LLVM 14, now for an additional reason beyond just the runtime symbol.
+
 ## Readiness checklist
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)
 - [x] Parser/block rules: contextual block error messages added (FuncBody, StructBody, ImplBody, IntentBody, FlowBody, IfBody, ElseBody, WhileBody, ForBody); 6 parser conformance tests added and passing.
