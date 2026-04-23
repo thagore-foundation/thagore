@@ -7,3 +7,4 @@ build-*/
 **/.thagore/
 target/
 playground/wasm/pkg/
+.proof-scratch/

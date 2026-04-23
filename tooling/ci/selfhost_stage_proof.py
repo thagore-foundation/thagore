@@ -31,9 +31,9 @@ import argparse
 import hashlib
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
-import tempfile
 
 import pe_normalize
 
@@ -152,6 +152,11 @@ def main() -> int:
                         help="write normalized stage SHA256s as key=value pairs "
                              "(stage1=..., stage2=..., stage3=...) for cross-machine "
                              "hash comparison")
+    parser.add_argument("--scratch-dir", default="",
+                        help="explicit path for the build scratch root. Default is "
+                             "<repo>/.proof-scratch — chosen to be deterministic across "
+                             "ephemeral CI runners so embedded build paths match. The "
+                             "directory is wiped before use.")
     parser.add_argument("--skip-rerun", action="store_true",
                         help="skip the determinism rerun check (faster, less strict)")
     args = parser.parse_args()
@@ -162,8 +167,11 @@ def main() -> int:
     host_thagc = pathlib.Path(args.host_thagc).resolve() if args.host_thagc else None
     manifest_path = repo_root / args.manifest
 
-    with tempfile.TemporaryDirectory(prefix="selfhost-stage-proof-") as scratch_root_str:
-        scratch_root = pathlib.Path(scratch_root_str)
+    scratch_root = pathlib.Path(args.scratch_dir).resolve() if args.scratch_dir else (repo_root / ".proof-scratch")
+    if scratch_root.exists():
+        shutil.rmtree(scratch_root)
+    scratch_root.mkdir(parents=True)
+    try:
 
         def make_env(tmp_dir: pathlib.Path) -> dict[str, str]:
             env = dict(os.environ)
@@ -273,6 +281,10 @@ def main() -> int:
         else:
             print("  (C) same-machine determinism  SKIPPED")
         print("=" * 60)
+    finally:
+        # Leave scratch_root in place for post-mortem inspection on CI failure.
+        # The next invocation rmtrees it before reuse, so this never accumulates.
+        pass
     return 0
 
 
