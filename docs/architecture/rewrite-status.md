@@ -2,7 +2,7 @@
 
 This dashboard tracks the current Rust toolchain in this repository.
 
-Current release cut: `v0.9.0`.
+Current release cut: `v0.9.7`.
 
 ## Frontend
 
