@@ -387,7 +387,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_top_level_declarations() {
+    fn allows_extern_decls_as_noops() {
+        // The WASM playground prepends synthetic extern decls for host builtins
+        // (println, from_int, etc.) before evaluating user code. The interpreter
+        // must accept them silently — actual dispatch happens via
+        // install_default_bindings.
         let extern_decls = [Decl::Extern(ExternDecl {
             id: NodeId::new(4),
             span: span(),
@@ -396,13 +400,11 @@ mod tests {
             return_type: named_type(InternedStr::new(1)),
         })];
         let mut interpreter = Interpreter::new(symbol_table(&["ffi_call", "i32"]));
-        assert_eq!(
-            interpreter.run(&extern_decls),
-            Err(RuntimeError::unsupported(
-                "extern declarations are not supported in the playground interpreter",
-            ))
-        );
+        assert!(interpreter.run(&extern_decls).is_ok());
+    }
 
+    #[test]
+    fn rejects_unsupported_top_level_declarations() {
         let impl_decls = [Decl::Impl(ImplBlock {
             id: NodeId::new(5),
             span: span(),

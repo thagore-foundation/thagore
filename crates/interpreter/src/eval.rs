@@ -44,11 +44,11 @@ impl<'ast> Interpreter<'ast> {
                     ));
                 }
                 Decl::Struct(struct_decl) => self.register_struct(struct_decl)?,
-                Decl::Extern(_) => {
-                    return Err(RuntimeError::unsupported(
-                        "extern declarations are not supported in the playground interpreter",
-                    ));
-                }
+                // Extern decls are forward signatures the WASM playground prepends
+                // so the type checker accepts calls to host builtins (println,
+                // from_int, ...). The actual builtin dispatch lives in
+                // install_default_bindings, so the interpreter just skips them.
+                Decl::Extern(_) => {}
                 Decl::Impl(_) => {
                     return Err(RuntimeError::unsupported(
                         "impl blocks are not supported in the playground interpreter",
