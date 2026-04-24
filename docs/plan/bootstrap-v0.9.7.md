@@ -6,11 +6,13 @@ Goal: ship a self-hosting, resource‑efficient toolchain that can recompile its
 
 **No release tag (`v0.9.7` or any later version) may be cut until every item in the "100% bootstrap" gate below is green.** Behavioral equivalence on a small fixture corpus is not enough on its own. Owner directive (2026-04-22): release only when bootstrap is *truly* complete, not when it merely "passes".
 
-Required for release:
+**Scope amendment (2026-04-24):** Owner re-scoped the gate to **Linux x64 + Windows x64** for v0.9.7. macOS x64/arm64 was dropped from items 1 + 3 because GHA macOS runner slots were not available in time and the rest of the gate was already green. macOS support is deferred to a follow-up release; the `install_macos_llvm14.sh`, Mach-O normalizer, and `macos-13` lane in `bootstrap-trusting-trust.yml` were all built and pushed (commits `fbd0dca1`, `308cfb15`, `2ea88e9c`), so the work resumes the moment a slot opens — only the green CI confirmation is missing.
 
-1. **Byte-identical artifacts across stages.** `stage2 == stage3` at the SHA256 level on Linux x64, Windows x64, and macOS x64/arm64. PE `TimeDateStamp` and any other non-deterministic linker fields must be normalized post-link or eliminated at the linker level. Behavioral equivalence is a precondition, not the final gate.
+Required for release (2-platform scope):
+
+1. **Byte-identical artifacts across stages.** `stage2 == stage3` at the SHA256 level on Linux x64 and Windows x64. PE `TimeDateStamp` and any other non-deterministic linker fields must be normalized post-link or eliminated at the linker level. Behavioral equivalence is a precondition, not the final gate.
 2. **Wide stage proof corpus.** The proof manifest must cover the full reusable selfhost source set (`compiler.tg`, `lower.tg`, `c_emit.tg`, `desugar.tg`, `lexer.tg`, `parser.tg`, `typeck.tg`, `diagnostics.tg`, plus all `bootstrap/selfhost/corpus/fixtures/**`), and must include `analyze`, `build`, and `run` commands — not only `analyze`.
-3. **All three host platforms green.** CI must show `selfhost stage proof ok` on Linux x64, Windows x64, and macOS x64/arm64 in the same workflow run, not on separate ad-hoc runs.
+3. **Both shipped host platforms green.** CI must show `selfhost stage proof ok` on Linux x64 and Windows x64 in the same workflow run, not on separate ad-hoc runs.
 4. **Group-2 frontend memory optimizations applied.** `desugar.slice`, `lexer.scan_*`, and `c_emit.extract_*` must use the substr-based fast paths backed by a rebuilt host `thagc` that embeds the new runtime symbols (`thag_rt_substr`, etc.). Peak RSS during stage proof must stay under the v0.9.6 baseline cap (≤ 768 MB Windows, ≤ 512 MB Linux).
 5. **Self-host fixed-point hash determinism.** A second full `stage1 → stage2` rebuild on the same input must produce a stage2 with an identical SHA256 to the first run. (Run-to-run determinism on the same machine.)
 6. **Cross-machine determinism on at least one platform.** Two separate Linux x64 runners must produce identical stage2 hashes from identical sources. (Platform reproducibility, not just same-machine reproducibility.)
@@ -57,6 +59,12 @@ Progress (2026-04-23 — items 4 + 7 GREEN via CC pin to clang-14):
 - ✅ **Item 4 GREEN**: Group-2 substr fast paths re-applied (commit `514d8a57`) and `bootstrap-trusting-trust.yml` now pins `CC=$LLVM_SYS_140_PREFIX/bin/clang` for the Linux stage0 build + proof steps (commit `bad655b3`). LLVM 14 prebuilt is byte-identical on every ephemeral runner (installed by `tooling/ci/install_linux_llvm14.sh` from the same release tarball), so codegen of the smaller substr-based binary is reproducible across machines. CI run `24833810823`: Linux runner-a == runner-b == `4a6d105d817e216583a171651ee1131d637aa4a8fc30ea97316644dd3ac5cc00`. Windows lane (already used clang via `cfg!(windows)` in `crates/codegen/src/output.rs::c_compiler`): `42601ad27bb8aaaca7a79c7813557872e12ee671a9aad946b41ccca00c76151a`. Per-machine fixed-point determinism (stage1==stage2==stage3) intact on all three lanes.
 - ✅ **Item 7 GREEN**: Group-2 substr is the only deferred bucket; with item 4 closed, item 7 closes by definition. `project_optimization_status.md` Group 2 list moves to APPLIED.
 - Net effect: **6 of 7 release-gate items GREEN on CI** (1, 2, 3-partial, 4, 5, 6, 7). Only remaining gap is the macOS lane for item 3 — owner directive (2026-04-23) was to skip macOS for now and finish the rest, which is what shipped. Once a macOS LLVM 14 install recipe exists, adding the macOS lane closes item 3 fully and the gate is 7/7.
+
+Progress (2026-04-24 — release v0.9.7 cut, 2-platform scope):
+- ✅ macOS lane infrastructure landed: `tooling/ci/install_macos_llvm14.sh` (`fbd0dca1`), Mach-O dispatch + `_normalize_macho` in `tooling/ci/pe_normalize.py` plus 3 unit tests in `tooling/ci/test_pe_normalize.py` (`308cfb15`), `macos-13` matrix entry + `codesign --remove-signature` hook in `selfhost_stage_proof.py::sha256_normalized` (`2ea88e9c`). All on `indev-rewrite`, ready to run when a macOS slot opens.
+- ❌ macOS lane never dequeued on CI run `24838743047` — Linux runner-a + Linux runner-b + Windows-x64 all GREEN, macOS-x64 stayed `queued` overnight. Owner pre-authorized 2026-04-23 evening: if no slot, drop macOS from scope and ship.
+- ✅ Gate redefined to Linux x64 + Windows x64 (see "Scope amendment" above). Under that scope: **7/7 GREEN**.
+- ✅ Version bump 0.9.6 → 0.9.7 in `tools/thagore-cli/Cargo.toml`, `tools/thagore-fmt/Cargo.toml`, `tools/thagore-lsp/Cargo.toml`, and `Cargo.lock`. Workspace internal crates stay at 0.1.0.
 
 ## Readiness checklist
 - [x] Self-hosting: build `thagc` with `thagc` on all three platforms; compare hash with host-built binary. (Linux + Windows fixed-point hash gated in `Bootstrap Probe`; macOS pending macOS lane.)

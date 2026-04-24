@@ -1108,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "thagore-cli"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "bumpalo",
  "clap",
@@ -1139,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "thagore-fmt"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "bumpalo",
  "clap",
@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "thagore-lsp"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "bumpalo",
  "dashmap",
