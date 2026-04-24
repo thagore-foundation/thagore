@@ -11,10 +11,12 @@ name: Bootstrap Trusting-Trust Gate
 # are now covered via the CC=clang-14 pin on Linux: pinning the C compiler to
 # LLVM 14's clang gives byte-identical codegen across both ephemeral runners.
 #
-# macOS lane (macos-13 / x86_64) is included as of phase 3 of the macOS rollout.
-# It uses tooling/ci/install_macos_llvm14.sh to provision LLVM 14 and relies on
-# selfhost_stage_proof.py to call `codesign --remove-signature` before normalize
-# (ld64 ad-hoc-signs every link, and signatures cover the rest of the file).
+# macOS lane (macos-13 / x86_64) infrastructure is wired (install script,
+# Mach-O normalizer, codesign hook, all if: matrix.os == 'macos' steps below)
+# but the matrix entry is DISABLED by default — GHA macOS-13 slots are heavily
+# rationed and have hung the gate for 90+ minutes per attempt. To validate the
+# lane, uncomment the macos-x64 matrix entry below and trigger via
+# workflow_dispatch (do not push that change to indev-rewrite).
 # Apple Silicon (arm64) is deferred until a deterministic LLVM 14 source is built.
 
 on:
@@ -70,14 +72,14 @@ jobs:
             os: windows
             exe_suffix: ".exe"
             thagc_bin: target/release/thagc.exe
-          # macOS Intel — last GHA-supported x86_64 image is macos-13.
-          # Cross-machine determinism (item 6) is satisfied by the Linux pair;
-          # macOS only needs to go green individually for item 3.
-          - lane: macos-x64
-            runner: macos-13
-            os: macos
-            exe_suffix: ""
-            thagc_bin: target/release/thagc
+          # macOS Intel (macos-13 / x86_64) — DISABLED by default. See header
+          # comment. Uncomment locally + trigger via workflow_dispatch when
+          # validating the macOS lane; do not push the uncommented form.
+          # - lane: macos-x64
+          #   runner: macos-13
+          #   os: macos
+          #   exe_suffix: ""
+          #   thagc_bin: target/release/thagc
 
     steps:
       - uses: actions/checkout@v5
